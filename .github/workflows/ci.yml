@@ -69,21 +69,6 @@ jobs:
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO
 
-  lint:
-    name: SwiftLint
-    runs-on: macos-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Install SwiftLint
-      run: |
-        brew install swiftlint
-        
-    - name: Run SwiftLint
-      run: swiftlint lint --reporter github-actions-logging
-
   build-archive:
     name: Test Archive Build
     runs-on: macos-latest

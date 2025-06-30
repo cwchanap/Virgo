@@ -10,7 +10,6 @@ Runs on every push and pull request to `main` and `dev` branches.
 
 **Jobs:**
 - **test**: Runs unit and UI tests on iOS Simulator and macOS
-- **lint**: Runs SwiftLint to ensure code quality
 - **build-archive**: Tests archive builds for both iOS and macOS
 
 **Matrix Strategy:**
@@ -23,16 +22,47 @@ Runs on every push and pull request to `main` and `dev` branches.
 - Parallel job execution
 - Comprehensive test coverage
 
+## Code Quality
+
+SwiftLint runs automatically via **git pre-commit hooks** (not in CI) for faster feedback:
+
+### Setup Git Hooks (One-time setup)
+
+```bash
+# Run this once after cloning the repository
+./scripts/setup-git-hooks.sh
+```
+
+This script will:
+- Install SwiftLint via Homebrew (if not already installed)
+- Set up pre-commit hooks to run SwiftLint on staged files
+- Prevent commits with linting errors
+
+### Manual Linting
+
+```bash
+# Lint all files
+swiftlint lint
+
+# Auto-fix issues where possible
+swiftlint lint --fix
+
+# Lint specific files
+swiftlint lint --path Virgo/ContentView.swift
+```
+
 ## Configuration Files
 
 - `.swiftlint.yml`: SwiftLint configuration with project-specific rules
 - `ci.yml`: Main CI workflow definition
+- `scripts/git-hooks/pre-commit`: Pre-commit hook for linting
+- `scripts/setup-git-hooks.sh`: One-time setup script
 
 ## Requirements
 
 - Xcode 16.4+
 - iOS 18.5+ / macOS 14.0+
-- SwiftLint (automatically installed in CI)
+- SwiftLint (automatically installed by setup script)
 
 ## Local Testing
 
@@ -45,6 +75,12 @@ xcodebuild test -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iO
 # UI tests  
 xcodebuild test -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 16' -only-testing:VirgoUITests
 
-# SwiftLint
-swiftlint lint
+# All tests
+xcodebuild test -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
+
+## Development Setup
+
+1. Clone the repository
+2. Run `./scripts/setup-git-hooks.sh` to set up code quality hooks
+3. Start developing - SwiftLint will run automatically on commit!
