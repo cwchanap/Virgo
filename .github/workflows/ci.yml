@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: macos-latest
+    
+    strategy:
+      matrix:
+        destination: 
+          - 'platform=iOS Simulator,name=iPhone 16,OS=latest'
+          - 'platform=macOS'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode version
+      run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      
+    - name: Show Xcode version
+      run: xcodebuild -version
+      
+    - name: Show available simulators
+      run: xcrun simctl list devices available
+      
+    - name: Clean build folder
+      run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
+      
+    - name: Build project
+      run: |
+        xcodebuild build \
+          -project Virgo.xcodeproj \
+          -scheme Virgo \
+          -destination '${{ matrix.destination }}' \
+          -configuration Debug \
+          ONLY_ACTIVE_ARCH=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO
+          
+    - name: Run unit tests
+      run: |
+        xcodebuild test \
+          -project Virgo.xcodeproj \
+          -scheme Virgo \
+          -destination '${{ matrix.destination }}' \
+          -configuration Debug \
+          -only-testing:VirgoTests \
+          ONLY_ACTIVE_ARCH=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO
+          
+    - name: Run UI tests (iOS only)
+      if: contains(matrix.destination, 'iOS Simulator')
+      run: |
+        xcodebuild test \
+          -project Virgo.xcodeproj \
+          -scheme Virgo \
+          -destination '${{ matrix.destination }}' \
+          -configuration Debug \
+          -only-testing:VirgoUITests \
+          ONLY_ACTIVE_ARCH=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO
+
+  lint:
+    name: SwiftLint
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install SwiftLint
+      run: |
+        brew install swiftlint
+        
+    - name: Run SwiftLint
+      run: swiftlint lint --reporter github-actions-logging
+
+  build-archive:
+    name: Test Archive Build
+    runs-on: macos-latest
+    needs: [test]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode version
+      run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      
+    - name: Test archive build for iOS
+      run: |
+        xcodebuild archive \
+          -project Virgo.xcodeproj \
+          -scheme Virgo \
+          -destination 'generic/platform=iOS' \
+          -archivePath ./build/Virgo-iOS.xcarchive \
+          -configuration Release \
+          ONLY_ACTIVE_ARCH=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          -allowProvisioningUpdates
+          
+    - name: Test archive build for macOS
+      run: |
+        xcodebuild archive \
+          -project Virgo.xcodeproj \
+          -scheme Virgo \
+          -destination 'generic/platform=macOS' \
+          -archivePath ./build/Virgo-macOS.xcarchive \
+          -configuration Release \
+          ONLY_ACTIVE_ARCH=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          -allowProvisioningUpdates
