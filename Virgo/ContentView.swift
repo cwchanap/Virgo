@@ -89,8 +89,10 @@ struct ContentView: View {
                     // Tracks List
                     List {
                         ForEach(drumTracks, id: \.id) { track in
-                            DrumTrackRow(track: track, isPlaying: currentlyPlaying == track.id) {
-                                togglePlayback(for: track)
+                            NavigationLink(destination: GameplayView(track: track)) {
+                                DrumTrackRow(track: track, isPlaying: currentlyPlaying == track.id) {
+                                    togglePlayback(for: track)
+                                }
                             }
                             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         }
