@@ -12,7 +12,7 @@ import SwiftData
 struct VirgoApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            DrumTrack.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,7 +25,7 @@ struct VirgoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainMenuView()
         }
         .modelContainer(sharedModelContainer)
     }

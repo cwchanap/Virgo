@@ -1,0 +1,131 @@
+//
+//  MainMenuView.swift
+//  Virgo
+//
+//  Created by Chan Wai Chan on 29/6/2025.
+//
+
+import SwiftUI
+
+struct MainMenuView: View {
+    @State private var logoScale: CGFloat = 0.8
+    @State private var musicNoteRotation: Double = 0
+    
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geometry in
+            ZStack {
+                // Gradient background
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color.purple.opacity(0.8),
+                        Color.blue.opacity(0.6),
+                        Color.indigo.opacity(0.8)
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                VStack(spacing: 50) {
+                    Spacer()
+                    
+                    // Virgo Logo Section
+                    VStack(spacing: 20) {
+                        // Music Note Icon
+                        Image(systemName: "music.note")
+                            .font(.system(size: 60, weight: .light))
+                            .foregroundColor(.white)
+                            .rotationEffect(.degrees(musicNoteRotation))
+                            .shadow(color: .white.opacity(0.3), radius: 10)
+                            .onAppear {
+                                withAnimation(
+                                    .easeInOut(duration: 2.0)
+                                    .repeatForever(autoreverses: true)
+                                ) {
+                                    musicNoteRotation = 10
+                                }
+                            }
+                        
+                        // Virgo Text Logo
+                        Text("VIRGO")
+                            .font(.custom("Helvetica Neue", size: 48))
+                            .fontWeight(.ultraLight)
+                            .foregroundColor(.white)
+                            .tracking(8)
+                            .scaleEffect(logoScale)
+                            .shadow(color: .white.opacity(0.5), radius: 20)
+                            .onAppear {
+                                withAnimation(
+                                    .easeInOut(duration: 1.5)
+                                    .repeatForever(autoreverses: true)
+                                ) {
+                                    logoScale = 1.0
+                                }
+                            }
+                        
+                        // Subtitle
+                        Text("Music App")
+                            .font(.system(size: 16, weight: .light))
+                            .foregroundColor(.white.opacity(0.8))
+                            .tracking(2)
+                    }
+                    
+                    Spacer()
+                    
+                    // Start Button
+                    NavigationLink(destination: ContentView()) {
+                        HStack(spacing: 15) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 18, weight: .medium))
+                            Text("START")
+                                .font(.headline)
+                                .fontWeight(.medium)
+                                .tracking(2)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 40)
+                        .padding(.vertical, 15)
+                        .background(
+                            RoundedRectangle(cornerRadius: 25)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [
+                                            Color.white.opacity(0.2),
+                                            Color.white.opacity(0.1)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 25)
+                                        .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                        .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+                    }
+                    .buttonStyle(PressableButtonStyle())
+                    
+                    Spacer()
+                }
+                .padding()
+            }
+            }
+        }
+    }
+}
+
+// Custom button style for press effect
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+#Preview {
+    MainMenuView()
+}

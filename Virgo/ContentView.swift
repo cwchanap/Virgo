@@ -10,57 +10,232 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query private var allDrumTracks: [DrumTrack]
+    @State private var selectedTab = 0
+    @State private var currentlyPlaying: PersistentIdentifier?
+    @State private var searchText = ""
+    
+    // Computed property for filtered tracks
+    var drumTracks: [DrumTrack] {
+        if searchText.isEmpty {
+            return allDrumTracks
+        } else {
+            return allDrumTracks.filter { track in
+                track.title.localizedCaseInsensitiveContains(searchText) ||
+                track.artist.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        TabView(selection: $selectedTab) {
+            // Drum Tracks Tab
+            NavigationStack {
+                VStack(spacing: 0) {
+                    // Header with stats
+                    VStack(spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text("Drum Tracks")
+                                    .font(.largeTitle)
+                                    .fontWeight(.bold)
+                                Text("\(drumTracks.count) tracks available")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Button(action: {}) {
+                                Image(systemName: "line.3.horizontal.decrease")
+                                    .font(.title2)
+                                    .foregroundColor(.primary)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.top)
+                        
+                        // Search Bar
+                        HStack {
+                            HStack {
+                                Image(systemName: "magnifyingglass")
+                                    .foregroundColor(.secondary)
+                                    .font(.system(size: 16))
+                                
+                                TextField("Search songs or artists...", text: $searchText)
+                                    .font(.system(size: 16))
+                                
+                                if !searchText.isEmpty {
+                                    Button(action: {
+                                        searchText = ""
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(.secondary)
+                                            .font(.system(size: 16))
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color.white)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            )
+                        }
+                        .padding(.horizontal)
                     }
-                }
-                .onDelete(perform: deleteItems)
-            }
-#if os(macOS)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-#endif
-            .toolbar {
-#if os(iOS)
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-#endif
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                    .background(Color(white: 0.95).opacity(0.8))
+                    
+                    // Tracks List
+                    List {
+                        ForEach(drumTracks, id: \.id) { track in
+                            DrumTrackRow(track: track, isPlaying: currentlyPlaying == track.id) {
+                                togglePlayback(for: track)
+                            }
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        }
                     }
+                    .listStyle(PlainListStyle())
                 }
             }
-        } detail: {
-            Text("Select an item")
+            .tabItem {
+                Image(systemName: "music.note.list")
+                Text("Drums")
+            }
+            .tag(0)
+            
+            // Placeholder for other tabs
+            Text("Practice Tab")
+                .tabItem {
+                    Image(systemName: "metronome")
+                    Text("Practice")
+                }
+                .tag(1)
+            
+            Text("Library Tab")
+                .tabItem {
+                    Image(systemName: "music.note")
+                    Text("Library")
+                }
+                .tag(2)
+            
+            Text("Profile Tab")
+                .tabItem {
+                    Image(systemName: "person")
+                    Text("Profile")
+                }
+                .tag(3)
+        }
+        .accentColor(.purple)
+        .onAppear {
+            loadSampleDataIfNeeded()
         }
     }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+    
+    private func togglePlayback(for track: DrumTrack) {
+        if currentlyPlaying == track.id {
+            currentlyPlaying = nil
+        } else {
+            currentlyPlaying = track.id
         }
     }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
+    
+    private func loadSampleDataIfNeeded() {
+        // Only load sample data if the database is empty
+        if allDrumTracks.isEmpty {
+            for sampleTrack in DrumTrack.sampleData {
+                modelContext.insert(sampleTrack)
+            }
+            
+            do {
+                try modelContext.save()
+            } catch {
+                print("Failed to save sample data: \(error)")
             }
         }
     }
 }
 
+// Custom components
+struct DrumTrackRow: View {
+    let track: DrumTrack
+    let isPlaying: Bool
+    let onPlayTap: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Play/Pause Button
+            Button(action: onPlayTap) {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 40))
+                    .foregroundColor(isPlaying ? .red : .purple)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Track Info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(track.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                
+                Text(track.artist)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                
+                HStack(spacing: 12) {
+                    Label("\(track.bpm) BPM", systemImage: "metronome")
+                    Label(track.duration, systemImage: "clock")
+                    Label(track.genre, systemImage: "music.quarternote.3")
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // Difficulty Badge
+            VStack(spacing: 4) {
+                DifficultyBadge(difficulty: track.difficulty)
+                
+                Button(action: {}) {
+                    Image(systemName: "ellipsis")
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .background(isPlaying ? Color.purple.opacity(0.1) : Color.clear)
+        .cornerRadius(8)
+    }
+}
+
+struct DifficultyBadge: View {
+    let difficulty: String
+    
+    var badgeColor: Color {
+        switch difficulty {
+        case "Easy": return .green
+        case "Medium": return .orange
+        case "Hard": return .red
+        case "Expert": return .purple
+        default: return .gray
+        }
+    }
+    
+    var body: some View {
+        Text(difficulty)
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(badgeColor.opacity(0.2))
+            .foregroundColor(badgeColor)
+            .cornerRadius(12)
+    }
+}
+
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: DrumTrack.self, inMemory: true)
 }
