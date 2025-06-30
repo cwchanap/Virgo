@@ -27,6 +27,28 @@ The app uses SwiftData with a single `DrumTrack` model containing:
 - Playback properties (BPM, difficulty level)
 - User interaction data (play count, favorites, play state)
 
+## Development Setup
+
+### Initial Setup
+```bash
+# One-time setup after cloning
+./scripts/setup-git-hooks.sh
+```
+
+This sets up:
+- SwiftLint pre-commit hooks for code quality
+- Automatic linting on staged files before commit
+- Blocks commits with linting errors
+
+### Code Quality
+```bash
+# Manual linting
+swiftlint lint
+
+# Auto-fix linting issues
+swiftlint lint --fix
+```
+
 ## Development Commands
 
 ### Building
