@@ -17,7 +17,7 @@ Runs on pushes to `main` branch and pull requests targeting `main`.
 - macOS (native)
 
 **Features:**
-- Automatic Xcode version selection
+- Latest stable Xcode version selection
 - Code signing disabled for CI
 - Parallel job execution
 - Comprehensive test coverage
@@ -60,7 +60,7 @@ swiftlint lint --path Virgo/ContentView.swift
 
 ## Requirements
 
-- Xcode 16.4+
+- Xcode (latest stable version used in CI)
 - iOS 18.5+ / macOS 14.0+
 - SwiftLint (automatically installed by setup script)
 
