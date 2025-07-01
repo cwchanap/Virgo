@@ -19,7 +19,7 @@ struct DrumTrackTests {
             bpm: 120,
             duration: "3:45",
             genre: "Rock",
-            difficulty: "Medium"
+            difficulty: .medium
         )
         
         #expect(track.title == "Test Track")
@@ -27,7 +27,7 @@ struct DrumTrackTests {
         #expect(track.bpm == 120)
         #expect(track.duration == "3:45")
         #expect(track.genre == "Rock")
-        #expect(track.difficulty == "Medium")
+        #expect(track.difficulty == .medium)
         #expect(track.isPlaying == false)
         #expect(track.playCount == 0)
         #expect(track.isFavorite == false)
@@ -41,7 +41,7 @@ struct DrumTrackTests {
             bpm: 140,
             duration: "4:20",
             genre: "Electronic",
-            difficulty: "Hard",
+            difficulty: .hard,
             isPlaying: true,
             playCount: 5,
             isFavorite: true
@@ -53,17 +53,19 @@ struct DrumTrackTests {
     }
     
     @Test func testDifficultyColors() async throws {
-        let easyTrack = DrumTrack(title: "Easy", artist: "Test", bpm: 100, duration: "2:00", genre: "Pop", difficulty: "Easy")
-        let mediumTrack = DrumTrack(title: "Medium", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock", difficulty: "Medium")
-        let hardTrack = DrumTrack(title: "Hard", artist: "Test", bpm: 140, duration: "4:00", genre: "Metal", difficulty: "Hard")
-        let expertTrack = DrumTrack(title: "Expert", artist: "Test", bpm: 180, duration: "5:00", genre: "Progressive", difficulty: "Expert")
-        let unknownTrack = DrumTrack(title: "Unknown", artist: "Test", bpm: 100, duration: "2:00", genre: "Pop", difficulty: "Beginner")
+        let easyTrack = DrumTrack(title: "Easy", artist: "Test", bpm: 100, duration: "2:00",
+                                  genre: "Pop", difficulty: .easy)
+        let mediumTrack = DrumTrack(title: "Medium", artist: "Test", bpm: 120, duration: "3:00",
+                                    genre: "Rock", difficulty: .medium)
+        let hardTrack = DrumTrack(title: "Hard", artist: "Test", bpm: 140, duration: "4:00",
+                                  genre: "Metal", difficulty: .hard)
+        let expertTrack = DrumTrack(title: "Expert", artist: "Test", bpm: 180, duration: "5:00",
+                                    genre: "Progressive", difficulty: .expert)
         
         #expect(easyTrack.difficultyColor == .green)
         #expect(mediumTrack.difficultyColor == .orange)
         #expect(hardTrack.difficultyColor == .red)
         #expect(expertTrack.difficultyColor == .purple)
-        #expect(unknownTrack.difficultyColor == .gray)
     }
     
     @Test func testSampleDataGeneration() async throws {
@@ -75,19 +77,18 @@ struct DrumTrackTests {
         #expect(sampleTracks.allSatisfy { $0.bpm > 0 })
         #expect(sampleTracks.allSatisfy { !$0.duration.isEmpty })
         #expect(sampleTracks.allSatisfy { !$0.genre.isEmpty })
-        #expect(sampleTracks.allSatisfy { !$0.difficulty.isEmpty })
         
         // Test specific sample tracks
         let thunderBeat = sampleTracks.first { $0.title == "Thunder Beat" }
         #expect(thunderBeat != nil)
         #expect(thunderBeat?.bpm == 120)
         #expect(thunderBeat?.genre == "Rock")
-        #expect(thunderBeat?.difficulty == "Medium")
+        #expect(thunderBeat?.difficulty == .medium)
         
         let blastBeat = sampleTracks.first { $0.title == "Blast Beat Fury" }
         #expect(blastBeat != nil)
         #expect(blastBeat?.bpm == 180)
-        #expect(blastBeat?.difficulty == "Expert")
+        #expect(blastBeat?.difficulty == .expert)
     }
     
     @Test func testBPMValidation() async throws {
@@ -101,7 +102,7 @@ struct DrumTrackTests {
         #expect(bpmValues.max() == 180)
         
         // Ensure all BPM values are reasonable for drum tracks
-        #expect(bpmValues.allSatisfy { $0 >= 60 && $0 <= 200 })
+        #expect(bpmValues.allSatisfy { $0 >= 85 && $0 <= 180 })
     }
     
     @Test func testGenreVariety() async throws {
@@ -122,10 +123,10 @@ struct DrumTrackTests {
         let sampleTracks = DrumTrack.sampleData
         let difficulties = Set(sampleTracks.map { $0.difficulty })
         
-        #expect(difficulties.contains("Easy"))
-        #expect(difficulties.contains("Medium"))
-        #expect(difficulties.contains("Hard"))
-        #expect(difficulties.contains("Expert"))
+        #expect(difficulties.contains(.easy))
+        #expect(difficulties.contains(.medium))
+        #expect(difficulties.contains(.hard))
+        #expect(difficulties.contains(.expert))
         #expect(difficulties.count == 4) // Exactly 4 difficulty levels
     }
     
@@ -143,8 +144,10 @@ struct DrumTrackTests {
     }
     
     @Test func testTrackEquality() async throws {
-        let track1 = DrumTrack(title: "Test", artist: "Artist", bpm: 120, duration: "3:00", genre: "Rock", difficulty: "Medium")
-        let track2 = DrumTrack(title: "Test", artist: "Artist", bpm: 120, duration: "3:00", genre: "Rock", difficulty: "Medium")
+        let track1 = DrumTrack(title: "Test", artist: "Artist", bpm: 120,
+                               duration: "3:00", genre: "Rock", difficulty: .medium)
+        let track2 = DrumTrack(title: "Test", artist: "Artist", bpm: 120,
+                               duration: "3:00", genre: "Rock", difficulty: .medium)
         
         // Since these are different instances, they should have different IDs
         #expect(track1.id != track2.id)
