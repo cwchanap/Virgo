@@ -84,7 +84,7 @@ struct ContentView: View {
                         }
                         .padding(.horizontal)
                     }
-                    .background(Color(white: 0.95).opacity(0.8))
+                    .background(.thinMaterial)
                     
                     // Tracks List
                     List {
@@ -214,26 +214,16 @@ struct DrumTrackRow: View {
 }
 
 struct DifficultyBadge: View {
-    let difficulty: String
-    
-    var badgeColor: Color {
-        switch difficulty {
-        case "Easy": return .green
-        case "Medium": return .orange
-        case "Hard": return .red
-        case "Expert": return .purple
-        default: return .gray
-        }
-    }
+    let difficulty: Difficulty
     
     var body: some View {
-        Text(difficulty)
+        Text(difficulty.rawValue)
             .font(.caption2)
             .fontWeight(.semibold)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(badgeColor.opacity(0.2))
-            .foregroundColor(badgeColor)
+            .background(difficulty.color.opacity(0.2))
+            .foregroundColor(difficulty.color)
             .cornerRadius(12)
     }
 }
