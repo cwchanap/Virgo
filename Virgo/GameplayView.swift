@@ -28,7 +28,9 @@ struct GameplayView: View {
                 controlsView
             }
         }
+        #if os(iOS)
         .navigationBarHidden(true)
+        #endif
         .background(Color.black)
         .foregroundColor(.white)
         .onAppear {
