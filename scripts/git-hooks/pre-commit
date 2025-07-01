@@ -33,18 +33,10 @@ echo "$STAGED_SWIFT_FILES" | sed 's/^/   /'
 # Run SwiftLint on staged files
 LINT_RESULT=0
 
-# Create temporary file list for SwiftLint
-TEMP_FILE_LIST=$(mktemp)
-echo "$STAGED_SWIFT_FILES" > "$TEMP_FILE_LIST"
-
-# Run SwiftLint only on staged files
-swiftlint lint --use-stdin-filename < "$TEMP_FILE_LIST"
+# Run SwiftLint on all staged files at once
+echo "$STAGED_SWIFT_FILES" | tr '\n' '\0' | xargs -0 swiftlint lint --quiet
 LINT_RESULT=$?
 
-# Clean up
-rm "$TEMP_FILE_LIST"
-
-# Alternative approach: lint each file individually
 if [ $LINT_RESULT -ne 0 ]; then
     echo "${RED}❌ SwiftLint found issues. Please fix them before committing.${NC}"
     echo "${YELLOW}💡 You can run 'swiftlint lint --fix' to auto-fix some issues${NC}"
