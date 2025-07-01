@@ -14,7 +14,7 @@ struct MainMenuView: View {
     
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
+            GeometryReader { _ in
             ZStack {
                 // Gradient background
                 LinearGradient(

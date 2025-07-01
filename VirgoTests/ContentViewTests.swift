@@ -145,7 +145,7 @@ struct ContentViewTests {
         let singleTrack = [DrumTrack(title: "Solo", artist: "Artist", bpm: 100, duration: "2:00", genre: "Pop", difficulty: "Easy")]
         let multipleTracks = DrumTrack.sampleData
         
-        #expect(emptyTracks.count == 0)
+        #expect(emptyTracks.isEmpty)
         #expect(singleTrack.count == 1)
         #expect(multipleTracks.count == 8)
         
@@ -181,7 +181,7 @@ struct ContentViewTests {
         }
         
         // Should find all artists that contain "5" (5, 15, 25, 35, 45, 50-59, 65, 75, 85, 95)
-        #expect(filtered.count > 0)
+        #expect(!filtered.isEmpty)
         #expect(filtered.allSatisfy { $0.artist.contains("5") })
     }
     

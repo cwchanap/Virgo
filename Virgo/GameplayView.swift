@@ -114,7 +114,6 @@ struct GameplayView: View {
         .frame(height: 300)
     }
     
-    
     // MARK: - Controls View
     private var controlsView: some View {
         HStack(spacing: 30) {
@@ -171,7 +170,7 @@ struct GameplayView: View {
             DrumBeat(id: 8, drums: [.kick, .hiHat], timePosition: 2.0),
             DrumBeat(id: 9, drums: [.hiHat], timePosition: 2.25),
             DrumBeat(id: 10, drums: [.snare, .hiHat], timePosition: 2.5),
-            DrumBeat(id: 11, drums: [.hiHat], timePosition: 2.75),
+            DrumBeat(id: 11, drums: [.hiHat], timePosition: 2.75)
         ]
     }
     
