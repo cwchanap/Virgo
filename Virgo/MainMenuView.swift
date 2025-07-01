@@ -6,11 +6,14 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct MainMenuView: View {
+    @Environment(\.modelContext) private var modelContext
     @State private var logoScale: CGFloat = 0.8
     @State private var musicNoteRotation: Double = 0
     @State private var isAnimating = false
+    @State private var showingDebugAlert = false
     
     var body: some View {
         NavigationStack {
@@ -112,6 +115,16 @@ struct MainMenuView: View {
                     }
                     .buttonStyle(PressableButtonStyle())
                     
+                    #if DEBUG
+                    // Debug button to clear database
+                    Button("Clear Database (Debug)") {
+                        showingDebugAlert = true
+                    }
+                    .foregroundColor(.red.opacity(0.7))
+                    .font(.caption)
+                    .padding(.top, 20)
+                    #endif
+                    
                     Spacer()
                 }
                 .padding()
@@ -121,8 +134,28 @@ struct MainMenuView: View {
                 .onDisappear {
                     isAnimating = false
                 }
+                .alert("Clear Database", isPresented: $showingDebugAlert) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Clear", role: .destructive) {
+                        clearDatabase()
+                    }
+                } message: {
+                    Text("This will delete all existing data and reload sample tracks. This action cannot be undone.")
+                }
             }
             }
+        }
+    }
+    
+    private func clearDatabase() {
+        do {
+            // Delete all existing DrumTrack records
+            try modelContext.delete(model: DrumTrack.self)
+            try modelContext.save()
+            
+            print("Database cleared successfully")
+        } catch {
+            print("Failed to clear database: \(error)")
         }
     }
 }
