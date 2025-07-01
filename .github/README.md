@@ -6,7 +6,7 @@ This directory contains GitHub Actions workflows for continuous integration and 
 
 ### CI (`ci.yml`)
 
-Runs on every push and pull request to `main` and `dev` branches.
+Runs on pushes to `main` branch and pull requests targeting `main`.
 
 **Jobs:**
 - **test**: Runs unit and UI tests on iOS Simulator and macOS
