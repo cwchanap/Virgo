@@ -68,9 +68,11 @@ final class VirgoUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         app.buttons["START"].tap()
-        
+
         // Wait for tracks to load
-        sleep(1)
+        let tracksListPredicate = NSPredicate(format: "exists == true")
+        expectation(for: tracksListPredicate, evaluatedWith: app.staticTexts["Thunder Beat"], handler: nil)
+        waitForExpectations(timeout: 3, handler: nil)
         
         let searchField = app.searchFields["Search songs or artists..."]
         XCTAssertTrue(searchField.exists)
@@ -101,9 +103,11 @@ final class VirgoUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         app.buttons["START"].tap()
-        
+
         // Wait for tracks to load
-        sleep(1)
+        let tracksListPredicate = NSPredicate(format: "exists == true")
+        expectation(for: tracksListPredicate, evaluatedWith: app.staticTexts["Thunder Beat"], handler: nil)
+        waitForExpectations(timeout: 3, handler: nil)
         
         // Tap on first track to navigate to gameplay
         app.staticTexts["Thunder Beat"].tap()

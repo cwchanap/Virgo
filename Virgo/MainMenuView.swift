@@ -10,6 +10,7 @@ import SwiftUI
 struct MainMenuView: View {
     @State private var logoScale: CGFloat = 0.8
     @State private var musicNoteRotation: Double = 0
+    @State private var isAnimating = false
     
     var body: some View {
         NavigationStack {
@@ -39,11 +40,13 @@ struct MainMenuView: View {
                             .rotationEffect(.degrees(musicNoteRotation))
                             .shadow(color: .white.opacity(0.3), radius: 10)
                             .onAppear {
-                                withAnimation(
-                                    .easeInOut(duration: 2.0)
-                                    .repeatForever(autoreverses: true)
-                                ) {
-                                    musicNoteRotation = 10
+                                if isAnimating {
+                                    withAnimation(
+                                        .easeInOut(duration: 2.0)
+                                        .repeatForever(autoreverses: true)
+                                    ) {
+                                        musicNoteRotation = 10
+                                    }
                                 }
                             }
                         
@@ -56,11 +59,13 @@ struct MainMenuView: View {
                             .scaleEffect(logoScale)
                             .shadow(color: .white.opacity(0.5), radius: 20)
                             .onAppear {
-                                withAnimation(
-                                    .easeInOut(duration: 1.5)
-                                    .repeatForever(autoreverses: true)
-                                ) {
-                                    logoScale = 1.0
+                                if isAnimating {
+                                    withAnimation(
+                                        .easeInOut(duration: 1.5)
+                                        .repeatForever(autoreverses: true)
+                                    ) {
+                                        logoScale = 1.0
+                                    }
                                 }
                             }
                         
@@ -110,6 +115,12 @@ struct MainMenuView: View {
                     Spacer()
                 }
                 .padding()
+                .onAppear {
+                    isAnimating = true
+                }
+                .onDisappear {
+                    isAnimating = false
+                }
             }
             }
         }

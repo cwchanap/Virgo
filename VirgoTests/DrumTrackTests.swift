@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import SwiftUI
 @testable import Virgo
 
 struct DrumTrackTests {
@@ -58,11 +59,11 @@ struct DrumTrackTests {
         let expertTrack = DrumTrack(title: "Expert", artist: "Test", bpm: 180, duration: "5:00", genre: "Progressive", difficulty: "Expert")
         let unknownTrack = DrumTrack(title: "Unknown", artist: "Test", bpm: 100, duration: "2:00", genre: "Pop", difficulty: "Beginner")
         
-        #expect(easyTrack.difficultyColor == "green")
-        #expect(mediumTrack.difficultyColor == "orange")
-        #expect(hardTrack.difficultyColor == "red")
-        #expect(expertTrack.difficultyColor == "purple")
-        #expect(unknownTrack.difficultyColor == "gray")
+        #expect(easyTrack.difficultyColor == .green)
+        #expect(mediumTrack.difficultyColor == .orange)
+        #expect(hardTrack.difficultyColor == .red)
+        #expect(expertTrack.difficultyColor == .purple)
+        #expect(unknownTrack.difficultyColor == .gray)
     }
     
     @Test func testSampleDataGeneration() async throws {

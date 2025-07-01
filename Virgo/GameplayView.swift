@@ -12,6 +12,7 @@ struct GameplayView: View {
     @State private var isPlaying = false
     @State private var playbackProgress: Double = 0.0
     @State private var currentBeat: Int = 0
+    @State private var playbackTimer: Timer?
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -32,6 +33,10 @@ struct GameplayView: View {
         .foregroundColor(.white)
         .onAppear {
             startPlayback()
+        }
+        .onDisappear {
+            playbackTimer?.invalidate()
+            playbackTimer = nil
         }
     }
     
@@ -59,7 +64,7 @@ struct GameplayView: View {
                 Text("\(track.bpm) BPM")
                     .font(.caption)
                     .foregroundColor(.gray)
-                Text(track.difficulty)
+                Text(track.difficulty.rawValue)
                     .font(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
@@ -175,12 +180,16 @@ struct GameplayView: View {
         isPlaying.toggle()
         if isPlaying {
             startPlayback()
+        } else {
+            playbackTimer?.invalidate()
+            playbackTimer = nil
         }
     }
     
     private func startPlayback() {
         isPlaying = true
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+        playbackTimer?.invalidate()
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
             if !isPlaying {
                 timer.invalidate()
                 return
@@ -217,6 +226,10 @@ struct DrumBeat {
 enum DrumType {
     case kick, snare, hiHat, crash, ride, tom1, tom2, tom3
     
+    private enum LayoutConstants {
+        static let staffLineHeight: CGFloat = 30
+    }
+
     var symbol: String {
         switch self {
         case .kick: return "●"
@@ -232,14 +245,14 @@ enum DrumType {
     
     var yPosition: CGFloat {
         switch self {
-        case .crash: return 0
-        case .hiHat: return 30
-        case .tom1: return 60
-        case .snare: return 90
-        case .tom2: return 120
-        case .tom3: return 150
-        case .kick: return 180
-        case .ride: return 210
+        case .crash: return 0 * LayoutConstants.staffLineHeight
+        case .hiHat: return 1 * LayoutConstants.staffLineHeight
+        case .tom1: return 2 * LayoutConstants.staffLineHeight
+        case .snare: return 3 * LayoutConstants.staffLineHeight
+        case .tom2: return 4 * LayoutConstants.staffLineHeight
+        case .tom3: return 5 * LayoutConstants.staffLineHeight
+        case .kick: return 6 * LayoutConstants.staffLineHeight
+        case .ride: return 7 * LayoutConstants.staffLineHeight
         }
     }
 }
