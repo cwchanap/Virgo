@@ -14,61 +14,61 @@ jobs:
     strategy:
       matrix:
         destination: 
-          - 'platform=iOS Simulator'
+          - platform=iOS Simulator,name=iPhone 15,OS=17.0
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Select Xcode version
-      uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: 'latest-stable'
-      
-    - name: Show Xcode version
-      run: xcodebuild -version
-      
-    - name: Show available simulators
-      run: xcrun simctl list devices available
-      
-    - name: Clean build folder
-      run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
-      
-    - name: Build project
-      run: |
-        xcodebuild build \
-          -project Virgo.xcodeproj \
-          -scheme Virgo \
-          -destination '${{ matrix.destination }}' \
-          -configuration Debug \
-          ONLY_ACTIVE_ARCH=NO \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
-          
-    - name: Run unit tests
-      run: |
-        xcodebuild test \
-          -project Virgo.xcodeproj \
-          -scheme Virgo \
-          -destination '${{ matrix.destination }}' \
-          -configuration Debug \
-          -only-testing:VirgoTests \
-          ONLY_ACTIVE_ARCH=NO \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
-          
-    - name: Run UI tests (iOS only)
-      if: contains(matrix.destination, 'iOS Simulator')
-      run: |
-        xcodebuild test \
-          -project Virgo.xcodeproj \
-          -scheme Virgo \
-          -destination '${{ matrix.destination }}' \
-          -configuration Debug \
-          -only-testing:VirgoUITests \
-          ONLY_ACTIVE_ARCH=NO \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+        
+      - name: Show Xcode version
+        run: xcodebuild -version
+        
+      - name: Show available simulators
+        run: xcrun simctl list devices available
+        
+      - name: Clean build folder
+        run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
+        
+      - name: Build project
+        run: |
+          xcodebuild build \
+            -project Virgo.xcodeproj \
+            -scheme Virgo \
+            -destination '${{ matrix.destination }}' \
+            -configuration Debug \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+            
+      - name: Run unit tests
+        run: |
+          xcodebuild test \
+            -project Virgo.xcodeproj \
+            -scheme Virgo \
+            -destination '${{ matrix.destination }}' \
+            -configuration Debug \
+            -only-testing:VirgoTests \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+            
+      - name: Run UI tests (iOS only)
+        if: contains(matrix.destination, 'iOS Simulator')
+        run: |
+          xcodebuild test \
+            -project Virgo.xcodeproj \
+            -scheme Virgo \
+            -destination '${{ matrix.destination }}' \
+            -configuration Debug \
+            -only-testing:VirgoUITests \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
   build-archive:
     name: Test Archive Build
@@ -76,23 +76,23 @@ jobs:
     needs: [test]
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Select Xcode version
-      uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: 'latest-stable'
-      
-    - name: Test archive build for iOS
-      run: |
-        xcodebuild archive \
-          -project Virgo.xcodeproj \
-          -scheme Virgo \
-          -destination 'generic/platform=iOS' \
-          -archivePath ./build/Virgo-iOS.xcarchive \
-          -configuration Release \
-          ONLY_ACTIVE_ARCH=NO \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO \
-          -allowProvisioningUpdates
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+        
+      - name: Test archive build for iOS
+        run: |
+          xcodebuild archive \
+            -project Virgo.xcodeproj \
+            -scheme Virgo \
+            -destination 'generic/platform=iOS' \
+            -archivePath ./build/Virgo-iOS.xcarchive \
+            -configuration Release \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -allowProvisioningUpdates
