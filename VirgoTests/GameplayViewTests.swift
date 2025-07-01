@@ -97,7 +97,7 @@ struct GameplayViewTests {
             DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0),
             DrumBeat(id: 1, drums: [.hiHat], timePosition: 0.25),
             DrumBeat(id: 2, drums: [.snare, .hiHat], timePosition: 0.5),
-            DrumBeat(id: 3, drums: [.hiHat], timePosition: 0.75),
+            DrumBeat(id: 3, drums: [.hiHat], timePosition: 0.75)
         ]
         
         #expect(mockPattern.count == 4)
@@ -119,7 +119,7 @@ struct GameplayViewTests {
             DrumBeat(id: 0, drums: [.kick], timePosition: 0.0),
             DrumBeat(id: 1, drums: [.snare], timePosition: 0.5),
             DrumBeat(id: 2, drums: [.kick], timePosition: 1.0),
-            DrumBeat(id: 3, drums: [.snare], timePosition: 1.5),
+            DrumBeat(id: 3, drums: [.snare], timePosition: 1.5)
         ]
         
         // Test basic timing intervals
@@ -141,7 +141,7 @@ struct GameplayViewTests {
             DrumBeat(id: 4, drums: [.kick, .hiHat], timePosition: 1.0),
             DrumBeat(id: 5, drums: [.hiHat], timePosition: 1.25),
             DrumBeat(id: 6, drums: [.snare, .hiHat], timePosition: 1.5),
-            DrumBeat(id: 7, drums: [.hiHat, .crash], timePosition: 1.75),
+            DrumBeat(id: 7, drums: [.hiHat, .crash], timePosition: 1.75)
         ]
         
         #expect(complexPattern.count == 8)

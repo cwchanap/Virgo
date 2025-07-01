@@ -148,7 +148,7 @@ struct VirgoTests {
     @Test func testPerformanceBasics() async throws {
         // Test that sample data generation is efficient
         let startTime = Date()
-        let _ = DrumTrack.sampleData
+        _ = DrumTrack.sampleData
         let endTime = Date()
         let duration = endTime.timeIntervalSince(startTime)
         
@@ -158,7 +158,7 @@ struct VirgoTests {
         // Test that difficulty color computation is efficient
         let track = DrumTrack(title: "Test", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock", difficulty: "Medium")
         let colorStartTime = Date()
-        let _ = track.difficultyColor
+        _ = track.difficultyColor
         let colorEndTime = Date()
         let colorDuration = colorEndTime.timeIntervalSince(colorStartTime)
         

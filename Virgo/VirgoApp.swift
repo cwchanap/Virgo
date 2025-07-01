@@ -12,7 +12,7 @@ import SwiftData
 struct VirgoApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            DrumTrack.self,
+            DrumTrack.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
