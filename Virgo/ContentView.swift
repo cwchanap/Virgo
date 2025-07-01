@@ -135,6 +135,7 @@ struct ContentView: View {
     }
     
     private func togglePlayback(for track: DrumTrack) {
+        // Toggle playback state for the selected track
         if currentlyPlaying == track.id {
             currentlyPlaying = nil
         } else {
