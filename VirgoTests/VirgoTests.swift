@@ -25,7 +25,6 @@ struct VirgoTests {
             #expect(track.bpm > 0)
             #expect(!track.duration.isEmpty)
             #expect(!track.genre.isEmpty)
-            #expect(!track.difficulty.isEmpty)
         }
     }
     
@@ -36,7 +35,7 @@ struct VirgoTests {
             bpm: 120,
             duration: "3:45",
             genre: "Rock",
-            difficulty: "Medium"
+            difficulty: .medium
         )
         
         // Verify basic properties
@@ -45,7 +44,7 @@ struct VirgoTests {
         #expect(track.bpm == 120)
         #expect(track.duration == "3:45")
         #expect(track.genre == "Rock")
-        #expect(track.difficulty == "Medium")
+        #expect(track.difficulty == .medium)
         
         // Verify default values
         #expect(track.isPlaying == false)
@@ -70,10 +69,14 @@ struct VirgoTests {
     
     @Test func testAppConstants() async throws {
         // Test that difficulty colors are properly defined
-        let easyTrack = DrumTrack(title: "Easy", artist: "Test", bpm: 100, duration: "2:00", genre: "Pop", difficulty: "Easy")
-        let mediumTrack = DrumTrack(title: "Medium", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock", difficulty: "Medium")
-        let hardTrack = DrumTrack(title: "Hard", artist: "Test", bpm: 140, duration: "4:00", genre: "Metal", difficulty: "Hard")
-        let expertTrack = DrumTrack(title: "Expert", artist: "Test", bpm: 180, duration: "5:00", genre: "Progressive", difficulty: "Expert")
+        let easyTrack = DrumTrack(title: "Easy", artist: "Test", bpm: 100, duration: "2:00",
+                                  genre: "Pop", difficulty: .easy)
+        let mediumTrack = DrumTrack(title: "Medium", artist: "Test", bpm: 120, duration: "3:00",
+                                    genre: "Rock", difficulty: .medium)
+        let hardTrack = DrumTrack(title: "Hard", artist: "Test", bpm: 140, duration: "4:00",
+                                  genre: "Metal", difficulty: .hard)
+        let expertTrack = DrumTrack(title: "Expert", artist: "Test", bpm: 180, duration: "5:00",
+                                    genre: "Progressive", difficulty: .expert)
         
         #expect(easyTrack.difficultyColor == .green)
         #expect(mediumTrack.difficultyColor == .orange)
@@ -99,7 +102,7 @@ struct VirgoTests {
         }
         
         // Validate difficulty levels are known
-        let validDifficulties = ["Easy", "Medium", "Hard", "Expert"]
+        let validDifficulties = [Difficulty.easy, .medium, .hard, .expert]
         for track in sampleTracks {
             #expect(validDifficulties.contains(track.difficulty))
         }
@@ -125,8 +128,10 @@ struct VirgoTests {
     
     @Test func testSearchLogic() async throws {
         let tracks = [
-            DrumTrack(title: "Rock Song", artist: "Rock Band", bpm: 120, duration: "3:00", genre: "Rock", difficulty: "Medium"),
-            DrumTrack(title: "Jazz Tune", artist: "Jazz Group", bpm: 140, duration: "4:00", genre: "Jazz", difficulty: "Hard")
+            DrumTrack(title: "Rock Song", artist: "Rock Band", bpm: 120,
+                      duration: "3:00", genre: "Rock", difficulty: .medium),
+            DrumTrack(title: "Jazz Tune", artist: "Jazz Group", bpm: 140,
+                      duration: "4:00", genre: "Jazz", difficulty: .hard)
         ]
         
         // Test case-insensitive search works as expected
@@ -156,7 +161,8 @@ struct VirgoTests {
         #expect(duration < 0.01)
         
         // Test that difficulty color computation is efficient
-        let track = DrumTrack(title: "Test", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock", difficulty: "Medium")
+        let track = DrumTrack(title: "Test", artist: "Test", bpm: 120,
+                              duration: "3:00", genre: "Rock", difficulty: .medium)
         let colorStartTime = Date()
         _ = track.difficultyColor
         let colorEndTime = Date()
