@@ -23,6 +23,12 @@ struct VirgoApp: App {
         }
     }()
 
+    init() {
+        if ProcessInfo.processInfo.arguments.contains("UITesting") {
+            UIView.setAnimationsEnabled(false)
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             MainMenuView()
