@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         destination: 
-          - platform=iOS Simulator,name=Any iOS Simulator Device
+          - platform=iOS Simulator,id=DB296D76-0DEC-41FE-BA3D-CEDA616BCD85,OS=17.5,name=iPhone 15
 
     steps:
       - name: Checkout code
