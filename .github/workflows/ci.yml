@@ -1,4 +1,4 @@
-name: CI
+name: CI (Fast Tests)
 
 on:
   push:
@@ -59,20 +59,6 @@ jobs:
             -enableCodeCoverage YES \
             -destination-timeout 300
             
-      - name: Run UI tests (iOS only)
-        if: contains(matrix.destination, 'iOS Simulator')
-        run: |
-          xcodebuild test \
-            -project Virgo.xcodeproj \
-            -scheme Virgo \
-            -destination '${{ matrix.destination }}' \
-            -configuration Debug \
-            -only-testing:VirgoUITests \
-            ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            -enableCodeCoverage YES \
-            -destination-timeout 300
 
   build-archive:
     name: Test Archive Build

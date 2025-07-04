@@ -27,23 +27,17 @@ final class VirgoUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         
-        // Wait for app to fully load
-        sleep(2)
-        
         // Verify main menu elements are present
-        XCTAssertTrue(app.staticTexts["VIRGO"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["VIRGO"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Music App"].exists)
         XCTAssertTrue(app.buttons["START"].exists)
         
         // Tap start button to navigate to content view
         app.buttons["START"].tap()
         
-        // Wait for navigation and data loading
-        sleep(3)
-        
-        // Verify we're now in the drum tracks view
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.searchFields["Search songs or artists..."].exists)
+        // Wait for navigation to complete and verify we're in the drum tracks view
+        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.searchFields["Search songs or artists..."].waitForExistence(timeout: 5))
     }
     
     @MainActor
@@ -77,17 +71,15 @@ final class VirgoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
         
         let searchField = app.searchFields["Search songs or artists..."]
-        XCTAssertTrue(searchField.exists)
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5))
         
         // Test search by title
         searchField.tap()
         searchField.typeText("Thunder")
         
-        // Wait a moment for search to process
-        sleep(1)
-        
-        // Should show Thunder Beat track
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].exists)
+        // Wait for search results to update - Thunder Beat should still be visible
+        let thunderBeatAfterSearch = app.staticTexts["Thunder Beat"]
+        XCTAssertTrue(thunderBeatAfterSearch.waitForExistence(timeout: 5))
         
         // Clear search - try different approaches
         if app.buttons["Clear text"].exists {
@@ -95,24 +87,28 @@ final class VirgoUITests: XCTestCase {
         } else {
             // Use the clear button with accessibility identifier
             let clearButton = app.buttons["clearSearchButton"]
-            if clearButton.exists {
+            if clearButton.waitForExistence(timeout: 2) {
                 clearButton.tap()
             } else {
                 searchField.clearAndEnterText("")
             }
         }
         
-        // Wait for search to clear
-        sleep(1)
+        // Wait for all tracks to be visible again after clearing search
+        let allTracksVisible = expectation(description: "All tracks visible after clear")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if app.staticTexts["Thunder Beat"].exists && 
+               app.staticTexts.matching(identifier: "Jazz Swing").firstMatch.exists {
+                allTracksVisible.fulfill()
+            }
+        }
+        wait(for: [allTracksVisible], timeout: 5)
         
         // Test search by artist - search for "Blue Note" which exists in Jazz Swing
         searchField.typeText("Blue Note")
         
-        // Wait for search to process
-        sleep(1)
-        
-        // Should show tracks containing "Blue Note"
-        XCTAssertTrue(app.staticTexts["Jazz Swing"].exists)
+        // Wait for search to filter results
+        XCTAssertTrue(app.staticTexts["Jazz Swing"].waitForExistence(timeout: 5))
     }
     
     @MainActor
@@ -127,8 +123,15 @@ final class VirgoUITests: XCTestCase {
         // Tap on first track to navigate to gameplay
         app.staticTexts["Thunder Beat"].tap()
         
-        // Wait for gameplay view to load
-        sleep(2)
+        // Wait for gameplay view to load by checking for unique gameplay elements
+        let gameplayLoadedPredicate = NSPredicate(format: "exists == true")
+        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
+        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
+        
+        let gameplayLoaded = expectation(for: gameplayLoadedPredicate, 
+                                       evaluatedWith: playButton, 
+                                       handler: nil)
+        wait(for: [gameplayLoaded], timeout: 10)
         
         // Verify we're in gameplay view - check for unique gameplay elements
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists) // Track title in header
@@ -137,19 +140,18 @@ final class VirgoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Medium"].exists)
         
         // Verify playback controls exist
-        XCTAssertTrue(app.buttons.matching(identifier: "play.circle.fill").firstMatch.exists)
+        XCTAssertTrue(playButton.exists)
         XCTAssertTrue(app.buttons.matching(identifier: "backward.end.fill").firstMatch.exists)
         
         // Test back navigation
-        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
         XCTAssertTrue(backButton.waitForExistence(timeout: 5))
         backButton.tap()
         
-        // Wait for navigation back
-        sleep(1)
+        // Wait for navigation back to complete by checking for drum tracks list
+        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
         
-        // Should return to drum tracks list
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 5))
+        // Verify we're back on the tracks list by checking for search field
+        XCTAssertTrue(app.searchFields["Search songs or artists..."].exists)
     }
     
     @MainActor
@@ -201,5 +203,36 @@ extension XCUIElement {
         let deleteString = String(repeating: XCUIKeyboardKey.delete.rawValue, count: stringValue.count)
         self.typeText(deleteString)
         self.typeText(text)
+    }
+    
+    /// Wait for element to exist and be hittable
+    func waitForExistenceAndHittable(timeout: TimeInterval = 10) -> Bool {
+        let existsPredicate = NSPredicate(format: "exists == true")
+        let hittablePredicate = NSPredicate(format: "hittable == true")
+        let combinedPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [existsPredicate, hittablePredicate])
+        
+        let expectation = XCTestCase().expectation(for: combinedPredicate, evaluatedWith: self)
+        let result = XCTWaiter.wait(for: [expectation], timeout: timeout)
+        return result == .completed
+    }
+}
+
+extension XCTestCase {
+    /// Wait for multiple elements to exist
+    func waitForElements(_ elements: [XCUIElement], timeout: TimeInterval = 10) -> Bool {
+        let expectations = elements.map { element in
+            expectation(for: NSPredicate(format: "exists == true"), evaluatedWith: element)
+        }
+        let result = XCTWaiter.wait(for: expectations, timeout: timeout)
+        return result == .completed
+    }
+    
+    /// Wait for app to finish loading with data
+    func waitForDataLoad(app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
+        // Wait for both UI elements and data to be present
+        let drumTracksTitle = app.staticTexts["Drum Tracks"]
+        let firstTrack = app.staticTexts["Thunder Beat"]
+        
+        return waitForElements([drumTracksTitle, firstTrack], timeout: timeout)
     }
 }
