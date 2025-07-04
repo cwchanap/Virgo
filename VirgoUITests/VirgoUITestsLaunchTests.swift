@@ -22,6 +22,9 @@ final class VirgoUITestsLaunchTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
+        // Wait for app to fully launch
+        XCTAssertTrue(app.staticTexts["VIRGO"].waitForExistence(timeout: 10))
+        
         // Insert steps here to perform after app launch but before taking a screenshot,
         // such as logging into a test account or navigating somewhere in the app
 

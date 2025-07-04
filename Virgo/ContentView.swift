@@ -62,6 +62,7 @@ struct ContentView: View {
                                 
                                 TextField("Search songs or artists...", text: $searchText)
                                     .font(.system(size: 16))
+                                    .accessibilityIdentifier("searchField")
                                 
                                 if !searchText.isEmpty {
                                     Button(action: {
@@ -71,6 +72,7 @@ struct ContentView: View {
                                             .foregroundColor(.secondary)
                                             .font(.system(size: 16))
                                     }
+                                    .accessibilityIdentifier("clearSearchButton")
                                 }
                             }
                             .padding(.horizontal, 12)

@@ -61,6 +61,7 @@ struct MainMenuView: View {
                             .tracking(8)
                             .scaleEffect(logoScale)
                             .shadow(color: .white.opacity(0.5), radius: 20)
+                            .accessibilityIdentifier("logoText")
                             .onAppear {
                                 if isAnimating {
                                     withAnimation(
@@ -77,6 +78,7 @@ struct MainMenuView: View {
                             .font(.system(size: 16, weight: .light))
                             .foregroundColor(.white.opacity(0.8))
                             .tracking(2)
+                            .accessibilityIdentifier("subtitleText")
                     }
                     
                     Spacer()
@@ -114,6 +116,7 @@ struct MainMenuView: View {
                         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
                     }
                     .buttonStyle(PressableButtonStyle())
+                    .accessibilityIdentifier("startButton")
                     
                     #if DEBUG
                     // Debug button to clear database
