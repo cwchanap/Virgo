@@ -34,17 +34,6 @@ jobs:
       - name: Clean build folder
         run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
         
-      - name: Build project
-        run: |
-          xcodebuild build \
-            -project Virgo.xcodeproj \
-            -scheme Virgo \
-            -destination '${{ matrix.destination }}' \
-            -configuration Debug \
-            ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-            
       - name: Run unit tests
         run: |
           xcodebuild test \

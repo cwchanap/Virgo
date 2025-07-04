@@ -105,7 +105,9 @@ jobs:
           if [ ! -z "$DEVICE_ID" ]; then
             echo "Booting simulator: $DEVICE_NAME ($OS_VERSION) - $DEVICE_ID"
             xcrun simctl boot "$DEVICE_ID" || true
-            sleep 10
+            echo "Waiting for simulator to fully boot..."
+            xcrun simctl bootstatus "$DEVICE_ID" -b
+            echo "Simulator is ready!"
           fi
       
       - name: Run UI tests
