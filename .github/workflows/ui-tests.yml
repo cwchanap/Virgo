@@ -1,0 +1,169 @@
+name: UI Tests
+
+on:
+  push:
+    branches: [ main ]
+  # Allow manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      test_device:
+        description: 'Select device to test on'
+        required: false
+        default: 'iPhone 15 (iOS 17.5)'
+        type: choice
+        options:
+          - 'iPhone 15 (iOS 17.5)'
+          - 'iPhone 16 (iOS 18.5)'
+          - 'Both devices'
+      specific_test:
+        description: 'Run specific test (leave empty for all tests)'
+        required: false
+        default: ''
+        type: string
+      timeout:
+        description: 'Test timeout in seconds'
+        required: false
+        default: '600'
+        type: string
+
+jobs:
+  setup:
+    name: Setup Test Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set test matrix
+        id: set-matrix
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "${{ github.event.inputs.test_device }}" in
+              "iPhone 15 (iOS 17.5)")
+                echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5"]' >> $GITHUB_OUTPUT
+                ;;
+              "iPhone 16 (iOS 18.5)")
+                echo 'matrix=["platform=iOS Simulator,name=iPhone 16,OS=18.5"]' >> $GITHUB_OUTPUT
+                ;;
+              "Both devices")
+                echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5", "platform=iOS Simulator,name=iPhone 16,OS=18.5"]' >> $GITHUB_OUTPUT
+                ;;
+              *)
+                echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5"]' >> $GITHUB_OUTPUT
+                ;;
+            esac
+          else
+            # Default for push events - test on both devices
+            echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5", "platform=iOS Simulator,name=iPhone 16,OS=18.5"]' >> $GITHUB_OUTPUT
+          fi
+
+  ui-tests:
+    name: Run UI Tests
+    runs-on: macos-latest
+    needs: setup
+    
+    strategy:
+      matrix:
+        destination: ${{ fromJSON(needs.setup.outputs.matrix) }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+        
+      - name: Show Xcode version
+        run: xcodebuild -version
+        
+      - name: Show available simulators
+        run: xcrun simctl list devices available
+        
+      - name: Clean build folder
+        run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
+        
+      - name: Build project for UI testing
+        run: |
+          xcodebuild build-for-testing \
+            -project Virgo.xcodeproj \
+            -scheme Virgo \
+            -destination '${{ matrix.destination }}' \
+            -configuration Debug \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+            
+      - name: Boot simulator
+        run: |
+          # Extract device details from destination
+          DEVICE_NAME=$(echo '${{ matrix.destination }}' | sed -n 's/.*name=\([^,]*\).*/\1/p')
+          OS_VERSION=$(echo '${{ matrix.destination }}' | sed -n 's/.*OS=\([^,]*\).*/\1/p')
+          
+          # Boot the simulator to ensure it's ready
+          DEVICE_ID=$(xcrun simctl list devices available | grep "$DEVICE_NAME" | grep "$OS_VERSION" | head -1 | grep -oE '\[.*\]' | tr -d '[]')
+          if [ ! -z "$DEVICE_ID" ]; then
+            echo "Booting simulator: $DEVICE_NAME ($OS_VERSION) - $DEVICE_ID"
+            xcrun simctl boot "$DEVICE_ID" || true
+            sleep 10
+          fi
+      
+      - name: Run UI tests
+        run: |
+          set -o pipefail
+          
+          # Determine test target
+          TEST_TARGET="-only-testing:VirgoUITests"
+          if [ -n "${{ github.event.inputs.specific_test }}" ]; then
+            TEST_TARGET="-only-testing:VirgoUITests/${{ github.event.inputs.specific_test }}"
+          fi
+          
+          # Determine timeout
+          TIMEOUT="${{ github.event.inputs.timeout || '600' }}"
+          
+          echo "Running UI tests with:"
+          echo "  Device: ${{ matrix.destination }}"
+          echo "  Test target: $TEST_TARGET"
+          echo "  Timeout: ${TIMEOUT}s"
+          
+          xcodebuild test-without-building \
+            -project Virgo.xcodeproj \
+            -scheme Virgo \
+            -destination '${{ matrix.destination }}' \
+            -configuration Debug \
+            $TEST_TARGET \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -enableCodeCoverage YES \
+            -destination-timeout $TIMEOUT \
+            -resultBundlePath ./ui-test-results \
+            | tee ui-test-output.log
+            
+      - name: Set device name for artifacts
+        id: device-name
+        run: |
+          DEVICE_NAME=$(echo '${{ matrix.destination }}' | sed -n 's/.*name=\([^,]*\).*/\1/p' | tr ' ' '-')
+          OS_VERSION=$(echo '${{ matrix.destination }}' | sed -n 's/.*OS=\([^,]*\).*/\1/p' | tr '.' '-')
+          echo "device=${DEVICE_NAME}-iOS${OS_VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Upload UI test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}-${{ steps.device-name.outputs.device }}
+          path: |
+            ./ui-test-results
+            ./ui-test-output.log
+          retention-days: 7
+          
+      - name: Upload UI test screenshots and logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-failure-logs-${{ github.event_name == 'workflow_dispatch' && 'manual' || 'auto' }}-${{ steps.device-name.outputs.device }}
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
+            ./ui-test-results
+            ./ui-test-output.log
+          retention-days: 7
