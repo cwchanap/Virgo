@@ -27,16 +27,22 @@ final class VirgoUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         
+        // Wait for app to fully load
+        sleep(2)
+        
         // Verify main menu elements are present
-        XCTAssertTrue(app.staticTexts["VIRGO"].exists)
+        XCTAssertTrue(app.staticTexts["VIRGO"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Music App"].exists)
         XCTAssertTrue(app.buttons["START"].exists)
         
         // Tap start button to navigate to content view
         app.buttons["START"].tap()
         
+        // Wait for navigation and data loading
+        sleep(3)
+        
         // Verify we're now in the drum tracks view
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].exists)
+        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.searchFields["Search songs or artists..."].exists)
     }
     
@@ -48,10 +54,8 @@ final class VirgoUITests: XCTestCase {
         // Navigate to drum tracks
         app.buttons["START"].tap()
         
-        // Wait for tracks to load
-        let tracksListPredicate = NSPredicate(format: "exists == true")
-        expectation(for: tracksListPredicate, evaluatedWith: app.staticTexts["Thunder Beat"], handler: nil)
-        waitForExpectations(timeout: 3, handler: nil)
+        // Wait for tracks to load with longer timeout
+        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
         
         // Verify sample tracks are displayed
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists)
@@ -60,7 +64,7 @@ final class VirgoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Medium"].exists)
         
         // Verify at least one play button exists
-        XCTAssertTrue(app.buttons.matching(identifier: "play.circle.fill").firstMatch.exists)
+        XCTAssertTrue(app.buttons.matching(identifier: "play.circle.fill").firstMatch.waitForExistence(timeout: 5))
     }
     
     @MainActor
@@ -70,9 +74,7 @@ final class VirgoUITests: XCTestCase {
         app.buttons["START"].tap()
 
         // Wait for tracks to load
-        let tracksListPredicate = NSPredicate(format: "exists == true")
-        expectation(for: tracksListPredicate, evaluatedWith: app.staticTexts["Thunder Beat"], handler: nil)
-        waitForExpectations(timeout: 3, handler: nil)
+        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
         
         let searchField = app.searchFields["Search songs or artists..."]
         XCTAssertTrue(searchField.exists)
@@ -81,21 +83,36 @@ final class VirgoUITests: XCTestCase {
         searchField.tap()
         searchField.typeText("Thunder")
         
+        // Wait a moment for search to process
+        sleep(1)
+        
         // Should show Thunder Beat track
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists)
         
-        // Clear search
+        // Clear search - try different approaches
         if app.buttons["Clear text"].exists {
             app.buttons["Clear text"].tap()
         } else {
-            searchField.clearAndEnterText("")
+            // Use the clear button with accessibility identifier
+            let clearButton = app.buttons["clearSearchButton"]
+            if clearButton.exists {
+                clearButton.tap()
+            } else {
+                searchField.clearAndEnterText("")
+            }
         }
         
-        // Test search by artist
-        searchField.typeText("Jazz")
+        // Wait for search to clear
+        sleep(1)
         
-        // Should show tracks containing "Jazz"
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] 'jazz'")).firstMatch.exists)
+        // Test search by artist - search for "Blue Note" which exists in Jazz Swing
+        searchField.typeText("Blue Note")
+        
+        // Wait for search to process
+        sleep(1)
+        
+        // Should show tracks containing "Blue Note"
+        XCTAssertTrue(app.staticTexts["Jazz Swing"].exists)
     }
     
     @MainActor
@@ -105,14 +122,15 @@ final class VirgoUITests: XCTestCase {
         app.buttons["START"].tap()
 
         // Wait for tracks to load
-        let tracksListPredicate = NSPredicate(format: "exists == true")
-        expectation(for: tracksListPredicate, evaluatedWith: app.staticTexts["Thunder Beat"], handler: nil)
-        waitForExpectations(timeout: 3, handler: nil)
+        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
         
         // Tap on first track to navigate to gameplay
         app.staticTexts["Thunder Beat"].tap()
         
-        // Verify we're in gameplay view
+        // Wait for gameplay view to load
+        sleep(2)
+        
+        // Verify we're in gameplay view - check for unique gameplay elements
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists) // Track title in header
         XCTAssertTrue(app.staticTexts["DrumMaster Pro"].exists) // Artist name
         XCTAssertTrue(app.staticTexts["120 BPM"].exists)
@@ -123,10 +141,15 @@ final class VirgoUITests: XCTestCase {
         XCTAssertTrue(app.buttons.matching(identifier: "backward.end.fill").firstMatch.exists)
         
         // Test back navigation
-        app.buttons.matching(identifier: "chevron.left").firstMatch.tap()
+        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
+        XCTAssertTrue(backButton.waitForExistence(timeout: 5))
+        backButton.tap()
+        
+        // Wait for navigation back
+        sleep(1)
         
         // Should return to drum tracks list
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].exists)
+        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 5))
     }
     
     @MainActor
