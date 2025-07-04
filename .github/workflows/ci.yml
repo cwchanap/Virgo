@@ -1,4 +1,4 @@
-name: CI (Fast Tests)
+name: Unit Test and Archive Build CI
 
 on:
   push:
