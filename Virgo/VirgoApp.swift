@@ -7,6 +7,9 @@
 
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @main
 struct VirgoApp: App {
@@ -25,7 +28,9 @@ struct VirgoApp: App {
 
     init() {
         if ProcessInfo.processInfo.arguments.contains("UITesting") {
+            #if canImport(UIKit)
             UIView.setAnimationsEnabled(false)
+            #endif
         }
     }
 
