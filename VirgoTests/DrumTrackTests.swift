@@ -19,7 +19,8 @@ struct DrumTrackTests {
             bpm: 120,
             duration: "3:45",
             genre: "Rock",
-            difficulty: .medium
+            difficulty: .medium,
+            timeSignature: .fourFour
         )
         
         #expect(track.title == "Test Track")
@@ -42,6 +43,7 @@ struct DrumTrackTests {
             duration: "4:20",
             genre: "Electronic",
             difficulty: .hard,
+            timeSignature: .sixEight,
             isPlaying: true,
             playCount: 5,
             isFavorite: true
@@ -54,13 +56,13 @@ struct DrumTrackTests {
     
     @Test func testDifficultyColors() async throws {
         let easyTrack = DrumTrack(title: "Easy", artist: "Test", bpm: 100, duration: "2:00",
-                                  genre: "Pop", difficulty: .easy)
+                                  genre: "Pop", difficulty: .easy, timeSignature: .fourFour)
         let mediumTrack = DrumTrack(title: "Medium", artist: "Test", bpm: 120, duration: "3:00",
-                                    genre: "Rock", difficulty: .medium)
+                                    genre: "Rock", difficulty: .medium, timeSignature: .fourFour)
         let hardTrack = DrumTrack(title: "Hard", artist: "Test", bpm: 140, duration: "4:00",
-                                  genre: "Metal", difficulty: .hard)
+                                  genre: "Metal", difficulty: .hard, timeSignature: .fourFour)
         let expertTrack = DrumTrack(title: "Expert", artist: "Test", bpm: 180, duration: "5:00",
-                                    genre: "Progressive", difficulty: .expert)
+                                    genre: "Progressive", difficulty: .expert, timeSignature: .fiveFour)
         
         #expect(easyTrack.difficultyColor == .green)
         #expect(mediumTrack.difficultyColor == .orange)
@@ -145,9 +147,9 @@ struct DrumTrackTests {
     
     @Test func testTrackEquality() async throws {
         let track1 = DrumTrack(title: "Test", artist: "Artist", bpm: 120,
-                               duration: "3:00", genre: "Rock", difficulty: .medium)
+                               duration: "3:00", genre: "Rock", difficulty: .medium, timeSignature: .fourFour)
         let track2 = DrumTrack(title: "Test", artist: "Artist", bpm: 120,
-                               duration: "3:00", genre: "Rock", difficulty: .medium)
+                               duration: "3:00", genre: "Rock", difficulty: .medium, timeSignature: .fourFour)
         
         // Since these are different instances, they should have different IDs
         #expect(track1.id != track2.id)
@@ -157,5 +159,28 @@ struct DrumTrackTests {
         #expect(track1.artist == track2.artist)
         #expect(track1.bpm == track2.bpm)
         #expect(track1.difficulty == track2.difficulty)
+    }
+    
+    @Test func testTimeSignature() async throws {
+        // Test time signature properties
+        #expect(TimeSignature.fourFour.beatsPerMeasure == 4)
+        #expect(TimeSignature.fourFour.noteValue == 4)
+        #expect(TimeSignature.threeFour.beatsPerMeasure == 3)
+        #expect(TimeSignature.threeFour.noteValue == 4)
+        #expect(TimeSignature.sixEight.beatsPerMeasure == 6)
+        #expect(TimeSignature.sixEight.noteValue == 8)
+        #expect(TimeSignature.fiveFour.beatsPerMeasure == 5)
+        #expect(TimeSignature.fiveFour.noteValue == 4)
+        
+        // Test display names
+        #expect(TimeSignature.fourFour.displayName == "4/4")
+        #expect(TimeSignature.threeFour.displayName == "3/4")
+        #expect(TimeSignature.sixEight.displayName == "6/8")
+        #expect(TimeSignature.fiveFour.displayName == "5/4")
+        
+        // Test that tracks can have time signatures
+        let track = DrumTrack(title: "Test", artist: "Test", bpm: 120,
+                              duration: "3:00", genre: "Rock", difficulty: .medium, timeSignature: .threeFour)
+        #expect(track.timeSignature == .threeFour)
     }
 }
