@@ -12,7 +12,7 @@ import Foundation
 struct GameplayViewTests {
     
     @Test func testDrumBeatCreation() async throws {
-        let beat = DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0)
+        let beat = DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0, interval: .quarter)
         
         #expect(beat.id == 0)
         #expect(beat.drums.count == 2)
@@ -22,7 +22,7 @@ struct GameplayViewTests {
     }
     
     @Test func testDrumBeatWithSingleDrum() async throws {
-        let beat = DrumBeat(id: 1, drums: [.snare], timePosition: 0.5)
+        let beat = DrumBeat(id: 1, drums: [.snare], timePosition: 0.5, interval: .quarter)
         
         #expect(beat.id == 1)
         #expect(beat.drums.count == 1)
@@ -31,7 +31,7 @@ struct GameplayViewTests {
     }
     
     @Test func testDrumBeatWithMultipleDrums() async throws {
-        let beat = DrumBeat(id: 2, drums: [.kick, .snare, .hiHat, .crash], timePosition: 1.0)
+        let beat = DrumBeat(id: 2, drums: [.kick, .snare, .hiHat, .crash], timePosition: 1.0, interval: .quarter)
         
         #expect(beat.id == 2)
         #expect(beat.drums.count == 4)
@@ -94,10 +94,10 @@ struct GameplayViewTests {
     
     @Test func testMockDrumPattern() async throws {
         let mockPattern = [
-            DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0),
-            DrumBeat(id: 1, drums: [.hiHat], timePosition: 0.25),
-            DrumBeat(id: 2, drums: [.snare, .hiHat], timePosition: 0.5),
-            DrumBeat(id: 3, drums: [.hiHat], timePosition: 0.75)
+            DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0, interval: .quarter),
+            DrumBeat(id: 1, drums: [.hiHat], timePosition: 0.25, interval: .quarter),
+            DrumBeat(id: 2, drums: [.snare, .hiHat], timePosition: 0.5, interval: .quarter),
+            DrumBeat(id: 3, drums: [.hiHat], timePosition: 0.75, interval: .quarter)
         ]
         
         #expect(mockPattern.count == 4)
@@ -116,10 +116,10 @@ struct GameplayViewTests {
     
     @Test func testDrumPatternTiming() async throws {
         let pattern = [
-            DrumBeat(id: 0, drums: [.kick], timePosition: 0.0),
-            DrumBeat(id: 1, drums: [.snare], timePosition: 0.5),
-            DrumBeat(id: 2, drums: [.kick], timePosition: 1.0),
-            DrumBeat(id: 3, drums: [.snare], timePosition: 1.5)
+            DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .quarter),
+            DrumBeat(id: 1, drums: [.snare], timePosition: 0.5, interval: .quarter),
+            DrumBeat(id: 2, drums: [.kick], timePosition: 1.0, interval: .quarter),
+            DrumBeat(id: 3, drums: [.snare], timePosition: 1.5, interval: .quarter)
         ]
         
         // Test basic timing intervals
@@ -134,14 +134,14 @@ struct GameplayViewTests {
     
     @Test func testComplexDrumPattern() async throws {
         let complexPattern = [
-            DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0),
-            DrumBeat(id: 1, drums: [.hiHat], timePosition: 0.25),
-            DrumBeat(id: 2, drums: [.snare, .hiHat], timePosition: 0.5),
-            DrumBeat(id: 3, drums: [.hiHat], timePosition: 0.75),
-            DrumBeat(id: 4, drums: [.kick, .hiHat], timePosition: 1.0),
-            DrumBeat(id: 5, drums: [.hiHat], timePosition: 1.25),
-            DrumBeat(id: 6, drums: [.snare, .hiHat], timePosition: 1.5),
-            DrumBeat(id: 7, drums: [.hiHat, .crash], timePosition: 1.75)
+            DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0, interval: .quarter),
+            DrumBeat(id: 1, drums: [.hiHat], timePosition: 0.25, interval: .quarter),
+            DrumBeat(id: 2, drums: [.snare, .hiHat], timePosition: 0.5, interval: .quarter),
+            DrumBeat(id: 3, drums: [.hiHat], timePosition: 0.75, interval: .quarter),
+            DrumBeat(id: 4, drums: [.kick, .hiHat], timePosition: 1.0, interval: .quarter),
+            DrumBeat(id: 5, drums: [.hiHat], timePosition: 1.25, interval: .quarter),
+            DrumBeat(id: 6, drums: [.snare, .hiHat], timePosition: 1.5, interval: .quarter),
+            DrumBeat(id: 7, drums: [.hiHat, .crash], timePosition: 1.75, interval: .quarter)
         ]
         
         #expect(complexPattern.count == 8)
@@ -165,7 +165,7 @@ struct GameplayViewTests {
     }
     
     @Test func testEmptyDrumBeat() async throws {
-        let emptyBeat = DrumBeat(id: 99, drums: [], timePosition: 2.0)
+        let emptyBeat = DrumBeat(id: 99, drums: [], timePosition: 2.0, interval: .quarter)
         
         #expect(emptyBeat.id == 99)
         #expect(emptyBeat.drums.isEmpty)
