@@ -63,9 +63,14 @@ struct GameplayView: View {
             Spacer()
             
             VStack(alignment: .trailing, spacing: 4) {
-                Text("\(track.bpm) BPM")
-                    .font(.caption)
-                    .foregroundColor(.gray)
+                HStack(spacing: 8) {
+                    Text("\(track.bpm) BPM")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                    Text(track.timeSignature.displayName)
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
                 Text(track.difficulty.rawValue)
                     .font(.caption)
                     .padding(.horizontal, 8)
@@ -84,6 +89,15 @@ struct GameplayView: View {
             ZStack(alignment: .leading) {
                 // Staff lines background
                 staffLinesView(width: geometry.size.width * 3)
+                
+                // Bar lines
+                barLinesView(geometry: geometry)
+                
+                // Drum clef
+                drumClefView()
+                
+                // Time signature
+                timeSignatureView()
                 
                 // Drum notation
                 drumNotationView(geometry: geometry)
@@ -105,14 +119,83 @@ struct GameplayView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
+    // MARK: - Drum Clef
+    private func drumClefView() -> some View {
+        HStack {
+            DrumClefSymbol()
+                .frame(width: 40, height: 80)
+                .foregroundColor(.white)
+                .position(x: 20, y: 150)
+            
+            Spacer()
+        }
+    }
+    
+    // MARK: - Time Signature
+    private func timeSignatureView() -> some View {
+        HStack {
+            TimeSignatureSymbol(timeSignature: track.timeSignature)
+                .frame(width: 30, height: 60)
+                .foregroundColor(.white)
+                .position(x: 55, y: 150)
+            
+            Spacer()
+        }
+    }
+    
+    // MARK: - Bar Lines
+    private func barLinesView(geometry: GeometryProxy) -> some View {
+        HStack(spacing: 0) {
+            // Start after the clef and time signature
+            Spacer()
+                .frame(width: 100)
+            
+            // Calculate measures based on drum beats and time signature
+            let measuresCount = max(1, (drumBeats.map { $0.id }.max() ?? 1000) / 1000)
+            let notesPerMeasure = track.timeSignature.beatsPerMeasure
+            let measureWidth: CGFloat = CGFloat(notesPerMeasure * 40) // 40 pixels per note
+            
+            ForEach(0..<measuresCount, id: \.self) { measureIndex in
+                Rectangle()
+                    .frame(width: 2, height: 160)
+                    .foregroundColor(.white.opacity(0.8))
+                    .position(x: 1, y: 150)
+                
+                if measureIndex < measuresCount - 1 {
+                    Spacer()
+                        .frame(width: measureWidth)
+                }
+            }
+            
+            // Bold double bar line at the end
+            Spacer()
+                .frame(width: measureWidth)
+            
+            HStack(spacing: 3) {
+                Rectangle()
+                    .frame(width: 2, height: 160)
+                    .foregroundColor(.white)
+                Rectangle()
+                    .frame(width: 4, height: 160)
+                    .foregroundColor(.white)
+            }
+            .position(x: 3, y: 150)
+            
+            Spacer()
+        }
+    }
+    
     // MARK: - Drum Notation
     private func drumNotationView(geometry: GeometryProxy) -> some View {
-        HStack(spacing: 40) {
-            ForEach(mockDrumBeats, id: \.id) { beat in
-                DrumBeatView(beat: beat, isActive: currentBeat == beat.id)
+        let spacing = 40.0 // Base spacing between notes
+        
+        return HStack(spacing: spacing) {
+            ForEach(Array(drumBeats.enumerated()), id: \.offset) { index, beat in
+                DrumBeatView(beat: beat, isActive: currentBeat == index)
             }
         }
-        .padding(.horizontal, 50)
+        .padding(.leading, 100) // Extra padding to leave space for clef and time signature
+        .padding(.trailing, 50)
         .frame(height: 300)
     }
     
@@ -158,22 +241,23 @@ struct GameplayView: View {
         .background(Color.black.opacity(0.9))
     }
     
-    // MARK: - Mock Data
-    private var mockDrumBeats: [DrumBeat] {
-        [
-            DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0),
-            DrumBeat(id: 1, drums: [.hiHat], timePosition: 0.25),
-            DrumBeat(id: 2, drums: [.snare, .hiHat], timePosition: 0.5),
-            DrumBeat(id: 3, drums: [.hiHat], timePosition: 0.75),
-            DrumBeat(id: 4, drums: [.kick, .hiHat], timePosition: 1.0),
-            DrumBeat(id: 5, drums: [.hiHat], timePosition: 1.25),
-            DrumBeat(id: 6, drums: [.snare, .hiHat], timePosition: 1.5),
-            DrumBeat(id: 7, drums: [.hiHat, .crash], timePosition: 1.75),
-            DrumBeat(id: 8, drums: [.kick, .hiHat], timePosition: 2.0),
-            DrumBeat(id: 9, drums: [.hiHat], timePosition: 2.25),
-            DrumBeat(id: 10, drums: [.snare, .hiHat], timePosition: 2.5),
-            DrumBeat(id: 11, drums: [.hiHat], timePosition: 2.75)
-        ]
+    // MARK: - Computed Properties
+    private var drumBeats: [DrumBeat] {
+        // Group notes by their position in the measure
+        let groupedNotes = Dictionary(grouping: track.notes) { note in
+            Double(note.measureNumber) + note.measureOffset
+        }
+        
+        // Convert to DrumBeat objects
+        return groupedNotes.map { (position, notes) in
+            let drumTypes = notes.compactMap { note in
+                DrumType.from(noteType: note.noteType)
+            }
+            // Use the interval from the first note in the group (they should all have the same interval at the same position)
+            let interval = notes.first?.interval ?? .quarter
+            return DrumBeat(id: Int(position * 1000), drums: drumTypes, timePosition: position, interval: interval)
+        }
+        .sorted { $0.timePosition < $1.timePosition }
     }
     
     // MARK: - Actions
@@ -197,7 +281,7 @@ struct GameplayView: View {
             }
             
             playbackProgress += 0.01
-            currentBeat = Int(playbackProgress * Double(mockDrumBeats.count))
+            currentBeat = Int(playbackProgress * Double(drumBeats.count))
             
             if playbackProgress >= 1.0 {
                 timer.invalidate()
@@ -222,6 +306,7 @@ struct DrumBeat {
     let id: Int
     let drums: [DrumType]
     let timePosition: Double
+    let interval: NoteInterval
 }
 
 enum DrumType {
@@ -256,6 +341,23 @@ enum DrumType {
         case .ride: return 7 * LayoutConstants.staffLineHeight
         }
     }
+    
+    static func from(noteType: NoteType) -> DrumType? {
+        switch noteType {
+        case .bass: return .kick
+        case .snare: return .snare
+        case .hiHat: return .hiHat
+        case .openHiHat: return .hiHat
+        case .crash: return .crash
+        case .ride: return .ride
+        case .highTom: return .tom1
+        case .midTom: return .tom2
+        case .lowTom: return .tom3
+        case .china: return .crash
+        case .splash: return .crash
+        case .cowbell: return nil // Cowbell doesn't have a direct mapping
+        }
+    }
 }
 
 // MARK: - Drum Beat View
@@ -271,9 +373,27 @@ struct DrumBeatView: View {
                 .foregroundColor(isActive ? Color.purple.opacity(0.3) : Color.clear)
                 .cornerRadius(4)
             
-            // Drum symbols
-            VStack {
-                ForEach(beat.drums, id: \.self) { drum in
+            // Drum symbols with tails
+            ForEach(beat.drums, id: \.self) { drum in
+                ZStack {
+                    // Stem (tail) for notes that need it
+                    if beat.interval.needsStem {
+                        Rectangle()
+                            .frame(width: 2, height: 75)
+                            .foregroundColor(isActive ? .yellow : .white)
+                            .position(x: 22, y: drum.yPosition - 37.5)
+                    }
+                    
+                    // Flags for eighth notes and shorter
+                    if beat.interval.needsFlag {
+                        ForEach(0..<beat.interval.flagCount, id: \.self) { flagIndex in
+                            FlagView(flagIndex: flagIndex)
+                                .foregroundColor(isActive ? .yellow : .white)
+                                .position(x: 24, y: drum.yPosition - 67.5 - CGFloat(flagIndex * 8))
+                        }
+                    }
+                    
+                    // Drum symbol
                     Text(drum.symbol)
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(isActive ? .yellow : .white)
@@ -282,6 +402,66 @@ struct DrumBeatView: View {
             }
         }
         .frame(width: 30, height: 280)
+    }
+}
+
+// MARK: - Flag View
+struct FlagView: View {
+    let flagIndex: Int
+    
+    var body: some View {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 0))
+            path.addCurve(to: CGPoint(x: 8, y: 4), 
+                         control1: CGPoint(x: 4, y: -2), 
+                         control2: CGPoint(x: 6, y: 2))
+            path.addCurve(to: CGPoint(x: 0, y: 8), 
+                         control1: CGPoint(x: 6, y: 6), 
+                         control2: CGPoint(x: 4, y: 10))
+            path.closeSubpath()
+        }
+        .fill(Color.white)
+        .frame(width: 8, height: 8)
+    }
+}
+
+// MARK: - Drum Clef Symbol
+struct DrumClefSymbol: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            // Top rectangle
+            Rectangle()
+                .frame(width: 12, height: 8)
+            
+            // Middle rectangle
+            Rectangle()
+                .frame(width: 12, height: 8)
+            
+            // Bottom rectangle
+            Rectangle()
+                .frame(width: 12, height: 8)
+        }
+        .frame(width: 12, height: 32)
+    }
+}
+
+// MARK: - Time Signature Symbol
+struct TimeSignatureSymbol: View {
+    let timeSignature: TimeSignature
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            // Top number (beats per measure)
+            Text("\(timeSignature.beatsPerMeasure)")
+                .font(.system(size: 18, weight: .bold, design: .serif))
+                .foregroundColor(.white)
+            
+            // Bottom number (note value)
+            Text("\(timeSignature.noteValue)")
+                .font(.system(size: 18, weight: .bold, design: .serif))
+                .foregroundColor(.white)
+        }
+        .frame(width: 25, height: 50)
     }
 }
 
