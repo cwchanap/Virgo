@@ -34,8 +34,18 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				VirgoUITests/VirgoUITests.swift,
+				VirgoUITests/VirgoUITestsLaunchTests.swift,
 			);
 			target = 24829CE62E1217CA00F99FD7 /* Virgo */;
+		};
+		24F815482E20BC7000008835 /* Exceptions for "Virgo" folder in "VirgoUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				VirgoUITests/VirgoUITests.swift,
+				VirgoUITests/VirgoUITestsLaunchTests.swift,
+			);
+			target = 24829D012E1217CC00F99FD7 /* VirgoUITests */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -44,6 +54,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				24829D0A2E1217CC00F99FD7 /* Exceptions for "Virgo" folder in "Virgo" target */,
+				24F815482E20BC7000008835 /* Exceptions for "Virgo" folder in "VirgoUITests" target */,
 			);
 			path = Virgo;
 			sourceTree = "<group>";
@@ -51,11 +62,6 @@
 		24829CFB2E1217CC00F99FD7 /* VirgoTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = VirgoTests;
-			sourceTree = "<group>";
-		};
-		24829D052E1217CC00F99FD7 /* VirgoUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = VirgoUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -90,7 +96,6 @@
 			children = (
 				24829CE92E1217CA00F99FD7 /* Virgo */,
 				24829CFB2E1217CC00F99FD7 /* VirgoTests */,
-				24829D052E1217CC00F99FD7 /* VirgoUITests */,
 				24829CE82E1217CA00F99FD7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -165,9 +170,6 @@
 			);
 			dependencies = (
 				24829D042E1217CC00F99FD7 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				24829D052E1217CC00F99FD7 /* VirgoUITests */,
 			);
 			name = VirgoUITests;
 			packageProductDependencies = (

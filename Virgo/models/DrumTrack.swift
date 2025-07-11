@@ -9,114 +9,6 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-enum Difficulty: String, Codable {
-    case easy = "Easy"
-    case medium = "Medium"
-    case hard = "Hard"
-    case expert = "Expert"
-
-    var color: Color {
-        switch self {
-        case .easy: return .green
-        case .medium: return .orange
-        case .hard: return .red
-        case .expert: return .purple
-        }
-    }
-}
-
-enum TimeSignature: String, Codable, CaseIterable {
-    case fourFour = "4/4"
-    case threeFour = "3/4"
-    case twoFour = "2/4"
-    case sixEight = "6/8"
-    case fiveFour = "5/4"
-    case sevenEight = "7/8"
-    case nineEight = "9/8"
-    case twelveEight = "12/8"
-    
-    var beatsPerMeasure: Int {
-        switch self {
-        case .fourFour: return 4
-        case .threeFour: return 3
-        case .twoFour: return 2
-        case .sixEight: return 6
-        case .fiveFour: return 5
-        case .sevenEight: return 7
-        case .nineEight: return 9
-        case .twelveEight: return 12
-        }
-    }
-    
-    var noteValue: Int {
-        switch self {
-        case .fourFour, .threeFour, .twoFour, .fiveFour: return 4
-        case .sixEight, .sevenEight, .nineEight, .twelveEight: return 8
-        }
-    }
-    
-    var displayName: String {
-        return self.rawValue
-    }
-}
-
-enum NoteInterval: String, Codable, CaseIterable {
-    case full = "Full"
-    case half = "Half"
-    case quarter = "Quarter"
-    case eighth = "Eighth"
-    case sixteenth = "Sixteenth"
-    case thirtysecond = "Thirty Second"
-    case sixtyfourth = "Sixty Fourth"
-    
-    var needsStem: Bool {
-        switch self {
-        case .full, .half:
-            return false
-        case .quarter, .eighth, .sixteenth, .thirtysecond, .sixtyfourth:
-            return true
-        }
-    }
-    
-    var needsFlag: Bool {
-        switch self {
-        case .full, .half, .quarter:
-            return false
-        case .eighth, .sixteenth, .thirtysecond, .sixtyfourth:
-            return true
-        }
-    }
-    
-    var flagCount: Int {
-        switch self {
-        case .full, .half, .quarter:
-            return 0
-        case .eighth:
-            return 1
-        case .sixteenth:
-            return 2
-        case .thirtysecond:
-            return 3
-        case .sixtyfourth:
-            return 4
-        }
-    }
-}
-
-enum NoteType: String, Codable, CaseIterable {
-    case bass = "Bass"
-    case snare = "Snare"
-    case highTom = "High Tom"
-    case midTom = "Mid Tom"
-    case lowTom = "Low Tom"
-    case hiHat = "Hi-Hat"
-    case openHiHat = "Open Hi-Hat"
-    case crash = "Crash"
-    case ride = "Ride"
-    case china = "China"
-    case splash = "Splash"
-    case cowbell = "Cowbell"
-}
 
 @Model
 final class Note {
@@ -141,7 +33,12 @@ final class DrumTrack {
     var duration: String
     var genre: String
     var difficulty: Difficulty
-    var timeSignature: TimeSignature
+    private var _timeSignature: TimeSignature?
+    
+    var timeSignature: TimeSignature {
+        get { _timeSignature ?? .fourFour }
+        set { _timeSignature = newValue }
+    }
     var isPlaying: Bool
     var dateAdded: Date
     var playCount: Int
@@ -167,7 +64,7 @@ final class DrumTrack {
         self.duration = duration
         self.genre = genre
         self.difficulty = difficulty
-        self.timeSignature = timeSignature
+        self._timeSignature = timeSignature
         self.notes = notes
         self.isPlaying = isPlaying
         self.dateAdded = Date()
@@ -179,12 +76,7 @@ final class DrumTrack {
 // MARK: - Extensions
 extension DrumTrack {
     var difficultyColor: Color {
-        switch difficulty {
-        case .easy: return .green
-        case .medium: return .orange
-        case .hard: return .red
-        case .expert: return .purple
-        }
+        return difficulty.color
     }
     
     static var sampleData: [DrumTrack] {

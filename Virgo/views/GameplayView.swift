@@ -88,7 +88,7 @@ struct GameplayView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             ZStack(alignment: .leading) {
                 // Staff lines background
-                staffLinesView(width: geometry.size.width * 3)
+                staffLinesView(geometry: geometry)
                 
                 // Bar lines
                 barLinesView(geometry: geometry)
@@ -108,11 +108,14 @@ struct GameplayView: View {
     }
     
     // MARK: - Staff Lines
-    private func staffLinesView(width: CGFloat) -> some View {
-        VStack(spacing: 20) {
-            ForEach(0..<5, id: \.self) { _ in
+    private func staffLinesView(geometry: GeometryProxy) -> some View {
+        let measuresCount = max(1, (drumBeats.map { $0.id }.max() ?? 1000) / 1000)
+        let staffWidth = GameplayLayout.staffWidth(measuresCount: measuresCount, timeSignature: track.timeSignature)
+        
+        return VStack(spacing: GameplayLayout.staffLineSpacing) {
+            ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { _ in
                 Rectangle()
-                    .frame(width: width, height: 1)
+                    .frame(width: staffWidth, height: 1)
                     .foregroundColor(.gray.opacity(0.5))
             }
         }
@@ -123,9 +126,9 @@ struct GameplayView: View {
     private func drumClefView() -> some View {
         HStack {
             DrumClefSymbol()
-                .frame(width: 40, height: 80)
+                .frame(width: GameplayLayout.clefWidth, height: 80)
                 .foregroundColor(.white)
-                .position(x: 20, y: 150)
+                .position(x: GameplayLayout.clefX, y: GameplayLayout.baseStaffY)
             
             Spacer()
         }
@@ -135,9 +138,9 @@ struct GameplayView: View {
     private func timeSignatureView() -> some View {
         HStack {
             TimeSignatureSymbol(timeSignature: track.timeSignature)
-                .frame(width: 30, height: 60)
+                .frame(width: GameplayLayout.timeSignatureWidth, height: 60)
                 .foregroundColor(.white)
-                .position(x: 55, y: 150)
+                .position(x: GameplayLayout.timeSignatureX, y: GameplayLayout.baseStaffY)
             
             Spacer()
         }
@@ -148,53 +151,43 @@ struct GameplayView: View {
         HStack(spacing: 0) {
             // Start after the clef and time signature
             Spacer()
-                .frame(width: 100)
+                .frame(width: GameplayLayout.leftMargin)
             
             // Calculate measures based on drum beats and time signature
             let measuresCount = max(1, (drumBeats.map { $0.id }.max() ?? 1000) / 1000)
-            let notesPerMeasure = track.timeSignature.beatsPerMeasure
-            let measureWidth: CGFloat = CGFloat(notesPerMeasure * 40) // 40 pixels per note
+            let measureWidth = GameplayLayout.measureWidth(for: track.timeSignature)
             
             ForEach(0..<measuresCount, id: \.self) { measureIndex in
                 Rectangle()
-                    .frame(width: 2, height: 160)
+                    .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
                     .foregroundColor(.white.opacity(0.8))
-                    .position(x: 1, y: 150)
+                    .position(x: 1, y: GameplayLayout.baseStaffY)
                 
-                if measureIndex < measuresCount - 1 {
-                    Spacer()
-                        .frame(width: measureWidth)
-                }
+                Spacer()
+                    .frame(width: measureWidth)
             }
             
-            // Bold double bar line at the end
-            Spacer()
-                .frame(width: measureWidth)
-            
-            HStack(spacing: 3) {
+            // Bold double bar line at the end - positioned exactly at the end of staff
+            HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
                 Rectangle()
-                    .frame(width: 2, height: 160)
+                    .frame(width: GameplayLayout.doubleBarLineWidths.thin, height: GameplayLayout.staffHeight)
                     .foregroundColor(.white)
                 Rectangle()
-                    .frame(width: 4, height: 160)
+                    .frame(width: GameplayLayout.doubleBarLineWidths.thick, height: GameplayLayout.staffHeight)
                     .foregroundColor(.white)
             }
-            .position(x: 3, y: 150)
-            
-            Spacer()
+            .position(x: 3, y: GameplayLayout.baseStaffY)
         }
     }
     
     // MARK: - Drum Notation
     private func drumNotationView(geometry: GeometryProxy) -> some View {
-        let spacing = 40.0 // Base spacing between notes
-        
-        return HStack(spacing: spacing) {
+        return HStack(spacing: GameplayLayout.noteSpacing) {
             ForEach(Array(drumBeats.enumerated()), id: \.offset) { index, beat in
                 DrumBeatView(beat: beat, isActive: currentBeat == index)
             }
         }
-        .padding(.leading, 100) // Extra padding to leave space for clef and time signature
+        .padding(.leading, GameplayLayout.leftMargin)
         .padding(.trailing, 50)
         .frame(height: 300)
     }
@@ -243,6 +236,16 @@ struct GameplayView: View {
     
     // MARK: - Computed Properties
     private var drumBeats: [DrumBeat] {
+        // If track has no notes, create some default beats for demonstration
+        if track.notes.isEmpty {
+            return [
+                DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .quarter),
+                DrumBeat(id: 250, drums: [.hiHat], timePosition: 0.25, interval: .eighth),
+                DrumBeat(id: 500, drums: [.snare], timePosition: 0.5, interval: .quarter),
+                DrumBeat(id: 750, drums: [.hiHat], timePosition: 0.75, interval: .eighth)
+            ]
+        }
+        
         // Group notes by their position in the measure
         let groupedNotes = Dictionary(grouping: track.notes) { note in
             Double(note.measureNumber) + note.measureOffset
@@ -309,56 +312,6 @@ struct DrumBeat {
     let interval: NoteInterval
 }
 
-enum DrumType {
-    case kick, snare, hiHat, crash, ride, tom1, tom2, tom3
-    
-    private enum LayoutConstants {
-        static let staffLineHeight: CGFloat = 30
-    }
-
-    var symbol: String {
-        switch self {
-        case .kick: return "●"
-        case .snare: return "◆"
-        case .hiHat: return "×"
-        case .crash: return "◉"
-        case .ride: return "○"
-        case .tom1: return "◐"
-        case .tom2: return "◑"
-        case .tom3: return "◒"
-        }
-    }
-    
-    var yPosition: CGFloat {
-        switch self {
-        case .crash: return 0 * LayoutConstants.staffLineHeight
-        case .hiHat: return 1 * LayoutConstants.staffLineHeight
-        case .tom1: return 2 * LayoutConstants.staffLineHeight
-        case .snare: return 3 * LayoutConstants.staffLineHeight
-        case .tom2: return 4 * LayoutConstants.staffLineHeight
-        case .tom3: return 5 * LayoutConstants.staffLineHeight
-        case .kick: return 6 * LayoutConstants.staffLineHeight
-        case .ride: return 7 * LayoutConstants.staffLineHeight
-        }
-    }
-    
-    static func from(noteType: NoteType) -> DrumType? {
-        switch noteType {
-        case .bass: return .kick
-        case .snare: return .snare
-        case .hiHat: return .hiHat
-        case .openHiHat: return .hiHat
-        case .crash: return .crash
-        case .ride: return .ride
-        case .highTom: return .tom1
-        case .midTom: return .tom2
-        case .lowTom: return .tom3
-        case .china: return .crash
-        case .splash: return .crash
-        case .cowbell: return nil // Cowbell doesn't have a direct mapping
-        }
-    }
-}
 
 // MARK: - Drum Beat View
 struct DrumBeatView: View {
