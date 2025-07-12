@@ -148,14 +148,22 @@ struct ContentView: View {
     private func loadSampleDataIfNeeded() {
         // Only load sample data if the database is empty
         if allDrumTracks.isEmpty {
+            print("Database is empty, loading sample data...")
             for sampleTrack in DrumTrack.sampleData {
                 modelContext.insert(sampleTrack)
             }
             
             do {
                 try modelContext.save()
+                print("Successfully saved \(DrumTrack.sampleData.count) sample tracks")
             } catch {
                 print("Failed to save sample data: \(error)")
+            }
+        } else {
+            print("Database already has \(allDrumTracks.count) tracks")
+            // Print info about first track for debugging
+            if let firstTrack = allDrumTracks.first {
+                print("First track: \(firstTrack.title), notes count: \(firstTrack.notes.count)")
             }
         }
     }

@@ -13,7 +13,7 @@ on:
         type: choice
         options:
           - 'iPhone 15 (iOS 17.5)'
-          - 'iPhone 16 (iOS 18.5)'
+          - 'iPhone 16 (iOS 18.2)'
           - 'Both devices'
       specific_test:
         description: 'Run specific test (leave empty for all tests)'
@@ -41,11 +41,11 @@ jobs:
               "iPhone 15 (iOS 17.5)")
                 echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5"]' >> $GITHUB_OUTPUT
                 ;;
-              "iPhone 16 (iOS 18.5)")
-                echo 'matrix=["platform=iOS Simulator,name=iPhone 16,OS=18.5"]' >> $GITHUB_OUTPUT
+              "iPhone 16 (iOS 18.2)")
+                echo 'matrix=["platform=iOS Simulator,name=iPhone 16,OS=18.2"]' >> $GITHUB_OUTPUT
                 ;;
               "Both devices")
-                echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5", "platform=iOS Simulator,name=iPhone 16,OS=18.5"]' >> $GITHUB_OUTPUT
+                echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5", "platform=iOS Simulator,name=iPhone 16,OS=18.2"]' >> $GITHUB_OUTPUT
                 ;;
               *)
                 echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5"]' >> $GITHUB_OUTPUT
@@ -53,7 +53,7 @@ jobs:
             esac
           else
             # Default for push events - test on both devices
-            echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5", "platform=iOS Simulator,name=iPhone 16,OS=18.5"]' >> $GITHUB_OUTPUT
+            echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5", "platform=iOS Simulator,name=iPhone 16,OS=18.2"]' >> $GITHUB_OUTPUT
           fi
 
   ui-tests:

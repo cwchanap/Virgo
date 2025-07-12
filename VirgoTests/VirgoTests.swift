@@ -35,7 +35,8 @@ struct VirgoTests {
             bpm: 120,
             duration: "3:45",
             genre: "Rock",
-            difficulty: .medium
+            difficulty: .medium,
+            timeSignature: .fourFour
         )
         
         // Verify basic properties
@@ -55,7 +56,7 @@ struct VirgoTests {
     
     @Test func testGameplayDataStructures() async throws {
         // Test DrumBeat creation
-        let beat = DrumBeat(id: 0, drums: [.kick, .snare], timePosition: 0.0)
+        let beat = DrumBeat(id: 0, drums: [.kick, .snare], timePosition: 0.0, interval: .quarter)
         #expect(beat.id == 0)
         #expect(beat.drums.count == 2)
         #expect(beat.timePosition == 0.0)
@@ -70,13 +71,13 @@ struct VirgoTests {
     @Test func testAppConstants() async throws {
         // Test that difficulty colors are properly defined
         let easyTrack = DrumTrack(title: "Easy", artist: "Test", bpm: 100, duration: "2:00",
-                                  genre: "Pop", difficulty: .easy)
+                                  genre: "Pop", difficulty: .easy, timeSignature: .fourFour)
         let mediumTrack = DrumTrack(title: "Medium", artist: "Test", bpm: 120, duration: "3:00",
-                                    genre: "Rock", difficulty: .medium)
+                                    genre: "Rock", difficulty: .medium, timeSignature: .fourFour)
         let hardTrack = DrumTrack(title: "Hard", artist: "Test", bpm: 140, duration: "4:00",
-                                  genre: "Metal", difficulty: .hard)
+                                  genre: "Metal", difficulty: .hard, timeSignature: .fourFour)
         let expertTrack = DrumTrack(title: "Expert", artist: "Test", bpm: 180, duration: "5:00",
-                                    genre: "Progressive", difficulty: .expert)
+                                    genre: "Progressive", difficulty: .expert, timeSignature: .fiveFour)
         
         #expect(easyTrack.difficultyColor == .green)
         #expect(mediumTrack.difficultyColor == .orange)
@@ -162,7 +163,7 @@ struct VirgoTests {
         
         // Test that difficulty color computation is efficient
         let track = DrumTrack(title: "Test", artist: "Test", bpm: 120,
-                              duration: "3:00", genre: "Rock", difficulty: .medium)
+                              duration: "3:00", genre: "Rock", difficulty: .medium, timeSignature: .fourFour)
         let colorStartTime = Date()
         _ = track.difficultyColor
         let colorEndTime = Date()
