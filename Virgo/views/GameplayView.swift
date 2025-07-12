@@ -197,7 +197,22 @@ struct GameplayView: View {
     
     // MARK: - Drum Notation
     private func drumNotationView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
-        ZStack {
+        let beamGroups = calculateBeamGroups(from: drumBeats)
+        
+        return ZStack {
+            // Render beams first (behind notes)
+            ForEach(beamGroups, id: \.id) { beamGroup in
+                BeamGroupView(
+                    beamGroup: beamGroup,
+                    measurePositions: measurePositions,
+                    timeSignature: track.timeSignature,
+                    isActive: beamGroup.beats.contains { beat in
+                        currentBeat == drumBeats.firstIndex(where: { $0.id == beat.id })
+                    }
+                )
+            }
+            
+            // Then render individual notes
             ForEach(Array(drumBeats.enumerated()), id: \.offset) { index, beat in
                 // Find which measure this beat belongs to based on the measure number in the beat
                 let measureIndex = beat.id / 1000
@@ -213,10 +228,16 @@ struct GameplayView: View {
                     // Use the same Y positioning as other elements - center of staff for this row
                     let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
                     
+                    // Check if this beat is part of a beam group
+                    let isBeamed = beamGroups.contains { group in
+                        group.beats.contains { $0.id == beat.id }
+                    }
+                    
                     DrumBeatView(
                         beat: beat, 
                         isActive: currentBeat == index,
-                        row: measurePos.row
+                        row: measurePos.row,
+                        isBeamed: isBeamed
                     )
                     .position(
                         x: beatX,
@@ -267,6 +288,59 @@ struct GameplayView: View {
         }
         .padding()
         .background(Color.black.opacity(0.9))
+    }
+    
+    // MARK: - Beam Grouping Logic
+    private func calculateBeamGroups(from beats: [DrumBeat]) -> [BeamGroup] {
+        var beamGroups: [BeamGroup] = []
+        var currentGroup: [DrumBeat] = []
+        
+        for beat in beats {
+            // Only group eighth notes and shorter that need flags
+            if beat.interval.needsFlag {
+                // Check if this beat is consecutive to the previous one
+                if let lastBeat = currentGroup.last {
+                    let timeDifference = abs(beat.timePosition - lastBeat.timePosition)
+                    let measureNumber = Int(beat.timePosition)
+                    let lastMeasureNumber = Int(lastBeat.timePosition)
+                    
+                    // Group notes if they're in the same measure and consecutive (within 0.3 time units)
+                    if measureNumber == lastMeasureNumber && timeDifference <= 0.3 {
+                        currentGroup.append(beat)
+                    } else {
+                        // Finish current group if it has 2+ notes
+                        if currentGroup.count >= 2 {
+                            beamGroups.append(BeamGroup(
+                                id: "beam_\(currentGroup.first?.id ?? 0)",
+                                beats: currentGroup
+                            ))
+                        }
+                        currentGroup = [beat]
+                    }
+                } else {
+                    currentGroup = [beat]
+                }
+            } else {
+                // Finish current group for non-beamable notes
+                if currentGroup.count >= 2 {
+                    beamGroups.append(BeamGroup(
+                        id: "beam_\(currentGroup.first?.id ?? 0)",
+                        beats: currentGroup
+                    ))
+                }
+                currentGroup = []
+            }
+        }
+        
+        // Don't forget the last group
+        if currentGroup.count >= 2 {
+            beamGroups.append(BeamGroup(
+                id: "beam_\(currentGroup.first?.id ?? 0)",
+                beats: currentGroup
+            ))
+        }
+        
+        return beamGroups
     }
     
     // MARK: - Computed Properties
@@ -347,11 +421,94 @@ struct DrumBeat {
     let interval: NoteInterval
 }
 
+// MARK: - Beam Group Models
+struct BeamGroup: Identifiable {
+    let id: String
+    let beats: [DrumBeat]
+    
+    var beamCount: Int {
+        return beats.map { $0.interval.flagCount }.max() ?? 1
+    }
+}
+
+// MARK: - Beam Group View
+struct BeamGroupView: View {
+    let beamGroup: BeamGroup
+    let measurePositions: [GameplayLayout.MeasurePosition]
+    let timeSignature: TimeSignature
+    let isActive: Bool
+    
+    var body: some View {
+        ZStack {
+            ForEach(0..<beamGroup.beamCount, id: \.self) { beamLevel in
+                BeamView(
+                    beats: beamGroup.beats,
+                    beamLevel: beamLevel,
+                    measurePositions: measurePositions,
+                    timeSignature: timeSignature,
+                    isActive: isActive
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Individual Beam View
+struct BeamView: View {
+    let beats: [DrumBeat]
+    let beamLevel: Int
+    let measurePositions: [GameplayLayout.MeasurePosition]
+    let timeSignature: TimeSignature
+    let isActive: Bool
+    
+    var body: some View {
+        // Filter beats that need this beam level
+        let beamedBeats = beats.filter { $0.interval.flagCount > beamLevel }
+        
+        guard beamedBeats.count >= 2,
+              let firstBeat = beamedBeats.first,
+              let lastBeat = beamedBeats.last else {
+            return AnyView(EmptyView())
+        }
+        
+        // Calculate beam positions
+        let firstMeasureIndex = firstBeat.id / 1000
+        let lastMeasureIndex = lastBeat.id / 1000
+        
+        guard let firstMeasurePos = measurePositions.first(where: { $0.measureIndex == firstMeasureIndex }),
+              let lastMeasurePos = measurePositions.first(where: { $0.measureIndex == lastMeasureIndex }),
+              firstMeasurePos.row == lastMeasurePos.row else {
+            return AnyView(EmptyView())
+        }
+        
+        // Calculate X positions
+        let firstBeatOffset = firstBeat.timePosition - Double(firstMeasureIndex)
+        let lastBeatOffset = lastBeat.timePosition - Double(lastMeasureIndex)
+        let firstBeatIndex = Int(firstBeatOffset * Double(timeSignature.beatsPerMeasure))
+        let lastBeatIndex = Int(lastBeatOffset * Double(timeSignature.beatsPerMeasure))
+        
+        let startX = GameplayLayout.noteXPosition(measurePosition: firstMeasurePos, beatIndex: firstBeatIndex, timeSignature: timeSignature) + 7 // Stem offset
+        let endX = GameplayLayout.noteXPosition(measurePosition: lastMeasurePos, beatIndex: lastBeatIndex, timeSignature: timeSignature) + 7
+        
+        // Beam Y position (above the notes, accounting for beam level)
+        let baseY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: firstMeasurePos.row) - 60 - CGFloat(beamLevel * 6)
+        
+        return AnyView(
+            Path { path in
+                path.move(to: CGPoint(x: startX, y: baseY))
+                path.addLine(to: CGPoint(x: endX, y: baseY))
+            }
+            .stroke(isActive ? Color.yellow : Color.white, lineWidth: 4)
+        )
+    }
+}
+
 // MARK: - Drum Beat View
 struct DrumBeatView: View {
     let beat: DrumBeat
     let isActive: Bool
     let row: Int
+    let isBeamed: Bool
     
     // Calculate stem connection info for multiple simultaneous notes
     private var stemInfo: StemConnectionInfo {
@@ -390,14 +547,19 @@ struct DrumBeatView: View {
             
             // Connected stem for multiple notes (if applicable)
             if stemInfo.hasConnectedStem && beat.interval.needsStem {
+                let stemTop: CGFloat = isBeamed ? -60 : stemInfo.stemTop  // End at beam if beamed
+                let stemBottom = stemInfo.stemBottom
+                let stemHeight = stemBottom - stemTop
+                let stemCenterY = (stemTop + stemBottom) / 2
+                
                 Rectangle()
-                    .frame(width: 2, height: stemInfo.stemBottom - stemInfo.stemTop)
+                    .frame(width: 2, height: stemHeight)
                     .foregroundColor(isActive ? .yellow : .white)
-                    .offset(x: stemInfo.mainStemX, y: (stemInfo.stemTop + stemInfo.stemBottom) / 2)
+                    .offset(x: stemInfo.mainStemX, y: stemCenterY)
             }
             
-            // Flags on the main stem (for connected stems)
-            if stemInfo.hasConnectedStem && beat.interval.needsFlag {
+            // Flags on the main stem (for connected stems, only if not beamed)
+            if stemInfo.hasConnectedStem && beat.interval.needsFlag && !isBeamed {
                 ForEach(0..<beat.interval.flagCount, id: \.self) { flagIndex in
                     FlagView(flagIndex: flagIndex)
                         .foregroundColor(isActive ? .yellow : .white)
@@ -413,11 +575,23 @@ struct DrumBeatView: View {
                     // Individual stem for single notes or short connection to main stem
                     if beat.interval.needsStem {
                         if !stemInfo.hasConnectedStem {
-                            // Individual stem for single note
-                            Rectangle()
-                                .frame(width: 2, height: 75)
-                                .foregroundColor(isActive ? .yellow : .white)
-                                .offset(x: 7, y: drumYOffset - 37.5)
+                            if isBeamed {
+                                // Beamed stem - calculate height to reach beam position
+                                let beamY: CGFloat = -60 // Base beam position relative to center staff line
+                                let stemHeight = abs(drumYOffset - beamY)
+                                let stemCenterY = (drumYOffset + beamY) / 2
+                                
+                                Rectangle()
+                                    .frame(width: 2, height: stemHeight)
+                                    .foregroundColor(isActive ? .yellow : .white)
+                                    .offset(x: 7, y: stemCenterY)
+                            } else {
+                                // Individual stem for single note (not beamed)
+                                Rectangle()
+                                    .frame(width: 2, height: 75)
+                                    .foregroundColor(isActive ? .yellow : .white)
+                                    .offset(x: 7, y: drumYOffset - 37.5)
+                            }
                         } else {
                             // Short connector to main stem (only if note is not at the extreme ends)
                             let isTopNote = drumYOffset == beat.drums.map { $0.notePosition.yOffset }.min()
@@ -433,8 +607,8 @@ struct DrumBeatView: View {
                         }
                     }
                     
-                    // Flags for individual notes (only if not using connected stem)
-                    if !stemInfo.hasConnectedStem && beat.interval.needsFlag {
+                    // Flags for individual notes (only if not using connected stem and not beamed)
+                    if !stemInfo.hasConnectedStem && beat.interval.needsFlag && !isBeamed {
                         ForEach(0..<beat.interval.flagCount, id: \.self) { flagIndex in
                             FlagView(flagIndex: flagIndex)
                                 .foregroundColor(isActive ? .yellow : .white)
