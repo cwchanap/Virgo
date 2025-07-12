@@ -85,111 +85,146 @@ struct GameplayView: View {
     
     // MARK: - Sheet Music View
     private func sheetMusicView(geometry: GeometryProxy) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            ZStack(alignment: .leading) {
+        let measuresCount = max(1, (drumBeats.map { $0.id }.max() ?? 1000) / 1000)
+        let measurePositions = GameplayLayout.calculateMeasurePositions(totalMeasures: measuresCount, timeSignature: track.timeSignature)
+        let totalHeight = GameplayLayout.totalHeight(for: measurePositions)
+        
+        return ScrollView([.horizontal, .vertical], showsIndicators: false) {
+            ZStack(alignment: .topLeading) {
                 // Staff lines background
-                staffLinesView(geometry: geometry)
+                staffLinesView(measurePositions: measurePositions)
                 
                 // Bar lines
-                barLinesView(geometry: geometry)
+                barLinesView(measurePositions: measurePositions)
                 
-                // Drum clef
-                drumClefView()
-                
-                // Time signature
-                timeSignatureView()
+                // Clefs and time signatures for each row
+                clefsAndTimeSignaturesView(measurePositions: measurePositions)
                 
                 // Drum notation
-                drumNotationView(geometry: geometry)
+                drumNotationView(measurePositions: measurePositions)
             }
-            .frame(height: 300)
+            .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
         }
         .background(Color.gray.opacity(0.1))
     }
     
     // MARK: - Staff Lines
-    private func staffLinesView(geometry: GeometryProxy) -> some View {
-        let measuresCount = max(1, (drumBeats.map { $0.id }.max() ?? 1000) / 1000)
-        let staffWidth = GameplayLayout.staffWidth(measuresCount: measuresCount, timeSignature: track.timeSignature)
+    private func staffLinesView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+        let rows = Set(measurePositions.map { $0.row })
         
-        return VStack(spacing: GameplayLayout.staffLineSpacing) {
-            ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { _ in
-                Rectangle()
-                    .frame(width: staffWidth, height: 1)
-                    .foregroundColor(.gray.opacity(0.5))
+        return ZStack {
+            ForEach(Array(rows), id: \.self) { row in
+                ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
+                    Rectangle()
+                        .frame(width: GameplayLayout.maxRowWidth, height: 1) // Full width to cover clef area
+                        .foregroundColor(.gray.opacity(0.5))
+                        .position(
+                            x: GameplayLayout.maxRowWidth / 2, // Center in full width
+                            y: GameplayLayout.StaffLinePosition(rawValue: lineIndex)?.absoluteY(for: row) ?? 0
+                        )
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
-    // MARK: - Drum Clef
-    private func drumClefView() -> some View {
-        HStack {
-            DrumClefSymbol()
-                .frame(width: GameplayLayout.clefWidth, height: 80)
-                .foregroundColor(.white)
-                .position(x: GameplayLayout.clefX, y: GameplayLayout.baseStaffY)
-            
-            Spacer()
-        }
-    }
-    
-    // MARK: - Time Signature
-    private func timeSignatureView() -> some View {
-        HStack {
-            TimeSignatureSymbol(timeSignature: track.timeSignature)
-                .frame(width: GameplayLayout.timeSignatureWidth, height: 60)
-                .foregroundColor(.white)
-                .position(x: GameplayLayout.timeSignatureX, y: GameplayLayout.baseStaffY)
-            
-            Spacer()
+    // MARK: - Clefs and Time Signatures
+    private func clefsAndTimeSignaturesView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+        let rows = Set(measurePositions.map { $0.row })
+        
+        return ZStack {
+            ForEach(Array(rows), id: \.self) { row in
+                Group {
+                    // Drum Clef - position at center of staff (line 3)
+                    DrumClefSymbol()
+                        .frame(width: GameplayLayout.clefWidth, height: GameplayLayout.staffHeight)
+                        .foregroundColor(.white)
+                        .position(
+                            x: GameplayLayout.clefX,
+                            y: GameplayLayout.StaffLinePosition.line3.absoluteY(for: row)
+                        )
+                    
+                    // Time Signature - position at center of staff (line 3)
+                    TimeSignatureSymbol(timeSignature: track.timeSignature)
+                        .frame(width: GameplayLayout.timeSignatureWidth, height: GameplayLayout.staffHeight)
+                        .foregroundColor(.white)
+                        .position(
+                            x: GameplayLayout.timeSignatureX,
+                            y: GameplayLayout.StaffLinePosition.line3.absoluteY(for: row)
+                        )
+                }
+            }
         }
     }
     
     // MARK: - Bar Lines
-    private func barLinesView(geometry: GeometryProxy) -> some View {
-        HStack(spacing: 0) {
-            // Start after the clef and time signature
-            Spacer()
-                .frame(width: GameplayLayout.leftMargin)
-            
-            // Calculate measures based on drum beats and time signature
-            let measuresCount = max(1, (drumBeats.map { $0.id }.max() ?? 1000) / 1000)
-            let measureWidth = GameplayLayout.measureWidth(for: track.timeSignature)
-            
-            ForEach(0..<measuresCount, id: \.self) { measureIndex in
+    private func barLinesView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+        ZStack {
+            // Regular bar lines
+            ForEach(measurePositions, id: \.measureIndex) { position in
+                // Use the same Y positioning as staff lines - center of the staff for this row
+                let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.row) // Middle staff line
+                
                 Rectangle()
                     .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
                     .foregroundColor(.white.opacity(0.8))
-                    .position(x: 1, y: GameplayLayout.baseStaffY)
-                
-                Spacer()
-                    .frame(width: measureWidth)
+                    .position(
+                        x: position.xOffset,
+                        y: centerY
+                    )
             }
             
-            // Bold double bar line at the end - positioned exactly at the end of staff
-            HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
-                Rectangle()
-                    .frame(width: GameplayLayout.doubleBarLineWidths.thin, height: GameplayLayout.staffHeight)
-                    .foregroundColor(.white)
-                Rectangle()
-                    .frame(width: GameplayLayout.doubleBarLineWidths.thick, height: GameplayLayout.staffHeight)
-                    .foregroundColor(.white)
+            // Double bar line at the very end
+            if let lastPosition = measurePositions.last {
+                let measureWidth = GameplayLayout.measureWidth(for: track.timeSignature)
+                let endX = lastPosition.xOffset + measureWidth
+                let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row) // Middle staff line
+                
+                HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
+                    Rectangle()
+                        .frame(width: GameplayLayout.doubleBarLineWidths.thin, height: GameplayLayout.staffHeight)
+                        .foregroundColor(.white)
+                    Rectangle()
+                        .frame(width: GameplayLayout.doubleBarLineWidths.thick, height: GameplayLayout.staffHeight)
+                        .foregroundColor(.white)
+                }
+                .position(
+                    x: endX,
+                    y: centerY
+                )
             }
-            .position(x: 3, y: GameplayLayout.baseStaffY)
         }
     }
     
     // MARK: - Drum Notation
-    private func drumNotationView(geometry: GeometryProxy) -> some View {
-        return HStack(spacing: GameplayLayout.noteSpacing) {
+    private func drumNotationView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+        ZStack {
             ForEach(Array(drumBeats.enumerated()), id: \.offset) { index, beat in
-                DrumBeatView(beat: beat, isActive: currentBeat == index)
+                // Find which measure this beat belongs to based on the measure number in the beat
+                let measureIndex = beat.id / 1000
+                
+                if let measurePos = measurePositions.first(where: { $0.measureIndex == measureIndex }) {
+                    // Calculate beat index within the measure based on measureOffset
+                    let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
+                    // Convert offset to beat index (0, 1, 2, 3 for 4/4 time)
+                    let beatIndex = Int(beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure))
+                    // Use unified spacing system
+                    let beatX = GameplayLayout.noteXPosition(measurePosition: measurePos, beatIndex: beatIndex, timeSignature: track.timeSignature)
+                    
+                    // Use the same Y positioning as other elements - center of staff for this row
+                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
+                    
+                    DrumBeatView(
+                        beat: beat, 
+                        isActive: currentBeat == index,
+                        row: measurePos.row
+                    )
+                    .position(
+                        x: beatX,
+                        y: centerY
+                    )
+                }
             }
         }
-        .padding(.leading, GameplayLayout.leftMargin)
-        .padding(.trailing, 50)
-        .frame(height: 300)
     }
     
     // MARK: - Controls View
@@ -317,24 +352,29 @@ struct DrumBeat {
 struct DrumBeatView: View {
     let beat: DrumBeat
     let isActive: Bool
+    let row: Int
     
     var body: some View {
         ZStack {
             // Beat column background
             Rectangle()
-                .frame(width: 30, height: 280)
+                .frame(width: 30, height: GameplayLayout.staffHeight)
                 .foregroundColor(isActive ? Color.purple.opacity(0.3) : Color.clear)
                 .cornerRadius(4)
             
             // Drum symbols with tails
             ForEach(beat.drums, id: \.self) { drum in
                 ZStack {
+                    // Calculate relative Y offset from the center staff line (line 3)
+                    let centerY: CGFloat = 0 // We're positioned at center, so this is our reference
+                    let drumYOffset = drum.notePosition.yOffset // Offset from center line
+                    
                     // Stem (tail) for notes that need it
                     if beat.interval.needsStem {
                         Rectangle()
                             .frame(width: 2, height: 75)
                             .foregroundColor(isActive ? .yellow : .white)
-                            .position(x: 22, y: drum.yPosition - 37.5)
+                            .offset(x: 7, y: drumYOffset - 37.5)
                     }
                     
                     // Flags for eighth notes and shorter
@@ -342,7 +382,7 @@ struct DrumBeatView: View {
                         ForEach(0..<beat.interval.flagCount, id: \.self) { flagIndex in
                             FlagView(flagIndex: flagIndex)
                                 .foregroundColor(isActive ? .yellow : .white)
-                                .position(x: 24, y: drum.yPosition - 67.5 - CGFloat(flagIndex * 8))
+                                .offset(x: 9, y: drumYOffset - 67.5 - CGFloat(flagIndex * 8))
                         }
                     }
                     
@@ -350,11 +390,11 @@ struct DrumBeatView: View {
                     Text(drum.symbol)
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(isActive ? .yellow : .white)
-                        .position(x: 15, y: drum.yPosition)
+                        .offset(x: 0, y: drumYOffset)
                 }
             }
         }
-        .frame(width: 30, height: 280)
+        .frame(width: 30, height: GameplayLayout.staffHeight)
     }
 }
 
