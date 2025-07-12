@@ -133,18 +133,6 @@ enum DrumType {
         }
     }
     
-    var yPosition: CGFloat {
-        switch self {
-        case .crash: return 0 * DrumLayoutConstants.staffLineHeight
-        case .hiHat: return 1 * DrumLayoutConstants.staffLineHeight
-        case .tom1: return 2 * DrumLayoutConstants.staffLineHeight
-        case .snare: return 3 * DrumLayoutConstants.staffLineHeight
-        case .tom2: return 4 * DrumLayoutConstants.staffLineHeight
-        case .tom3: return 5 * DrumLayoutConstants.staffLineHeight
-        case .kick: return 6 * DrumLayoutConstants.staffLineHeight
-        case .ride: return 7 * DrumLayoutConstants.staffLineHeight
-        }
-    }
     
     static func from(noteType: NoteType) -> DrumType? {
         switch noteType {

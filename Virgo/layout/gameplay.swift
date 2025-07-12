@@ -13,7 +13,12 @@ struct GameplayLayout {
     static let staffLineCount: Int = 5
     static let staffHeight: CGFloat = CGFloat(staffLineCount - 1) * staffLineSpacing // 80
     
-    // MARK: - Base Y Position (lowest staff line)
+    // MARK: - Multi-row Layout Constants
+    static let maxRowWidth: CGFloat = 900 // Maximum width per row before wrapping
+    static let rowHeight: CGFloat = 200 // Height between rows
+    static let rowVerticalSpacing: CGFloat = 40 // Extra space between rows
+    
+    // MARK: - Base Y Position (lowest staff line for first row)
     static let baseStaffY: CGFloat = 150 + (staffHeight / 2) // 190 (center of staff area)
     
     // MARK: - Staff Line Positions (relative to lowest staff line)
@@ -28,8 +33,9 @@ struct GameplayLayout {
             return -CGFloat(self.rawValue) * GameplayLayout.staffLineSpacing
         }
         
-        var absoluteY: CGFloat {
-            return GameplayLayout.baseStaffY + yOffset
+        func absoluteY(for row: Int) -> CGFloat {
+            let rowY = GameplayLayout.baseStaffY + CGFloat(row) * (GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing)
+            return rowY + yOffset
         }
     }
     
@@ -63,8 +69,9 @@ struct GameplayLayout {
             }
         }
         
-        var absoluteY: CGFloat {
-            return GameplayLayout.baseStaffY + yOffset
+        func absoluteY(for row: Int) -> CGFloat {
+            let rowY = GameplayLayout.baseStaffY + CGFloat(row) * (GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing)
+            return rowY + yOffset
         }
     }
     
@@ -72,8 +79,8 @@ struct GameplayLayout {
     static let clefWidth: CGFloat = 40
     static let timeSignatureWidth: CGFloat = 30
     static let leftMargin: CGFloat = 100 // clefWidth + timeSignatureWidth + spacing
-    static let noteSpacing: CGFloat = 40
-    static let measureSpacing: CGFloat = 0 // Space between measures
+    static let uniformSpacing: CGFloat = 20 // Unified spacing between all elements (bars, notes)
+    static let measureSpacing: CGFloat = 12 // Space between measures
     
     // MARK: - Bar Line Layout
     static let barLineWidth: CGFloat = 2
@@ -84,28 +91,66 @@ struct GameplayLayout {
     static let clefX: CGFloat = 20
     static let timeSignatureX: CGFloat = 55
     
+    // MARK: - Row Calculation
+    struct MeasurePosition {
+        let row: Int
+        let xOffset: CGFloat
+        let measureIndex: Int
+    }
+    
+    static func calculateMeasurePositions(totalMeasures: Int, timeSignature: TimeSignature) -> [MeasurePosition] {
+        var positions: [MeasurePosition] = []
+        var currentRow = 0
+        var currentX: CGFloat = leftMargin
+        let measureWidth = self.measureWidth(for: timeSignature)
+        
+        for measureIndex in 0..<totalMeasures {
+            // Check if this measure would exceed the row width
+            let totalWidthNeeded = currentX + measureWidth + (measureIndex == totalMeasures - 1 ? 20 : measureSpacing)
+            
+            if totalWidthNeeded > maxRowWidth && measureIndex > 0 {
+                // Start new row
+                currentRow += 1
+                currentX = leftMargin
+            }
+            
+            positions.append(MeasurePosition(row: currentRow, xOffset: currentX, measureIndex: measureIndex))
+            currentX += measureWidth + measureSpacing
+        }
+        
+        return positions
+    }
+    
+    static func totalHeight(for positions: [MeasurePosition]) -> CGFloat {
+        let maxRow = positions.map { $0.row }.max() ?? 0
+        return baseStaffY + CGFloat(maxRow + 1) * (rowHeight + rowVerticalSpacing) + 100
+    }
+    
     // MARK: - Calculation Helpers
     static func measureWidth(for timeSignature: TimeSignature) -> CGFloat {
-        return CGFloat(timeSignature.beatsPerMeasure) * noteSpacing
+        // Pattern: bar + spacing + note + spacing + note + spacing + ... + spacing
+        // Total: barWidth + (beatsPerMeasure + 1) * uniformSpacing
+        return barLineWidth + CGFloat(timeSignature.beatsPerMeasure + 1) * uniformSpacing
     }
     
-    static func staffWidth(measuresCount: Int, timeSignature: TimeSignature) -> CGFloat {
-        return leftMargin + 
-               (CGFloat(measuresCount) * measureWidth(for: timeSignature)) + 
-               (CGFloat(max(0, measuresCount - 1)) * measureSpacing) + 
-               10 // Space for final double bar line
+    static func noteXPosition(measurePosition: MeasurePosition, beatIndex: Int, timeSignature: TimeSignature) -> CGFloat {
+        // Position: measureStart + barWidth + spacing + beatIndex * (spacing)
+        return measurePosition.xOffset + barLineWidth + uniformSpacing + CGFloat(beatIndex) * uniformSpacing
     }
     
-    static func noteXPosition(measureIndex: Int, beatIndex: Int, timeSignature: TimeSignature) -> CGFloat {
-        let measureWidth = measureWidth(for: timeSignature)
-        let measureX = leftMargin + (CGFloat(measureIndex) * (measureWidth + measureSpacing))
-        let beatX = CGFloat(beatIndex) * noteSpacing
-        return measureX + beatX
+    static func rowWidth(for timeSignature: TimeSignature) -> CGFloat {
+        return maxRowWidth
     }
     
-    static func barLineXPosition(measureIndex: Int, timeSignature: TimeSignature) -> CGFloat {
-        let measureWidth = measureWidth(for: timeSignature)
-        return leftMargin + (CGFloat(measureIndex) * (measureWidth + measureSpacing))
+    static func noteXPosition(measureIndex: Int, beatIndex: Int, timeSignature: TimeSignature, positions: [MeasurePosition]) -> CGFloat {
+        guard let measurePos = positions.first(where: { $0.measureIndex == measureIndex }) else {
+            return leftMargin
+        }
+        return noteXPosition(measurePosition: measurePos, beatIndex: beatIndex, timeSignature: timeSignature)
+    }
+    
+    static func noteYPosition(row: Int, notePosition: NotePosition) -> CGFloat {
+        return notePosition.absoluteY(for: row)
     }
 }
 
@@ -124,7 +169,7 @@ extension DrumType {
         }
     }
     
-    var yPosition: CGFloat {
-        return notePosition.absoluteY
+    func yPosition(for row: Int) -> CGFloat {
+        return notePosition.absoluteY(for: row)
     }
 }

@@ -90,12 +90,104 @@ extension DrumTrack {
                 difficulty: .medium,
                 timeSignature: .fourFour,
                 notes: [
+                    // Measure 1 - Basic rock pattern
                     Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
                     Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5),
                     Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0),
                     Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25),
                     Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75)
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75),
+                    
+                    // Measure 2 - Repeat pattern
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 2, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 2, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 2, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 2, measureOffset: 0.75),
+                    
+                    // Measure 3 - Variation with bass on beat 3
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.5),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 3, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 3, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 3, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 3, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 3, measureOffset: 0.75),
+                    
+                    // Measure 4 - Back to basic pattern
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 4, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 4, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 4, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 4, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 4, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 4, measureOffset: 0.75),
+                    
+                    // Measure 5 - Add crash cymbal
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 5, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .crash, measureNumber: 5, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 5, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 5, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 5, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 5, measureOffset: 0.75),
+                    
+                    // Measure 6 - Regular pattern
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 6, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 6, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 6, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 6, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 6, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 6, measureOffset: 0.75),
+                    
+                    // Measure 7 - Tom fill
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 7, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 7, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .highTom, measureNumber: 7, measureOffset: 0.75),
+                    Note(interval: .eighth, noteType: .midTom, measureNumber: 7, measureOffset: 0.875),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 7, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 7, measureOffset: 0.25),
+                    
+                    // Measure 8 - Regular pattern
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 8, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 8, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 8, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 8, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 8, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 8, measureOffset: 0.75),
+                    
+                    // Measure 9 - Build up with double bass
+                    Note(interval: .eighth, noteType: .bass, measureNumber: 9, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .bass, measureNumber: 9, measureOffset: 0.25),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 9, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 9, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 9, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 9, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 9, measureOffset: 0.75),
+                    
+                    // Measure 10 - Continue build
+                    Note(interval: .eighth, noteType: .bass, measureNumber: 10, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .bass, measureNumber: 10, measureOffset: 0.25),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 10, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 10, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 10, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 10, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 10, measureOffset: 0.75),
+                    
+                    // Measure 11 - Climax with ride cymbal
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 11, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 11, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .ride, measureNumber: 11, measureOffset: 0.0),
+                    Note(interval: .eighth, noteType: .ride, measureNumber: 11, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .ride, measureNumber: 11, measureOffset: 0.5),
+                    Note(interval: .eighth, noteType: .ride, measureNumber: 11, measureOffset: 0.75),
+                    
+                    // Measure 12 - Final measure with crash ending
+                    Note(interval: .quarter, noteType: .bass, measureNumber: 12, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .crash, measureNumber: 12, measureOffset: 0.0),
+                    Note(interval: .quarter, noteType: .snare, measureNumber: 12, measureOffset: 0.5),
+                    Note(interval: .quarter, noteType: .crash, measureNumber: 12, measureOffset: 0.75),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 12, measureOffset: 0.25),
+                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 12, measureOffset: 0.5)
                 ]
             ),
             DrumTrack(
