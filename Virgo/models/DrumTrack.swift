@@ -9,7 +9,6 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-
 @Model
 final class Note {
     var interval: NoteInterval
