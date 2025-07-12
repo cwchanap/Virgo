@@ -347,12 +347,38 @@ struct DrumBeat {
     let interval: NoteInterval
 }
 
-
 // MARK: - Drum Beat View
 struct DrumBeatView: View {
     let beat: DrumBeat
     let isActive: Bool
     let row: Int
+    
+    // Calculate stem connection info for multiple simultaneous notes
+    private var stemInfo: StemConnectionInfo {
+        guard beat.interval.needsStem && beat.drums.count > 1 else {
+            return StemConnectionInfo(hasConnectedStem: false, stemTop: 0, stemBottom: 0, mainStemX: 7)
+        }
+        
+        let noteOffsets = beat.drums.map { $0.notePosition.yOffset }
+        let topOffset = noteOffsets.min() ?? 0 // Highest note (smallest y offset)
+        let bottomOffset = noteOffsets.max() ?? 0 // Lowest note (largest y offset)
+        
+        // Only connect stems if notes span multiple staff positions
+        let shouldConnect = abs(topOffset - bottomOffset) > GameplayLayout.staffLineSpacing
+        
+        if shouldConnect {
+            // Extend stem upward from the topmost note only (standard music notation)
+            let stemExtension: CGFloat = 35
+            return StemConnectionInfo(
+                hasConnectedStem: true,
+                stemTop: topOffset - stemExtension,
+                stemBottom: bottomOffset, // Don't extend beyond the bottommost note
+                mainStemX: 7
+            )
+        } else {
+            return StemConnectionInfo(hasConnectedStem: false, stemTop: 0, stemBottom: 0, mainStemX: 7)
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -362,23 +388,53 @@ struct DrumBeatView: View {
                 .foregroundColor(isActive ? Color.purple.opacity(0.3) : Color.clear)
                 .cornerRadius(4)
             
-            // Drum symbols with tails
+            // Connected stem for multiple notes (if applicable)
+            if stemInfo.hasConnectedStem && beat.interval.needsStem {
+                Rectangle()
+                    .frame(width: 2, height: stemInfo.stemBottom - stemInfo.stemTop)
+                    .foregroundColor(isActive ? .yellow : .white)
+                    .offset(x: stemInfo.mainStemX, y: (stemInfo.stemTop + stemInfo.stemBottom) / 2)
+            }
+            
+            // Flags on the main stem (for connected stems)
+            if stemInfo.hasConnectedStem && beat.interval.needsFlag {
+                ForEach(0..<beat.interval.flagCount, id: \.self) { flagIndex in
+                    FlagView(flagIndex: flagIndex)
+                        .foregroundColor(isActive ? .yellow : .white)
+                        .offset(x: stemInfo.mainStemX + 2, y: stemInfo.stemTop - CGFloat(flagIndex * 8))
+                }
+            }
+            
+            // Drum symbols with individual stems (for single notes or connection to main stem)
             ForEach(beat.drums, id: \.self) { drum in
                 ZStack {
-                    // Calculate relative Y offset from the center staff line (line 3)
-                    let centerY: CGFloat = 0 // We're positioned at center, so this is our reference
-                    let drumYOffset = drum.notePosition.yOffset // Offset from center line
+                    let drumYOffset = drum.notePosition.yOffset
                     
-                    // Stem (tail) for notes that need it
+                    // Individual stem for single notes or short connection to main stem
                     if beat.interval.needsStem {
-                        Rectangle()
-                            .frame(width: 2, height: 75)
-                            .foregroundColor(isActive ? .yellow : .white)
-                            .offset(x: 7, y: drumYOffset - 37.5)
+                        if !stemInfo.hasConnectedStem {
+                            // Individual stem for single note
+                            Rectangle()
+                                .frame(width: 2, height: 75)
+                                .foregroundColor(isActive ? .yellow : .white)
+                                .offset(x: 7, y: drumYOffset - 37.5)
+                        } else {
+                            // Short connector to main stem (only if note is not at the extreme ends)
+                            let isTopNote = drumYOffset == beat.drums.map { $0.notePosition.yOffset }.min()
+                            let isBottomNote = drumYOffset == beat.drums.map { $0.notePosition.yOffset }.max()
+                            
+                            if !isTopNote && !isBottomNote {
+                                // Short horizontal connector to main stem
+                                Rectangle()
+                                    .frame(width: 5, height: 2)
+                                    .foregroundColor(isActive ? .yellow : .white)
+                                    .offset(x: 4.5, y: drumYOffset)
+                            }
+                        }
                     }
                     
-                    // Flags for eighth notes and shorter
-                    if beat.interval.needsFlag {
+                    // Flags for individual notes (only if not using connected stem)
+                    if !stemInfo.hasConnectedStem && beat.interval.needsFlag {
                         ForEach(0..<beat.interval.flagCount, id: \.self) { flagIndex in
                             FlagView(flagIndex: flagIndex)
                                 .foregroundColor(isActive ? .yellow : .white)
@@ -396,6 +452,14 @@ struct DrumBeatView: View {
         }
         .frame(width: 30, height: GameplayLayout.staffHeight)
     }
+}
+
+// MARK: - Stem Connection Info
+private struct StemConnectionInfo {
+    let hasConnectedStem: Bool
+    let stemTop: CGFloat
+    let stemBottom: CGFloat
+    let mainStemX: CGFloat
 }
 
 // MARK: - Flag View

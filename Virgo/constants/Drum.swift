@@ -133,7 +133,6 @@ enum DrumType {
         }
     }
     
-    
     static func from(noteType: NoteType) -> DrumType? {
         switch noteType {
         case .bass: return .kick
@@ -151,4 +150,3 @@ enum DrumType {
         }
     }
 }
-

@@ -79,7 +79,7 @@ struct GameplayLayout {
     static let clefWidth: CGFloat = 40
     static let timeSignatureWidth: CGFloat = 30
     static let leftMargin: CGFloat = 100 // clefWidth + timeSignatureWidth + spacing
-    static let uniformSpacing: CGFloat = 20 // Unified spacing between all elements (bars, notes)
+    static let uniformSpacing: CGFloat = 50 // Unified spacing between all elements (bars, notes)
     static let measureSpacing: CGFloat = 12 // Space between measures
     
     // MARK: - Bar Line Layout
