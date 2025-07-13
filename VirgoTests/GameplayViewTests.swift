@@ -51,28 +51,34 @@ struct GameplayViewTests {
         #expect(DrumType.tom1.symbol == "◐")
         #expect(DrumType.tom2.symbol == "◑")
         #expect(DrumType.tom3.symbol == "◒")
+        #expect(DrumType.cowbell.symbol == "◇")
     }
     
     @Test func testDrumTypePositions() async throws {
-        #expect(DrumType.crash.yPosition == 0)
-        #expect(DrumType.hiHat.yPosition == 30)
-        #expect(DrumType.tom1.yPosition == 60)
-        #expect(DrumType.snare.yPosition == 90)
-        #expect(DrumType.tom2.yPosition == 120)
-        #expect(DrumType.tom3.yPosition == 150)
-        #expect(DrumType.kick.yPosition == 180)
-        #expect(DrumType.ride.yPosition == 210)
+        let row = 0 // Use row 0 for testing
+        
+        #expect(DrumType.crash.yPosition(for: row) == 90)   // aboveLine5
+        #expect(DrumType.hiHat.yPosition(for: row) == 110)  // line5
+        #expect(DrumType.cowbell.yPosition(for: row) == 130)  // line4
+        #expect(DrumType.tom1.yPosition(for: row) == 140)   // spaceBetween3And4
+        #expect(DrumType.snare.yPosition(for: row) == 150)  // line3
+        #expect(DrumType.tom2.yPosition(for: row) == 160)   // spaceBetween2And3
+        #expect(DrumType.tom3.yPosition(for: row) == 170)   // line2
+        #expect(DrumType.kick.yPosition(for: row) == 210)   // belowLine1
+        #expect(DrumType.ride.yPosition(for: row) == 120)   // spaceBetween4And5
         
         // Test that positions are correctly ordered (top to bottom)
-        let positions = [DrumType.crash, .hiHat, .tom1, .snare, .tom2, .tom3, .kick, .ride].map { $0.yPosition }
+        let orderedTypes: [DrumType] = [.crash, .hiHat, .ride, .cowbell, .tom1, .snare, .tom2, .tom3, .kick]
+        let positions = orderedTypes.map { $0.yPosition(for: row) }
         let sortedPositions = positions.sorted()
         #expect(positions == sortedPositions)
     }
     
     @Test func testDrumTypeUniqueness() async throws {
-        let allDrumTypes: [DrumType] = [.kick, .snare, .hiHat, .crash, .ride, .tom1, .tom2, .tom3]
+        let row = 0 // Use row 0 for testing
+        let allDrumTypes: [DrumType] = [.kick, .snare, .hiHat, .crash, .ride, .tom1, .tom2, .tom3, .cowbell]
         let symbols = allDrumTypes.map { $0.symbol }
-        let positions = allDrumTypes.map { $0.yPosition }
+        let positions = allDrumTypes.map { $0.yPosition(for: row) }
         
         // All symbols should be unique
         #expect(Set(symbols).count == symbols.count)
@@ -82,13 +88,13 @@ struct GameplayViewTests {
     }
     
     @Test func testDrumTypePositionSpacing() async throws {
-        let allDrumTypes: [DrumType] = [.crash, .hiHat, .tom1, .snare, .tom2, .tom3, .kick, .ride]
-        let positions = allDrumTypes.map { $0.yPosition }
+        let row = 0 // Use row 0 for testing
+        let allDrumTypes: [DrumType] = [.crash, .hiHat, .ride, .cowbell, .tom1, .snare, .tom2, .tom3, .kick]
+        let positions = allDrumTypes.map { $0.yPosition(for: row) }
         
-        // Check that positions are evenly spaced (30 units apart)
+        // Check that positions are properly ordered (smaller Y = higher on screen)
         for i in 1..<positions.count {
-            let spacing = positions[i] - positions[i-1]
-            #expect(spacing == 30)
+            #expect(positions[i] >= positions[i-1]) // Y increases as we go down
         }
     }
     
@@ -173,13 +179,22 @@ struct GameplayViewTests {
     }
     
     @Test func testDrumTypeEnumCaseCount() async throws {
-        let allDrumTypes: [DrumType] = [.kick, .snare, .hiHat, .crash, .ride, .tom1, .tom2, .tom3]
+        let allDrumTypes: [DrumType] = [.kick, .snare, .hiHat, .crash, .ride, .tom1, .tom2, .tom3, .cowbell]
         
-        // Ensure we have exactly 8 drum types
-        #expect(allDrumTypes.count == 8)
+        // Ensure we have exactly 9 drum types
+        #expect(allDrumTypes.count == 9)
         
         // Ensure each type appears only once
         let uniqueTypes = Set(allDrumTypes.map { $0.symbol })
-        #expect(uniqueTypes.count == 8)
+        #expect(uniqueTypes.count == 9)
+    }
+    
+    @Test func testCowbellDrumType() async throws {
+        // Test that cowbell is properly configured
+        #expect(DrumType.cowbell.symbol == "◇")
+        #expect(DrumType.cowbell.yPosition(for: 0) == 130) // line4
+        
+        // Test that cowbell maps correctly from NoteType
+        #expect(DrumType.from(noteType: .cowbell) == .cowbell)
     }
 }

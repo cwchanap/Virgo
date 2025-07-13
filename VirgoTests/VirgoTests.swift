@@ -64,8 +64,8 @@ struct VirgoTests {
         // Test DrumType properties
         #expect(DrumType.kick.symbol == "●")
         #expect(DrumType.snare.symbol == "◆")
-        #expect(DrumType.kick.yPosition == 180)
-        #expect(DrumType.snare.yPosition == 90)
+        #expect(DrumType.kick.yPosition(for: 0) == 210)  // belowLine1
+        #expect(DrumType.snare.yPosition(for: 0) == 150) // line3
     }
     
     @Test func testAppConstants() async throws {
@@ -111,16 +111,17 @@ struct VirgoTests {
     
     @Test func testModelIntegration() async throws {
         // Test that all drum types have unique symbols and positions
-        let allDrumTypes: [DrumType] = [.kick, .snare, .hiHat, .crash, .ride, .tom1, .tom2, .tom3]
+        let row = 0 // Use row 0 for testing
+        let allDrumTypes: [DrumType] = [.kick, .snare, .hiHat, .crash, .ride, .tom1, .tom2, .tom3, .cowbell]
         let symbols = allDrumTypes.map { $0.symbol }
-        let positions = allDrumTypes.map { $0.yPosition }
+        let positions = allDrumTypes.map { $0.yPosition(for: row) }
         
         #expect(Set(symbols).count == symbols.count) // All unique
         #expect(Set(positions).count == positions.count) // All unique
         
         // Test that positions are ordered correctly (top to bottom based on drum kit layout)
-        let orderedDrumTypes: [DrumType] = [.crash, .hiHat, .tom1, .snare, .tom2, .tom3, .kick, .ride]
-        let orderedPositions = orderedDrumTypes.map { $0.yPosition }
+        let orderedDrumTypes: [DrumType] = [.crash, .hiHat, .ride, .cowbell, .tom1, .snare, .tom2, .tom3, .kick]
+        let orderedPositions = orderedDrumTypes.map { $0.yPosition(for: row) }
         
         for i in 1..<orderedPositions.count {
             #expect(orderedPositions[i] > orderedPositions[i-1])

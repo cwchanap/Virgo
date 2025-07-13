@@ -7,6 +7,23 @@
 
 import SwiftUI
 
+// MARK: - Note Position Key
+struct NotePositionKey: Hashable {
+    let measureNumber: Int
+    let measureOffsetInMilliseconds: Int  // Convert to integer to avoid floating-point precision issues
+    
+    init(measureNumber: Int, measureOffset: Double) {
+        self.measureNumber = measureNumber
+        // Convert to milliseconds for precise integer representation
+        // This supports up to 3 decimal places which is sufficient for musical notation
+        self.measureOffsetInMilliseconds = Int(measureOffset * 1000)
+    }
+    
+    var measureOffset: Double {
+        return Double(measureOffsetInMilliseconds) / 1000.0
+    }
+}
+
 struct GameplayView: View {
     let track: DrumTrack
     @State private var isPlaying = false
@@ -14,6 +31,7 @@ struct GameplayView: View {
     @State private var currentBeat: Int = 0
     @State private var playbackTimer: Timer?
     @State private var playbackStartTime: Date?
+    @State private var cachedDrumBeats: [DrumBeat] = []
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -35,6 +53,8 @@ struct GameplayView: View {
         .background(Color.black)
         .foregroundColor(.white)
         .onAppear {
+            Logger.userAction("Opened gameplay view for track: \(track.title)")
+            computeDrumBeats()
             startPlayback()
         }
         .onDisappear {
@@ -86,7 +106,7 @@ struct GameplayView: View {
     
     // MARK: - Sheet Music View
     private func sheetMusicView(geometry: GeometryProxy) -> some View {
-        let maxIndex = (drumBeats.map { $0.id / 1000 }.max() ?? 0)
+        let maxIndex = (cachedDrumBeats.map { $0.id / 1000 }.max() ?? 0)
         let measuresCount = max(1, maxIndex + 1)
         let measurePositions = GameplayLayout.calculateMeasurePositions(totalMeasures: measuresCount, timeSignature: track.timeSignature)
         let totalHeight = GameplayLayout.totalHeight(for: measurePositions)
@@ -199,7 +219,7 @@ struct GameplayView: View {
     
     // MARK: - Drum Notation
     private func drumNotationView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
-        let beamGroups = BeamGroupingHelper.calculateBeamGroups(from: drumBeats)
+        let beamGroups = BeamGroupingHelper.calculateBeamGroups(from: cachedDrumBeats)
         
         return ZStack {
             // Render beams first (behind notes)
@@ -209,13 +229,13 @@ struct GameplayView: View {
                     measurePositions: measurePositions,
                     timeSignature: track.timeSignature,
                     isActive: beamGroup.beats.contains { beat in
-                        currentBeat == drumBeats.firstIndex(where: { $0.id == beat.id })
+                        currentBeat == cachedDrumBeats.firstIndex(where: { $0.id == beat.id })
                     }
                 )
             }
             
             // Then render individual notes
-            ForEach(Array(drumBeats.enumerated()), id: \.offset) { index, beat in
+            ForEach(Array(cachedDrumBeats.enumerated()), id: \.offset) { index, beat in
                 // Find which measure this beat belongs to based on the measure number in the beat
                 let measureIndex = beat.id / 1000
                 
@@ -292,39 +312,43 @@ struct GameplayView: View {
         .background(Color.black.opacity(0.9))
     }
     
-    // MARK: - Computed Properties
-    private var drumBeats: [DrumBeat] {
+    // MARK: - Helper Methods
+    private func computeDrumBeats() {
         // If track has no notes, create some default beats for demonstration
         if track.notes.isEmpty {
-            return [
+            cachedDrumBeats = [
                 DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .quarter),
                 DrumBeat(id: 250, drums: [.hiHat], timePosition: 0.25, interval: .eighth),
                 DrumBeat(id: 500, drums: [.snare], timePosition: 0.5, interval: .quarter),
                 DrumBeat(id: 750, drums: [.hiHat], timePosition: 0.75, interval: .eighth)
             ]
+            return
         }
         
-        // Group notes by their position in the measure
+        // Group notes by their position in the measure using a hashable key to avoid floating-point precision issues
         let groupedNotes = Dictionary(grouping: track.notes) { note in
-            Double(note.measureNumber) + note.measureOffset
+            NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
         }
         
         // Convert to DrumBeat objects
-        return groupedNotes.map { (position, notes) in
+        cachedDrumBeats = groupedNotes.map { (positionKey, notes) in
+            let timePosition = Double(positionKey.measureNumber) + positionKey.measureOffset
             let drumTypes = notes.compactMap { note in
                 DrumType.from(noteType: note.noteType)
             }
             // Use the interval from the first note in the group (they should all have the same interval at the same position)
             let interval = notes.first?.interval ?? .quarter
-            return DrumBeat(id: Int(position * 1000), drums: drumTypes, timePosition: position, interval: interval)
+            return DrumBeat(id: Int(timePosition * 1000), drums: drumTypes, timePosition: timePosition, interval: interval)
         }
         .sorted { $0.timePosition < $1.timePosition }
+        
+        Logger.debug("Computed \(cachedDrumBeats.count) drum beats for track: \(track.title)")
     }
     
     // Calculate actual track duration in seconds based on measures and BPM
     private var actualTrackDuration: Double {
         // Find the total number of measures based on the highest measure number
-        let maxIndex = (drumBeats.map { $0.id / 1000 }.max() ?? 0)
+        let maxIndex = (cachedDrumBeats.map { $0.id / 1000 }.max() ?? 0)
         let totalMeasures = max(1, maxIndex + 1)
         
         // Calculate duration per measure in seconds
@@ -352,6 +376,7 @@ struct GameplayView: View {
         isPlaying = true
         playbackStartTime = Date()
         playbackTimer?.invalidate()
+        Logger.audioPlayback("Started playback for track: \(track.title)")
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
             if !isPlaying {
                 timer.invalidate()
@@ -369,7 +394,7 @@ struct GameplayView: View {
             
             // Calculate progress based on actual elapsed time vs. track duration
             playbackProgress = min(elapsedTime / trackDuration, 1.0)
-            currentBeat = Int(playbackProgress * Double(drumBeats.count))
+            currentBeat = Int(playbackProgress * Double(cachedDrumBeats.count))
             
             if playbackProgress >= 1.0 {
                 timer.invalidate()
@@ -377,6 +402,7 @@ struct GameplayView: View {
                 playbackProgress = 0.0
                 currentBeat = 0
                 playbackStartTime = nil
+                Logger.audioPlayback("Playback finished for track: \(track.title)")
             }
         }
     }
@@ -385,6 +411,7 @@ struct GameplayView: View {
         playbackProgress = 0.0
         currentBeat = 0
         playbackStartTime = nil
+        Logger.audioPlayback("Restarted playback for track: \(track.title)")
         if isPlaying {
             startPlayback()
         }
