@@ -155,10 +155,9 @@ struct MainMenuView: View {
             // Delete all existing DrumTrack records
             try modelContext.delete(model: DrumTrack.self)
             try modelContext.save()
-            
-            print("Database cleared successfully")
+            Logger.database("Database cleared successfully")
         } catch {
-            print("Failed to clear database: \(error)")
+            Logger.databaseError(error)
         }
     }
 }

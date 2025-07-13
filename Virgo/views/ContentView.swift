@@ -140,31 +140,29 @@ struct ContentView: View {
         // Toggle playback state for the selected track
         if currentlyPlaying == track.id {
             currentlyPlaying = nil
+            Logger.audioPlayback("Stopped track: \(track.title)")
         } else {
             currentlyPlaying = track.id
+            Logger.audioPlayback("Started track: \(track.title)")
         }
     }
     
     private func loadSampleDataIfNeeded() {
         // Only load sample data if the database is empty
         if allDrumTracks.isEmpty {
-            print("Database is empty, loading sample data...")
+            Logger.database("Database is empty, loading sample data...")
             for sampleTrack in DrumTrack.sampleData {
                 modelContext.insert(sampleTrack)
             }
             
             do {
                 try modelContext.save()
-                print("Successfully saved \(DrumTrack.sampleData.count) sample tracks")
+                Logger.database("Successfully loaded \(DrumTrack.sampleData.count) sample tracks")
             } catch {
-                print("Failed to save sample data: \(error)")
+                Logger.databaseError(error)
             }
         } else {
-            print("Database already has \(allDrumTracks.count) tracks")
-            // Print info about first track for debugging
-            if let firstTrack = allDrumTracks.first {
-                print("First track: \(firstTrack.title), notes count: \(firstTrack.notes.count)")
-            }
+            Logger.database("Database already has \(allDrumTracks.count) tracks")
         }
     }
 }
