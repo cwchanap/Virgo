@@ -118,7 +118,7 @@ enum NoteType: String, Codable, CaseIterable {
 }
 
 enum DrumType {
-    case kick, snare, hiHat, crash, ride, tom1, tom2, tom3
+    case kick, snare, hiHat, crash, ride, tom1, tom2, tom3, cowbell
     
     var symbol: String {
         switch self {
@@ -130,6 +130,7 @@ enum DrumType {
         case .tom1: return "◐"
         case .tom2: return "◑"
         case .tom3: return "◒"
+        case .cowbell: return "◇"
         }
     }
     
@@ -146,7 +147,12 @@ enum DrumType {
         case .lowTom: return .tom3
         case .china: return .crash
         case .splash: return .crash
-        case .cowbell: return nil
+        case .cowbell: return .cowbell
         }
     }
+}
+
+// MARK: - Beam Grouping Constants
+struct BeamGroupingConstants {
+    static let maxConsecutiveInterval: Double = 0.3
 }

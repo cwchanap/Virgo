@@ -13,6 +13,7 @@ struct GameplayView: View {
     @State private var playbackProgress: Double = 0.0
     @State private var currentBeat: Int = 0
     @State private var playbackTimer: Timer?
+    @State private var playbackStartTime: Date?
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -85,7 +86,8 @@ struct GameplayView: View {
     
     // MARK: - Sheet Music View
     private func sheetMusicView(geometry: GeometryProxy) -> some View {
-        let measuresCount = max(1, (drumBeats.map { $0.id }.max() ?? 1000) / 1000)
+        let maxIndex = (drumBeats.map { $0.id / 1000 }.max() ?? 0)
+        let measuresCount = max(1, maxIndex + 1)
         let measurePositions = GameplayLayout.calculateMeasurePositions(totalMeasures: measuresCount, timeSignature: track.timeSignature)
         let totalHeight = GameplayLayout.totalHeight(for: measurePositions)
         
@@ -319,6 +321,21 @@ struct GameplayView: View {
         .sorted { $0.timePosition < $1.timePosition }
     }
     
+    // Calculate actual track duration in seconds based on measures and BPM
+    private var actualTrackDuration: Double {
+        // Find the total number of measures based on the highest measure number
+        let maxIndex = (drumBeats.map { $0.id / 1000 }.max() ?? 0)
+        let totalMeasures = max(1, maxIndex + 1)
+        
+        // Calculate duration per measure in seconds
+        // 60 seconds per minute / BPM = seconds per beat
+        // multiply by beats per measure to get seconds per measure
+        let secondsPerBeat = 60.0 / Double(track.bpm)
+        let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
+        
+        return Double(totalMeasures) * secondsPerMeasure
+    }
+    
     // MARK: - Actions
     private func togglePlayback() {
         isPlaying.toggle()
@@ -327,11 +344,13 @@ struct GameplayView: View {
         } else {
             playbackTimer?.invalidate()
             playbackTimer = nil
+            playbackStartTime = nil
         }
     }
     
     private func startPlayback() {
         isPlaying = true
+        playbackStartTime = Date()
         playbackTimer?.invalidate()
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
             if !isPlaying {
@@ -339,7 +358,17 @@ struct GameplayView: View {
                 return
             }
             
-            playbackProgress += 0.01
+            // Calculate elapsed time since playback started
+            guard let startTime = playbackStartTime else {
+                timer.invalidate()
+                return
+            }
+            
+            let elapsedTime = Date().timeIntervalSince(startTime)
+            let trackDuration = actualTrackDuration
+            
+            // Calculate progress based on actual elapsed time vs. track duration
+            playbackProgress = min(elapsedTime / trackDuration, 1.0)
             currentBeat = Int(playbackProgress * Double(drumBeats.count))
             
             if playbackProgress >= 1.0 {
@@ -347,6 +376,7 @@ struct GameplayView: View {
                 isPlaying = false
                 playbackProgress = 0.0
                 currentBeat = 0
+                playbackStartTime = nil
             }
         }
     }
@@ -354,6 +384,7 @@ struct GameplayView: View {
     private func restartPlayback() {
         playbackProgress = 0.0
         currentBeat = 0
+        playbackStartTime = nil
         if isPlaying {
             startPlayback()
         }
