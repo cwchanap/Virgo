@@ -314,14 +314,9 @@ struct GameplayView: View {
     
     // MARK: - Helper Methods
     private func computeDrumBeats() {
-        // If track has no notes, create some default beats for demonstration
+        // Handle empty tracks by leaving cachedDrumBeats empty
         if track.notes.isEmpty {
-            cachedDrumBeats = [
-                DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .quarter),
-                DrumBeat(id: 250, drums: [.hiHat], timePosition: 0.25, interval: .eighth),
-                DrumBeat(id: 500, drums: [.snare], timePosition: 0.5, interval: .quarter),
-                DrumBeat(id: 750, drums: [.hiHat], timePosition: 0.75, interval: .eighth)
-            ]
+            cachedDrumBeats = []
             return
         }
         
