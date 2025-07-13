@@ -87,6 +87,39 @@ struct GameplayLayout {
     static let doubleBarLineWidths: (thin: CGFloat, thick: CGFloat) = (2, 4)
     static let doubleBarLineSpacing: CGFloat = 3
     
+    // MARK: - DrumBeat Constants
+    static let beatColumnWidth: CGFloat = 30
+    static let beatColumnCornerRadius: CGFloat = 4
+    static let stemWidth: CGFloat = 2
+    static let stemHeight: CGFloat = 75
+    static let stemExtension: CGFloat = 35
+    static let stemXOffset: CGFloat = 7
+    static let beamYPosition: CGFloat = -60
+    static let connectorWidth: CGFloat = 5
+    static let connectorHeight: CGFloat = 2
+    static let connectorXOffset: CGFloat = 4.5
+    static let flagXOffset: CGFloat = 2
+    static let flagVerticalSpacing: CGFloat = 8
+    static let individualFlagXOffset: CGFloat = 9
+    static let individualFlagYOffset: CGFloat = 67.5
+    static let drumSymbolFontSize: CGFloat = 20
+    static let activeOpacity: CGFloat = 0.3
+    static let beamLevelSpacing: CGFloat = 6
+    
+    // MARK: - Flag Drawing Constants
+    static let flagWidth: CGFloat = 8
+    static let flagHeight: CGFloat = 8
+    static let flagCurveControl1X: CGFloat = 4
+    static let flagCurveControl1Y: CGFloat = -2
+    static let flagCurveControl2X: CGFloat = 6
+    static let flagCurveControl2Y: CGFloat = 2
+    static let flagCurveMidPointX: CGFloat = 8
+    static let flagCurveMidPointY: CGFloat = 4
+    static let flagCurveEndControl1X: CGFloat = 6
+    static let flagCurveEndControl1Y: CGFloat = 6
+    static let flagCurveEndControl2X: CGFloat = 4
+    static let flagCurveEndControl2Y: CGFloat = 10
+    
     // MARK: - Component Positions
     static let clefX: CGFloat = 20
     static let timeSignatureX: CGFloat = 55
@@ -166,6 +199,7 @@ extension DrumType {
         case .tom3: return .line2
         case .kick: return .belowLine1
         case .ride: return .spaceBetween4And5
+        case .cowbell: return .line4
         }
     }
     
