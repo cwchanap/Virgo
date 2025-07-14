@@ -91,6 +91,7 @@
 				24829CE92E1217CA00F99FD7 /* Virgo */,
 				24829CFB2E1217CC00F99FD7 /* VirgoTests */,
 				24829CE82E1217CA00F99FD7 /* Products */,
+				248E13962E242D9C00769A71 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -102,6 +103,14 @@
 				24829D022E1217CC00F99FD7 /* VirgoUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		248E13962E242D9C00769A71 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				24829D202E1217CC00F99FD7 /* VirgoUITests */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

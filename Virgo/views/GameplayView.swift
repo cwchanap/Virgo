@@ -32,19 +32,34 @@ struct GameplayView: View {
     @State private var playbackTimer: Timer?
     @State private var playbackStartTime: Date?
     @State private var cachedDrumBeats: [DrumBeat] = []
+    @StateObject private var metronome = MetronomeEngine()
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 // Header with track info and controls
-                headerView
+                GameplayHeaderView(
+                    track: track,
+                    isPlaying: $isPlaying,
+                    playbackProgress: $playbackProgress,
+                    onDismiss: { dismiss() },
+                    onPlayPause: togglePlayback,
+                    onRestart: restartPlayback
+                )
                 
                 // Main sheet music area
                 sheetMusicView(geometry: geometry)
                 
                 // Bottom controls
-                controlsView
+                GameplayControlsView(
+                    track: track,
+                    isPlaying: $isPlaying,
+                    playbackProgress: $playbackProgress,
+                    metronome: metronome,
+                    onPlayPause: togglePlayback,
+                    onRestart: restartPlayback
+                )
             }
         }
         #if os(iOS)
@@ -55,53 +70,14 @@ struct GameplayView: View {
         .onAppear {
             Logger.userAction("Opened gameplay view for track: \(track.title)")
             computeDrumBeats()
+            metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
             startPlayback()
         }
         .onDisappear {
             playbackTimer?.invalidate()
             playbackTimer = nil
+            metronome.stop()
         }
-    }
-    
-    // MARK: - Header View
-    private var headerView: some View {
-        HStack {
-            Button(action: { dismiss() }) {
-                Image(systemName: "chevron.left")
-                    .font(.title2)
-                    .foregroundColor(.white)
-            }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(track.title)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                Text(track.artist)
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-            }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text("\(track.bpm) BPM")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                    Text(track.timeSignature.displayName)
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-                Text(track.difficulty.rawValue)
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(Color.purple.opacity(0.3))
-                    .cornerRadius(8)
-            }
-        }
-        .padding()
-        .background(Color.black.opacity(0.9))
     }
     
     // MARK: - Sheet Music View
@@ -268,48 +244,6 @@ struct GameplayView: View {
                 }
             }
         }
-    }
-    
-    // MARK: - Controls View
-    private var controlsView: some View {
-        HStack(spacing: 30) {
-            // Restart button
-            Button(action: restartPlayback) {
-                Image(systemName: "backward.end.fill")
-                    .font(.title2)
-                    .foregroundColor(.white)
-            }
-            
-            // Play/Pause button
-            Button(action: togglePlayback) {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 50))
-                    .foregroundColor(.purple)
-            }
-            
-            // Speed controls
-            VStack(spacing: 8) {
-                Button(action: { /* Increase speed */ }) {
-                    Text("1.25x")
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(Color.gray.opacity(0.3))
-                        .cornerRadius(12)
-                }
-                
-                Button(action: { /* Normal speed */ }) {
-                    Text("1.0x")
-                        .font(.caption)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(Color.purple.opacity(0.5))
-                        .cornerRadius(12)
-                }
-            }
-        }
-        .padding()
-        .background(Color.black.opacity(0.9))
     }
     
     // MARK: - Helper Methods

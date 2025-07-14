@@ -108,11 +108,11 @@ struct ContentView: View {
             }
             .tag(0)
             
-            // Placeholder for other tabs
-            Text("Practice Tab")
+            // Metronome Tab
+            PracticeView()
                 .tabItem {
                     Image(systemName: "metronome")
-                    Text("Practice")
+                    Text("Metronome")
                 }
                 .tag(1)
             
