@@ -1,5 +1,5 @@
 //
-//  PracticeView.swift
+//  MetronomeView.swift
 //  Virgo
 //
 //  Created by Chan Wai Chan on 13/7/2025.
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct PracticeView: View {
+struct MetronomeView: View {
     @State private var showingMetronomeSettings = false
     
     var body: some View {
@@ -114,5 +114,5 @@ struct PracticeTipRow: View {
 }
 
 #Preview {
-    PracticeView()
+    MetronomeView()
 }
