@@ -109,7 +109,7 @@ struct ContentView: View {
             .tag(0)
             
             // Metronome Tab
-            PracticeView()
+            MetronomeView()
                 .tabItem {
                     Image(systemName: "metronome")
                     Text("Metronome")
