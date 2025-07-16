@@ -14,6 +14,7 @@ struct GameplayControlsView: View {
     @ObservedObject var metronome: MetronomeEngine
     let onPlayPause: () -> Void
     let onRestart: () -> Void
+    let onSkipToEnd: () -> Void
     
     var body: some View {
         VStack(spacing: 16) {
@@ -51,7 +52,7 @@ struct GameplayControlsView: View {
                         .foregroundColor(isPlaying ? .red : .green)
                 }
                 
-                Button(action: {}) {
+                Button(action: onSkipToEnd) {
                     Image(systemName: "forward.end.fill")
                         .font(.title)
                         .foregroundColor(.white)
@@ -98,7 +99,8 @@ struct GameplayControlsView: View {
         playbackProgress: .constant(0.3),
         metronome: MetronomeEngine(),
         onPlayPause: {},
-        onRestart: {}
+        onRestart: {},
+        onSkipToEnd: {}
     )
     .background(Color.black)
 }

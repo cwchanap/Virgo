@@ -60,7 +60,8 @@ struct GameplayView: View {
                     playbackProgress: $playbackProgress,
                     metronome: metronome,
                     onPlayPause: togglePlayback,
-                    onRestart: restartPlayback
+                    onRestart: restartPlayback,
+                    onSkipToEnd: skipToEnd
                 )
                 .background(Color.black)
             }
@@ -348,6 +349,15 @@ struct GameplayView: View {
         if isPlaying {
             startPlayback()
         }
+    }
+    
+    private func skipToEnd() {
+        playbackProgress = 1.0
+        isPlaying = false
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+        playbackStartTime = nil
+        Logger.audioPlayback("Skipped to end for track: \(track.title)")
     }
 }
 

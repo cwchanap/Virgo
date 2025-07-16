@@ -32,6 +32,7 @@ class MetronomeEngine: ObservableObject {
     }
     
     private func configureAudioSession() {
+        #if os(iOS)
         do {
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.playback, mode: .default, options: [.mixWithOthers])
@@ -40,6 +41,9 @@ class MetronomeEngine: ObservableObject {
         } catch {
             Logger.audioPlayback("Failed to configure audio session: \(error)")
         }
+        #else
+        Logger.audioPlayback("Audio session configuration skipped on macOS")
+        #endif
     }
     
     deinit {
@@ -200,62 +204,7 @@ class MetronomeEngine: ObservableObject {
     }
 }
 
-struct MetronomeComponent: View {
-    @StateObject private var metronome = MetronomeEngine()
-    let track: DrumTrack
-    @Binding var isPlaying: Bool
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Metronome toggle button
-            Button(action: metronome.toggle) {
-                Image(systemName: metronome.isEnabled ? "metronome.fill" : "metronome")
-                    .font(.title3)
-                    .foregroundColor(metronome.isEnabled ? .purple : .gray)
-            }
-            .disabled(isPlaying)
-            
-            // Beat indicator
-            HStack(spacing: 4) {
-                ForEach(0..<track.timeSignature.beatsPerMeasure, id: \.self) { beat in
-                    Circle()
-                        .frame(width: 8, height: 8)
-                        .foregroundColor(
-                            metronome.isEnabled && metronome.currentBeat == beat ? 
-                            (beat == 0 ? .purple : .white) : .gray.opacity(0.3)
-                        )
-                        .scaleEffect(
-                            metronome.isEnabled && metronome.currentBeat == beat ? 1.2 : 1.0
-                        )
-                        .animation(.easeInOut(duration: 0.1), value: metronome.currentBeat)
-                }
-            }
-            
-            // Volume control
-            if metronome.isEnabled {
-                HStack(spacing: 8) {
-                    Image(systemName: "speaker.fill")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                    
-                    Slider(value: $metronome.volume, in: 0.0...1.0)
-                        .frame(width: 60)
-                        .accentColor(.purple)
-                }
-            }
-        }
-        .onAppear {
-            metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
-        }
-        .onChange(of: isPlaying) { playing in
-            if !playing && metronome.isEnabled {
-                metronome.stop()
-            }
-        }
-    }
-}
-
-struct MetronomeControlsInGameplay: View {
+struct MetronomeControlsView: View {
     @ObservedObject var metronome: MetronomeEngine
     let track: DrumTrack
     @Binding var isPlaying: Bool
@@ -304,6 +253,29 @@ struct MetronomeControlsInGameplay: View {
                 metronome.stop()
             }
         }
+    }
+}
+
+struct MetronomeComponent: View {
+    @StateObject private var metronome = MetronomeEngine()
+    let track: DrumTrack
+    @Binding var isPlaying: Bool
+    
+    var body: some View {
+        MetronomeControlsView(metronome: metronome, track: track, isPlaying: $isPlaying)
+            .onAppear {
+                metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
+            }
+    }
+}
+
+struct MetronomeControlsInGameplay: View {
+    @ObservedObject var metronome: MetronomeEngine
+    let track: DrumTrack
+    @Binding var isPlaying: Bool
+    
+    var body: some View {
+        MetronomeControlsView(metronome: metronome, track: track, isPlaying: $isPlaying)
     }
 }
 
