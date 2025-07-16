@@ -37,36 +37,32 @@ struct GameplayView: View {
     
     var body: some View {
         GeometryReader { geometry in
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    Section {
-                        // Main sheet music area
-                        sheetMusicView(geometry: geometry)
-                            .frame(minHeight: max(400, geometry.size.height * 0.5))
-                        
-                        // Bottom controls
-                        GameplayControlsView(
-                            track: track,
-                            isPlaying: $isPlaying,
-                            playbackProgress: $playbackProgress,
-                            metronome: metronome,
-                            onPlayPause: togglePlayback,
-                            onRestart: restartPlayback
-                        )
-                        .background(Color.black)
-                    } header: {
-                        // Header with track info and controls
-                        GameplayHeaderView(
-                            track: track,
-                            isPlaying: $isPlaying,
-                            playbackProgress: $playbackProgress,
-                            onDismiss: { dismiss() },
-                            onPlayPause: togglePlayback,
-                            onRestart: restartPlayback
-                        )
-                        .background(Color.black)
-                    }
-                }
+            VStack(spacing: 0) {
+                // Header with track info and controls
+                GameplayHeaderView(
+                    track: track,
+                    isPlaying: $isPlaying,
+                    playbackProgress: $playbackProgress,
+                    onDismiss: { dismiss() },
+                    onPlayPause: togglePlayback,
+                    onRestart: restartPlayback
+                )
+                .background(Color.black)
+                
+                // Main sheet music area - now the primary scrollable content
+                sheetMusicView(geometry: geometry)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                // Bottom controls
+                GameplayControlsView(
+                    track: track,
+                    isPlaying: $isPlaying,
+                    playbackProgress: $playbackProgress,
+                    metronome: metronome,
+                    onPlayPause: togglePlayback,
+                    onRestart: restartPlayback
+                )
+                .background(Color.black)
             }
         }
         #if os(iOS)
@@ -268,7 +264,8 @@ struct GameplayView: View {
         
         // Convert to DrumBeat objects
         cachedDrumBeats = groupedNotes.map { (positionKey, notes) in
-            let timePosition = Double(positionKey.measureNumber) + positionKey.measureOffset
+            // Convert 1-based measure numbers to 0-based for indexing
+            let timePosition = Double(positionKey.measureNumber - 1) + positionKey.measureOffset
             let drumTypes = notes.compactMap { note in
                 DrumType.from(noteType: note.noteType)
             }
