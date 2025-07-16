@@ -148,7 +148,7 @@ struct MetronomeBasicTests {
     
     @Test func testMetronomeEngineObservableObject() {
         let metronome = MetronomeEngine()
-        #expect(metronome is ObservableObject)
+        #expect(metronome is any ObservableObject)
     }
     
     @Test func testMetronomeComponentWithDifferentTracks() {
