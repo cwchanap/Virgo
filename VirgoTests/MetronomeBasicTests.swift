@@ -142,7 +142,7 @@ struct MetronomeBasicTests {
         let accentMultiplier: Float = 1.3
         let expectedAccentVolume = baseVolume * accentMultiplier
         
-        #expect(expectedAccentVolume == 0.65)
+        #expect(abs(expectedAccentVolume - 0.65) < 0.001)
         #expect(expectedAccentVolume > baseVolume)
     }
     
