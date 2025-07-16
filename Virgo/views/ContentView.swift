@@ -148,9 +148,20 @@ struct ContentView: View {
     }
     
     private func loadSampleDataIfNeeded() {
-        // Only load sample data if the database is empty
-        if allDrumTracks.isEmpty {
-            Logger.database("Database is empty, loading sample data...")
+        // Check if we need to reload sample data
+        let needsReload = allDrumTracks.isEmpty || allDrumTracks.allSatisfy { $0.notes.isEmpty }
+        
+        if needsReload {
+            Logger.database("Database needs sample data reload...")
+            
+            // Clear existing tracks if they have no notes
+            for track in allDrumTracks {
+                if track.notes.isEmpty {
+                    modelContext.delete(track)
+                }
+            }
+            
+            // Insert fresh sample data
             for sampleTrack in DrumTrack.sampleData {
                 modelContext.insert(sampleTrack)
             }
@@ -162,7 +173,7 @@ struct ContentView: View {
                 Logger.databaseError(error)
             }
         } else {
-            Logger.database("Database already has \(allDrumTracks.count) tracks")
+            Logger.database("Database already has \(allDrumTracks.count) tracks with notes")
         }
     }
 }
