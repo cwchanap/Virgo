@@ -13,6 +13,8 @@ import UIKit
 
 @main
 struct VirgoApp: App {
+    @StateObject private var sharedMetronome = MetronomeEngine()
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             DrumTrack.self
@@ -37,6 +39,7 @@ struct VirgoApp: App {
     var body: some Scene {
         WindowGroup {
             MainMenuView()
+                .environmentObject(sharedMetronome)
         }
         .modelContainer(sharedModelContainer)
     }
