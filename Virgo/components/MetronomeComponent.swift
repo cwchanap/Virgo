@@ -27,6 +27,9 @@ class MetronomeEngine: ObservableObject {
     private var nextBeatTime: AVAudioTime?
     private var sampleRate: Double = 44100.0
     
+    // Static cached buffer to avoid recreating the ticker sound buffer for each instance
+    private static var cachedTickerBuffer: AVAudioPCMBuffer?
+    
     init() {
         configureAudioSession()
         setupAudioEngine()
@@ -81,14 +84,21 @@ class MetronomeEngine: ObservableObject {
     }
     
     private func loadTickerSound() {
+        // Check if we already have a cached buffer
+        if let cachedBuffer = Self.cachedTickerBuffer {
+            tickerBuffer = cachedBuffer
+            Logger.audioPlayback("Using cached ticker buffer")
+            return
+        }
+        
         guard let tickerData = NSDataAsset(name: "ticker") else {
             Logger.audioPlayback("Failed to find ticker data asset")
             return
         }
         
         do {
-            // Create temporary file from data asset
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("ticker_temp.wav")
+            // Create the temporary file only once for caching
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("ticker_cached.wav")
             try tickerData.data.write(to: tempURL)
             
             let audioFile = try AVAudioFile(forReading: tempURL)
@@ -96,18 +106,24 @@ class MetronomeEngine: ObservableObject {
             
             guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount) else {
                 Logger.audioPlayback("Failed to create audio buffer for ticker.wav")
+                // Clean up on failure
+                try? FileManager.default.removeItem(at: tempURL)
                 return
             }
             
             try audioFile.read(into: buffer)
+            
+            // Cache the buffer for future use and clean up temp file
+            Self.cachedTickerBuffer = buffer
             tickerBuffer = buffer
+            
+            // Clean up temporary file after successful caching
+            try? FileManager.default.removeItem(at: tempURL)
+            
             Logger.audioPlayback(
-                "Successfully loaded ticker from data asset - frames: \(buffer.frameLength), " +
+                "Successfully loaded and cached ticker from data asset - frames: \(buffer.frameLength), " +
                 "channels: \(buffer.format.channelCount), sample rate: \(buffer.format.sampleRate)"
             )
-            
-            // Clean up temporary file
-            try? FileManager.default.removeItem(at: tempURL)
             
         } catch {
             Logger.audioPlayback("Failed to load ticker from data asset: \(error)")
