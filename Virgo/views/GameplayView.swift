@@ -66,7 +66,7 @@ struct GameplayView: View {
             }
         }
         #if os(iOS)
-        .navigationBarHidden(true)
+        .toolbar(.hidden)
         #endif
         .background(Color.black)
         .foregroundColor(.white)
