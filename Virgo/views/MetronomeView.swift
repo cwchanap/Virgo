@@ -76,7 +76,7 @@ struct MetronomeView: View {
             }
             .navigationBarBackButtonHidden(true)
             #if os(iOS)
-            .navigationBarHidden(true)
+            .toolbar(.hidden)
             #endif
         }
     }
