@@ -186,28 +186,11 @@ class MetronomeEngine: ObservableObject {
         }
         
         let isAccent = beatIndex == 0
+        let accentMultiplier: Float = isAccent ? 1.3 : 1.0
+        let effectiveVolume = volume * accentMultiplier
         
-        // Create volume buffer with proper format
-        guard let volumeBuffer = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameCapacity) else {
-            Logger.audioPlayback("Failed to create volume buffer")
-            return
-        }
-        
-        volumeBuffer.frameLength = buffer.frameLength
-        
-        // Apply volume and accent
-        if let sourceData = buffer.floatChannelData?[0],
-           let destData = volumeBuffer.floatChannelData?[0] {
-            let accentMultiplier: Float = isAccent ? 1.3 : 1.0
-            let effectiveVolume = volume * accentMultiplier
-            
-            for i in 0..<Int(buffer.frameLength) {
-                destData[i] = sourceData[i] * effectiveVolume
-            }
-        } else {
-            Logger.audioPlayback("Failed to access audio channel data")
-            return
-        }
+        // Set volume directly on the player node - much more efficient than buffer copying
+        player.volume = effectiveVolume
         
         // Schedule the buffer for playback at the specified time
         let completionHandler: AVAudioNodeCompletionHandler = { [weak self] in
@@ -224,9 +207,9 @@ class MetronomeEngine: ObservableObject {
         }
         
         if let playTime = time {
-            player.scheduleBuffer(volumeBuffer, at: playTime, options: [], completionHandler: completionHandler)
+            player.scheduleBuffer(buffer, at: playTime, options: [], completionHandler: completionHandler)
         } else {
-            player.scheduleBuffer(volumeBuffer, completionHandler: completionHandler)
+            player.scheduleBuffer(buffer, completionHandler: completionHandler)
         }
         
         Logger.audioPlayback("Scheduled metronome click - beat \(beatIndex), accent: \(isAccent), sample-accurate: \(time != nil)")
