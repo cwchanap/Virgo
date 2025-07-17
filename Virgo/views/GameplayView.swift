@@ -42,7 +42,6 @@ struct GameplayView: View {
                 GameplayHeaderView(
                     track: track,
                     isPlaying: $isPlaying,
-                    playbackProgress: $playbackProgress,
                     onDismiss: { dismiss() },
                     onPlayPause: togglePlayback,
                     onRestart: restartPlayback
