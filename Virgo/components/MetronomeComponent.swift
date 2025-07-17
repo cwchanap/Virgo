@@ -20,10 +20,12 @@ class MetronomeEngine: ObservableObject {
     
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
-    private var timer: Timer?
     private var bpm: Int = 120
     private var timeSignature: TimeSignature = .fourFour
     private var tickerBuffer: AVAudioPCMBuffer?
+    private var startTime: AVAudioTime?
+    private var nextBeatTime: AVAudioTime?
+    private var sampleRate: Double = 44100.0
     
     init() {
         configureAudioSession()
@@ -64,6 +66,7 @@ class MetronomeEngine: ObservableObject {
         
         // Connect player to mixer with explicit format
         let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)
+        sampleRate = format?.sampleRate ?? 44100.0
         engine.connect(player, to: engine.mainMixerNode, format: format)
         
         // Prepare the engine
@@ -118,25 +121,31 @@ class MetronomeEngine: ObservableObject {
     
     func start() {
         guard !isEnabled else { return }
+        guard let player = playerNode else { return }
         
         isEnabled = true
         currentBeat = 0
         
-        let interval = 60.0 / Double(bpm)
-        
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            self?.playClick()
+        // Start the player if not already playing
+        if !player.isPlaying {
+            player.play()
         }
         
-        Logger.audioPlayback("Metronome started at \(bpm) BPM")
+        // Get current time and schedule the first beat immediately
+        startTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
+        nextBeatTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
+        
+        scheduleNextBeats()
+        
+        Logger.audioPlayback("Metronome started at \(bpm) BPM with sample-accurate timing")
     }
     
     func stop() {
         isEnabled = false
         currentBeat = 0
-        timer?.invalidate()
-        timer = nil
         playerNode?.stop()
+        startTime = nil
+        nextBeatTime = nil
         
         Logger.audioPlayback("Metronome stopped")
     }
@@ -152,16 +161,31 @@ class MetronomeEngine: ObservableObject {
     // Test method to play a single click for debugging
     func testClick() {
         Logger.audioPlayback("Testing single metronome click")
-        playClick()
+        playClick(at: nil, beatIndex: 0)
     }
     
-    private func playClick() {
+    private func scheduleNextBeats() {
+        guard isEnabled, playerNode != nil else { return }
+        
+        let beatsToSchedule = 8 // Schedule beats ahead for smooth playback
+        let samplesPerBeat = Int64(60.0 * sampleRate / Double(bpm))
+        
+        for i in 0..<beatsToSchedule {
+            let beatIndex = (currentBeat + i) % timeSignature.beatsPerMeasure
+            let sampleTime = Int64(i) * samplesPerBeat
+            let playTime = AVAudioTime(sampleTime: sampleTime, atRate: sampleRate)
+            
+            playClick(at: playTime, beatIndex: beatIndex)
+        }
+    }
+    
+    private func playClick(at time: AVAudioTime?, beatIndex: Int) {
         guard let player = playerNode, let buffer = tickerBuffer else { 
             Logger.audioPlayback("Missing player or buffer")
             return 
         }
         
-        let isAccent = currentBeat == 0
+        let isAccent = beatIndex == 0
         
         // Create volume buffer with proper format
         guard let volumeBuffer = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameCapacity) else {
@@ -185,22 +209,27 @@ class MetronomeEngine: ObservableObject {
             return
         }
         
-        // Ensure the player is playing
-        if !player.isPlaying {
-            player.play()
+        // Schedule the buffer for playback at the specified time
+        let completionHandler: AVAudioNodeCompletionHandler = { [weak self] in
+            // Update beat counter on main queue
+            DispatchQueue.main.async {
+                guard let self = self, self.isEnabled else { return }
+                self.currentBeat = (self.currentBeat + 1) % self.timeSignature.beatsPerMeasure
+                
+                // Schedule more beats if we're running low
+                if self.currentBeat == 0 {
+                    self.scheduleNextBeats()
+                }
+            }
         }
         
-        // Schedule the buffer for playback
-        player.scheduleBuffer(volumeBuffer) { [weak self] in
-            // Buffer playback completed
+        if let playTime = time {
+            player.scheduleBuffer(volumeBuffer, at: playTime, options: [], completionHandler: completionHandler)
+        } else {
+            player.scheduleBuffer(volumeBuffer, completionHandler: completionHandler)
         }
         
-        Logger.audioPlayback("Scheduled metronome click - beat \(currentBeat), accent: \(isAccent)")
-        
-        // Update beat counter
-        DispatchQueue.main.async {
-            self.currentBeat = (self.currentBeat + 1) % self.timeSignature.beatsPerMeasure
-        }
+        Logger.audioPlayback("Scheduled metronome click - beat \(beatIndex), accent: \(isAccent), sample-accurate: \(time != nil)")
     }
 }
 
