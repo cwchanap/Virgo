@@ -10,7 +10,6 @@ import SwiftUI
 struct GameplayHeaderView: View {
     let track: DrumTrack
     @Binding var isPlaying: Bool
-    @Binding var playbackProgress: Double
     let onDismiss: () -> Void
     let onPlayPause: () -> Void
     let onRestart: () -> Void
@@ -64,7 +63,6 @@ struct GameplayHeaderView: View {
     GameplayHeaderView(
         track: DrumTrack.sampleData.first!,
         isPlaying: .constant(false),
-        playbackProgress: .constant(0.3),
         onDismiss: {},
         onPlayPause: {},
         onRestart: {}
