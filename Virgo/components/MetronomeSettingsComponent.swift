@@ -7,9 +7,23 @@
 
 import SwiftUI
 
+// MARK: - Constants
+private struct MetronomeConstants {
+    static let minBPM: Double = 60
+    static let maxBPM: Double = 200
+    static let defaultBPM: Double = 120
+    static let largeAdjustment: Double = 10
+    static let smallAdjustment: Double = 1
+    static let bpmStep: Double = 1
+    static let volumeRange: ClosedRange<Float> = 0.0...1.0
+    static let beatIndicatorSize: CGFloat = 16
+    static let beatIndicatorActiveScale: CGFloat = 1.3
+    static let beatIndicatorAnimationDuration: Double = 0.1
+}
+
 struct MetronomeSettingsView: View {
     @ObservedObject var metronome: MetronomeEngine
-    @State private var tempBPM: Double = 120
+    @State private var tempBPM: Double = MetronomeConstants.defaultBPM
     @State private var selectedTimeSignature: TimeSignature = .fourFour
     
     var body: some View {
@@ -24,30 +38,30 @@ struct MetronomeSettingsView: View {
                     .font(.title2)
                     .foregroundColor(.white)
                 
-                Slider(value: $tempBPM, in: 60...200, step: 1)
+                Slider(value: $tempBPM, in: MetronomeConstants.minBPM...MetronomeConstants.maxBPM, step: MetronomeConstants.bpmStep)
                     .accentColor(.purple)
                     .onChange(of: tempBPM) { bpm in
                         metronome.configure(bpm: Int(bpm), timeSignature: selectedTimeSignature)
                     }
                 
                 HStack(spacing: 16) {
-                    Button("-10") {
-                        tempBPM = max(60, tempBPM - 10)
+                    Button("-\(Int(MetronomeConstants.largeAdjustment))") {
+                        tempBPM = max(MetronomeConstants.minBPM, tempBPM - MetronomeConstants.largeAdjustment)
                     }
                     .buttonStyle(MetronomeButtonStyle())
                     
-                    Button("-1") {
-                        tempBPM = max(60, tempBPM - 1)
+                    Button("-\(Int(MetronomeConstants.smallAdjustment))") {
+                        tempBPM = max(MetronomeConstants.minBPM, tempBPM - MetronomeConstants.smallAdjustment)
                     }
                     .buttonStyle(MetronomeButtonStyle())
                     
-                    Button("+1") {
-                        tempBPM = min(200, tempBPM + 1)
+                    Button("+\(Int(MetronomeConstants.smallAdjustment))") {
+                        tempBPM = min(MetronomeConstants.maxBPM, tempBPM + MetronomeConstants.smallAdjustment)
                     }
                     .buttonStyle(MetronomeButtonStyle())
                     
-                    Button("+10") {
-                        tempBPM = min(200, tempBPM + 10)
+                    Button("+\(Int(MetronomeConstants.largeAdjustment))") {
+                        tempBPM = min(MetronomeConstants.maxBPM, tempBPM + MetronomeConstants.largeAdjustment)
                     }
                     .buttonStyle(MetronomeButtonStyle())
                 }
@@ -83,7 +97,7 @@ struct MetronomeSettingsView: View {
                     Image(systemName: "speaker.fill")
                         .foregroundColor(.gray)
                     
-                    Slider(value: $metronome.volume, in: 0.0...1.0)
+                    Slider(value: $metronome.volume, in: MetronomeConstants.volumeRange)
                         .accentColor(.purple)
                     
                     Image(systemName: "speaker.wave.3.fill")
@@ -95,15 +109,15 @@ struct MetronomeSettingsView: View {
             HStack(spacing: 8) {
                 ForEach(0..<selectedTimeSignature.beatsPerMeasure, id: \.self) { beat in
                     Circle()
-                        .frame(width: 16, height: 16)
+                        .frame(width: MetronomeConstants.beatIndicatorSize, height: MetronomeConstants.beatIndicatorSize)
                         .foregroundColor(
                             metronome.isEnabled && metronome.currentBeat == beat ? 
                             (beat == 0 ? .purple : .white) : .gray.opacity(0.3)
                         )
                         .scaleEffect(
-                            metronome.isEnabled && metronome.currentBeat == beat ? 1.3 : 1.0
+                            metronome.isEnabled && metronome.currentBeat == beat ? MetronomeConstants.beatIndicatorActiveScale : 1.0
                         )
-                        .animation(.easeInOut(duration: 0.1), value: metronome.currentBeat)
+                        .animation(.easeInOut(duration: MetronomeConstants.beatIndicatorAnimationDuration), value: metronome.currentBeat)
                 }
             }
             .padding(.top)
