@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct MetronomeView: View {
+    @StateObject private var metronome = MetronomeEngine()
     @State private var showingMetronomeSettings = false
     
     var body: some View {
@@ -38,7 +39,7 @@ struct MetronomeView: View {
                     Spacer()
                     
                     // Main metronome settings
-                    MetronomeSettingsView()
+                    MetronomeSettingsView(metronome: metronome)
                         .padding(.horizontal, 20)
                     
                     Spacer()

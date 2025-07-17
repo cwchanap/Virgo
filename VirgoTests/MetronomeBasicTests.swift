@@ -107,7 +107,8 @@ struct MetronomeBasicTests {
     }
     
     @Test func testMetronomeSettingsViewCreation() {
-        let settingsView = MetronomeSettingsView()
+        let metronome = MetronomeEngine()
+        let settingsView = MetronomeSettingsView(metronome: metronome)
         #expect(settingsView != nil)
     }
     

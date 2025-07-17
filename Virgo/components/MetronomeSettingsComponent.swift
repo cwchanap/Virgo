@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct MetronomeSettingsView: View {
-    @StateObject private var metronome = MetronomeEngine()
+    @ObservedObject var metronome: MetronomeEngine
     @State private var tempBPM: Double = 120
     @State private var selectedTimeSignature: TimeSignature = .fourFour
     
@@ -147,7 +147,7 @@ struct MetronomeButtonStyle: ButtonStyle {
 }
 
 #Preview {
-    MetronomeSettingsView()
+    MetronomeSettingsView(metronome: MetronomeEngine())
         .padding()
         .background(Color.black)
 }
