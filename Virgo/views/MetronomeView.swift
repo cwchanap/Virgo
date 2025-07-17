@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct MetronomeView: View {
-    @StateObject private var metronome = MetronomeEngine()
+    @EnvironmentObject private var metronome: MetronomeEngine
     @State private var showingMetronomeSettings = false
     
     var body: some View {
@@ -116,4 +116,5 @@ struct PracticeTipRow: View {
 
 #Preview {
     MetronomeView()
+        .environmentObject(MetronomeEngine())
 }

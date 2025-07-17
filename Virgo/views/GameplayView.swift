@@ -32,7 +32,7 @@ struct GameplayView: View {
     @State private var playbackTimer: Timer?
     @State private var playbackStartTime: Date?
     @State private var cachedDrumBeats: [DrumBeat] = []
-    @StateObject private var metronome = MetronomeEngine()
+    @EnvironmentObject private var metronome: MetronomeEngine
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -363,4 +363,5 @@ struct GameplayView: View {
 
 #Preview {
     GameplayView(track: DrumTrack.sampleData.first!)
+        .environmentObject(MetronomeEngine())
 }
