@@ -9,7 +9,6 @@ import SwiftUI
 
 struct MetronomeView: View {
     @EnvironmentObject private var metronome: MetronomeEngine
-    @State private var showingMetronomeSettings = false
     
     var body: some View {
         NavigationStack {
