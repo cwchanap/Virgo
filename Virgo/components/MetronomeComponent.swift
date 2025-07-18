@@ -34,6 +34,7 @@ class MetronomeEngine: ObservableObject {
     private static let cacheQueue = DispatchQueue(label: "com.virgo.metronome.cache", attributes: .concurrent)
     
     init() {
+        // Initialize audio components safely for testing
         configureAudioSession()
         setupAudioEngine()
         loadTickerSound()
@@ -83,6 +84,7 @@ class MetronomeEngine: ObservableObject {
             Logger.audioPlayback("Audio engine started successfully")
         } catch {
             Logger.audioPlayback("Failed to start audio engine: \(error)")
+            // Engine start failure is non-fatal - metronome can still function for basic operations
         }
     }
     
@@ -150,23 +152,27 @@ class MetronomeEngine: ObservableObject {
     
     func start() {
         guard !isEnabled else { return }
-        guard let player = playerNode else { return }
         
         isEnabled = true
         currentBeat = 0
         
-        // Start the player if not already playing
-        if !player.isPlaying {
-            player.play()
+        // Only perform audio operations if player is available
+        if let player = playerNode {
+            // Start the player if not already playing
+            if !player.isPlaying {
+                player.play()
+            }
+            
+            // Get current time and schedule the first beat immediately
+            startTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
+            nextBeatTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
+            
+            scheduleNextBeats()
+            
+            Logger.audioPlayback("Metronome started at \(bpm) BPM with sample-accurate timing")
+        } else {
+            Logger.audioPlayback("Metronome started in test mode (no audio) at \(bpm) BPM")
         }
-        
-        // Get current time and schedule the first beat immediately
-        startTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
-        nextBeatTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
-        
-        scheduleNextBeats()
-        
-        Logger.audioPlayback("Metronome started at \(bpm) BPM with sample-accurate timing")
     }
     
     func stop() {
