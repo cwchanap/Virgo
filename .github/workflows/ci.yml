@@ -54,16 +54,15 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             -enableCodeCoverage YES \
             -destination-timeout 300 \
-            -verbose \
             -derivedDataPath ./DerivedData
             
-      - name: Show test results on failure
-        if: failure()
-        run: |
-          echo "Looking for test result bundles..."
-          find ./DerivedData -name "*.xcresult" -type d | head -5
-          echo "Showing detailed test logs..."
-          xcrun xcresulttool get --format json --path $(find ./DerivedData -name "*.xcresult" -type d | head -1) || echo "No xcresult found"
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./DerivedData/Logs/Test/*.xcresult
+          retention-days: 30
             
 
   build-archive:
