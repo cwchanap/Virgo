@@ -148,17 +148,27 @@ struct ContentView: View {
     }
     
     private func loadSampleDataIfNeeded() {
-        // Check if we need to reload sample data
-        let needsReload = allDrumTracks.isEmpty || allDrumTracks.allSatisfy { $0.notes.isEmpty }
+        // Single pass to check for empty tracks and collect tracks to delete
+        var tracksToDelete: [DrumTrack] = []
+        var hasValidTracks = false
+        
+        for track in allDrumTracks {
+            if track.notes.isEmpty {
+                tracksToDelete.append(track)
+            } else {
+                hasValidTracks = true
+            }
+        }
+        
+        // Determine if we need to reload (either no tracks or all tracks are empty)
+        let needsReload = allDrumTracks.isEmpty || !hasValidTracks
         
         if needsReload {
             Logger.database("Database needs sample data reload...")
             
-            // Clear existing tracks if they have no notes
-            for track in allDrumTracks {
-                if track.notes.isEmpty {
-                    modelContext.delete(track)
-                }
+            // Delete empty tracks collected during the single pass
+            for track in tracksToDelete {
+                modelContext.delete(track)
             }
             
             // Insert fresh sample data
