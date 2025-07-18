@@ -34,6 +34,13 @@ jobs:
       - name: Clean build folder
         run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
         
+      - name: Check for required assets
+        run: |
+          echo "Checking for ticker audio asset..."
+          find . -name "ticker.*" -type f
+          echo "Checking Assets.xcassets structure..."
+          find ./Virgo/Assets.xcassets -type f | head -10
+        
       - name: Run unit tests
         run: |
           xcodebuild test \
@@ -46,7 +53,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             -enableCodeCoverage YES \
-            -destination-timeout 300
+            -destination-timeout 300 \
+            -verbose \
+            -derivedDataPath ./DerivedData
+            
+      - name: Show test results on failure
+        if: failure()
+        run: |
+          echo "Looking for test result bundles..."
+          find ./DerivedData -name "*.xcresult" -type d | head -5
+          echo "Showing detailed test logs..."
+          xcrun xcresulttool get --format json --path $(find ./DerivedData -name "*.xcresult" -type d | head -1) || echo "No xcresult found"
             
 
   build-archive:
