@@ -30,6 +30,9 @@ class MetronomeEngine: ObservableObject {
     // Static cached buffer to avoid recreating the ticker sound buffer for each instance
     private static var cachedTickerBuffer: AVAudioPCMBuffer?
     
+    // Thread-safe access queue for the cached buffer
+    private static let cacheQueue = DispatchQueue(label: "com.virgo.metronome.cache", attributes: .concurrent)
+    
     init() {
         configureAudioSession()
         setupAudioEngine()
@@ -84,8 +87,12 @@ class MetronomeEngine: ObservableObject {
     }
     
     private func loadTickerSound() {
-        // Check if we already have a cached buffer
-        if let cachedBuffer = Self.cachedTickerBuffer {
+        // Thread-safe check for cached buffer
+        let existingBuffer = Self.cacheQueue.sync {
+            return Self.cachedTickerBuffer
+        }
+        
+        if let cachedBuffer = existingBuffer {
             tickerBuffer = cachedBuffer
             Logger.audioPlayback("Using cached ticker buffer")
             return
@@ -113,8 +120,14 @@ class MetronomeEngine: ObservableObject {
             
             try audioFile.read(into: buffer)
             
-            // Cache the buffer for future use and clean up temp file
-            Self.cachedTickerBuffer = buffer
+            // Thread-safe cache update using barrier to ensure exclusive write access
+            Self.cacheQueue.async(flags: .barrier) {
+                // Double-check that another thread hasn't already cached the buffer
+                if Self.cachedTickerBuffer == nil {
+                    Self.cachedTickerBuffer = buffer
+                }
+            }
+            
             tickerBuffer = buffer
             
             // Clean up temporary file after successful caching
