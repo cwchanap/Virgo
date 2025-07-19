@@ -34,10 +34,21 @@ class MetronomeEngine: ObservableObject {
     private static let cacheQueue = DispatchQueue(label: "com.virgo.metronome.cache", attributes: .concurrent)
     
     init() {
-        // Initialize audio components safely for testing
+        // Check if we're in a test environment
+        let isTestEnvironment = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
+                                ProcessInfo.processInfo.arguments.contains("UITesting") ||
+                                NSClassFromString("XCTest") != nil
+        
+        if isTestEnvironment {
+            Logger.audioPlayback("MetronomeEngine initialized in test mode - skipping audio setup")
+            return
+        }
+        
+        // Initialize audio components safely for production
         configureAudioSession()
         setupAudioEngine()
         loadTickerSound()
+        Logger.audioPlayback("MetronomeEngine initialized successfully")
     }
     
     private func configureAudioSession() {
@@ -49,6 +60,7 @@ class MetronomeEngine: ObservableObject {
             Logger.audioPlayback("Audio session configured successfully")
         } catch {
             Logger.audioPlayback("Failed to configure audio session: \(error)")
+            // Don't throw - this should be non-fatal
         }
         #else
         Logger.audioPlayback("Audio session configuration skipped on macOS")
