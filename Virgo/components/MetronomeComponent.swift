@@ -13,6 +13,74 @@ import os.log
 import AVFAudio
 #endif
 
+actor AudioBufferCache {
+    static let shared = AudioBufferCache()
+    
+    private var cachedTickerBuffer: AVAudioPCMBuffer?
+    
+    private init() {}
+    
+    func getTickerBuffer() throws -> AVAudioPCMBuffer {
+        if let existingBuffer = cachedTickerBuffer {
+            return existingBuffer
+        }
+        
+        guard let tickerData = NSDataAsset(name: "ticker") else {
+            throw AudioBufferError.assetNotFound
+        }
+        
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("ticker_cached.wav")
+        
+        do {
+            try tickerData.data.write(to: tempURL)
+            
+            let audioFile = try AVAudioFile(forReading: tempURL)
+            let frameCount = AVAudioFrameCount(audioFile.length)
+            
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount) else {
+                try? FileManager.default.removeItem(at: tempURL)
+                throw AudioBufferError.bufferCreationFailed
+            }
+            
+            try audioFile.read(into: buffer)
+            
+            // Cache the buffer for future use
+            cachedTickerBuffer = buffer
+            
+            // Clean up temporary file
+            try? FileManager.default.removeItem(at: tempURL)
+            
+            Logger.audioPlayback(
+                "Successfully loaded and cached ticker from data asset - frames: \(buffer.frameLength), " +
+                "channels: \(buffer.format.channelCount), sample rate: \(buffer.format.sampleRate)"
+            )
+            
+            return buffer
+            
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
+            throw AudioBufferError.loadingFailed(error)
+        }
+    }
+}
+
+enum AudioBufferError: Error, LocalizedError {
+    case assetNotFound
+    case bufferCreationFailed
+    case loadingFailed(Error)
+    
+    var errorDescription: String? {
+        switch self {
+        case .assetNotFound:
+            return "Ticker audio asset not found"
+        case .bufferCreationFailed:
+            return "Failed to create audio buffer"
+        case .loadingFailed(let error):
+            return "Failed to load audio buffer: \(error.localizedDescription)"
+        }
+    }
+}
+
 class MetronomeEngine: ObservableObject {
     @Published var isEnabled = false
     @Published var currentBeat = 0
@@ -27,11 +95,8 @@ class MetronomeEngine: ObservableObject {
     private var nextBeatTime: AVAudioTime?
     private var sampleRate: Double = 44100.0
     
-    // Static cached buffer to avoid recreating the ticker sound buffer for each instance
-    private static var cachedTickerBuffer: AVAudioPCMBuffer?
-    
-    // Thread-safe access queue for the cached buffer
-    private static let cacheQueue = DispatchQueue(label: "com.virgo.metronome.cache", attributes: .concurrent)
+    // Use AudioBufferCache singleton for thread-safe buffer management
+    private static let bufferCache = AudioBufferCache.shared
     
     init() {
         // Check if we're in a test environment
@@ -101,59 +166,16 @@ class MetronomeEngine: ObservableObject {
     }
     
     private func loadTickerSound() {
-        // Thread-safe check for cached buffer
-        let existingBuffer = Self.cacheQueue.sync {
-            return Self.cachedTickerBuffer
-        }
-        
-        if let cachedBuffer = existingBuffer {
-            tickerBuffer = cachedBuffer
-            Logger.audioPlayback("Using cached ticker buffer")
-            return
-        }
-        
-        guard let tickerData = NSDataAsset(name: "ticker") else {
-            Logger.audioPlayback("Failed to find ticker data asset")
-            return
-        }
-        
-        do {
-            // Create the temporary file only once for caching
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("ticker_cached.wav")
-            try tickerData.data.write(to: tempURL)
-            
-            let audioFile = try AVAudioFile(forReading: tempURL)
-            let frameCount = AVAudioFrameCount(audioFile.length)
-            
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount) else {
-                Logger.audioPlayback("Failed to create audio buffer for ticker.wav")
-                // Clean up on failure
-                try? FileManager.default.removeItem(at: tempURL)
-                return
-            }
-            
-            try audioFile.read(into: buffer)
-            
-            // Thread-safe cache update using barrier to ensure exclusive write access
-            Self.cacheQueue.async(flags: .barrier) {
-                // Double-check that another thread hasn't already cached the buffer
-                if Self.cachedTickerBuffer == nil {
-                    Self.cachedTickerBuffer = buffer
+        Task {
+            do {
+                let buffer = try await Self.bufferCache.getTickerBuffer()
+                await MainActor.run {
+                    self.tickerBuffer = buffer
+                    Logger.audioPlayback("Using cached ticker buffer")
                 }
+            } catch {
+                Logger.audioPlayback("Failed to load ticker buffer: \(error)")
             }
-            
-            tickerBuffer = buffer
-            
-            // Clean up temporary file after successful caching
-            try? FileManager.default.removeItem(at: tempURL)
-            
-            Logger.audioPlayback(
-                "Successfully loaded and cached ticker from data asset - frames: \(buffer.frameLength), " +
-                "channels: \(buffer.format.channelCount), sample rate: \(buffer.format.sampleRate)"
-            )
-            
-        } catch {
-            Logger.audioPlayback("Failed to load ticker from data asset: \(error)")
         }
     }
     
