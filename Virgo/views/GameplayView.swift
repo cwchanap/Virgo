@@ -7,6 +7,29 @@
 
 import SwiftUI
 
+// MARK: - Measure Utilities
+struct MeasureUtils {
+    /// Converts 1-based measure number to 0-based index for calculations
+    static func toZeroBasedIndex(_ measureNumber: Int) -> Int {
+        return measureNumber - 1
+    }
+    
+    /// Converts 0-based measure index to 1-based measure number for display
+    static func toOneBasedNumber(_ measureIndex: Int) -> Int {
+        return measureIndex + 1
+    }
+    
+    /// Calculates time position from measure number and offset
+    static func timePosition(measureNumber: Int, measureOffset: Double) -> Double {
+        return Double(toZeroBasedIndex(measureNumber)) + measureOffset
+    }
+    
+    /// Extracts measure index from time position
+    static func measureIndex(from timePosition: Double) -> Int {
+        return Int(timePosition)
+    }
+}
+
 // MARK: - Note Position Key
 struct NotePositionKey: Hashable {
     let measureNumber: Int
@@ -85,7 +108,7 @@ struct GameplayView: View {
     
     // MARK: - Sheet Music View
     private func sheetMusicView(geometry: GeometryProxy) -> some View {
-        let maxIndex = (cachedDrumBeats.map { $0.id / 1000 }.max() ?? 0)
+        let maxIndex = (cachedDrumBeats.map { MeasureUtils.measureIndex(from: $0.timePosition) }.max() ?? 0)
         let measuresCount = max(1, maxIndex + 1)
         let measurePositions = GameplayLayout.calculateMeasurePositions(totalMeasures: measuresCount, timeSignature: track.timeSignature)
         let totalHeight = GameplayLayout.totalHeight(for: measurePositions)
@@ -216,7 +239,7 @@ struct GameplayView: View {
             // Then render individual notes
             ForEach(Array(cachedDrumBeats.enumerated()), id: \.offset) { index, beat in
                 // Find which measure this beat belongs to based on the measure number in the beat
-                let measureIndex = beat.id / 1000
+                let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
                 
                 if let measurePos = measurePositions.first(where: { $0.measureIndex == measureIndex }) {
                     // Calculate beat index within the measure based on measureOffset
@@ -265,7 +288,7 @@ struct GameplayView: View {
         // Convert to DrumBeat objects
         cachedDrumBeats = groupedNotes.map { (positionKey, notes) in
             // Convert 1-based measure numbers to 0-based for indexing
-            let timePosition = Double(positionKey.measureNumber - 1) + positionKey.measureOffset
+            let timePosition = MeasureUtils.timePosition(measureNumber: positionKey.measureNumber, measureOffset: positionKey.measureOffset)
             let drumTypes = notes.compactMap { note in
                 DrumType.from(noteType: note.noteType)
             }
@@ -281,7 +304,7 @@ struct GameplayView: View {
     // Calculate actual track duration in seconds based on measures and BPM
     private var actualTrackDuration: Double {
         // Find the total number of measures based on the highest measure number
-        let maxIndex = (cachedDrumBeats.map { $0.id / 1000 }.max() ?? 0)
+        let maxIndex = (cachedDrumBeats.map { MeasureUtils.measureIndex(from: $0.timePosition) }.max() ?? 0)
         let totalMeasures = max(1, maxIndex + 1)
         
         // Calculate duration per measure in seconds
