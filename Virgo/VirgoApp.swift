@@ -17,7 +17,9 @@ struct VirgoApp: App {
     
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            DrumTrack.self
+            Song.self,
+            Chart.self,
+            Note.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

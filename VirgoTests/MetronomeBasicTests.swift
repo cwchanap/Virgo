@@ -90,15 +90,17 @@ struct MetronomeBasicTests {
     }
     
     @Test func testMetronomeComponentCreation() {
-        let track = DrumTrack(
+        let song = Song(
             title: "Test Track",
             artist: "Test Artist",
             bpm: 120,
             duration: "3:00",
             genre: "Rock",
-            difficulty: .medium,
             timeSignature: .fourFour
         )
+        
+        let chart = Chart(difficulty: .medium, song: song)
+        let track = DrumTrack(chart: chart)
         
         let component = MetronomeComponent(track: track, isPlaying: .constant(false))
         #expect(component.track.title == "Test Track")
@@ -153,11 +155,15 @@ struct MetronomeBasicTests {
     }
     
     @Test func testMetronomeComponentWithDifferentTracks() {
+        let song1 = Song(title: "Track 1", artist: "Artist", bpm: 100, duration: "3:00", genre: "Pop", timeSignature: .fourFour)
+        let chart1 = Chart(difficulty: .easy, song: song1)
+        
+        let song2 = Song(title: "Track 2", artist: "Artist", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let chart2 = Chart(difficulty: .hard, song: song2)
+        
         let tracks = [
-            DrumTrack(title: "Track 1", artist: "Artist", bpm: 100, duration: "3:00", 
-                     genre: "Pop", difficulty: .easy, timeSignature: .fourFour),
-            DrumTrack(title: "Track 2", artist: "Artist", bpm: 140, duration: "4:00", 
-                     genre: "Jazz", difficulty: .hard, timeSignature: .threeFour)
+            DrumTrack(chart: chart1),
+            DrumTrack(chart: chart2)
         ]
         
         for track in tracks {
