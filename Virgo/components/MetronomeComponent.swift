@@ -50,11 +50,6 @@ actor AudioBufferCache {
             // Clean up temporary file
             try? FileManager.default.removeItem(at: tempURL)
             
-            Logger.audioPlayback(
-                "Successfully loaded and cached ticker from data asset - frames: \(buffer.frameLength), " +
-                "channels: \(buffer.format.channelCount), sample rate: \(buffer.format.sampleRate)"
-            )
-            
             return buffer
             
         } catch {
@@ -94,26 +89,39 @@ class MetronomeEngine: ObservableObject {
     private var startTime: AVAudioTime?
     private var nextBeatTime: AVAudioTime?
     private var sampleRate: Double = 44100.0
+    private var beatTimer: Timer?
     
     // Use AudioBufferCache singleton for thread-safe buffer management
     private static let bufferCache = AudioBufferCache.shared
     
     init() {
-        // Check if we're in a test environment
+        // Check if we're in a test, preview, or simulator environment
         let isTestEnvironment = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
                                 ProcessInfo.processInfo.arguments.contains("UITesting") ||
                                 NSClassFromString("XCTest") != nil
         
-        if isTestEnvironment {
-            Logger.audioPlayback("MetronomeEngine initialized in test mode - skipping audio setup")
+        let isPreviewEnvironment = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" ||
+                                  ProcessInfo.processInfo.arguments.contains("Previews")
+        
+        #if targetEnvironment(simulator)
+        let isSimulator = true
+        #else
+        let isSimulator = false
+        #endif
+        
+        if isTestEnvironment || isPreviewEnvironment {
+            return
+        }
+        
+        if isSimulator {
+            setupMinimalAudio()
             return
         }
         
         // Initialize audio components safely for production
         configureAudioSession()
-        setupAudioEngine()
-        loadTickerSound()
-        Logger.audioPlayback("MetronomeEngine initialized successfully")
+        loadTickerSoundSync() // Load ticker synchronously first to get its format
+        setupAudioEngine() // Then setup engine to match ticker format
     }
     
     private func configureAudioSession() {
@@ -122,19 +130,33 @@ class MetronomeEngine: ObservableObject {
             let audioSession = AVAudioSession.sharedInstance()
             try audioSession.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try audioSession.setActive(true)
-            Logger.audioPlayback("Audio session configured successfully")
         } catch {
-            Logger.audioPlayback("Failed to configure audio session: \(error)")
             // Don't throw - this should be non-fatal
         }
-        #else
-        Logger.audioPlayback("Audio session configuration skipped on macOS")
         #endif
     }
     
     deinit {
         stop()
-        audioEngine?.stop()
+        
+        // Safely cleanup audio resources
+        if let engine = audioEngine {
+            if engine.isRunning {
+                engine.stop()
+            }
+            audioEngine = nil
+        }
+        
+        playerNode = nil
+        tickerBuffer = nil
+        beatTimer?.invalidate()
+        beatTimer = nil
+    }
+    
+    private func setupMinimalAudio() {
+        // Minimal setup for simulator to prevent ViewBridge errors
+        // Just set sample rate without creating actual audio components
+        sampleRate = 44100.0
     }
     
     private func setupAudioEngine() {
@@ -142,15 +164,21 @@ class MetronomeEngine: ObservableObject {
         playerNode = AVAudioPlayerNode()
         
         guard let engine = audioEngine, let player = playerNode else { 
-            Logger.audioPlayback("Failed to create audio engine or player")
             return 
         }
         
         engine.attach(player)
         
-        // Connect player to mixer with explicit format
-        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 2)
-        sampleRate = format?.sampleRate ?? 44100.0
+        // Use the ticker buffer's format if available, otherwise fallback to standard format
+        let format: AVAudioFormat
+        if let buffer = tickerBuffer {
+            format = buffer.format
+        } else {
+            // Fallback to mono format (most common for audio assets)
+            format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
+        }
+        
+        sampleRate = format.sampleRate
         engine.connect(player, to: engine.mainMixerNode, format: format)
         
         // Prepare the engine
@@ -158,10 +186,39 @@ class MetronomeEngine: ObservableObject {
         
         do {
             try engine.start()
-            Logger.audioPlayback("Audio engine started successfully")
         } catch {
-            Logger.audioPlayback("Failed to start audio engine: \(error)")
             // Engine start failure is non-fatal - metronome can still function for basic operations
+        }
+    }
+    
+    private func loadTickerSoundSync() {
+        // Synchronous loading for initialization
+        do {
+            guard let tickerData = NSDataAsset(name: "ticker") else {
+                return
+            }
+            
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("ticker_init.wav")
+            
+            try tickerData.data.write(to: tempURL)
+            
+            let audioFile = try AVAudioFile(forReading: tempURL)
+            let frameCount = AVAudioFrameCount(audioFile.length)
+            
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount) else {
+                try? FileManager.default.removeItem(at: tempURL)
+                return
+            }
+            
+            try audioFile.read(into: buffer)
+            
+            self.tickerBuffer = buffer
+            
+            // Clean up temporary file
+            try? FileManager.default.removeItem(at: tempURL)
+            
+        } catch {
+            // Silently handle errors
         }
     }
     
@@ -171,10 +228,9 @@ class MetronomeEngine: ObservableObject {
                 let buffer = try await Self.bufferCache.getTickerBuffer()
                 await MainActor.run {
                     self.tickerBuffer = buffer
-                    Logger.audioPlayback("Using cached ticker buffer")
                 }
             } catch {
-                Logger.audioPlayback("Failed to load ticker buffer: \(error)")
+                // Silently handle errors
             }
         }
     }
@@ -190,33 +246,35 @@ class MetronomeEngine: ObservableObject {
         isEnabled = true
         currentBeat = 0
         
+        // Start timer-based metronome
+        startBeatTimer()
+        
         // Only perform audio operations if player is available
-        if let player = playerNode {
-            // Start the player if not already playing
-            if !player.isPlaying {
-                player.play()
+        if let player = playerNode, let engine = audioEngine {
+            do {
+                // Ensure engine is running
+                if !engine.isRunning {
+                    try engine.start()
+                }
+                
+                // Start the player if not already playing
+                if !player.isPlaying {
+                    player.play()
+                }
+            } catch {
+                // Continue in silent mode - just update UI state
             }
-            
-            // Get current time and schedule the first beat immediately
-            startTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
-            nextBeatTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
-            
-            scheduleNextBeats()
-            
-            Logger.audioPlayback("Metronome started at \(bpm) BPM with sample-accurate timing")
-        } else {
-            Logger.audioPlayback("Metronome started in test mode (no audio) at \(bpm) BPM")
         }
     }
     
     func stop() {
         isEnabled = false
         currentBeat = 0
+        beatTimer?.invalidate()
+        beatTimer = nil
         playerNode?.stop()
         startTime = nil
         nextBeatTime = nil
-        
-        Logger.audioPlayback("Metronome stopped")
     }
     
     func toggle() {
@@ -229,59 +287,43 @@ class MetronomeEngine: ObservableObject {
     
     // Test method to play a single click for debugging
     func testClick() {
-        Logger.audioPlayback("Testing single metronome click")
-        playClick(at: nil, beatIndex: 0)
+        playClick()
     }
     
-    private func scheduleNextBeats() {
-        guard isEnabled, playerNode != nil else { return }
+    private func startBeatTimer() {
+        let interval = 60.0 / Double(bpm) // Time between beats in seconds
         
-        let beatsToSchedule = 8 // Schedule beats ahead for smooth playback
-        let samplesPerBeat = Int64(60.0 * sampleRate / Double(bpm))
-        
-        for i in 0..<beatsToSchedule {
-            let beatIndex = (currentBeat + i) % timeSignature.beatsPerMeasure
-            let sampleTime = Int64(i) * samplesPerBeat
-            let playTime = AVAudioTime(sampleTime: sampleTime, atRate: sampleRate)
+        beatTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self = self, self.isEnabled else { return }
             
-            playClick(at: playTime, beatIndex: beatIndex)
+            // Play the click sound
+            self.playClick()
+            
+            // Update beat counter
+            self.currentBeat = (self.currentBeat + 1) % self.timeSignature.beatsPerMeasure
         }
     }
     
-    private func playClick(at time: AVAudioTime?, beatIndex: Int) {
+    private func playClick() {
         guard let player = playerNode, let buffer = tickerBuffer else { 
-            Logger.audioPlayback("Missing player or buffer")
             return 
         }
         
-        let isAccent = beatIndex == 0
+        let isAccent = currentBeat == 0
         let accentMultiplier: Float = isAccent ? 1.3 : 1.0
         let effectiveVolume = volume * accentMultiplier
         
-        // Set volume directly on the player node - much more efficient than buffer copying
+        // Set volume directly on the player node
         player.volume = effectiveVolume
         
-        // Schedule the buffer for playback at the specified time
-        let completionHandler: AVAudioNodeCompletionHandler = { [weak self] in
-            // Update beat counter on main queue
-            DispatchQueue.main.async {
-                guard let self = self, self.isEnabled else { return }
-                self.currentBeat = (self.currentBeat + 1) % self.timeSignature.beatsPerMeasure
-                
-                // Schedule more beats if we're running low
-                if self.currentBeat == 0 {
-                    self.scheduleNextBeats()
-                }
-            }
-        }
-        
-        if let playTime = time {
-            player.scheduleBuffer(buffer, at: playTime, options: [], completionHandler: completionHandler)
-        } else {
-            player.scheduleBuffer(buffer, completionHandler: completionHandler)
-        }
-        
-        Logger.audioPlayback("Scheduled metronome click - beat \(beatIndex), accent: \(isAccent), sample-accurate: \(time != nil)")
+        // Schedule the buffer for immediate playback
+        player.scheduleBuffer(buffer, completionHandler: nil)
+    }
+    
+    // Static factory method for safe preview initialization
+    static func forPreview() -> MetronomeEngine {
+        let engine = MetronomeEngine()
+        return engine
     }
 }
 

@@ -8,75 +8,69 @@
 import SwiftUI
 
 struct MetronomeView: View {
-    @EnvironmentObject private var metronome: MetronomeEngine
+    @StateObject private var metronome = MetronomeEngine()
     
     var body: some View {
-        NavigationStack {
-            ZStack {
-                // Background gradient
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                
-                VStack(spacing: 30) {
-                    // Header
-                    VStack(spacing: 8) {
-                        Text("Metronome")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                        
-                        Text("Perfect your timing with precision beats")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                    }
-                    .padding(.top, 20)
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            
+            VStack(spacing: 30) {
+                // Header
+                VStack(spacing: 8) {
+                    Text("Metronome")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
                     
-                    Spacer()
-                    
-                    // Main metronome settings
-                    MetronomeSettingsView(metronome: metronome)
-                        .padding(.horizontal, 20)
-                    
-                    Spacer()
-                    
-                    // Practice tips section
-                    VStack(spacing: 16) {
-                        Text("Practice Tips")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        
-                        VStack(spacing: 12) {
-                            PracticeTipRow(
-                                icon: "1.circle.fill",
-                                title: "Start Slow",
-                                description: "Begin at a comfortable tempo and gradually increase"
-                            )
-                            
-                            PracticeTipRow(
-                                icon: "2.circle.fill",
-                                title: "Stay Consistent",
-                                description: "Focus on maintaining steady timing throughout"
-                            )
-                            
-                            PracticeTipRow(
-                                icon: "3.circle.fill",
-                                title: "Use Accents",
-                                description: "Listen for the emphasized downbeat to stay oriented"
-                            )
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 30)
+                    Text("Perfect your timing with precision beats")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
                 }
+                .padding(.top, 20)
+                
+                Spacer()
+                
+                // Main metronome settings
+                MetronomeSettingsView(metronome: metronome)
+                    .padding(.horizontal, 20)
+                
+                Spacer()
+                
+                // Practice tips section
+                VStack(spacing: 16) {
+                    Text("Practice Tips")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    
+                    VStack(spacing: 12) {
+                        PracticeTipRow(
+                            icon: "1.circle.fill",
+                            title: "Start Slow",
+                            description: "Begin at a comfortable tempo and gradually increase"
+                        )
+                        
+                        PracticeTipRow(
+                            icon: "2.circle.fill",
+                            title: "Stay Consistent",
+                            description: "Focus on maintaining steady timing throughout"
+                        )
+                        
+                        PracticeTipRow(
+                            icon: "3.circle.fill",
+                            title: "Use Accents",
+                            description: "Listen for the emphasized downbeat to stay oriented"
+                        )
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 30)
             }
-            .navigationBarBackButtonHidden(true)
-            #if os(iOS)
-            .toolbar(.hidden)
-            #endif
         }
     }
 }
@@ -115,5 +109,5 @@ struct PracticeTipRow: View {
 
 #Preview {
     MetronomeView()
-        .environmentObject(MetronomeEngine())
+        .modelContainer(for: Song.self, inMemory: true)
 }
