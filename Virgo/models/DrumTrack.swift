@@ -15,34 +15,82 @@ final class Note {
     var noteType: NoteType
     var measureNumber: Int
     var measureOffset: Double
+    var chart: Chart?
     
-    init(interval: NoteInterval, noteType: NoteType, measureNumber: Int, measureOffset: Double) {
+    init(interval: NoteInterval, noteType: NoteType, measureNumber: Int, measureOffset: Double, chart: Chart? = nil) {
         self.interval = interval
         self.noteType = noteType
         self.measureNumber = measureNumber
         self.measureOffset = measureOffset
+        self.chart = chart
     }
 }
 
 @Model
-final class DrumTrack {
+final class Chart {
+    var difficulty: Difficulty
+    private var _timeSignature: TimeSignature?
+    var song: Song?
+    @Relationship(deleteRule: .cascade, inverse: \Note.chart)
+    var notes: [Note]
+    
+    var timeSignature: TimeSignature {
+        get { _timeSignature ?? song?.timeSignature ?? .fourFour }
+        set { _timeSignature = newValue }
+    }
+    
+    // Convenience accessors for song properties
+    var title: String { song?.title ?? "Unknown Song" }
+    var artist: String { song?.artist ?? "Unknown Artist" }
+    var bpm: Int { song?.bpm ?? 120 }
+    var duration: String { song?.duration ?? "0:00" }
+    var genre: String { song?.genre ?? "Unknown" }
+    
+    init(difficulty: Difficulty, timeSignature: TimeSignature? = nil, notes: [Note] = [], song: Song? = nil) {
+        self.difficulty = difficulty
+        self._timeSignature = timeSignature
+        self.notes = notes
+        self.song = song
+    }
+}
+
+@Model
+final class Song {
     var title: String
     var artist: String
     var bpm: Int
     var duration: String
     var genre: String
-    var difficulty: Difficulty
     private var _timeSignature: TimeSignature?
+    var isPlaying: Bool
+    var dateAdded: Date
+    var playCount: Int
+    var isFavorite: Bool
+    @Relationship(deleteRule: .cascade, inverse: \Chart.song)
+    var charts: [Chart]
     
     var timeSignature: TimeSignature {
         get { _timeSignature ?? .fourFour }
         set { _timeSignature = newValue }
     }
-    var isPlaying: Bool
-    var dateAdded: Date
-    var playCount: Int
-    var isFavorite: Bool
-    var notes: [Note]
+    
+    // Convenience accessors
+    var availableDifficulties: [Difficulty] {
+        charts.map { $0.difficulty }.sorted { $0.rawValue < $1.rawValue }
+    }
+    
+    var easiestChart: Chart? {
+        charts.min { chart1, chart2 in
+            let order: [Difficulty] = [.easy, .medium, .hard, .expert]
+            let index1 = order.firstIndex(of: chart1.difficulty) ?? 0
+            let index2 = order.firstIndex(of: chart2.difficulty) ?? 0
+            return index1 < index2
+        }
+    }
+    
+    func chart(for difficulty: Difficulty) -> Chart? {
+        charts.first { $0.difficulty == difficulty }
+    }
     
     init(
         title: String,
@@ -50,9 +98,8 @@ final class DrumTrack {
         bpm: Int,
         duration: String,
         genre: String,
-        difficulty: Difficulty,
         timeSignature: TimeSignature = .fourFour,
-        notes: [Note] = [],
+        charts: [Chart] = [],
         isPlaying: Bool = false,
         playCount: Int = 0,
         isFavorite: Bool = false
@@ -62,9 +109,8 @@ final class DrumTrack {
         self.bpm = bpm
         self.duration = duration
         self.genre = genre
-        self.difficulty = difficulty
         self._timeSignature = timeSignature
-        self.notes = notes
+        self.charts = charts
         self.isPlaying = isPlaying
         self.dateAdded = Date()
         self.playCount = playCount
@@ -73,231 +119,151 @@ final class DrumTrack {
 }
 
 // MARK: - Extensions
-extension DrumTrack {
+extension Chart {
     var difficultyColor: Color {
         return difficulty.color
     }
+}
+
+extension Song {
+    static var sampleData: [Song] {
+        return [
+            createThunderBeatSong(),
+            createHipHopSong(),
+            createJazzSong()
+        ]
+    }
+    
+    private static func createThunderBeatSong() -> Song {
+        let song = Song(
+            title: "Thunder Beat",
+            artist: "DrumMaster Pro",
+            bpm: 120,
+            duration: "3:45",
+            genre: "Rock",
+            timeSignature: .fourFour
+        )
+        
+        let easyChart = Chart(difficulty: .easy, song: song)
+        easyChart.notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: easyChart),
+            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
+            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: easyChart),
+        ]
+        
+        let mediumChart = Chart(difficulty: .medium, song: song)
+        mediumChart.notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: mediumChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25, chart: mediumChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: mediumChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75, chart: mediumChart),
+        ]
+        
+        let hardChart = Chart(difficulty: .hard, song: song)
+        hardChart.notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: hardChart),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: hardChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: hardChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25, chart: hardChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: hardChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75, chart: hardChart),
+            Note(interval: .eighth, noteType: .highTom, measureNumber: 1, measureOffset: 0.875, chart: hardChart),
+            Note(interval: .eighth, noteType: .midTom, measureNumber: 1, measureOffset: 0.9375, chart: hardChart),
+        ]
+        
+        song.charts = [easyChart, mediumChart, hardChart]
+        return song
+    }
+    
+    private static func createHipHopSong() -> Song {
+        let song = Song(
+            title: "Hip Hop Beats",
+            artist: "Urban Flow",
+            bpm: 85,
+            duration: "3:30",
+            genre: "Hip Hop",
+            timeSignature: .fourFour
+        )
+        
+        let easyChart = Chart(difficulty: .easy, song: song)
+        easyChart.notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: easyChart),
+            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
+            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: easyChart)
+        ]
+        
+        let mediumChart = Chart(difficulty: .medium, song: song)
+        mediumChart.notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: mediumChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25, chart: mediumChart),
+            Note(interval: .eighth, noteType: .openHiHat, measureNumber: 1, measureOffset: 0.75, chart: mediumChart)
+        ]
+        
+        song.charts = [easyChart, mediumChart]
+        return song
+    }
+    
+    private static func createJazzSong() -> Song {
+        let song = Song(
+            title: "Jazz Swing",
+            artist: "Blue Note",
+            bpm: 125,
+            duration: "6:15",
+            genre: "Jazz",
+            timeSignature: .threeFour
+        )
+        
+        let hardChart = Chart(difficulty: .hard, song: song)
+        hardChart.notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: hardChart),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: hardChart),
+            Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.0, chart: hardChart),
+            Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.33, chart: hardChart),
+            Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.66, chart: hardChart)
+        ]
+        
+        song.charts = [hardChart]
+        return song
+    }
+}
+
+// MARK: - Legacy Support for DrumTrack
+// Keeping DrumTrack as a computed structure for backward compatibility
+struct DrumTrack {
+    let chart: Chart
+    
+    // Forward all properties to the chart and its song
+    var title: String { chart.title }
+    var artist: String { chart.artist }
+    var bpm: Int { chart.bpm }
+    var duration: String { chart.duration }
+    var genre: String { chart.genre }
+    var difficulty: Difficulty { chart.difficulty }
+    var timeSignature: TimeSignature { chart.timeSignature }
+    var notes: [Note] { chart.notes }
+    var difficultyColor: Color { chart.difficultyColor }
+    
+    // Legacy properties (these would need to be tracked elsewhere or computed)
+    var isPlaying: Bool { chart.song?.isPlaying ?? false }
+    var dateAdded: Date { chart.song?.dateAdded ?? Date() }
+    var playCount: Int { chart.song?.playCount ?? 0 }
+    var isFavorite: Bool { chart.song?.isFavorite ?? false }
+    
+    init(chart: Chart) {
+        self.chart = chart
+    }
     
     static var sampleData: [DrumTrack] {
-        [
-            DrumTrack(
-                title: "Thunder Beat",
-                artist: "DrumMaster Pro",
-                bpm: 120,
-                duration: "3:45",
-                genre: "Rock",
-                difficulty: .medium,
-                timeSignature: .fourFour,
-                notes: [
-                    // Measure 1 - Basic rock pattern
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75),
-                    
-                    // Measure 2 - Repeat pattern
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 2, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 2, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 2, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 2, measureOffset: 0.75),
-                    
-                    // Measure 3 - Variation with bass on beat 3
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.5),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 3, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 3, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 3, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 3, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 3, measureOffset: 0.75),
-                    
-                    // Measure 4 - Back to basic pattern
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 4, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 4, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 4, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 4, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 4, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 4, measureOffset: 0.75),
-                    
-                    // Measure 5 - Add crash cymbal
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 5, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .crash, measureNumber: 5, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 5, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 5, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 5, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 5, measureOffset: 0.75),
-                    
-                    // Measure 6 - Regular pattern
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 6, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 6, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 6, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 6, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 6, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 6, measureOffset: 0.75),
-                    
-                    // Measure 7 - Tom fill
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 7, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 7, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .highTom, measureNumber: 7, measureOffset: 0.75),
-                    Note(interval: .eighth, noteType: .midTom, measureNumber: 7, measureOffset: 0.875),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 7, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 7, measureOffset: 0.25),
-                    
-                    // Measure 8 - Regular pattern
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 8, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 8, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 8, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 8, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 8, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 8, measureOffset: 0.75),
-                    
-                    // Measure 9 - Build up with double bass
-                    Note(interval: .eighth, noteType: .bass, measureNumber: 9, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .bass, measureNumber: 9, measureOffset: 0.25),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 9, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 9, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 9, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 9, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 9, measureOffset: 0.75),
-                    
-                    // Measure 10 - Continue build
-                    Note(interval: .eighth, noteType: .bass, measureNumber: 10, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .bass, measureNumber: 10, measureOffset: 0.25),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 10, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 10, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 10, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 10, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 10, measureOffset: 0.75),
-                    
-                    // Measure 11 - Climax with ride cymbal
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 11, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 11, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .ride, measureNumber: 11, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .ride, measureNumber: 11, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .ride, measureNumber: 11, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .ride, measureNumber: 11, measureOffset: 0.75),
-                    
-                    // Measure 12 - Final measure with crash ending
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 12, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .crash, measureNumber: 12, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 12, measureOffset: 0.5),
-                    Note(interval: .quarter, noteType: .crash, measureNumber: 12, measureOffset: 0.75),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 12, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 12, measureOffset: 0.5)
-                ]
-            ),
-            DrumTrack(
-                title: "Jungle Rhythm",
-                artist: "Percussionist",
-                bpm: 140,
-                duration: "4:12",
-                genre: "Electronic",
-                difficulty: .hard,
-                timeSignature: .fourFour,
-                notes: [
-                    Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.375),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5),
-                    Note(interval: .sixteenth, noteType: .crash, measureNumber: 1, measureOffset: 0.0)
-                ]
-            ),
-            DrumTrack(
-                title: "Classic Rock Fill",
-                artist: "Studio Sessions",
-                bpm: 110,
-                duration: "2:30",
-                genre: "Rock",
-                difficulty: .easy,
-                timeSignature: .fourFour,
-                notes: [
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5),
-                    Note(interval: .quarter, noteType: .highTom, measureNumber: 1, measureOffset: 0.25),
-                    Note(interval: .quarter, noteType: .lowTom, measureNumber: 1, measureOffset: 0.75)
-                ]
-            ),
-            DrumTrack(
-                title: "Latin Groove",
-                artist: "World Beats",
-                bpm: 95,
-                duration: "5:20",
-                genre: "Latin",
-                difficulty: .medium,
-                timeSignature: .twoFour,
-                notes: [
-                    Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.5),
-                    Note(interval: .sixteenth, noteType: .cowbell, measureNumber: 1, measureOffset: 0.25),
-                    Note(interval: .sixteenth, noteType: .cowbell, measureNumber: 1, measureOffset: 0.75)
-                ]
-            ),
-            DrumTrack(
-                title: "Blast Beat Fury",
-                artist: "Metal Core",
-                bpm: 180,
-                duration: "2:45",
-                genre: "Metal",
-                difficulty: .expert,
-                timeSignature: .fourFour,
-                notes: [
-                    Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
-                    Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.125),
-                    Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.375),
-                    Note(interval: .sixteenth, noteType: .crash, measureNumber: 1, measureOffset: 0.0)
-                ]
-            ),
-            DrumTrack(
-                title: "Jazz Swing",
-                artist: "Blue Note",
-                bpm: 125,
-                duration: "6:15",
-                genre: "Jazz",
-                difficulty: .hard,
-                timeSignature: .threeFour,
-                notes: [
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.33),
-                    Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.66)
-                ]
-            ),
-            DrumTrack(
-                title: "Hip Hop Beats",
-                artist: "Urban Flow",
-                bpm: 85,
-                duration: "3:30",
-                genre: "Hip Hop",
-                difficulty: .easy,
-                timeSignature: .fourFour,
-                notes: [
-                    Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25),
-                    Note(interval: .eighth, noteType: .openHiHat, measureNumber: 1, measureOffset: 0.75)
-                ]
-            ),
-            DrumTrack(
-                title: "Polyrhythm Challenge",
-                artist: "Complex Time",
-                bpm: 160,
-                duration: "4:45",
-                genre: "Progressive",
-                difficulty: .expert,
-                timeSignature: .fiveFour,
-                notes: [
-                    Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.6),
-                    Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.33),
-                    Note(interval: .sixteenth, noteType: .china, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .sixteenth, noteType: .splash, measureNumber: 1, measureOffset: 0.66)
-                ]
-            )
-        ]
+        Song.sampleData.flatMap { song in
+            song.charts.map { chart in
+                DrumTrack(chart: chart)
+            }
+        }
     }
 }

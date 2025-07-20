@@ -12,13 +12,20 @@ import Foundation
 struct ContentViewTests {
     
     @Test func testSearchFilteringByTitle() async throws {
+        // Create songs and charts for testing
+        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120, duration: "3:00", genre: "Rock")
+        let rockChart = Chart(difficulty: .medium, song: rockSong)
+        
+        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let jazzChart = Chart(difficulty: .hard, song: jazzSong)
+        
+        let electronicSong = Song(title: "Electronic Beat", artist: "The Rockers", bpm: 128, duration: "3:30", genre: "Electronic")
+        let electronicChart = Chart(difficulty: .easy, song: electronicSong)
+        
         let tracks = [
-            DrumTrack(title: "Rock Anthem", artist: "The Rockers", bpm: 120,
-                      duration: "3:00", genre: "Rock", difficulty: .medium, timeSignature: .fourFour),
-            DrumTrack(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140,
-                      duration: "4:00", genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
-            DrumTrack(title: "Electronic Beat", artist: "The Rockers", bpm: 128,
-                      duration: "3:30", genre: "Electronic", difficulty: .easy, timeSignature: .fourFour)
+            DrumTrack(chart: rockChart),
+            DrumTrack(chart: jazzChart),
+            DrumTrack(chart: electronicChart)
         ]
         
         // Test title filtering
@@ -37,13 +44,19 @@ struct ContentViewTests {
     }
     
     @Test func testSearchFilteringByArtist() async throws {
+        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120, duration: "3:00", genre: "Rock")
+        let rockChart = Chart(difficulty: .medium, song: rockSong)
+        
+        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let jazzChart = Chart(difficulty: .hard, song: jazzSong)
+        
+        let electronicSong = Song(title: "Electronic Beat", artist: "The Rockers", bpm: 128, duration: "3:30", genre: "Electronic")
+        let electronicChart = Chart(difficulty: .easy, song: electronicSong)
+        
         let tracks = [
-            DrumTrack(title: "Rock Anthem", artist: "The Rockers", bpm: 120,
-                      duration: "3:00", genre: "Rock", difficulty: .medium, timeSignature: .fourFour),
-            DrumTrack(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140,
-                      duration: "4:00", genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
-            DrumTrack(title: "Electronic Beat", artist: "The Rockers", bpm: 128,
-                      duration: "3:30", genre: "Electronic", difficulty: .easy, timeSignature: .fourFour)
+            DrumTrack(chart: rockChart),
+            DrumTrack(chart: jazzChart),
+            DrumTrack(chart: electronicChart)
         ]
         
         // Test artist filtering  

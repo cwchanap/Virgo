@@ -13,15 +13,18 @@ import SwiftUI
 struct DrumTrackTests {
     
     @Test func testDrumTrackInitialization() async throws {
-        let track = DrumTrack(
+        // Create song and chart first
+        let song = Song(
             title: "Test Track",
-            artist: "Test Artist",
+            artist: "Test Artist", 
             bpm: 120,
             duration: "3:45",
             genre: "Rock",
-            difficulty: .medium,
             timeSignature: .fourFour
         )
+        
+        let chart = Chart(difficulty: .medium, song: song)
+        let track = DrumTrack(chart: chart)
         
         #expect(track.title == "Test Track")
         #expect(track.artist == "Test Artist")

@@ -4,28 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Virgo is a SwiftUI-based drum tracks music application for iOS and macOS. The app provides a library of drum tracks with features like search, playback controls, and track metadata display.
+Virgo is a SwiftUI-based drum notation and metronome application for iOS and macOS. The app provides interactive drum track visualization with musical notation, metronome functionality, and gameplay-style views for practicing drum patterns.
 
 ### Architecture
 
 - **SwiftUI + SwiftData**: Modern declarative UI with Core Data replacement
 - **Multi-platform**: Supports iOS 18.5+ and macOS 14.0+
-- **Model-View Architecture**: Clean separation with SwiftData models and SwiftUI views
-- **Navigation**: Tab-based navigation with NavigationStack for detailed views
+- **Component-Based Architecture**: Modular design with reusable components
+- **AVFoundation**: Audio engine for metronome and sound playback
+- **Organized File Structure**: Clear separation by feature (components, views, models, utilities)
 
 ### Key Components
 
-- `VirgoApp.swift`: Main app entry point with SwiftData ModelContainer setup
+- `VirgoApp.swift`: Main app entry point with SwiftData ModelContainer and shared MetronomeEngine
 - `MainMenuView.swift`: Animated splash screen with navigation to main app
-- `ContentView.swift`: Primary tabbed interface with drum tracks list, search, and playback
-- `DrumTrack.swift`: SwiftData model for drum track entities with sample data
+- `ContentView.swift`: Primary track listing interface
+- `GameplayView.swift`: Full-screen musical notation display with playback controls
+- `DrumTrack.swift`: SwiftData model with Note relationships for complex drum patterns
+- `MetronomeComponent.swift`: Advanced metronome with sample-accurate timing and volume control
 
 ### Data Model
 
-The app uses SwiftData with a single `DrumTrack` model containing:
-- Basic metadata (title, artist, genre, duration)
-- Playback properties (BPM, difficulty level)
-- User interaction data (play count, favorites, play state)
+The app uses SwiftData with two primary models:
+- `DrumTrack`: Track metadata (title, artist, BPM, time signature, difficulty) with relationships to Notes
+- `Note`: Individual drum notes with interval, type, measure number, and timing offset
+- Rich sample data with complex multi-measure drum patterns
 
 ## Development Setup
 
@@ -78,22 +81,68 @@ xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Sim
 ### Project Structure
 ```
 Virgo/
-├── Virgo.xcodeproj/          # Xcode project configuration
-├── Virgo/                    # Main app source code
-│   ├── VirgoApp.swift       # App entry point and data setup
-│   ├── MainMenuView.swift   # Splash screen with animations
-│   ├── ContentView.swift    # Main tabbed interface
-│   ├── DrumTrack.swift      # SwiftData model
-│   ├── Assets.xcassets/     # App icons and colors
-│   └── Info.plist          # App configuration
-├── VirgoTests/              # Unit tests (uses Swift Testing framework)
-└── VirgoUITests/            # UI automation tests
+├── Virgo.xcodeproj/              # Xcode project configuration
+├── Virgo/                        # Main app source code
+│   ├── VirgoApp.swift           # App entry point with SwiftData and MetronomeEngine
+│   ├── components/              # Reusable UI components
+│   │   ├── GameplayControlsView.swift
+│   │   ├── GameplayHeaderView.swift
+│   │   ├── MetronomeComponent.swift    # Core metronome with AVFoundation
+│   │   └── MetronomeSettingsComponent.swift
+│   ├── views/                   # Main view controllers
+│   │   ├── ContentView.swift    # Track listing
+│   │   ├── GameplayView.swift   # Musical notation display
+│   │   ├── MainMenuView.swift   # Splash screen
+│   │   ├── BeamView.swift       # Musical beam notation
+│   │   ├── DrumBeatView.swift   # Individual note rendering
+│   │   ├── MetronomeView.swift  # Metronome interface
+│   │   └── MusicNotationViews.swift
+│   ├── models/                  # SwiftData models
+│   │   └── DrumTrack.swift      # Track and Note models with sample data
+│   ├── utilities/               # Helper utilities
+│   │   ├── BeamGroupingLogic.swift  # Musical notation beam grouping
+│   │   └── Logger.swift         # Centralized logging
+│   ├── constants/               # App constants
+│   │   └── Drum.swift          # Drum type definitions
+│   ├── layout/                  # Layout calculations
+│   │   └── gameplay.swift       # Musical notation positioning
+│   └── Assets.xcassets/         # App icons, colors, and audio assets
+├── VirgoTests/                  # Unit tests (Swift Testing framework)
+└── VirgoUITests/               # UI automation tests
+└── scripts/                    # Development scripts
+    ├── setup-git-hooks.sh      # Git hooks installation
+    └── git-hooks/              # Pre-commit hooks
 ```
 
 ## Development Notes
 
 - The app uses Swift Testing framework (not XCTest) for unit tests
-- SwiftData automatically handles sample data insertion on first launch
+- SwiftData models include complex Note relationships with detailed drum patterns
+- MetronomeEngine uses AVFoundation for sample-accurate audio timing
+- Musical notation rendering with precise positioning and beam grouping
+- Component architecture separates UI from business logic effectively
+- Test environment detection disables audio components during testing
+- Centralized logging with categorized output (audioPlayback, userAction, debug)
 - Multi-platform target supports both iOS and macOS with adaptive UI
-- Custom button styles and animations enhance the user experience
-- Search functionality filters tracks by title and artist in real-time
+
+## Key Technical Features
+
+### Metronome System
+- `MetronomeEngine`: Core audio engine with AVFoundation integration
+- Sample-accurate timing with buffer scheduling
+- Volume control with accent patterns (stronger beat 1)
+- Thread-safe audio buffer caching with `AudioBufferCache` actor
+- Test environment detection for unit testing compatibility
+
+### Musical Notation
+- Complex drum pattern visualization with proper musical notation
+- Beam grouping logic for connected eighth/sixteenth notes
+- Multi-measure layout with staff lines, clefs, and time signatures
+- Real-time playback indication with beat highlighting
+- Scrollable gameplay view with measure-based positioning
+
+### Audio Architecture
+- Cached audio assets using NSDataAsset for ticker sounds
+- Configurable audio session for iOS (playback category with mix-with-others)
+- Non-fatal error handling for audio engine failures
+- Proper resource cleanup in deinitializer
