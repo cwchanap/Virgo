@@ -51,7 +51,7 @@ struct NavigationTests {
     
     @Test func testSongExpansionToggle() async throws {
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
-        var expandedSongId: PersistentIdentifier? = nil
+        var expandedSongId: PersistentIdentifier?
         
         let handleSongTap = {
             expandedSongId = expandedSongId == song.persistentModelID ? nil : song.persistentModelID
@@ -68,7 +68,7 @@ struct NavigationTests {
     
     @Test func testPlaybackToggle() async throws {
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
-        var currentlyPlaying: PersistentIdentifier? = nil
+        var currentlyPlaying: PersistentIdentifier?
         
         let togglePlayback = { (song: Song) in
             if currentlyPlaying == song.id {
@@ -109,7 +109,7 @@ struct NavigationTests {
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
         let chart = Chart(difficulty: .hard, song: song)
         
-        var selectedChart: Chart? = nil
+        var selectedChart: Chart?
         var navigateToGameplay = false
         
         // Test that navigation destination should be available when both conditions are met

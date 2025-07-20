@@ -65,7 +65,7 @@ final class Song {
     var isPlaying: Bool
     var dateAdded: Date
     var playCount: Int
-    var isFavorite: Bool
+    var isSaved: Bool
     @Relationship(deleteRule: .cascade, inverse: \Chart.song)
     var charts: [Chart]
     
@@ -88,6 +88,11 @@ final class Song {
         }
     }
     
+    var measureCount: Int {
+        let maxMeasure = charts.flatMap { $0.notes }.map { $0.measureNumber }.max() ?? 1
+        return maxMeasure
+    }
+    
     func chart(for difficulty: Difficulty) -> Chart? {
         charts.first { $0.difficulty == difficulty }
     }
@@ -102,7 +107,7 @@ final class Song {
         charts: [Chart] = [],
         isPlaying: Bool = false,
         playCount: Int = 0,
-        isFavorite: Bool = false
+        isSaved: Bool = false
     ) {
         self.title = title
         self.artist = artist
@@ -114,7 +119,7 @@ final class Song {
         self.isPlaying = isPlaying
         self.dateAdded = Date()
         self.playCount = playCount
-        self.isFavorite = isFavorite
+        self.isSaved = isSaved
     }
 }
 
@@ -149,7 +154,7 @@ extension Song {
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: easyChart),
             Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
-            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: easyChart),
+            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: easyChart)
         ]
         
         let mediumChart = Chart(difficulty: .medium, song: song)
@@ -159,7 +164,7 @@ extension Song {
             Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
             Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25, chart: mediumChart),
             Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: mediumChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75, chart: mediumChart),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75, chart: mediumChart)
         ]
         
         let hardChart = Chart(difficulty: .hard, song: song)
@@ -171,7 +176,7 @@ extension Song {
             Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: hardChart),
             Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75, chart: hardChart),
             Note(interval: .eighth, noteType: .highTom, measureNumber: 1, measureOffset: 0.875, chart: hardChart),
-            Note(interval: .eighth, noteType: .midTom, measureNumber: 1, measureOffset: 0.9375, chart: hardChart),
+            Note(interval: .eighth, noteType: .midTom, measureNumber: 1, measureOffset: 0.9375, chart: hardChart)
         ]
         
         song.charts = [easyChart, mediumChart, hardChart]
@@ -253,7 +258,7 @@ struct DrumTrack {
     var isPlaying: Bool { chart.song?.isPlaying ?? false }
     var dateAdded: Date { chart.song?.dateAdded ?? Date() }
     var playCount: Int { chart.song?.playCount ?? 0 }
-    var isFavorite: Bool { chart.song?.isFavorite ?? false }
+    var isSaved: Bool { chart.song?.isSaved ?? false }
     
     init(chart: Chart) {
         self.chart = chart

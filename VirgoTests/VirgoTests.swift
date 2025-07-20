@@ -50,7 +50,7 @@ struct VirgoTests {
         // Verify default values
         #expect(track.isPlaying == false)
         #expect(track.playCount == 0)
-        #expect(track.isFavorite == false)
+        #expect(track.isSaved == false)
         #expect(track.dateAdded <= Date())
     }
     
