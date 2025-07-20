@@ -152,8 +152,8 @@ struct MainMenuView: View {
     
     private func clearDatabase() {
         do {
-            // Delete all existing DrumTrack records
-            try modelContext.delete(model: DrumTrack.self)
+            // Delete all existing Song records (and related charts/notes via cascade)
+            try modelContext.delete(model: Song.self)
             try modelContext.save()
             Logger.database("Database cleared successfully")
         } catch {

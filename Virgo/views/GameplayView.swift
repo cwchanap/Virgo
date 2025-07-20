@@ -48,7 +48,12 @@ struct NotePositionKey: Hashable {
 }
 
 struct GameplayView: View {
-    let track: DrumTrack
+    let chart: Chart
+    
+    // Create a computed DrumTrack for backward compatibility
+    private var track: DrumTrack {
+        DrumTrack(chart: chart)
+    }
     @State private var isPlaying = false
     @State private var playbackProgress: Double = 0.0
     @State private var currentBeat: Int = 0
@@ -89,7 +94,7 @@ struct GameplayView: View {
             }
         }
         #if os(iOS)
-        .toolbar(.hidden)
+        .toolbar(.hidden, for: .navigationBar)
         #endif
         .background(Color.black)
         .foregroundColor(.white)
@@ -384,6 +389,6 @@ struct GameplayView: View {
 }
 
 #Preview {
-    GameplayView(track: DrumTrack.sampleData.first!)
+    GameplayView(chart: Song.sampleData.first!.charts.first!)
         .environmentObject(MetronomeEngine())
 }

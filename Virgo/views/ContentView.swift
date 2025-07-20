@@ -10,36 +10,38 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var allDrumTracks: [DrumTrack]
+    @Query private var allSongs: [Song]
     @State private var selectedTab = 0
     @State private var currentlyPlaying: PersistentIdentifier?
     @State private var searchText = ""
+    @State private var expandedSongId: PersistentIdentifier?
+    @State private var selectedChart: Chart?
+    @State private var navigateToGameplay = false
     
-    // Computed property for filtered tracks
-    var drumTracks: [DrumTrack] {
+    // Computed property for filtered songs
+    var songs: [Song] {
         if searchText.isEmpty {
-            return allDrumTracks
+            return allSongs
         } else {
-            return allDrumTracks.filter { track in
-                track.title.localizedCaseInsensitiveContains(searchText) ||
-                track.artist.localizedCaseInsensitiveContains(searchText)
+            return allSongs.filter { song in
+                song.title.localizedCaseInsensitiveContains(searchText) ||
+                song.artist.localizedCaseInsensitiveContains(searchText)
             }
         }
     }
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            // Drum Tracks Tab
-            NavigationStack {
-                VStack(spacing: 0) {
+            // Songs Tab
+            VStack(spacing: 0) {
                     // Header with stats
                     VStack(spacing: 10) {
                         HStack {
                             VStack(alignment: .leading) {
-                                Text("Drum Tracks")
+                                Text("Songs")
                                     .font(.largeTitle)
                                     .fontWeight(.bold)
-                                Text("\(drumTracks.count) tracks available")
+                                Text("\(songs.count) songs available")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
@@ -77,7 +79,7 @@ struct ContentView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 10)
-                            .background(Color.white)
+                            .background(.regularMaterial)
                             .cornerRadius(8)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
@@ -88,23 +90,33 @@ struct ContentView: View {
                     }
                     .background(.thinMaterial)
                     
-                    // Tracks List
+                    // Songs List
                     List {
-                        ForEach(drumTracks, id: \.id) { track in
-                            NavigationLink(destination: GameplayView(track: track)) {
-                                DrumTrackRow(track: track, isPlaying: currentlyPlaying == track.id) {
-                                    togglePlayback(for: track)
-                                }
+                        ForEach(songs, id: \.id) { song in
+                            ExpandableSongRowContainer(
+                                song: song,
+                                isPlaying: currentlyPlaying == song.id,
+                                isExpanded: expandedSongId == song.persistentModelID,
+                                expandedSongId: $expandedSongId,
+                                selectedChart: $selectedChart,
+                                navigateToGameplay: $navigateToGameplay
+                            ) {
+                                togglePlayback(for: song)
                             }
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            .listRowSeparator(.hidden)
                         }
                     }
                     .listStyle(PlainListStyle())
                 }
+            .navigationDestination(isPresented: $navigateToGameplay) {
+                if let chart = selectedChart {
+                    GameplayView(chart: chart)
+                }
             }
             .tabItem {
                 Image(systemName: "music.note.list")
-                Text("Drums")
+                Text("Songs")
             }
             .tag(0)
             
@@ -136,121 +148,283 @@ struct ContentView: View {
         }
     }
     
-    private func togglePlayback(for track: DrumTrack) {
-        // Toggle playback state for the selected track
-        if currentlyPlaying == track.id {
+    private func togglePlayback(for song: Song) {
+        // Toggle playback state for the selected song
+        if currentlyPlaying == song.id {
             currentlyPlaying = nil
-            Logger.audioPlayback("Stopped track: \(track.title)")
+            song.isPlaying = false
+            Logger.audioPlayback("Stopped song: \(song.title)")
         } else {
-            currentlyPlaying = track.id
-            Logger.audioPlayback("Started track: \(track.title)")
+            currentlyPlaying = song.id
+            song.isPlaying = true
+            Logger.audioPlayback("Started song: \(song.title)")
         }
     }
     
     private func loadSampleDataIfNeeded() {
-        // Single pass to check for empty tracks and collect tracks to delete
-        var tracksToDelete: [DrumTrack] = []
-        var hasValidTracks = false
-        
-        for track in allDrumTracks {
-            if track.notes.isEmpty {
-                tracksToDelete.append(track)
-            } else {
-                hasValidTracks = true
-            }
-        }
-        
-        // Determine if we need to reload (either no tracks or all tracks are empty)
-        let needsReload = allDrumTracks.isEmpty || !hasValidTracks
+        // Check if we need to load sample data
+        let needsReload = allSongs.isEmpty
         
         if needsReload {
             Logger.database("Database needs sample data reload...")
             
-            // Delete empty tracks collected during the single pass
-            for track in tracksToDelete {
-                modelContext.delete(track)
-            }
-            
             // Insert fresh sample data
-            for sampleTrack in DrumTrack.sampleData {
-                modelContext.insert(sampleTrack)
+            for sampleSong in Song.sampleData {
+                modelContext.insert(sampleSong)
+                // Insert charts and notes (they're related via relationships)
+                for chart in sampleSong.charts {
+                    modelContext.insert(chart)
+                    for note in chart.notes {
+                        modelContext.insert(note)
+                    }
+                }
             }
             
             do {
                 try modelContext.save()
-                Logger.database("Successfully loaded \(DrumTrack.sampleData.count) sample tracks")
+                Logger.database("Successfully loaded \(Song.sampleData.count) sample songs")
             } catch {
                 Logger.databaseError(error)
             }
         } else {
-            Logger.database("Database already has \(allDrumTracks.count) tracks with notes")
+            Logger.database("Database already has \(allSongs.count) songs")
+        }
+    }
+    
+}
+
+// Custom components
+struct ExpandableSongRowContainer: View {
+    let song: Song
+    let isPlaying: Bool
+    let isExpanded: Bool
+    @Binding var expandedSongId: PersistentIdentifier?
+    @Binding var selectedChart: Chart?
+    @Binding var navigateToGameplay: Bool
+    let onPlayTap: () -> Void
+    
+    var body: some View {
+        ExpandableSongRow(
+            song: song,
+            isPlaying: isPlaying,
+            isExpanded: isExpanded,
+            onPlayTap: onPlayTap,
+            onSongTap: handleSongTap,
+            onChartSelect: handleChartSelect
+        )
+    }
+    
+    private func handleSongTap() {
+        expandedSongId = expandedSongId == song.persistentModelID ? nil : song.persistentModelID
+    }
+    
+    private func handleChartSelect(_ chart: Chart) {
+        selectedChart = chart
+        navigateToGameplay = true
+    }
+}
+
+struct ExpandableSongRow: View {
+    let song: Song
+    let isPlaying: Bool
+    let isExpanded: Bool
+    let onPlayTap: () -> Void
+    let onSongTap: () -> Void
+    let onChartSelect: (Chart) -> Void
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Main song row
+            Button(action: onSongTap) {
+                HStack(spacing: 12) {
+                    // Play/Pause Button
+                    Button(action: onPlayTap) {
+                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 40))
+                            .foregroundColor(isPlaying ? .red : .purple)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .onTapGesture { onPlayTap() } // Prevent song expansion when tapping play
+                    
+                    // Song Info
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(song.title)
+                            .font(.headline)
+                            .lineLimit(1)
+                            .foregroundColor(.primary)
+                        
+                        Text(song.artist)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                        
+                        HStack(spacing: 12) {
+                            Label("\(song.bpm) BPM", systemImage: "metronome")
+                            Label(song.duration, systemImage: "clock")
+                            Label(song.genre, systemImage: "music.quarternote.3")
+                        }
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                    
+                    // Available Difficulties and Expand Indicator
+                    VStack(spacing: 4) {
+                        HStack(spacing: 2) {
+                            ForEach(song.availableDifficulties, id: \.self) { difficulty in
+                                DifficultyBadge(difficulty: difficulty, size: .small)
+                            }
+                        }
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.down")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                                .animation(.easeInOut(duration: 0.3), value: isExpanded)
+                            
+                            Text("\(song.charts.count) charts")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(isPlaying ? Color.purple.opacity(0.1) : Color.clear)
+                .background(.ultraThinMaterial)
+                .cornerRadius(12)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Expanded difficulty options
+            if isExpanded {
+                DifficultyExpansionView(
+                    song: song,
+                    onChartSelect: onChartSelect
+                )
+                .padding(.top, 8)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity.combined(with: .move(edge: .top))
+                ))
+                .animation(.easeInOut(duration: 0.3), value: isExpanded)
+            }
         }
     }
 }
 
-// Custom components
-struct DrumTrackRow: View {
-    let track: DrumTrack
-    let isPlaying: Bool
-    let onPlayTap: () -> Void
+struct DifficultyExpansionView: View {
+    let song: Song
+    let onChartSelect: (Chart) -> Void
     
     var body: some View {
-        HStack(spacing: 12) {
-            // Play/Pause Button
-            Button(action: onPlayTap) {
-                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 40))
-                    .foregroundColor(isPlaying ? .red : .purple)
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            // Track Info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(track.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                
-                Text(track.artist)
+        VStack(spacing: 12) {
+            // Expansion header
+            HStack {
+                Text("Select Difficulty")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                
-                HStack(spacing: 12) {
-                    Label("\(track.bpm) BPM", systemImage: "metronome")
-                    Label(track.duration, systemImage: "clock")
-                    Label(track.genre, systemImage: "music.quarternote.3")
-                }
-                .font(.caption)
-                .foregroundColor(.secondary)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                Spacer()
             }
+            .padding(.horizontal, 16)
             
-            Spacer()
-            
-            // Difficulty Badge
-            VStack(spacing: 4) {
-                DifficultyBadge(difficulty: track.difficulty)
+            // Difficulty cards in rows
+            VStack(spacing: 6) {
+                ForEach(song.charts.sorted { $0.difficulty.rawValue < $1.difficulty.rawValue }, id: \.id) { chart in
+                    ChartSelectionCard(chart: chart) {
+                        onChartSelect(chart)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 12)
+        .background(.regularMaterial)
+        .cornerRadius(12)
+        .padding(.horizontal, 4)
+    }
+}
+
+struct ChartSelectionCard: View {
+    let chart: Chart
+    let onSelect: () -> Void
+    @State private var isPressed = false
+    
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 12) {
+                DifficultyBadge(difficulty: chart.difficulty, size: .normal)
                 
-                Button(action: {}) {
-                    Image(systemName: "ellipsis")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(chart.notes.count) notes")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text(chart.timeSignature.displayName)
+                        .font(.caption2)
                         .foregroundColor(.secondary)
                 }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(.ultraThinMaterial)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(chart.difficulty.color.opacity(0.4), lineWidth: 1)
+            )
+            .scaleEffect(isPressed ? 0.95 : 1.0)
+            .opacity(isPressed ? 0.8 : 1.0)
         }
-        .padding(.vertical, 4)
-        .background(isPlaying ? Color.purple.opacity(0.1) : Color.clear)
-        .cornerRadius(8)
+        .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isPressed = pressing
+            }
+        }, perform: {})
     }
 }
 
 struct DifficultyBadge: View {
     let difficulty: Difficulty
+    var size: BadgeSize = .normal
+    
+    enum BadgeSize {
+        case small, normal, large
+        
+        var font: Font {
+            switch self {
+            case .small: return .caption2
+            case .normal: return .caption2
+            case .large: return .caption
+            }
+        }
+        
+        var padding: (horizontal: CGFloat, vertical: CGFloat) {
+            switch self {
+            case .small: return (4, 2)
+            case .normal: return (8, 4)
+            case .large: return (12, 6)
+            }
+        }
+    }
     
     var body: some View {
         Text(difficulty.rawValue)
-            .font(.caption2)
+            .font(size.font)
             .fontWeight(.semibold)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, size.padding.horizontal)
+            .padding(.vertical, size.padding.vertical)
             .background(difficulty.color.opacity(0.2))
             .foregroundColor(difficulty.color)
             .cornerRadius(12)
@@ -259,5 +433,5 @@ struct DifficultyBadge: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: DrumTrack.self, inMemory: true)
+        .modelContainer(for: Song.self, inMemory: true)
 }
