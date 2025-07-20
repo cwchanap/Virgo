@@ -34,7 +34,7 @@ struct DrumTrackTests {
         #expect(track.difficulty == .medium)
         #expect(track.isPlaying == false)
         #expect(track.playCount == 0)
-        #expect(track.isFavorite == false)
+        #expect(track.isSaved == false)
         #expect(track.dateAdded <= Date())
     }
     
@@ -49,12 +49,12 @@ struct DrumTrackTests {
             timeSignature: .sixEight,
             isPlaying: true,
             playCount: 5,
-            isFavorite: true
+            isSaved: true
         )
         
         #expect(track.isPlaying == true)
         #expect(track.playCount == 5)
-        #expect(track.isFavorite == true)
+        #expect(track.isSaved == true)
     }
     
     @Test func testDifficultyColors() async throws {

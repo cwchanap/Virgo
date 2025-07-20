@@ -33,7 +33,16 @@ struct ContentView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             // Songs Tab
-            VStack(spacing: 0) {
+            ZStack {
+                // Background gradient
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                VStack(spacing: 0) {
                     // Header with stats
                     VStack(spacing: 10) {
                         HStack {
@@ -41,15 +50,16 @@ struct ContentView: View {
                                 Text("Songs")
                                     .font(.largeTitle)
                                     .fontWeight(.bold)
+                                    .foregroundColor(.white)
                                 Text("\(songs.count) songs available")
                                     .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(.gray)
                             }
                             Spacer()
                             Button(action: {}) {
                                 Image(systemName: "line.3.horizontal.decrease")
                                     .font(.title2)
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(.white)
                             }
                         }
                         .padding(.horizontal)
@@ -59,11 +69,12 @@ struct ContentView: View {
                         HStack {
                             HStack {
                                 Image(systemName: "magnifyingglass")
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(.gray)
                                     .font(.system(size: 16))
                                 
                                 TextField("Search songs or artists...", text: $searchText)
                                     .font(.system(size: 16))
+                                    .foregroundColor(.white)
                                     .accessibilityIdentifier("searchField")
                                 
                                 if !searchText.isEmpty {
@@ -71,7 +82,7 @@ struct ContentView: View {
                                         searchText = ""
                                     }) {
                                         Image(systemName: "xmark.circle.fill")
-                                            .foregroundColor(.secondary)
+                                            .foregroundColor(.gray)
                                             .font(.system(size: 16))
                                     }
                                     .accessibilityIdentifier("clearSearchButton")
@@ -79,16 +90,17 @@ struct ContentView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 10)
-                            .background(.regularMaterial)
+                            .background(Color.white.opacity(0.1))
                             .cornerRadius(8)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
                             )
                         }
                         .padding(.horizontal)
                     }
-                    .background(.thinMaterial)
+                    .padding(.top, 20)
+                    .padding(.bottom, 16)
                     
                     // Songs List
                     List {
@@ -99,16 +111,20 @@ struct ContentView: View {
                                 isExpanded: expandedSongId == song.persistentModelID,
                                 expandedSongId: $expandedSongId,
                                 selectedChart: $selectedChart,
-                                navigateToGameplay: $navigateToGameplay
-                            ) {
-                                togglePlayback(for: song)
-                            }
+                                navigateToGameplay: $navigateToGameplay,
+                                onPlayTap: { togglePlayback(for: song) },
+                                onSaveTap: { toggleSave(for: song) }
+                            )
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                             .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                         }
                     }
                     .listStyle(PlainListStyle())
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
                 }
+            }
             .navigationDestination(isPresented: $navigateToGameplay) {
                 if let chart = selectedChart {
                     GameplayView(chart: chart)
@@ -128,19 +144,70 @@ struct ContentView: View {
                 }
                 .tag(1)
             
-            Text("Library Tab")
+            SavedSongsView(songs: allSongs)
                 .tabItem {
                     Image(systemName: "music.note")
                     Text("Library")
                 }
                 .tag(2)
             
-            Text("Profile Tab")
-                .tabItem {
-                    Image(systemName: "person")
-                    Text("Profile")
+            ZStack {
+                // Background gradient
+                LinearGradient(
+                    gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text("Profile")
+                                    .font(.largeTitle)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+                                Text("Manage your account and preferences")
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                            }
+                            Spacer()
+                            Image(systemName: "person.circle")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal)
+                        .padding(.top)
+                    }
+                    .padding(.top, 20)
+                    .padding(.bottom, 16)
+                    
+                    Spacer()
+                    
+                    // Profile content placeholder
+                    VStack(spacing: 16) {
+                        Text("Profile features coming soon!")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                        
+                        Text("User settings, achievements, and preferences will be available here")
+                            .font(.body)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 32)
+                    
+                    Spacer()
                 }
-                .tag(3)
+            }
+            .tabItem {
+                Image(systemName: "person")
+                Text("Profile")
+            }
+            .tag(3)
         }
         .accentColor(.purple)
         .onAppear {
@@ -159,6 +226,11 @@ struct ContentView: View {
             song.isPlaying = true
             Logger.audioPlayback("Started song: \(song.title)")
         }
+    }
+    
+    private func toggleSave(for song: Song) {
+        song.isSaved.toggle()
+        Logger.database("Song \(song.title) \(song.isSaved ? "saved" : "unsaved")")
     }
     
     private func loadSampleDataIfNeeded() {
@@ -202,6 +274,7 @@ struct ExpandableSongRowContainer: View {
     @Binding var selectedChart: Chart?
     @Binding var navigateToGameplay: Bool
     let onPlayTap: () -> Void
+    let onSaveTap: () -> Void
     
     var body: some View {
         ExpandableSongRow(
@@ -209,6 +282,7 @@ struct ExpandableSongRowContainer: View {
             isPlaying: isPlaying,
             isExpanded: isExpanded,
             onPlayTap: onPlayTap,
+            onSaveTap: onSaveTap,
             onSongTap: handleSongTap,
             onChartSelect: handleChartSelect
         )
@@ -229,6 +303,7 @@ struct ExpandableSongRow: View {
     let isPlaying: Bool
     let isExpanded: Bool
     let onPlayTap: () -> Void
+    let onSaveTap: () -> Void
     let onSongTap: () -> Void
     let onChartSelect: (Chart) -> Void
     
@@ -251,49 +326,61 @@ struct ExpandableSongRow: View {
                         Text(song.title)
                             .font(.headline)
                             .lineLimit(1)
-                            .foregroundColor(.primary)
+                            .foregroundColor(.white)
                         
                         Text(song.artist)
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.gray)
                             .lineLimit(1)
                         
                         HStack(spacing: 12) {
                             Label("\(song.bpm) BPM", systemImage: "metronome")
                             Label(song.duration, systemImage: "clock")
                             Label(song.genre, systemImage: "music.quarternote.3")
+                            Label(song.timeSignature.displayName, systemImage: "music.note")
+                            Label("\(song.measureCount) measures", systemImage: "music.note.list")
                         }
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.gray)
                     }
                     
                     Spacer()
                     
-                    // Available Difficulties and Expand Indicator
+                    // Save Button and Available Difficulties and Expand Indicator
                     VStack(spacing: 4) {
-                        HStack(spacing: 2) {
-                            ForEach(song.availableDifficulties, id: \.self) { difficulty in
-                                DifficultyBadge(difficulty: difficulty, size: .small)
+                        HStack(spacing: 8) {
+                            // Save Button
+                            Button(action: onSaveTap) {
+                                Image(systemName: song.isSaved ? "bookmark.fill" : "bookmark")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(song.isSaved ? .purple : .gray)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            
+                            // Available Difficulties
+                            HStack(spacing: 2) {
+                                ForEach(song.availableDifficulties, id: \.self) { difficulty in
+                                    DifficultyBadge(difficulty: difficulty, size: .small)
+                                }
                             }
                         }
                         
                         HStack(spacing: 4) {
                             Image(systemName: "chevron.down")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.gray)
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                                 .animation(.easeInOut(duration: 0.3), value: isExpanded)
                             
                             Text("\(song.charts.count) charts")
                                 .font(.caption2)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.gray)
                         }
                     }
                 }
                 .padding(.vertical, 8)
                 .padding(.horizontal, 12)
-                .background(isPlaying ? Color.purple.opacity(0.1) : Color.clear)
-                .background(.ultraThinMaterial)
+                .background(isPlaying ? Color.purple.opacity(0.2) : Color.white.opacity(0.1))
                 .cornerRadius(12)
             }
             .buttonStyle(PlainButtonStyle())
@@ -326,7 +413,7 @@ struct DifficultyExpansionView: View {
                 Text("Select Difficulty")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(.primary)
+                    .foregroundColor(.white)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -342,7 +429,7 @@ struct DifficultyExpansionView: View {
             .padding(.horizontal, 16)
         }
         .padding(.vertical, 12)
-        .background(.regularMaterial)
+        .background(Color.white.opacity(0.1))
         .cornerRadius(12)
         .padding(.horizontal, 4)
     }
@@ -361,23 +448,19 @@ struct ChartSelectionCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(chart.notes.count) notes")
                         .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text(chart.timeSignature.displayName)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(.gray)
                 }
                 
                 Spacer()
                 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.gray)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
-            .background(.ultraThinMaterial)
+            .background(Color.white.opacity(0.1))
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
@@ -428,6 +511,126 @@ struct DifficultyBadge: View {
             .background(difficulty.color.opacity(0.2))
             .foregroundColor(difficulty.color)
             .cornerRadius(12)
+    }
+}
+
+struct SavedSongsView: View {
+    let songs: [Song]
+    
+    var savedSongs: [Song] {
+        songs.filter { $0.isSaved }
+    }
+    
+    var body: some View {
+        ZStack {
+            // Background gradient
+            LinearGradient(
+                gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            
+            VStack(spacing: 0) {
+                // Header
+                VStack(spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text("Bookmarked Songs")
+                                .font(.largeTitle)
+                                .fontWeight(.bold)
+                                .foregroundColor(.white)
+                            Text("\(savedSongs.count) songs bookmarked")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                        }
+                        Spacer()
+                        Image(systemName: "bookmark.fill")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top)
+                }
+                .padding(.top, 20)
+                
+                // Saved Songs List
+                if savedSongs.isEmpty {
+                    VStack(spacing: 16) {
+                        Spacer()
+                        Image(systemName: "bookmark")
+                            .font(.system(size: 64))
+                            .foregroundColor(.white.opacity(0.3))
+                        
+                        VStack(spacing: 8) {
+                            Text("No Bookmarked Songs")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                            
+                            Text("Tap the bookmark icon on any song to bookmark it here")
+                                .font(.body)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 32)
+                } else {
+                    List {
+                        ForEach(savedSongs, id: \.id) { song in
+                            SavedSongRow(song: song)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                .listRowSeparator(.hidden)
+                        }
+                    }
+                    .listStyle(PlainListStyle())
+                    .scrollContentBackground(.hidden)
+                }
+            }
+        }
+    }
+}
+
+struct SavedSongRow: View {
+    let song: Song
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Song Info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(song.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .foregroundColor(.white)
+                
+                Text(song.artist)
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .lineLimit(1)
+                
+                HStack(spacing: 12) {
+                    Label("\(song.bpm) BPM", systemImage: "metronome")
+                    Label(song.duration, systemImage: "clock")
+                    Label(song.genre, systemImage: "music.quarternote.3")
+                }
+                .font(.caption)
+                .foregroundColor(.gray)
+            }
+            
+            Spacer()
+            
+            // Available Difficulties
+            HStack(spacing: 2) {
+                ForEach(song.availableDifficulties, id: \.self) { difficulty in
+                    DifficultyBadge(difficulty: difficulty, size: .small)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color.white.opacity(0.1))
+        .cornerRadius(12)
     }
 }
 
