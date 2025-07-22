@@ -20,13 +20,14 @@ Virgo is a SwiftUI-based drum notation and metronome application for iOS and mac
 - `MainMenuView.swift`: Animated splash screen with navigation to main app
 - `ContentView.swift`: Primary track listing interface
 - `GameplayView.swift`: Full-screen musical notation display with playback controls
-- `DrumTrack.swift`: SwiftData model with Note relationships for complex drum patterns
+- `DrumTrack.swift`: SwiftData models (Song, Chart, Note) with relationships for complex drum patterns
 - `MetronomeComponent.swift`: Advanced metronome with sample-accurate timing and volume control
 
 ### Data Model
 
-The app uses SwiftData with two primary models:
-- `DrumTrack`: Track metadata (title, artist, BPM, time signature, difficulty) with relationships to Notes
+The app uses SwiftData with three primary models:
+- `Song`: Track metadata (title, artist, BPM, time signature, duration, genre)
+- `Chart`: Difficulty-specific charts linked to songs with relationships to Notes
 - `Note`: Individual drum notes with interval, type, measure number, and timing offset
 - Rich sample data with complex multi-measure drum patterns
 
@@ -74,8 +75,11 @@ xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Sim
 # Run UI tests
 xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:VirgoUITests test
 
-# Run specific test
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:VirgoTests/VirgoTests/example test
+# Run specific test class
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:VirgoTests/VirgoTests test
+
+# Run specific test method
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:VirgoTests/VirgoTests/testAppLaunchConfiguration test
 ```
 
 ### Project Structure
@@ -124,6 +128,7 @@ Virgo/
 - Test environment detection disables audio components during testing
 - Centralized logging with categorized output (audioPlayback, userAction, debug)
 - Multi-platform target supports both iOS and macOS with adaptive UI
+- SwiftLint configuration customized for the project with relaxed rules for necessary patterns
 
 ## Key Technical Features
 
