@@ -132,6 +132,74 @@ struct DTXFileParserTests {
         #expect(chartData.toTimeSignature() == .fourFour)
     }
     
+    @Test func testParseNoteLine() throws {
+        // Test quarter note parsing: #00113: 01010101
+        let quarterNoteLine = "#00113: 01010101"
+        let quarterNotes = try DTXFileParser.parseNoteLine(quarterNoteLine)
+        
+        #expect(quarterNotes.count == 4)
+        for (index, note) in quarterNotes.enumerated() {
+            #expect(note.measureNumber == 1)
+            #expect(note.laneID == "13") // Bass drum
+            #expect(note.noteID == "01")
+            #expect(note.notePosition == index)
+            #expect(note.totalPositions == 4)
+            #expect(note.measureOffset == Double(index) / 4.0)
+        }
+    }
+    
+    @Test func testParseNoteLineWithGaps() throws {
+        // Test with gaps: #00112: 00050005
+        let gapNoteLine = "#00112: 00050005"
+        let gapNotes = try DTXFileParser.parseNoteLine(gapNoteLine)
+        
+        #expect(gapNotes.count == 2) // Only non-00 notes
+        #expect(gapNotes[0].notePosition == 1)
+        #expect(gapNotes[0].measureOffset == 0.25)
+        #expect(gapNotes[1].notePosition == 3)
+        #expect(gapNotes[1].measureOffset == 0.75)
+    }
+    
+    @Test func testParseEighthNotes() throws {
+        // Test eighth notes: #00211: 0I0J0I0J0I0J0I0J
+        let eighthNoteLine = "#00211: 0I0J0I0J0I0J0I0J"
+        let eighthNotes = try DTXFileParser.parseNoteLine(eighthNoteLine)
+        
+        #expect(eighthNotes.count == 8)
+        #expect(eighthNotes[0].totalPositions == 8)
+        #expect(eighthNotes[0].toNoteInterval() == .eighth)
+    }
+    
+    @Test func testDTXNoteConversion() throws {
+        let dtxNote = DTXNote(
+            measureNumber: 0,
+            laneID: "13", // Bass drum
+            noteID: "01",
+            notePosition: 2,
+            totalPositions: 4
+        )
+        
+        #expect(dtxNote.toNoteType() == .bass)
+        #expect(dtxNote.toNoteInterval() == .quarter)
+        #expect(dtxNote.measureOffset == 0.5)
+    }
+    
+    @Test func testDTXLaneMapping() throws {
+        #expect(DTXLane.bd.noteType == .bass)
+        #expect(DTXLane.sn.noteType == .snare)
+        #expect(DTXLane.hhc.noteType == .hiHat)
+        #expect(DTXLane.hh.noteType == .openHiHat)
+        #expect(DTXLane.cy.noteType == .crash)
+        #expect(DTXLane.rd.noteType == .ride)
+        #expect(DTXLane.ht.noteType == .highTom)
+        #expect(DTXLane.lt.noteType == .midTom)
+        #expect(DTXLane.ft.noteType == .lowTom)
+        
+        // Non-playable lanes
+        #expect(DTXLane.bpm.noteType == nil)
+        #expect(DTXLane.bgm.noteType == nil)
+    }
+    
     @Test func testActualDTXFile() throws {
         let dtxPath = "/Users/chanwaichan/Documents (Local)/Test DTX/Kyuuka ressha no madobe de/mas.dtx"
         let url = URL(fileURLWithPath: dtxPath)
@@ -148,5 +216,14 @@ struct DTXFileParserTests {
         #expect(chartData.bpm == 200)
         #expect(chartData.difficultyLevel == 74)
         #expect(chartData.toDifficulty() == .expert)
+        
+        // Verify notes were parsed
+        #expect(!chartData.notes.isEmpty)
+        
+        // Check for expected note types
+        let noteTypes = Set(chartData.notes.compactMap { $0.toNoteType() })
+        #expect(noteTypes.contains(.bass))
+        #expect(noteTypes.contains(.snare))
+        #expect(noteTypes.contains(.hiHat))
     }
 }
