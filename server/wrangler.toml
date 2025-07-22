@@ -1,0 +1,20 @@
+name = "virgo-dtx-server"
+main = "main.py"
+compatibility_date = "2024-01-01"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+[env.development.vars]
+ENVIRONMENT = "development"
+
+# Cloudflare R2 bindings (for future use)
+# [[r2_buckets]]
+# binding = "DTX_BUCKET"
+# bucket_name = "virgo-dtx-files"
+
+# Cloudflare D1 bindings (for future use)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "virgo-songs"
+# database_id = "your-database-id"
