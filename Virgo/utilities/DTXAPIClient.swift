@@ -45,7 +45,7 @@ class DTXAPIClient: ObservableObject {
         if let customURL = UserDefaults.standard.string(forKey: "DTXServerURL"), !customURL.isEmpty {
             return customURL
         }
-        return "http://localhost:8001"
+        return "http://127.0.0.1:8001"
     }
     
     // MARK: - Public API

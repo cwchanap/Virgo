@@ -18,18 +18,21 @@ Virgo is a SwiftUI-based drum notation and metronome application for iOS and mac
 
 - `VirgoApp.swift`: Main app entry point with SwiftData ModelContainer and shared MetronomeEngine
 - `MainMenuView.swift`: Animated splash screen with navigation to main app
-- `ContentView.swift`: Primary track listing interface
+- `ContentView.swift`: Primary track listing interface with unified Songs tab supporting local and server DTX files
 - `GameplayView.swift`: Full-screen musical notation display with playback controls
 - `DrumTrack.swift`: SwiftData models (Song, Chart, Note) with relationships for complex drum patterns
 - `MetronomeComponent.swift`: Advanced metronome with sample-accurate timing and volume control
+- `DTXAPIClient.swift`: Network client for DTX server integration with file listing, metadata, and download capabilities
+- `DTXParser.swift`: Parser for importing DTX drum chart files with complete note parsing
 
 ### Data Model
 
 The app uses SwiftData with three primary models:
-- `Song`: Track metadata (title, artist, BPM, time signature, duration, genre)
+- `Song`: Track metadata (title, artist, BPM, time signature, duration, genre) with `isSaved` flag for server/local differentiation
 - `Chart`: Difficulty-specific charts linked to songs with relationships to Notes
 - `Note`: Individual drum notes with interval, type, measure number, and timing offset
 - Rich sample data with complex multi-measure drum patterns
+- Server integration allows importing DTX files dynamically with caching support
 
 ## Development Setup
 
@@ -105,7 +108,9 @@ Virgo/
 │   │   └── DrumTrack.swift      # Track and Note models with sample data
 │   ├── utilities/               # Helper utilities
 │   │   ├── BeamGroupingLogic.swift  # Musical notation beam grouping
-│   │   └── Logger.swift         # Centralized logging
+│   │   ├── Logger.swift         # Centralized logging
+│   │   ├── DTXAPIClient.swift   # Server integration for DTX files
+│   │   └── DTXParser.swift      # DTX file format parser
 │   ├── constants/               # App constants
 │   │   └── Drum.swift          # Drum type definitions
 │   ├── layout/                  # Layout calculations
@@ -151,3 +156,13 @@ Virgo/
 - Configurable audio session for iOS (playback category with mix-with-others)
 - Non-fatal error handling for audio engine failures
 - Proper resource cleanup in deinitializer
+
+### Server Integration
+- `DTXAPIClient`: Network client for connecting to FastAPI backend server
+- Configurable server URL (defaults to http://127.0.0.1:8001)
+- REST API endpoints for listing, downloading, and parsing DTX files
+- Error handling for network connectivity and server responses
+- User preferences for server configuration with UserDefaults storage
+- Network entitlements configured for client/server communication
+- Unified Songs tab combines local SwiftData entries with server DTX files
+- Caching system for downloaded DTX files with local storage support
