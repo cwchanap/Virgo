@@ -65,7 +65,7 @@ final class Song {
     var isPlaying: Bool
     var dateAdded: Date
     var playCount: Int
-    var isSaved: Bool
+    var isSaved: Bool = false
     @Relationship(deleteRule: .cascade, inverse: \Chart.song)
     var charts: [Chart]
     
@@ -120,6 +120,59 @@ final class Song {
         self.dateAdded = Date()
         self.playCount = playCount
         self.isSaved = isSaved
+    }
+}
+
+@Model
+final class ServerSong {
+    var filename: String
+    var title: String
+    var artist: String
+    var bpm: Double
+    var difficultyLevel: Int
+    var size: Int
+    var lastUpdated: Date
+    var isDownloaded: Bool
+    
+    init(
+        filename: String,
+        title: String,
+        artist: String,
+        bpm: Double,
+        difficultyLevel: Int,
+        size: Int,
+        isDownloaded: Bool = false
+    ) {
+        self.filename = filename
+        self.title = title
+        self.artist = artist
+        self.bpm = bpm
+        self.difficultyLevel = difficultyLevel
+        self.size = size
+        self.lastUpdated = Date()
+        self.isDownloaded = isDownloaded
+    }
+    
+    func toDifficulty() -> Difficulty {
+        switch difficultyLevel {
+        case 0..<25:
+            return .easy
+        case 25..<50:
+            return .medium
+        case 50..<75:
+            return .hard
+        case 75...100:
+            return .expert
+        default:
+            return .medium
+        }
+    }
+    
+    func formatFileSize() -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(size))
     }
 }
 

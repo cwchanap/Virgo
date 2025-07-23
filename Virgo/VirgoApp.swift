@@ -19,14 +19,39 @@ struct VirgoApp: App {
         let schema = Schema([
             Song.self,
             Chart.self,
-            Note.self
+            Note.self,
+            ServerSong.self
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let modelConfiguration = ModelConfiguration(
+            schema: schema, 
+            isStoredInMemoryOnly: false,
+            allowsSave: true
+        )
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // If migration fails, try creating a new in-memory container and then recreate persistent store
+            print("Migration failed, attempting to recreate database: \(error)")
+            
+            // Delete the existing database file to force recreation
+            let storeURL = modelConfiguration.url
+            try? FileManager.default.removeItem(at: storeURL)
+            // Also remove any associated files
+            let associatedFiles = [
+                storeURL.appendingPathExtension("wal"),
+                storeURL.appendingPathExtension("shm")
+            ]
+            for file in associatedFiles {
+                try? FileManager.default.removeItem(at: file)
+            }
+            
+            // Try creating the container again
+            do {
+                return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            } catch {
+                fatalError("Could not create ModelContainer even after cleanup: \(error)")
+            }
         }
     }()
 

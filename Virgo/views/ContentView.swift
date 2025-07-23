@@ -11,12 +11,15 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allSongs: [Song]
+    @Query private var serverSongs: [ServerSong]
+    @StateObject private var serverSongService = ServerSongService()
     @State private var selectedTab = 0
     @State private var currentlyPlaying: PersistentIdentifier?
     @State private var searchText = ""
     @State private var expandedSongId: PersistentIdentifier?
     @State private var selectedChart: Chart?
     @State private var navigateToGameplay = false
+    @State private var showingServerSongs = false
     
     // Computed property for filtered songs
     var songs: [Song] {
@@ -28,6 +31,23 @@ struct ContentView: View {
                 song.artist.localizedCaseInsensitiveContains(searchText)
             }
         }
+    }
+    
+    // Computed property for filtered server songs
+    var filteredServerSongs: [ServerSong] {
+        if searchText.isEmpty {
+            return serverSongs
+        } else {
+            return serverSongs.filter { song in
+                song.title.localizedCaseInsensitiveContains(searchText) ||
+                song.artist.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    // Combined count for display
+    var totalSongsCount: Int {
+        return songs.count + (showingServerSongs ? filteredServerSongs.count : 0)
     }
 
     var body: some View {
@@ -51,15 +71,36 @@ struct ContentView: View {
                                     .font(.largeTitle)
                                     .fontWeight(.bold)
                                     .foregroundColor(.white)
-                                Text("\(songs.count) songs available")
+                                Text("\(totalSongsCount) songs available")
                                     .font(.subheadline)
                                     .foregroundColor(.gray)
                             }
                             Spacer()
-                            Button(action: {}) {
-                                Image(systemName: "line.3.horizontal.decrease")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
+                            HStack(spacing: 16) {
+                                Button(action: {
+                                    showingServerSongs.toggle()
+                                }) {
+                                    Image(systemName: showingServerSongs ? "cloud.fill" : "cloud")
+                                        .font(.title2)
+                                        .foregroundColor(.white)
+                                }
+                                
+                                if showingServerSongs {
+                                    Button(action: {
+                                        Task {
+                                            await serverSongService.refreshServerSongs()
+                                        }
+                                    }) {
+                                        Image(systemName: serverSongService.isRefreshing ? "arrow.clockwise" : "arrow.clockwise")
+                                            .font(.title2)
+                                            .foregroundColor(.white)
+                                            .rotationEffect(.degrees(serverSongService.isRefreshing ? 360 : 0))
+                                            .animation(serverSongService.isRefreshing ? 
+                                                     Animation.linear(duration: 1).repeatForever(autoreverses: false) : 
+                                                     .default, value: serverSongService.isRefreshing)
+                                    }
+                                    .disabled(serverSongService.isRefreshing)
+                                }
                             }
                         }
                         .padding(.horizontal)
@@ -104,20 +145,92 @@ struct ContentView: View {
                     
                     // Songs List
                     List {
-                        ForEach(songs, id: \.id) { song in
-                            ExpandableSongRowContainer(
-                                song: song,
-                                isPlaying: currentlyPlaying == song.id,
-                                isExpanded: expandedSongId == song.persistentModelID,
-                                expandedSongId: $expandedSongId,
-                                selectedChart: $selectedChart,
-                                navigateToGameplay: $navigateToGameplay,
-                                onPlayTap: { togglePlayback(for: song) },
-                                onSaveTap: { toggleSave(for: song) }
-                            )
-                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
+                        // Local Songs Section
+                        if !songs.isEmpty {
+                            Section(header: Text("Downloaded Songs")
+                                .foregroundColor(.white)
+                                .font(.headline)
+                                .textCase(nil)
+                            ) {
+                                ForEach(songs, id: \.id) { song in
+                                    ExpandableSongRowContainer(
+                                        song: song,
+                                        isPlaying: currentlyPlaying == song.id,
+                                        isExpanded: expandedSongId == song.persistentModelID,
+                                        expandedSongId: $expandedSongId,
+                                        selectedChart: $selectedChart,
+                                        navigateToGameplay: $navigateToGameplay,
+                                        onPlayTap: { togglePlayback(for: song) },
+                                        onSaveTap: { toggleSave(for: song) }
+                                    )
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                }
+                            }
+                        }
+                        
+                        // Server Songs Section
+                        if showingServerSongs && !filteredServerSongs.isEmpty {
+                            Section(header: Text("Server Songs")
+                                .foregroundColor(.white)
+                                .font(.headline)
+                                .textCase(nil)
+                            ) {
+                                ForEach(filteredServerSongs, id: \.filename) { serverSong in
+                                    ServerSongRow(
+                                        serverSong: serverSong,
+                                        isLoading: serverSongService.isLoading,
+                                        onDownload: {
+                                            Task {
+                                                let success = await serverSongService.downloadAndImportSong(serverSong)
+                                                if success {
+                                                    // Song was imported successfully
+                                                }
+                                            }
+                                        }
+                                    )
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
+                                }
+                            }
+                        }
+                        
+                        // Loading state for server songs
+                        if showingServerSongs && serverSongService.isRefreshing {
+                            Section {
+                                HStack {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Loading server songs...")
+                                        .foregroundColor(.secondary)
+                                }
+                                .listRowBackground(Color.clear)
+                            }
+                        }
+                        
+                        // Empty state
+                        if songs.isEmpty && (!showingServerSongs || filteredServerSongs.isEmpty) && !serverSongService.isRefreshing {
+                            Section {
+                                VStack(spacing: 16) {
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 50))
+                                        .foregroundColor(.secondary)
+                                    
+                                    Text("No Songs Available")
+                                        .font(.title2)
+                                        .foregroundColor(.white)
+                                    
+                                    Text("Tap the cloud button to browse server songs")
+                                        .font(.body)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 40)
+                                .listRowBackground(Color.clear)
+                            }
                         }
                     }
                     .listStyle(PlainListStyle())
@@ -212,6 +325,10 @@ struct ContentView: View {
         .accentColor(.purple)
         .onAppear {
             loadSampleDataIfNeeded()
+            serverSongService.setModelContext(modelContext)
+            Task {
+                await serverSongService.loadServerSongs()
+            }
         }
     }
     
@@ -553,6 +670,7 @@ struct SavedSongsView: View {
                     .padding(.top)
                 }
                 .padding(.top, 20)
+                .padding(.bottom, 16)
                 
                 // Saved Songs List
                 if savedSongs.isEmpty {
@@ -582,10 +700,12 @@ struct SavedSongsView: View {
                             SavedSongRow(song: song)
                                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                 .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                         }
                     }
                     .listStyle(PlainListStyle())
                     .scrollContentBackground(.hidden)
+                    .background(Color.clear)
                 }
             }
         }
@@ -629,6 +749,64 @@ struct SavedSongRow: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
+        .background(Color.white.opacity(0.1))
+        .cornerRadius(12)
+    }
+}
+
+struct ServerSongRow: View {
+    let serverSong: ServerSong
+    let isLoading: Bool
+    let onDownload: () -> Void
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(serverSong.title)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                
+                Text("by \(serverSong.artist)")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                
+                HStack {
+                    Label("\(Int(serverSong.bpm)) BPM", systemImage: "metronome")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Label("Level \(serverSong.difficultyLevel)", systemImage: "chart.bar")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer()
+                    
+                    Text(serverSong.formatFileSize())
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            if serverSong.isDownloaded {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.green)
+            } else if isLoading {
+                ProgressView()
+                    .scaleEffect(0.8)
+            } else {
+                Button("Download") {
+                    onDownload()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+        }
+        .padding()
         .background(Color.white.opacity(0.1))
         .cornerRadius(12)
     }
