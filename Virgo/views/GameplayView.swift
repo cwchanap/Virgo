@@ -129,7 +129,7 @@ struct GameplayView: View {
                 // Clefs and time signatures for each row
                 clefsAndTimeSignaturesView(measurePositions: measurePositions)
                 
-                // Drum notation
+                    // Drum notation
                 drumNotationView(measurePositions: measurePositions)
             }
             .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
