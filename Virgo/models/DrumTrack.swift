@@ -29,25 +29,83 @@ final class Note {
 @Model
 final class Chart {
     var difficulty: Difficulty
+    var level: Int = 50
     private var _timeSignature: TimeSignature?
     var song: Song?
     @Relationship(deleteRule: .cascade, inverse: \Note.chart)
     var notes: [Note]
     
     var timeSignature: TimeSignature {
-        get { _timeSignature ?? song?.timeSignature ?? .fourFour }
+        get { 
+            do {
+                return _timeSignature ?? (song?.isDeleted == false ? song?.timeSignature : nil) ?? .fourFour
+            } catch {
+                return .fourFour
+            }
+        }
         set { _timeSignature = newValue }
     }
     
     // Convenience accessors for song properties
-    var title: String { song?.title ?? "Unknown Song" }
-    var artist: String { song?.artist ?? "Unknown Artist" }
-    var bpm: Int { song?.bpm ?? 120 }
-    var duration: String { song?.duration ?? "0:00" }
-    var genre: String { song?.genre ?? "Unknown" }
+    var title: String { 
+        do {
+            return (song?.isDeleted == false ? song?.title : nil) ?? "Unknown Song"
+        } catch {
+            return "Unknown Song"
+        }
+    }
+    var artist: String { 
+        do {
+            return (song?.isDeleted == false ? song?.artist : nil) ?? "Unknown Artist"
+        } catch {
+            return "Unknown Artist"
+        }
+    }
+    var bpm: Int { 
+        do {
+            return (song?.isDeleted == false ? song?.bpm : nil) ?? 120
+        } catch {
+            return 120
+        }
+    }
+    var duration: String { 
+        do {
+            return (song?.isDeleted == false ? song?.duration : nil) ?? "0:00"
+        } catch {
+            return "0:00"
+        }
+    }
+    var genre: String { 
+        do {
+            return (song?.isDeleted == false ? song?.genre : nil) ?? "Unknown"
+        } catch {
+            return "Unknown"
+        }
+    }
     
-    init(difficulty: Difficulty, timeSignature: TimeSignature? = nil, notes: [Note] = [], song: Song? = nil) {
+    // Safe accessor for notes count
+    var notesCount: Int {
+        do {
+            return isDeleted ? 0 : notes.count
+        } catch {
+            return 0
+        }
+    }
+    
+    // Safe accessor for notes
+    var safeNotes: [Note] {
+        do {
+            return isDeleted ? [] : notes
+        } catch {
+            return []
+        }
+    }
+    
+    init(difficulty: Difficulty, level: Int? = nil, timeSignature: TimeSignature? = nil, 
+         notes: [Note] = [], song: Song? = nil) {
         self.difficulty = difficulty
+        // If no level provided, assign based on difficulty
+        self.level = level ?? difficulty.defaultLevel
         self._timeSignature = timeSignature
         self.notes = notes
         self.song = song
@@ -76,25 +134,60 @@ final class Song {
     
     // Convenience accessors
     var availableDifficulties: [Difficulty] {
-        charts.map { $0.difficulty }.sorted { $0.rawValue < $1.rawValue }
+        do {
+            let difficulties = charts.compactMap { chart in
+                // Only access difficulty if chart is not deleted
+                chart.isDeleted ? nil : chart.difficulty
+            }
+            return difficulties.sorted { $0.rawValue < $1.rawValue }
+        } catch {
+            print("DEBUG: Error accessing availableDifficulties, returning empty: \(error)")
+            return []
+        }
     }
     
     var easiestChart: Chart? {
-        charts.min { chart1, chart2 in
-            let order: [Difficulty] = [.easy, .medium, .hard, .expert]
-            let index1 = order.firstIndex(of: chart1.difficulty) ?? 0
-            let index2 = order.firstIndex(of: chart2.difficulty) ?? 0
-            return index1 < index2
+        do {
+            let validCharts = charts.filter { !$0.isDeleted }
+            return validCharts.min { chart1, chart2 in
+                let order: [Difficulty] = [.easy, .medium, .hard, .expert]
+                let index1 = order.firstIndex(of: chart1.difficulty) ?? 0
+                let index2 = order.firstIndex(of: chart2.difficulty) ?? 0
+                return index1 < index2
+            }
+        } catch {
+            print("DEBUG: Error accessing easiestChart, returning nil: \(error)")
+            return nil
         }
     }
     
     var measureCount: Int {
-        let maxMeasure = charts.flatMap { $0.notes }.map { $0.measureNumber }.max() ?? 1
-        return maxMeasure
+        // Safely access notes with error handling for deleted objects
+        do {
+            let allNotes = charts.compactMap { chart in
+                // Only access notes if chart is not deleted
+                chart.isDeleted ? [] : chart.safeNotes
+            }.flatMap { $0 }
+            
+            let maxMeasure = allNotes.compactMap { note in
+                // Only access measure number if note is not deleted
+                note.isDeleted ? nil : note.measureNumber
+            }.max() ?? 1
+            
+            return maxMeasure
+        } catch {
+            print("DEBUG: Error accessing measureCount, returning default: \(error)")
+            return 1
+        }
     }
     
     func chart(for difficulty: Difficulty) -> Chart? {
-        charts.first { $0.difficulty == difficulty }
+        do {
+            return charts.first { !$0.isDeleted && $0.difficulty == difficulty }
+        } catch {
+            print("DEBUG: Error accessing chart for difficulty \(difficulty), returning nil: \(error)")
+            return nil
+        }
     }
     
     init(
@@ -123,18 +216,54 @@ final class Song {
     }
 }
 
+// MARK: - Server Song Models
+
+@Model
+final class ServerChart {
+    var difficulty: String  // "easy", "medium", "hard", "expert"
+    var difficultyLabel: String  // "BASIC", "ADVANCED", "EXTREME", "MASTER"
+    var level: Int  // Numeric difficulty level (e.g., 36, 60, 74, 87)
+    var filename: String  // DTX file name (e.g., "bas.dtx")
+    var size: Int
+    
+    init(difficulty: String, difficultyLabel: String, level: Int, filename: String, size: Int) {
+        self.difficulty = difficulty
+        self.difficultyLabel = difficultyLabel
+        self.level = level
+        self.filename = filename
+        self.size = size
+    }
+}
+
 @Model
 final class ServerSong {
-    var filename: String
+    var songId: String  // Folder name identifier
     var title: String
     var artist: String
     var bpm: Double
-    var difficultyLevel: Int
-    var size: Int
+    var charts: [ServerChart]
     var lastUpdated: Date
     var isDownloaded: Bool
     
     init(
+        songId: String,
+        title: String,
+        artist: String,
+        bpm: Double,
+        charts: [ServerChart] = [],
+        isDownloaded: Bool = false
+    ) {
+        self.songId = songId
+        self.title = title
+        self.artist = artist
+        self.bpm = bpm
+        self.charts = charts
+        self.lastUpdated = Date()
+        self.isDownloaded = isDownloaded
+    }
+    
+    // Legacy compatibility for single-file DTX
+    convenience init(
         filename: String,
         title: String,
         artist: String,
@@ -143,37 +272,23 @@ final class ServerSong {
         size: Int,
         isDownloaded: Bool = false
     ) {
-        self.filename = filename
-        self.title = title
-        self.artist = artist
-        self.bpm = bpm
-        self.difficultyLevel = difficultyLevel
-        self.size = size
-        self.lastUpdated = Date()
-        self.isDownloaded = isDownloaded
+        let chart = ServerChart(
+            difficulty: "medium",
+            difficultyLabel: "STANDARD",
+            level: difficultyLevel,
+            filename: filename,
+            size: size
+        )
+        self.init(
+            songId: filename.replacingOccurrences(of: ".dtx", with: ""),
+            title: title,
+            artist: artist,
+            bpm: bpm,
+            charts: [chart],
+            isDownloaded: isDownloaded
+        )
     }
     
-    func toDifficulty() -> Difficulty {
-        switch difficultyLevel {
-        case 0..<25:
-            return .easy
-        case 25..<50:
-            return .medium
-        case 50..<75:
-            return .hard
-        case 75...100:
-            return .expert
-        default:
-            return .medium
-        }
-    }
-    
-    func formatFileSize() -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(size))
-    }
 }
 
 // MARK: - Extensions
@@ -185,109 +300,7 @@ extension Chart {
 
 extension Song {
     static var sampleData: [Song] {
-        return [
-            createThunderBeatSong(),
-            createHipHopSong(),
-            createJazzSong()
-        ]
-    }
-    
-    private static func createThunderBeatSong() -> Song {
-        let song = Song(
-            title: "Thunder Beat",
-            artist: "DrumMaster Pro",
-            bpm: 120,
-            duration: "3:45",
-            genre: "Rock",
-            timeSignature: .fourFour
-        )
-        
-        let easyChart = Chart(difficulty: .easy, song: song)
-        easyChart.notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: easyChart),
-            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
-            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: easyChart)
-        ]
-        
-        let mediumChart = Chart(difficulty: .medium, song: song)
-        mediumChart.notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: mediumChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25, chart: mediumChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: mediumChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75, chart: mediumChart)
-        ]
-        
-        let hardChart = Chart(difficulty: .hard, song: song)
-        hardChart.notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: hardChart),
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: hardChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: hardChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25, chart: hardChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: hardChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.75, chart: hardChart),
-            Note(interval: .eighth, noteType: .highTom, measureNumber: 1, measureOffset: 0.875, chart: hardChart),
-            Note(interval: .eighth, noteType: .midTom, measureNumber: 1, measureOffset: 0.9375, chart: hardChart)
-        ]
-        
-        song.charts = [easyChart, mediumChart, hardChart]
-        return song
-    }
-    
-    private static func createHipHopSong() -> Song {
-        let song = Song(
-            title: "Hip Hop Beats",
-            artist: "Urban Flow",
-            bpm: 85,
-            duration: "3:30",
-            genre: "Hip Hop",
-            timeSignature: .fourFour
-        )
-        
-        let easyChart = Chart(difficulty: .easy, song: song)
-        easyChart.notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: easyChart),
-            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: easyChart),
-            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5, chart: easyChart)
-        ]
-        
-        let mediumChart = Chart(difficulty: .medium, song: song)
-        mediumChart.notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: mediumChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.0, chart: mediumChart),
-            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25, chart: mediumChart),
-            Note(interval: .eighth, noteType: .openHiHat, measureNumber: 1, measureOffset: 0.75, chart: mediumChart)
-        ]
-        
-        song.charts = [easyChart, mediumChart]
-        return song
-    }
-    
-    private static func createJazzSong() -> Song {
-        let song = Song(
-            title: "Jazz Swing",
-            artist: "Blue Note",
-            bpm: 125,
-            duration: "6:15",
-            genre: "Jazz",
-            timeSignature: .threeFour
-        )
-        
-        let hardChart = Chart(difficulty: .hard, song: song)
-        hardChart.notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: hardChart),
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5, chart: hardChart),
-            Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.0, chart: hardChart),
-            Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.33, chart: hardChart),
-            Note(interval: .eighth, noteType: .ride, measureNumber: 1, measureOffset: 0.66, chart: hardChart)
-        ]
-        
-        song.charts = [hardChart]
-        return song
+        return []
     }
 }
 
@@ -304,7 +317,7 @@ struct DrumTrack {
     var genre: String { chart.genre }
     var difficulty: Difficulty { chart.difficulty }
     var timeSignature: TimeSignature { chart.timeSignature }
-    var notes: [Note] { chart.notes }
+    var notes: [Note] { chart.safeNotes }
     var difficultyColor: Color { chart.difficultyColor }
     
     // Legacy properties (these would need to be tracked elsewhere or computed)

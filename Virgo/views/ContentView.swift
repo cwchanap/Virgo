@@ -19,225 +19,22 @@ struct ContentView: View {
     @State private var expandedSongId: PersistentIdentifier?
     @State private var selectedChart: Chart?
     @State private var navigateToGameplay = false
-    @State private var showingServerSongs = false
-    
-    // Computed property for filtered songs
-    var songs: [Song] {
-        if searchText.isEmpty {
-            return allSongs
-        } else {
-            return allSongs.filter { song in
-                song.title.localizedCaseInsensitiveContains(searchText) ||
-                song.artist.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-    }
-    
-    // Computed property for filtered server songs
-    var filteredServerSongs: [ServerSong] {
-        if searchText.isEmpty {
-            return serverSongs
-        } else {
-            return serverSongs.filter { song in
-                song.title.localizedCaseInsensitiveContains(searchText) ||
-                song.artist.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-    }
-    
-    // Combined count for display
-    var totalSongsCount: Int {
-        return songs.count + (showingServerSongs ? filteredServerSongs.count : 0)
-    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            // Songs Tab
-            ZStack {
-                // Background gradient
-                LinearGradient(
-                    gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                
-                VStack(spacing: 0) {
-                    // Header with stats
-                    VStack(spacing: 10) {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text("Songs")
-                                    .font(.largeTitle)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.white)
-                                Text("\(totalSongsCount) songs available")
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                            }
-                            Spacer()
-                            HStack(spacing: 16) {
-                                Button(action: {
-                                    showingServerSongs.toggle()
-                                }) {
-                                    Image(systemName: showingServerSongs ? "cloud.fill" : "cloud")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                }
-                                
-                                if showingServerSongs {
-                                    Button(action: {
-                                        Task {
-                                            await serverSongService.refreshServerSongs()
-                                        }
-                                    }) {
-                                        Image(systemName: serverSongService.isRefreshing ? "arrow.clockwise" : "arrow.clockwise")
-                                            .font(.title2)
-                                            .foregroundColor(.white)
-                                            .rotationEffect(.degrees(serverSongService.isRefreshing ? 360 : 0))
-                                            .animation(serverSongService.isRefreshing ? 
-                                                     Animation.linear(duration: 1).repeatForever(autoreverses: false) : 
-                                                     .default, value: serverSongService.isRefreshing)
-                                    }
-                                    .disabled(serverSongService.isRefreshing)
-                                }
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.top)
-                        
-                        // Search Bar
-                        HStack {
-                            HStack {
-                                Image(systemName: "magnifyingglass")
-                                    .foregroundColor(.gray)
-                                    .font(.system(size: 16))
-                                
-                                TextField("Search songs or artists...", text: $searchText)
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.white)
-                                    .accessibilityIdentifier("searchField")
-                                
-                                if !searchText.isEmpty {
-                                    Button(action: {
-                                        searchText = ""
-                                    }) {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundColor(.gray)
-                                            .font(.system(size: 16))
-                                    }
-                                    .accessibilityIdentifier("clearSearchButton")
-                                }
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color.white.opacity(0.1))
-                            .cornerRadius(8)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                            )
-                        }
-                        .padding(.horizontal)
-                    }
-                    .padding(.top, 20)
-                    .padding(.bottom, 16)
-                    
-                    // Songs List
-                    List {
-                        // Local Songs Section
-                        if !songs.isEmpty {
-                            Section(header: Text("Downloaded Songs")
-                                .foregroundColor(.white)
-                                .font(.headline)
-                                .textCase(nil)
-                            ) {
-                                ForEach(songs, id: \.id) { song in
-                                    ExpandableSongRowContainer(
-                                        song: song,
-                                        isPlaying: currentlyPlaying == song.id,
-                                        isExpanded: expandedSongId == song.persistentModelID,
-                                        expandedSongId: $expandedSongId,
-                                        selectedChart: $selectedChart,
-                                        navigateToGameplay: $navigateToGameplay,
-                                        onPlayTap: { togglePlayback(for: song) },
-                                        onSaveTap: { toggleSave(for: song) }
-                                    )
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                                }
-                            }
-                        }
-                        
-                        // Server Songs Section
-                        if showingServerSongs && !filteredServerSongs.isEmpty {
-                            Section(header: Text("Server Songs")
-                                .foregroundColor(.white)
-                                .font(.headline)
-                                .textCase(nil)
-                            ) {
-                                ForEach(filteredServerSongs, id: \.filename) { serverSong in
-                                    ServerSongRow(
-                                        serverSong: serverSong,
-                                        isLoading: serverSongService.isLoading,
-                                        onDownload: {
-                                            Task {
-                                                let success = await serverSongService.downloadAndImportSong(serverSong)
-                                                if success {
-                                                    // Song was imported successfully
-                                                }
-                                            }
-                                        }
-                                    )
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                                    .listRowSeparator(.hidden)
-                                    .listRowBackground(Color.clear)
-                                }
-                            }
-                        }
-                        
-                        // Loading state for server songs
-                        if showingServerSongs && serverSongService.isRefreshing {
-                            Section {
-                                HStack {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                    Text("Loading server songs...")
-                                        .foregroundColor(.secondary)
-                                }
-                                .listRowBackground(Color.clear)
-                            }
-                        }
-                        
-                        // Empty state
-                        if songs.isEmpty && (!showingServerSongs || filteredServerSongs.isEmpty) && !serverSongService.isRefreshing {
-                            Section {
-                                VStack(spacing: 16) {
-                                    Image(systemName: "music.note")
-                                        .font(.system(size: 50))
-                                        .foregroundColor(.secondary)
-                                    
-                                    Text("No Songs Available")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                    
-                                    Text("Tap the cloud button to browse server songs")
-                                        .font(.body)
-                                        .foregroundColor(.secondary)
-                                        .multilineTextAlignment(.center)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 40)
-                                .listRowBackground(Color.clear)
-                            }
-                        }
-                    }
-                    .listStyle(PlainListStyle())
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                }
-            }
+            // Songs Tab with Sub-tabs
+            SongsTabView(
+                allSongs: allSongs,
+                serverSongs: serverSongs,
+                serverSongService: serverSongService,
+                searchText: $searchText,
+                currentlyPlaying: $currentlyPlaying,
+                expandedSongId: $expandedSongId,
+                selectedChart: $selectedChart,
+                navigateToGameplay: $navigateToGameplay,
+                onPlayTap: togglePlayback,
+                onSaveTap: toggleSave
+            )
             .navigationDestination(isPresented: $navigateToGameplay) {
                 if let chart = selectedChart {
                     GameplayView(chart: chart)
@@ -257,9 +54,9 @@ struct ContentView: View {
                 }
                 .tag(1)
             
-            SavedSongsView(songs: allSongs)
+            SavedSongsView(songs: allSongs, serverSongService: serverSongService)
                 .tabItem {
-                    Image(systemName: "music.note")
+                    Image(systemName: "arrow.down.circle")
                     Text("Library")
                 }
                 .tag(2)
@@ -325,6 +122,8 @@ struct ContentView: View {
         .accentColor(.purple)
         .onAppear {
             loadSampleDataIfNeeded()
+            updateExistingChartLevels()
+            cleanupDuplicateSongs()
             serverSongService.setModelContext(modelContext)
             Task {
                 await serverSongService.loadServerSongs()
@@ -377,6 +176,61 @@ struct ContentView: View {
             }
         } else {
             Logger.database("Database already has \(allSongs.count) songs")
+        }
+    }
+    
+    private func updateExistingChartLevels() {
+        // Update any existing charts that still have the default level of 50
+        // and haven't been assigned proper difficulty-based levels
+        var needsUpdate = false
+        
+        for song in allSongs {
+            for chart in song.charts {
+                // Only update charts that have the default level (50) and would get a different level
+                if chart.level == 50 && chart.difficulty.defaultLevel != 50 {
+                    chart.level = chart.difficulty.defaultLevel
+                    needsUpdate = true
+                }
+            }
+        }
+        
+        if needsUpdate {
+            do {
+                try modelContext.save()
+                Logger.database("Updated existing chart levels based on difficulty")
+            } catch {
+                Logger.databaseError(error)
+            }
+        }
+    }
+    
+    private func cleanupDuplicateSongs() {
+        // Find and remove duplicate songs (same title + artist)
+        var songTitleArtistPairs: Set<String> = []
+        var duplicatesToRemove: [Song] = []
+        
+        for song in allSongs {
+            let key = "\(song.title.lowercased())|\(song.artist.lowercased())"
+            if songTitleArtistPairs.contains(key) {
+                // This is a duplicate
+                duplicatesToRemove.append(song)
+                Logger.database("Found duplicate song to remove: \(song.title) by \(song.artist)")
+            } else {
+                songTitleArtistPairs.insert(key)
+            }
+        }
+        
+        if !duplicatesToRemove.isEmpty {
+            for song in duplicatesToRemove {
+                modelContext.delete(song)
+            }
+            
+            do {
+                try modelContext.save()
+                Logger.database("Cleaned up \(duplicatesToRemove.count) duplicate songs")
+            } catch {
+                Logger.databaseError(error)
+            }
         }
     }
     
@@ -537,7 +391,7 @@ struct DifficultyExpansionView: View {
             
             // Difficulty cards in rows
             VStack(spacing: 6) {
-                ForEach(song.charts.sorted { $0.difficulty.rawValue < $1.difficulty.rawValue }, id: \.id) { chart in
+                ForEach(song.charts.sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }, id: \.id) { chart in
                     ChartSelectionCard(chart: chart) {
                         onChartSelect(chart)
                     }
@@ -563,8 +417,11 @@ struct ChartSelectionCard: View {
                 DifficultyBadge(difficulty: chart.difficulty, size: .normal)
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(chart.notes.count) notes")
+                    Text("\(chart.notesCount) notes")
                         .font(.caption)
+                        .foregroundColor(.gray)
+                    Text("Level \(chart.level)")
+                        .font(.caption2)
                         .foregroundColor(.gray)
                 }
                 
@@ -633,9 +490,11 @@ struct DifficultyBadge: View {
 
 struct SavedSongsView: View {
     let songs: [Song]
+    let serverSongService: ServerSongService?
     
-    var savedSongs: [Song] {
-        songs.filter { $0.isSaved }
+    var downloadedSongs: [Song] {
+        // Show all songs that were downloaded from server (DTX Import genre)
+        songs.filter { $0.genre == "DTX Import" }
     }
     
     var body: some View {
@@ -653,16 +512,16 @@ struct SavedSongsView: View {
                 VStack(spacing: 10) {
                     HStack {
                         VStack(alignment: .leading) {
-                            Text("Bookmarked Songs")
+                            Text("Downloaded Songs")
                                 .font(.largeTitle)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
-                            Text("\(savedSongs.count) songs bookmarked")
+                            Text("\(downloadedSongs.count) songs downloaded")
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                         }
                         Spacer()
-                        Image(systemName: "bookmark.fill")
+                        Image(systemName: "arrow.down.circle.fill")
                             .font(.title2)
                             .foregroundColor(.white)
                     }
@@ -672,21 +531,21 @@ struct SavedSongsView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 16)
                 
-                // Saved Songs List
-                if savedSongs.isEmpty {
+                // Downloaded Songs List
+                if downloadedSongs.isEmpty {
                     VStack(spacing: 16) {
                         Spacer()
-                        Image(systemName: "bookmark")
+                        Image(systemName: "arrow.down.circle")
                             .font(.system(size: 64))
                             .foregroundColor(.white.opacity(0.3))
                         
                         VStack(spacing: 8) {
-                            Text("No Bookmarked Songs")
+                            Text("No Downloaded Songs")
                                 .font(.title2)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.white)
                             
-                            Text("Tap the bookmark icon on any song to bookmark it here")
+                            Text("Download songs from the server to see them here")
                                 .font(.body)
                                 .foregroundColor(.gray)
                                 .multilineTextAlignment(.center)
@@ -696,11 +555,20 @@ struct SavedSongsView: View {
                     .padding(.horizontal, 32)
                 } else {
                     List {
-                        ForEach(savedSongs, id: \.id) { song in
-                            SavedSongRow(song: song)
-                                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(Color.clear)
+                        ForEach(downloadedSongs, id: \.id) { song in
+                            SavedSongRow(
+                                song: song,
+                                onDelete: {
+                                    if let service = serverSongService {
+                                        Task { @MainActor in
+                                            await service.deleteLocalSong(song)
+                                        }
+                                    }
+                                }
+                            )
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                         }
                     }
                     .listStyle(PlainListStyle())
@@ -714,6 +582,7 @@ struct SavedSongsView: View {
 
 struct SavedSongRow: View {
     let song: Song
+    let onDelete: (() -> Void)?
     
     var body: some View {
         HStack(spacing: 12) {
@@ -740,10 +609,25 @@ struct SavedSongRow: View {
             
             Spacer()
             
-            // Available Difficulties
-            HStack(spacing: 2) {
-                ForEach(song.availableDifficulties, id: \.self) { difficulty in
-                    DifficultyBadge(difficulty: difficulty, size: .small)
+            // Available Difficulties and Delete Button
+            VStack(spacing: 8) {
+                HStack(spacing: 2) {
+                    ForEach(song.availableDifficulties, id: \.self) { difficulty in
+                        DifficultyBadge(difficulty: difficulty, size: .small)
+                    }
+                }
+                
+                if let onDelete = onDelete {
+                    Button("Delete") {
+                        onDelete()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .foregroundColor(.red)
+                } else {
+                    Text("No delete")
+                        .font(.caption2)
+                        .foregroundColor(.gray)
                 }
             }
         }
@@ -777,15 +661,44 @@ struct ServerSongRow: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
-                    Label("Level \(serverSong.difficultyLevel)", systemImage: "chart.bar")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    // Display multiple difficulty levels or single level
+                    if serverSong.charts.count > 1 {
+                        let levels = serverSong.charts.map { String($0.level) }.joined(separator: ", ")
+                        Label("Levels \(levels)", systemImage: "chart.bar")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else if let chart = serverSong.charts.first {
+                        Label("Level \(chart.level)", systemImage: "chart.bar")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                     
                     Spacer()
                     
-                    Text(serverSong.formatFileSize())
+                    // Display total size for multi-chart songs
+                    let totalSize = serverSong.charts.reduce(0) { $0 + $1.size }
+                    Text(formatFileSize(totalSize))
                         .font(.caption)
                         .foregroundColor(.secondary)
+                }
+                
+                // Display difficulty labels for multi-chart songs
+                if serverSong.charts.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 4) {
+                            ForEach(serverSong.charts.indices, id: \.self) { index in
+                                let chart = serverSong.charts[index]
+                                Text("\(chart.difficultyLabel) (\(chart.level))")
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(difficultyColor(for: chart.difficulty))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(4)
+                            }
+                        }
+                        .padding(.horizontal, 1)
+                    }
                 }
             }
             
@@ -796,19 +709,47 @@ struct ServerSongRow: View {
                     .font(.title2)
                     .foregroundColor(.green)
             } else if isLoading {
-                ProgressView()
-                    .scaleEffect(0.8)
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Downloading...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             } else {
                 Button("Download") {
                     onDownload()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .disabled(isLoading)
             }
         }
         .padding()
         .background(Color.white.opacity(0.1))
         .cornerRadius(12)
+    }
+    
+    private func formatFileSize(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+    
+    private func difficultyColor(for difficulty: String) -> Color {
+        switch difficulty.lowercased() {
+        case "easy":
+            return .green
+        case "medium":
+            return .yellow
+        case "hard":
+            return .orange
+        case "expert":
+            return .red
+        default:
+            return .blue
+        }
     }
 }
 
