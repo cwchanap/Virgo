@@ -5,6 +5,22 @@ struct DTXServerFile {
     let size: Int
 }
 
+struct DTXServerSongData {
+    let songId: String
+    let title: String
+    let artist: String?
+    let bpm: Double?
+    let charts: [DTXServerChartData]
+}
+
+struct DTXServerChartData {
+    let difficulty: String
+    let difficultyLabel: String
+    let level: Int
+    let filename: String
+    let size: Int
+}
+
 struct DTXServerMetadata {
     let filename: String
     let title: String?
@@ -33,12 +49,29 @@ enum DTXAPIError: LocalizedError {
     }
 }
 
-@MainActor
 class DTXAPIClient: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    private let session = URLSession.shared
+    private let session: URLSession
+    
+    init() {
+        // Configure URLSession for background networking with optimized settings
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30.0
+        config.timeoutIntervalForResource = 60.0
+        
+        // Reduce connection pooling to prevent socket warnings
+        config.httpMaximumConnectionsPerHost = 2
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        
+        // Configure for better network efficiency
+        config.waitsForConnectivity = true
+        config.allowsConstrainedNetworkAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        
+        self.session = URLSession(configuration: config)
+    }
     
     // Configurable base URL - defaults to local development server
     var baseURL: String {
@@ -55,17 +88,77 @@ class DTXAPIClient: ObservableObject {
             throw DTXAPIError.invalidURL
         }
         
-        isLoading = true
-        errorMessage = nil
+        // Update UI state on main thread
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
         
         do {
+            // Network call runs in background
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(DTXListResponse.self, from: data)
-            isLoading = false
-            return response.files.map { DTXServerFile(filename: $0.filename, size: $0.size) }
+            
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+            }
+            
+            return response.individualFiles?.map { DTXServerFile(filename: $0.filename, size: $0.size) } ?? []
         } catch {
-            isLoading = false
-            errorMessage = error.localizedDescription
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
+            throw DTXAPIError.networkError(error)
+        }
+    }
+    
+    func listDTXSongs() async throws -> [DTXServerSongData] {
+        guard let url = URL(string: "\(baseURL)/dtx/list") else {
+            throw DTXAPIError.invalidURL
+        }
+        
+        // Update UI state on main thread
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+        
+        do {
+            // Network call runs in background
+            let (data, _) = try await session.data(from: url)
+            let response = try JSONDecoder().decode(DTXListResponse.self, from: data)
+            
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+            }
+            
+            return response.songs.map { songInfo in
+                DTXServerSongData(
+                    songId: songInfo.songId,
+                    title: songInfo.title,
+                    artist: songInfo.artist,
+                    bpm: songInfo.bpm,
+                    charts: songInfo.charts.map { chartInfo in
+                        DTXServerChartData(
+                            difficulty: chartInfo.difficulty,
+                            difficultyLabel: chartInfo.difficultyLabel,
+                            level: chartInfo.level,
+                            filename: chartInfo.filename,
+                            size: chartInfo.size
+                        )
+                    }
+                )
+            }
+        } catch {
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
             throw DTXAPIError.networkError(error)
         }
     }
@@ -75,13 +168,21 @@ class DTXAPIClient: ObservableObject {
             throw DTXAPIError.invalidURL
         }
         
-        isLoading = true
-        errorMessage = nil
+        // Update UI state on main thread
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
         
         do {
+            // Network call runs in background
             let (data, _) = try await session.data(from: url)
             let response = try JSONDecoder().decode(DTXMetadataResponse.self, from: data)
-            isLoading = false
+            
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+            }
             
             return DTXServerMetadata(
                 filename: response.filename,
@@ -91,8 +192,11 @@ class DTXAPIClient: ObservableObject {
                 level: response.metadata.level
             )
         } catch {
-            isLoading = false
-            errorMessage = error.localizedDescription
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
             throw DTXAPIError.networkError(error)
         }
     }
@@ -102,10 +206,14 @@ class DTXAPIClient: ObservableObject {
             throw DTXAPIError.invalidURL
         }
         
-        isLoading = true
-        errorMessage = nil
+        // Update UI state on main thread
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
         
         do {
+            // Network call runs in background - this is the heavy operation
             let (data, response) = try await session.data(from: url)
             
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -116,11 +224,57 @@ class DTXAPIClient: ObservableObject {
                 throw DTXAPIError.networkError(URLError(.badServerResponse))
             }
             
-            isLoading = false
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+            }
+            
             return data
         } catch {
-            isLoading = false
-            errorMessage = error.localizedDescription
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
+            throw DTXAPIError.networkError(error)
+        }
+    }
+    
+    func downloadChartFile(songId: String, chartFilename: String) async throws -> Data {
+        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/\(chartFilename)") else {
+            throw DTXAPIError.invalidURL
+        }
+        
+        // Update UI state on main thread
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+        
+        do {
+            // Network call runs in background - this is the heavy chart download operation
+            let (data, response) = try await session.data(from: url)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw DTXAPIError.networkError(URLError(.badServerResponse))
+            }
+            
+            guard httpResponse.statusCode == 200 else {
+                throw DTXAPIError.networkError(URLError(.badServerResponse))
+            }
+            
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+            }
+            
+            return data
+        } catch {
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
             throw DTXAPIError.networkError(error)
         }
     }
@@ -153,7 +307,40 @@ class DTXAPIClient: ObservableObject {
 // MARK: - Response Models
 
 private struct DTXListResponse: Codable {
-    let files: [DTXFileInfo]
+    let songs: [DTXSongInfo]
+    let individualFiles: [DTXFileInfo]?
+    
+    struct DTXSongInfo: Codable {
+        let songId: String
+        let title: String
+        let artist: String?
+        let bpm: Double?
+        let charts: [DTXChartInfo]
+        
+        enum CodingKeys: String, CodingKey {
+            case songId = "song_id"
+            case title, artist, bpm, charts
+        }
+    }
+    
+    struct DTXChartInfo: Codable {
+        let difficulty: String
+        let difficultyLabel: String
+        let level: Int
+        let filename: String
+        let size: Int
+        
+        enum CodingKeys: String, CodingKey {
+            case difficulty
+            case difficultyLabel = "difficulty_label"
+            case level, filename, size
+        }
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case songs
+        case individualFiles = "individual_files"
+    }
     
     struct DTXFileInfo: Codable {
         let filename: String
