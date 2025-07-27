@@ -176,10 +176,15 @@ struct NavigationTests {
     }
     
     @Test func testSearchAndNavigationInteraction() async throws {
-        let songs = [
-            Song(title: "Rock Song", artist: "Rock Artist", bpm: 120, duration: "3:00", genre: "Rock"),
-            Song(title: "Jazz Song", artist: "Jazz Artist", bpm: 140, duration: "4:00", genre: "Jazz")
-        ]
+        let rockSong = Song(title: "Rock Song", artist: "Rock Artist", bpm: 120, duration: "3:00", genre: "Rock")
+        let rockChart = Chart(difficulty: .medium, song: rockSong)
+        rockSong.charts = [rockChart]
+
+        let jazzSong = Song(title: "Jazz Song", artist: "Jazz Artist", bpm: 140, duration: "4:00", genre: "Jazz")
+        let jazzChart = Chart(difficulty: .hard, song: jazzSong)
+        jazzSong.charts = [jazzChart]
+
+        let songs = [rockSong, jazzSong]
         
         var searchText = "rock"
         let filteredSongs = songs.filter { song in

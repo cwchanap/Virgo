@@ -9,6 +9,17 @@ import Testing
 import Foundation
 @testable import Virgo
 
+enum TestError: Error, CustomStringConvertible {
+    case resourceNotFound(String)
+
+    var description: String {
+        switch self {
+        case .resourceNotFound(let resourceName):
+            return "Test resource not found: \(resourceName). Please ensure it's added to the test bundle."
+        }
+    }
+}
+
 struct DTXFileParserTests {
     
     @Test func testParseDTXMetadata() throws {
@@ -201,12 +212,13 @@ struct DTXFileParserTests {
     }
     
     @Test func testActualDTXFile() throws {
-        let dtxPath = "/Users/chanwaichan/Documents (Local)/Test DTX/Kyuuka ressha no madobe de/mas.dtx"
-        let url = URL(fileURLWithPath: dtxPath)
-        
-        guard FileManager.default.fileExists(atPath: dtxPath) else {
-            // Skip test if file doesn't exist in CI or other environments
-            return
+        guard let url = Bundle(for: type(of: self)).url(
+            forResource: "Kyuuka ressha no madobe de/mas", 
+            withExtension: "dtx"
+        ) else {
+            // If the resource is not found, it means the test setup is incomplete.
+            // This should be a test failure, not a skipped test.
+            throw TestError.resourceNotFound("Kyuuka ressha no madobe de/mas.dtx")
         }
         
         let chartData = try DTXFileParser.parseChartMetadata(from: url)
