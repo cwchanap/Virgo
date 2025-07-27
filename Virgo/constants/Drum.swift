@@ -22,6 +22,24 @@ enum Difficulty: String, Codable {
         case .expert: return .purple
         }
     }
+    
+    var defaultLevel: Int {
+        switch self {
+        case .easy: return 30
+        case .medium: return 50
+        case .hard: return 70
+        case .expert: return 90
+        }
+    }
+    
+    var sortOrder: Int {
+        switch self {
+        case .easy: return 0
+        case .medium: return 1
+        case .hard: return 2
+        case .expert: return 3
+        }
+    }
 }
 
 enum TimeSignature: String, Codable, CaseIterable {

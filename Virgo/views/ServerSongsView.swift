@@ -11,7 +11,7 @@ import SwiftData
 // MARK: - Server Songs View
 struct ServerSongsView: View {
     let serverSongs: [ServerSong]
-    let serverSongService: ServerSongService
+    @ObservedObject var serverSongService: ServerSongService
     
     var body: some View {
         List {

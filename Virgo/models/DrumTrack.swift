@@ -95,7 +95,7 @@ final class Chart {
     // Safe accessor for notes
     var safeNotes: [Note] {
         do {
-            return isDeleted ? [] : notes
+            return isDeleted ? [] : notes.filter { !$0.isDeleted }
         } catch {
             return []
         }
@@ -225,13 +225,15 @@ final class ServerChart {
     var level: Int  // Numeric difficulty level (e.g., 36, 60, 74, 87)
     var filename: String  // DTX file name (e.g., "bas.dtx")
     var size: Int
+    var serverSong: ServerSong?
     
-    init(difficulty: String, difficultyLabel: String, level: Int, filename: String, size: Int) {
+    init(difficulty: String, difficultyLabel: String, level: Int, filename: String, size: Int, serverSong: ServerSong? = nil) {
         self.difficulty = difficulty
         self.difficultyLabel = difficultyLabel
         self.level = level
         self.filename = filename
         self.size = size
+        self.serverSong = serverSong
     }
 }
 
@@ -241,7 +243,7 @@ final class ServerSong {
     var title: String
     var artist: String
     var bpm: Double
-    var charts: [ServerChart]
+    @Relationship(deleteRule: .cascade) var charts: [ServerChart]
     var lastUpdated: Date
     var isDownloaded: Bool
     
