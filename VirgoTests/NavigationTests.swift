@@ -8,6 +8,7 @@
 import Testing
 import Foundation
 import SwiftUI
+import SwiftData
 @testable import Virgo
 
 struct NavigationTests {
