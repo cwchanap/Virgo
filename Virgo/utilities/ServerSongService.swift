@@ -6,6 +6,7 @@ class ServerSongService: ObservableObject {
     @MainActor @Published var isRefreshing = false
     @MainActor @Published var errorMessage: String?
     @MainActor @Published var downloadingSongs: Set<String> = []
+    @MainActor @Published var deletingSongs: Set<String> = []
     
     private let apiClient = DTXAPIClient()
     private var modelContext: ModelContext?
@@ -76,13 +77,12 @@ class ServerSongService: ObservableObject {
         await refreshServerSongs(forceClear: true)
     }
     
+    @MainActor
     private func refreshServerSongs(forceClear: Bool = false) async {
         guard let modelContext = modelContext else { return }
         
-        await MainActor.run {
-            isRefreshing = true
-            errorMessage = nil
-        }
+        isRefreshing = true
+        errorMessage = nil
         
         do {
             // Fetch song list from server with multi-difficulty support
@@ -160,26 +160,51 @@ class ServerSongService: ObservableObject {
             let existingDescriptor = FetchDescriptor<ServerSong>()
             let existingSongs = try modelContext.fetch(existingDescriptor)
             
+            // First, explicitly delete all charts to avoid cascade deletion issues
             for song in existingSongs {
-                modelContext.delete(song)
+                // Check if song is not already deleted
+                if !song.isDeleted {
+                    // Manually delete charts to ensure proper cleanup
+                    for chart in song.charts {
+                        if !chart.isDeleted {
+                            modelContext.delete(chart)
+                        }
+                    }
+                    modelContext.delete(song)
+                }
             }
             
+            // Save the deletions first
+            do {
+                try modelContext.save()
+            } catch {
+                print("DEBUG: Error during deletion save: \(error)")
+                throw error
+            }
+            
+            // Then insert new songs
             for song in updatedSongs {
                 modelContext.insert(song)
+                // Insert charts separately to ensure proper relationships
+                for chart in song.charts {
+                    modelContext.insert(chart)
+                }
             }
             
-            try modelContext.save()
+            // Save the insertions
+            do {
+                try modelContext.save()
+            } catch {
+                print("DEBUG: Error during insertion save: \(error)")
+                throw error
+            }
             
         } catch {
-            await MainActor.run {
-                errorMessage = "Failed to refresh server songs: \(error.localizedDescription)"
-            }
+            errorMessage = "Failed to refresh server songs: \(error.localizedDescription)"
             print("Failed to refresh server songs: \(error)")
         }
         
-        await MainActor.run {
-            isRefreshing = false
-        }
+        isRefreshing = false
     }
     
     func downloadAndImportSong(_ serverSong: ServerSong) async -> Bool {
@@ -205,7 +230,6 @@ class ServerSongService: ObservableObject {
             downloadingSongs.insert(songId)
             errorMessage = nil
         }
-        
         
         // Perform download work on background thread using Task.detached
         let (success, errorMsg): (Bool, String?) = await Task.detached(priority: .background) { [weak self] in
@@ -372,9 +396,12 @@ class ServerSongService: ObservableObject {
             let descriptor = FetchDescriptor<Song>()
             let allSongs = try modelContext.fetch(descriptor)
             
+            // IMPORTANT: Only delete songs that match title/artist AND are from DTX Import genre
+            // This prevents deleting sample data or other local songs
             let songsToDelete = allSongs.filter { song in
                 song.title.lowercased() == serverSong.title.lowercased() &&
-                song.artist.lowercased() == serverSong.artist.lowercased()
+                song.artist.lowercased() == serverSong.artist.lowercased() &&
+                song.genre == "DTX Import" // Only delete downloaded songs, not sample data
             }
             
             for song in songsToDelete {
@@ -394,21 +421,163 @@ class ServerSongService: ObservableObject {
         }
     }
     
-    @MainActor
     func deleteLocalSong(_ song: Song) async -> Bool {
+        // Create song key for tracking deletion state
+        let songKey = "\(song.title.lowercased())|\(song.artist.lowercased())"
+        
+        // Check if already deleting to prevent race condition
+        let isAlreadyDeleting = await MainActor.run { deletingSongs.contains(songKey) }
+        if isAlreadyDeleting {
+            return false
+        }
+        
+        // Mark as deleting on main thread
+        await MainActor.run {
+            deletingSongs.insert(songKey)
+            errorMessage = nil
+        }
+        
+        // Perform deletion work on background thread
+        let success = await performDeletionBackground(song: song, songKey: songKey)
+        
+        // Remove from deleting set on main thread
+        await MainActor.run {
+            deletingSongs.remove(songKey)
+        }
+        
+        return success
+    }
+    
+    private func performDeletionBackground(song: Song, songKey: String) async -> Bool {
+        // Get container from main context safely
+        let container = await MainActor.run { self.modelContext?.container }
+        guard let container = container else {
+            await MainActor.run { self.errorMessage = "No model context available" }
+            return false
+        }
+        
+        // Store song information before deletion for server song matching
+        let songTitle = song.title.lowercased()
+        let songArtist = song.artist.lowercased()
+        let songId = song.persistentModelID
+        
+        // Create background ModelContext using the same container
+        let backgroundContext = ModelContext(container)
+        
+        return await Task.detached(priority: .background) {
+            do {
+                // Find the song in the background context
+                let songDescriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in
+                    songModel.persistentModelID == songId
+                })
+                let songs = try backgroundContext.fetch(songDescriptor)
+                
+                guard let songToDelete = songs.first else {
+                    print("DEBUG: Song not found in background context")
+                    return true // Already deleted or not found
+                }
+                
+                // Ensure the song is still attached to this context
+                guard !songToDelete.isDeleted else {
+                    print("DEBUG: Song is already deleted")
+                    return true
+                }
+                
+                // IMPORTANT: Only delete the specific song, not all songs with same title/artist
+                // First, explicitly delete all charts and their notes to ensure proper cleanup
+                for chart in songToDelete.charts {
+                    if !chart.isDeleted {
+                        for note in chart.notes {
+                            if !note.isDeleted {
+                                backgroundContext.delete(note)
+                            }
+                        }
+                        backgroundContext.delete(chart)
+                    }
+                }
+                
+                // Then delete the specific song
+                backgroundContext.delete(songToDelete)
+                try backgroundContext.save()
+                
+                // Update matching server songs to mark as not downloaded
+                // Only update server songs that match title/artist AND are from DTX Import genre
+                let serverSongsDescriptor = FetchDescriptor<ServerSong>()
+                let allServerSongs = try backgroundContext.fetch(serverSongsDescriptor)
+                
+                var hasUpdates = false
+                for serverSong in allServerSongs {
+                    if serverSong.title.lowercased() == songTitle && 
+                       serverSong.artist.lowercased() == songArtist &&
+                       serverSong.isDownloaded {
+                        // Check if there are still other songs with same title/artist before marking as not downloaded
+                        let songsDescriptor = FetchDescriptor<Song>()
+                        let remainingSongs = try backgroundContext.fetch(songsDescriptor)
+                        let hasOtherMatchingSongs = remainingSongs.contains { otherSong in
+                            otherSong.persistentModelID != songId &&
+                            otherSong.title.lowercased() == songTitle &&
+                            otherSong.artist.lowercased() == songArtist &&
+                            otherSong.genre == "DTX Import"
+                        }
+                        
+                        // Only mark as not downloaded if no other matching DTX Import songs exist
+                        if !hasOtherMatchingSongs {
+                            serverSong.isDownloaded = false
+                            hasUpdates = true
+                        }
+                    }
+                }
+                
+                if hasUpdates {
+                    try backgroundContext.save()
+                }
+                
+                return true
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = "Failed to delete song: \(error.localizedDescription)"
+                }
+                print("DEBUG: Delete error details: \(error)")
+                return false
+            }
+        }.value
+    }
+    
+    @MainActor
+    private func performDeletion(song: Song, songKey: String) async -> Bool {
         guard let modelContext = modelContext else { return false }
         
         // Store song information before deletion for server song matching
         let songTitle = song.title.lowercased()
         let songArtist = song.artist.lowercased()
+        let songId = song.persistentModelID
         
         do {
-            // Delete the song (cascade will handle charts and notes)
+            // Ensure the song is still attached to this context
+            guard !song.isDeleted else {
+                print("DEBUG: Song is already deleted")
+                return true
+            }
+            
+            // IMPORTANT: Only delete the specific song, not all songs with same title/artist
+            // First, explicitly delete all charts and their notes to ensure proper cleanup
+            for chart in song.charts {
+                if !chart.isDeleted {
+                    for note in chart.notes {
+                        if !note.isDeleted {
+                            modelContext.delete(note)
+                        }
+                    }
+                    modelContext.delete(chart)
+                }
+            }
+            
+            // Then delete the specific song
             modelContext.delete(song)
             try modelContext.save()
             
             // Update matching server songs to mark as not downloaded
-            // Do this manually without calling refreshDownloadStatus to avoid race conditions
+            // Only update server songs that match title/artist AND are from DTX Import genre
             let serverSongsDescriptor = FetchDescriptor<ServerSong>()
             let allServerSongs = try modelContext.fetch(serverSongsDescriptor)
             
@@ -417,8 +586,21 @@ class ServerSongService: ObservableObject {
                 if serverSong.title.lowercased() == songTitle && 
                    serverSong.artist.lowercased() == songArtist &&
                    serverSong.isDownloaded {
-                    serverSong.isDownloaded = false
-                    hasUpdates = true
+                    // Check if there are still other songs with same title/artist before marking as not downloaded
+                    let songsDescriptor = FetchDescriptor<Song>()
+                    let remainingSongs = try modelContext.fetch(songsDescriptor)
+                    let hasOtherMatchingSongs = remainingSongs.contains { otherSong in
+                        otherSong.persistentModelID != songId &&
+                        otherSong.title.lowercased() == songTitle &&
+                        otherSong.artist.lowercased() == songArtist &&
+                        otherSong.genre == "DTX Import"
+                    }
+                    
+                    // Only mark as not downloaded if no other matching DTX Import songs exist
+                    if !hasOtherMatchingSongs {
+                        serverSong.isDownloaded = false
+                        hasUpdates = true
+                    }
                 }
             }
             
@@ -429,6 +611,7 @@ class ServerSongService: ObservableObject {
             return true
         } catch {
             errorMessage = "Failed to delete song: \(error.localizedDescription)"
+            print("DEBUG: Delete error details: \(error)")
             return false
         }
     }
@@ -467,6 +650,12 @@ class ServerSongService: ObservableObject {
     @MainActor
     func isDownloading(_ serverSong: ServerSong) -> Bool {
         return downloadingSongs.contains(serverSong.songId)
+    }
+    
+    @MainActor
+    func isDeleting(_ song: Song) -> Bool {
+        let songKey = "\(song.title.lowercased())|\(song.artist.lowercased())"
+        return deletingSongs.contains(songKey)
     }
     
     private func isAlreadyDownloaded(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {

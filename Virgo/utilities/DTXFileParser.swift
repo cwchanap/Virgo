@@ -11,7 +11,7 @@ import SwiftData
 struct DTXMetadata {
     var title: String?
     var artist: String?
-    var bpm: Int?
+    var bpm: Double?
     var difficultyLevel: Int?
     var preview: String?
     var previewImage: String?
@@ -42,7 +42,7 @@ struct DTXNote {
 struct DTXChartData {
     let title: String
     let artist: String
-    let bpm: Int
+    let bpm: Double
     let difficultyLevel: Int
     let preview: String?
     let previewImage: String?
@@ -52,7 +52,7 @@ struct DTXChartData {
     init(
         title: String,
         artist: String,
-        bpm: Int,
+        bpm: Double,
         difficultyLevel: Int,
         preview: String? = nil,
         previewImage: String? = nil,
@@ -171,7 +171,7 @@ class DTXFileParser {
             metadata.artist = extractValue(from: line, prefix: "#ARTIST:")
         } else if line.hasPrefix("#BPM:") {
             let bpmString = extractValue(from: line, prefix: "#BPM:")
-            guard let bpmValue = Int(bpmString) else {
+            guard let bpmValue = Double(bpmString) else {
                 throw DTXParseError.invalidBPM
             }
             metadata.bpm = bpmValue

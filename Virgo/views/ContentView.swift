@@ -121,9 +121,10 @@ struct ContentView: View {
         }
         .accentColor(.purple)
         .onAppear {
-            loadSampleDataIfNeeded()
+            // Removed loadSampleDataIfNeeded() since we have real DTX data now
             updateExistingChartLevels()
             cleanupDuplicateSongs()
+            cleanupOldSampleSongs() // Remove any old sample data
             serverSongService.setModelContext(modelContext)
             Task {
                 await serverSongService.loadServerSongs()
@@ -149,35 +150,7 @@ struct ContentView: View {
         Logger.database("Song \(song.title) \(song.isSaved ? "saved" : "unsaved")")
     }
     
-    private func loadSampleDataIfNeeded() {
-        // Check if we need to load sample data
-        let needsReload = allSongs.isEmpty
-        
-        if needsReload {
-            Logger.database("Database needs sample data reload...")
-            
-            // Insert fresh sample data
-            for sampleSong in Song.sampleData {
-                modelContext.insert(sampleSong)
-                // Insert charts and notes (they're related via relationships)
-                for chart in sampleSong.charts {
-                    modelContext.insert(chart)
-                    for note in chart.notes {
-                        modelContext.insert(note)
-                    }
-                }
-            }
-            
-            do {
-                try modelContext.save()
-                Logger.database("Successfully loaded \(Song.sampleData.count) sample songs")
-            } catch {
-                Logger.databaseError(error)
-            }
-        } else {
-            Logger.database("Database already has \(allSongs.count) songs")
-        }
-    }
+    // REMOVED: loadSampleDataIfNeeded() - no longer needed since we have real DTX data
     
     private func updateExistingChartLevels() {
         // Update any existing charts that still have the default level of 50
@@ -231,6 +204,41 @@ struct ContentView: View {
             } catch {
                 Logger.databaseError(error)
             }
+        }
+    }
+    
+    private func cleanupOldSampleSongs() {
+        // Remove any old sample songs that are not DTX Import data
+        let oldSampleSongs = allSongs.filter { song in
+            song.genre != "DTX Import"
+        }
+        
+        if !oldSampleSongs.isEmpty {
+            Logger.database("Found \(oldSampleSongs.count) old sample songs to remove")
+            
+            for song in oldSampleSongs {
+                Logger.database("Removing old sample song: \(song.title) by \(song.artist) (genre: \(song.genre))")
+                
+                // Delete all charts and their notes first for proper cleanup
+                for chart in song.charts {
+                    for note in chart.notes {
+                        modelContext.delete(note)
+                    }
+                    modelContext.delete(chart)
+                }
+                
+                // Then delete the song
+                modelContext.delete(song)
+            }
+            
+            do {
+                try modelContext.save()
+                Logger.database("Successfully cleaned up \(oldSampleSongs.count) old sample songs")
+            } catch {
+                Logger.databaseError(error)
+            }
+        } else {
+            Logger.database("No old sample songs found to clean up")
         }
     }
     
@@ -490,7 +498,7 @@ struct DifficultyBadge: View {
 
 struct SavedSongsView: View {
     let songs: [Song]
-    let serverSongService: ServerSongService?
+    @ObservedObject var serverSongService: ServerSongService
     
     var downloadedSongs: [Song] {
         // Show all songs that were downloaded from server (DTX Import genre)
@@ -558,11 +566,10 @@ struct SavedSongsView: View {
                         ForEach(downloadedSongs, id: \.id) { song in
                             SavedSongRow(
                                 song: song,
+                                isDeleting: serverSongService.isDeleting(song),
                                 onDelete: {
-                                    if let service = serverSongService {
-                                        Task { @MainActor in
-                                            await service.deleteLocalSong(song)
-                                        }
+                                    Task { @MainActor in
+                                        await serverSongService.deleteLocalSong(song)
                                     }
                                 }
                             )
@@ -582,6 +589,7 @@ struct SavedSongsView: View {
 
 struct SavedSongRow: View {
     let song: Song
+    let isDeleting: Bool
     let onDelete: (() -> Void)?
     
     var body: some View {
@@ -618,12 +626,23 @@ struct SavedSongRow: View {
                 }
                 
                 if let onDelete = onDelete {
-                    Button("Delete") {
-                        onDelete()
+                    if isDeleting {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Deleting...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        Button("Delete") {
+                            onDelete()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .foregroundColor(.red)
+                        .disabled(isDeleting)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .foregroundColor(.red)
                 } else {
                     Text("No delete")
                         .font(.caption2)
