@@ -252,8 +252,8 @@ class ServerSongService: ObservableObject {
             errorMessage = nil
         }
         
-        // Perform download work on background thread using Task.detached
-        let (success, errorMsg): (Bool, String?) = await Task.detached(priority: .background) { [weak self] in
+        // Perform download work on background thread with proper actor isolation
+        let (success, errorMsg): (Bool, String?) = await Task { [weak self] in
             guard let self = self else { 
                 return (false, "Service unavailable")
             }
@@ -484,7 +484,7 @@ class ServerSongService: ObservableObject {
         // Create background ModelContext using the same container
         let backgroundContext = ModelContext(container)
         
-        return await Task.detached(priority: .background) {
+        return await Task {
             do {
                 // Find the song in the background context
                 let songDescriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in

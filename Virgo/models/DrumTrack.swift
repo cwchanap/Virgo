@@ -23,11 +23,6 @@ final class Note {
         self.measureNumber = measureNumber
         self.measureOffset = measureOffset
         self.chart = chart
-        
-        // Establish the bidirectional SwiftData relationship
-        if let chart = chart {
-            chart.notes.append(self)
-        }
     }
 }
 
@@ -66,12 +61,12 @@ final class Chart {
     
     // Safe accessor for notes count
     var notesCount: Int {
-        isDeleted ? 0 : notes.count
+        notes.count
     }
     
     // Safe accessor for notes
     var safeNotes: [Note] {
-        isDeleted ? [] : notes.filter { !$0.isDeleted }
+        notes.filter { !$0.isDeleted }
     }
     
     init(difficulty: Difficulty, level: Int? = nil, timeSignature: TimeSignature? = nil, 
@@ -121,18 +116,8 @@ final class Song {
     }
     
     var measureCount: Int {
-        // Safely access notes with error handling for deleted objects
-        let allNotes = charts.compactMap { chart in
-            // Only access notes if chart is not deleted
-            chart.isDeleted ? [] : chart.safeNotes
-        }.flatMap { $0 }
-        
-        let maxMeasure = allNotes.compactMap { note in
-            // Only access measure number if note is not deleted
-            note.isDeleted ? nil : note.measureNumber
-        }.max() ?? 1
-        
-        return maxMeasure
+        let allNotes = charts.flatMap(\.notes)
+        return allNotes.map(\.measureNumber).max() ?? 1
     }
     
     func chart(for difficulty: Difficulty) -> Chart? {
