@@ -212,7 +212,12 @@ struct DTXFileParserTests {
     }
     
     @Test func testActualDTXFile() throws {
-        guard let url = Bundle(for: type(of: self)).url(
+        // Get the test bundle by finding a bundle that contains our test resource
+        let testBundle = Bundle.allBundles.first { bundle in
+            bundle.url(forResource: "Kyuuka ressha no madobe de/mas", withExtension: "dtx") != nil
+        } ?? Bundle.main
+        
+        guard let url = testBundle.url(
             forResource: "Kyuuka ressha no madobe de/mas", 
             withExtension: "dtx"
         ) else {
@@ -234,8 +239,8 @@ struct DTXFileParserTests {
         
         // Check for expected note types
         let noteTypes = Set(chartData.notes.compactMap { $0.toNoteType() })
-        #expect(noteTypes.contains(.bass))
-        #expect(noteTypes.contains(.snare))
-        #expect(noteTypes.contains(.hiHat))
+        #expect(noteTypes.contains(NoteType.bass))
+        #expect(noteTypes.contains(NoteType.snare))
+        #expect(noteTypes.contains(NoteType.hiHat))
     }
 }
