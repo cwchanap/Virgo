@@ -112,10 +112,7 @@ final class Song {
     var easiestChart: Chart? {
         let validCharts = charts.filter { !$0.isDeleted }
         return validCharts.min { chart1, chart2 in
-            let order: [Difficulty] = [.easy, .medium, .hard, .expert]
-            let index1 = order.firstIndex(of: chart1.difficulty) ?? 0
-            let index2 = order.firstIndex(of: chart2.difficulty) ?? 0
-            return index1 < index2
+            chart1.difficulty.sortOrder < chart2.difficulty.sortOrder
         }
     }
     
