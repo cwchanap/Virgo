@@ -308,7 +308,7 @@ extension Song {
 
 // MARK: - Legacy Support for DrumTrack
 // Keeping DrumTrack as a computed structure for backward compatibility
-struct DrumTrack {
+struct DrumTrack: Equatable {
     let chart: Chart
     
     // Forward all properties to the chart and its song
@@ -330,6 +330,10 @@ struct DrumTrack {
     
     init(chart: Chart) {
         self.chart = chart
+    }
+    
+    static func == (lhs: DrumTrack, rhs: DrumTrack) -> Bool {
+        return lhs.chart === rhs.chart
     }
     
     static var sampleData: [DrumTrack] {
