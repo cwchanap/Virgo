@@ -77,6 +77,80 @@ class ServerSongService: ObservableObject {
         await refreshServerSongs(forceClear: true)
     }
     
+    // MARK: - Helper Functions
+    
+    private func clearExistingServerSongs() async throws {
+        guard let modelContext = modelContext else { return }
+        
+        // Clear existing cache and save new data
+        let existingDescriptor = FetchDescriptor<ServerSong>()
+        let existingSongs = try modelContext.fetch(existingDescriptor)
+        
+        // First, explicitly delete all charts to avoid cascade deletion issues
+        for song in existingSongs {
+            // Check if song is not already deleted
+            if !song.isDeleted {
+                // Manually delete charts to ensure proper cleanup
+                for chart in song.charts {
+                    if !chart.isDeleted {
+                        modelContext.delete(chart)
+                    }
+                }
+                modelContext.delete(song)
+            }
+        }
+        
+        // Save the deletions first
+        do {
+            try modelContext.save()
+        } catch {
+            print("DEBUG: Error during deletion save: \(error)")
+            throw error
+        }
+    }
+    
+    private func processMultiDifficultySongs(_ serverSongs: [DTXServerSongData]) -> [ServerSong] {
+        var updatedSongs: [ServerSong] = []
+        
+        // Process multi-difficulty songs
+        for songData in serverSongs {
+            let charts = songData.charts.map { chartData in
+                ServerChart(
+                    difficulty: chartData.difficulty,
+                    difficultyLabel: chartData.difficultyLabel,
+                    level: chartData.level,
+                    filename: chartData.filename,
+                    size: chartData.size
+                )
+            }
+            
+            let serverSong = ServerSong(
+                songId: songData.songId,
+                title: songData.title,
+                artist: songData.artist ?? "Unknown Artist",
+                bpm: songData.bpm ?? 120.0,
+                charts: charts
+            )
+            
+            updatedSongs.append(serverSong)
+        }
+        
+        return updatedSongs
+    }
+    
+    private func updateDownloadStatus(_ songs: [ServerSong]) async throws {
+        guard let modelContext = modelContext else { return }
+        
+        // Check for existing downloads and preserve download status
+        let localSongsDescriptor = FetchDescriptor<Song>()
+        let localSongs = try modelContext.fetch(localSongsDescriptor)
+        
+        // Update download status based on existing local songs
+        for serverSong in songs {
+            serverSong.isDownloaded = isAlreadyDownloaded(serverSong, in: localSongs)
+        }
+    }
+    
     @MainActor
     private func refreshServerSongs(forceClear: Bool = false) async {
         guard let modelContext = modelContext else { return }
@@ -88,30 +162,8 @@ class ServerSongService: ObservableObject {
             // Fetch song list from server with multi-difficulty support
             let serverSongs = try await apiClient.listDTXSongs()
             
-            var updatedSongs: [ServerSong] = []
-            
             // Process multi-difficulty songs
-            for songData in serverSongs {
-                let charts = songData.charts.map { chartData in
-                    ServerChart(
-                        difficulty: chartData.difficulty,
-                        difficultyLabel: chartData.difficultyLabel,
-                        level: chartData.level,
-                        filename: chartData.filename,
-                        size: chartData.size
-                    )
-                }
-                
-                let serverSong = ServerSong(
-                    songId: songData.songId,
-                    title: songData.title,
-                    artist: songData.artist ?? "Unknown Artist",
-                    bpm: songData.bpm ?? 120.0,
-                    charts: charts
-                )
-                
-                updatedSongs.append(serverSong)
-            }
+            var updatedSongs = processMultiDifficultySongs(serverSongs)
             
             // Only process individual DTX files if not force clearing (backward compatibility)
             if !forceClear {
@@ -147,40 +199,11 @@ class ServerSongService: ObservableObject {
                 }
             }
             
-            // Check for existing downloads and preserve download status
-            let localSongsDescriptor = FetchDescriptor<Song>()
-            let localSongs = try modelContext.fetch(localSongsDescriptor)
+            // Update download status for all songs
+            try await updateDownloadStatus(updatedSongs)
             
-            // Update download status based on existing local songs
-            for serverSong in updatedSongs {
-                serverSong.isDownloaded = isAlreadyDownloaded(serverSong, in: localSongs)
-            }
-            
-            // Clear existing cache and save new data
-            let existingDescriptor = FetchDescriptor<ServerSong>()
-            let existingSongs = try modelContext.fetch(existingDescriptor)
-            
-            // First, explicitly delete all charts to avoid cascade deletion issues
-            for song in existingSongs {
-                // Check if song is not already deleted
-                if !song.isDeleted {
-                    // Manually delete charts to ensure proper cleanup
-                    for chart in song.charts {
-                        if !chart.isDeleted {
-                            modelContext.delete(chart)
-                        }
-                    }
-                    modelContext.delete(song)
-                }
-            }
-            
-            // Save the deletions first
-            do {
-                try modelContext.save()
-            } catch {
-                print("DEBUG: Error during deletion save: \(error)")
-                throw error
-            }
+            // Clear existing server songs and charts
+            try await clearExistingServerSongs()
             
             // Then insert new songs
             for song in updatedSongs {
@@ -539,7 +562,6 @@ class ServerSongService: ObservableObject {
             }
         }.value
     }
-    
     
     @MainActor
     private func refreshDownloadStatus() async {

@@ -23,6 +23,11 @@ final class Note {
         self.measureNumber = measureNumber
         self.measureOffset = measureOffset
         self.chart = chart
+        
+        // Establish the bidirectional SwiftData relationship
+        if let chart = chart {
+            chart.notes.append(self)
+        }
     }
 }
 
@@ -44,19 +49,19 @@ final class Chart {
     
     // Convenience accessors for song properties
     var title: String {
-        (song?.isDeleted == false ? song?.title : nil) ?? "Unknown Song"
+        song?.title ?? "Unknown Song"
     }
     var artist: String {
-        (song?.isDeleted == false ? song?.artist : nil) ?? "Unknown Artist"
+        song?.artist ?? "Unknown Artist"
     }
     var bpm: Int {
-        (song?.isDeleted == false ? song?.bpm : nil) ?? 120
+        song?.bpm ?? 120
     }
     var duration: String {
-        (song?.isDeleted == false ? song?.duration : nil) ?? "0:00"
+        song?.duration ?? "0:00"
     }
     var genre: String {
-        (song?.isDeleted == false ? song?.genre : nil) ?? "Unknown"
+        song?.genre ?? "Unknown"
     }
     
     // Safe accessor for notes count
@@ -103,10 +108,9 @@ final class Song {
     // Convenience accessors
     var availableDifficulties: [Difficulty] {
         let difficulties = charts.compactMap { chart in
-            // Only access difficulty if chart is not deleted
-            chart.isDeleted ? nil : chart.difficulty
+            chart.difficulty
         }
-        return difficulties.sorted { $0.rawValue < $1.rawValue }
+        return difficulties.sorted { $0.sortOrder < $1.sortOrder }
     }
     
     var easiestChart: Chart? {
@@ -132,7 +136,7 @@ final class Song {
     }
     
     func chart(for difficulty: Difficulty) -> Chart? {
-        return charts.first { !$0.isDeleted && $0.difficulty == difficulty }
+        return charts.first { $0.difficulty == difficulty }
     }
     
     init(
@@ -285,7 +289,7 @@ struct DrumTrack: Equatable {
     }
     
     static func == (lhs: DrumTrack, rhs: DrumTrack) -> Bool {
-        return lhs.chart === rhs.chart
+        return lhs.chart.persistentModelID == rhs.chart.persistentModelID
     }
     
     static var sampleData: [DrumTrack] {
