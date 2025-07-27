@@ -16,7 +16,6 @@ struct VirgoTests {
         // Test that sample data can be loaded
         let sampleTracks = DrumTrack.sampleData
         #expect(sampleTracks.isEmpty) // Currently returns empty since Song.sampleData is empty
-        #expect(sampleTracks.isEmpty)
         
         // Verify all sample tracks have valid data
         for track in sampleTracks {
@@ -80,7 +79,14 @@ struct VirgoTests {
         hardSong.charts = [hardChart]
         let hardTrack = DrumTrack(chart: hardChart)
         
-        let expertSong = Song(title: "Expert", artist: "Test", bpm: 180, duration: "5:00", genre: "Progressive", timeSignature: .fiveFour)
+        let expertSong = Song(
+            title: "Expert", 
+            artist: "Test", 
+            bpm: 180, 
+            duration: "5:00", 
+            genre: "Progressive", 
+            timeSignature: .fiveFour
+        )
         let expertChart = Chart(difficulty: .expert, song: expertSong)
         expertSong.charts = [expertChart]
         let expertTrack = DrumTrack(chart: expertChart)

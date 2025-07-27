@@ -1,9 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-import os
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Dict, Any
 
 app = FastAPI(title="Virgo DTX Server", version="1.0.0")
 
@@ -18,6 +17,25 @@ app.add_middleware(
 
 # DTX files directory
 DTX_FILES_DIR = Path(__file__).parent / "dtx_files"
+
+def parse_dtx_line(line: str, key: str) -> str:
+    """
+    Robust parser for DTX metadata lines.
+    Handles various formats like "#KEY: value", "#KEY value", "#KEYvalue"
+    """
+    line = line.strip()
+    if not line.startswith(f'#{key}'):
+        return None
+    
+    # Remove the key prefix
+    value_part = line[len(f'#{key}'):].strip()
+    
+    # Handle colon separator
+    if value_part.startswith(':'):
+        return value_part[1:].strip()
+    
+    # Handle direct value (no colon)
+    return value_part
 
 def parse_set_def(set_def_path: Path) -> Dict[str, Any]:
     """Parse SET.def file to get song title and difficulty mappings"""
@@ -45,13 +63,11 @@ def parse_set_def(set_def_path: Path) -> Dict[str, Any]:
     
     for line in content.split('\n'):
         line = line.strip()
-        if line.startswith('#TITLE'):
-            # Extract title, handle formats: "#TITLE: title", "#TITLE   title", or "#TITLE title"
-            title_part = line[6:].strip()
-            if title_part.startswith(':'):
-                song_info['title'] = title_part[1:].strip()
-            else:
-                song_info['title'] = title_part
+        
+        # Parse title using robust parser
+        title = parse_dtx_line(line, 'TITLE')
+        if title is not None:
+            song_info['title'] = title
         elif line.startswith('#L') and 'LABEL' in line:
             # Parse difficulty labels: #L1LABEL BASIC
             level_num = line[2]  # Get the number after L
@@ -81,20 +97,36 @@ def parse_dtx_metadata(dtx_path: Path) -> Dict[str, Any]:
     
     for line in content.split('\n'):
         line = line.strip()
-        if line.startswith('#TITLE:'):
-            metadata['title'] = line[7:].strip()
-        elif line.startswith('#ARTIST:'):
-            metadata['artist'] = line[8:].strip()
-        elif line.startswith('#BPM:'):
+        
+        # Parse title
+        title = parse_dtx_line(line, 'TITLE')
+        if title is not None:
+            metadata['title'] = title
+            continue
+            
+        # Parse artist
+        artist = parse_dtx_line(line, 'ARTIST')
+        if artist is not None:
+            metadata['artist'] = artist
+            continue
+            
+        # Parse BPM
+        bpm_str = parse_dtx_line(line, 'BPM')
+        if bpm_str is not None:
             try:
-                metadata['bpm'] = float(line[5:].strip())
+                metadata['bpm'] = float(bpm_str)
             except ValueError:
                 metadata['bpm'] = None
-        elif line.startswith('#DLEVEL:'):
+            continue
+            
+        # Parse difficulty level
+        dlevel_str = parse_dtx_line(line, 'DLEVEL')
+        if dlevel_str is not None:
             try:
-                metadata['level'] = int(line[8:].strip())
+                metadata['level'] = int(dlevel_str)
             except ValueError:
                 metadata['level'] = None
+            continue
     
     return metadata
 
@@ -182,7 +214,7 @@ async def list_dtx_files():
         
         return {"songs": songs, "individual_files": dtx_files}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error listing DTX songs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing DTX songs: {str(e)}") from e
 
 @app.get("/dtx/download/{filename}")
 async def download_dtx_file(filename: str):
@@ -239,23 +271,39 @@ async def get_dtx_metadata(filename: str):
         
         metadata = {}
         
-        # Parse basic metadata
+        # Parse basic metadata using robust parser
         for line in content.split('\n'):
             line = line.strip()
-            if line.startswith('#TITLE:'):
-                metadata['title'] = line[7:].strip()
-            elif line.startswith('#ARTIST:'):
-                metadata['artist'] = line[8:].strip()
-            elif line.startswith('#BPM:'):
+            
+            # Parse title
+            title = parse_dtx_line(line, 'TITLE')
+            if title is not None:
+                metadata['title'] = title
+                continue
+                
+            # Parse artist
+            artist = parse_dtx_line(line, 'ARTIST')
+            if artist is not None:
+                metadata['artist'] = artist
+                continue
+                
+            # Parse BPM
+            bpm_str = parse_dtx_line(line, 'BPM')
+            if bpm_str is not None:
                 try:
-                    metadata['bpm'] = float(line[5:].strip())
+                    metadata['bpm'] = float(bpm_str)
                 except ValueError:
                     metadata['bpm'] = None
-            elif line.startswith('#DLEVEL:'):
+                continue
+                
+            # Parse difficulty level
+            dlevel_str = parse_dtx_line(line, 'DLEVEL')
+            if dlevel_str is not None:
                 try:
-                    metadata['level'] = int(line[8:].strip())
+                    metadata['level'] = int(dlevel_str)
                 except ValueError:
                     metadata['level'] = None
+                continue
         
         return {
             "filename": filename,
@@ -263,13 +311,12 @@ async def get_dtx_metadata(filename: str):
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading DTX file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reading DTX file: {str(e)}") from e
 
 # Cloudflare Workers compatibility
 def on_fetch(request, env):
     """Handler for Cloudflare Workers"""
-    import asyncio
-    from fastapi.middleware.wsgi import WSGIMiddleware
+    
     
     # This is the entry point for Cloudflare Workers
     # The actual implementation would use an ASGI adapter

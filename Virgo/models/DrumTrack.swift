@@ -36,69 +36,37 @@ final class Chart {
     var notes: [Note]
     
     var timeSignature: TimeSignature {
-        get { 
-            do {
-                return _timeSignature ?? (song?.isDeleted == false ? song?.timeSignature : nil) ?? .fourFour
-            } catch {
-                return .fourFour
-            }
+        get {
+            _timeSignature ?? (song?.isDeleted == false ? song?.timeSignature : nil) ?? .fourFour
         }
         set { _timeSignature = newValue }
     }
     
     // Convenience accessors for song properties
-    var title: String { 
-        do {
-            return (song?.isDeleted == false ? song?.title : nil) ?? "Unknown Song"
-        } catch {
-            return "Unknown Song"
-        }
+    var title: String {
+        (song?.isDeleted == false ? song?.title : nil) ?? "Unknown Song"
     }
-    var artist: String { 
-        do {
-            return (song?.isDeleted == false ? song?.artist : nil) ?? "Unknown Artist"
-        } catch {
-            return "Unknown Artist"
-        }
+    var artist: String {
+        (song?.isDeleted == false ? song?.artist : nil) ?? "Unknown Artist"
     }
-    var bpm: Int { 
-        do {
-            return (song?.isDeleted == false ? song?.bpm : nil) ?? 120
-        } catch {
-            return 120
-        }
+    var bpm: Int {
+        (song?.isDeleted == false ? song?.bpm : nil) ?? 120
     }
-    var duration: String { 
-        do {
-            return (song?.isDeleted == false ? song?.duration : nil) ?? "0:00"
-        } catch {
-            return "0:00"
-        }
+    var duration: String {
+        (song?.isDeleted == false ? song?.duration : nil) ?? "0:00"
     }
-    var genre: String { 
-        do {
-            return (song?.isDeleted == false ? song?.genre : nil) ?? "Unknown"
-        } catch {
-            return "Unknown"
-        }
+    var genre: String {
+        (song?.isDeleted == false ? song?.genre : nil) ?? "Unknown"
     }
     
     // Safe accessor for notes count
     var notesCount: Int {
-        do {
-            return isDeleted ? 0 : notes.count
-        } catch {
-            return 0
-        }
+        isDeleted ? 0 : notes.count
     }
     
     // Safe accessor for notes
     var safeNotes: [Note] {
-        do {
-            return isDeleted ? [] : notes.filter { !$0.isDeleted }
-        } catch {
-            return []
-        }
+        isDeleted ? [] : notes.filter { !$0.isDeleted }
     }
     
     init(difficulty: Difficulty, level: Int? = nil, timeSignature: TimeSignature? = nil, 
@@ -134,60 +102,40 @@ final class Song {
     
     // Convenience accessors
     var availableDifficulties: [Difficulty] {
-        do {
-            let difficulties = charts.compactMap { chart in
-                // Only access difficulty if chart is not deleted
-                chart.isDeleted ? nil : chart.difficulty
-            }
-            return difficulties.sorted { $0.rawValue < $1.rawValue }
-        } catch {
-            print("DEBUG: Error accessing availableDifficulties, returning empty: \(error)")
-            return []
+        let difficulties = charts.compactMap { chart in
+            // Only access difficulty if chart is not deleted
+            chart.isDeleted ? nil : chart.difficulty
         }
+        return difficulties.sorted { $0.rawValue < $1.rawValue }
     }
     
     var easiestChart: Chart? {
-        do {
-            let validCharts = charts.filter { !$0.isDeleted }
-            return validCharts.min { chart1, chart2 in
-                let order: [Difficulty] = [.easy, .medium, .hard, .expert]
-                let index1 = order.firstIndex(of: chart1.difficulty) ?? 0
-                let index2 = order.firstIndex(of: chart2.difficulty) ?? 0
-                return index1 < index2
-            }
-        } catch {
-            print("DEBUG: Error accessing easiestChart, returning nil: \(error)")
-            return nil
+        let validCharts = charts.filter { !$0.isDeleted }
+        return validCharts.min { chart1, chart2 in
+            let order: [Difficulty] = [.easy, .medium, .hard, .expert]
+            let index1 = order.firstIndex(of: chart1.difficulty) ?? 0
+            let index2 = order.firstIndex(of: chart2.difficulty) ?? 0
+            return index1 < index2
         }
     }
     
     var measureCount: Int {
         // Safely access notes with error handling for deleted objects
-        do {
-            let allNotes = charts.compactMap { chart in
-                // Only access notes if chart is not deleted
-                chart.isDeleted ? [] : chart.safeNotes
-            }.flatMap { $0 }
-            
-            let maxMeasure = allNotes.compactMap { note in
-                // Only access measure number if note is not deleted
-                note.isDeleted ? nil : note.measureNumber
-            }.max() ?? 1
-            
-            return maxMeasure
-        } catch {
-            print("DEBUG: Error accessing measureCount, returning default: \(error)")
-            return 1
-        }
+        let allNotes = charts.compactMap { chart in
+            // Only access notes if chart is not deleted
+            chart.isDeleted ? [] : chart.safeNotes
+        }.flatMap { $0 }
+        
+        let maxMeasure = allNotes.compactMap { note in
+            // Only access measure number if note is not deleted
+            note.isDeleted ? nil : note.measureNumber
+        }.max() ?? 1
+        
+        return maxMeasure
     }
     
     func chart(for difficulty: Difficulty) -> Chart? {
-        do {
-            return charts.first { !$0.isDeleted && $0.difficulty == difficulty }
-        } catch {
-            print("DEBUG: Error accessing chart for difficulty \(difficulty), returning nil: \(error)")
-            return nil
-        }
+        return charts.first { !$0.isDeleted && $0.difficulty == difficulty }
     }
     
     init(
@@ -227,7 +175,14 @@ final class ServerChart {
     var size: Int
     var serverSong: ServerSong?
     
-    init(difficulty: String, difficultyLabel: String, level: Int, filename: String, size: Int, serverSong: ServerSong? = nil) {
+    init(
+        difficulty: String, 
+        difficultyLabel: String, 
+        level: Int, 
+        filename: String, 
+        size: Int, 
+        serverSong: ServerSong? = nil
+    ) {
         self.difficulty = difficulty
         self.difficultyLabel = difficultyLabel
         self.level = level

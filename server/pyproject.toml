@@ -3,7 +3,7 @@ name = "virgo-dtx-server"
 version = "1.0.0"
 description = "FastAPI backend server for serving DTX drum chart files"
 dependencies = [
-    "fastapi>=0.104.1",
-    "uvicorn[standard]>=0.24.0",
+    "fastapi>=0.116.1",
+    "uvicorn[standard]>=0.35.0",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"

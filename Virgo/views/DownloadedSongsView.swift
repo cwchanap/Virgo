@@ -41,7 +41,7 @@ struct DownloadedSongsView: View {
                         onDelete: {
                             Task {
                                 let success = await serverSongService.deleteLocalSong(song)
-                                print("DEBUG: Delete downloaded song result: \(success)")
+                                Logger.debug("Delete downloaded song result: \(success)")
                             }
                         }
                     )

@@ -36,15 +36,28 @@ struct VirgoApp: App {
             print("Migration failed, attempting to recreate database: \(error)")
             
             // Delete the existing database file to force recreation
-            let storeURL = modelConfiguration.url
-            try? FileManager.default.removeItem(at: storeURL)
-            // Also remove any associated files
-            let associatedFiles = [
-                storeURL.appendingPathExtension("wal"),
-                storeURL.appendingPathExtension("shm")
-            ]
-            for file in associatedFiles {
-                try? FileManager.default.removeItem(at: file)
+            do {
+                let storeURL = modelConfiguration.url
+                // Check if the URL is valid and accessible before attempting removal
+                if FileManager.default.fileExists(atPath: storeURL.path) {
+                    try FileManager.default.removeItem(at: storeURL)
+                    print("Removed existing database file at: \(storeURL.path)")
+                }
+                
+                // Also remove any associated files
+                let associatedFiles = [
+                    storeURL.appendingPathExtension("wal"),
+                    storeURL.appendingPathExtension("shm")
+                ]
+                for file in associatedFiles {
+                    if FileManager.default.fileExists(atPath: file.path) {
+                        try FileManager.default.removeItem(at: file)
+                        print("Removed associated file: \(file.path)")
+                    }
+                }
+            } catch {
+                print("Warning: Failed to remove database files during cleanup: \(error)")
+                // Continue anyway - the ModelContainer creation might still succeed
             }
             
             // Try creating the container again

@@ -210,9 +210,7 @@ class ServerSongService: ObservableObject {
     func downloadAndImportSong(_ serverSong: ServerSong) async -> Bool {
         // Cache needed values to avoid MainActor calls in background
         let isAlreadyDownloaded = serverSong.isDownloaded
-        let songTitle = serverSong.title
         let songId = serverSong.songId
-        let chartsCount = serverSong.charts.count
         
         // Check if already downloading to prevent race condition
         let isDownloading = await MainActor.run { downloadingSongs.contains(songId) }
@@ -431,7 +429,6 @@ class ServerSongService: ObservableObject {
             return false
         }
         
-        // Mark as deleting on main thread
         await MainActor.run {
             deletingSongs.insert(songKey)
             errorMessage = nil
@@ -543,78 +540,6 @@ class ServerSongService: ObservableObject {
         }.value
     }
     
-    @MainActor
-    private func performDeletion(song: Song, songKey: String) async -> Bool {
-        guard let modelContext = modelContext else { return false }
-        
-        // Store song information before deletion for server song matching
-        let songTitle = song.title.lowercased()
-        let songArtist = song.artist.lowercased()
-        let songId = song.persistentModelID
-        
-        do {
-            // Ensure the song is still attached to this context
-            guard !song.isDeleted else {
-                print("DEBUG: Song is already deleted")
-                return true
-            }
-            
-            // IMPORTANT: Only delete the specific song, not all songs with same title/artist
-            // First, explicitly delete all charts and their notes to ensure proper cleanup
-            for chart in song.charts {
-                if !chart.isDeleted {
-                    for note in chart.notes {
-                        if !note.isDeleted {
-                            modelContext.delete(note)
-                        }
-                    }
-                    modelContext.delete(chart)
-                }
-            }
-            
-            // Then delete the specific song
-            modelContext.delete(song)
-            try modelContext.save()
-            
-            // Update matching server songs to mark as not downloaded
-            // Only update server songs that match title/artist AND are from DTX Import genre
-            let serverSongsDescriptor = FetchDescriptor<ServerSong>()
-            let allServerSongs = try modelContext.fetch(serverSongsDescriptor)
-            
-            var hasUpdates = false
-            for serverSong in allServerSongs {
-                if serverSong.title.lowercased() == songTitle && 
-                   serverSong.artist.lowercased() == songArtist &&
-                   serverSong.isDownloaded {
-                    // Check if there are still other songs with same title/artist before marking as not downloaded
-                    let songsDescriptor = FetchDescriptor<Song>()
-                    let remainingSongs = try modelContext.fetch(songsDescriptor)
-                    let hasOtherMatchingSongs = remainingSongs.contains { otherSong in
-                        otherSong.persistentModelID != songId &&
-                        otherSong.title.lowercased() == songTitle &&
-                        otherSong.artist.lowercased() == songArtist &&
-                        otherSong.genre == "DTX Import"
-                    }
-                    
-                    // Only mark as not downloaded if no other matching DTX Import songs exist
-                    if !hasOtherMatchingSongs {
-                        serverSong.isDownloaded = false
-                        hasUpdates = true
-                    }
-                }
-            }
-            
-            if hasUpdates {
-                try modelContext.save()
-            }
-            
-            return true
-        } catch {
-            errorMessage = "Failed to delete song: \(error.localizedDescription)"
-            print("DEBUG: Delete error details: \(error)")
-            return false
-        }
-    }
     
     @MainActor
     private func refreshDownloadStatus() async {

@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct MetronomeView: View {
-    @StateObject private var metronome = MetronomeEngine()
+    @EnvironmentObject private var metronome: MetronomeEngine
     
     var body: some View {
         ZStack {
@@ -109,5 +109,6 @@ struct PracticeTipRow: View {
 
 #Preview {
     MetronomeView()
+        .environmentObject(MetronomeEngine())
         .modelContainer(for: Song.self, inMemory: true)
 }
