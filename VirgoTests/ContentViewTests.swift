@@ -245,7 +245,7 @@ struct ContentViewTests {
                 genre: ["Rock", "Jazz", "Electronic", "Hip Hop"][i % 4],
                 timeSignature: [.fourFour, .threeFour, .sixEight, .fiveFour][i % 4]
             )
-            let chart = Chart(difficulty: [.easy, .medium, .hard, .expert][i % 4], song: song)
+            let chart = Chart(difficulty: Difficulty.allCases[i % Difficulty.allCases.count], song: song)
             song.charts = [chart]
             largeTracks.append(DrumTrack(chart: chart))
         }

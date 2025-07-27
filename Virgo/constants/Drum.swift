@@ -8,7 +8,7 @@
 import Foundation
 import SwiftUI
 
-enum Difficulty: String, Codable {
+enum Difficulty: String, Codable, CaseIterable {
     case easy = "Easy"
     case medium = "Medium"
     case hard = "Hard"
