@@ -29,6 +29,38 @@ struct VirgoApp: App {
             allowsSave: true
         )
 
+        // Check if we need to force database recreation due to BGM and preview schema changes
+        let currentSchemaVersion = "v2.1" // Incremented for BGM and preview features
+        let lastKnownVersion = UserDefaults.standard.string(forKey: "SchemaVersion") ?? "v1.0"
+        
+        if lastKnownVersion != currentSchemaVersion {
+            print("Schema version changed from \(lastKnownVersion) to \(currentSchemaVersion), recreating database")
+            
+            // Force database deletion for clean schema migration
+            do {
+                let storeURL = modelConfiguration.url
+                if FileManager.default.fileExists(atPath: storeURL.path) {
+                    try FileManager.default.removeItem(at: storeURL)
+                    print("Removed existing database for schema upgrade")
+                }
+                
+                let associatedFiles = [
+                    storeURL.appendingPathExtension("wal"),
+                    storeURL.appendingPathExtension("shm")
+                ]
+                for file in associatedFiles {
+                    if FileManager.default.fileExists(atPath: file.path) {
+                        try FileManager.default.removeItem(at: file)
+                    }
+                }
+            } catch {
+                print("Warning: Failed to remove database files during schema upgrade: \(error)")
+            }
+            
+            // Update the stored version
+            UserDefaults.standard.set(currentSchemaVersion, forKey: "SchemaVersion")
+        }
+
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {

@@ -16,6 +16,7 @@ struct DownloadedSongsView: View {
     @Binding var expandedSongId: PersistentIdentifier?
     @Binding var selectedChart: Chart?
     @Binding var navigateToGameplay: Bool
+    @ObservedObject var audioPlaybackService: AudioPlaybackService
     let onPlayTap: (Song) -> Void
     let onSaveTap: (Song) -> Void
     
@@ -24,13 +25,23 @@ struct DownloadedSongsView: View {
         songs.filter { $0.genre == "DTX Import" }
     }
     
+    // Helper function to determine if a song is currently playing
+    private func isPlaying(_ song: Song) -> Bool {
+        // Check if playing via preview audio (for DTX Import songs with preview)
+        if song.genre == "DTX Import" && song.previewFilePath != nil {
+            return audioPlaybackService.isPlaying && audioPlaybackService.currentlyPlayingSong == song.title
+        }
+        // Check if playing via regular playback service
+        return currentlyPlaying == song.id
+    }
+    
     var body: some View {
         List {
             if !downloadedSongs.isEmpty {
                 ForEach(downloadedSongs, id: \.id) { song in
                     DownloadedSongRowWithDelete(
                         song: song,
-                        isPlaying: currentlyPlaying == song.id,
+                        isPlaying: isPlaying(song),
                         isExpanded: expandedSongId == song.persistentModelID,
                         isDeleting: serverSongService.isDeleting(song),
                         expandedSongId: $expandedSongId,
@@ -88,6 +99,11 @@ struct DownloadedSongRowWithDelete: View {
     let onSaveTap: () -> Void
     let onDelete: () -> Void
     
+    // Cache relationship data to prevent SwiftData concurrency issues
+    @State private var chartCount: Int = 0
+    @State private var measureCount: Int = 0
+    @State private var charts: [Chart] = []
+    
     var body: some View {
         VStack(spacing: 0) {
             // Main song row with delete button
@@ -117,7 +133,7 @@ struct DownloadedSongRowWithDelete: View {
                         Label(song.duration, systemImage: "clock")
                         Label(song.genre, systemImage: "music.quarternote.3")
                         Label(song.timeSignature.displayName, systemImage: "music.note")
-                        Label("\(song.measureCount) measures", systemImage: "music.note.list")
+                        Label("\(measureCount) measures", systemImage: "music.note.list")
                     }
                     .font(.caption)
                     .foregroundColor(.gray)
@@ -172,7 +188,7 @@ struct DownloadedSongRowWithDelete: View {
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                                 .animation(.easeInOut(duration: 0.3), value: isExpanded)
                             
-                            Text("\(song.charts.count) charts")
+                            Text("\(chartCount) charts")
                                 .font(.caption2)
                                 .foregroundColor(.gray)
                         }
@@ -188,7 +204,7 @@ struct DownloadedSongRowWithDelete: View {
             // Expanded difficulty options
             if isExpanded {
                 DifficultyExpansionView(
-                    song: song,
+                    charts: charts,
                     onChartSelect: handleChartSelect
                 )
                 .padding(.top, 8)
@@ -197,6 +213,16 @@ struct DownloadedSongRowWithDelete: View {
                     removal: .opacity.combined(with: .move(edge: .top))
                 ))
                 .animation(.easeInOut(duration: 0.3), value: isExpanded)
+            }
+        }
+        .task {
+            // Load relationship data asynchronously to prevent SwiftData concurrency issues
+            await loadSongRelationshipData()
+        }
+        .onChange(of: song.id) { _, _ in
+            // Reload if song changes
+            Task {
+                await loadSongRelationshipData()
             }
         }
     }
@@ -208,5 +234,27 @@ struct DownloadedSongRowWithDelete: View {
     private func handleChartSelect(_ chart: Chart) {
         selectedChart = chart
         navigateToGameplay = true
+    }
+    
+    @MainActor
+    private func loadSongRelationshipData() async {
+        await Task {
+            // Access SwiftData relationships in a safe background context
+            let songCharts = song.charts.filter { !$0.isDeleted }
+            let songMeasureCount = calculateMeasureCount(from: songCharts)
+            
+            await MainActor.run {
+                self.charts = songCharts
+                self.chartCount = songCharts.count
+                self.measureCount = songMeasureCount
+            }
+        }.value
+    }
+    
+    private func calculateMeasureCount(from charts: [Chart]) -> Int {
+        let allNotes = charts.flatMap { chart in
+            chart.notes.filter { !$0.isDeleted }
+        }
+        return allNotes.map(\.measureNumber).max() ?? 1
     }
 }

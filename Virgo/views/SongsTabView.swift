@@ -18,6 +18,7 @@ struct SongsTabView: View {
     @Binding var expandedSongId: PersistentIdentifier?
     @Binding var selectedChart: Chart?
     @Binding var navigateToGameplay: Bool
+    @ObservedObject var audioPlaybackService: AudioPlaybackService
     let onPlayTap: (Song) -> Void
     let onSaveTap: (Song) -> Void
     
@@ -155,6 +156,7 @@ struct SongsTabView: View {
                         expandedSongId: $expandedSongId,
                         selectedChart: $selectedChart,
                         navigateToGameplay: $navigateToGameplay,
+                        audioPlaybackService: audioPlaybackService,
                         onPlayTap: onPlayTap,
                         onSaveTap: onSaveTap
                     )

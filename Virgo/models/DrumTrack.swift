@@ -92,6 +92,8 @@ final class Song {
     var dateAdded: Date
     var playCount: Int
     var isSaved: Bool = false
+    var bgmFilePath: String? // Path to downloaded BGM audio file
+    var previewFilePath: String? // Path to downloaded preview audio file
     @Relationship(deleteRule: .cascade, inverse: \Chart.song)
     var charts: [Chart]
     
@@ -102,13 +104,18 @@ final class Song {
     
     // Convenience accessors
     var availableDifficulties: [Difficulty] {
-        let difficulties = charts.compactMap { chart in
+        guard !isDeleted else { return [] }
+        
+        let validCharts = charts.filter { !$0.isDeleted }
+        let difficulties = validCharts.compactMap { chart in
             chart.difficulty
         }
         return difficulties.sorted { $0.sortOrder < $1.sortOrder }
     }
     
     var easiestChart: Chart? {
+        guard !isDeleted else { return nil }
+        
         let validCharts = charts.filter { !$0.isDeleted }
         return validCharts.min { chart1, chart2 in
             chart1.difficulty.sortOrder < chart2.difficulty.sortOrder
@@ -116,7 +123,13 @@ final class Song {
     }
     
     var measureCount: Int {
-        let allNotes = charts.flatMap(\.notes)
+        // Safe access to charts and their notes
+        guard !isDeleted else { return 1 }
+        
+        let validCharts = charts.filter { !$0.isDeleted }
+        let allNotes = validCharts.flatMap { chart in
+            chart.safeNotes
+        }
         return allNotes.map(\.measureNumber).max() ?? 1
     }
     
@@ -134,7 +147,9 @@ final class Song {
         charts: [Chart] = [],
         isPlaying: Bool = false,
         playCount: Int = 0,
-        isSaved: Bool = false
+        isSaved: Bool = false,
+        bgmFilePath: String? = nil,
+        previewFilePath: String? = nil
     ) {
         self.title = title
         self.artist = artist
@@ -147,6 +162,8 @@ final class Song {
         self.dateAdded = Date()
         self.playCount = playCount
         self.isSaved = isSaved
+        self.bgmFilePath = bgmFilePath
+        self.previewFilePath = previewFilePath
     }
 }
 
@@ -187,6 +204,10 @@ final class ServerSong {
     @Relationship(deleteRule: .cascade) var charts: [ServerChart]
     var lastUpdated: Date
     var isDownloaded: Bool
+    var hasBGM: Bool = false // Whether BGM file is available for download
+    var bgmDownloaded: Bool = false // Whether BGM file was successfully downloaded
+    var hasPreview: Bool = false // Whether preview file is available for download
+    var previewDownloaded: Bool = false // Whether preview file was successfully downloaded
     
     init(
         songId: String,
@@ -194,7 +215,11 @@ final class ServerSong {
         artist: String,
         bpm: Double,
         charts: [ServerChart] = [],
-        isDownloaded: Bool = false
+        isDownloaded: Bool = false,
+        hasBGM: Bool = false,
+        bgmDownloaded: Bool = false,
+        hasPreview: Bool = false,
+        previewDownloaded: Bool = false
     ) {
         self.songId = songId
         self.title = title
@@ -203,6 +228,10 @@ final class ServerSong {
         self.charts = charts
         self.lastUpdated = Date()
         self.isDownloaded = isDownloaded
+        self.hasBGM = hasBGM
+        self.bgmDownloaded = bgmDownloaded
+        self.hasPreview = hasPreview
+        self.previewDownloaded = previewDownloaded
     }
     
     // Legacy compatibility for single-file DTX
@@ -228,7 +257,9 @@ final class ServerSong {
             artist: artist,
             bpm: bpm,
             charts: [chart],
-            isDownloaded: isDownloaded
+            isDownloaded: isDownloaded,
+            hasBGM: false,
+            hasPreview: false
         )
     }
     
