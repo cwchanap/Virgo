@@ -23,16 +23,18 @@ Virgo is a SwiftUI-based drum notation and metronome application for iOS and mac
 - `DrumTrack.swift`: SwiftData models (Song, Chart, Note) with relationships for complex drum patterns
 - `MetronomeComponent.swift`: Advanced metronome with sample-accurate timing and volume control
 - `DTXAPIClient.swift`: Network client for DTX server integration with file listing, metadata, and download capabilities
-- `DTXParser.swift`: Parser for importing DTX drum chart files with complete note parsing
+- `DTXFileParser.swift`: Parser for importing DTX drum chart files with complete note parsing
 
 ### Data Model
 
-The app uses SwiftData with three primary models:
-- `Song`: Track metadata (title, artist, BPM, time signature, duration, genre) with `isSaved` flag for server/local differentiation
+The app uses SwiftData with five primary models:
+- `Song`: Local track metadata (title, artist, BPM, time signature, duration, genre)
 - `Chart`: Difficulty-specific charts linked to songs with relationships to Notes
 - `Note`: Individual drum notes with interval, type, measure number, and timing offset
+- `ServerSong`: Server-based tracks with download and caching support
+- `ServerChart`: Server chart data with DTX file integration
 - Rich sample data with complex multi-measure drum patterns
-- Server integration allows importing DTX files dynamically with caching support
+- Unified interface combining local SwiftData entries with server DTX files
 
 ## Development Setup
 
@@ -110,17 +112,22 @@ Virgo/
 │   │   ├── BeamGroupingLogic.swift  # Musical notation beam grouping
 │   │   ├── Logger.swift         # Centralized logging
 │   │   ├── DTXAPIClient.swift   # Server integration for DTX files
-│   │   └── DTXParser.swift      # DTX file format parser
+│   │   ├── DTXFileParser.swift   # DTX file format parser
+│   │   └── ServerSongService.swift # Server integration service
 │   ├── constants/               # App constants
 │   │   └── Drum.swift          # Drum type definitions
 │   ├── layout/                  # Layout calculations
 │   │   └── gameplay.swift       # Musical notation positioning
 │   └── Assets.xcassets/         # App icons, colors, and audio assets
 ├── VirgoTests/                  # Unit tests (Swift Testing framework)
-└── VirgoUITests/               # UI automation tests
-└── scripts/                    # Development scripts
+├── VirgoUITests/               # UI automation tests
+├── scripts/                    # Development scripts
     ├── setup-git-hooks.sh      # Git hooks installation
     └── git-hooks/              # Pre-commit hooks
+└── server/                     # FastAPI backend server
+    ├── main.py                # Server entry point
+    ├── dtx_files/             # DTX file storage
+    └── requirements.txt       # Python dependencies
 ```
 
 ## Development Notes
@@ -134,6 +141,11 @@ Virgo/
 - Centralized logging with categorized output (audioPlayback, userAction, debug)
 - Multi-platform target supports both iOS and macOS with adaptive UI
 - SwiftLint configuration customized for the project with relaxed rules for necessary patterns
+
+### SwiftData Concurrency
+- **Issue**: Accessing SwiftData relationships (`song.charts`, `chart.notes`) during UI rendering causes concurrency crashes and blocks the main thread
+- **Solution**: Use async caching pattern with `@State` variables and `.task` modifier to load relationship data in background, then update UI on main thread
+- **Implementation**: Views cache relationship counts/data locally and refresh asynchronously when song changes, ensuring immediate UI responsiveness
 
 ## Key Technical Features
 
@@ -166,3 +178,17 @@ Virgo/
 - Network entitlements configured for client/server communication
 - Unified Songs tab combines local SwiftData entries with server DTX files
 - Caching system for downloaded DTX files with local storage support
+
+## FastAPI Backend Server
+
+The project includes a Python FastAPI server (`server/`) for serving DTX files:
+- Local development server at `http://localhost:8000`
+- Cloudflare Workers deployment support
+- REST API for listing, downloading, and parsing DTX files
+- CORS-enabled for local iOS/macOS client development
+- Shift-JIS encoding support for Japanese DTX files
+
+## Memory Archive
+
+### SwiftData and Concurrency
+- SwiftData concurrency issue discovered where complex Note relationships cause threading conflicts during background model updates

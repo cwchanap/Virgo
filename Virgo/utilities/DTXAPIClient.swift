@@ -240,6 +240,84 @@ class DTXAPIClient: ObservableObject {
         }
     }
     
+    func downloadBGMFile(songId: String) async throws -> Data {
+        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/bgm.ogg") else {
+            throw DTXAPIError.invalidURL
+        }
+        
+        // Update UI state on main thread
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+        
+        do {
+            // Network call runs in background - this is the heavy operation
+            let (data, response) = try await session.data(from: url)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw DTXAPIError.networkError(URLError(.badServerResponse))
+            }
+            
+            guard httpResponse.statusCode == 200 else {
+                throw DTXAPIError.networkError(URLError(.badServerResponse))
+            }
+            
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+            }
+            
+            return data
+        } catch {
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
+            throw DTXAPIError.networkError(error)
+        }
+    }
+    
+    func downloadPreviewFile(songId: String) async throws -> Data {
+        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/preview.mp3") else {
+            throw DTXAPIError.invalidURL
+        }
+        
+        // Update UI state on main thread
+        await MainActor.run {
+            isLoading = true
+            errorMessage = nil
+        }
+        
+        do {
+            // Network call runs in background - this is the heavy operation
+            let (data, response) = try await session.data(from: url)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw DTXAPIError.networkError(URLError(.badServerResponse))
+            }
+            
+            guard httpResponse.statusCode == 200 else {
+                throw DTXAPIError.networkError(URLError(.badServerResponse))
+            }
+            
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+            }
+            
+            return data
+        } catch {
+            // Update UI state on main thread
+            await MainActor.run {
+                isLoading = false
+                errorMessage = error.localizedDescription
+            }
+            throw DTXAPIError.networkError(error)
+        }
+    }
+    
     func downloadChartFile(songId: String, chartFilename: String) async throws -> Data {
         guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/\(chartFilename)") else {
             throw DTXAPIError.invalidURL

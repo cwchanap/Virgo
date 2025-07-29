@@ -235,9 +235,9 @@ async def download_dtx_file(filename: str):
 
 @app.get("/dtx/download/{song_id}/{chart_filename}")
 async def download_chart_file(song_id: str, chart_filename: str):
-    """Download a specific chart file from a song folder"""
-    if not chart_filename.endswith('.dtx'):
-        raise HTTPException(status_code=400, detail="Invalid file type. Only .dtx files are allowed")
+    """Download a specific chart file or BGM file from a song folder"""
+    if not (chart_filename.endswith('.dtx') or chart_filename.endswith('.ogg') or chart_filename.endswith('.mp3')):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only .dtx, .ogg, and .mp3 files are allowed")
     
     song_dir = DTX_FILES_DIR / song_id
     if not song_dir.exists() or not song_dir.is_dir():

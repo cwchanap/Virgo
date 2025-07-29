@@ -82,30 +82,30 @@ class ServerSongService: ObservableObject {
     private func clearExistingServerSongs() async throws {
         guard let modelContext = modelContext else { return }
         
-        // Clear existing cache and save new data
+        // Use a more robust deletion approach to avoid memory management issues
         let existingDescriptor = FetchDescriptor<ServerSong>()
         let existingSongs = try modelContext.fetch(existingDescriptor)
         
-        // First, explicitly delete all charts to avoid cascade deletion issues
-        for song in existingSongs {
-            // Check if song is not already deleted
-            if !song.isDeleted {
-                // Manually delete charts to ensure proper cleanup
-                for chart in song.charts {
-                    if !chart.isDeleted {
-                        modelContext.delete(chart)
-                    }
+        // Delete in smaller batches to reduce memory pressure
+        let batchSize = 10
+        for i in stride(from: 0, to: existingSongs.count, by: batchSize) {
+            let endIndex = min(i + batchSize, existingSongs.count)
+            let batch = Array(existingSongs[i..<endIndex])
+            
+            for song in batch {
+                // Ensure the song is still valid before deletion
+                if !song.isDeleted {
+                    modelContext.delete(song)
                 }
-                modelContext.delete(song)
             }
-        }
-        
-        // Save the deletions first
-        do {
-            try modelContext.save()
-        } catch {
-            print("DEBUG: Error during deletion save: \(error)")
-            throw error
+            
+            // Save after each batch to avoid accumulating too many changes
+            do {
+                try modelContext.save()
+            } catch {
+                Logger.database("Failed to save deletion batch: \(error)")
+                throw error
+            }
         }
     }
     
@@ -129,7 +129,10 @@ class ServerSongService: ObservableObject {
                 title: songData.title,
                 artist: songData.artist ?? "Unknown Artist",
                 bpm: songData.bpm ?? 120.0,
-                charts: charts
+                charts: charts,
+                isDownloaded: false,
+                hasBGM: true, // Assume BGM is available for multi-difficulty songs
+                hasPreview: true // Assume preview is available for multi-difficulty songs
             )
             
             updatedSongs.append(serverSong)
@@ -148,6 +151,8 @@ class ServerSongService: ObservableObject {
         // Update download status based on existing local songs
         for serverSong in songs {
             serverSong.isDownloaded = isAlreadyDownloaded(serverSong, in: localSongs)
+            serverSong.bgmDownloaded = hasBGMFile(serverSong, in: localSongs)
+            serverSong.previewDownloaded = hasPreviewFile(serverSong, in: localSongs)
         }
     }
     
@@ -382,6 +387,28 @@ class ServerSongService: ObservableObject {
                 backgroundContext.insert(chart)
             }
             
+            // Download BGM file if available
+            do {
+                let bgmData = try await apiClient.downloadBGMFile(songId: serverSong.songId)
+                let bgmPath = try saveBGMFile(bgmData, for: serverSong.songId)
+                song.bgmFilePath = bgmPath
+                Logger.database("Downloaded BGM file for song: \(song.title)")
+            } catch {
+                // BGM download is optional - continue even if it fails
+                Logger.database("Failed to download BGM for song \(song.title): \(error.localizedDescription)")
+            }
+            
+            // Download preview file if available
+            do {
+                let previewData = try await apiClient.downloadPreviewFile(songId: serverSong.songId)
+                let previewPath = try savePreviewFile(previewData, for: serverSong.songId)
+                song.previewFilePath = previewPath
+                Logger.database("Downloaded preview file for song: \(song.title)")
+            } catch {
+                // Preview download is optional - continue even if it fails
+                Logger.database("Failed to download preview for song \(song.title): \(error.localizedDescription)")
+            }
+            
             // Save to SwiftData using background context
             backgroundContext.insert(song)
             try backgroundContext.save()
@@ -391,6 +418,40 @@ class ServerSongService: ObservableObject {
         } catch {
             return (false, "Multi-difficulty import failed: \(error.localizedDescription)")
         }
+    }
+    
+    private func saveBGMFile(_ data: Data, for songId: String) throws -> String {
+        // Get the Documents directory
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        
+        // Create BGM directory if it doesn't exist
+        let bgmDirectory = documentsPath.appendingPathComponent("BGM")
+        if !FileManager.default.fileExists(atPath: bgmDirectory.path) {
+            try FileManager.default.createDirectory(at: bgmDirectory, withIntermediateDirectories: true)
+        }
+        
+        // Save BGM file with song ID as filename
+        let bgmFilePath = bgmDirectory.appendingPathComponent("\(songId).ogg")
+        try data.write(to: bgmFilePath)
+        
+        return bgmFilePath.path
+    }
+    
+    private func savePreviewFile(_ data: Data, for songId: String) throws -> String {
+        // Get the Documents directory
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        
+        // Create Preview directory if it doesn't exist
+        let previewDirectory = documentsPath.appendingPathComponent("Preview")
+        if !FileManager.default.fileExists(atPath: previewDirectory.path) {
+            try FileManager.default.createDirectory(at: previewDirectory, withIntermediateDirectories: true)
+        }
+        
+        // Save preview file with song ID as filename
+        let previewFilePath = previewDirectory.appendingPathComponent("\(songId).mp3")
+        try data.write(to: previewFilePath)
+        
+        return previewFilePath.path
     }
     
     private func mapServerDifficultyToApp(_ serverDifficulty: String) -> Difficulty {
@@ -503,20 +564,20 @@ class ServerSongService: ObservableObject {
                     return true
                 }
                 
-                // IMPORTANT: Only delete the specific song, not all songs with same title/artist
-                // First, explicitly delete all charts and their notes to ensure proper cleanup
-                for chart in songToDelete.charts {
-                    if !chart.isDeleted {
-                        for note in chart.notes {
-                            if !note.isDeleted {
-                                backgroundContext.delete(note)
-                            }
-                        }
-                        backgroundContext.delete(chart)
-                    }
+                // Delete BGM file if it exists
+                if let bgmPath = songToDelete.bgmFilePath {
+                    try? FileManager.default.removeItem(atPath: bgmPath)
+                    Logger.database("Deleted BGM file for song: \(songToDelete.title)")
                 }
                 
-                // Then delete the specific song
+                // Delete preview file if it exists
+                if let previewPath = songToDelete.previewFilePath {
+                    try? FileManager.default.removeItem(atPath: previewPath)
+                    Logger.database("Deleted preview file for song: \(songToDelete.title)")
+                }
+                
+                // IMPORTANT: Only delete the specific song, not all songs with same title/artist
+                // SwiftData will handle cascade deletion of charts and notes automatically
                 backgroundContext.delete(songToDelete)
                 try backgroundContext.save()
                 
@@ -578,8 +639,21 @@ class ServerSongService: ObservableObject {
             var hasUpdates = false
             for serverSong in allServerSongs {
                 let isDownloaded = isAlreadyDownloaded(serverSong, in: localSongs)
+                let bgmDownloaded = hasBGMFile(serverSong, in: localSongs)
+                let previewDownloaded = hasPreviewFile(serverSong, in: localSongs)
+                
                 if serverSong.isDownloaded != isDownloaded {
                     serverSong.isDownloaded = isDownloaded
+                    hasUpdates = true
+                }
+                
+                if serverSong.bgmDownloaded != bgmDownloaded {
+                    serverSong.bgmDownloaded = bgmDownloaded
+                    hasUpdates = true
+                }
+                
+                if serverSong.previewDownloaded != previewDownloaded {
+                    serverSong.previewDownloaded = previewDownloaded
                     hasUpdates = true
                 }
             }
@@ -610,6 +684,24 @@ class ServerSongService: ObservableObject {
             // Match by title and artist (case-insensitive)
             localSong.title.lowercased() == serverSong.title.lowercased() &&
             localSong.artist.lowercased() == serverSong.artist.lowercased()
+        }
+    }
+    
+    private func hasBGMFile(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {
+        return localSongs.contains { localSong in
+            // Match by title and artist (case-insensitive) and has BGM file
+            localSong.title.lowercased() == serverSong.title.lowercased() &&
+            localSong.artist.lowercased() == serverSong.artist.lowercased() &&
+            localSong.bgmFilePath != nil
+        }
+    }
+    
+    private func hasPreviewFile(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {
+        return localSongs.contains { localSong in
+            // Match by title and artist (case-insensitive) and has preview file
+            localSong.title.lowercased() == serverSong.title.lowercased() &&
+            localSong.artist.lowercased() == serverSong.artist.lowercased() &&
+            localSong.previewFilePath != nil
         }
     }
     
