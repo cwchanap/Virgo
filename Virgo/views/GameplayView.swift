@@ -8,6 +8,8 @@
 import SwiftUI
 import AVFoundation
 
+// swiftlint:disable file_length type_body_length line_length
+
 // MARK: - Measure Utilities
 struct MeasureUtils {
     /// Converts 1-based measure number to 0-based index for calculations
@@ -129,9 +131,14 @@ struct GameplayView: View {
     
     // MARK: - Sheet Music View
     private func sheetMusicView(geometry: GeometryProxy) -> some View {
-        let maxIndex = (cachedDrumBeats.map { MeasureUtils.measureIndex(from: $0.timePosition) }.max() ?? 0)
+        let maxIndex = (cachedDrumBeats.map { 
+            MeasureUtils.measureIndex(from: $0.timePosition) 
+        }.max() ?? 0)
         let measuresCount = max(1, maxIndex + 1)
-        let measurePositions = GameplayLayout.calculateMeasurePositions(totalMeasures: measuresCount, timeSignature: track.timeSignature)
+        let measurePositions = GameplayLayout.calculateMeasurePositions(
+            totalMeasures: measuresCount, 
+            timeSignature: track.timeSignature
+        )
         let totalHeight = GameplayLayout.totalHeight(for: measurePositions)
         
         return ScrollView([.horizontal, .vertical], showsIndicators: false) {
