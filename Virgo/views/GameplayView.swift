@@ -51,6 +51,11 @@ struct NotePositionKey: Hashable {
 struct GameplayView: View {
     let chart: Chart
     
+    // Cache SwiftData relationships to avoid main thread blocking
+    @State private var cachedSong: Song?
+    @State private var cachedNotes: [Note] = []
+    @State private var isDataLoaded = false
+    
     // Create a computed DrumTrack for backward compatibility
     private var track: DrumTrack {
         DrumTrack(chart: chart)
@@ -60,6 +65,7 @@ struct GameplayView: View {
     @State private var currentBeat: Int = 0
     @State private var playbackTimer: Timer?
     @State private var playbackStartTime: Date?
+    @State private var pausedElapsedTime: Double = 0.0
     @State private var cachedDrumBeats: [DrumBeat] = []
     @State private var bgmPlayer: AVAudioPlayer?
     @State private var bgmLoadingError: String?
@@ -101,12 +107,16 @@ struct GameplayView: View {
         #endif
         .background(Color.black)
         .foregroundColor(.white)
+        .task {
+            // Load SwiftData relationships asynchronously to avoid blocking main thread
+            await loadChartData()
+        }
         .onAppear {
             Logger.userAction("Opened gameplay view for track: \(track.title)")
-            computeDrumBeats()
-            metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
-            setupBGMPlayer()
-            startPlayback()
+            // Only proceed if data is loaded
+            if isDataLoaded {
+                setupGameplay()
+            }
         }
         .onDisappear {
             playbackTimer?.invalidate()
@@ -285,7 +295,7 @@ struct GameplayView: View {
     
     // MARK: - BGM Setup
     private func setupBGMPlayer() {
-        guard let song = chart.song,
+        guard let song = cachedSong,
               let bgmFilePath = song.bgmFilePath,
               !bgmFilePath.isEmpty else {
             Logger.audioPlayback("No BGM file available for track: \(track.title)")
@@ -305,16 +315,37 @@ struct GameplayView: View {
         }
     }
     
+    // MARK: - Data Loading
+    @MainActor
+    private func loadChartData() async {
+        // Cache SwiftData relationships in background to avoid main thread blocking
+        cachedSong = chart.song
+        cachedNotes = chart.notes.map { $0 } // Copy notes to avoid relationship access
+        
+        await MainActor.run {
+            isDataLoaded = true
+            // Setup gameplay once data is loaded
+            setupGameplay()
+        }
+    }
+    
+    private func setupGameplay() {
+        computeDrumBeats()
+        metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
+        setupBGMPlayer()
+        // Don't auto-start playback - wait for user to click play
+    }
+    
     // MARK: - Helper Methods
     private func computeDrumBeats() {
-        // Handle empty tracks by leaving cachedDrumBeats empty
-        if track.notes.isEmpty {
+        // Use cached notes instead of accessing relationship directly
+        if cachedNotes.isEmpty {
             cachedDrumBeats = []
             return
         }
         
         // Group notes by their position in the measure using a hashable key to avoid floating-point precision issues
-        let groupedNotes = Dictionary(grouping: track.notes) { note in
+        let groupedNotes = Dictionary(grouping: cachedNotes) { note in
             NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
         }
         
@@ -362,7 +393,13 @@ struct GameplayView: View {
     private func pausePlayback() {
         playbackTimer?.invalidate()
         playbackTimer = nil
+        
+        // Save elapsed time when pausing
+        if let startTime = playbackStartTime {
+            pausedElapsedTime += Date().timeIntervalSince(startTime)
+        }
         playbackStartTime = nil
+        
         bgmPlayer?.pause()
         Logger.audioPlayback("Paused playback for track: \(track.title)")
     }
@@ -399,12 +436,27 @@ struct GameplayView: View {
                 return
             }
             
-            let elapsedTime = Date().timeIntervalSince(startTime)
+            let currentSessionTime = Date().timeIntervalSince(startTime)
+            let elapsedTime = pausedElapsedTime + currentSessionTime
             let trackDuration = actualTrackDuration
             
-            // Calculate progress based on actual elapsed time vs. track duration
+            // Calculate current beat position based on BPM timing
+            let secondsPerBeat = 60.0 / Double(track.bpm)
+            let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
+            let currentTimePosition = elapsedTime / secondsPerMeasure
+            
+            // Find the beat that should be active at this time position
+            var activeBeatIndex = 0
+            for (index, beat) in cachedDrumBeats.enumerated() {
+                if beat.timePosition <= currentTimePosition {
+                    activeBeatIndex = index
+                } else {
+                    break
+                }
+            }
+            
+            currentBeat = activeBeatIndex
             playbackProgress = min(elapsedTime / trackDuration, 1.0)
-            currentBeat = Int(playbackProgress * Double(cachedDrumBeats.count))
             
             if playbackProgress >= 1.0 {
                 timer.invalidate()
@@ -412,6 +464,7 @@ struct GameplayView: View {
                 playbackProgress = 0.0
                 currentBeat = 0
                 playbackStartTime = nil
+                pausedElapsedTime = 0.0  // Reset paused time when playback finishes
                 bgmPlayer?.stop()
                 Logger.audioPlayback("Playback finished for track: \(track.title)")
             }
@@ -422,6 +475,7 @@ struct GameplayView: View {
         playbackProgress = 0.0
         currentBeat = 0
         playbackStartTime = nil
+        pausedElapsedTime = 0.0  // Reset paused time on restart
         bgmPlayer?.stop()
         bgmPlayer?.currentTime = 0
         Logger.audioPlayback("Restarted playback for track: \(track.title)")
@@ -436,6 +490,7 @@ struct GameplayView: View {
         playbackTimer?.invalidate()
         playbackTimer = nil
         playbackStartTime = nil
+        pausedElapsedTime = 0.0  // Reset paused time on skip to end
         bgmPlayer?.stop()
         Logger.audioPlayback("Skipped to end for track: \(track.title)")
     }

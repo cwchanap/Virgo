@@ -43,7 +43,7 @@ private struct StemView: View {
             }
             
             // Individual stems for each drum
-            ForEach(beat.drums, id: \.self) { drum in
+            ForEach(Array(beat.drums.enumerated()), id: \.offset) { _, drum in
                 IndividualStemView(
                     drum: drum,
                     stemInfo: stemInfo,
@@ -223,7 +223,7 @@ struct DrumBeatView: View {
             }
             
             // Drum symbols with flags for individual notes
-            ForEach(beat.drums, id: \.self) { drum in
+            ForEach(Array(beat.drums.enumerated()), id: \.offset) { _, drum in
                 DrumSymbolView(
                     drum: drum,
                     stemInfo: stemInfo,
