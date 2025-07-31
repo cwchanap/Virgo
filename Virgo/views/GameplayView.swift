@@ -270,15 +270,14 @@ struct GameplayView: View {
                 let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
                 
                 if let measurePos = measurePositions.first(where: { $0.measureIndex == measureIndex }) {
-                    // Calculate beat index within the measure based on measureOffset
+                    // Calculate precise beat position within the measure based on measureOffset
                     let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
-                    // Convert offset to beat index (0, 1, 2, 3 for 4/4 time)
-                    let beatIndex = Int(beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure))
-                    // Use unified spacing system
-                    let beatX = GameplayLayout.noteXPosition(measurePosition: measurePos, beatIndex: beatIndex, timeSignature: track.timeSignature)
+                    let beatPosition = beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure)
+                    // Use precise beat positioning system
+                    let beatX = GameplayLayout.preciseNoteXPosition(measurePosition: measurePos, beatPosition: beatPosition, timeSignature: track.timeSignature)
                     
-                    // Use the same Y positioning as other elements - center of staff for this row
-                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
+                    // Use the center of the staff area as the reference point for individual drum positioning
+                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
                     
                     // Check if this beat is part of a beam group
                     let isBeamed = beamGroups.contains { group in
@@ -293,7 +292,7 @@ struct GameplayView: View {
                     )
                     .position(
                         x: beatX,
-                        y: centerY
+                        y: staffCenterY
                     )
                 }
             }
@@ -351,6 +350,18 @@ struct GameplayView: View {
             return
         }
         
+        // Debug: Check what note types we have in cachedNotes
+        let noteTypeCounts = Dictionary(grouping: cachedNotes) { $0.noteType }
+            .mapValues { $0.count }
+        Logger.debug("CachedNotes by noteType: \(noteTypeCounts)")
+        
+        // Debug: Specifically check for hiHatPedal notes
+        let hiHatPedalNotes = cachedNotes.filter { $0.noteType == .hiHatPedal }
+        Logger.debug("Found \(hiHatPedalNotes.count) hiHatPedal notes in cachedNotes")
+        for note in hiHatPedalNotes {
+            Logger.debug("HiHatPedal note: measure \(note.measureNumber), offset \(note.measureOffset), interval \(note.interval.rawValue)")
+        }
+        
         // Group notes by their position in the measure using a hashable key to avoid floating-point precision issues
         let groupedNotes = Dictionary(grouping: cachedNotes) { note in
             NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
@@ -360,9 +371,26 @@ struct GameplayView: View {
         cachedDrumBeats = groupedNotes.map { (positionKey, notes) in
             // Convert 1-based measure numbers to 0-based for indexing
             let timePosition = MeasureUtils.timePosition(measureNumber: positionKey.measureNumber, measureOffset: positionKey.measureOffset)
-            let drumTypes = notes.compactMap { note in
-                DrumType.from(noteType: note.noteType)
+            
+            // Debug: Check what note types we have at this position
+            let noteTypes = notes.map { $0.noteType }
+            if noteTypes.contains(.hiHatPedal) {
+                Logger.debug("Found hiHatPedal note at measure \(positionKey.measureNumber), offset \(positionKey.measureOffset)")
             }
+            
+            let drumTypes = notes.compactMap { note in
+                let drumType = DrumType.from(noteType: note.noteType)
+                if note.noteType == .hiHatPedal {
+                    Logger.debug("Converting hiHatPedal noteType to drumType: \(drumType?.description ?? "nil")")
+                }
+                return drumType
+            }
+            
+            // Debug: Check if hiHatPedal made it through the conversion
+            if drumTypes.contains(.hiHatPedal) {
+                Logger.debug("Successfully converted hiHatPedal to drumType at time position \(timePosition)")
+            }
+            
             // Use the interval from the first note in the group (they should all have the same interval at the same position)
             let interval = notes.first?.interval ?? .quarter
             return DrumBeat(id: Int(timePosition * 1000), drums: drumTypes, timePosition: timePosition, interval: interval)
@@ -370,6 +398,15 @@ struct GameplayView: View {
         .sorted { $0.timePosition < $1.timePosition }
         
         Logger.debug("Computed \(cachedDrumBeats.count) drum beats for track: \(track.title)")
+        
+        // Debug: Check for hi-hat pedal notes specifically
+        let hiHatPedalBeats = cachedDrumBeats.filter { beat in
+            beat.drums.contains(.hiHatPedal)
+        }
+        Logger.debug("Found \(hiHatPedalBeats.count) hi-hat pedal beats")
+        for beat in hiHatPedalBeats {
+            Logger.debug("Hi-hat pedal beat at time position: \(beat.timePosition), drums: \(beat.drums)")
+        }
     }
     
     // Calculate actual track duration in seconds based on measures and BPM
