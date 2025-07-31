@@ -127,6 +127,7 @@ enum NoteType: String, Codable, CaseIterable {
     case midTom = "Mid Tom"
     case lowTom = "Low Tom"
     case hiHat = "Hi-Hat"
+    case hiHatPedal = "Hi-Hat Pedal"
     case openHiHat = "Open Hi-Hat"
     case crash = "Crash"
     case ride = "Ride"
@@ -136,13 +137,29 @@ enum NoteType: String, Codable, CaseIterable {
 }
 
 enum DrumType {
-    case kick, snare, hiHat, crash, ride, tom1, tom2, tom3, cowbell
+    case kick, snare, hiHat, hiHatPedal, crash, ride, tom1, tom2, tom3, cowbell
+    
+    var description: String {
+        switch self {
+        case .kick: return "kick"
+        case .snare: return "snare"
+        case .hiHat: return "hiHat"
+        case .hiHatPedal: return "hiHatPedal"
+        case .crash: return "crash"
+        case .ride: return "ride"
+        case .tom1: return "tom1"
+        case .tom2: return "tom2"
+        case .tom3: return "tom3"
+        case .cowbell: return "cowbell"
+        }
+    }
     
     var symbol: String {
         switch self {
         case .kick: return "●"
         case .snare: return "◆"
         case .hiHat: return "×"
+        case .hiHatPedal: return "×"
         case .crash: return "◉"
         case .ride: return "○"
         case .tom1: return "◐"
@@ -157,6 +174,7 @@ enum DrumType {
         case .bass: return .kick
         case .snare: return .snare
         case .hiHat: return .hiHat
+        case .hiHatPedal: return .hiHatPedal
         case .openHiHat: return .hiHat
         case .crash: return .crash
         case .ride: return .ride

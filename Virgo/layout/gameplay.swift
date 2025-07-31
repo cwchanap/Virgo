@@ -51,7 +51,9 @@ struct GameplayLayout {
         case line2
         case spaceBetween1And2
         case line1           // Lowest staff line
+        case spaceBetweenLine1AndBelow  // Between line1 and belowLine1
         case belowLine1      // Below lowest staff line
+        case belowLine2      // Even further below (for kick drum)
         
         var yOffset: CGFloat {
             switch self {
@@ -65,7 +67,9 @@ struct GameplayLayout {
             case .line2: return -1 * GameplayLayout.staffLineSpacing
             case .spaceBetween1And2: return -0.5 * GameplayLayout.staffLineSpacing
             case .line1: return 0 * GameplayLayout.staffLineSpacing
+            case .spaceBetweenLine1AndBelow: return 0.5 * GameplayLayout.staffLineSpacing
             case .belowLine1: return 1 * GameplayLayout.staffLineSpacing
+            case .belowLine2: return 2 * GameplayLayout.staffLineSpacing
             }
         }
         
@@ -171,6 +175,12 @@ struct GameplayLayout {
         return measurePosition.xOffset + barLineWidth + uniformSpacing + CGFloat(beatIndex) * uniformSpacing
     }
     
+    static func preciseNoteXPosition(measurePosition: MeasurePosition, beatPosition: Double, timeSignature: TimeSignature) -> CGFloat {
+        // Position: measureStart + barWidth + spacing + beatPosition * (spacing)
+        // This allows for fractional beat positions (e.g., 0.5 for eighth notes, 0.25 for sixteenth notes)
+        return measurePosition.xOffset + barLineWidth + uniformSpacing + CGFloat(beatPosition) * uniformSpacing
+    }
+    
     static func rowWidth(for timeSignature: TimeSignature) -> CGFloat {
         return maxRowWidth
     }
@@ -193,11 +203,12 @@ extension DrumType {
         switch self {
         case .crash: return .aboveLine5
         case .hiHat: return .line5
+        case .hiHatPedal: return .belowLine1
         case .tom1: return .spaceBetween3And4
         case .snare: return .line3
         case .tom2: return .spaceBetween2And3
         case .tom3: return .line2
-        case .kick: return .belowLine1
+        case .kick: return .belowLine2
         case .ride: return .spaceBetween4And5
         case .cowbell: return .line4
         }

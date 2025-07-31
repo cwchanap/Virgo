@@ -67,17 +67,17 @@ struct BeamView: View {
                 // Calculate X positions
                 let firstBeatOffset = firstBeat.timePosition - Double(firstMeasureIndex)
                 let lastBeatOffset = lastBeat.timePosition - Double(lastMeasureIndex)
-                let firstBeatIndex = Int(firstBeatOffset * Double(timeSignature.beatsPerMeasure))
-                let lastBeatIndex = Int(lastBeatOffset * Double(timeSignature.beatsPerMeasure))
+                let firstBeatPosition = firstBeatOffset * Double(timeSignature.beatsPerMeasure)
+                let lastBeatPosition = lastBeatOffset * Double(timeSignature.beatsPerMeasure)
                 
-                let startX = GameplayLayout.noteXPosition(
+                let startX = GameplayLayout.preciseNoteXPosition(
                     measurePosition: firstMeasurePos,
-                    beatIndex: firstBeatIndex,
+                    beatPosition: firstBeatPosition,
                     timeSignature: timeSignature
                 ) + GameplayLayout.stemXOffset // Stem offset
-                let endX = GameplayLayout.noteXPosition(
+                let endX = GameplayLayout.preciseNoteXPosition(
                     measurePosition: lastMeasurePos,
-                    beatIndex: lastBeatIndex,
+                    beatPosition: lastBeatPosition,
                     timeSignature: timeSignature
                 ) + GameplayLayout.stemXOffset
                 
