@@ -87,9 +87,13 @@ class MetronomeEngine: ObservableObject {
     private var timeSignature: TimeSignature = .fourFour
     private var tickerBuffer: AVAudioPCMBuffer?
     private var startTime: AVAudioTime?
-    private var nextBeatTime: AVAudioTime?
     private var sampleRate: Double = 44100.0
     private var beatTimer: Timer?
+    private var dispatchTimer: DispatchSourceTimer?
+    private var displayLink: CADisplayLink?
+    private var nextBeatTime: TimeInterval = 0
+    private var metronomeStartTime: TimeInterval = 0
+    private var beatCount: Int = 0
     
     // Use AudioBufferCache singleton for thread-safe buffer management
     private static let bufferCache = AudioBufferCache.shared
@@ -151,6 +155,10 @@ class MetronomeEngine: ObservableObject {
         tickerBuffer = nil
         beatTimer?.invalidate()
         beatTimer = nil
+        dispatchTimer?.cancel()
+        dispatchTimer = nil
+        displayLink?.invalidate()
+        displayLink = nil
     }
     
     private func setupMinimalAudio() {
@@ -272,9 +280,15 @@ class MetronomeEngine: ObservableObject {
         currentBeat = 0
         beatTimer?.invalidate()
         beatTimer = nil
+        dispatchTimer?.cancel()
+        dispatchTimer = nil
+        displayLink?.invalidate()
+        displayLink = nil
         playerNode?.stop()
         startTime = nil
-        nextBeatTime = nil
+        nextBeatTime = 0
+        metronomeStartTime = 0
+        beatCount = 0
     }
     
     func toggle() {
@@ -293,16 +307,47 @@ class MetronomeEngine: ObservableObject {
     private func startBeatTimer() {
         let interval = 60.0 / Double(bpm) // Time between beats in seconds
         
-        beatTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self = self, self.isEnabled else { return }
+        // Stop any existing timer first
+        beatTimer?.invalidate()
+        
+        metronomeStartTime = CACurrentMediaTime()
+        beatCount = 0
+        
+        // Use background queue for precise timer execution
+        let backgroundQueue = DispatchQueue(label: "com.virgo.metronome", qos: .userInitiated)
+        
+        backgroundQueue.async { [weak self] in
+            guard let self = self else { return }
             
-            // Play the click sound
-            self.playClick()
+            self.beatTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
+                guard let self = self else {
+                    timer.invalidate()
+                    return
+                }
+                guard self.isEnabled else { 
+                    timer.invalidate()
+                    return 
+                }
+                
+                self.beatCount += 1
+                
+                // Play the click sound
+                self.playClick()
+                
+                // Update beat counter for UI on main thread
+                DispatchQueue.main.async {
+                    self.currentBeat = (self.currentBeat + 1) % self.timeSignature.beatsPerMeasure
+                }
+            }
             
-            // Update beat counter
-            self.currentBeat = (self.currentBeat + 1) % self.timeSignature.beatsPerMeasure
+            // Add timer to background run loop
+            if let timer = self.beatTimer {
+                RunLoop.current.add(timer, forMode: .common)
+                RunLoop.current.run()
+            }
         }
     }
+    
     
     private func playClick() {
         guard let player = playerNode, let buffer = tickerBuffer else { 
@@ -371,7 +416,7 @@ struct MetronomeControlsView: View {
                 }
             }
         }
-        .onChange(of: isPlaying) { playing in
+        .onChange(of: isPlaying) { _, playing in
             if !playing && metronome.isEnabled {
                 metronome.stop()
             }
