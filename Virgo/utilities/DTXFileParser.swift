@@ -238,11 +238,7 @@ class DTXFileParser {
         let measureString = String(headerPart.prefix(3))
         let laneIDString = String(headerPart.suffix(2))
         
-        // Debug: Check for hi-hat pedal lane specifically
-        if laneIDString.uppercased() == "1B" {
-            Logger.debug("Found hi-hat pedal line: \(line)")
-            Logger.debug("measureString: '\(measureString)', laneIDString: '\(laneIDString)', noteArrayPart: '\(noteArrayPart)'")
-        }
+        
         
         guard let measureNumber = Int(measureString) else { return [] }
         
@@ -271,13 +267,7 @@ class DTXFileParser {
             }
         }
         
-        // Debug: Log hi-hat pedal notes created
-        if laneIDString.uppercased() == "1B" {
-            Logger.debug("Created \(notes.count) hi-hat pedal notes from line")
-            for note in notes {
-                Logger.debug("Hi-hat pedal note - measureNumber: \(note.measureNumber), noteID: '\(note.noteID)', position: \(note.notePosition)/\(note.totalPositions), offset: \(note.measureOffset)")
-            }
-        }
+        
         
         return notes
     }
@@ -285,17 +275,8 @@ class DTXFileParser {
 
 extension DTXNote {
     func toNoteType() -> NoteType? {
-        let uppercasedLaneID = laneID.uppercased()
-        Logger.debug("DTXNote.toNoteType() - laneID: '\(laneID)', uppercased: '\(uppercasedLaneID)'")
-        
-        guard let lane = DTXLane(rawValue: uppercasedLaneID) else { 
-            Logger.debug("Failed to create DTXLane from rawValue: '\(uppercasedLaneID)'")
-            return nil 
-        }
-        
-        let noteType = lane.noteType
-        Logger.debug("DTXLane.\(lane) -> noteType: \(noteType?.rawValue ?? "nil")")
-        return noteType
+        guard let lane = DTXLane(rawValue: laneID.uppercased()) else { return nil }
+        return lane.noteType
     }
     
     func toNoteInterval() -> NoteInterval {
