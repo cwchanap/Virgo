@@ -238,8 +238,6 @@ class DTXFileParser {
         let measureString = String(headerPart.prefix(3))
         let laneIDString = String(headerPart.suffix(2))
         
-        
-        
         guard let measureNumber = Int(measureString) else { return [] }
         
         // Parse note array - each note is represented by 2 characters
@@ -266,8 +264,6 @@ class DTXFileParser {
                 notes.append(note)
             }
         }
-        
-        
         
         return notes
     }

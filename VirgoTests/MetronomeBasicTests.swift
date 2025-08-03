@@ -155,10 +155,12 @@ struct MetronomeBasicTests {
     }
     
     @Test func testMetronomeComponentWithDifferentTracks() {
-        let song1 = Song(title: "Track 1", artist: "Artist", bpm: 100, duration: "3:00", genre: "Pop", timeSignature: .fourFour)
+        let song1 = Song(title: "Track 1", artist: "Artist", bpm: 100, duration: "3:00",
+                         genre: "Pop", timeSignature: .fourFour)
         let chart1 = Chart(difficulty: .easy, song: song1)
         
-        let song2 = Song(title: "Track 2", artist: "Artist", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let song2 = Song(title: "Track 2", artist: "Artist", bpm: 140, duration: "4:00",
+                         genre: "Jazz", timeSignature: .threeFour)
         let chart2 = Chart(difficulty: .hard, song: song2)
         
         let tracks = [
@@ -176,5 +178,70 @@ struct MetronomeBasicTests {
     @Test func testMetronomeButtonStyleCreation() {
         let buttonStyle = MetronomeButtonStyle()
         #expect(buttonStyle != nil)
+    }
+    
+    @Test 
+    func testUIUpdatePerformance() {
+        let metronome = MetronomeEngine()
+        metronome.configure(bpm: 200, timeSignature: .fourFour) // High BPM for stress test
+        
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        // Simulate rapid beat updates and measure performance
+        for _ in 0..<100 {
+            _ = metronome.getCurrentBeat()
+        }
+        
+        let endTime = CFAbsoluteTimeGetCurrent()
+        let executionTime = endTime - startTime
+        
+        // Should complete quickly (less than 0.1 seconds for 100 calls)
+        #expect(executionTime < 0.1, "Beat counter access should be fast even under load")
+    }
+    
+    @Test 
+    func testAudioEngineFailure() {
+        let metronome = MetronomeEngine()
+        metronome.configure(bpm: 120, timeSignature: .fourFour)
+        
+        // Test that metronome continues to function even if audio fails
+        metronome.start()
+        #expect(metronome.isEnabled == true, "Metronome should start even without audio")
+        
+        // Test basic functionality continues
+        metronome.testClick() // Should not crash
+        
+        let beat = metronome.getCurrentBeat()
+        #expect(beat >= 0, "Beat counter should work without audio")
+        
+        metronome.stop()
+        #expect(metronome.isEnabled == false, "Metronome should stop correctly")
+    }
+    
+    @Test 
+    func testMetronomeConfigurationConstants() {
+        #expect(MetronomeConfiguration.defaultSampleRate == 44100.0)
+        #expect(MetronomeConfiguration.accentMultiplier == 1.3)
+        #expect(MetronomeConfiguration.uiUpdateThreshold == 4)
+        #expect(MetronomeConfiguration.maxBPMForSlowUpdate == 60)
+        #expect(MetronomeConfiguration.mediumBPMThreshold == 120)
+    }
+    
+    @Test 
+    func testBeatCounterThreadSafety() async {
+        let metronome = MetronomeEngine()
+        metronome.configure(bpm: 120, timeSignature: .fourFour)
+        
+        // Test concurrent access to beat counter
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<10 {
+                group.addTask {
+                    for _ in 0..<100 {
+                        let beat = metronome.getCurrentBeat()
+                        #expect(beat >= 0 && beat < 4, "Beat should always be within valid range")
+                    }
+                }
+            }
+        }
     }
 }

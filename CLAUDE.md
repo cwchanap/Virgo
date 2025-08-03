@@ -192,3 +192,18 @@ The project includes a Python FastAPI server (`server/`) for serving DTX files:
 
 ### SwiftData and Concurrency
 - SwiftData concurrency issue discovered where complex Note relationships cause threading conflicts during background model updates
+
+### SwiftUI Performance - @Published Properties and Massive View Re-renders
+- **Critical Issue**: `@Published` properties in `@EnvironmentObject` or `@ObservedObject` can cause massive UI performance issues in complex view hierarchies
+- **Specific Case**: `MetronomeEngine` with `@Published var currentBeat` used as `@EnvironmentObject` in `GameplayView` caused complete UI unresponsiveness during playback
+- **Root Cause**: Every time `currentBeat` updated (every metronome beat), SwiftUI re-evaluated the entire `GameplayView` hierarchy containing hundreds of `DrumBeatView`, `BeamGroupView`, staff lines, and other complex musical notation views
+- **Symptoms**: 
+  - UI becomes completely unresponsive during playback (scrolling takes >5 seconds)
+  - Other UI elements (buttons, sliders) respond slowly (1-2 seconds delay)
+  - Performance issues disappear when playback is paused
+- **Solution**: Isolate frequently-updating `@Published` properties from complex view hierarchies
+  - Move audio-only state updates to non-published properties
+  - Use separate, lightweight UI state objects for views that need frequent updates
+  - Cache expensive UI calculations to prevent re-computation on every state change
+- **Key Insight**: In SwiftUI, changing any `@Published` property forces re-evaluation of all dependent views, regardless of whether those views actually use the changed property
+- **Performance Pattern**: Avoid `@EnvironmentObject` or `@ObservedObject` with frequently-updating `@Published` properties in views with complex, expensive rendering

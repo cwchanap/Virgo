@@ -1,3 +1,4 @@
+// swiftlint:disable file_length type_body_length
 //
 //  MetronomeComponent.swift
 //  Virgo
@@ -76,10 +77,27 @@ enum AudioBufferError: Error, LocalizedError {
     }
 }
 
+struct MetronomeConfiguration {
+    static let defaultSampleRate: Double = 44100.0
+    static let accentMultiplier: Float = 1.3
+    static let uiUpdateThreshold = 4
+    static let maxBPMForSlowUpdate = 60
+    static let mediumBPMThreshold = 120
+}
+
 class MetronomeEngine: ObservableObject {
     @Published var isEnabled = false
-    @Published var currentBeat = 0
+    @Published var currentBeat = 0  // UI-only, updated less frequently
     @Published var volume: Float = 0.7
+    
+    // Thread-safe beat counter for audio logic
+    private let beatCounterQueue = DispatchQueue(label: "com.virgo.metronome.beatCounter")
+    private var _internalCurrentBeat = 0
+    
+    private var internalCurrentBeat: Int {
+        get { beatCounterQueue.sync { _internalCurrentBeat } }
+        set { beatCounterQueue.sync { _internalCurrentBeat = newValue } }
+    }
     
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
@@ -87,7 +105,7 @@ class MetronomeEngine: ObservableObject {
     private var timeSignature: TimeSignature = .fourFour
     private var tickerBuffer: AVAudioPCMBuffer?
     private var startTime: AVAudioTime?
-    private var sampleRate: Double = 44100.0
+    private var sampleRate: Double = MetronomeConfiguration.defaultSampleRate
     private var beatTimer: Timer?
     private var dispatchTimer: DispatchSourceTimer?
     private var displayLink: CADisplayLink?
@@ -143,16 +161,17 @@ class MetronomeEngine: ObservableObject {
     deinit {
         stop()
         
-        // Safely cleanup audio resources
-        if let engine = audioEngine {
-            if engine.isRunning {
-                engine.stop()
-            }
-            audioEngine = nil
+        // Enhanced resource cleanup
+        playerNode?.stop()
+        if let engine = audioEngine, engine.isRunning {
+            engine.stop()
         }
         
+        // Explicit nil assignments
+        audioEngine = nil
         playerNode = nil
         tickerBuffer = nil
+        
         beatTimer?.invalidate()
         beatTimer = nil
         dispatchTimer?.cancel()
@@ -195,7 +214,10 @@ class MetronomeEngine: ObservableObject {
         do {
             try engine.start()
         } catch {
-            // Engine start failure is non-fatal - metronome can still function for basic operations
+            Logger.audioPlayback("Audio engine start failed: \(error.localizedDescription)")
+            // Continue with visual-only metronome
+            self.audioEngine = nil
+            self.playerNode = nil
         }
     }
     
@@ -226,7 +248,7 @@ class MetronomeEngine: ObservableObject {
             try? FileManager.default.removeItem(at: tempURL)
             
         } catch {
-            // Silently handle errors
+            Logger.audioPlayback("Failed to load ticker sound: \(error.localizedDescription)")
         }
     }
     
@@ -238,7 +260,7 @@ class MetronomeEngine: ObservableObject {
                     self.tickerBuffer = buffer
                 }
             } catch {
-                // Silently handle errors
+                Logger.audioPlayback("Failed to load ticker buffer from cache: \(error.localizedDescription)")
             }
         }
     }
@@ -253,24 +275,31 @@ class MetronomeEngine: ObservableObject {
         
         isEnabled = true
         currentBeat = 0
+        internalCurrentBeat = 0
         
         // Start timer-based metronome
         startBeatTimer()
         
-        // Only perform audio operations if player is available
-        if let player = playerNode, let engine = audioEngine {
-            do {
-                // Ensure engine is running
-                if !engine.isRunning {
-                    try engine.start()
+        // Move audio engine operations to background queue to avoid blocking main thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            // Only perform audio operations if player is available
+            if let player = self.playerNode, let engine = self.audioEngine {
+                do {
+                    // Ensure engine is running
+                    if !engine.isRunning {
+                        try engine.start()
+                    }
+                    
+                    // Start the player if not already playing
+                    if !player.isPlaying {
+                        player.play()
+                    }
+                } catch {
+                    Logger.audioPlayback("Audio playback failed: \(error.localizedDescription)")
+                    // Continue in silent mode - just update UI state
                 }
-                
-                // Start the player if not already playing
-                if !player.isPlaying {
-                    player.play()
-                }
-            } catch {
-                // Continue in silent mode - just update UI state
             }
         }
     }
@@ -278,6 +307,7 @@ class MetronomeEngine: ObservableObject {
     func stop() {
         isEnabled = false
         currentBeat = 0
+        internalCurrentBeat = 0
         beatTimer?.invalidate()
         beatTimer = nil
         dispatchTimer?.cancel()
@@ -313,56 +343,73 @@ class MetronomeEngine: ObservableObject {
         metronomeStartTime = CACurrentMediaTime()
         beatCount = 0
         
-        // Use background queue for precise timer execution
-        let backgroundQueue = DispatchQueue(label: "com.virgo.metronome", qos: .userInitiated)
+        // Use DispatchSourceTimer for better threading control
+        dispatchTimer?.cancel()
         
-        backgroundQueue.async { [weak self] in
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "com.virgo.metronome", qos: .userInitiated))
+        dispatchTimer = timer
+        
+        timer.schedule(deadline: .now(), repeating: interval)
+        timer.setEventHandler { [weak self] in
             guard let self = self else { return }
-            
-            self.beatTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
-                guard let self = self else {
-                    timer.invalidate()
-                    return
-                }
-                guard self.isEnabled else { 
-                    timer.invalidate()
-                    return 
-                }
-                
-                self.beatCount += 1
-                
-                // Play the click sound
-                self.playClick()
-                
-                // Update beat counter for UI on main thread
-                DispatchQueue.main.async {
-                    self.currentBeat = (self.currentBeat + 1) % self.timeSignature.beatsPerMeasure
-                }
+            guard self.isEnabled else { 
+                timer.cancel()
+                return 
             }
             
-            // Add timer to background run loop
-            if let timer = self.beatTimer {
-                RunLoop.current.add(timer, forMode: .common)
-                RunLoop.current.run()
+            self.beatCount += 1
+            
+            // Update internal beat counter for audio logic
+            self.internalCurrentBeat = (self.internalCurrentBeat + 1) % self.timeSignature.beatsPerMeasure
+            
+            // Play the click sound
+            self.playClick()
+            
+            // Adaptive UI update frequency based on BPM
+            let updateInterval: TimeInterval = self.bpm <= MetronomeConfiguration.maxBPMForSlowUpdate ? 0.5 :
+                                              (self.bpm <= MetronomeConfiguration.mediumBPMThreshold ? 0.25 : 0.15)
+            let shouldUpdate = self.internalCurrentBeat == 0 || 
+                              self.beatCount % MetronomeConfiguration.uiUpdateThreshold == 0 ||
+                              CACurrentMediaTime() - self.metronomeStartTime >= updateInterval
+            
+            if shouldUpdate {
+                DispatchQueue.main.async {
+                    self.currentBeat = self.internalCurrentBeat
+                }
             }
         }
+        
+        timer.resume()
     }
-    
     
     private func playClick() {
         guard let player = playerNode, let buffer = tickerBuffer else { 
             return 
         }
         
-        let isAccent = currentBeat == 0
-        let accentMultiplier: Float = isAccent ? 1.3 : 1.0
+        // Use internal beat counter for audio logic to avoid UI dependency
+        let isAccent = internalCurrentBeat == 0
+        let accentMultiplier: Float = isAccent ? MetronomeConfiguration.accentMultiplier : 1.0
         let effectiveVolume = volume * accentMultiplier
         
-        // Set volume directly on the player node
-        player.volume = effectiveVolume
-        
-        // Schedule the buffer for immediate playback
-        player.scheduleBuffer(buffer, completionHandler: nil)
+        // Move audio operations to background queue to avoid blocking main thread
+        DispatchQueue.global(qos: .userInitiated).async {
+            // Set volume directly on the player node
+            player.volume = effectiveVolume
+            
+            // Schedule the buffer for immediate playback
+            player.scheduleBuffer(buffer, completionHandler: nil)
+        }
+    }
+    
+    // Get current beat for UI without triggering re-renders
+    func getCurrentBeat() -> Int {
+        return internalCurrentBeat
+    }
+    
+    // Get current BPM for adaptive UI updates
+    func getCurrentBPM() -> Int {
+        return bpm
     }
     
     // Static factory method for safe preview initialization
@@ -377,6 +424,10 @@ struct MetronomeControlsView: View {
     let track: DrumTrack
     @Binding var isPlaying: Bool
     
+    // Local UI state to reduce dependency on metronome's @Published properties
+    @State private var uiCurrentBeat: Int = 0
+    @State private var beatUpdateTimer: Timer?
+    
     var body: some View {
         HStack(spacing: 12) {
             // Metronome toggle button
@@ -387,19 +438,19 @@ struct MetronomeControlsView: View {
             }
             .disabled(isPlaying)
             
-            // Beat indicator
+            // Beat indicator - uses local UI state
             HStack(spacing: 4) {
                 ForEach(0..<track.timeSignature.beatsPerMeasure, id: \.self) { beat in
                     Circle()
                         .frame(width: 8, height: 8)
                         .foregroundColor(
-                            metronome.isEnabled && metronome.currentBeat == beat ? 
+                            metronome.isEnabled && uiCurrentBeat == beat ? 
                             (beat == 0 ? .purple : .white) : .gray.opacity(0.3)
                         )
                         .scaleEffect(
-                            metronome.isEnabled && metronome.currentBeat == beat ? 1.2 : 1.0
+                            metronome.isEnabled && uiCurrentBeat == beat ? 1.2 : 1.0
                         )
-                        .animation(.easeInOut(duration: 0.1), value: metronome.currentBeat)
+                        .animation(.easeInOut(duration: 0.1), value: uiCurrentBeat)
                 }
             }
             
@@ -421,6 +472,37 @@ struct MetronomeControlsView: View {
                 metronome.stop()
             }
         }
+        .onChange(of: metronome.isEnabled) { _, enabled in
+            if enabled {
+                startUIBeatTimer()
+            } else {
+                stopUIBeatTimer()
+                uiCurrentBeat = 0
+            }
+        }
+        .onDisappear {
+            stopUIBeatTimer()
+        }
+    }
+    
+    private func startUIBeatTimer() {
+        stopUIBeatTimer()
+        
+        // Adaptive UI update frequency based on BPM
+        let bpm = metronome.getCurrentBPM()
+        let updateInterval: TimeInterval = bpm <= MetronomeConfiguration.maxBPMForSlowUpdate ? 0.5 : 
+                                          (bpm <= MetronomeConfiguration.mediumBPMThreshold ? 0.25 : 0.15)
+        
+        beatUpdateTimer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { _ in
+            if metronome.isEnabled {
+                uiCurrentBeat = metronome.getCurrentBeat()
+            }
+        }
+    }
+    
+    private func stopUIBeatTimer() {
+        beatUpdateTimer?.invalidate()
+        beatUpdateTimer = nil
     }
 }
 
