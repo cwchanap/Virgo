@@ -58,10 +58,8 @@ struct GameplayView: View {
     @State private var cachedNotes: [Note] = []
     @State private var isDataLoaded = false
     
-    // Create a computed DrumTrack for backward compatibility
-    private var track: DrumTrack {
-        DrumTrack(chart: chart)
-    }
+    // Cache DrumTrack to avoid creating new objects on every access
+    @State private var track: DrumTrack?
     @State private var isPlaying = false
     @State private var playbackProgress: Double = 0.0
     @State private var currentBeat: Int = 0
@@ -74,6 +72,8 @@ struct GameplayView: View {
     @State private var cachedDrumBeats: [DrumBeat] = []
     @State private var cachedMeasurePositions: [GameplayLayout.MeasurePosition] = []
     @State private var cachedBeamGroups: [BeamGroup] = []
+    @State private var beatToBeamGroupMap: [Int: BeamGroup] = [:]
+    @State private var cachedTrackDuration: Double = 0.0
     @State private var bgmPlayer: AVAudioPlayer?
     @State private var bgmLoadingError: String?
     @State private var metronome = MetronomeEngine()
@@ -84,7 +84,7 @@ struct GameplayView: View {
             VStack(spacing: 0) {
                 // Header with track info and controls
                 GameplayHeaderView(
-                    track: track,
+                    track: track ?? DrumTrack(chart: chart),
                     isPlaying: $isPlaying,
                     onDismiss: { dismiss() },
                     onPlayPause: togglePlayback,
@@ -98,7 +98,7 @@ struct GameplayView: View {
                 
                 // Bottom controls
                 GameplayControlsView(
-                    track: track,
+                    track: track ?? DrumTrack(chart: chart),
                     isPlaying: $isPlaying,
                     playbackProgress: $playbackProgress,
                     metronome: metronome,
@@ -119,7 +119,7 @@ struct GameplayView: View {
             await loadChartData()
         }
         .onAppear {
-            Logger.userAction("Opened gameplay view for track: \(track.title)")
+            Logger.userAction("Opened gameplay view for track: \(track?.title ?? "Unknown")")
             // Only proceed if data is loaded
             if isDataLoaded {
                 setupGameplay()
@@ -193,7 +193,7 @@ struct GameplayView: View {
                         )
                     
                     // Time Signature - position at center of staff (line 3)
-                    TimeSignatureSymbol(timeSignature: track.timeSignature)
+                    TimeSignatureSymbol(timeSignature: track?.timeSignature ?? TimeSignature.fourFour)
                         .frame(width: GameplayLayout.timeSignatureWidth, height: GameplayLayout.staffHeight)
                         .foregroundColor(.white)
                         .position(
@@ -224,7 +224,7 @@ struct GameplayView: View {
             
             // Double bar line at the very end
             if let lastPosition = measurePositions.last {
-                let measureWidth = GameplayLayout.measureWidth(for: track.timeSignature)
+                let measureWidth = GameplayLayout.measureWidth(for: track?.timeSignature ?? TimeSignature.fourFour)
                 let endX = lastPosition.xOffset + measureWidth
                 let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row) // Middle staff line
                 
@@ -249,19 +249,11 @@ struct GameplayView: View {
         return ZStack {
             // Render beams first (behind notes)
             ForEach(cachedBeamGroups, id: \.id) { beamGroup in
-                // Pre-calculate if this beam group is active to avoid expensive lookups
-                let isActive = beamGroup.beats.contains { beat in
-                    if currentBeat < cachedDrumBeats.count {
-                        return cachedDrumBeats[currentBeat].id == beat.id
-                    }
-                    return false
-                }
-                
                 BeamGroupView(
                     beamGroup: beamGroup,
                     measurePositions: measurePositions,
-                    timeSignature: track.timeSignature,
-                    isActive: false // Temporarily disable highlighting to test performance
+                    timeSignature: track?.timeSignature ?? TimeSignature.fourFour,
+                    isActive: false // Keep disabled for performance
                 )
             }
             
@@ -273,17 +265,15 @@ struct GameplayView: View {
                 if let measurePos = measurePositions.first(where: { $0.measureIndex == measureIndex }) {
                     // Calculate precise beat position within the measure based on measureOffset
                     let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
-                    let beatPosition = beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure)
+                    let beatPosition = beatOffsetInMeasure * Double(track?.timeSignature.beatsPerMeasure ?? 4)
                     // Use precise beat positioning system
-                    let beatX = GameplayLayout.preciseNoteXPosition(measurePosition: measurePos, beatPosition: beatPosition, timeSignature: track.timeSignature)
+                    let beatX = GameplayLayout.preciseNoteXPosition(measurePosition: measurePos, beatPosition: beatPosition, timeSignature: track?.timeSignature ?? TimeSignature.fourFour)
                     
                     // Use the center of the staff area as the reference point for individual drum positioning
                     let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
                     
-                    // Check if this beat is part of a beam group
-                    let isBeamed = cachedBeamGroups.contains { group in
-                        group.beats.contains { $0.id == beat.id }
-                    }
+                    // Use cached lookup map for O(1) beam group check
+                    let isBeamed = beatToBeamGroupMap[beat.id] != nil
                     
                     DrumBeatView(
                         beat: beat, 
@@ -305,7 +295,7 @@ struct GameplayView: View {
         guard let song = cachedSong,
               let bgmFilePath = song.bgmFilePath,
               !bgmFilePath.isEmpty else {
-            Logger.audioPlayback("No BGM file available for track: \(track.title)")
+            Logger.audioPlayback("No BGM file available for track: \(track?.title ?? "Unknown")")
             return
         }
         
@@ -315,10 +305,10 @@ struct GameplayView: View {
             bgmPlayer = try AVAudioPlayer(contentsOf: bgmURL)
             bgmPlayer?.prepareToPlay()
             bgmPlayer?.volume = 0.7 // Set BGM volume lower than metronome
-            Logger.audioPlayback("BGM player setup successful for track: \(track.title)")
+            Logger.audioPlayback("BGM player setup successful for track: \(track?.title ?? "Unknown")")
         } catch {
             bgmLoadingError = "Failed to load BGM: \(error.localizedDescription)"
-            Logger.audioPlayback("Failed to setup BGM player for track \(track.title): \(error.localizedDescription)")
+            Logger.audioPlayback("Failed to setup BGM player for track \(track?.title ?? "Unknown"): \(error.localizedDescription)")
         }
     }
     
@@ -330,6 +320,8 @@ struct GameplayView: View {
         cachedNotes = chart.notes.map { $0 } // Copy notes to avoid relationship access
         
         await MainActor.run {
+            // Cache track object
+            track = DrumTrack(chart: chart)
             isDataLoaded = true
             // Setup gameplay once data is loaded
             setupGameplay()
@@ -337,10 +329,13 @@ struct GameplayView: View {
     }
     
     private func setupGameplay() {
+        guard let track = track else { return }
         computeDrumBeats()
         computeCachedLayoutData()
         metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
         setupBGMPlayer()
+        // Cache track duration
+        cachedTrackDuration = calculateTrackDuration()
         // Don't auto-start playback - wait for user to click play
     }
     
@@ -352,11 +347,19 @@ struct GameplayView: View {
         let measuresCount = max(1, maxIndex + 1)
         cachedMeasurePositions = GameplayLayout.calculateMeasurePositions(
             totalMeasures: measuresCount, 
-            timeSignature: track.timeSignature
+            timeSignature: track?.timeSignature ?? TimeSignature.fourFour
         )
         
-        // Cache beam groups
+        // Cache beam groups and create lookup map
         cachedBeamGroups = BeamGroupingHelper.calculateBeamGroups(from: cachedDrumBeats)
+        
+        // Create efficient lookup map for beat-to-beam-group relationships
+        beatToBeamGroupMap = [:]
+        for beamGroup in cachedBeamGroups {
+            for beat in beamGroup.beats {
+                beatToBeamGroupMap[beat.id] = beamGroup
+            }
+        }
     }
     
     // MARK: - Helper Methods
@@ -389,8 +392,10 @@ struct GameplayView: View {
         
     }
     
-    // Calculate actual track duration in seconds based on measures and BPM
-    private var actualTrackDuration: Double {
+    // Calculate track duration once and cache it
+    private func calculateTrackDuration() -> Double {
+        guard let track = track else { return 0.0 }
+        
         // Find the total number of measures based on the highest measure number
         let maxIndex = (cachedDrumBeats.map { MeasureUtils.measureIndex(from: $0.timePosition) }.max() ?? 0)
         let totalMeasures = max(1, maxIndex + 1)
@@ -428,7 +433,7 @@ struct GameplayView: View {
         playbackStartTime = nil
         
         bgmPlayer?.pause()
-        Logger.audioPlayback("Paused playback for track: \(track.title)")
+        Logger.audioPlayback("Paused playback for track: \(track?.title ?? "Unknown")")
     }
     
     private func startPlayback() {
@@ -444,16 +449,16 @@ struct GameplayView: View {
             // Check if BGM was previously paused and resume from current position
             if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
                 bgmPlayer.play()
-                Logger.audioPlayback("Resumed BGM playback for track: \(track.title)")
+                Logger.audioPlayback("Resumed BGM playback for track: \(track?.title ?? "Unknown")")
             } else {
                 // Start from beginning
                 bgmPlayer.currentTime = 0
                 bgmPlayer.play()
-                Logger.audioPlayback("Started BGM playback for track: \(track.title)")
+                Logger.audioPlayback("Started BGM playback for track: \(track?.title ?? "Unknown")")
             }
         }
         
-        Logger.audioPlayback("Started playback for track: \(track.title)")
+        Logger.audioPlayback("Started playback for track: \(track?.title ?? "Unknown")")
         
         // Initialize playback position
         currentBeat = 0
@@ -465,7 +470,7 @@ struct GameplayView: View {
         // Use background queue timer to avoid blocking main thread
         let backgroundQueue = DispatchQueue(label: "playback.timer", qos: .userInitiated)
         
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { timer in
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in
             backgroundQueue.async {
                 guard isPlaying else {
                     DispatchQueue.main.async {
@@ -480,6 +485,7 @@ struct GameplayView: View {
                 let elapsedTime = pausedElapsedTime + currentSessionTime
                 
                 // Calculate current position based on elapsed time and BPM
+                guard let track = track else { return }
                 let secondsPerBeat = 60.0 / Double(track.bpm)
                 let beatsElapsed = elapsedTime / secondsPerBeat
                 let measuresElapsed = beatsElapsed / Double(track.timeSignature.beatsPerMeasure)
@@ -506,7 +512,7 @@ struct GameplayView: View {
                 
                 // Calculate other values
                 let newTotalBeats = Int(beatsElapsed)
-                let trackDuration = actualTrackDuration
+                let trackDuration = cachedTrackDuration
                 let newProgress = min(elapsedTime / trackDuration, 1.0)
                 
                 // Only update UI on main thread if something actually changed
@@ -523,7 +529,7 @@ struct GameplayView: View {
                     }
                     
                     // Update progress less frequently to reduce UI churn
-                    if abs(playbackProgress - newProgress) > 0.005 {
+                    if abs(playbackProgress - newProgress) > 0.01 {
                         playbackProgress = newProgress
                     }
                     
@@ -557,7 +563,7 @@ struct GameplayView: View {
         metronome.stop()
         bgmPlayer?.stop()
         bgmPlayer?.currentTime = 0
-        Logger.audioPlayback("Restarted playback for track: \(track.title)")
+        Logger.audioPlayback("Restarted playback for track: \(track?.title ?? "Unknown")")
         if isPlaying {
             startPlayback()
         }
@@ -571,11 +577,10 @@ struct GameplayView: View {
         playbackStartTime = nil
         pausedElapsedTime = 0.0  // Reset paused time on skip to end
         bgmPlayer?.stop()
-        Logger.audioPlayback("Skipped to end for track: \(track.title)")
+        Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")
     }
 }
 
 #Preview {
     GameplayView(chart: Song.sampleData.first!.charts.first!)
-        .environmentObject(MetronomeEngine())
 }
