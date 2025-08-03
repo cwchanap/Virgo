@@ -29,7 +29,7 @@ struct BeatProgressionTests {
         let testValues = [0, 1, 5, 10, 100]
         for value in testValues {
             let roundTrip = MeasureUtils.toZeroBasedIndex(MeasureUtils.toOneBasedNumber(value))
-            #expect(roundTrip == value, "Round-trip failed for \(value)")
+            #expect(roundTrip == value)
         }
     }
     
@@ -50,10 +50,7 @@ struct BeatProgressionTests {
                 measureOffset: testCase.1
             )
             
-            #expect(
-                abs(calculatedPosition - testCase.2) < 0.001,
-                "Measure \(testCase.0), offset \(testCase.1) should give position \(testCase.2), got \(calculatedPosition)"
-            )
+            #expect(abs(calculatedPosition - testCase.2) < 0.001)
         }
     }
     
@@ -71,11 +68,7 @@ struct BeatProgressionTests {
         for testCase in testCases {
             let calculatedIndex = MeasureUtils.measureIndex(from: testCase.timePosition)
             
-            #expect(
-                calculatedIndex == testCase.expectedIndex,
-                "Time position \(testCase.timePosition) should give index \(testCase.expectedIndex), " +
-                "got \(calculatedIndex)"
-            )
+            #expect(calculatedIndex == testCase.expectedIndex)
         }
     }
     
@@ -102,17 +95,10 @@ struct BeatProgressionTests {
         for testCase in precisionTestCases {
             let key = NotePositionKey(measureNumber: 1, measureOffset: testCase.offset)
             
-            #expect(
-                key.measureOffsetInMilliseconds == testCase.expectedMilliseconds,
-                "Offset \(testCase.offset) should give \(testCase.expectedMilliseconds)ms, " +
-                "got \(key.measureOffsetInMilliseconds)ms"
-            )
+            #expect(key.measureOffsetInMilliseconds == testCase.expectedMilliseconds)
             
             // Test round-trip precision
-            #expect(
-                abs(key.measureOffset - testCase.offset) < 0.001,
-                "Round-trip precision failed for offset \(testCase.offset)"
-            )
+            #expect(abs(key.measureOffset - testCase.offset) < 0.001)
         }
     }
     
@@ -123,13 +109,13 @@ struct BeatProgressionTests {
         let key4 = NotePositionKey(measureNumber: 2, measureOffset: 0.25)
         
         // Test equality
-        #expect(key1 == key2, "Identical keys should be equal")
-        #expect(key1 != key3, "Different offsets should not be equal")
-        #expect(key1 != key4, "Different measure numbers should not be equal")
+        #expect(key1 == key2)
+        #expect(key1 != key3)
+        #expect(key1 != key4)
         
         // Test use in Set (requires Hashable)
         let noteSet: Set<NotePositionKey> = [key1, key2, key3, key4]
-        #expect(noteSet.count == 3, "Set should contain 3 unique keys")
+        #expect(noteSet.count == 3)
     }
     
     // MARK: - Beat Position Calculation Tests
@@ -152,11 +138,7 @@ struct BeatProgressionTests {
             let currentMeasureOffset = testCase.quarterNotePosition - Double(currentMeasureIndex)
             let beatPosition = currentMeasureOffset * Double(timeSignature.beatsPerMeasure)
             
-            #expect(
-                abs(beatPosition - testCase.expectedBeatPosition) < 0.001,
-                "Quarter note position \(testCase.quarterNotePosition) should give beat position " +
-                "\(testCase.expectedBeatPosition), got \(beatPosition)"
-            )
+            #expect(abs(beatPosition - testCase.expectedBeatPosition) < 0.001)
         }
     }
     
@@ -175,11 +157,7 @@ struct BeatProgressionTests {
             let currentMeasureOffset = testCase.quarterNotePosition - Double(currentMeasureIndex)
             let beatPosition = currentMeasureOffset * Double(timeSignature.beatsPerMeasure)
             
-            #expect(
-                abs(beatPosition - testCase.expectedBeatPosition) < 0.1, // More tolerance for 3/4
-                "3/4 quarter note position \(testCase.quarterNotePosition) should give beat position " +
-                "\(testCase.expectedBeatPosition), got \(beatPosition)"
-            )
+            #expect(abs(beatPosition - testCase.expectedBeatPosition) < 0.1) // More tolerance for 3/4
         }
     }
     
@@ -195,15 +173,9 @@ struct BeatProgressionTests {
             let currentMeasureIndex = Int(position)
             let currentMeasureOffset = position - Double(currentMeasureIndex)
             
-            #expect(
-                currentMeasureIndex == expectedMeasures[index],
-                "Position \(position): expected measure \(expectedMeasures[index]), got \(currentMeasureIndex)"
-            )
+            #expect(currentMeasureIndex == expectedMeasures[index])
             
-            #expect(
-                abs(currentMeasureOffset - expectedOffsets[index]) < 0.001,
-                "Position \(position): expected offset \(expectedOffsets[index]), got \(currentMeasureOffset)"
-            )
+            #expect(abs(currentMeasureOffset - expectedOffsets[index]) < 0.001)
         }
     }
     
@@ -253,20 +225,11 @@ struct BeatProgressionTests {
         let expectedBeatPositions = [0.0, 1.0, 2.0, 3.0, 0.0, 1.0, 2.0, 3.0]
         
         for i in 0..<expectedQuarterNotes.count {
-            #expect(
-                abs(quarterNotePositions[i] - expectedQuarterNotes[i]) < 0.001,
-                "Quarter note \(i): expected \(expectedQuarterNotes[i]), got \(quarterNotePositions[i])"
-            )
+            #expect(abs(quarterNotePositions[i] - expectedQuarterNotes[i]) < 0.001)
             
-            #expect(
-                redCirclePositions[i].0 == expectedMeasures[i],
-                "Measure \(i): expected \(expectedMeasures[i]), got \(redCirclePositions[i].0)"
-            )
+            #expect(redCirclePositions[i].0 == expectedMeasures[i])
             
-            #expect(
-                abs(redCirclePositions[i].2 - expectedBeatPositions[i]) < 0.001,
-                "Beat position \(i): expected \(expectedBeatPositions[i]), got \(redCirclePositions[i].2)"
-            )
+            #expect(abs(redCirclePositions[i].2 - expectedBeatPositions[i]) < 0.001)
         }
     }
     
@@ -284,10 +247,7 @@ struct BeatProgressionTests {
         // Expected: 4 measures * 4 beats/measure * 0.5 seconds/beat = 8 seconds
         let expectedDuration = 8.0
         
-        #expect(
-            abs(actualTrackDuration - expectedDuration) < 0.001,
-            "Duration calculation: expected \(expectedDuration), got \(actualTrackDuration)"
-        )
+        #expect(abs(actualTrackDuration - expectedDuration) < 0.001)
     }
     
     @Test func testPlaybackProgressCalculation() {
@@ -306,11 +266,7 @@ struct BeatProgressionTests {
         for testCase in testCases {
             let calculatedProgress = min(testCase.elapsedTime / trackDuration, 1.0)
             
-            #expect(
-                abs(calculatedProgress - testCase.expectedProgress) < 0.001,
-                "Elapsed time \(testCase.elapsedTime): expected progress \(testCase.expectedProgress), " +
-                "got \(calculatedProgress)"
-            )
+            #expect(abs(calculatedProgress - testCase.expectedProgress) < 0.001)
         }
     }
     
@@ -322,7 +278,7 @@ struct BeatProgressionTests {
         
         // This would cause division by zero, so we test that the calculation
         // structure handles edge cases appropriately
-        #expect(zeroBPM == 0, "Zero BPM test case setup")
+        #expect(zeroBPM == 0)
         
         // In practice, we would have validation to prevent zero BPM
         // but this tests our awareness of the edge case
@@ -334,7 +290,7 @@ struct BeatProgressionTests {
         let measureIndex = Int(negativePosition) // Should be 0 (truncated towards zero in Swift)
         
         // Swift's Int() truncates towards zero, so -0.5 becomes 0, not -1
-        #expect(measureIndex == 0, "Negative position gets truncated to 0")
+        #expect(measureIndex == 0)
     }
     
     @Test func testVeryLargeTimePosition() {
@@ -343,7 +299,7 @@ struct BeatProgressionTests {
         let measureIndex = Int(largePosition)
         let measureOffset = largePosition - Double(measureIndex)
         
-        #expect(measureIndex == 1000, "Large position should give correct measure index")
-        #expect(abs(measureOffset - 0.75) < 0.001, "Large position should give correct offset")
+        #expect(measureIndex == 1000)
+        #expect(abs(measureOffset - 0.75) < 0.001)
     }
 }

@@ -121,8 +121,7 @@ struct MetronomeTimingTests {
             
             #expect(
                 abs(calculatedPosition - testCase.expectedPosition) < 0.001,
-                "Total beats \(testCase.totalBeats) should give position \(testCase.expectedPosition), " +
-                "got \(calculatedPosition)"
+                "Total beats \(testCase.totalBeats) should give position \(testCase.expectedPosition), got \(calculatedPosition)"
             )
         }
     }
@@ -144,8 +143,7 @@ struct MetronomeTimingTests {
             
             #expect(
                 calculatedMeasure == testCase.expectedMeasure,
-                "Position \(testCase.position) should give measure \(testCase.expectedMeasure), " +
-                "got \(calculatedMeasure)"
+                "Position \(testCase.position) should give measure \(testCase.expectedMeasure), got \(calculatedMeasure)"
             )
         }
     }
@@ -274,8 +272,7 @@ struct MetronomeTimingTests {
         // Background queue should be significantly more accurate
         #expect(
             avgBackgroundQueueError < avgMainQueueError,
-            "Background queue error (\(avgBackgroundQueueError)) should be less than " +
-            "main queue error (\(avgMainQueueError))"
+            "Background queue error (\(avgBackgroundQueueError)) should be less than main queue error (\(avgMainQueueError))"
         )
         
         // Background queue should be within acceptable tolerance
