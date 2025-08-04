@@ -338,26 +338,30 @@ struct GameplayView: View {
     private func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
         Group {
             if isPlaying, let track = track {
-                // Use metronome's timing directly for perfect sync
-                let metronomeBeat = metronome.currentBeat // 0, 1, 2, 3 for 4/4 time
-                let metronomeMeasure = metronome.getCurrentMeasure() // Current measure from metronome
-                
-                // Get current measure position, fallback to measure 0 if not found
-                let measurePos = measurePositionMap[metronomeMeasure] ?? measurePositionMap[0]
+                // Use our smooth timing but sync with metronome's measure progression
+                let measurePos = measurePositionMap[currentMeasureIndex] ?? measurePositionMap[0]
                 
                 if let measurePos = measurePos {
-                    // Use metronome beat position directly (already 0-3 for 4/4)
-                    let beatPosition = Double(metronomeBeat)
+                    // Use smooth beat position from our timer, but ensure we're in same measure as metronome
+                    let metronomeMeasure = metronome.getCurrentMeasure()
                     
-                    // Calculate exact X position using the same system as notes
+                    // If we're in the same measure as metronome, use smooth positioning
+                    // If we're ahead/behind, sync to metronome measure
+                    let syncedMeasureIndex = abs(currentMeasureIndex - metronomeMeasure) <= 1 ? currentMeasureIndex : metronomeMeasure
+                    let syncedMeasurePos = measurePositionMap[syncedMeasureIndex] ?? measurePos
+                    
+                    // Use smooth beat position for continuous movement
+                    let beatPosition = currentBeatPosition * Double(track.timeSignature.beatsPerMeasure)
+                    
+                    // Calculate exact X position using the synced measure position
                     let indicatorX = GameplayLayout.preciseNoteXPosition(
-                        measurePosition: measurePos,
+                        measurePosition: syncedMeasurePos,
                         beatPosition: beatPosition,
                         timeSignature: track.timeSignature
                     )
                     
                     // Position at center of staff
-                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
+                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: syncedMeasurePos.row)
                     
                     Rectangle()
                         .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
