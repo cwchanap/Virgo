@@ -81,6 +81,7 @@ struct GameplayView: View {
     @State private var bgmPlayer: AVAudioPlayer?
     @State private var bgmLoadingError: String?
     @State private var metronome = MetronomeEngine()
+    @State private var staticStaffLinesView: AnyView?
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -144,20 +145,25 @@ struct GameplayView: View {
         
         return ScrollView([.horizontal, .vertical], showsIndicators: false) {
             ZStack(alignment: .topLeading) {
-                // Staff lines background
-                staffLinesView(measurePositions: cachedMeasurePositions)
+                // Use cached static staff lines view - created only once
+                if let staticView = staticStaffLinesView {
+                    staticView
+                }
                 
-                // Bar lines
-                barLinesView(measurePositions: cachedMeasurePositions)
-                
-                // Clefs and time signatures for each row
-                clefsAndTimeSignaturesView(measurePositions: cachedMeasurePositions)
-                
+                // Dynamic content
+                ZStack(alignment: .topLeading) {
+                    // Bar lines
+                    barLinesView(measurePositions: cachedMeasurePositions)
+                    
+                    // Clefs and time signatures for each row
+                    clefsAndTimeSignaturesView(measurePositions: cachedMeasurePositions)
+                    
                     // Drum notation
-                drumNotationView(measurePositions: cachedMeasurePositions)
-                
-                // Time-based beat progression bars (purple bars at all quarter note positions)
-                timeBasedBeatProgressionBars(measurePositions: cachedMeasurePositions)
+                    drumNotationView(measurePositions: cachedMeasurePositions)
+                    
+                    // Time-based beat progression bars (purple bars at all quarter note positions)
+                    timeBasedBeatProgressionBars(measurePositions: cachedMeasurePositions)
+                }
             }
             .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
         }
@@ -170,15 +176,18 @@ struct GameplayView: View {
         
         return ZStack {
             ForEach(Array(rows), id: \.self) { row in
-                ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
-                    Rectangle()
-                        .frame(width: GameplayLayout.maxRowWidth, height: 1) // Full width to cover clef area
-                        .foregroundColor(.gray.opacity(0.5))
-                        .position(
-                            x: GameplayLayout.maxRowWidth / 2, // Center in full width
-                            y: GameplayLayout.StaffLinePosition(rawValue: lineIndex)?.absoluteY(for: row) ?? 0
-                        )
+                ZStack {
+                    ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
+                        Rectangle()
+                            .frame(width: GameplayLayout.maxRowWidth, height: 1) // Full width to cover clef area
+                            .foregroundColor(.gray.opacity(0.5))
+                            .position(
+                                x: GameplayLayout.maxRowWidth / 2, // Center in full width
+                                y: GameplayLayout.StaffLinePosition(rawValue: lineIndex)?.absoluteY(for: row) ?? 0
+                            )
+                    }
                 }
+                .id("row_\(row)") // Add scroll anchor for each row
             }
         }
     }
@@ -485,6 +494,8 @@ struct GameplayView: View {
         for position in cachedMeasurePositions {
             measurePositionMap[position.measureIndex] = position
         }
+        // Create static staff lines view once and cache it
+        staticStaffLinesView = AnyView(StaffLinesBackgroundView(measurePositions: cachedMeasurePositions))
         
         // CRITICAL: Ensure measure 0 always exists for beat progression to start at beginning
         if measurePositionMap[0] == nil {
@@ -760,6 +771,36 @@ struct GameplayView: View {
         pausedElapsedTime = 0.0  // Reset paused time on skip to end
         bgmPlayer?.stop()
         Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")
+    }
+}
+
+
+// MARK: - Stable Staff Lines Background View
+struct StaffLinesBackgroundView: View {
+    let measurePositions: [GameplayLayout.MeasurePosition]
+    private let rows: [Int]
+    
+    init(measurePositions: [GameplayLayout.MeasurePosition]) {
+        self.measurePositions = measurePositions
+        self.rows = Array(Set(measurePositions.map { $0.row })).sorted()
+    }
+    
+    var body: some View {
+        ZStack {
+            ForEach(rows, id: \.self) { row in
+                ZStack {
+                    ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
+                        Rectangle()
+                            .frame(width: GameplayLayout.maxRowWidth, height: 1)
+                            .foregroundColor(.gray.opacity(0.5))
+                            .position(
+                                x: GameplayLayout.maxRowWidth / 2,
+                                y: GameplayLayout.StaffLinePosition(rawValue: lineIndex)?.absoluteY(for: row) ?? 0
+                            )
+                    }
+                }
+            }
+        }
     }
 }
 
