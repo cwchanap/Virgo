@@ -624,106 +624,110 @@ struct GameplayView: View {
         
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
             backgroundQueue.async {
-                guard isPlaying else {
-                    DispatchQueue.main.async {
-                        timer.invalidate()
-                    }
-                    return
+                self.updatePlaybackPosition(timer: timer)
+            }
+        }
+    }
+    
+    private func updatePlaybackPosition(timer: Timer) {
+        guard isPlaying else {
+            DispatchQueue.main.async {
+                timer.invalidate()
+            }
+            return
+        }
+        
+        // Calculate progress based on actual elapsed time
+        guard let startTime = playbackStartTime else { return }
+        let currentSessionTime = Date().timeIntervalSince(startTime)
+        let elapsedTime = pausedElapsedTime + currentSessionTime
+        
+        // FIXED: Use time-based calculation for smooth progression
+        guard let track = track else { return }
+        
+        // Calculate position based on elapsed time for smooth progression
+        let secondsPerBeat = 60.0 / Double(track.bpm)
+        let beatsElapsed = elapsedTime / secondsPerBeat
+        
+        // Convert to measure and beat position
+        let totalBeats = Int(beatsElapsed)
+        let newMeasureIndex = totalBeats / track.timeSignature.beatsPerMeasure
+        let beatWithinMeasure = totalBeats % track.timeSignature.beatsPerMeasure
+        let newBeatPosition = Double(beatWithinMeasure) / Double(track.timeSignature.beatsPerMeasure)
+        
+        // Find the closest actual beat index for highlighting existing notes
+        var newBeatIndex = 0
+        if !cachedDrumBeats.isEmpty {
+            var left = 0
+            var right = cachedDrumBeats.count - 1
+            
+            while left <= right {
+                let mid = (left + right) / 2
+                let currentTimePosition = Double(newMeasureIndex) + newBeatPosition
+                if cachedDrumBeats[mid].timePosition <= currentTimePosition {
+                    newBeatIndex = mid
+                    left = mid + 1
+                } else {
+                    right = mid - 1
                 }
-                
-                // Calculate progress based on actual elapsed time
-                guard let startTime = playbackStartTime else { return }
-                let currentSessionTime = Date().timeIntervalSince(startTime)
-                let elapsedTime = pausedElapsedTime + currentSessionTime
-                
-                // FIXED: Use time-based calculation for smooth progression
-                guard let track = track else { return }
-                
-                // Calculate position based on elapsed time for smooth progression
-                let secondsPerBeat = 60.0 / Double(track.bpm)
-                let beatsElapsed = elapsedTime / secondsPerBeat
-                
-                // Convert to measure and beat position
-                let totalBeats = Int(beatsElapsed)
-                let newMeasureIndex = totalBeats / track.timeSignature.beatsPerMeasure
-                let beatWithinMeasure = totalBeats % track.timeSignature.beatsPerMeasure
-                let newBeatPosition = Double(beatWithinMeasure) / Double(track.timeSignature.beatsPerMeasure)
-                
-                // Find the closest actual beat index for highlighting existing notes
-                var newBeatIndex = 0
-                if !cachedDrumBeats.isEmpty {
-                    var left = 0
-                    var right = cachedDrumBeats.count - 1
-                    
-                    while left <= right {
-                        let mid = (left + right) / 2
-                        let currentTimePosition = Double(newMeasureIndex) + newBeatPosition
-                        if cachedDrumBeats[mid].timePosition <= currentTimePosition {
-                            newBeatIndex = mid
-                            left = mid + 1
-                        } else {
-                            right = mid - 1
-                        }
-                    }
-                }
-                
-                // Calculate other values based on time-based timing
-                let newTotalBeats = Int(beatsElapsed)
-                let trackDuration = cachedTrackDuration
-                let newProgress = min(elapsedTime / trackDuration, 1.0)
-                
-                // Only update UI on main thread if something actually changed
-                DispatchQueue.main.async {
-                    var shouldUpdateUI = false
-                    
-                    // Only update currentBeat if it actually changed to reduce UI re-renders
-                    if newBeatIndex != currentBeat {
-                        currentBeat = newBeatIndex
-                        shouldUpdateUI = true
-                    }
-                    
-                    // Update beat position for progression indicator
-                    if abs(newBeatPosition - currentBeatPosition) > 0.005 || newMeasureIndex != currentMeasureIndex {
-                        currentBeatPosition = newBeatPosition
-                        currentMeasureIndex = newMeasureIndex
-                        shouldUpdateUI = true
-                    }
-                    
-                    // Only update timing values if they changed significantly
-                    if newTotalBeats != totalBeatsElapsed {
-                        totalBeatsElapsed = newTotalBeats
-                        currentQuarterNotePosition = Double(newMeasureIndex) + newBeatPosition
-                        shouldUpdateUI = true
-                    }
-                    
-                    // Update progress less frequently to reduce UI churn
-                    if abs(playbackProgress - newProgress) > 0.02 {
-                        playbackProgress = newProgress
-                        shouldUpdateUI = true
-                    }
-                    
-                    // Only process updates if something actually changed
-                    if !shouldUpdateUI {
-                        return
-                    }
-                    
-                    if playbackProgress >= 1.0 {
-                        timer.invalidate()
-                        isPlaying = false
-                        metronome.stop()
-                        playbackProgress = 0.0
-                        currentBeat = 0
-                        currentQuarterNotePosition = 0.0
-                        totalBeatsElapsed = 0
-                        lastBeatUpdate = -1
-                        currentBeatPosition = 0.0
-                        currentMeasureIndex = 0
-                        playbackStartTime = nil
-                        pausedElapsedTime = 0.0
-                        bgmPlayer?.stop()
-                        Logger.audioPlayback("Playback finished for track: \(track.title)")
-                    }
-                }
+            }
+        }
+        
+        // Calculate other values based on time-based timing
+        let newTotalBeats = Int(beatsElapsed)
+        let trackDuration = cachedTrackDuration
+        let newProgress = min(elapsedTime / trackDuration, 1.0)
+        
+        // Only update UI on main thread if something actually changed
+        DispatchQueue.main.async {
+            var shouldUpdateUI = false
+            
+            // Only update currentBeat if it actually changed to reduce UI re-renders
+            if newBeatIndex != currentBeat {
+                currentBeat = newBeatIndex
+                shouldUpdateUI = true
+            }
+            
+            // Update beat position for progression indicator
+            if abs(newBeatPosition - currentBeatPosition) > 0.005 || newMeasureIndex != currentMeasureIndex {
+                currentBeatPosition = newBeatPosition
+                currentMeasureIndex = newMeasureIndex
+                shouldUpdateUI = true
+            }
+            
+            // Only update timing values if they changed significantly
+            if newTotalBeats != totalBeatsElapsed {
+                totalBeatsElapsed = newTotalBeats
+                currentQuarterNotePosition = Double(newMeasureIndex) + newBeatPosition
+                shouldUpdateUI = true
+            }
+            
+            // Update progress less frequently to reduce UI churn
+            if abs(playbackProgress - newProgress) > 0.02 {
+                playbackProgress = newProgress
+                shouldUpdateUI = true
+            }
+            
+            // Only process updates if something actually changed
+            if !shouldUpdateUI {
+                return
+            }
+            
+            if playbackProgress >= 1.0 {
+                timer.invalidate()
+                isPlaying = false
+                metronome.stop()
+                playbackProgress = 0.0
+                currentBeat = 0
+                currentQuarterNotePosition = 0.0
+                totalBeatsElapsed = 0
+                lastBeatUpdate = -1
+                currentBeatPosition = 0.0
+                currentMeasureIndex = 0
+                playbackStartTime = nil
+                pausedElapsedTime = 0.0
+                bgmPlayer?.stop()
+                Logger.audioPlayback("Playback finished for track: \(track.title)")
             }
         }
     }
