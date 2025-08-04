@@ -199,9 +199,6 @@ struct DrumBeatView: View {
     
     var body: some View {
         ZStack {
-            // Beat column background
-            BeatBackgroundView(isActive: isActive)
-            
             // Stem rendering
             StemView(
                 stemInfo: stemInfo,
@@ -234,18 +231,6 @@ struct DrumBeatView: View {
             }
         }
         .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
-    }
-}
-
-// MARK: - Beat Background Component
-private struct BeatBackgroundView: View {
-    let isActive: Bool
-    
-    var body: some View {
-        Rectangle()
-            .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
-            .foregroundColor(isActive ? Color.purple.opacity(GameplayLayout.activeOpacity) : Color.clear)
-            .cornerRadius(GameplayLayout.beatColumnCornerRadius)
     }
 }
 

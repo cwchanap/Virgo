@@ -407,6 +407,11 @@ class MetronomeEngine: ObservableObject {
         return internalCurrentBeat
     }
     
+    // Get current measure index from total beat count
+    func getCurrentMeasure() -> Int {
+        return beatCount / timeSignature.beatsPerMeasure
+    }
+    
     // Get current BPM for adaptive UI updates
     func getCurrentBPM() -> Int {
         return bpm

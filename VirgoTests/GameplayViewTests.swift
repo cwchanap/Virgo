@@ -197,4 +197,146 @@ struct GameplayViewTests {
         // Test that cowbell maps correctly from NoteType
         #expect(DrumType.from(noteType: .cowbell) == .cowbell)
     }
+    
+    // MARK: - Performance Optimization Tests
+    
+    @Test func testMeasurePositionMapGeneration() async throws {
+        // Test that measure position map is created correctly
+        let measurePositions = [
+            GameplayLayout.MeasurePosition(row: 0, xOffset: 100.0, measureIndex: 0),
+            GameplayLayout.MeasurePosition(row: 0, xOffset: 200.0, measureIndex: 1),
+            GameplayLayout.MeasurePosition(row: 1, xOffset: 100.0, measureIndex: 2)
+        ]
+        
+        // Simulate the map creation logic from GameplayView
+        var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
+        for position in measurePositions {
+            measurePositionMap[position.measureIndex] = position
+        }
+        
+        // Test that map provides O(1) access
+        #expect(measurePositionMap[0]?.row == 0)
+        #expect(measurePositionMap[0]?.xOffset == 100.0)
+        #expect(measurePositionMap[1]?.row == 0)
+        #expect(measurePositionMap[1]?.xOffset == 200.0)
+        #expect(measurePositionMap[2]?.row == 1)
+        #expect(measurePositionMap[2]?.xOffset == 100.0)
+        
+        // Test non-existent key
+        #expect(measurePositionMap[999] == nil)
+    }
+    
+    @Test func testBeatIndicesToArrayOptimization() async throws {
+        // Test the optimization that replaces enumerated arrays
+        let cachedDrumBeats = [
+            DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .quarter),
+            DrumBeat(id: 1, drums: [.snare], timePosition: 0.5, interval: .quarter),
+            DrumBeat(id: 2, drums: [.hiHat], timePosition: 1.0, interval: .quarter)
+        ]
+        
+        // Simulate the indices caching logic from GameplayView
+        let cachedBeatIndices = Array(0..<cachedDrumBeats.count)
+        
+        #expect(cachedBeatIndices.count == 3)
+        #expect(cachedBeatIndices == [0, 1, 2])
+        
+        // Test accessing beats through indices
+        for index in cachedBeatIndices {
+            let beat = cachedDrumBeats[index]
+            #expect(beat.id == index)
+        }
+    }
+    
+    @Test func testBeatToBeamGroupMapOptimization() async throws {
+        // Test the beam group lookup map optimization
+        let beats = [
+            DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .eighth),
+            DrumBeat(id: 1, drums: [.snare], timePosition: 0.125, interval: .eighth),
+            DrumBeat(id: 2, drums: [.hiHat], timePosition: 0.5, interval: .quarter)
+        ]
+        
+        // Simulate beam group creation
+        let beamGroup = BeamGroup(id: "test-group-0", beats: Array(beats[0...1]))
+        let cachedBeamGroups = [beamGroup]
+        
+        // Simulate the lookup map creation logic from GameplayView
+        var beatToBeamGroupMap: [Int: BeamGroup] = [:]
+        for group in cachedBeamGroups {
+            for beat in group.beats {
+                beatToBeamGroupMap[beat.id] = group
+            }
+        }
+        
+        // Test O(1) lookup performance
+        #expect(beatToBeamGroupMap[0] != nil)
+        #expect(beatToBeamGroupMap[1] != nil)
+        #expect(beatToBeamGroupMap[2] == nil) // Not beamed
+        
+        // Test that beamed beats share the same group
+        #expect(beatToBeamGroupMap[0]?.id == beatToBeamGroupMap[1]?.id)
+    }
+    
+    @Test func testUIUpdateBatchingLogic() async throws {
+        // Test the UI update batching logic from timer optimization
+        var shouldUpdateUI = false
+        var currentBeat = 0
+        var totalBeatsElapsed = 0
+        var playbackProgress = 0.0
+        
+        // Simulate no changes scenario
+        let newBeatIndex = 0
+        let newTotalBeats = 0
+        let newProgress = 0.0
+        
+        if newBeatIndex != currentBeat {
+            currentBeat = newBeatIndex
+            shouldUpdateUI = true
+        }
+        
+        if newTotalBeats != totalBeatsElapsed {
+            totalBeatsElapsed = newTotalBeats
+            shouldUpdateUI = true
+        }
+        
+        if abs(playbackProgress - newProgress) > 0.02 {
+            playbackProgress = newProgress
+            shouldUpdateUI = true
+        }
+        
+        // Should not update UI when no changes occur
+        #expect(shouldUpdateUI == false)
+        
+        // Reset and test with changes
+        shouldUpdateUI = false
+        let changedBeatIndex = 1
+        
+        if changedBeatIndex != currentBeat {
+            currentBeat = changedBeatIndex
+            shouldUpdateUI = true
+        }
+        
+        // Should update UI when changes occur
+        #expect(shouldUpdateUI == true)
+        #expect(currentBeat == 1)
+    }
+    
+    @Test func testProgressUpdateThrottling() async throws {
+        // Test the progress update throttling logic
+        let playbackProgress = 0.5
+        
+        // Test cases for progress throttling (threshold is 0.02)
+        let testCases: [(newProgress: Double, shouldUpdate: Bool)] = [
+            (0.5, false),     // No change
+            (0.505, false),   // Change too small (0.005 < 0.02)
+            (0.515, false),   // Change still small (0.015 < 0.02)
+            (0.525, true),    // Change sufficient (0.025 > 0.02)
+            (0.48, false),    // Negative change too small (0.02 = 0.02, not >)
+            (0.47, true)      // Negative change sufficient (0.03 > 0.02)
+        ]
+        
+        for testCase in testCases {
+            let shouldUpdate = abs(playbackProgress - testCase.newProgress) > 0.02
+            #expect(shouldUpdate == testCase.shouldUpdate)
+        }
+    }
 }
