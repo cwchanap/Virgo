@@ -65,6 +65,8 @@ struct GameplayView: View {
     @State private var currentBeat: Int = 0
     @State private var currentQuarterNotePosition: Double = 0.0
     @State private var totalBeatsElapsed: Int = 0
+    @State private var currentBeatPosition: Double = 0.0  // Current beat position within measure (0, 0.25, 0.5, 0.75)
+    @State private var currentMeasureIndex: Int = 0       // Which measure we're currently in
     @State private var playbackTimer: Timer?
     @State private var playbackStartTime: Date?
     @State private var pausedElapsedTime: Double = 0.0
@@ -74,6 +76,8 @@ struct GameplayView: View {
     @State private var cachedBeamGroups: [BeamGroup] = []
     @State private var beatToBeamGroupMap: [Int: BeamGroup] = [:]
     @State private var cachedTrackDuration: Double = 0.0
+    @State private var cachedBeatIndices: [Int] = []
+    @State private var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
     @State private var bgmPlayer: AVAudioPlayer?
     @State private var bgmLoadingError: String?
     @State private var metronome = MetronomeEngine()
@@ -151,6 +155,9 @@ struct GameplayView: View {
                 
                     // Drum notation
                 drumNotationView(measurePositions: cachedMeasurePositions)
+                
+                // Time-based beat progression bars (purple bars at all quarter note positions)
+                timeBasedBeatProgressionBars(measurePositions: cachedMeasurePositions)
             }
             .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
         }
@@ -258,11 +265,12 @@ struct GameplayView: View {
             }
             
             // Then render individual notes
-            ForEach(Array(cachedDrumBeats.enumerated()), id: \.element.id) { _, beat in
+            ForEach(cachedBeatIndices, id: \.self) { index in
+                let beat = cachedDrumBeats[index]
                 // Find which measure this beat belongs to based on the measure number in the beat
                 let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
                 
-                if let measurePos = measurePositions.first(where: { $0.measureIndex == measureIndex }) {
+                if let measurePos = measurePositionMap[measureIndex] {
                     // Calculate precise beat position within the measure based on measureOffset
                     let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
                     let beatPosition = beatOffsetInMeasure * Double(track?.timeSignature.beatsPerMeasure ?? 4)
@@ -275,9 +283,15 @@ struct GameplayView: View {
                     // Use cached lookup map for O(1) beam group check
                     let isBeamed = beatToBeamGroupMap[beat.id] != nil
                     
+                    // FIXED: Use time-based highlighting instead of array index
+                    // Check if current playback time is close to this beat's time position
+                    let currentTimePosition = Double(currentMeasureIndex) + currentBeatPosition
+                    let timeTolerance = 0.05 // Small tolerance for time-based matching
+                    let isCurrentlyActive = isPlaying && abs(beat.timePosition - currentTimePosition) < timeTolerance
+                    
                     DrumBeatView(
                         beat: beat, 
-                        isActive: false, // Temporarily disable highlighting to test performance
+                        isActive: isCurrentlyActive,
                         row: measurePos.row,
                         isBeamed: isBeamed
                     )
@@ -285,6 +299,71 @@ struct GameplayView: View {
                         x: beatX,
                         y: staffCenterY
                     )
+                }
+            }
+        }
+    }
+    
+    // MARK: - Beat Progression Indicator
+    private func beatProgressionIndicator(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+        Group {
+            if isPlaying {
+                // Always try to get the measure position, with fallback to measure 0
+                let measurePos = measurePositionMap[currentMeasureIndex] ?? measurePositionMap[0]
+                
+                if let measurePos = measurePos {
+                    // Calculate X position based on current beat position within measure
+                    let beatPosition = currentBeatPosition * Double(track?.timeSignature.beatsPerMeasure ?? 4)
+                    let indicatorX = GameplayLayout.preciseNoteXPosition(
+                        measurePosition: measurePos, 
+                        beatPosition: beatPosition, 
+                        timeSignature: track?.timeSignature ?? TimeSignature.fourFour
+                    )
+                    
+                    // Position at center of staff
+                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
+                    
+                    // Red circle indicator
+                    Circle()
+                        .fill(Color.red.opacity(0.8))
+                        .frame(width: 12, height: 12)
+                        .position(x: indicatorX, y: staffCenterY)
+                        .animation(.easeInOut(duration: 0.1), value: indicatorX)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Time-Based Beat Progression Bars
+    private func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+        Group {
+            if isPlaying, let track = track {
+                // Use metronome's timing directly for perfect sync
+                let metronomeBeat = metronome.currentBeat // 0, 1, 2, 3 for 4/4 time
+                let metronomeMeasure = metronome.getCurrentMeasure() // Current measure from metronome
+                
+                // Get current measure position, fallback to measure 0 if not found
+                let measurePos = measurePositionMap[metronomeMeasure] ?? measurePositionMap[0]
+                
+                if let measurePos = measurePos {
+                    // Use metronome beat position directly (already 0-3 for 4/4)
+                    let beatPosition = Double(metronomeBeat)
+                    
+                    // Calculate exact X position using the same system as notes
+                    let indicatorX = GameplayLayout.preciseNoteXPosition(
+                        measurePosition: measurePos,
+                        beatPosition: beatPosition,
+                        timeSignature: track.timeSignature
+                    )
+                    
+                    // Position at center of staff
+                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
+                    
+                    Rectangle()
+                        .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
+                        .foregroundColor(Color.purple.opacity(GameplayLayout.activeOpacity))
+                        .cornerRadius(GameplayLayout.beatColumnCornerRadius)
+                        .position(x: indicatorX, y: staffCenterY)
                 }
             }
         }
@@ -340,14 +419,49 @@ struct GameplayView: View {
     }
     
     private func computeCachedLayoutData() {
-        // Cache measure positions
-        let maxIndex = (cachedDrumBeats.map { 
-            MeasureUtils.measureIndex(from: $0.timePosition) 
-        }.max() ?? 0)
-        let measuresCount = max(1, maxIndex + 1)
+        // Cache measure positions based on actual track duration for complete beat progression support
+        guard let track = track else { return }
+        
+        // Calculate total measures needed for the full track duration
+        // This ensures beat progression works throughout the entire playback, not just where notes exist
+        let secondsPerBeat = 60.0 / Double(track.bpm)
+        let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
+        
+        // Use track duration from song metadata if available, otherwise calculate from notes
+        let trackDurationInSeconds: Double
+        if let song = cachedSong, !song.duration.isEmpty && song.duration != "0:00" {
+            // Parse duration string (format: "M:SS" or "MM:SS")
+            let components = song.duration.split(separator: ":")
+            if components.count == 2,
+               let minutes = Double(components[0]),
+               let seconds = Double(components[1]) {
+                trackDurationInSeconds = minutes * 60 + seconds
+            } else {
+                // Fallback to calculated duration
+                let maxIndex = (cachedDrumBeats.map { 
+                    MeasureUtils.measureIndex(from: $0.timePosition) 
+                }.max() ?? 0)
+                let noteMeasures = max(1, maxIndex + 1)
+                trackDurationInSeconds = Double(noteMeasures) * secondsPerMeasure
+            }
+        } else {
+            // Calculate from notes
+            let maxIndex = (cachedDrumBeats.map { 
+                MeasureUtils.measureIndex(from: $0.timePosition) 
+            }.max() ?? 0)
+            let noteMeasures = max(1, maxIndex + 1)
+            trackDurationInSeconds = Double(noteMeasures) * secondsPerMeasure
+        }
+        
+        // Calculate total measures needed for full track
+        let totalMeasuresForDuration = Int(ceil(trackDurationInSeconds / secondsPerMeasure))
+        // CRITICAL: Always ensure measure 0 exists, even if no notes are there
+        // Beat progression must start at measure 0 following metronome timing
+        let measuresCount = max(1, totalMeasuresForDuration)
+        
         cachedMeasurePositions = GameplayLayout.calculateMeasurePositions(
             totalMeasures: measuresCount, 
-            timeSignature: track?.timeSignature ?? TimeSignature.fourFour
+            timeSignature: track.timeSignature
         )
         
         // Cache beam groups and create lookup map
@@ -359,6 +473,20 @@ struct GameplayView: View {
             for beat in beamGroup.beats {
                 beatToBeamGroupMap[beat.id] = beamGroup
             }
+        }
+        
+        // Create efficient lookup map for measure positions (O(1) access)
+        measurePositionMap = [:]
+        for position in cachedMeasurePositions {
+            measurePositionMap[position.measureIndex] = position
+        }
+        
+        // CRITICAL: Ensure measure 0 always exists for beat progression to start at beginning
+        if measurePositionMap[0] == nil {
+            Logger.warning("Measure 0 missing from measurePositionMap! Creating fallback measure 0.")
+            // Create measure 0 as fallback to ensure beat progression can start
+            let measure0 = GameplayLayout.MeasurePosition(row: 0, xOffset: GameplayLayout.leftMargin, measureIndex: 0)
+            measurePositionMap[0] = measure0
         }
     }
     
@@ -390,21 +518,32 @@ struct GameplayView: View {
         }
         .sorted { $0.timePosition < $1.timePosition }
         
+        // Cache indices to avoid enumeration on every render
+        cachedBeatIndices = Array(0..<cachedDrumBeats.count)
     }
     
     // Calculate track duration once and cache it
     private func calculateTrackDuration() -> Double {
         guard let track = track else { return 0.0 }
         
-        // Find the total number of measures based on the highest measure number
-        let maxIndex = (cachedDrumBeats.map { MeasureUtils.measureIndex(from: $0.timePosition) }.max() ?? 0)
-        let totalMeasures = max(1, maxIndex + 1)
-        
         // Calculate duration per measure in seconds
-        // 60 seconds per minute / BPM = seconds per beat
-        // multiply by beats per measure to get seconds per measure
         let secondsPerBeat = 60.0 / Double(track.bpm)
         let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
+        
+        // Use track duration from song metadata if available, otherwise calculate from notes
+        if let song = cachedSong, !song.duration.isEmpty && song.duration != "0:00" {
+            // Parse duration string (format: "M:SS" or "MM:SS")
+            let components = song.duration.split(separator: ":")
+            if components.count == 2,
+               let minutes = Double(components[0]),
+               let seconds = Double(components[1]) {
+                return minutes * 60 + seconds
+            }
+        }
+        
+        // Fallback: calculate from the highest measure number with notes
+        let maxIndex = (cachedDrumBeats.map { MeasureUtils.measureIndex(from: $0.timePosition) }.max() ?? 0)
+        let totalMeasures = max(1, maxIndex + 1)
         
         return Double(totalMeasures) * secondsPerMeasure
     }
@@ -438,11 +577,13 @@ struct GameplayView: View {
     
     private func startPlayback() {
         isPlaying = true
+        
+        // Start metronome first for timing synchronization
+        metronome.start()
+        
+        // Set start time after metronome starts to ensure sync
         playbackStartTime = Date()
         playbackTimer?.invalidate()
-        
-        // Start metronome for timing synchronization
-        metronome.start()
         
         // Start BGM playback if available
         if let bgmPlayer = bgmPlayer {
@@ -465,12 +606,23 @@ struct GameplayView: View {
         currentQuarterNotePosition = 0.0
         totalBeatsElapsed = 0
         lastBeatUpdate = -1
+        currentBeatPosition = 0.0
+        currentMeasureIndex = 0
+        
+        // Debug: Log initial state and measure positions
+        Logger.debug("Playback started - Initial state: measureIndex=\(currentMeasureIndex), beatPosition=\(currentBeatPosition)")
+        Logger.debug("Available measures in map: \(measurePositionMap.keys.sorted())")
+        if let measure0 = measurePositionMap[0] {
+            Logger.debug("Measure 0 exists at x=\(measure0.xOffset)")
+        } else {
+            Logger.debug("ERROR: Measure 0 not found in measurePositionMap!")
+        }
         
         // Re-enable timer now that MetronomeEngine threading is fixed
         // Use background queue timer to avoid blocking main thread
         let backgroundQueue = DispatchQueue(label: "playback.timer", qos: .userInitiated)
         
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
             backgroundQueue.async {
                 guard isPlaying else {
                     DispatchQueue.main.async {
@@ -490,11 +642,14 @@ struct GameplayView: View {
                 let beatsElapsed = elapsedTime / secondsPerBeat
                 let measuresElapsed = beatsElapsed / Double(track.timeSignature.beatsPerMeasure)
                 
-                // Find the current beat index that should be active
+                // Calculate current beat position based on time (independent of actual notes)
                 let currentTimePosition = measuresElapsed
-                var newBeatIndex = 0
+                let newMeasureIndex = Int(currentTimePosition)
+                let measureOffset = currentTimePosition - Double(newMeasureIndex)
+                let newBeatPosition = measureOffset // This gives us 0, 0.25, 0.5, 0.75 etc.
                 
-                // Use binary search for better performance with large arrays
+                // Find the closest actual beat index for highlighting existing notes
+                var newBeatIndex = 0
                 if !cachedDrumBeats.isEmpty {
                     var left = 0
                     var right = cachedDrumBeats.count - 1
@@ -517,20 +672,41 @@ struct GameplayView: View {
                 
                 // Only update UI on main thread if something actually changed
                 DispatchQueue.main.async {
+                    var shouldUpdateUI = false
+                    
                     // Only update currentBeat if it actually changed to reduce UI re-renders
                     if newBeatIndex != currentBeat {
                         currentBeat = newBeatIndex
+                        shouldUpdateUI = true
+                    }
+                    
+                    // Update beat position for progression indicator
+                    if abs(newBeatPosition - currentBeatPosition) > 0.005 || newMeasureIndex != currentMeasureIndex {
+                        // Debug: Log beat progression updates during first few seconds
+                        if elapsedTime < 3.0 {
+                            Logger.debug("Timer update: elapsedTime=\(String(format: "%.2f", elapsedTime)), measureIndex=\(newMeasureIndex), beatPosition=\(String(format: "%.3f", newBeatPosition))")
+                        }
+                        currentBeatPosition = newBeatPosition
+                        currentMeasureIndex = newMeasureIndex
+                        shouldUpdateUI = true
                     }
                     
                     // Only update timing values if they changed significantly
                     if newTotalBeats != totalBeatsElapsed {
                         totalBeatsElapsed = newTotalBeats
                         currentQuarterNotePosition = measuresElapsed
+                        shouldUpdateUI = true
                     }
                     
                     // Update progress less frequently to reduce UI churn
-                    if abs(playbackProgress - newProgress) > 0.01 {
+                    if abs(playbackProgress - newProgress) > 0.02 {
                         playbackProgress = newProgress
+                        shouldUpdateUI = true
+                    }
+                    
+                    // Only process updates if something actually changed
+                    if !shouldUpdateUI {
+                        return
                     }
                     
                     if playbackProgress >= 1.0 {
@@ -542,6 +718,8 @@ struct GameplayView: View {
                         currentQuarterNotePosition = 0.0
                         totalBeatsElapsed = 0
                         lastBeatUpdate = -1
+                        currentBeatPosition = 0.0
+                        currentMeasureIndex = 0
                         playbackStartTime = nil
                         pausedElapsedTime = 0.0
                         bgmPlayer?.stop()
@@ -558,6 +736,8 @@ struct GameplayView: View {
         currentQuarterNotePosition = 0.0
         totalBeatsElapsed = 0
         lastBeatUpdate = -1
+        currentBeatPosition = 0.0
+        currentMeasureIndex = 0
         playbackStartTime = nil
         pausedElapsedTime = 0.0  // Reset paused time on restart
         metronome.stop()
