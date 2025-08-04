@@ -8,8 +8,10 @@ class ServerSongService: ObservableObject {
     @MainActor @Published var downloadingSongs: Set<String> = []
     @MainActor @Published var deletingSongs: Set<String> = []
     
-    private let apiClient = DTXAPIClient()
     private var modelContext: ModelContext?
+    private let cache = ServerSongCache()
+    private let downloader = ServerSongDownloader()
+    private let statusManager = ServerSongStatusManager()
     
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
@@ -20,49 +22,10 @@ class ServerSongService: ObservableObject {
     @MainActor
     func loadServerSongs() async -> [ServerSong] {
         guard let modelContext = modelContext else { return [] }
-        
-        // First load from cache
-        let descriptor = FetchDescriptor<ServerSong>(
-            sortBy: [SortDescriptor(\.lastUpdated, order: .reverse)]
-        )
-        
         do {
-            let cachedSongs = try modelContext.fetch(descriptor)
-            
-            // If cache is empty or stale (older than 5 minutes for development), refresh from server
-            let fiveMinutesAgo = Date().addingTimeInterval(-300)
-            let shouldRefresh = cachedSongs.isEmpty || 
-                               cachedSongs.first?.lastUpdated ?? Date.distantPast < fiveMinutesAgo
-            
-            if shouldRefresh {
-                await refreshServerSongs(forceClear: false)
-                return try modelContext.fetch(descriptor)
-            }
-            
-            // Update download status for cached songs
-            let localSongsDescriptor = FetchDescriptor<Song>()
-            let localSongs = try modelContext.fetch(localSongsDescriptor)
-            
-            var hasUpdates = false
-            for serverSong in cachedSongs {
-                let wasDownloaded = serverSong.isDownloaded
-                let isCurrentlyDownloaded = isAlreadyDownloaded(serverSong, in: localSongs)
-                
-                // Update if status changed
-                if wasDownloaded != isCurrentlyDownloaded {
-                    serverSong.isDownloaded = isCurrentlyDownloaded
-                    hasUpdates = true
-                }
-            }
-            
-            // Save any status updates
-            if hasUpdates {
-                try modelContext.save()
-            }
-            
-            return cachedSongs
+            return try await cache.loadServerSongs(modelContext: modelContext)
         } catch {
-            print("Failed to load server songs from cache: \(error)")
+            print("Failed to load server songs: \(error)")
             return []
         }
     }
@@ -77,85 +40,6 @@ class ServerSongService: ObservableObject {
         await refreshServerSongs(forceClear: true)
     }
     
-    // MARK: - Helper Functions
-    
-    private func clearExistingServerSongs() async throws {
-        guard let modelContext = modelContext else { return }
-        
-        // Use a more robust deletion approach to avoid memory management issues
-        let existingDescriptor = FetchDescriptor<ServerSong>()
-        let existingSongs = try modelContext.fetch(existingDescriptor)
-        
-        // Delete in smaller batches to reduce memory pressure
-        let batchSize = 10
-        for i in stride(from: 0, to: existingSongs.count, by: batchSize) {
-            let endIndex = min(i + batchSize, existingSongs.count)
-            let batch = Array(existingSongs[i..<endIndex])
-            
-            for song in batch {
-                // Ensure the song is still valid before deletion
-                if !song.isDeleted {
-                    modelContext.delete(song)
-                }
-            }
-            
-            // Save after each batch to avoid accumulating too many changes
-            do {
-                try modelContext.save()
-            } catch {
-                Logger.database("Failed to save deletion batch: \(error)")
-                throw error
-            }
-        }
-    }
-    
-    private func processMultiDifficultySongs(_ serverSongs: [DTXServerSongData]) -> [ServerSong] {
-        var updatedSongs: [ServerSong] = []
-        
-        // Process multi-difficulty songs
-        for songData in serverSongs {
-            let charts = songData.charts.map { chartData in
-                ServerChart(
-                    difficulty: chartData.difficulty,
-                    difficultyLabel: chartData.difficultyLabel,
-                    level: chartData.level,
-                    filename: chartData.filename,
-                    size: chartData.size
-                )
-            }
-            
-            let serverSong = ServerSong(
-                songId: songData.songId,
-                title: songData.title,
-                artist: songData.artist ?? "Unknown Artist",
-                bpm: songData.bpm ?? 120.0,
-                charts: charts,
-                isDownloaded: false,
-                hasBGM: true, // Assume BGM is available for multi-difficulty songs
-                hasPreview: true // Assume preview is available for multi-difficulty songs
-            )
-            
-            updatedSongs.append(serverSong)
-        }
-        
-        return updatedSongs
-    }
-    
-    private func updateDownloadStatus(_ songs: [ServerSong]) async throws {
-        guard let modelContext = modelContext else { return }
-        
-        // Check for existing downloads and preserve download status
-        let localSongsDescriptor = FetchDescriptor<Song>()
-        let localSongs = try modelContext.fetch(localSongsDescriptor)
-        
-        // Update download status based on existing local songs
-        for serverSong in songs {
-            serverSong.isDownloaded = isAlreadyDownloaded(serverSong, in: localSongs)
-            serverSong.bgmDownloaded = hasBGMFile(serverSong, in: localSongs)
-            serverSong.previewDownloaded = hasPreviewFile(serverSong, in: localSongs)
-        }
-    }
-    
     @MainActor
     private func refreshServerSongs(forceClear: Bool = false) async {
         guard let modelContext = modelContext else { return }
@@ -164,69 +48,7 @@ class ServerSongService: ObservableObject {
         errorMessage = nil
         
         do {
-            // Fetch song list from server with multi-difficulty support
-            let serverSongs = try await apiClient.listDTXSongs()
-            
-            // Process multi-difficulty songs
-            var updatedSongs = processMultiDifficultySongs(serverSongs)
-            
-            // Only process individual DTX files if not force clearing (backward compatibility)
-            if !forceClear {
-                let serverFiles = try await apiClient.listDTXFiles()
-                
-                for file in serverFiles {
-                    do {
-                        let metadata = try await apiClient.getDTXMetadata(filename: file.filename)
-                        
-                        let serverSong = ServerSong(
-                            filename: file.filename,
-                            title: metadata.title ?? file.filename.replacingOccurrences(of: ".dtx", with: ""),
-                            artist: metadata.artist ?? "Unknown Artist",
-                            bpm: metadata.bpm ?? 120.0,
-                            difficultyLevel: metadata.level ?? 50,
-                            size: file.size
-                        )
-                        
-                        updatedSongs.append(serverSong)
-                    } catch {
-                        print("Failed to get metadata for \(file.filename): \(error)")
-                        // Create song with filename only
-                        let serverSong = ServerSong(
-                            filename: file.filename,
-                            title: file.filename.replacingOccurrences(of: ".dtx", with: ""),
-                            artist: "Unknown Artist",
-                            bpm: 120.0,
-                            difficultyLevel: 50,
-                            size: file.size
-                        )
-                        updatedSongs.append(serverSong)
-                    }
-                }
-            }
-            
-            // Update download status for all songs
-            try await updateDownloadStatus(updatedSongs)
-            
-            // Clear existing server songs and charts
-            try await clearExistingServerSongs()
-            
-            // Then insert new songs
-            for song in updatedSongs {
-                modelContext.insert(song)
-                // Insert charts separately to ensure proper relationships
-                for chart in song.charts {
-                    modelContext.insert(chart)
-                }
-            }
-            
-            // Save the insertions
-            do {
-                try modelContext.save()
-            } catch {
-                print("DEBUG: Error during insertion save: \(error)")
-                throw error
-            }
-            
+            try await cache.refreshServerSongs(modelContext: modelContext, forceClear: forceClear)
         } catch {
             errorMessage = "Failed to refresh server songs: \(error.localizedDescription)"
             print("Failed to refresh server songs: \(error)")
@@ -257,20 +79,18 @@ class ServerSongService: ObservableObject {
             errorMessage = nil
         }
         
-        // Perform download work on background thread with proper actor isolation
-        let (success, errorMsg): (Bool, String?) = await Task { [weak self] in
-            guard let self = self else { 
-                return (false, "Service unavailable")
+        // Get container for background context
+        let container = await MainActor.run { self.modelContext?.container }
+        guard let container = container else {
+            await MainActor.run {
+                downloadingSongs.remove(songId)
+                errorMessage = "No model context available"
             }
-            
-            // For multi-difficulty songs, download all charts
-            if !serverSong.charts.isEmpty {
-                return await self.downloadAndImportMultiDifficultySongBackground(serverSong)
-            }
-            
-            // Legacy: single DTX file (for backward compatibility) - should not reach here for multi-difficulty songs
-            return (false, "No charts available for legacy download")
-        }.value
+            return false
+        }
+        
+        // Perform download work on background thread
+        let (success, errorMsg) = await downloader.downloadAndImportSong(serverSong, container: container)
         
         // Update UI state back on main thread and refresh download status
         await MainActor.run {
@@ -301,206 +121,15 @@ class ServerSongService: ObservableObject {
         return success
     }
     
-    private func downloadAndImportMultiDifficultySong(_ serverSong: ServerSong) async -> Bool {
-        // This method now just delegates to the background version
-        let (success, _) = await downloadAndImportMultiDifficultySongBackground(serverSong)
-        return success
-    }
-    
-    private func downloadAndImportMultiDifficultySongBackground(_ serverSong: ServerSong) async -> (Bool, String?) {
-        
-        // Get container from main context safely
-        let container = await MainActor.run { self.modelContext?.container }
-        guard let container = container else {
-            return (false, "No model context available")
-        }
-        
-        // Create background ModelContext using the same container
-        let backgroundContext = ModelContext(container)
-        
-        do {
-            // Check if song already exists to prevent duplicates
-            let existingDescriptor = FetchDescriptor<Song>()
-            let existingSongs = try backgroundContext.fetch(existingDescriptor)
-            
-            let songAlreadyExists = existingSongs.contains { existingSong in
-                existingSong.title.lowercased() == serverSong.title.lowercased() &&
-                existingSong.artist.lowercased() == serverSong.artist.lowercased()
-            }
-            
-            if songAlreadyExists {
-                return (false, "Song already exists in database")
-            }
-            
-            // Create the Song object first
-            let song = Song(
-                title: serverSong.title,
-                artist: serverSong.artist,
-                bpm: Int(serverSong.bpm),
-                duration: "3:30", // Will be updated after parsing first chart
-                genre: "DTX Import",
-                timeSignature: .fourFour
-            )
-            
-            // Download and process each chart with throttling to reduce system stress
-            for (index, serverChart) in serverSong.charts.enumerated() {
-                // Add small delay between downloads to reduce system stress
-                if index > 0 {
-                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms delay
-                }
-                
-                let fileData = try await apiClient.downloadChartFile(
-                    songId: serverSong.songId,
-                    chartFilename: serverChart.filename
-                )
-                
-                // Convert data to string with Shift-JIS encoding
-                guard let dtxContent = String(data: fileData, encoding: .shiftJIS) else {
-                    print("Failed to decode \(serverChart.filename) with Shift-JIS encoding")
-                    continue
-                }
-                
-                // Parse the DTX content
-                let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
-                
-                // Update song BPM from the first chart if not already set (use rounded value)
-                if song.charts.isEmpty {
-                    song.bpm = Int(chartData.bpm.rounded())
-                }
-                
-                // Map server difficulty to app difficulty
-                let difficulty = mapServerDifficultyToApp(serverChart.difficulty)
-                
-                let chart = Chart(difficulty: difficulty, level: serverChart.level, song: song)
-                
-                // Add notes to the chart
-                let notes = chartData.toNotes(for: chart)
-                notes.forEach { note in
-                    chart.notes.append(note)
-                }
-                
-                // Update song duration from first chart
-                if song.charts.isEmpty {
-                    song.duration = formatDuration(calculateDuration(from: chartData.notes))
-                }
-                
-                backgroundContext.insert(chart)
-            }
-            
-            // Download BGM file if available
-            do {
-                let bgmData = try await apiClient.downloadBGMFile(songId: serverSong.songId)
-                let bgmPath = try saveBGMFile(bgmData, for: serverSong.songId)
-                song.bgmFilePath = bgmPath
-                Logger.database("Downloaded BGM file for song: \(song.title)")
-            } catch {
-                // BGM download is optional - continue even if it fails
-                Logger.database("Failed to download BGM for song \(song.title): \(error.localizedDescription)")
-            }
-            
-            // Download preview file if available
-            do {
-                let previewData = try await apiClient.downloadPreviewFile(songId: serverSong.songId)
-                let previewPath = try savePreviewFile(previewData, for: serverSong.songId)
-                song.previewFilePath = previewPath
-                Logger.database("Downloaded preview file for song: \(song.title)")
-            } catch {
-                // Preview download is optional - continue even if it fails
-                Logger.database("Failed to download preview for song \(song.title): \(error.localizedDescription)")
-            }
-            
-            // Save to SwiftData using background context
-            backgroundContext.insert(song)
-            try backgroundContext.save()
-            
-            return (true, nil)
-            
-        } catch {
-            return (false, "Multi-difficulty import failed: \(error.localizedDescription)")
-        }
-    }
-    
-    private func saveBGMFile(_ data: Data, for songId: String) throws -> String {
-        // Get the Documents directory
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        
-        // Create BGM directory if it doesn't exist
-        let bgmDirectory = documentsPath.appendingPathComponent("BGM")
-        if !FileManager.default.fileExists(atPath: bgmDirectory.path) {
-            try FileManager.default.createDirectory(at: bgmDirectory, withIntermediateDirectories: true)
-        }
-        
-        // Save BGM file with song ID as filename
-        let bgmFilePath = bgmDirectory.appendingPathComponent("\(songId).ogg")
-        try data.write(to: bgmFilePath)
-        
-        return bgmFilePath.path
-    }
-    
-    private func savePreviewFile(_ data: Data, for songId: String) throws -> String {
-        // Get the Documents directory
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        
-        // Create Preview directory if it doesn't exist
-        let previewDirectory = documentsPath.appendingPathComponent("Preview")
-        if !FileManager.default.fileExists(atPath: previewDirectory.path) {
-            try FileManager.default.createDirectory(at: previewDirectory, withIntermediateDirectories: true)
-        }
-        
-        // Save preview file with song ID as filename
-        let previewFilePath = previewDirectory.appendingPathComponent("\(songId).mp3")
-        try data.write(to: previewFilePath)
-        
-        return previewFilePath.path
-    }
-    
-    private func mapServerDifficultyToApp(_ serverDifficulty: String) -> Difficulty {
-        switch serverDifficulty.lowercased() {
-        case "easy":
-            return .easy
-        case "medium":
-            return .medium
-        case "hard":
-            return .hard
-        case "expert":
-            return .expert
-        default:
-            return .medium
-        }
-    }
-    
     @MainActor
     func deleteDownloadedSong(_ serverSong: ServerSong) async -> Bool {
         guard let modelContext = modelContext else { return false }
         
-        do {
-            // Get all songs and filter manually for better compatibility
-            let descriptor = FetchDescriptor<Song>()
-            let allSongs = try modelContext.fetch(descriptor)
-            
-            // IMPORTANT: Only delete songs that match title/artist AND are from DTX Import genre
-            // This prevents deleting sample data or other local songs
-            let songsToDelete = allSongs.filter { song in
-                song.title.lowercased() == serverSong.title.lowercased() &&
-                song.artist.lowercased() == serverSong.artist.lowercased() &&
-                song.genre == "DTX Import" // Only delete downloaded songs, not sample data
-            }
-            
-            for song in songsToDelete {
-                // Delete all charts and their notes (cascade will handle this)
-                modelContext.delete(song)
-            }
-            
-            try modelContext.save()
-            
-            // Update server song status
-            serverSong.isDownloaded = false
-            
-            return true
-        } catch {
-            errorMessage = "Failed to delete song: \(error.localizedDescription)"
-            return false
+        let success = await statusManager.deleteDownloadedSong(serverSong, modelContext: modelContext)
+        if !success {
+            errorMessage = "Failed to delete downloaded song"
         }
+        return success
     }
     
     func deleteLocalSong(_ song: Song) async -> Bool {
@@ -518,12 +147,25 @@ class ServerSongService: ObservableObject {
             errorMessage = nil
         }
         
+        // Get container for background context
+        let container = await MainActor.run { self.modelContext?.container }
+        guard let container = container else {
+            await MainActor.run {
+                deletingSongs.remove(songKey)
+                errorMessage = "No model context available"
+            }
+            return false
+        }
+        
         // Perform deletion work on background thread
-        let success = await performDeletionBackground(song: song, songKey: songKey)
+        let success = await statusManager.deleteLocalSong(song, container: container)
         
         // Remove from deleting set on main thread
         await MainActor.run {
             deletingSongs.remove(songKey)
+            if !success {
+                errorMessage = "Failed to delete local song"
+            }
         }
         
         return success
