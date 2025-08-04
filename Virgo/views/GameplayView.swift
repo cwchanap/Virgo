@@ -283,9 +283,14 @@ struct GameplayView: View {
                     // Use cached lookup map for O(1) beam group check
                     let isBeamed = beatToBeamGroupMap[beat.id] != nil
                     
-                    // FIXED: Use time-based highlighting instead of array index
-                    // Check if current playback time is close to this beat's time position
-                    let currentTimePosition = Double(currentMeasureIndex) + currentBeatPosition
+                    // FIXED: Use timer-based values for note highlighting (same as purple bar)
+                    // SwiftUI won't update for non-@Published metronome methods, so use our timer values
+                    // Use floor to get the current beat index (0,1,2,3 for quarter notes)
+                    let displayBeat = Int(floor(currentBeatPosition * Double(track?.timeSignature.beatsPerMeasure ?? 4)))
+                    let displayMeasure = currentMeasureIndex
+                    
+                    // Convert to time position for comparison with beat.timePosition
+                    let currentTimePosition = Double(displayMeasure) + (Double(displayBeat) / Double(track?.timeSignature.beatsPerMeasure ?? 4))
                     let timeTolerance = 0.05 // Small tolerance for time-based matching
                     let isCurrentlyActive = isPlaying && abs(beat.timePosition - currentTimePosition) < timeTolerance
                     
@@ -338,30 +343,26 @@ struct GameplayView: View {
     private func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
         Group {
             if isPlaying, let track = track {
-                // Use our smooth timing but sync with metronome's measure progression
-                let measurePos = measurePositionMap[currentMeasureIndex] ?? measurePositionMap[0]
+                // FIXED: Use timer-based values that trigger SwiftUI updates
+                // SwiftUI won't update for non-@Published metronome methods, so use our timer values
+                let displayMeasure = currentMeasureIndex
+                
+                // Get measure position from display timing
+                let measurePos = measurePositionMap[displayMeasure] ?? measurePositionMap[0]
                 
                 if let measurePos = measurePos {
-                    // Use smooth beat position from our timer, but ensure we're in same measure as metronome
-                    let metronomeMeasure = metronome.getCurrentMeasure()
-                    
-                    // If we're in the same measure as metronome, use smooth positioning
-                    // If we're ahead/behind, sync to metronome measure
-                    let syncedMeasureIndex = abs(currentMeasureIndex - metronomeMeasure) <= 1 ? currentMeasureIndex : metronomeMeasure
-                    let syncedMeasurePos = measurePositionMap[syncedMeasureIndex] ?? measurePos
-                    
-                    // Use smooth beat position for continuous movement
+                    // currentBeatPosition is now fractional (0.0-1.0), need to convert to beat index (0-3 for 4/4)
                     let beatPosition = currentBeatPosition * Double(track.timeSignature.beatsPerMeasure)
                     
-                    // Calculate exact X position using the synced measure position
+                    // Calculate exact X position using metronome measure position
                     let indicatorX = GameplayLayout.preciseNoteXPosition(
-                        measurePosition: syncedMeasurePos,
+                        measurePosition: measurePos,
                         beatPosition: beatPosition,
                         timeSignature: track.timeSignature
                     )
                     
                     // Position at center of staff
-                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: syncedMeasurePos.row)
+                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
                     
                     Rectangle()
                         .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
@@ -613,14 +614,9 @@ struct GameplayView: View {
         currentBeatPosition = 0.0
         currentMeasureIndex = 0
         
-        // Debug: Log initial state and measure positions
-        Logger.debug("Playback started - Initial state: measureIndex=\(currentMeasureIndex), beatPosition=\(currentBeatPosition)")
-        Logger.debug("Available measures in map: \(measurePositionMap.keys.sorted())")
-        if let measure0 = measurePositionMap[0] {
-            Logger.debug("Measure 0 exists at x=\(measure0.xOffset)")
-        } else {
-            Logger.debug("ERROR: Measure 0 not found in measurePositionMap!")
-        }
+        // CRITICAL: Force immediate UI update to show purple bar at position 0 from the start
+        // This ensures the purple bar appears at beat 0 before the first timer update
+        playbackProgress = 0.0
         
         // Re-enable timer now that MetronomeEngine threading is fixed
         // Use background queue timer to avoid blocking main thread
@@ -640,17 +636,18 @@ struct GameplayView: View {
                 let currentSessionTime = Date().timeIntervalSince(startTime)
                 let elapsedTime = pausedElapsedTime + currentSessionTime
                 
-                // Calculate current position based on elapsed time and BPM
+                // FIXED: Use time-based calculation for smooth progression
                 guard let track = track else { return }
+                
+                // Calculate position based on elapsed time for smooth progression
                 let secondsPerBeat = 60.0 / Double(track.bpm)
                 let beatsElapsed = elapsedTime / secondsPerBeat
-                let measuresElapsed = beatsElapsed / Double(track.timeSignature.beatsPerMeasure)
                 
-                // Calculate current beat position based on time (independent of actual notes)
-                let currentTimePosition = measuresElapsed
-                let newMeasureIndex = Int(currentTimePosition)
-                let measureOffset = currentTimePosition - Double(newMeasureIndex)
-                let newBeatPosition = measureOffset // This gives us 0, 0.25, 0.5, 0.75 etc.
+                // Convert to measure and beat position
+                let totalBeats = Int(beatsElapsed)
+                let newMeasureIndex = totalBeats / track.timeSignature.beatsPerMeasure
+                let beatWithinMeasure = totalBeats % track.timeSignature.beatsPerMeasure
+                let newBeatPosition = Double(beatWithinMeasure) / Double(track.timeSignature.beatsPerMeasure)
                 
                 // Find the closest actual beat index for highlighting existing notes
                 var newBeatIndex = 0
@@ -660,6 +657,7 @@ struct GameplayView: View {
                     
                     while left <= right {
                         let mid = (left + right) / 2
+                        let currentTimePosition = Double(newMeasureIndex) + newBeatPosition
                         if cachedDrumBeats[mid].timePosition <= currentTimePosition {
                             newBeatIndex = mid
                             left = mid + 1
@@ -669,7 +667,7 @@ struct GameplayView: View {
                     }
                 }
                 
-                // Calculate other values
+                // Calculate other values based on time-based timing
                 let newTotalBeats = Int(beatsElapsed)
                 let trackDuration = cachedTrackDuration
                 let newProgress = min(elapsedTime / trackDuration, 1.0)
@@ -686,10 +684,6 @@ struct GameplayView: View {
                     
                     // Update beat position for progression indicator
                     if abs(newBeatPosition - currentBeatPosition) > 0.005 || newMeasureIndex != currentMeasureIndex {
-                        // Debug: Log beat progression updates during first few seconds
-                        if elapsedTime < 3.0 {
-                            Logger.debug("Timer update: elapsedTime=\(String(format: "%.2f", elapsedTime)), measureIndex=\(newMeasureIndex), beatPosition=\(String(format: "%.3f", newBeatPosition))")
-                        }
                         currentBeatPosition = newBeatPosition
                         currentMeasureIndex = newMeasureIndex
                         shouldUpdateUI = true
@@ -698,7 +692,7 @@ struct GameplayView: View {
                     // Only update timing values if they changed significantly
                     if newTotalBeats != totalBeatsElapsed {
                         totalBeatsElapsed = newTotalBeats
-                        currentQuarterNotePosition = measuresElapsed
+                        currentQuarterNotePosition = Double(newMeasureIndex) + newBeatPosition
                         shouldUpdateUI = true
                     }
                     
