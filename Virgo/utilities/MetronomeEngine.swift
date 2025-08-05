@@ -17,8 +17,10 @@ class MetronomeEngine: ObservableObject {
     
     // Published properties for UI
     @Published var isEnabled = false
-    @Published var currentBeat = 1
     @Published var volume: Float = 0.7
+    
+    // Beat tracking - use private published for internal updates only
+    @Published private(set) var currentBeat = 1
     
     // Engine components
     private let audioEngine: MetronomeAudioEngine
@@ -97,6 +99,11 @@ class MetronomeEngine: ObservableObject {
         } else {
             start(bpm: bpm, timeSignature: timeSignature)
         }
+    }
+    
+    func configure(bpm: Int, timeSignature: TimeSignature) {
+        self.bpm = bpm
+        self.timeSignature = timeSignature
     }
     
     // MARK: - Beat Handling

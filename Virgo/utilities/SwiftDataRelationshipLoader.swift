@@ -122,22 +122,25 @@ class SongRelationshipLoader: BaseSwiftDataRelationshipLoader<Song, SongRelation
     }
     
     private static func loadSongData(_ song: Song) async -> SongRelationshipData {
-        // Access SwiftData relationships in a safe background context
-        let validCharts = song.charts.filter { !$0.isDeleted }
-        let measureCount = calculateMeasureCount(from: validCharts)
-        let difficulties = validCharts.compactMap { $0.difficulty }
-            .removingDuplicates()
-            .sorted { $0.sortOrder < $1.sortOrder }
-        
-        return SongRelationshipData(
-            chartCount: validCharts.count,
-            measureCount: measureCount,
-            charts: validCharts,
-            availableDifficulties: difficulties
-        )
+        // Access SwiftData relationships on MainActor to prevent data races
+        return await MainActor.run {
+            let validCharts = song.charts.filter { !$0.isDeleted }
+            let measureCount = calculateMeasureCount(from: validCharts)
+            let difficulties = validCharts.compactMap { $0.difficulty }
+                .removingDuplicates()
+                .sorted { $0.sortOrder < $1.sortOrder }
+            
+            return SongRelationshipData(
+                chartCount: validCharts.count,
+                measureCount: measureCount,
+                charts: validCharts,
+                availableDifficulties: difficulties
+            )
+        }
     }
     
     private static func calculateMeasureCount(from charts: [Chart]) -> Int {
+        // Access notes relationships safely - charts are already loaded on main thread
         let allNotes = charts.flatMap { chart in
             chart.notes.filter { !$0.isDeleted }
         }
@@ -169,14 +172,17 @@ class ChartRelationshipLoader: BaseSwiftDataRelationshipLoader<Chart, ChartRelat
     }
     
     private static func loadChartData(_ chart: Chart) async -> ChartRelationshipData {
-        let validNotes = chart.notes.filter { !$0.isDeleted }
-        let measureCount = validNotes.map(\.measureNumber).max() ?? 1
-        
-        return ChartRelationshipData(
-            notesCount: validNotes.count,
-            notes: validNotes,
-            measureCount: measureCount
-        )
+        // Access SwiftData relationships on MainActor to prevent data races
+        return await MainActor.run {
+            let validNotes = chart.notes.filter { !$0.isDeleted }
+            let measureCount = validNotes.map(\.measureNumber).max() ?? 1
+            
+            return ChartRelationshipData(
+                notesCount: validNotes.count,
+                notes: validNotes,
+                measureCount: measureCount
+            )
+        }
     }
 }
 
