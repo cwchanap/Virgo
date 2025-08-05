@@ -44,7 +44,9 @@ class MetronomeTimingEngine: ObservableObject {
     }
     
     deinit {
-        stop()
+        // Stop timer synchronously without MainActor isolation
+        beatTimer?.cancel()
+        beatTimer = nil
     }
     
     // MARK: - Playback Control

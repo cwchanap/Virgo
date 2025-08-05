@@ -7,9 +7,20 @@
 
 import SwiftUI
 
+// MARK: - Lightweight Beat Indicator State
+@MainActor
+class BeatIndicatorState: ObservableObject {
+    @Published var currentBeat: Int = 1
+    
+    func updateBeat(_ beat: Int) {
+        currentBeat = beat
+    }
+}
+
 // MARK: - Metronome Component
 struct MetronomeComponent: View {
     @ObservedObject var metronome: MetronomeEngine
+    @StateObject private var beatState = BeatIndicatorState()
     let bpm: Int
     let timeSignature: TimeSignature
     
@@ -30,14 +41,14 @@ struct MetronomeComponent: View {
                     .foregroundColor(.gray)
             }
             
-            // Beat Indicator
+            // Beat Indicator - isolated from main metronome state
             HStack(spacing: 12) {
                 ForEach(1...timeSignature.beatsPerMeasure, id: \.self) { beat in
                     Circle()
-                        .fill(beat == metronome.currentBeat ? Color.purple : Color.gray.opacity(0.3))
+                        .fill(beat == beatState.currentBeat ? Color.purple : Color.gray.opacity(0.3))
                         .frame(width: 20, height: 20)
-                        .scaleEffect(beat == metronome.currentBeat ? 1.2 : 1.0)
-                        .animation(.easeInOut(duration: 0.1), value: metronome.currentBeat)
+                        .scaleEffect(beat == beatState.currentBeat ? 1.2 : 1.0)
+                        .animation(.easeInOut(duration: 0.1), value: beatState.currentBeat)
                 }
             }
             
@@ -80,6 +91,12 @@ struct MetronomeComponent: View {
         .padding()
         .background(Color.black.opacity(0.3))
         .cornerRadius(20)
+        .onReceive(metronome.$currentBeat) { beat in
+            beatState.updateBeat(beat)
+        }
+        .onAppear {
+            beatState.updateBeat(metronome.currentBeat)
+        }
     }
 }
 
