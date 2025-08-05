@@ -24,80 +24,16 @@ struct VirgoApp: App {
             ServerChart.self
         ])
         let modelConfiguration = ModelConfiguration(
-            schema: schema, 
+            schema: schema,
             isStoredInMemoryOnly: false,
             allowsSave: true
         )
-
-        // Check if we need to force database recreation due to BGM and preview schema changes
-        let currentSchemaVersion = "v2.1" // Incremented for BGM and preview features
-        let lastKnownVersion = UserDefaults.standard.string(forKey: "SchemaVersion") ?? "v1.0"
         
-        if lastKnownVersion != currentSchemaVersion {
-            print("Schema version changed from \(lastKnownVersion) to \(currentSchemaVersion), recreating database")
-            
-            // Force database deletion for clean schema migration
-            do {
-                let storeURL = modelConfiguration.url
-                if FileManager.default.fileExists(atPath: storeURL.path) {
-                    try FileManager.default.removeItem(at: storeURL)
-                    print("Removed existing database for schema upgrade")
-                }
-                
-                let associatedFiles = [
-                    storeURL.appendingPathExtension("wal"),
-                    storeURL.appendingPathExtension("shm")
-                ]
-                for file in associatedFiles {
-                    if FileManager.default.fileExists(atPath: file.path) {
-                        try FileManager.default.removeItem(at: file)
-                    }
-                }
-            } catch {
-                print("Warning: Failed to remove database files during schema upgrade: \(error)")
-            }
-            
-            // Update the stored version
-            UserDefaults.standard.set(currentSchemaVersion, forKey: "SchemaVersion")
-        }
-
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            // If migration fails, try creating a new in-memory container and then recreate persistent store
-            print("Migration failed, attempting to recreate database: \(error)")
-            
-            // Delete the existing database file to force recreation
-            do {
-                let storeURL = modelConfiguration.url
-                // Check if the URL is valid and accessible before attempting removal
-                if FileManager.default.fileExists(atPath: storeURL.path) {
-                    try FileManager.default.removeItem(at: storeURL)
-                    print("Removed existing database file at: \(storeURL.path)")
-                }
-                
-                // Also remove any associated files
-                let associatedFiles = [
-                    storeURL.appendingPathExtension("wal"),
-                    storeURL.appendingPathExtension("shm")
-                ]
-                for file in associatedFiles {
-                    if FileManager.default.fileExists(atPath: file.path) {
-                        try FileManager.default.removeItem(at: file)
-                        print("Removed associated file: \(file.path)")
-                    }
-                }
-            } catch {
-                print("Warning: Failed to remove database files during cleanup: \(error)")
-                // Continue anyway - the ModelContainer creation might still succeed
-            }
-            
-            // Try creating the container again
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                fatalError("Could not create ModelContainer even after cleanup: \(error)")
-            }
+            print("SwiftData container creation failed: \(error)")
+            fatalError("Could not create ModelContainer: \(error)")
         }
     }()
 

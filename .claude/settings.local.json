@@ -37,7 +37,8 @@
       "mcp__XcodeBuildMCP__launch_app_sim",
       "Bash(swift:*)",
       "mcp__XcodeBuildMCP__build_run_sim_name_proj",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(gh pr:*)"
     ],
     "deny": []
   }
