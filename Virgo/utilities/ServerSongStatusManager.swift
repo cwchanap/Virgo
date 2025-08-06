@@ -52,7 +52,7 @@ class ServerSongStatusManager {
                 }
                 
                 deleteAssociatedFiles(for: songToDelete)
-                deleteSongFromContext(songToDelete, context: backgroundContext)
+                try deleteSongFromContext(songToDelete, context: backgroundContext)
                 
                 let hasUpdates = try updateServerSongStatus(
                     songTitle: songTitle,

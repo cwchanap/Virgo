@@ -172,7 +172,8 @@ class ServerSongService: ObservableObject {
     }
     
     private func performDeletionBackground(song: Song, songKey: String) async -> Bool {
-        guard let container = await MainActor.run({ self.modelContext?.container }) else {
+        let container = await MainActor.run { self.modelContext?.container }
+        guard let container = container else {
             await MainActor.run { self.errorMessage = "No model context available" }
             return false
         }
