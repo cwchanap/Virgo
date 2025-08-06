@@ -19,12 +19,12 @@ struct DownloadedSongsView: View {
     @ObservedObject var audioPlaybackService: AudioPlaybackService
     let onPlayTap: (Song) -> Void
     let onSaveTap: (Song) -> Void
-    
+
     // Filter to show only downloaded songs (DTX Import genre)
     var downloadedSongs: [Song] {
         songs.filter { $0.genre == "DTX Import" }
     }
-    
+
     // Helper function to determine if a song is currently playing
     private func isPlaying(_ song: Song) -> Bool {
         // Check if playing via preview audio (for DTX Import songs with preview)
@@ -34,7 +34,7 @@ struct DownloadedSongsView: View {
         // Check if playing via regular playback service
         return currentlyPlaying == song.id
     }
-    
+
     var body: some View {
         List {
             if !downloadedSongs.isEmpty {
@@ -65,11 +65,11 @@ struct DownloadedSongsView: View {
                     Image(systemName: "arrow.down.circle")
                         .font(.system(size: 50))
                         .foregroundColor(.secondary)
-                    
+
                     Text("No Downloaded Songs")
                         .font(.title2)
                         .foregroundColor(.white)
-                    
+
                     Text("Download songs from the Server tab to see them here")
                         .font(.body)
                         .foregroundColor(.secondary)
@@ -98,12 +98,12 @@ struct DownloadedSongRowWithDelete: View {
     let onPlayTap: () -> Void
     let onSaveTap: () -> Void
     let onDelete: () -> Void
-    
+
     // Cache relationship data to prevent SwiftData concurrency issues
     @State private var chartCount: Int = 0
     @State private var measureCount: Int = 0
     @State private var charts: [Chart] = []
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Main song row with delete button
@@ -115,19 +115,19 @@ struct DownloadedSongRowWithDelete: View {
                         .foregroundColor(isPlaying ? .red : .purple)
                 }
                 .buttonStyle(PlainButtonStyle())
-                
+
                 // Song Info
                 VStack(alignment: .leading, spacing: 4) {
                     Text(song.title)
                         .font(.headline)
                         .lineLimit(1)
                         .foregroundColor(.white)
-                    
+
                     Text(song.artist)
                         .font(.subheadline)
                         .foregroundColor(.gray)
                         .lineLimit(1)
-                    
+
                     HStack(spacing: 12) {
                         Label("\(song.bpm) BPM", systemImage: "metronome")
                         Label(song.duration, systemImage: "clock")
@@ -138,9 +138,9 @@ struct DownloadedSongRowWithDelete: View {
                     .font(.caption)
                     .foregroundColor(.gray)
                 }
-                
+
                 Spacer()
-                
+
                 // Actions: Save, Difficulties, Expand Indicator, and Delete Button
                 VStack(spacing: 4) {
                     HStack(spacing: 8) {
@@ -151,14 +151,14 @@ struct DownloadedSongRowWithDelete: View {
                                 .foregroundColor(song.isSaved ? .purple : .gray)
                         }
                         .buttonStyle(PlainButtonStyle())
-                        
+
                         // Available Difficulties
                         HStack(spacing: 2) {
                             ForEach(song.availableDifficulties, id: \.self) { difficulty in
                                 DifficultyBadge(difficulty: difficulty, size: .small)
                             }
                         }
-                        
+
                         // Delete Button (moved to far right)
                         if isDeleting {
                             HStack(spacing: 8) {
@@ -178,7 +178,7 @@ struct DownloadedSongRowWithDelete: View {
                             .disabled(isDeleting)
                         }
                     }
-                    
+
                     // Expand indicator
                     Button(action: handleSongTap) {
                         HStack(spacing: 4) {
@@ -187,7 +187,7 @@ struct DownloadedSongRowWithDelete: View {
                                 .foregroundColor(.gray)
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                                 .animation(.easeInOut(duration: 0.3), value: isExpanded)
-                            
+
                             Text("\(chartCount) charts")
                                 .font(.caption2)
                                 .foregroundColor(.gray)
@@ -200,7 +200,7 @@ struct DownloadedSongRowWithDelete: View {
             .padding(.horizontal, 12)
             .background(isPlaying ? Color.purple.opacity(0.2) : Color.white.opacity(0.1))
             .cornerRadius(12)
-            
+
             // Expanded difficulty options
             if isExpanded {
                 DifficultyExpansionView(
@@ -226,23 +226,23 @@ struct DownloadedSongRowWithDelete: View {
             }
         }
     }
-    
+
     private func handleSongTap() {
         expandedSongId = expandedSongId == song.persistentModelID ? nil : song.persistentModelID
     }
-    
+
     private func handleChartSelect(_ chart: Chart) {
         selectedChart = chart
         navigateToGameplay = true
     }
-    
+
     @MainActor
     private func loadSongRelationshipData() async {
         await Task {
             // Access SwiftData relationships in a safe background context
             let songCharts = song.charts.filter { !$0.isDeleted }
             let songMeasureCount = calculateMeasureCount(from: songCharts)
-            
+
             await MainActor.run {
                 self.charts = songCharts
                 self.chartCount = songCharts.count
@@ -250,7 +250,7 @@ struct DownloadedSongRowWithDelete: View {
             }
         }.value
     }
-    
+
     private func calculateMeasureCount(from charts: [Chart]) -> Int {
         let allNotes = charts.flatMap { chart in
             chart.notes.filter { !$0.isDeleted }

@@ -15,7 +15,7 @@ struct GameplayControlsView: View {
     let onPlayPause: () -> Void
     let onRestart: () -> Void
     let onSkipToEnd: () -> Void
-    
+
     var body: some View {
         VStack(spacing: 16) {
             // Progress Bar
@@ -24,20 +24,20 @@ struct GameplayControlsView: View {
                     Text(formatTime(playbackProgress))
                         .font(.caption)
                         .foregroundColor(.gray)
-                    
+
                     Spacer()
-                    
+
                     Text(track.duration)
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
-                
+
                 ProgressView(value: playbackProgress, total: 1.0)
                     .progressViewStyle(LinearProgressViewStyle(tint: .purple))
                     .frame(height: 4)
             }
             .padding(.horizontal)
-            
+
             // Main Controls
             HStack(spacing: 24) {
                 Button(action: onRestart) {
@@ -45,20 +45,20 @@ struct GameplayControlsView: View {
                         .font(.title)
                         .foregroundColor(.white)
                 }
-                
+
                 Button(action: onPlayPause) {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 64))
                         .foregroundColor(isPlaying ? .red : .green)
                 }
-                
+
                 Button(action: onSkipToEnd) {
                     Image(systemName: "forward.end.fill")
                         .font(.title)
                         .foregroundColor(.white)
                 }
             }
-            
+
             // Metronome Controls (simplified for now)
             HStack {
                 Button("♩") {
@@ -79,7 +79,7 @@ struct GameplayControlsView: View {
             )
         )
     }
-    
+
     private func formatTime(_ progress: Double) -> String {
         let duration = parseDuration(track.duration)
         let currentSeconds = Int(progress * duration)
@@ -87,7 +87,7 @@ struct GameplayControlsView: View {
         let seconds = currentSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
-    
+
     private func parseDuration(_ duration: String) -> Double {
         let components = duration.split(separator: ":").compactMap { Double($0) }
         guard components.count == 2 else { return 180.0 }

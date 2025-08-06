@@ -22,7 +22,7 @@ enum Difficulty: String, Codable, CaseIterable {
         case .expert: return .purple
         }
     }
-    
+
     var defaultLevel: Int {
         switch self {
         case .easy: return 30
@@ -31,7 +31,7 @@ enum Difficulty: String, Codable, CaseIterable {
         case .expert: return 90
         }
     }
-    
+
     var sortOrder: Int {
         switch self {
         case .easy: return 0
@@ -51,7 +51,7 @@ enum TimeSignature: String, Codable, CaseIterable {
     case sevenEight = "7/8"
     case nineEight = "9/8"
     case twelveEight = "12/8"
-    
+
     var beatsPerMeasure: Int {
         switch self {
         case .fourFour: return 4
@@ -64,14 +64,14 @@ enum TimeSignature: String, Codable, CaseIterable {
         case .twelveEight: return 12
         }
     }
-    
+
     var noteValue: Int {
         switch self {
         case .fourFour, .threeFour, .twoFour, .fiveFour: return 4
         case .sixEight, .sevenEight, .nineEight, .twelveEight: return 8
         }
     }
-    
+
     var displayName: String {
         return self.rawValue
     }
@@ -85,7 +85,7 @@ enum NoteInterval: String, Codable, CaseIterable {
     case sixteenth = "Sixteenth"
     case thirtysecond = "Thirty Second"
     case sixtyfourth = "Sixty Fourth"
-    
+
     var needsStem: Bool {
         switch self {
         case .full, .half:
@@ -94,7 +94,7 @@ enum NoteInterval: String, Codable, CaseIterable {
             return true
         }
     }
-    
+
     var needsFlag: Bool {
         switch self {
         case .full, .half, .quarter:
@@ -103,7 +103,7 @@ enum NoteInterval: String, Codable, CaseIterable {
             return true
         }
     }
-    
+
     var flagCount: Int {
         switch self {
         case .full, .half, .quarter:
@@ -138,7 +138,7 @@ enum NoteType: String, Codable, CaseIterable {
 
 enum DrumType {
     case kick, snare, hiHat, hiHatPedal, crash, ride, tom1, tom2, tom3, cowbell
-    
+
     var description: String {
         switch self {
         case .kick: return "kick"
@@ -153,7 +153,7 @@ enum DrumType {
         case .cowbell: return "cowbell"
         }
     }
-    
+
     var symbol: String {
         switch self {
         case .kick: return "●"
@@ -168,7 +168,7 @@ enum DrumType {
         case .cowbell: return "◇"
         }
     }
-    
+
     static func from(noteType: NoteType) -> DrumType? {
         switch noteType {
         case .bass: return .kick

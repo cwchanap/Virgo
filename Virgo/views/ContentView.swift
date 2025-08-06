@@ -20,7 +20,7 @@ struct ContentView: View {
     @State private var expandedSongId: PersistentIdentifier?
     @State private var selectedChart: Chart?
     @State private var navigateToGameplay = false
-    
+
     @State private var databaseService: DatabaseMaintenanceService?
 
     var body: some View {
@@ -36,7 +36,7 @@ struct ContentView: View {
                 selectedChart: $selectedChart,
                 navigateToGameplay: $navigateToGameplay,
                 audioPlaybackService: audioPlaybackService,
-                onPlayTap: { song in 
+                onPlayTap: { song in
                     // Use AudioPlaybackService for downloaded songs with preview files
                     if song.genre == "DTX Import" && song.previewFilePath != nil {
                         audioPlaybackService.togglePlayback(for: song)
@@ -56,7 +56,7 @@ struct ContentView: View {
                 Text("Songs")
             }
             .tag(0)
-            
+
             // Metronome Tab
             MetronomeView()
                 .tabItem {
@@ -64,14 +64,14 @@ struct ContentView: View {
                     Text("Metronome")
                 }
                 .tag(1)
-            
+
             LibraryView(songs: allSongs, serverSongService: serverSongService)
                 .tabItem {
                     Image(systemName: "arrow.down.circle")
                     Text("Library")
                 }
                 .tag(2)
-            
+
             ProfileView()
                 .tabItem {
                     Image(systemName: "person")
@@ -91,7 +91,7 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private func toggleSave(for song: Song) {
         song.isSaved.toggle()
         Logger.database("Song \(song.title) \(song.isSaved ? "saved" : "unsaved")")

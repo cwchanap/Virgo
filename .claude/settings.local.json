@@ -41,7 +41,10 @@
       "Bash(gh pr:*)",
       "mcp__github__get_me",
       "mcp__github__list_pull_requests",
-      "mcp__github__get_pull_request_reviews"
+      "mcp__github__get_pull_request_reviews",
+      "mcp__github__get_pull_request",
+      "mcp__github__get_pull_request_comments",
+      "mcp__github__get_pull_request_files"
     ],
     "deny": []
   }

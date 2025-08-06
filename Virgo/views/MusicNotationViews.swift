@@ -14,11 +14,11 @@ struct DrumClefSymbol: View {
             // Top rectangle
             Rectangle()
                 .frame(width: 12, height: 8)
-            
+
             // Middle rectangle
             Rectangle()
                 .frame(width: 12, height: 8)
-            
+
             // Bottom rectangle
             Rectangle()
                 .frame(width: 12, height: 8)
@@ -30,14 +30,14 @@ struct DrumClefSymbol: View {
 // MARK: - Time Signature Symbol
 struct TimeSignatureSymbol: View {
     let timeSignature: TimeSignature
-    
+
     var body: some View {
         VStack(spacing: 2) {
             // Top number (beats per measure)
             Text("\(timeSignature.beatsPerMeasure)")
                 .font(.system(size: 18, weight: .bold, design: .serif))
                 .foregroundColor(.white)
-            
+
             // Bottom number (note value)
             Text("\(timeSignature.noteValue)")
                 .font(.system(size: 18, weight: .bold, design: .serif))

@@ -29,7 +29,7 @@ private struct StemView: View {
     let beat: DrumBeat
     let isActive: Bool
     let isBeamed: Bool
-    
+
     var body: some View {
         Group {
             // Connected stem for multiple notes
@@ -41,7 +41,7 @@ private struct StemView: View {
                     isBeamed: isBeamed
                 )
             }
-            
+
             // Individual stems for each drum
             ForEach(Array(beat.drums.enumerated()), id: \.offset) { _, drum in
                 IndividualStemView(
@@ -62,13 +62,13 @@ private struct ConnectedStemView: View {
     let beat: DrumBeat
     let isActive: Bool
     let isBeamed: Bool
-    
+
     var body: some View {
         let stemTop: CGFloat = isBeamed ? GameplayLayout.beamYPosition : stemInfo.stemTop
         let stemBottom = stemInfo.stemBottom
         let stemHeight = stemBottom - stemTop
         let stemCenterY = (stemTop + stemBottom) / 2
-        
+
         Rectangle()
             .frame(width: GameplayLayout.stemWidth, height: stemHeight)
             .foregroundColor(isActive ? .yellow : .white)
@@ -83,10 +83,10 @@ private struct IndividualStemView: View {
     let beat: DrumBeat
     let isActive: Bool
     let isBeamed: Bool
-    
+
     var body: some View {
         let drumYOffset = drum.notePosition.yOffset
-        
+
         Group {
             if beat.interval.needsStem {
                 if !stemInfo.hasConnectedStem {
@@ -109,11 +109,11 @@ private struct IndividualStemView: View {
 private struct BeamedStemView: View {
     let drumYOffset: CGFloat
     let isActive: Bool
-    
+
     var body: some View {
         let stemHeight = abs(drumYOffset - GameplayLayout.beamYPosition)
         let stemCenterY = (drumYOffset + GameplayLayout.beamYPosition) / 2
-        
+
         Rectangle()
             .frame(width: GameplayLayout.stemWidth, height: stemHeight)
             .foregroundColor(isActive ? .yellow : .white)
@@ -125,7 +125,7 @@ private struct BeamedStemView: View {
 private struct UnbeamedStemView: View {
     let drumYOffset: CGFloat
     let isActive: Bool
-    
+
     var body: some View {
         Rectangle()
             .frame(width: GameplayLayout.stemWidth, height: GameplayLayout.stemHeight)
@@ -139,13 +139,13 @@ private struct StemConnectorView: View {
     let drum: DrumType
     let beat: DrumBeat
     let isActive: Bool
-    
+
     var body: some View {
         let drumYOffset = drum.notePosition.yOffset
         let noteOffsets = beat.drums.map { $0.notePosition.yOffset }
         let isTopNote = drumYOffset == noteOffsets.min()
         let isBottomNote = drumYOffset == noteOffsets.max()
-        
+
         if !isTopNote && !isBottomNote {
             Rectangle()
                 .frame(width: GameplayLayout.connectorWidth, height: GameplayLayout.connectorHeight)
@@ -161,25 +161,25 @@ struct DrumBeatView: View {
     let isActive: Bool
     let row: Int
     let isBeamed: Bool
-    
+
     // Calculate stem connection info for multiple simultaneous notes
     private var stemInfo: StemConnectionInfo {
         guard beat.interval.needsStem && beat.drums.count > 1 else {
             return StemConnectionInfo(
-            hasConnectedStem: false,
-            stemTop: 0,
-            stemBottom: 0,
-            mainStemX: GameplayLayout.stemXOffset
-        )
+                hasConnectedStem: false,
+                stemTop: 0,
+                stemBottom: 0,
+                mainStemX: GameplayLayout.stemXOffset
+            )
         }
-        
+
         let noteOffsets = beat.drums.map { $0.notePosition.yOffset }
         let topOffset = noteOffsets.min() ?? 0 // Highest note (smallest y offset)
         let bottomOffset = noteOffsets.max() ?? 0 // Lowest note (largest y offset)
-        
+
         // Only connect stems if notes span multiple staff positions
         let shouldConnect = abs(topOffset - bottomOffset) > GameplayLayout.staffLineSpacing
-        
+
         if shouldConnect {
             return StemConnectionInfo(
                 hasConnectedStem: true,
@@ -189,14 +189,14 @@ struct DrumBeatView: View {
             )
         } else {
             return StemConnectionInfo(
-            hasConnectedStem: false,
-            stemTop: 0,
-            stemBottom: 0,
-            mainStemX: GameplayLayout.stemXOffset
-        )
+                hasConnectedStem: false,
+                stemTop: 0,
+                stemBottom: 0,
+                mainStemX: GameplayLayout.stemXOffset
+            )
         }
     }
-    
+
     var body: some View {
         ZStack {
             // Stem rendering
@@ -206,7 +206,7 @@ struct DrumBeatView: View {
                 isActive: isActive,
                 isBeamed: isBeamed
             )
-            
+
             // Flags on the main stem (for connected stems, only if not beamed)
             if stemInfo.hasConnectedStem && beat.interval.needsFlag && !isBeamed {
                 ForEach(0..<beat.interval.flagCount, id: \.self) { flagIndex in
@@ -218,7 +218,7 @@ struct DrumBeatView: View {
                         )
                 }
             }
-            
+
             // Drum symbols with flags for individual notes
             ForEach(Array(beat.drums.enumerated()), id: \.offset) { _, drum in
                 DrumSymbolView(
@@ -241,10 +241,10 @@ private struct DrumSymbolView: View {
     let beat: DrumBeat
     let isActive: Bool
     let isBeamed: Bool
-    
+
     var body: some View {
         let drumYOffset = drum.notePosition.yOffset
-        
+
         ZStack {
             // Flags for individual notes (only if not using connected stem and not beamed)
             if !stemInfo.hasConnectedStem && beat.interval.needsFlag && !isBeamed {
@@ -253,12 +253,12 @@ private struct DrumSymbolView: View {
                         .foregroundColor(isActive ? .yellow : .white)
                         .offset(
                             x: GameplayLayout.individualFlagXOffset,
-                            y: drumYOffset - GameplayLayout.individualFlagYOffset - 
+                            y: drumYOffset - GameplayLayout.individualFlagYOffset -
                                 CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
                         )
                 }
             }
-            
+
             // Drum symbol
             Text(drum.symbol)
                 .font(.system(size: GameplayLayout.drumSymbolFontSize, weight: .bold))
@@ -271,16 +271,16 @@ private struct DrumSymbolView: View {
 // MARK: - Flag View
 struct FlagView: View {
     let flagIndex: Int
-    
+
     var body: some View {
         Path { path in
             path.move(to: CGPoint(x: 0, y: 0))
             path.addCurve(to: CGPoint(x: GameplayLayout.flagCurveMidPointX, y: GameplayLayout.flagCurveMidPointY),
-                         control1: CGPoint(x: GameplayLayout.flagCurveControl1X, y: GameplayLayout.flagCurveControl1Y),
-                         control2: CGPoint(x: GameplayLayout.flagCurveControl2X, y: GameplayLayout.flagCurveControl2Y))
+                          control1: CGPoint(x: GameplayLayout.flagCurveControl1X, y: GameplayLayout.flagCurveControl1Y),
+                          control2: CGPoint(x: GameplayLayout.flagCurveControl2X, y: GameplayLayout.flagCurveControl2Y))
             path.addCurve(to: CGPoint(x: 0, y: GameplayLayout.flagHeight),
-                         control1: CGPoint(x: GameplayLayout.flagCurveEndControl1X, y: GameplayLayout.flagCurveEndControl1Y),
-                         control2: CGPoint(x: GameplayLayout.flagCurveEndControl2X, y: GameplayLayout.flagCurveEndControl2Y))
+                          control1: CGPoint(x: GameplayLayout.flagCurveEndControl1X, y: GameplayLayout.flagCurveEndControl1Y),
+                          control2: CGPoint(x: GameplayLayout.flagCurveEndControl2X, y: GameplayLayout.flagCurveEndControl2Y))
             path.closeSubpath()
         }
         .fill(Color.white)
