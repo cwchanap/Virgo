@@ -38,7 +38,10 @@
       "Bash(swift:*)",
       "mcp__XcodeBuildMCP__build_run_sim_name_proj",
       "Bash(cat:*)",
-      "Bash(gh pr:*)"
+      "Bash(gh pr:*)",
+      "mcp__github__get_me",
+      "mcp__github__list_pull_requests",
+      "mcp__github__get_pull_request_reviews"
     ],
     "deny": []
   }

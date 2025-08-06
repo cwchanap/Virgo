@@ -595,7 +595,8 @@ struct GameplayView: View {
         isPlaying = true
         
         // Start metronome first for timing synchronization
-        metronome.start()
+        guard let track = track else { return }
+        metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
         
         // Set start time after metronome starts to ensure sync
         playbackStartTime = Date()
@@ -606,16 +607,16 @@ struct GameplayView: View {
             // Check if BGM was previously paused and resume from current position
             if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
                 bgmPlayer.play()
-                Logger.audioPlayback("Resumed BGM playback for track: \(track?.title ?? "Unknown")")
+                Logger.audioPlayback("Resumed BGM playback for track: \(track.title)")
             } else {
                 // Start from beginning
                 bgmPlayer.currentTime = 0
                 bgmPlayer.play()
-                Logger.audioPlayback("Started BGM playback for track: \(track?.title ?? "Unknown")")
+                Logger.audioPlayback("Started BGM playbook for track: \(track.title)")
             }
         }
         
-        Logger.audioPlayback("Started playback for track: \(track?.title ?? "Unknown")")
+        Logger.audioPlayback("Started playback for track: \(track.title)")
         
         // Initialize playback position
         currentBeat = 0

@@ -59,12 +59,15 @@ struct GameplayControlsView: View {
                 }
             }
             
-            // Metronome Controls
-            MetronomeControlsInGameplay(
-                metronome: metronome,
-                track: track,
-                isPlaying: $isPlaying
-            )
+            // Metronome Controls (simplified for now)
+            HStack {
+                Button("♩") {
+                    // Toggle metronome
+                    metronome.toggle(bpm: track.bpm, timeSignature: track.timeSignature)
+                }
+                .foregroundColor(metronome.isEnabled ? .purple : .white)
+                .font(.title2)
+            }
             .padding(.horizontal)
         }
         .padding()
