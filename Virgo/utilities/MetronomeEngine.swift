@@ -106,6 +106,11 @@ class MetronomeEngine: ObservableObject {
         self.timeSignature = timeSignature
     }
     
+    func testClick() {
+        // Play a single test click
+        audioEngine.playTick(volume: volume, isAccented: true)
+    }
+    
     // MARK: - Beat Handling
     
     private func handleBeat(beat: Int, isAccented: Bool) {

@@ -124,7 +124,9 @@ struct MetronomeSettingsView: View {
             
             // Control buttons
             HStack(spacing: 20) {
-                Button(action: metronome.toggle) {
+                Button(action: {
+                    metronome.toggle(bpm: Int(tempBPM), timeSignature: selectedTimeSignature)
+                }) {
                     Text(metronome.isEnabled ? "Stop" : "Start")
                         .font(.title3)
                         .foregroundColor(.white)
