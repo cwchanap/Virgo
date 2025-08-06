@@ -8,6 +8,10 @@
 import AVFoundation
 import os.log
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 // MARK: - Audio Engine
 @MainActor
 class MetronomeAudioEngine: ObservableObject {
@@ -15,7 +19,9 @@ class MetronomeAudioEngine: ObservableObject {
     
     private var audioEngine: AVAudioEngine
     private var playerNode: AVAudioPlayerNode
+    #if os(iOS)
     private var audioSession: AVAudioSession
+    #endif
     
     // Audio buffer cache
     private var cachedTickerBuffer: AVAudioPCMBuffer?
@@ -27,7 +33,9 @@ class MetronomeAudioEngine: ObservableObject {
         self.isTestEnvironment = ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath")
         self.audioEngine = AVAudioEngine()
         self.playerNode = AVAudioPlayerNode()
+        #if os(iOS)
         self.audioSession = AVAudioSession.sharedInstance()
+        #endif
         
         setupAudioEngine()
     }
