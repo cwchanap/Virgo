@@ -13,7 +13,7 @@ struct GameplayHeaderView: View {
     let onDismiss: () -> Void
     let onPlayPause: () -> Void
     let onRestart: () -> Void
-    
+
     var body: some View {
         HStack {
             Button(action: onDismiss) {
@@ -22,30 +22,30 @@ struct GameplayHeaderView: View {
                     .foregroundColor(.white)
             }
             .padding(.leading)
-            
+
             Spacer()
-            
+
             VStack(spacing: 4) {
                 Text(track.title)
                     .font(.headline)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                
+
                 Text(track.artist)
                     .font(.subheadline)
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
             }
-            
+
             Spacer()
-            
+
             HStack(spacing: 12) {
                 Button(action: onRestart) {
                     Image(systemName: "backward.end.fill")
                         .font(.title2)
                         .foregroundColor(.white)
                 }
-                
+
                 Button(action: onPlayPause) {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.largeTitle)

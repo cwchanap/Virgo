@@ -16,7 +16,7 @@ final class Note {
     var measureNumber: Int
     var measureOffset: Double
     var chart: Chart?
-    
+
     init(interval: NoteInterval, noteType: NoteType, measureNumber: Int, measureOffset: Double, chart: Chart? = nil) {
         self.interval = interval
         self.noteType = noteType
@@ -34,14 +34,14 @@ final class Chart {
     var song: Song?
     @Relationship(deleteRule: .cascade, inverse: \Note.chart)
     var notes: [Note]
-    
+
     var timeSignature: TimeSignature {
         get {
             _timeSignature ?? (song?.isDeleted == false ? song?.timeSignature : nil) ?? .fourFour
         }
         set { _timeSignature = newValue }
     }
-    
+
     // Convenience accessors for song properties
     var title: String {
         song?.title ?? "Unknown Song"
@@ -58,18 +58,18 @@ final class Chart {
     var genre: String {
         song?.genre ?? "Unknown"
     }
-    
+
     // Safe accessor for notes count
     var notesCount: Int {
         notes.count
     }
-    
+
     // Safe accessor for notes
     var safeNotes: [Note] {
         notes.filter { !$0.isDeleted }
     }
-    
-    init(difficulty: Difficulty, level: Int? = nil, timeSignature: TimeSignature? = nil, 
+
+    init(difficulty: Difficulty, level: Int? = nil, timeSignature: TimeSignature? = nil,
          notes: [Note] = [], song: Song? = nil) {
         self.difficulty = difficulty
         // If no level provided, assign based on difficulty
@@ -96,47 +96,47 @@ final class Song {
     var previewFilePath: String? // Path to downloaded preview audio file
     @Relationship(deleteRule: .cascade, inverse: \Chart.song)
     var charts: [Chart]
-    
+
     var timeSignature: TimeSignature {
         get { _timeSignature ?? .fourFour }
         set { _timeSignature = newValue }
     }
-    
+
     // Convenience accessors
     var availableDifficulties: [Difficulty] {
         guard !isDeleted else { return [] }
-        
+
         let validCharts = charts.filter { !$0.isDeleted }
         let difficulties = validCharts.compactMap { chart in
             chart.difficulty
         }
         return difficulties.sorted { $0.sortOrder < $1.sortOrder }
     }
-    
+
     var easiestChart: Chart? {
         guard !isDeleted else { return nil }
-        
+
         let validCharts = charts.filter { !$0.isDeleted }
         return validCharts.min { chart1, chart2 in
             chart1.difficulty.sortOrder < chart2.difficulty.sortOrder
         }
     }
-    
+
     var measureCount: Int {
         // Safe access to charts and their notes
         guard !isDeleted else { return 1 }
-        
+
         let validCharts = charts.filter { !$0.isDeleted }
         let allNotes = validCharts.flatMap { chart in
             chart.safeNotes
         }
         return allNotes.map(\.measureNumber).max() ?? 1
     }
-    
+
     func chart(for difficulty: Difficulty) -> Chart? {
         return charts.first { $0.difficulty == difficulty }
     }
-    
+
     init(
         title: String,
         artist: String,
@@ -177,13 +177,13 @@ final class ServerChart {
     var filename: String  // DTX file name (e.g., "bas.dtx")
     var size: Int
     var serverSong: ServerSong?
-    
+
     init(
-        difficulty: String, 
-        difficultyLabel: String, 
-        level: Int, 
-        filename: String, 
-        size: Int, 
+        difficulty: String,
+        difficultyLabel: String,
+        level: Int,
+        filename: String,
+        size: Int,
         serverSong: ServerSong? = nil
     ) {
         self.difficulty = difficulty
@@ -208,7 +208,7 @@ final class ServerSong {
     var bgmDownloaded: Bool = false // Whether BGM file was successfully downloaded
     var hasPreview: Bool = false // Whether preview file is available for download
     var previewDownloaded: Bool = false // Whether preview file was successfully downloaded
-    
+
     init(
         songId: String,
         title: String,
@@ -233,7 +233,7 @@ final class ServerSong {
         self.hasPreview = hasPreview
         self.previewDownloaded = previewDownloaded
     }
-    
+
     // Legacy compatibility for single-file DTX
     convenience init(
         filename: String,
@@ -262,7 +262,7 @@ final class ServerSong {
             hasPreview: false
         )
     }
-    
+
 }
 
 // MARK: - Extensions
@@ -282,7 +282,7 @@ extension Song {
 // Keeping DrumTrack as a computed structure for backward compatibility
 struct DrumTrack: Equatable {
     let chart: Chart
-    
+
     // Forward all properties to the chart and its song
     var title: String { chart.title }
     var artist: String { chart.artist }
@@ -293,21 +293,21 @@ struct DrumTrack: Equatable {
     var timeSignature: TimeSignature { chart.timeSignature }
     var notes: [Note] { chart.safeNotes }
     var difficultyColor: Color { chart.difficultyColor }
-    
+
     // Legacy properties (these would need to be tracked elsewhere or computed)
     var isPlaying: Bool { chart.song?.isPlaying ?? false }
     var dateAdded: Date { chart.song?.dateAdded ?? Date() }
     var playCount: Int { chart.song?.playCount ?? 0 }
     var isSaved: Bool { chart.song?.isSaved ?? false }
-    
+
     init(chart: Chart) {
         self.chart = chart
     }
-    
+
     static func == (lhs: DrumTrack, rhs: DrumTrack) -> Bool {
         return lhs.chart.persistentModelID == rhs.chart.persistentModelID
     }
-    
+
     static var sampleData: [DrumTrack] {
         Song.sampleData.flatMap { song in
             song.charts.map { chart in

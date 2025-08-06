@@ -11,7 +11,7 @@ import SwiftUI
 struct BeamGroup: Identifiable {
     let id: String
     let beats: [DrumBeat]
-    
+
     var beamCount: Int {
         return beats.map { $0.interval.flagCount }.max() ?? 1
     }
@@ -23,7 +23,7 @@ struct BeamGroupView: View {
     let measurePositions: [GameplayLayout.MeasurePosition]
     let timeSignature: TimeSignature
     let isActive: Bool
-    
+
     var body: some View {
         ZStack {
             ForEach(0..<beamGroup.beamCount, id: \.self) { beamLevel in
@@ -46,30 +46,30 @@ struct BeamView: View {
     let measurePositions: [GameplayLayout.MeasurePosition]
     let timeSignature: TimeSignature
     let isActive: Bool
-    
+
     @ViewBuilder
     var body: some View {
         // Filter beats that need this beam level
         let beamedBeats = beats.filter { $0.interval.flagCount > beamLevel }
-        
+
         if beamedBeats.count >= 2,
            let firstBeat = beamedBeats.first,
            let lastBeat = beamedBeats.last {
-            
+
             // Calculate beam positions
             let firstMeasureIndex = firstBeat.id / 1000
             let lastMeasureIndex = lastBeat.id / 1000
-            
+
             if let firstMeasurePos = measurePositions.first(where: { $0.measureIndex == firstMeasureIndex }),
                let lastMeasurePos = measurePositions.first(where: { $0.measureIndex == lastMeasureIndex }),
                firstMeasurePos.row == lastMeasurePos.row {
-                
+
                 // Calculate X positions
                 let firstBeatOffset = firstBeat.timePosition - Double(firstMeasureIndex)
                 let lastBeatOffset = lastBeat.timePosition - Double(lastMeasureIndex)
                 let firstBeatPosition = firstBeatOffset * Double(timeSignature.beatsPerMeasure)
                 let lastBeatPosition = lastBeatOffset * Double(timeSignature.beatsPerMeasure)
-                
+
                 let startX = GameplayLayout.preciseNoteXPosition(
                     measurePosition: firstMeasurePos,
                     beatPosition: firstBeatPosition,
@@ -80,12 +80,12 @@ struct BeamView: View {
                     beatPosition: lastBeatPosition,
                     timeSignature: timeSignature
                 ) + GameplayLayout.stemXOffset
-                
+
                 // Beam Y position (above the notes, accounting for beam level)
-                let baseY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: firstMeasurePos.row) 
-                    - GameplayLayout.beamYPosition 
+                let baseY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: firstMeasurePos.row)
+                    - GameplayLayout.beamYPosition
                     - CGFloat(beamLevel) * GameplayLayout.beamLevelSpacing
-                
+
                 Path { path in
                     path.move(to: CGPoint(x: startX, y: baseY))
                     path.addLine(to: CGPoint(x: endX, y: baseY))

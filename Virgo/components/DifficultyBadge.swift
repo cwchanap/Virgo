@@ -11,10 +11,10 @@ import SwiftUI
 struct DifficultyBadge: View {
     let difficulty: Difficulty
     var size: BadgeSize = .normal
-    
+
     enum BadgeSize {
         case small, normal, large
-        
+
         var font: Font {
             switch self {
             case .small: return .caption2
@@ -22,7 +22,7 @@ struct DifficultyBadge: View {
             case .large: return .caption
             }
         }
-        
+
         var padding: (horizontal: CGFloat, vertical: CGFloat) {
             switch self {
             case .small: return (4, 2)
@@ -31,7 +31,7 @@ struct DifficultyBadge: View {
             }
         }
     }
-    
+
     var body: some View {
         Text(difficulty.rawValue)
             .font(size.font)

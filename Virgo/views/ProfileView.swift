@@ -17,7 +17,7 @@ struct ProfileView: View {
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
-            
+
             VStack(spacing: 20) {
                 // Header
                 VStack(spacing: 10) {
@@ -41,23 +41,23 @@ struct ProfileView: View {
                 }
                 .padding(.top, 20)
                 .padding(.bottom, 16)
-                
+
                 Spacer()
-                
+
                 // Profile content placeholder
                 VStack(spacing: 16) {
                     Text("Profile features coming soon!")
                         .font(.title2)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
-                    
+
                     Text("User settings, achievements, and preferences will be available here")
                         .font(.body)
                         .foregroundColor(.gray)
                         .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 32)
-                
+
                 Spacer()
             }
         }

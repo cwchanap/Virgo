@@ -11,12 +11,12 @@ import SwiftData
 struct LibraryView: View {
     let songs: [Song]
     @ObservedObject var serverSongService: ServerSongService
-    
+
     var downloadedSongs: [Song] {
         // Show all songs that were downloaded from server (DTX Import genre)
         songs.filter { $0.genre == "DTX Import" }
     }
-    
+
     var body: some View {
         ZStack {
             // Background gradient
@@ -26,7 +26,7 @@ struct LibraryView: View {
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: 10) {
@@ -50,7 +50,7 @@ struct LibraryView: View {
                 }
                 .padding(.top, 20)
                 .padding(.bottom, 16)
-                
+
                 // Downloaded Songs List
                 if downloadedSongs.isEmpty {
                     VStack(spacing: 16) {
@@ -58,13 +58,13 @@ struct LibraryView: View {
                         Image(systemName: "arrow.down.circle")
                             .font(.system(size: 64))
                             .foregroundColor(.white.opacity(0.3))
-                        
+
                         VStack(spacing: 8) {
                             Text("No Downloaded Songs")
                                 .font(.title2)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.white)
-                            
+
                             Text("Download songs from the server to see them here")
                                 .font(.body)
                                 .foregroundColor(.gray)
@@ -103,7 +103,7 @@ struct SavedSongRow: View {
     let song: Song
     let isDeleting: Bool
     let onDelete: (() -> Void)?
-    
+
     var body: some View {
         HStack(spacing: 12) {
             // Song Info
@@ -112,12 +112,12 @@ struct SavedSongRow: View {
                     .font(.headline)
                     .lineLimit(1)
                     .foregroundColor(.white)
-                
+
                 Text(song.artist)
                     .font(.subheadline)
                     .foregroundColor(.gray)
                     .lineLimit(1)
-                
+
                 HStack(spacing: 12) {
                     Label("\(song.bpm) BPM", systemImage: "metronome")
                     Label(song.duration, systemImage: "clock")
@@ -126,9 +126,9 @@ struct SavedSongRow: View {
                 .font(.caption)
                 .foregroundColor(.gray)
             }
-            
+
             Spacer()
-            
+
             // Available Difficulties and Delete Button
             VStack(spacing: 8) {
                 HStack(spacing: 2) {
@@ -136,7 +136,7 @@ struct SavedSongRow: View {
                         DifficultyBadge(difficulty: difficulty, size: .small)
                     }
                 }
-                
+
                 if let onDelete = onDelete {
                     if isDeleting {
                         HStack(spacing: 8) {

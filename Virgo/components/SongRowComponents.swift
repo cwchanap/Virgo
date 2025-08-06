@@ -7,7 +7,7 @@
 
 // This file has been refactored into focused component files:
 // - ExpandableSongRow.swift
-// - DifficultyExpansionView.swift  
+// - DifficultyExpansionView.swift
 // - DifficultyBadge.swift
 // - ServerSongRow.swift
 

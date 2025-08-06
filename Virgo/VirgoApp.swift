@@ -14,7 +14,7 @@ import UIKit
 @main
 struct VirgoApp: App {
     @StateObject private var sharedMetronome = MetronomeEngine()
-    
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Song.self,
@@ -28,11 +28,11 @@ struct VirgoApp: App {
             isStoredInMemoryOnly: false,
             allowsSave: true
         )
-        
+
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            print("SwiftData container creation failed: \(error)")
+            Logger.debug("SwiftData container creation failed: \(error)")
             fatalError("Could not create ModelContainer: \(error)")
         }
     }()

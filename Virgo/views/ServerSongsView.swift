@@ -12,7 +12,7 @@ import SwiftData
 struct ServerSongsView: View {
     let serverSongs: [ServerSong]
     @ObservedObject var serverSongService: ServerSongService
-    
+
     var body: some View {
         List {
             if !serverSongs.isEmpty {
@@ -43,11 +43,11 @@ struct ServerSongsView: View {
                     Image(systemName: "cloud")
                         .font(.system(size: 50))
                         .foregroundColor(.secondary)
-                    
+
                     Text("No Server Songs")
                         .font(.title2)
                         .foregroundColor(.white)
-                    
+
                     Text("Tap the refresh button to load songs from the server")
                         .font(.body)
                         .foregroundColor(.secondary)

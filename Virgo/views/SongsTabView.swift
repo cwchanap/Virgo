@@ -21,9 +21,9 @@ struct SongsTabView: View {
     @ObservedObject var audioPlaybackService: AudioPlaybackService
     let onPlayTap: (Song) -> Void
     let onSaveTap: (Song) -> Void
-    
+
     @State private var selectedSubTab = 0
-    
+
     // Computed property for filtered songs
     var songs: [Song] {
         if searchText.isEmpty {
@@ -31,11 +31,11 @@ struct SongsTabView: View {
         } else {
             return allSongs.filter { song in
                 song.title.localizedCaseInsensitiveContains(searchText) ||
-                song.artist.localizedCaseInsensitiveContains(searchText)
+                    song.artist.localizedCaseInsensitiveContains(searchText)
             }
         }
     }
-    
+
     // Computed property for filtered server songs
     var filteredServerSongs: [ServerSong] {
         if searchText.isEmpty {
@@ -43,11 +43,11 @@ struct SongsTabView: View {
         } else {
             return serverSongs.filter { song in
                 song.title.localizedCaseInsensitiveContains(searchText) ||
-                song.artist.localizedCaseInsensitiveContains(searchText)
+                    song.artist.localizedCaseInsensitiveContains(searchText)
             }
         }
     }
-    
+
     var body: some View {
         ZStack {
             // Background gradient
@@ -57,7 +57,7 @@ struct SongsTabView: View {
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: 10) {
@@ -72,7 +72,7 @@ struct SongsTabView: View {
                                 .foregroundColor(.gray)
                         }
                         Spacer()
-                        
+
                         if selectedSubTab == 1 {
                             Button(action: {
                                 Task {
@@ -85,8 +85,8 @@ struct SongsTabView: View {
                                     .rotationEffect(.degrees(serverSongService.isRefreshing ? 360 : 0))
                                     .animation(
                                         serverSongService.isRefreshing ?
-                                        Animation.linear(duration: 1).repeatForever(autoreverses: false) :
-                                        .default,
+                                            Animation.linear(duration: 1).repeatForever(autoreverses: false) :
+                                            .default,
                                         value: serverSongService.isRefreshing
                                     )
                             }
@@ -100,19 +100,19 @@ struct SongsTabView: View {
                     }
                     .padding(.horizontal)
                     .padding(.top)
-                    
+
                     // Search Bar
                     HStack {
                         HStack {
                             Image(systemName: "magnifyingglass")
                                 .foregroundColor(.gray)
                                 .font(.system(size: 16))
-                            
+
                             TextField("Search songs or artists...", text: $searchText)
                                 .font(.system(size: 16))
                                 .foregroundColor(.white)
                                 .accessibilityIdentifier("searchField")
-                            
+
                             if !searchText.isEmpty {
                                 Button(action: {
                                     searchText = ""
@@ -137,7 +137,7 @@ struct SongsTabView: View {
                 }
                 .padding(.top, 20)
                 .padding(.bottom, 16)
-                
+
                 // Sub-tab Picker
                 Picker("Song Source", selection: $selectedSubTab) {
                     Label("Downloaded", systemImage: "arrow.down.circle").tag(0)
@@ -146,7 +146,7 @@ struct SongsTabView: View {
                 .pickerStyle(SegmentedPickerStyle())
                 .padding(.horizontal)
                 .padding(.bottom, 16)
-                
+
                 // Content based on selected sub-tab
                 if selectedSubTab == 0 {
                     DownloadedSongsView(
