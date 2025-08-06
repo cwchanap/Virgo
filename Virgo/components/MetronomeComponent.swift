@@ -55,13 +55,16 @@ struct MetronomeComponent: View {
             // Control Buttons
             HStack(spacing: 30) {
                 // Play/Stop Button
-                Button(action: {
-                    metronome.toggle(bpm: bpm, timeSignature: timeSignature)
-                }) {
-                    Image(systemName: metronome.isEnabled ? "stop.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(metronome.isEnabled ? .red : .green)
-                }
+                Button(
+                    action: {
+                        metronome.toggle(bpm: bpm, timeSignature: timeSignature)
+                    },
+                    label: {
+                        Image(systemName: metronome.isEnabled ? "stop.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 60))
+                            .foregroundColor(metronome.isEnabled ? .red : .green)
+                    }
+                )
                 .buttonStyle(PlainButtonStyle())
             }
 

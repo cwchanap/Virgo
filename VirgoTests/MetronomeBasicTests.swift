@@ -21,7 +21,7 @@ struct MetronomeBasicTests {
     @Test func testMetronomeInitialState() {
         let metronome = MetronomeEngine()
         #expect(metronome.isEnabled == false)
-        #expect(metronome.currentBeat == 0)
+        #expect(metronome.currentBeat == 1)
         #expect(metronome.volume == 0.7)
     }
 
@@ -31,36 +31,34 @@ struct MetronomeBasicTests {
 
         // Configuration should not change public state immediately
         #expect(metronome.isEnabled == false)
-        #expect(metronome.currentBeat == 0)
+        #expect(metronome.currentBeat == 1)
     }
 
     @Test func testMetronomeBasicControls() {
         let metronome = MetronomeEngine()
-        metronome.configure(bpm: 120, timeSignature: .fourFour)
 
         // Test starting
-        metronome.start()
+        metronome.start(bpm: 120, timeSignature: .fourFour)
         #expect(metronome.isEnabled == true)
-        #expect(metronome.currentBeat == 0)
+        #expect(metronome.currentBeat == 1)
 
         // Test stopping
         metronome.stop()
         #expect(metronome.isEnabled == false)
-        #expect(metronome.currentBeat == 0)
+        #expect(metronome.currentBeat == 1)
     }
 
     @Test func testMetronomeToggleFunction() {
         let metronome = MetronomeEngine()
-        metronome.configure(bpm: 120, timeSignature: .fourFour)
 
         #expect(metronome.isEnabled == false)
 
         // Toggle on
-        metronome.toggle()
+        metronome.toggle(bpm: 120, timeSignature: .fourFour)
         #expect(metronome.isEnabled == true)
 
         // Toggle off
-        metronome.toggle()
+        metronome.toggle(bpm: 120, timeSignature: .fourFour)
         #expect(metronome.isEnabled == false)
     }
 
@@ -91,22 +89,10 @@ struct MetronomeBasicTests {
     }
 
     @Test func testMetronomeComponentCreation() {
-        let song = Song(
-            title: "Test Track",
-            artist: "Test Artist",
-            bpm: 120,
-            duration: "3:00",
-            genre: "Rock",
-            timeSignature: .fourFour
-        )
-
-        let chart = Chart(difficulty: .medium, song: song)
-        let track = DrumTrack(chart: chart)
-
-        let component = MetronomeComponent(track: track, isPlaying: .constant(false))
-        #expect(component.track.title == "Test Track")
-        #expect(component.track.bpm == 120)
-        #expect(component.track.timeSignature == .fourFour)
+        let metronome = MetronomeEngine()
+        let component = MetronomeComponent(metronome: metronome, bpm: 120, timeSignature: .fourFour)
+        #expect(component.bpm == 120)
+        #expect(component.timeSignature == .fourFour)
     }
 
     @Test func testMetronomeSettingsViewCreation() {
@@ -156,23 +142,17 @@ struct MetronomeBasicTests {
     }
 
     @Test func testMetronomeComponentWithDifferentTracks() {
-        let song1 = Song(title: "Track 1", artist: "Artist", bpm: 100, duration: "3:00",
-                         genre: "Pop", timeSignature: .fourFour)
-        let chart1 = Chart(difficulty: .easy, song: song1)
-
-        let song2 = Song(title: "Track 2", artist: "Artist", bpm: 140, duration: "4:00",
-                         genre: "Jazz", timeSignature: .threeFour)
-        let chart2 = Chart(difficulty: .hard, song: song2)
-
-        let tracks = [
-            DrumTrack(chart: chart1),
-            DrumTrack(chart: chart2)
+        let metronome = MetronomeEngine()
+        
+        let testCases = [
+            (bpm: 100, timeSignature: TimeSignature.fourFour),
+            (bpm: 140, timeSignature: TimeSignature.threeFour)
         ]
 
-        for track in tracks {
-            let component = MetronomeComponent(track: track, isPlaying: .constant(false))
-            #expect(component.track.bpm == track.bpm)
-            #expect(component.track.timeSignature == track.timeSignature)
+        for testCase in testCases {
+            let component = MetronomeComponent(metronome: metronome, bpm: testCase.bpm, timeSignature: testCase.timeSignature)
+            #expect(component.bpm == testCase.bpm)
+            #expect(component.timeSignature == testCase.timeSignature)
         }
     }
 
@@ -190,7 +170,7 @@ struct MetronomeBasicTests {
 
         // Simulate rapid beat updates and measure performance
         for _ in 0..<100 {
-            _ = metronome.getCurrentBeat()
+            _ = metronome.currentBeat
         }
 
         let endTime = CFAbsoluteTimeGetCurrent()
@@ -206,27 +186,19 @@ struct MetronomeBasicTests {
         metronome.configure(bpm: 120, timeSignature: .fourFour)
 
         // Test that metronome continues to function even if audio fails
-        metronome.start()
+        metronome.start(bpm: 120, timeSignature: .fourFour)
         #expect(metronome.isEnabled == true, "Metronome should start even without audio")
 
         // Test basic functionality continues
         metronome.testClick() // Should not crash
 
-        let beat = metronome.getCurrentBeat()
-        #expect(beat >= 0, "Beat counter should work without audio")
+        let beat = metronome.currentBeat
+        #expect(beat >= 1, "Beat counter should work without audio")
 
         metronome.stop()
         #expect(metronome.isEnabled == false, "Metronome should stop correctly")
     }
 
-    @Test
-    func testMetronomeConfigurationConstants() {
-        #expect(MetronomeConfiguration.defaultSampleRate == 44100.0)
-        #expect(MetronomeConfiguration.accentMultiplier == 1.3)
-        #expect(MetronomeConfiguration.uiUpdateThreshold == 4)
-        #expect(MetronomeConfiguration.maxBPMForSlowUpdate == 60)
-        #expect(MetronomeConfiguration.mediumBPMThreshold == 120)
-    }
 
     @Test
     func testBeatCounterThreadSafety() async {
@@ -236,10 +208,10 @@ struct MetronomeBasicTests {
         // Test concurrent access to beat counter
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<10 {
-                group.addTask {
+                group.addTask { @MainActor in
                     for _ in 0..<100 {
-                        let beat = metronome.getCurrentBeat()
-                        #expect(beat >= 0 && beat < 4, "Beat should always be within valid range")
+                        let beat = metronome.currentBeat
+                        #expect(beat >= 1 && beat <= 4, "Beat should always be within valid range")
                     }
                 }
             }

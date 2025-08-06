@@ -8,112 +8,120 @@ class ServerSongDownloader {
 
     /// Download and import a multi-difficulty song
     func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
-        // Create background ModelContext using the same container
         let backgroundContext = ModelContext(container)
-
+        
         do {
-            // Check if song already exists to prevent duplicates
-            let existingDescriptor = FetchDescriptor<Song>()
-            let existingSongs = try backgroundContext.fetch(existingDescriptor)
-
-            let songAlreadyExists = existingSongs.contains { existingSong in
-                existingSong.title.lowercased() == serverSong.title.lowercased() &&
-                    existingSong.artist.lowercased() == serverSong.artist.lowercased()
-            }
-
-            if songAlreadyExists {
+            // Check if song already exists
+            if try await songAlreadyExists(serverSong, in: backgroundContext) {
                 return (false, "Song already exists in database")
             }
-
-            // Create the Song object first
-            let song = Song(
-                title: serverSong.title,
-                artist: serverSong.artist,
-                bpm: Int(serverSong.bpm),
-                duration: "3:30", // Will be updated after parsing first chart
-                genre: "DTX Import",
-                timeSignature: .fourFour
-            )
-
-            // Download and process each chart with throttling to reduce system stress
-            for (index, serverChart) in serverSong.charts.enumerated() {
-                // Add small delay between downloads to reduce system stress
-                if index > 0 {
-                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms delay
-                }
-
-                let fileData = try await apiClient.downloadChartFile(
-                    songId: serverSong.songId,
-                    chartFilename: serverChart.filename
-                )
-
-                // Convert data to string with Shift-JIS encoding
-                guard let dtxContent = String(data: fileData, encoding: .shiftJIS) else {
-                    Logger.debug("Failed to decode \(serverChart.filename) with Shift-JIS encoding")
-                    continue
-                }
-
-                // Parse the DTX content
-                let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
-
-                // Update song BPM from the first chart if not already set (use rounded value)
-                if song.charts.isEmpty {
-                    song.bpm = Int(chartData.bpm.rounded())
-                }
-
-                // Map server difficulty to app difficulty
-                let difficulty = mapServerDifficultyToApp(serverChart.difficulty)
-
-                let chart = Chart(difficulty: difficulty, level: serverChart.level, song: song)
-
-                // Add notes to the chart
-                let notes = chartData.toNotes(for: chart)
-                notes.forEach { note in
-                    chart.notes.append(note)
-                }
-
-                // Update song duration from first chart
-                if song.charts.isEmpty {
-                    song.duration = formatDuration(calculateDuration(from: chartData.notes))
-                }
-
-                backgroundContext.insert(chart)
-            }
-
-            // Download BGM file if available
-            do {
-                let bgmData = try await apiClient.downloadBGMFile(songId: serverSong.songId)
-                let bgmPath = try fileManager.saveBGMFile(bgmData, for: serverSong.songId)
-                song.bgmFilePath = bgmPath
-                Logger.database("Downloaded BGM file for song: \(song.title)")
-            } catch {
-                // BGM download is optional - continue even if it fails
-                Logger.database("Failed to download BGM for song \(song.title): \(error.localizedDescription)")
-            }
-
-            // Download preview file if available
-            do {
-                let previewData = try await apiClient.downloadPreviewFile(songId: serverSong.songId)
-                let previewPath = try fileManager.savePreviewFile(previewData, for: serverSong.songId)
-                song.previewFilePath = previewPath
-                Logger.database("Downloaded preview file for song: \(song.title)")
-            } catch {
-                // Preview download is optional - continue even if it fails
-                Logger.database("Failed to download preview for song \(song.title): \(error.localizedDescription)")
-            }
-
-            // Save to SwiftData using background context
+            
+            // Create and populate the song
+            let song = createSong(from: serverSong)
+            try await processCharts(for: song, from: serverSong, in: backgroundContext)
+            await downloadOptionalFiles(for: song, serverSong: serverSong)
+            
+            // Save to SwiftData
             backgroundContext.insert(song)
             try backgroundContext.save()
-
+            
             return (true, nil)
-
         } catch {
             return (false, "Multi-difficulty import failed: \(error.localizedDescription)")
         }
     }
 
     // MARK: - Private Helper Methods
+    
+    /// Check if a song with the same title and artist already exists
+    private func songAlreadyExists(_ serverSong: ServerSong, in context: ModelContext) async throws -> Bool {
+        let existingDescriptor = FetchDescriptor<Song>()
+        let existingSongs = try context.fetch(existingDescriptor)
+        
+        return existingSongs.contains { existingSong in
+            existingSong.title.lowercased() == serverSong.title.lowercased() &&
+                existingSong.artist.lowercased() == serverSong.artist.lowercased()
+        }
+    }
+    
+    /// Create a new Song object from server song data
+    private func createSong(from serverSong: ServerSong) -> Song {
+        return Song(
+            title: serverSong.title,
+            artist: serverSong.artist,
+            bpm: Int(serverSong.bpm),
+            duration: "3:30", // Will be updated after parsing first chart
+            genre: "DTX Import",
+            timeSignature: .fourFour
+        )
+    }
+    
+    /// Process all charts for a song
+    private func processCharts(for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
+        for (index, serverChart) in serverSong.charts.enumerated() {
+            // Add small delay between downloads to reduce system stress
+            if index > 0 {
+                try await Task.sleep(nanoseconds: 100_000_000) // 100ms delay
+            }
+            
+            try await processChart(serverChart, for: song, from: serverSong, in: context)
+        }
+    }
+    
+    /// Process a single chart
+    private func processChart(_ serverChart: ServerChart, for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
+        let fileData = try await apiClient.downloadChartFile(
+            songId: serverSong.songId,
+            chartFilename: serverChart.filename
+        )
+        
+        guard let dtxContent = String(data: fileData, encoding: .shiftJIS) else {
+            Logger.debug("Failed to decode \(serverChart.filename) with Shift-JIS encoding")
+            return
+        }
+        
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+        
+        // Update song BPM from the first chart if not already set
+        if song.charts.isEmpty {
+            song.bpm = Int(chartData.bpm.rounded())
+            song.duration = formatDuration(calculateDuration(from: chartData.notes))
+        }
+        
+        // Create and populate chart
+        let difficulty = mapServerDifficultyToApp(serverChart.difficulty)
+        let chart = Chart(difficulty: difficulty, level: serverChart.level, song: song)
+        
+        let notes = chartData.toNotes(for: chart)
+        notes.forEach { note in
+            chart.notes.append(note)
+        }
+        
+        context.insert(chart)
+    }
+    
+    /// Download optional BGM and preview files
+    private func downloadOptionalFiles(for song: Song, serverSong: ServerSong) async {
+        // Download BGM file if available
+        do {
+            let bgmData = try await apiClient.downloadBGMFile(songId: serverSong.songId)
+            let bgmPath = try fileManager.saveBGMFile(bgmData, for: serverSong.songId)
+            song.bgmFilePath = bgmPath
+            Logger.database("Downloaded BGM file for song: \(song.title)")
+        } catch {
+            Logger.database("Failed to download BGM for song \(song.title): \(error.localizedDescription)")
+        }
+        
+        // Download preview file if available
+        do {
+            let previewData = try await apiClient.downloadPreviewFile(songId: serverSong.songId)
+            let previewPath = try fileManager.savePreviewFile(previewData, for: serverSong.songId)
+            song.previewFilePath = previewPath
+            Logger.database("Downloaded preview file for song: \(song.title)")
+        } catch {
+            Logger.database("Failed to download preview for song \(song.title): \(error.localizedDescription)")
+        }
+    }
 
     private func mapServerDifficultyToApp(_ serverDifficulty: String) -> Difficulty {
         switch serverDifficulty.lowercased() {

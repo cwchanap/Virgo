@@ -140,11 +140,8 @@ class ServerSongCache {
             let endIndex = min(i + batchSize, existingSongs.count)
             let batch = Array(existingSongs[i..<endIndex])
 
-            for song in batch {
-                // Ensure the song is still valid before deletion
-                if !song.isDeleted {
-                    modelContext.delete(song)
-                }
+            for song in batch where !song.isDeleted {
+                modelContext.delete(song)
             }
 
             // Save after each batch to avoid accumulating too many changes

@@ -213,7 +213,7 @@ struct DTXFileParserTests {
 
     @Test func testActualDTXFile() throws {
         // Get the test bundle - use proper test bundle for reliability
-        let testBundle = Bundle.module
+        let testBundle = Bundle.main
 
         guard let url = testBundle.url(
             forResource: "Kyuuka ressha no madobe de/mas",
