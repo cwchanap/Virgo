@@ -124,16 +124,19 @@ struct MetronomeSettingsView: View {
 
             // Control buttons
             HStack(spacing: 20) {
-                Button(action: {
-                    metronome.toggle(bpm: Int(tempBPM), timeSignature: selectedTimeSignature)
-                }) {
+                Button(
+                    action: {
+                        metronome.toggle(bpm: Int(tempBPM), timeSignature: selectedTimeSignature)
+                    },
+                    label: {
                     Text(metronome.isEnabled ? "Stop" : "Start")
                         .font(.title3)
                         .foregroundColor(.white)
                         .frame(width: 80, height: 40)
                         .background(metronome.isEnabled ? .red : .purple)
                         .cornerRadius(8)
-                }
+                    }
+                )
 
                 Button("Test Click") {
                     metronome.testClick()
