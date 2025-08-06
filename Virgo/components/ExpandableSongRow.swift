@@ -154,4 +154,5 @@ struct ExpandableSongRow: View {
         .loadSongRelationships(for: song) { data in
             relationshipData = data
         }
+    }
 }

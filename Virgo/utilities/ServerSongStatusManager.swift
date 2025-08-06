@@ -40,75 +40,26 @@ class ServerSongStatusManager {
     
     /// Delete a local song from storage
     func deleteLocalSong(_ song: Song, container: ModelContainer) async -> Bool {
-        // Store song information before deletion for server song matching
         let songTitle = song.title.lowercased()
         let songArtist = song.artist.lowercased()
         let songId = song.persistentModelID
-        
-        // Create background ModelContext using the same container
         let backgroundContext = ModelContext(container)
         
         return await Task {
             do {
-                // Find the song in the background context
-                let songDescriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in
-                    songModel.persistentModelID == songId
-                })
-                let songs = try backgroundContext.fetch(songDescriptor)
-                
-                guard let songToDelete = songs.first else {
-                    print("DEBUG: Song not found in background context")
+                guard let songToDelete = try findSongInContext(songId: songId, context: backgroundContext) else {
                     return true // Already deleted or not found
                 }
                 
-                // Ensure the song is still attached to this context
-                guard !songToDelete.isDeleted else {
-                    print("DEBUG: Song is already deleted")
-                    return true
-                }
+                deleteAssociatedFiles(for: songToDelete)
+                deleteSongFromContext(songToDelete, context: backgroundContext)
                 
-                // Delete BGM file if it exists
-                if let bgmPath = songToDelete.bgmFilePath {
-                    fileManager.deleteBGMFile(at: bgmPath)
-                }
-                
-                // Delete preview file if it exists
-                if let previewPath = songToDelete.previewFilePath {
-                    fileManager.deletePreviewFile(at: previewPath)
-                }
-                
-                // IMPORTANT: Only delete the specific song, not all songs with same title/artist
-                // SwiftData will handle cascade deletion of charts and notes automatically
-                backgroundContext.delete(songToDelete)
-                try backgroundContext.save()
-                
-                // Update matching server songs to mark as not downloaded
-                // Only update server songs that match title/artist AND are from DTX Import genre
-                let serverSongsDescriptor = FetchDescriptor<ServerSong>()
-                let allServerSongs = try backgroundContext.fetch(serverSongsDescriptor)
-                
-                var hasUpdates = false
-                for serverSong in allServerSongs {
-                    if serverSong.title.lowercased() == songTitle && 
-                       serverSong.artist.lowercased() == songArtist &&
-                       serverSong.isDownloaded {
-                        // Check if there are still other songs with same title/artist before marking as not downloaded
-                        let songsDescriptor = FetchDescriptor<Song>()
-                        let remainingSongs = try backgroundContext.fetch(songsDescriptor)
-                        let hasOtherMatchingSongs = remainingSongs.contains { otherSong in
-                            otherSong.persistentModelID != songId &&
-                            otherSong.title.lowercased() == songTitle &&
-                            otherSong.artist.lowercased() == songArtist &&
-                            otherSong.genre == "DTX Import"
-                        }
-                        
-                        // Only mark as not downloaded if no other matching DTX Import songs exist
-                        if !hasOtherMatchingSongs {
-                            serverSong.isDownloaded = false
-                            hasUpdates = true
-                        }
-                    }
-                }
+                let hasUpdates = try updateServerSongStatus(
+                    songTitle: songTitle,
+                    songArtist: songArtist,
+                    songId: songId,
+                    context: backgroundContext
+                )
                 
                 if hasUpdates {
                     try backgroundContext.save()
@@ -164,6 +115,94 @@ class ServerSongStatusManager {
     }
     
     // MARK: - Private Helper Methods
+    
+    /// Find a song by ID in the given context
+    private func findSongInContext(songId: PersistentIdentifier, context: ModelContext) throws -> Song? {
+        let songDescriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in
+            songModel.persistentModelID == songId
+        })
+        let songs = try context.fetch(songDescriptor)
+        
+        guard let songToDelete = songs.first else {
+            print("DEBUG: Song not found in background context")
+            return nil
+        }
+        
+        guard !songToDelete.isDeleted else {
+            print("DEBUG: Song is already deleted")
+            return nil
+        }
+        
+        return songToDelete
+    }
+    
+    /// Delete associated BGM and preview files for a song
+    private func deleteAssociatedFiles(for song: Song) {
+        if let bgmPath = song.bgmFilePath {
+            fileManager.deleteBGMFile(at: bgmPath)
+        }
+        
+        if let previewPath = song.previewFilePath {
+            fileManager.deletePreviewFile(at: previewPath)
+        }
+    }
+    
+    /// Delete song from context and save
+    private func deleteSongFromContext(_ song: Song, context: ModelContext) throws {
+        context.delete(song)
+        try context.save()
+    }
+    
+    /// Update server song download status after local song deletion
+    private func updateServerSongStatus(
+        songTitle: String,
+        songArtist: String,
+        songId: PersistentIdentifier,
+        context: ModelContext
+    ) throws -> Bool {
+        let serverSongsDescriptor = FetchDescriptor<ServerSong>()
+        let allServerSongs = try context.fetch(serverSongsDescriptor)
+        
+        var hasUpdates = false
+        for serverSong in allServerSongs {
+            if serverSong.title.lowercased() == songTitle &&
+               serverSong.artist.lowercased() == songArtist &&
+               serverSong.isDownloaded {
+                
+                let hasOtherMatchingSongs = try checkForOtherMatchingSongs(
+                    songTitle: songTitle,
+                    songArtist: songArtist,
+                    excludingSongId: songId,
+                    context: context
+                )
+                
+                if !hasOtherMatchingSongs {
+                    serverSong.isDownloaded = false
+                    hasUpdates = true
+                }
+            }
+        }
+        
+        return hasUpdates
+    }
+    
+    /// Check if there are other DTX Import songs with the same title/artist
+    private func checkForOtherMatchingSongs(
+        songTitle: String,
+        songArtist: String,
+        excludingSongId: PersistentIdentifier,
+        context: ModelContext
+    ) throws -> Bool {
+        let songsDescriptor = FetchDescriptor<Song>()
+        let remainingSongs = try context.fetch(songsDescriptor)
+        
+        return remainingSongs.contains { otherSong in
+            otherSong.persistentModelID != excludingSongId &&
+            otherSong.title.lowercased() == songTitle &&
+            otherSong.artist.lowercased() == songArtist &&
+            otherSong.genre == "DTX Import"
+        }
+    }
     
     private func isAlreadyDownloaded(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {
         return localSongs.contains { localSong in
