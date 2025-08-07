@@ -74,12 +74,12 @@ struct SongsTabView: View {
                         Spacer()
 
                         if selectedSubTab == 1 {
-                            Button(action: {
+                            Button {
                                 Task {
                                     await serverSongService.refreshServerSongs()
                                 }
-                            }) {
-                                Image(systemName: serverSongService.isRefreshing ? "arrow.clockwise" : "arrow.clockwise")
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
                                     .font(.title2)
                                     .foregroundColor(.white)
                                     .rotationEffect(.degrees(serverSongService.isRefreshing ? 360 : 0))
@@ -114,9 +114,9 @@ struct SongsTabView: View {
                                 .accessibilityIdentifier("searchField")
 
                             if !searchText.isEmpty {
-                                Button(action: {
+                                Button {
                                     searchText = ""
-                                }) {
+                                } label: {
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundColor(.gray)
                                         .font(.system(size: 16))

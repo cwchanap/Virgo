@@ -187,7 +187,11 @@ class ChartRelationshipLoader: BaseSwiftDataRelationshipLoader<Chart, ChartRelat
 }
 
 // MARK: - View Modifier for Relationship Loading
-struct SwiftDataRelationshipModifier<Model: PersistentModel, Data, Loader: BaseSwiftDataRelationshipLoader<Model, Data>>: ViewModifier {
+struct SwiftDataRelationshipModifier<
+    Model: PersistentModel,
+    Data,
+    Loader: BaseSwiftDataRelationshipLoader<Model, Data>
+>: ViewModifier {
     @StateObject private var loader: Loader
     let onDataLoaded: (Data) -> Void
 

@@ -199,7 +199,6 @@ struct MetronomeBasicTests {
         #expect(metronome.isEnabled == false, "Metronome should stop correctly")
     }
 
-
     @Test
     func testBeatCounterThreadSafety() async {
         let metronome = MetronomeEngine()
