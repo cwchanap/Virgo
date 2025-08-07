@@ -69,7 +69,12 @@ class ServerSongDownloader {
     }
     
     /// Process a single chart
-    private func processChart(_ serverChart: ServerChart, for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
+    private func processChart(
+        _ serverChart: ServerChart,
+        for song: Song,
+        from serverSong: ServerSong,
+        in context: ModelContext
+    ) async throws {
         let fileData = try await apiClient.downloadChartFile(
             songId: serverSong.songId,
             chartFilename: serverChart.filename

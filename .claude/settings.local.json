@@ -44,7 +44,9 @@
       "mcp__github__get_pull_request_reviews",
       "mcp__github__get_pull_request",
       "mcp__github__get_pull_request_comments",
-      "mcp__github__get_pull_request_files"
+      "mcp__github__get_pull_request_files",
+      "mcp__github__get_issue_comments",
+      "mcp__github__add_issue_comment"
     ],
     "deny": []
   }

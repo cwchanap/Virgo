@@ -1,34 +1,5 @@
 import Foundation
 
-struct DTXServerFile {
-    let filename: String
-    let size: Int
-}
-
-struct DTXServerSongData {
-    let songId: String
-    let title: String
-    let artist: String?
-    let bpm: Double?
-    let charts: [DTXServerChartData]
-}
-
-struct DTXServerChartData {
-    let difficulty: String
-    let difficultyLabel: String
-    let level: Int
-    let filename: String
-    let size: Int
-}
-
-struct DTXServerMetadata {
-    let filename: String
-    let title: String?
-    let artist: String?
-    let bpm: Double?
-    let level: Int?
-}
-
 enum DTXAPIError: LocalizedError {
     case invalidURL
     case noData
@@ -104,7 +75,7 @@ class DTXAPIClient: ObservableObject {
                 isLoading = false
             }
 
-            return response.individualFiles?.map { DTXServerFile(filename: $0.filename, size: $0.size) } ?? []
+            return response.individualFiles.map { DTXServerFile(filename: $0.filename, size: $0.size) }
         } catch {
             // Update UI state on main thread
             await MainActor.run {
@@ -148,7 +119,8 @@ class DTXAPIClient: ObservableObject {
                             difficultyLabel: chartInfo.difficultyLabel,
                             level: chartInfo.level,
                             filename: chartInfo.filename,
-                            size: chartInfo.size
+                            size: chartInfo.size,
+                            metadata: nil
                         )
                     }
                 )
@@ -379,61 +351,5 @@ class DTXAPIClient: ObservableObject {
         } catch {
             return false
         }
-    }
-}
-
-// MARK: - Response Models
-
-private struct DTXListResponse: Codable {
-    let songs: [DTXSongInfo]
-    let individualFiles: [DTXFileInfo]?
-
-    struct DTXSongInfo: Codable {
-        let songId: String
-        let title: String
-        let artist: String?
-        let bpm: Double?
-        let charts: [DTXChartInfo]
-
-        enum CodingKeys: String, CodingKey {
-            case songId = "song_id"
-            case title, artist, bpm, charts
-        }
-    }
-
-    struct DTXChartInfo: Codable {
-        let difficulty: String
-        let difficultyLabel: String
-        let level: Int
-        let filename: String
-        let size: Int
-
-        enum CodingKeys: String, CodingKey {
-            case difficulty
-            case difficultyLabel = "difficulty_label"
-            case level, filename, size
-        }
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case songs
-        case individualFiles = "individual_files"
-    }
-
-    struct DTXFileInfo: Codable {
-        let filename: String
-        let size: Int
-    }
-}
-
-private struct DTXMetadataResponse: Codable {
-    let filename: String
-    let metadata: DTXMetadataInfo
-
-    struct DTXMetadataInfo: Codable {
-        let title: String?
-        let artist: String?
-        let bpm: Double?
-        let level: Int?
     }
 }
