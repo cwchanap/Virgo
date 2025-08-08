@@ -46,9 +46,8 @@ class MetronomeEngine: ObservableObject {
 
         // Connect timing engine to audio engine
         timingEngine.onBeat = { [weak self] beat, isAccented in
-            Task { @MainActor in
-                self?.handleBeat(beat: beat, isAccented: isAccented)
-            }
+            // Audio playback runs on background thread for precise timing
+            self?.handleBeat(beat: beat, isAccented: isAccented)
         }
 
         // Observe timing engine state
@@ -82,15 +81,12 @@ class MetronomeEngine: ObservableObject {
 
         audioEngine.resume()
         timingEngine.start()
-
-        Logger.audioPlayback("Started metronome: \(bpm) BPM, \(timeSignature.displayName)")
     }
 
     func stop() {
         timingEngine.stop()
         audioEngine.stop()
 
-        Logger.audioPlayback("Stopped metronome")
     }
 
     func toggle(bpm: Int, timeSignature: TimeSignature) {
@@ -116,8 +112,6 @@ class MetronomeEngine: ObservableObject {
     private func handleBeat(beat: Int, isAccented: Bool) {
         // Play audio tick
         audioEngine.playTick(volume: volume, isAccented: isAccented)
-
-        Logger.audioPlayback("Beat \(beat) (accented: \(isAccented))")
     }
 
     // MARK: - Configuration Updates
