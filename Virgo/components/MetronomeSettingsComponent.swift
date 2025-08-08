@@ -38,7 +38,11 @@ struct MetronomeSettingsView: View {
                     .font(.title2)
                     .foregroundColor(.white)
 
-                Slider(value: $tempBPM, in: MetronomeConstants.minBPM...MetronomeConstants.maxBPM, step: MetronomeConstants.bpmStep)
+                Slider(
+                    value: $tempBPM,
+                    in: MetronomeConstants.minBPM...MetronomeConstants.maxBPM,
+                    step: MetronomeConstants.bpmStep
+                )
                     .accentColor(.purple)
                     .onChange(of: tempBPM) { bpm in
                         metronome.configure(bpm: Int(bpm), timeSignature: selectedTimeSignature)
@@ -109,15 +113,22 @@ struct MetronomeSettingsView: View {
             HStack(spacing: 8) {
                 ForEach(0..<selectedTimeSignature.beatsPerMeasure, id: \.self) { beat in
                     Circle()
-                        .frame(width: MetronomeConstants.beatIndicatorSize, height: MetronomeConstants.beatIndicatorSize)
+                        .frame(
+                            width: MetronomeConstants.beatIndicatorSize,
+                            height: MetronomeConstants.beatIndicatorSize
+                        )
                         .foregroundColor(
-                            metronome.isEnabled && metronome.currentBeat == beat ?
+                            metronome.isEnabled && metronome.currentBeat == beat + 1 ?
                                 (beat == 0 ? .purple : .white) : .gray.opacity(0.3)
                         )
                         .scaleEffect(
-                            metronome.isEnabled && metronome.currentBeat == beat ? MetronomeConstants.beatIndicatorActiveScale : 1.0
+                            metronome.isEnabled && metronome.currentBeat == beat + 1 ?
+                                MetronomeConstants.beatIndicatorActiveScale : 1.0
                         )
-                        .animation(.easeInOut(duration: MetronomeConstants.beatIndicatorAnimationDuration), value: metronome.currentBeat)
+                        .animation(
+                            .easeInOut(duration: MetronomeConstants.beatIndicatorAnimationDuration),
+                            value: metronome.currentBeat
+                        )
                 }
             }
             .padding(.top)

@@ -41,10 +41,10 @@ class MetronomeAudioEngine: ObservableObject {
     }
 
     deinit {
-        Task { @MainActor in
-            self.stop()
-            self.audioEngine.detach(self.playerNode)
-        }
+        // Perform cleanup synchronously in deinit to avoid closure capture issues
+        playerNode.stop()
+        audioEngine.stop()
+        audioEngine.detach(playerNode)
     }
 
     // MARK: - Audio Engine Setup
@@ -58,21 +58,30 @@ class MetronomeAudioEngine: ObservableObject {
         do {
             // Configure audio session for iOS
             #if os(iOS)
+            Logger.audioPlayback("Setting up iOS audio session...")
             try audioSession.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try audioSession.setActive(true)
+            Logger.audioPlayback("iOS audio session configured successfully")
             #endif
 
             // Attach and connect player node
+            Logger.audioPlayback("Attaching and connecting audio player node...")
             audioEngine.attach(playerNode)
-            audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: nil)
+            
+            // Get the output format from the main mixer to ensure compatibility
+            let outputFormat = audioEngine.mainMixerNode.outputFormat(forBus: 0)
+            Logger.audioPlayback("Main mixer output format: \(outputFormat)")
+            audioEngine.connect(playerNode, to: audioEngine.mainMixerNode, format: outputFormat)
 
             // Start the audio engine
+            Logger.audioPlayback("Starting audio engine...")
             try audioEngine.start()
 
             Logger.audioPlayback("Audio engine setup completed successfully")
 
         } catch {
             Logger.audioPlayback("Failed to setup audio engine: \(error.localizedDescription)")
+            // Continue without audio instead of crashing
         }
     }
 
@@ -94,13 +103,55 @@ class MetronomeAudioEngine: ObservableObject {
 
             let audioFile = try AVAudioFile(forReading: tempURL)
             let frameCount = AVAudioFrameCount(audioFile.length)
+            
+            Logger.audioPlayback("🔊 Audio file format: \(audioFile.processingFormat)")
 
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount) else {
+            // Use the player node's output format to ensure compatibility
+            let targetFormat = playerNode.outputFormat(forBus: 0)
+            Logger.audioPlayback("🔊 Player node output format: \(targetFormat)")
+            
+            // Create buffer with the target format if different from file format
+            let bufferFormat = targetFormat.channelCount > 0 ? targetFormat : audioFile.processingFormat
+            Logger.audioPlayback("🔊 Using buffer format: \(bufferFormat)")
+            
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: bufferFormat, frameCapacity: frameCount) else {
                 try? FileManager.default.removeItem(at: tempURL)
                 throw AudioEngineError.bufferCreationFailed
             }
 
-            try audioFile.read(into: buffer)
+            // If formats don't match, we need to convert
+            if !audioFile.processingFormat.isEqual(bufferFormat) {
+                Logger.audioPlayback("🔊 Format conversion needed from \(audioFile.processingFormat) to \(bufferFormat)")
+                
+                // Create a converter
+                guard let converter = AVAudioConverter(from: audioFile.processingFormat, to: bufferFormat) else {
+                    try? FileManager.default.removeItem(at: tempURL)
+                    throw AudioEngineError.bufferCreationFailed
+                }
+                
+                // Read the original data
+                guard let originalBuffer = AVAudioPCMBuffer(pcmFormat: audioFile.processingFormat, frameCapacity: frameCount) else {
+                    try? FileManager.default.removeItem(at: tempURL)
+                    throw AudioEngineError.bufferCreationFailed
+                }
+                
+                try audioFile.read(into: originalBuffer)
+                
+                // Convert to target format
+                var error: NSError?
+                let status = converter.convert(to: buffer, error: &error) { _, outStatus in
+                    outStatus.pointee = .haveData
+                    return originalBuffer
+                }
+                
+                if status == .error {
+                    throw error ?? AudioEngineError.bufferCreationFailed
+                }
+                
+            } else {
+                // Formats match, read directly
+                try audioFile.read(into: buffer)
+            }
 
             // Cache the buffer for future use
             cachedTickerBuffer = buffer
@@ -121,22 +172,30 @@ class MetronomeAudioEngine: ObservableObject {
     func playTick(volume: Float = 1.0, isAccented: Bool = false) {
         guard !isTestEnvironment else { return }
 
+        // Ensure audio engine is running before attempting playback
+        if !audioEngine.isRunning {
+            do {
+                try audioEngine.start()
+            } catch {
+                Logger.audioPlayback("🔊 Failed to restart audio engine: \(error.localizedDescription)")
+                return
+            }
+        }
+
         do {
             let buffer = try getTickerBuffer()
             let adjustedVolume = isAccented ? min(volume * 1.3, 1.0) : volume
 
-            playerNode.scheduleBuffer(buffer) {
-                // Buffer completed playback
-            }
-
+            playerNode.scheduleBuffer(buffer)
             playerNode.volume = adjustedVolume
 
+            // Always ensure the player node is playing after scheduling a buffer
             if !playerNode.isPlaying {
                 playerNode.play()
             }
 
         } catch {
-            Logger.audioPlayback("Failed to play tick: \(error.localizedDescription)")
+            Logger.audioPlayback("🔊 Failed to play tick: \(error.localizedDescription)")
         }
     }
 
