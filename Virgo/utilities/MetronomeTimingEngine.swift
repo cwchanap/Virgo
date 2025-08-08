@@ -139,7 +139,7 @@ class MetronomeTimingEngine: ObservableObject {
         onBeat?(beatToPlay, isAccented)
 
         // Update UI properties on main thread
-        Task { @MainActor in
+        DispatchQueue.main.async {
             self.currentBeat += 1
             if self.currentBeat > self.timeSignature.beatsPerMeasure {
                 self.currentBeat = 1

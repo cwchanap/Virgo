@@ -25,6 +25,7 @@ class MetronomeEngine: ObservableObject {
     // Engine components
     private let audioEngine: MetronomeAudioEngine
     private let timingEngine: MetronomeTimingEngine
+    private var cancellables = Set<AnyCancellable>()
 
     // Configuration
     var bpm: Int = 120 {
@@ -55,9 +56,9 @@ class MetronomeEngine: ObservableObject {
     }
 
     deinit {
-        Task { @MainActor in
-            self.stop()
-        }
+        // Cleanup Combine subscriptions
+        cancellables.removeAll()
+        // Engines have their own deinit cleanup
     }
 
     // MARK: - Observation
@@ -66,11 +67,13 @@ class MetronomeEngine: ObservableObject {
         // Update published properties when timing engine changes
         timingEngine.$isPlaying
             .receive(on: DispatchQueue.main)
-            .assign(to: &$isEnabled)
+            .assign(to: \.isEnabled, on: self)
+            .store(in: &cancellables)
 
         timingEngine.$currentBeat
             .receive(on: DispatchQueue.main)
-            .assign(to: &$currentBeat)
+            .assign(to: \.currentBeat, on: self)
+            .store(in: &cancellables)
     }
 
     // MARK: - Playback Control
