@@ -94,7 +94,8 @@ struct ServerSongRow: View {
 
                         if serverSong.hasBGM {
                             HStack(spacing: 4) {
-                                Image(systemName: serverSong.bgmDownloaded ? "waveform" : "waveform.badge.exclamationmark")
+                                Image(systemName: serverSong.bgmDownloaded ?
+                                      "waveform" : "waveform.badge.exclamationmark")
                                     .font(.caption2)
                                     .foregroundColor(serverSong.bgmDownloaded ? .green : .orange)
                                 Text("BGM")
@@ -105,7 +106,8 @@ struct ServerSongRow: View {
 
                         if serverSong.hasPreview {
                             HStack(spacing: 4) {
-                                Image(systemName: serverSong.previewDownloaded ? "play.circle" : "play.circle.badge.exclamationmark")
+                                Image(systemName: serverSong.previewDownloaded ?
+                                      "play.circle" : "play.circle.badge.exclamationmark")
                                     .font(.caption2)
                                     .foregroundColor(serverSong.previewDownloaded ? .green : .orange)
                                 Text("Preview")

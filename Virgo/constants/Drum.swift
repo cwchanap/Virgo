@@ -170,22 +170,24 @@ enum DrumType {
     }
 
     static func from(noteType: NoteType) -> DrumType? {
-        switch noteType {
-        case .bass: return .kick
-        case .snare: return .snare
-        case .hiHat: return .hiHat
-        case .hiHatPedal: return .hiHatPedal
-        case .openHiHat: return .hiHat
-        case .crash: return .crash
-        case .ride: return .ride
-        case .highTom: return .tom1
-        case .midTom: return .tom2
-        case .lowTom: return .tom3
-        case .china: return .crash
-        case .splash: return .crash
-        case .cowbell: return .cowbell
-        }
+        return noteTypeToDrumTypeMap[noteType]
     }
+    
+    private static let noteTypeToDrumTypeMap: [NoteType: DrumType] = [
+        .bass: .kick,
+        .snare: .snare,
+        .hiHat: .hiHat,
+        .hiHatPedal: .hiHatPedal,
+        .openHiHat: .hiHat,
+        .crash: .crash,
+        .ride: .ride,
+        .highTom: .tom1,
+        .midTom: .tom2,
+        .lowTom: .tom3,
+        .china: .crash,
+        .splash: .crash,
+        .cowbell: .cowbell
+    ]
 }
 
 // MARK: - Beam Grouping Constants
