@@ -41,6 +41,7 @@ struct GameplayView: View {
     @State var metronome = MetronomeEngine()
     @State var staticStaffLinesView: AnyView?
     @State var inputManager = InputManager()
+    @State var inputHandler = GameplayInputHandler()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -76,7 +77,7 @@ struct GameplayView: View {
         .onAppear {
             Logger.userAction("Opened gameplay view for track: \(track?.title ?? "Unknown")")
             // Setup InputManager delegate
-            inputManager.delegate = self
+            inputManager.delegate = inputHandler
             // Only proceed if data is loaded
             if isDataLoaded {
                 setupGameplay()
