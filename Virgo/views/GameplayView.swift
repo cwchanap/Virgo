@@ -82,6 +82,7 @@ struct GameplayView: View {
     @State private var bgmLoadingError: String?
     @State private var metronome = MetronomeEngine()
     @State private var staticStaffLinesView: AnyView?
+    @State private var inputManager = InputManager()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -125,6 +126,8 @@ struct GameplayView: View {
         }
         .onAppear {
             Logger.userAction("Opened gameplay view for track: \(track?.title ?? "Unknown")")
+            // Setup InputManager delegate
+            inputManager.delegate = self
             // Only proceed if data is loaded
             if isDataLoaded {
                 setupGameplay()
@@ -136,6 +139,7 @@ struct GameplayView: View {
             metronome.stop()
             bgmPlayer?.stop()
             bgmPlayer = nil
+            inputManager.stopListening()
         }
     }
 
@@ -430,6 +434,8 @@ struct GameplayView: View {
         setupBGMPlayer()
         // Cache track duration
         cachedTrackDuration = calculateTrackDuration()
+        // Configure InputManager with song data
+        inputManager.configure(bpm: track.bpm, timeSignature: track.timeSignature, notes: cachedNotes)
         // Don't auto-start playback - wait for user to click play
     }
 
@@ -581,6 +587,9 @@ struct GameplayView: View {
 
         // Stop metronome
         metronome.stop()
+        
+        // Stop InputManager listening
+        inputManager.stopListening()
 
         // Save elapsed time when pausing
         if let startTime = playbackStartTime {
@@ -602,6 +611,11 @@ struct GameplayView: View {
         // Set start time after metronome starts to ensure sync
         playbackStartTime = Date()
         playbackTimer?.invalidate()
+        
+        // Start InputManager listening with song start time
+        if let startTime = playbackStartTime {
+            inputManager.startListening(songStartTime: startTime)
+        }
 
         // Start BGM playback if available
         if let bgmPlayer = bgmPlayer {
@@ -802,6 +816,33 @@ struct GameplayView: View {
         pausedElapsedTime = 0.0  // Reset paused time on skip to end
         bgmPlayer?.stop()
         Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")
+    }
+}
+
+// MARK: - InputManagerDelegate
+
+extension GameplayView: InputManagerDelegate {
+    func inputManager(_ manager: InputManager, didReceiveHit hit: InputHit) {
+        Logger.userAction("Input hit received: \(hit.drumType.description) at \(hit.timestamp)")
+    }
+    
+    func inputManager(_ manager: InputManager, didMatchNote result: NoteMatchResult) {
+        let accuracyText = switch result.timingAccuracy {
+        case .perfect: "PERFECT"
+        case .great: "GREAT" 
+        case .good: "GOOD"
+        case .miss: "MISS"
+        }
+        
+        if let note = result.matchedNote {
+            Logger.userAction("Note matched: \(result.hitInput.drumType.description) - \(accuracyText) (\(result.timingError.formatted(.number.precision(.fractionLength(0))))ms) at measure \(result.measureNumber)")
+        } else {
+            Logger.userAction("No note match: \(result.hitInput.drumType.description) - \(accuracyText) at measure \(result.measureNumber)")
+        }
+        
+        // TODO: Add visual feedback for note hits
+        // TODO: Add scoring system
+        // TODO: Add combo tracking
     }
 }
 
