@@ -72,12 +72,14 @@ struct ContentView: View {
                 }
                 .tag(2)
 
-            ProfileView()
-                .tabItem {
-                    Image(systemName: "person")
-                    Text("Profile")
-                }
-                .tag(3)
+            NavigationStack {
+                ProfileView()
+            }
+            .tabItem {
+                Image(systemName: "person")
+                Text("Profile")
+            }
+            .tag(3)
         }
         .accentColor(.purple)
         .onAppear {
