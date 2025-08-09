@@ -352,21 +352,22 @@ struct GameplayView: View {
     private func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
         Group {
             if isPlaying, let track = track {
-                // FIXED: Use timer-based values that trigger SwiftUI updates
-                // SwiftUI won't update for non-@Published metronome methods, so use our timer values
+                // Calculate which measure the metronome is currently playing
+                // Use timer-based measure calculation but sync beat with metronome
                 let displayMeasure = currentMeasureIndex
 
                 // Get measure position from display timing
                 let measurePos = measurePositionMap[displayMeasure] ?? measurePositionMap[0]
 
                 if let measurePos = measurePos {
-                    // currentBeatPosition is now fractional (0.0-1.0), need to convert to beat index (0-3 for 4/4)
-                    let beatPosition = currentBeatPosition * Double(track.timeSignature.beatsPerMeasure)
+                    // Use timer-based discrete beat positioning for 4 jumps per measure
+                    let timerBeatIndex = Int(floor(currentBeatPosition * Double(track.timeSignature.beatsPerMeasure)))
+                    let discreteBeatPosition = Double(timerBeatIndex)
 
-                    // Calculate exact X position using metronome measure position
+                    // Calculate exact X position using metronome beat position
                     let indicatorX = GameplayLayout.preciseNoteXPosition(
                         measurePosition: measurePos,
-                        beatPosition: beatPosition,
+                        beatPosition: discreteBeatPosition,
                         timeSignature: track.timeSignature
                     )
 
@@ -631,117 +632,146 @@ struct GameplayView: View {
         playbackProgress = 0.0
 
         // Re-enable timer now that MetronomeEngine threading is fixed
-        // Use background queue timer to avoid blocking main thread
-        let backgroundQueue = DispatchQueue(label: "playback.timer", qos: .userInitiated)
-
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
-            backgroundQueue.async {
-                self.updatePlaybackPosition(timer: timer)
-            }
+        // Timer must be scheduled on main thread, but we can do the heavy work in background
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            self.updatePlaybackPosition(timer: timer)
         }
     }
 
     private func updatePlaybackPosition(timer: Timer) {
         guard isPlaying else {
-            DispatchQueue.main.async {
-                timer.invalidate()
-            }
+            timer.invalidate()
             return
         }
 
-        // Calculate progress based on actual elapsed time
-        guard let startTime = playbackStartTime else { return }
+        guard let elapsedTime = calculateElapsedTime(),
+              let track = track else { return }
+
+        let playbackData = calculatePlaybackPosition(elapsedTime: elapsedTime, track: track)
+        updateUIWithPlaybackData(playbackData, timer: timer, track: track)
+    }
+
+    // MARK: - Playback Position Helper Methods
+
+    private func calculateElapsedTime() -> Double? {
+        guard let startTime = playbackStartTime else { return nil }
         let currentSessionTime = Date().timeIntervalSince(startTime)
-        let elapsedTime = pausedElapsedTime + currentSessionTime
+        return pausedElapsedTime + currentSessionTime
+    }
 
-        // FIXED: Use time-based calculation for smooth progression
-        guard let track = track else { return }
+    private struct PlaybackPositionData {
+        let newBeatIndex: Int
+        let newMeasureIndex: Int
+        let newBeatPosition: Double
+        let newTotalBeats: Int
+        let newProgress: Double
+    }
 
-        // Calculate position based on elapsed time for smooth progression
+    private func calculatePlaybackPosition(elapsedTime: Double, track: DrumTrack) -> PlaybackPositionData {
         let secondsPerBeat = 60.0 / Double(track.bpm)
         let beatsElapsed = elapsedTime / secondsPerBeat
+        let beatsPerMeasure = Double(track.timeSignature.beatsPerMeasure)
+        
+        // Preserve fractional beat values for smooth animation
+        let newMeasureIndex = Int(beatsElapsed / beatsPerMeasure)
+        let beatWithinMeasure = beatsElapsed.truncatingRemainder(dividingBy: beatsPerMeasure)
+        let newBeatPosition = beatWithinMeasure / beatsPerMeasure
+        
+        // Debug logging to trace the calculation
+        if Int(elapsedTime * 10) % 5 == 0 { // Log every 0.5 seconds to avoid spam
+            Logger.debug("Calculation: elapsed=\(elapsedTime), beatsElapsed=\(beatsElapsed), beatsPerMeasure=\(beatsPerMeasure), beatWithinMeasure=\(beatWithinMeasure), newBeatPosition=\(newBeatPosition)")
+        }
+        
+        let totalBeats = Int(beatsElapsed)  // Keep for compatibility
+        let newBeatIndex = findClosestBeatIndex(measureIndex: newMeasureIndex, beatPosition: newBeatPosition)
+        let newProgress = min(elapsedTime / cachedTrackDuration, 1.0)
 
-        // Convert to measure and beat position
-        let totalBeats = Int(beatsElapsed)
-        let newMeasureIndex = totalBeats / track.timeSignature.beatsPerMeasure
-        let beatWithinMeasure = totalBeats % track.timeSignature.beatsPerMeasure
-        let newBeatPosition = Double(beatWithinMeasure) / Double(track.timeSignature.beatsPerMeasure)
+        return PlaybackPositionData(
+            newBeatIndex: newBeatIndex,
+            newMeasureIndex: newMeasureIndex,
+            newBeatPosition: newBeatPosition,
+            newTotalBeats: totalBeats,
+            newProgress: newProgress
+        )
+    }
 
-        // Find the closest actual beat index for highlighting existing notes
-        var newBeatIndex = 0
-        if !cachedDrumBeats.isEmpty {
-            var left = 0
-            var right = cachedDrumBeats.count - 1
+    private func findClosestBeatIndex(measureIndex: Int, beatPosition: Double) -> Int {
+        guard !cachedDrumBeats.isEmpty else { return 0 }
 
-            while left <= right {
-                let mid = (left + right) / 2
-                let currentTimePosition = Double(newMeasureIndex) + newBeatPosition
-                if cachedDrumBeats[mid].timePosition <= currentTimePosition {
-                    newBeatIndex = mid
-                    left = mid + 1
-                } else {
-                    right = mid - 1
-                }
+        var left = 0
+        var right = cachedDrumBeats.count - 1
+        var result = 0
+
+        while left <= right {
+            let mid = (left + right) / 2
+            let currentTimePosition = Double(measureIndex) + beatPosition
+            if cachedDrumBeats[mid].timePosition <= currentTimePosition {
+                result = mid
+                left = mid + 1
+            } else {
+                right = mid - 1
             }
         }
 
-        // Calculate other values based on time-based timing
-        let newTotalBeats = Int(beatsElapsed)
-        let trackDuration = cachedTrackDuration
-        let newProgress = min(elapsedTime / trackDuration, 1.0)
+        return result
+    }
 
-        // Only update UI on main thread if something actually changed
-        DispatchQueue.main.async {
-            var shouldUpdateUI = false
+    private func updateUIWithPlaybackData(_ data: PlaybackPositionData, timer: Timer, track: DrumTrack) {
+        let shouldUpdate = shouldUpdateUI(with: data)
+        guard shouldUpdate else { return }
 
-            // Only update currentBeat if it actually changed to reduce UI re-renders
-            if newBeatIndex != currentBeat {
-                currentBeat = newBeatIndex
-                shouldUpdateUI = true
-            }
+        applyUIUpdates(with: data)
 
-            // Update beat position for progression indicator
-            if abs(newBeatPosition - currentBeatPosition) > 0.005 || newMeasureIndex != currentMeasureIndex {
-                currentBeatPosition = newBeatPosition
-                currentMeasureIndex = newMeasureIndex
-                shouldUpdateUI = true
-            }
-
-            // Only update timing values if they changed significantly
-            if newTotalBeats != totalBeatsElapsed {
-                totalBeatsElapsed = newTotalBeats
-                currentQuarterNotePosition = Double(newMeasureIndex) + newBeatPosition
-                shouldUpdateUI = true
-            }
-
-            // Update progress less frequently to reduce UI churn
-            if abs(playbackProgress - newProgress) > 0.02 {
-                playbackProgress = newProgress
-                shouldUpdateUI = true
-            }
-
-            // Only process updates if something actually changed
-            if !shouldUpdateUI {
-                return
-            }
-
-            if playbackProgress >= 1.0 {
-                timer.invalidate()
-                isPlaying = false
-                metronome.stop()
-                playbackProgress = 0.0
-                currentBeat = 0
-                currentQuarterNotePosition = 0.0
-                totalBeatsElapsed = 0
-                lastBeatUpdate = -1
-                currentBeatPosition = 0.0
-                currentMeasureIndex = 0
-                playbackStartTime = nil
-                pausedElapsedTime = 0.0
-                bgmPlayer?.stop()
-                Logger.audioPlayback("Playback finished for track: \(track.title)")
-            }
+        if data.newProgress >= 1.0 {
+            handlePlaybackCompletion(timer: timer, track: track)
         }
+    }
+
+    private func shouldUpdateUI(with data: PlaybackPositionData) -> Bool {
+        return data.newBeatIndex != currentBeat ||
+               data.newBeatPosition != currentBeatPosition ||
+               data.newMeasureIndex != currentMeasureIndex ||
+               data.newTotalBeats != totalBeatsElapsed ||
+               abs(playbackProgress - data.newProgress) > 0.02
+    }
+
+    private func applyUIUpdates(with data: PlaybackPositionData) {
+        if data.newBeatIndex != currentBeat {
+            currentBeat = data.newBeatIndex
+        }
+
+        if data.newBeatPosition != currentBeatPosition || data.newMeasureIndex != currentMeasureIndex {
+            currentBeatPosition = data.newBeatPosition
+            currentMeasureIndex = data.newMeasureIndex
+            let beatsPerMeasure = track?.timeSignature.beatsPerMeasure ?? 4
+            Logger.debug("Purple bar update: measure=\(data.newMeasureIndex), beatPos=\(data.newBeatPosition), timeSignature=\(track?.timeSignature.displayName ?? "unknown"), beatsPerMeasure=\(beatsPerMeasure)")
+        }
+
+        if data.newTotalBeats != totalBeatsElapsed {
+            totalBeatsElapsed = data.newTotalBeats
+            currentQuarterNotePosition = Double(data.newMeasureIndex) + data.newBeatPosition
+        }
+
+        if abs(playbackProgress - data.newProgress) > 0.02 {
+            playbackProgress = data.newProgress
+        }
+    }
+
+    private func handlePlaybackCompletion(timer: Timer, track: DrumTrack) {
+        timer.invalidate()
+        isPlaying = false
+        metronome.stop()
+        playbackProgress = 0.0
+        currentBeat = 0
+        currentQuarterNotePosition = 0.0
+        totalBeatsElapsed = 0
+        lastBeatUpdate = -1
+        currentBeatPosition = 0.0
+        currentMeasureIndex = 0
+        playbackStartTime = nil
+        pausedElapsedTime = 0.0
+        bgmPlayer?.stop()
+        Logger.audioPlayback("Playback finished for track: \(track.title)")
     }
 
     private func restartPlayback() {

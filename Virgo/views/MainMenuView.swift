@@ -10,6 +10,7 @@ import SwiftData
 
 struct MainMenuView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var sharedMetronome: MetronomeEngine
     @State private var logoScale: CGFloat = 0.8
     @State private var musicNoteRotation: Double = 0
     @State private var isAnimating = false
@@ -160,6 +161,7 @@ struct MainMenuView: View {
             Logger.databaseError(error)
         }
     }
+    
 }
 
 // Custom button style for press effect

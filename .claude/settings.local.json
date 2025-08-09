@@ -46,7 +46,9 @@
       "mcp__github__get_pull_request_comments",
       "mcp__github__get_pull_request_files",
       "mcp__github__get_issue_comments",
-      "mcp__github__add_issue_comment"
+      "mcp__github__add_issue_comment",
+      "mcp__XcodeBuildMCP__clean_proj",
+      "mcp__XcodeBuildMCP__list_schems_proj"
     ],
     "deny": []
   }

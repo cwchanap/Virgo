@@ -78,37 +78,8 @@ class DatabaseMaintenanceService {
     }
 
     private func cleanupOldSampleSongs(songs: [Song]) {
-        // Remove any old sample songs that are not DTX Import data
-        let oldSampleSongs = songs.filter { song in
-            song.genre != "DTX Import"
-        }
-
-        if !oldSampleSongs.isEmpty {
-            Logger.database("Found \(oldSampleSongs.count) old sample songs to remove")
-
-            for song in oldSampleSongs {
-                Logger.database("Removing old sample song: \(song.title) by \(song.artist) (genre: \(song.genre))")
-
-                // Delete all charts and their notes first for proper cleanup
-                for chart in song.charts {
-                    for note in chart.notes {
-                        modelContext.delete(note)
-                    }
-                    modelContext.delete(chart)
-                }
-
-                // Then delete the song
-                modelContext.delete(song)
-            }
-
-            do {
-                try modelContext.save()
-                Logger.database("Successfully cleaned up \(oldSampleSongs.count) old sample songs")
-            } catch {
-                Logger.databaseError(error)
-            }
-        } else {
-            Logger.database("No old sample songs found to clean up")
-        }
+        // Don't remove sample songs - they provide content for the app
+        // Only remove truly problematic duplicates or corrupted data
+        Logger.database("Skipping sample song cleanup to preserve app content")
     }
 }
