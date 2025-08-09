@@ -11,7 +11,7 @@ import AppKit
 #endif
 
 struct InputSettingsView: View {
-    @StateObject private var settingsManager = InputSettingsManager()
+    @StateObject var settingsManager = InputSettingsManager()
     @State var selectedDrumType: DrumType?
     @State var isCapturingKey = false
     @State private var showResetAlert = false
