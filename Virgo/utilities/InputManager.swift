@@ -61,7 +61,7 @@ protocol InputManagerDelegate: AnyObject {
 }
 
 class InputManager: ObservableObject {
-    var delegate: InputManagerDelegate?
+    weak var delegate: InputManagerDelegate?
     
     // Song timing reference
     private var songStartTime: Date?

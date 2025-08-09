@@ -131,7 +131,7 @@ extension GameplayView {
         // Debug logging to trace the calculation
         if Int(elapsedTime * 10) % 5 == 0 { // Log every 0.5 seconds to avoid spam
             let logMessage = "Calculation: elapsed=\(elapsedTime), beatsElapsed=\(beatsElapsed), " +
-                           "beatsPerMeasure=\(beatsPerMeasure), beatWithinMeasure=\(beatWithinMeasure), "+
+                           "beatsPerMeasure=\(beatsPerMeasure), beatWithinMeasure=\(beatWithinMeasure), " +
                            "newBeatPosition=\(newBeatPosition)"
             Logger.debug(logMessage)
         }

@@ -7,9 +7,9 @@
 
 import Foundation
 
-// MARK: - InputManagerDelegate
+// MARK: - InputHandler Class
 
-extension GameplayView: InputManagerDelegate {
+class GameplayInputHandler: InputManagerDelegate {
     func inputManager(_ manager: InputManager, didReceiveHit hit: InputHit) {
         let logMessage = "Input hit received: \(hit.drumType.description) at \(hit.timestamp)"
         Logger.userAction(logMessage)
@@ -23,7 +23,7 @@ extension GameplayView: InputManagerDelegate {
         case .miss: "MISS"
         }
         
-        if let note = result.matchedNote {
+        if result.matchedNote != nil {
             let logMessage = "Note matched: \(result.hitInput.drumType.description) - \(accuracyText) " + 
             "(\(result.timingError.formatted(.number.precision(.fractionLength(0))))ms) " + 
             "at measure \(result.measureNumber)"
