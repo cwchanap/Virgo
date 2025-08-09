@@ -1,4 +1,3 @@
-
 //
 //  DrumType+Extensions.swift
 //  Virgo

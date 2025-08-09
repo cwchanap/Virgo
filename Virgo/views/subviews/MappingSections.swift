@@ -1,4 +1,3 @@
-
 //
 //  MappingSections.swift
 //  Virgo
@@ -55,7 +54,7 @@ extension InputSettingsView {
             // Current key mapping
             Button(action: {
                 startKeyCapture(for: drumType)
-            }) {
+            }, label: {
                 Text(settingsManager.getKeyBinding(for: drumType) ?? "Not Set")
                     .font(.system(.body, design: .monospaced))
                     .fontWeight(.medium)
@@ -72,7 +71,7 @@ extension InputSettingsView {
                                            Color.purple : Color.gray.opacity(0.5), lineWidth: 1)
                             )
                     )
-            }
+            })
             .buttonStyle(PlainButtonStyle())
         }
         .padding(.vertical, 8)
