@@ -92,14 +92,15 @@ struct InputSettingsView: View {
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .alert("Reset Input Mappings", isPresented: $showResetAlert) {
+                .alert("Reset Input Mappings", isPresented: $showResetAlert, actions: {
                     Button("Cancel", role: .cancel) { }
                     Button("Reset", role: .destructive) {
                         settingsManager.resetToDefaults()
                     }
-                } message: {
-                    Text("This will reset all keyboard and MIDI mappings to their default values. This action cannot be undone.")
-                }
+                }, message: {
+                    Text("This will reset all keyboard and MIDI mappings to their default values. " +
+                         "This action cannot be undone.")
+                })
             }
             .padding()
             .background(Color.black.opacity(0.3))
@@ -146,6 +147,7 @@ struct InputSettingsView: View {
         selectedDrumType = nil
     }
     
+    // swiftlint:disable:next cyclomatic_complexity
     private func keyStringFromEvent(_ event: NSEvent) -> String {
         // Handle special keys first
         switch event.keyCode {

@@ -55,7 +55,7 @@ enum TimingAccuracy {
 
 // MARK: - Input Manager Protocol
 
-protocol InputManagerDelegate {
+protocol InputManagerDelegate: AnyObject {
     func inputManager(_ manager: InputManager, didReceiveHit hit: InputHit)
     func inputManager(_ manager: InputManager, didMatchNote result: NoteMatchResult)
 }
@@ -199,8 +199,10 @@ extension InputManager {
         
         // Return closest note by timing
         return candidateNotes.min { note1, note2 in
-            let time1 = calculateExpectedTime(measureNumber: note1.measureNumber, measureOffset: note1.measureOffset)
-            let time2 = calculateExpectedTime(measureNumber: note2.measureNumber, measureOffset: note2.measureOffset)
+            let time1 = calculateExpectedTime(measureNumber: note1.measureNumber,
+                                              measureOffset: note1.measureOffset)
+            let time2 = calculateExpectedTime(measureNumber: note2.measureNumber,
+                                              measureOffset: note2.measureOffset)
             
             return abs(elapsedTime - time1) < abs(elapsedTime - time2)
         }
@@ -309,7 +311,8 @@ extension InputManager {
         }
         
         // Create input port
-        status = MIDIInputPortCreateWithBlock(midiClient, "VirgoInput" as CFString, &midiInputPort) { [weak self] packetList, _ in
+        status = MIDIInputPortCreateWithBlock(midiClient, "VirgoInput" as CFString, &midiInputPort) { 
+            [weak self] packetList, _ in
             self?.handleMIDIPacketList(packetList)
         }
         

@@ -164,6 +164,7 @@ class InputSettingsManager: ObservableObject {
 // MARK: - DrumType String Conversion Extension
 
 extension DrumType {
+    // swiftlint:disable:next cyclomatic_complexity
     static func fromString(_ string: String) -> DrumType? {
         switch string {
         case "kick": return .kick

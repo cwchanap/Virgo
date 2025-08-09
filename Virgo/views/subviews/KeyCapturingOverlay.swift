@@ -1,4 +1,3 @@
-
 //
 //  KeyCapturingOverlay.swift
 //  Virgo
