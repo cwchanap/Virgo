@@ -327,7 +327,7 @@ struct MetronomeTimingTests {
 
     @Test func testMetronomeConfigurationAndTiming() {
         let metronome = MetronomeEngine()
-        let testBPM = 140
+        let testBPM = 140.0
         let testTimeSignature = TimeSignature.fourFour
 
         // Configure metronome

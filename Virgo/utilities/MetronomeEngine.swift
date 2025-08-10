@@ -28,7 +28,7 @@ class MetronomeEngine: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     // Configuration
-    var bpm: Int = 120 {
+    var bpm: Double = 120.0 {
         didSet {
             timingEngine.bpm = bpm
         }
@@ -78,7 +78,7 @@ class MetronomeEngine: ObservableObject {
 
     // MARK: - Playback Control
 
-    func start(bpm: Int, timeSignature: TimeSignature) {
+    func start(bpm: Double, timeSignature: TimeSignature) {
         self.bpm = bpm
         self.timeSignature = timeSignature
 
@@ -92,7 +92,7 @@ class MetronomeEngine: ObservableObject {
 
     }
 
-    func toggle(bpm: Int, timeSignature: TimeSignature) {
+    func toggle(bpm: Double, timeSignature: TimeSignature) {
         if isEnabled {
             stop()
         } else {
@@ -100,7 +100,7 @@ class MetronomeEngine: ObservableObject {
         }
     }
 
-    func configure(bpm: Int, timeSignature: TimeSignature) {
+    func configure(bpm: Double, timeSignature: TimeSignature) {
         self.bpm = bpm
         self.timeSignature = timeSignature
     }
@@ -123,8 +123,8 @@ class MetronomeEngine: ObservableObject {
         volume = max(0.0, min(1.0, newVolume))
     }
 
-    func updateBPM(_ newBPM: Int) {
-        let clampedBPM = max(40, min(200, newBPM))
+    func updateBPM(_ newBPM: Double) {
+        let clampedBPM = max(40.0, min(200.0, newBPM))
         bpm = clampedBPM
     }
 

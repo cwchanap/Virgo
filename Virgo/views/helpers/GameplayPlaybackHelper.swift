@@ -40,31 +40,44 @@ extension GameplayView {
 
     func startPlayback() {
         isPlaying = true
-
-        // Start metronome first for timing synchronization
         guard let track = track else { return }
-        metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
 
-        // Set start time after metronome starts to ensure sync
+        // Start metronome immediately - no delay
+        metronome.start(bpm: Double(track.bpm), timeSignature: track.timeSignature)
+        
+        // Set playback start time to current time for accurate timing reference
         playbackStartTime = Date()
         playbackTimer?.invalidate()
         
-        // Start InputManager listening with song start time
+        // Start InputManager listening with current start time
         if let startTime = playbackStartTime {
             inputManager.startListening(songStartTime: startTime)
         }
 
-        // Start BGM playback if available
+        // Start BGM playback with precise timing to sync with metronome
         if let bgmPlayer = bgmPlayer {
             // Check if BGM was previously paused and resume from current position
             if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
+                // For resume, start immediately to match metronome
                 bgmPlayer.play()
                 Logger.audioPlayback("Resumed BGM playback for track: \(track.title)")
             } else {
-                // Start from beginning
+                // Reset BGM to beginning
                 bgmPlayer.currentTime = 0
-                bgmPlayer.play()
-                Logger.audioPlayback("Started BGM playbook for track: \(track.title)")
+                
+                if bgmOffsetSeconds > 0 {
+                    // Schedule BGM to start at current device time + BGM offset
+                    // This ensures metronome starts at measure 0, BGM starts when music begins
+                    let deviceTime = bgmPlayer.deviceCurrentTime
+                    let bgmStartTime = deviceTime + bgmOffsetSeconds
+                    bgmPlayer.play(atTime: bgmStartTime)
+                    let message = "Scheduled BGM to start at \(bgmStartTime) (offset: \(bgmOffsetSeconds)s) for track: \(track.title)"
+                    Logger.audioPlayback(message)
+                } else {
+                    // No offset - start BGM immediately to sync with metronome
+                    bgmPlayer.play()
+                    Logger.audioPlayback("Started BGM immediately to sync with metronome for track: \(track.title)")
+                }
             }
         }
 
@@ -244,7 +257,7 @@ extension GameplayView {
         pausedElapsedTime = 0.0  // Reset paused time on restart
         metronome.stop()
         bgmPlayer?.stop()
-        bgmPlayer?.currentTime = 0
+        bgmPlayer?.currentTime = 0  // Reset to beginning
         Logger.audioPlayback("Restarted playback for track: \(track?.title ?? "Unknown")")
         if isPlaying {
             startPlayback()

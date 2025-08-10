@@ -18,7 +18,7 @@ class MetronomeTimingEngine: ObservableObject {
     @Published var isPlaying: Bool = false
 
     // Configuration
-    var bpm: Int = 120 {
+    var bpm: Double = 120.0 {
         didSet {
             if isPlaying {
                 restartTimer()
