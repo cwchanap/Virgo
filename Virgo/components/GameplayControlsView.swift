@@ -63,7 +63,7 @@ struct GameplayControlsView: View {
             HStack {
                 Button("♩") {
                     // Toggle metronome
-                    metronome.toggle(bpm: track.bpm, timeSignature: track.timeSignature)
+                    metronome.toggle(bpm: Double(track.bpm), timeSignature: track.timeSignature)
                 }
                 .foregroundColor(metronome.isEnabled ? .purple : .white)
                 .font(.title2)

@@ -57,7 +57,7 @@ struct MetronomeComponent: View {
                 // Play/Stop Button
                 Button(
                     action: {
-                        metronome.toggle(bpm: bpm, timeSignature: timeSignature)
+                        metronome.toggle(bpm: Double(bpm), timeSignature: timeSignature)
                     },
                     label: {
                         Image(systemName: metronome.isEnabled ? "stop.circle.fill" : "play.circle.fill")

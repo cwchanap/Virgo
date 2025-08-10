@@ -38,6 +38,7 @@ struct GameplayView: View {
     @State var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
     @State var bgmPlayer: AVAudioPlayer?
     @State var bgmLoadingError: String?
+    @State var bgmOffsetSeconds: Double = 0.0  // BGM start offset in seconds
     @State var metronome = MetronomeEngine()
     @State var staticStaffLinesView: AnyView?
     @State var inputManager = InputManager()
@@ -137,7 +138,9 @@ struct GameplayView: View {
         guard let track = track else { return }
         computeDrumBeats()
         computeCachedLayoutData()
-        metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
+        // Calculate BGM offset from first BGM note (lane 01) position
+        bgmOffsetSeconds = calculateBGMOffset()
+        metronome.configure(bpm: Double(track.bpm), timeSignature: track.timeSignature)
         setupBGMPlayer()
         // Cache track duration
         cachedTrackDuration = calculateTrackDuration()
@@ -286,9 +289,39 @@ struct GameplayView: View {
 
         return Double(totalMeasures) * secondsPerMeasure
     }
+
+    // Calculate BGM offset based on the first BGM note (lane 01) position
+    func calculateBGMOffset() -> Double {
+        guard let track = track else { return 0.0 }
+        
+        // Look for BGM notes in the original DTX data
+        // Since BGM notes are filtered out of cachedNotes, we need to access them differently
+        // For now, check if there are notes starting before measure 1
+        let earliestNote = cachedNotes.min { $0.measureNumber < $1.measureNumber || 
+            ($0.measureNumber == $1.measureNumber && $0.measureOffset < $1.measureOffset) }
+        
+        // If the earliest note is not in measure 1 at offset 0, calculate the BGM offset
+        if let earliestNote = earliestNote, 
+           earliestNote.measureNumber > 1 || earliestNote.measureOffset > 0.0 {
+            
+            // Calculate offset: BGM should start when music starts (first note position)
+            let secondsPerBeat = 60.0 / Double(track.bpm)
+            let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
+            
+            // Convert note position to seconds offset
+            let noteTimeSeconds = Double(earliestNote.measureNumber - 1) * secondsPerMeasure + 
+                                (earliestNote.measureOffset * secondsPerMeasure)
+            
+            let message = "Calculated BGM offset: \(noteTimeSeconds)s from first note at " +
+                        "measure \(earliestNote.measureNumber), offset \(earliestNote.measureOffset)"
+            Logger.audioPlayback(message)
+            return noteTimeSeconds
+        }
+        
+        // No offset needed if music starts at measure 1, beat 1
+        return 0.0
+    }
 }
-
-
 
 // MARK: - Stable Staff Lines Background View
 struct StaffLinesBackgroundView: View {

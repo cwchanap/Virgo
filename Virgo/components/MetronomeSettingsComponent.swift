@@ -45,7 +45,7 @@ struct MetronomeSettingsView: View {
                 )
                     .accentColor(.purple)
                     .onChange(of: tempBPM) { bpm in
-                        metronome.configure(bpm: Int(bpm), timeSignature: selectedTimeSignature)
+                        metronome.configure(bpm: bpm, timeSignature: selectedTimeSignature)
                     }
 
                 HStack(spacing: 16) {
@@ -87,7 +87,7 @@ struct MetronomeSettingsView: View {
                 }
                 .pickerStyle(SegmentedPickerStyle())
                 .onChange(of: selectedTimeSignature) { signature in
-                    metronome.configure(bpm: Int(tempBPM), timeSignature: signature)
+                    metronome.configure(bpm: tempBPM, timeSignature: signature)
                 }
             }
 
@@ -137,7 +137,7 @@ struct MetronomeSettingsView: View {
             HStack(spacing: 20) {
                 Button(
                     action: {
-                        metronome.toggle(bpm: Int(tempBPM), timeSignature: selectedTimeSignature)
+                        metronome.toggle(bpm: tempBPM, timeSignature: selectedTimeSignature)
                     },
                     label: {
                     Text(metronome.isEnabled ? "Stop" : "Start")
@@ -159,7 +159,7 @@ struct MetronomeSettingsView: View {
         .background(Color.black.opacity(0.9))
         .cornerRadius(12)
         .onAppear {
-            metronome.configure(bpm: Int(tempBPM), timeSignature: selectedTimeSignature)
+            metronome.configure(bpm: tempBPM, timeSignature: selectedTimeSignature)
         }
     }
 }
