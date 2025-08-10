@@ -84,6 +84,7 @@ struct ProfileView: View {
                 Spacer()
             }
         }
+        .navigationTitle("Profile")
     }
     
     // MARK: - Helper Views
