@@ -17,33 +17,33 @@ struct InputSettingsView: View {
     @State private var showResetAlert = false
     
     var body: some View {
-        ZStack {
-            // Background gradient matching app theme
+        ScrollView {
+            VStack(spacing: 24) {
+                // Keyboard and MIDI Mapping Sections (side by side)
+                HStack(alignment: .top, spacing: 20) {
+                    // Keyboard Mapping Section (left column)
+                    keyboardMappingSection
+                        .frame(maxWidth: .infinity)
+                    
+                    // MIDI Mapping Section (right column)
+                    midiMappingSection
+                        .frame(maxWidth: .infinity)
+                }
+                
+                // Reset Section
+                resetSection
+            }
+            .padding(.horizontal)
+            .padding(.top)
+        }
+        .background(
             LinearGradient(
                 gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            .ignoresSafeArea()
-            
-            VStack(spacing: 20) {
-                // Main content
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Keyboard Mapping Section
-                        keyboardMappingSection
-                        
-                        // MIDI Mapping Section
-                        midiMappingSection
-                        
-                        // Reset Section
-                        resetSection
-                    }
-                    .padding(.horizontal)
-                    .padding(.top)
-                }
-            }
-        }
+            .ignoresSafeArea(.container, edges: .bottom)
+        )
         .navigationTitle("Input Settings")
         .onAppear {
             settingsManager.loadSettings()
