@@ -10,6 +10,7 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var metronome: MetronomeEngine
     @Query private var allSongs: [Song]
     @Query private var serverSongs: [ServerSong]
     @StateObject private var serverSongService = ServerSongService()
@@ -48,7 +49,7 @@ struct ContentView: View {
             )
             .navigationDestination(isPresented: $navigateToGameplay) {
                 if let chart = selectedChart {
-                    GameplayView(chart: chart)
+                    GameplayView(chart: chart, metronome: metronome)
                 }
             }
             .tabItem {
@@ -57,13 +58,24 @@ struct ContentView: View {
             }
             .tag(0)
 
-            // Metronome Tab
-            MetronomeView()
-                .tabItem {
-                    Image(systemName: "metronome")
-                    Text("Metronome")
+            // Metronome Tab - only pass metronome when this tab is active to reduce updates
+            Group {
+                if selectedTab == 1 {
+                    MetronomeView()
+                } else {
+                    // Placeholder view when tab is not active to avoid metronome updates
+                    Color.black
+                        .overlay(
+                            Text("Metronome")
+                                .foregroundColor(.white)
+                        )
                 }
-                .tag(1)
+            }
+            .tabItem {
+                Image(systemName: "metronome")
+                Text("Metronome")
+            }
+            .tag(1)
 
             LibraryView(songs: allSongs, serverSongService: serverSongService)
                 .tabItem {

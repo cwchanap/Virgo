@@ -140,42 +140,26 @@ extension GameplayView {
             // Then render individual notes
             ForEach(cachedBeatIndices, id: \.self) { index in
                 let beat = cachedDrumBeats[index]
-                // Find which measure this beat belongs to based on the measure number in the beat
-                let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
+                
+                // PERFORMANCE FIX: Use pre-cached active beat ID instead of calculating for every beat
+                let isCurrentlyActive = activeBeatId == beat.id
 
-                if let measurePos = measurePositionMap[measureIndex] {
-                    // Calculate precise beat position within the measure based on measureOffset
-                    let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
-                    let beatPosition = beatOffsetInMeasure * Double(track?.timeSignature.beatsPerMeasure ?? 4)
-                    // Use precise beat positioning system
-                    let beatX = GameplayLayout.preciseNoteXPosition(measurePosition: measurePos, beatPosition: beatPosition, timeSignature: track?.timeSignature ?? TimeSignature.fourFour)
-
-                    // Use the center of the staff area as the reference point for individual drum positioning
-                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
-
+                // PERFORMANCE FIX: Use pre-cached positions to avoid expensive per-frame calculations
+                if let cachedPosition = cachedBeatPositions[beat.id] {
                     // Use cached lookup map for O(1) beam group check
                     let isBeamed = beatToBeamGroupMap[beat.id] != nil
-
-                    // FIXED: Use timer-based values for note highlighting (same as purple bar)
-                    // SwiftUI won't update for non-@Published metronome methods, so use our timer values
-                    // Use floor to get the current beat index (0,1,2,3 for quarter notes)
-                    let displayBeat = Int(floor(currentBeatPosition * Double(track?.timeSignature.beatsPerMeasure ?? 4)))
-                    let displayMeasure = currentMeasureIndex
-
-                    // Convert to time position for comparison with beat.timePosition
-                    let currentTimePosition = Double(displayMeasure) + (Double(displayBeat) / Double(track?.timeSignature.beatsPerMeasure ?? 4))
-                    let timeTolerance = 0.05 // Small tolerance for time-based matching
-                    let isCurrentlyActive = isPlaying && abs(beat.timePosition - currentTimePosition) < timeTolerance
+                    let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
+                    let row = measurePositionMap[measureIndex]?.row ?? 0
 
                     DrumBeatView(
                         beat: beat,
                         isActive: isCurrentlyActive,
-                        row: measurePos.row,
+                        row: row,
                         isBeamed: isBeamed
                     )
                     .position(
-                        x: beatX,
-                        y: staffCenterY
+                        x: cachedPosition.x,
+                        y: cachedPosition.y
                     )
                 }
             }
@@ -184,35 +168,13 @@ extension GameplayView {
 
     func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
         Group {
-            if isPlaying, let track = track {
-                // Calculate which measure the metronome is currently playing
-                // Use timer-based measure calculation but sync beat with metronome
-                let displayMeasure = currentMeasureIndex
-
-                // Get measure position from display timing
-                let measurePos = measurePositionMap[displayMeasure] ?? measurePositionMap[0]
-
-                if let measurePos = measurePos {
-                    // Use timer-based discrete beat positioning for 4 jumps per measure
-                    let timerBeatIndex = Int(floor(currentBeatPosition * Double(track.timeSignature.beatsPerMeasure)))
-                    let discreteBeatPosition = Double(timerBeatIndex)
-
-                    // Calculate exact X position using metronome beat position
-                    let indicatorX = GameplayLayout.preciseNoteXPosition(
-                        measurePosition: measurePos,
-                        beatPosition: discreteBeatPosition,
-                        timeSignature: track.timeSignature
-                    )
-
-                    // Position at center of staff
-                    let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
-
-                    Rectangle()
-                        .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
-                        .foregroundColor(Color.purple.opacity(GameplayLayout.activeOpacity))
-                        .cornerRadius(GameplayLayout.beatColumnCornerRadius)
-                        .position(x: indicatorX, y: staffCenterY)
-                }
+            // PERFORMANCE FIX: Use pre-cached purple bar position instead of expensive calculation
+            if let position = purpleBarPosition {
+                Rectangle()
+                    .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
+                    .foregroundColor(Color.purple.opacity(GameplayLayout.activeOpacity))
+                    .cornerRadius(GameplayLayout.beatColumnCornerRadius)
+                    .position(x: position.x, y: position.y)
             }
         }
     }

@@ -46,9 +46,9 @@ class MetronomeEngine: ObservableObject {
         self.timingEngine = MetronomeTimingEngine()
 
         // Connect timing engine to audio engine
-        timingEngine.onBeat = { [weak self] beat, isAccented in
+        timingEngine.onBeat = { [weak self] beat, isAccented, atTime in
             // Audio playback runs on background thread for precise timing
-            self?.handleBeat(beat: beat, isAccented: isAccented)
+            self?.handleBeat(beat: beat, isAccented: isAccented, atTime: atTime)
         }
 
         // Observe timing engine state
@@ -112,9 +112,12 @@ class MetronomeEngine: ObservableObject {
 
     // MARK: - Beat Handling
 
-    private func handleBeat(beat: Int, isAccented: Bool) {
-        // Play audio tick
-        audioEngine.playTick(volume: volume, isAccented: isAccented)
+    private func handleBeat(beat: Int, isAccented: Bool, atTime: AVAudioTime? = nil) {
+        // Play audio tick with precise timing
+        audioEngine.playTick(volume: volume, isAccented: isAccented, atTime: atTime)
+        
+        // DEBUG: Log metronome beat
+        Logger.debug("METRONOME BEAT: \(beat) (accented: \(isAccented))")
     }
 
     // MARK: - Configuration Updates
