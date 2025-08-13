@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import AVFoundation
 import os.log
 
 // MARK: - Timing Engine
@@ -39,9 +40,10 @@ class MetronomeTimingEngine: ObservableObject {
     // High-precision timing
     private var startTime: CFAbsoluteTime = 0
     private var lastFiredBeat: Int = 0
+    private var audioStartTime: AVAudioTime?
 
     // Callbacks
-    var onBeat: ((Int, Bool) -> Void)?
+    var onBeat: ((Int, Bool, AVAudioTime?) -> Void)?
 
     private var beatInterval: TimeInterval {
         60.0 / Double(bpm)
@@ -88,6 +90,9 @@ class MetronomeTimingEngine: ObservableObject {
         startTime = CFAbsoluteTimeGetCurrent()
         lastFiredBeat = 0
         
+        // Record audio start time for precise scheduling
+        audioStartTime = AVAudioTime(hostTime: mach_absolute_time())
+        
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
         beatTimer = timer
 
@@ -124,6 +129,12 @@ class MetronomeTimingEngine: ObservableObject {
         // Calculate which beat we should be at based on elapsed time
         let expectedBeatNumber = Int(elapsedTime / beatInterval) + 1
         
+        // DEBUG: Log timing check every few seconds to avoid spam
+        if Int(elapsedTime * 10) % 50 == 0 { // Log every 5 seconds
+            Logger.debug("⏰ Timer check: elapsed=\(elapsedTime), " +
+                       "expected=\(expectedBeatNumber), lastFired=\(lastFiredBeat), beatInterval=\(beatInterval)")
+        }
+        
         // Only fire if we haven't fired this beat yet
         if expectedBeatNumber > lastFiredBeat {
             lastFiredBeat = expectedBeatNumber
@@ -135,8 +146,12 @@ class MetronomeTimingEngine: ObservableObject {
         let isAccented = (currentBeat == 1)
         let beatToPlay = currentBeat
 
-        // Notify audio callback immediately on timing thread for precise audio
-        onBeat?(beatToPlay, isAccented)
+        // DEBUG: Log metronome beat progression
+        Logger.debug("🥁 Metronome beat: \(beatToPlay) (accented: \(isAccented)) - BPM: \(bpm)")
+
+        // For now, use immediate playback (nil timing) to ensure metronome works
+        // TODO: Add precise timing when needed for BGM sync
+        onBeat?(beatToPlay, isAccented, nil)
 
         // Update UI properties on main thread
         DispatchQueue.main.async {
@@ -144,6 +159,8 @@ class MetronomeTimingEngine: ObservableObject {
             if self.currentBeat > self.timeSignature.beatsPerMeasure {
                 self.currentBeat = 1
             }
+            // DEBUG: Log beat progression after update
+            Logger.debug("🥁 Updated currentBeat to: \(self.currentBeat)")
         }
     }
 }

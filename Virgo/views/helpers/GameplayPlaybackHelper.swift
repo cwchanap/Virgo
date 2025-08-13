@@ -89,15 +89,19 @@ extension GameplayView {
         totalBeatsElapsed = 0
         lastBeatUpdate = -1
         currentBeatPosition = 0.0
+        rawBeatPosition = 0.0
         currentMeasureIndex = 0
+        lastMetronomeBeat = 0
+        lastDiscreteBeat = -1
+        lastDiscreteBeat = -1
 
         // CRITICAL: Force immediate UI update to show purple bar at position 0 from the start
         // This ensures the purple bar appears at beat 0 before the first timer update
         playbackProgress = 0.0
 
-        // Re-enable timer now that MetronomeEngine threading is fixed
-        // Timer must be scheduled on main thread, but we can do the heavy work in background
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+        // PERFORMANCE FIX: Reduce timer frequency from 10Hz to 2Hz to reduce UI updates
+        // Each timer update triggers multiple @State changes causing expensive view re-renders
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
             self.updatePlaybackPosition(timer: timer)
         }
     }
@@ -195,36 +199,47 @@ extension GameplayView {
     }
 
     func shouldUpdateUI(with data: PlaybackPositionData) -> Bool {
-        return data.newBeatIndex != currentBeat ||
-               data.newBeatPosition != currentBeatPosition ||
-               data.newMeasureIndex != currentMeasureIndex ||
-               data.newTotalBeats != totalBeatsElapsed ||
-               abs(playbackProgress - data.newProgress) > 0.02
+        // PERFORMANCE FIX: Only update if there's a significant change to reduce re-renders
+        let significantBeatChange = abs(data.newBeatPosition - currentBeatPosition) > 0.1
+        let measureChanged = data.newMeasureIndex != currentMeasureIndex
+        let significantProgressChange = abs(playbackProgress - data.newProgress) > 0.05
+        
+        return measureChanged || significantBeatChange || significantProgressChange
     }
 
     func applyUIUpdates(with data: PlaybackPositionData) {
-        if data.newBeatIndex != currentBeat {
-            currentBeat = data.newBeatIndex
-        }
-
-        if data.newBeatPosition != currentBeatPosition || data.newMeasureIndex != currentMeasureIndex {
-            currentBeatPosition = data.newBeatPosition
-            currentMeasureIndex = data.newMeasureIndex
-            let beatsPerMeasure = track?.timeSignature.beatsPerMeasure ?? 4
-            let logMessage = "Purple bar update: measure=\(data.newMeasureIndex), " +
-                           "beatPos=\(data.newBeatPosition), " +
-                           "timeSignature=\(track?.timeSignature.displayName ?? "unknown"), " +
-                           "beatsPerMeasure=\(beatsPerMeasure)"
-            Logger.debug(logMessage)
-        }
-
-        if data.newTotalBeats != totalBeatsElapsed {
-            totalBeatsElapsed = data.newTotalBeats
-            currentQuarterNotePosition = Double(data.newMeasureIndex) + data.newBeatPosition
-        }
-
-        if abs(playbackProgress - data.newProgress) > 0.02 {
-            playbackProgress = data.newProgress
+        // PERFORMANCE FIX: Batch state updates to minimize SwiftUI re-renders
+        let beatsPerMeasure = track?.timeSignature.beatsPerMeasure ?? 4
+        let discreteBeatPosition = floor(data.newBeatPosition * Double(beatsPerMeasure)) / Double(beatsPerMeasure)
+        
+        // Batch all state updates into a single update to reduce SwiftUI re-evaluation
+        currentBeat = data.newBeatIndex
+        currentMeasureIndex = data.newMeasureIndex
+        currentBeatPosition = discreteBeatPosition  // Discretized for UI consistency
+        rawBeatPosition = data.newBeatPosition      // Raw continuous for purple bar sync
+        totalBeatsElapsed = data.newTotalBeats
+        currentQuarterNotePosition = Double(data.newMeasureIndex) + discreteBeatPosition
+        playbackProgress = data.newProgress
+        
+        // PERFORMANCE FIX: Update active beat once instead of calculating for every beat
+        updateActiveBeat()
+        // PERFORMANCE FIX: Update purple bar position once instead of calculating on every render
+        updatePurpleBarPosition()
+        
+        let logMessage = "Purple bar discrete sync: measure=\(data.newMeasureIndex), " +
+                       "timer_beat=\(data.newBeatPosition), " +
+                       "discrete_beat=\(discreteBeatPosition)"
+        Logger.debug(logMessage)
+        
+        // DEBUG: Compare timer calculations with metronome timing
+        if let elapsedTime = calculateElapsedTime(), let track = track {
+            let secondsPerBeat = 60.0 / Double(track.bpm)
+            let expectedBeats = elapsedTime / secondsPerBeat
+            let metronomeCurrentBeat = metronome.currentBeat
+            let timerLogMessage = "TIMING COMPARISON: elapsed=\(String(format: "%.3f", elapsedTime))s, " +
+                                "expected_beats=\(String(format: "%.3f", expectedBeats)), " +
+                                "metronome_beat=\(metronomeCurrentBeat)"
+            Logger.debug(timerLogMessage)
         }
     }
 
@@ -238,7 +253,10 @@ extension GameplayView {
         totalBeatsElapsed = 0
         lastBeatUpdate = -1
         currentBeatPosition = 0.0
+        rawBeatPosition = 0.0
         currentMeasureIndex = 0
+        lastMetronomeBeat = 0
+        lastDiscreteBeat = -1
         playbackStartTime = nil
         pausedElapsedTime = 0.0
         bgmPlayer?.stop()
@@ -252,7 +270,10 @@ extension GameplayView {
         totalBeatsElapsed = 0
         lastBeatUpdate = -1
         currentBeatPosition = 0.0
+        rawBeatPosition = 0.0
         currentMeasureIndex = 0
+        lastMetronomeBeat = 0
+        lastDiscreteBeat = -1
         playbackStartTime = nil
         pausedElapsedTime = 0.0  // Reset paused time on restart
         metronome.stop()

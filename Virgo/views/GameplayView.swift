@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AVFoundation
+import Combine
 
 struct GameplayView: View {
     let chart: Chart
@@ -23,8 +24,11 @@ struct GameplayView: View {
     @State var currentBeat: Int = 0
     @State var currentQuarterNotePosition: Double = 0.0
     @State var totalBeatsElapsed: Int = 0
-    @State var currentBeatPosition: Double = 0.0  // Current beat position within measure (0, 0.25, 0.5, 0.75)
+    @State var currentBeatPosition: Double = 0.0  // Current beat position within measure (discretized)
+    @State var rawBeatPosition: Double = 0.0     // Raw continuous beat position for purple bar sync
     @State var currentMeasureIndex: Int = 0       // Which measure we're currently in
+    @State var lastMetronomeBeat: Int = 0        // Track previous beat to detect actual beat changes
+    @State var lastDiscreteBeat: Int = -1        // Track last discrete beat to prevent unnecessary updates
     @State var playbackTimer: Timer?
     @State var playbackStartTime: Date?
     @State var pausedElapsedTime: Double = 0.0
@@ -36,14 +40,29 @@ struct GameplayView: View {
     @State var cachedTrackDuration: Double = 0.0
     @State var cachedBeatIndices: [Int] = []
     @State var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
+    // PERFORMANCE FIX: Cache expensive position calculations to avoid per-frame computation
+    @State var cachedBeatPositions: [Int: (x: Double, y: Double)] = [:]
+    // CRITICAL PERFORMANCE FIX: Cache which beat is currently active to avoid per-beat calculations
+    @State var activeBeatId: Int?
+    // PERFORMANCE FIX: Cache purple bar position to avoid expensive calculation every update
+    @State var purpleBarPosition: (x: Double, y: Double)?
     @State var bgmPlayer: AVAudioPlayer?
     @State var bgmLoadingError: String?
     @State var bgmOffsetSeconds: Double = 0.0  // BGM start offset in seconds
-    @State var metronome = MetronomeEngine()
+    // PERFORMANCE FIX: Don't use @EnvironmentObject for metronome to avoid massive UI re-renders
+    // GameplayView only needs method calls (start/stop/configure), not @Published state updates
+    let metronome: MetronomeEngine
     @State var staticStaffLinesView: AnyView?
     @State var inputManager = InputManager()
     @State var inputHandler = GameplayInputHandler()
+    @State private var metronomeSubscription: AnyCancellable?
     @Environment(\.dismiss) private var dismiss
+
+    // PERFORMANCE FIX: Accept metronome as parameter instead of @EnvironmentObject
+    init(chart: Chart, metronome: MetronomeEngine) {
+        self.chart = chart
+        self.metronome = metronome
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -79,6 +98,16 @@ struct GameplayView: View {
             Logger.userAction("Opened gameplay view for track: \(track?.title ?? "Unknown")")
             // Setup InputManager delegate
             inputManager.delegate = inputHandler
+            // Setup metronome subscription for purple bar sync
+            // Note: currentBeat cycles 1-4, but we need absolute elapsed time for positioning
+            metronomeSubscription = metronome.$currentBeat
+                .sink { currentBeat in
+                    // Only update when discrete beat position changes to avoid excessive updates
+                    if isPlaying && currentBeat != lastMetronomeBeat {
+                        lastMetronomeBeat = currentBeat
+                        checkAndUpdatePurpleBarPosition()
+                    }
+                }
             // Only proceed if data is loaded
             if isDataLoaded {
                 setupGameplay()
@@ -91,6 +120,8 @@ struct GameplayView: View {
             bgmPlayer?.stop()
             bgmPlayer = nil
             inputManager.stopListening()
+            metronomeSubscription?.cancel()
+            metronomeSubscription = nil
         }
     }
 
@@ -140,6 +171,7 @@ struct GameplayView: View {
         computeCachedLayoutData()
         // Calculate BGM offset from first BGM note (lane 01) position
         bgmOffsetSeconds = calculateBGMOffset()
+        // Configure shared metronome instead of creating a new instance
         metronome.configure(bpm: Double(track.bpm), timeSignature: track.timeSignature)
         setupBGMPlayer()
         // Cache track duration
@@ -224,9 +256,149 @@ struct GameplayView: View {
                                                           measureIndex: 0)
             measurePositionMap[0] = measure0
         }
+
+        // PERFORMANCE FIX: Pre-cache all beat positions to avoid expensive per-frame calculations
+        cacheBeatPositions()
     }
 
     // MARK: - Helper Methods
+    
+    func cacheBeatPositions() {
+        guard let track = track else { return }
+        
+        cachedBeatPositions = [:]
+        
+        for beat in cachedDrumBeats {
+            let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
+            
+            if let measurePos = measurePositionMap[measureIndex] {
+                let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
+                // FIX: beatOffsetInMeasure is already in the correct units (0.0 to 1.0 = full measure)
+                // We need to convert to beat position within the measure (0.0 to beatsPerMeasure)
+                let beatPosition = beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure)
+                let beatX = GameplayLayout.preciseNoteXPosition(measurePosition: measurePos,
+                                                              beatPosition: beatPosition,
+                                                              timeSignature: track.timeSignature)
+                let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
+                
+                cachedBeatPositions[beat.id] = (x: Double(beatX), y: Double(staffCenterY))
+                
+                // DEBUG: Log detailed position calculations for each beat
+                Logger.debug("CACHED POSITION: id=\(beat.id), timePos=\(beat.timePosition), " +
+                           "measureIdx=\(measureIndex), beatOffset=\(beatOffsetInMeasure), " +
+                           "beatPos=\(beatPosition), x=\(beatX)")
+            }
+        }
+        
+        Logger.debug("Cached \(cachedBeatPositions.count) beat positions for performance optimization")
+    }
+    
+    func updateActiveBeat() {
+        guard let track = track, isPlaying else { 
+            activeBeatId = nil
+            return 
+        }
+        
+        // FIX: Use same discrete beat calculation as purple bar for perfect sync
+        guard let elapsedTime = calculateElapsedTime() else {
+            activeBeatId = nil
+            return
+        }
+        
+        let secondsPerBeat = 60.0 / Double(track.bpm)
+        let totalBeatsElapsed = elapsedTime / secondsPerBeat
+        let beatsPerMeasure = track.timeSignature.beatsPerMeasure
+        
+        // Use same discrete beat calculation as purple bar
+        let discreteTotalBeats = Int(totalBeatsElapsed)
+        let measureIndex = discreteTotalBeats / beatsPerMeasure
+        let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure)
+        
+        // Convert to timePosition format for beat matching
+        let currentTimePosition = Double(measureIndex) + (beatWithinMeasure / Double(beatsPerMeasure))
+        let timeTolerance = 0.05
+        
+        // DEBUG: Log yellow highlight calculations
+        Logger.debug("YELLOW HIGHLIGHT: elapsedTime=\(elapsedTime), discreteBeats=\(discreteTotalBeats), " +
+                   "measure=\(measureIndex), beatInMeasure=\(beatWithinMeasure), timePos=\(currentTimePosition)")
+        
+        // Find the active beat using time-based position matching
+        for beat in cachedDrumBeats {
+            if abs(beat.timePosition - currentTimePosition) < timeTolerance {
+                activeBeatId = beat.id
+                Logger.debug("YELLOW HIGHLIGHT MATCH: beatId=\(beat.id), beatTimePos=\(beat.timePosition), " +
+                           "difference=\(abs(beat.timePosition - currentTimePosition))")
+                return
+            }
+        }
+        activeBeatId = nil
+        Logger.debug("YELLOW HIGHLIGHT: No matching beat found for timePosition \(currentTimePosition)")
+    }
+    
+    func calculatePurpleBarPosition() -> (x: Double, y: Double)? {
+        guard let track = track, isPlaying else {
+            return nil
+        }
+        
+        // FIX: Use metronome's discrete beat positions (1,2,3,4) instead of continuous time
+        // Purple bar should move exactly 4 times per measure on quarter note beats
+        let beatsPerMeasure = track.timeSignature.beatsPerMeasure
+        
+        // Calculate total absolute beats from start using elapsed time
+        guard let elapsedTime = calculateElapsedTime() else { return nil }
+        let secondsPerBeat = 60.0 / Double(track.bpm)
+        let totalBeatsElapsed = elapsedTime / secondsPerBeat
+        
+        // Snap to discrete quarter note beats (no fractional positions)
+        let discreteTotalBeats = Int(totalBeatsElapsed)
+        let measureIndex = discreteTotalBeats / beatsPerMeasure
+        let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure) // 0, 1, 2, 3
+        
+        let measurePos = measurePositionMap[measureIndex] ?? measurePositionMap[0]
+        
+        if let measurePos = measurePos {
+            let indicatorX = GameplayLayout.preciseNoteXPosition(
+                measurePosition: measurePos,
+                beatPosition: beatWithinMeasure,
+                timeSignature: track.timeSignature
+            )
+            
+            let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
+            return (x: Double(indicatorX), y: Double(staffCenterY))
+        } else {
+            return nil
+        }
+    }
+    
+    func checkAndUpdatePurpleBarPosition() {
+        guard let track = track, isPlaying, let elapsedTime = calculateElapsedTime() else { return }
+        
+        let secondsPerBeat = 60.0 / Double(track.bpm)
+        let totalBeatsElapsed = elapsedTime / secondsPerBeat
+        let discreteTotalBeats = Int(totalBeatsElapsed)
+        
+        // Only update if discrete beat position has changed
+        if discreteTotalBeats != lastDiscreteBeat {
+            lastDiscreteBeat = discreteTotalBeats
+            updatePurpleBarPosition()
+            // FIX: Update yellow highlight at same time as purple bar for perfect sync
+            updateActiveBeat()
+            
+            // DEBUG: Log only when position actually changes
+            let beatsPerMeasure = track.timeSignature.beatsPerMeasure
+            let measureIndex = discreteTotalBeats / beatsPerMeasure
+            let beatWithinMeasure = discreteTotalBeats % beatsPerMeasure
+            
+            Logger.debug("PURPLE BAR & YELLOW HIGHLIGHT UPDATE: discreteBeats=\(discreteTotalBeats), " +
+                       "measure=\(measureIndex), beat=\(beatWithinMeasure)")
+        }
+    }
+    
+    func updatePurpleBarPosition() {
+        let newPosition = calculatePurpleBarPosition()
+        purpleBarPosition = newPosition
+    }
+    
     func computeDrumBeats() {
         // Use cached notes instead of accessing relationship directly
         if cachedNotes.isEmpty {
