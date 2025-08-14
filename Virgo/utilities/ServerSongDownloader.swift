@@ -49,7 +49,7 @@ class ServerSongDownloader {
         return Song(
             title: serverSong.title,
             artist: serverSong.artist,
-            bpm: Int(serverSong.bpm),
+            bpm: serverSong.bpm, // Preserve Double precision (e.g., 165.55)
             duration: "3:30", // Will be updated after parsing first chart
             genre: "DTX Import",
             timeSignature: .fourFour
@@ -89,7 +89,7 @@ class ServerSongDownloader {
         
         // Update song BPM from the first chart if not already set
         if song.charts.isEmpty {
-            song.bpm = Int(chartData.bpm.rounded())
+            song.bpm = chartData.bpm // Preserve Double precision (e.g., 165.55)
             song.duration = formatDuration(calculateDuration(from: chartData.notes))
         }
         

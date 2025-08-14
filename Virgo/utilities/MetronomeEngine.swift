@@ -86,6 +86,14 @@ class MetronomeEngine: ObservableObject {
         timingEngine.start()
     }
 
+    func startAtTime(bpm: Double, timeSignature: TimeSignature, startTime: TimeInterval) {
+        self.bpm = bpm
+        self.timeSignature = timeSignature
+
+        audioEngine.resume()
+        timingEngine.startAtTime(startTime: startTime)
+    }
+
     func stop() {
         timingEngine.stop()
         audioEngine.stop()
@@ -116,8 +124,6 @@ class MetronomeEngine: ObservableObject {
         // Play audio tick with precise timing
         audioEngine.playTick(volume: volume, isAccented: isAccented, atTime: atTime)
         
-        // DEBUG: Log metronome beat
-        Logger.debug("METRONOME BEAT: \(beat) (accented: \(isAccented))")
     }
 
     // MARK: - Configuration Updates
@@ -133,5 +139,19 @@ class MetronomeEngine: ObservableObject {
 
     func updateTimeSignature(_ newTimeSignature: TimeSignature) {
         timeSignature = newTimeSignature
+    }
+    
+    // MARK: - Synchronized Timing API
+    
+    /// Get the current playback time from the metronome's timing engine
+    /// This ensures visual elements use the same time reference as audio
+    func getCurrentPlaybackTime() -> TimeInterval? {
+        return timingEngine.getCurrentPlaybackTime()
+    }
+    
+    /// Get the current beat progress from the metronome's timing engine
+    /// Returns precise beat timing for synchronized visual updates
+    func getCurrentBeatProgress() -> (totalBeats: Double, beatInMeasure: Double)? {
+        return timingEngine.getCurrentBeatProgress(timeSignature: timeSignature)
     }
 }

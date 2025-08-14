@@ -19,8 +19,6 @@ disabled_rules:
   - todo # Allow TODO comments
   - force_cast # Sometimes force casting is necessary
   - force_try # Sometimes force try is acceptable in tests
-  - file_length # Temporarily disable for performance commit
-  - type_body_length # Temporarily disable for performance commit
 
 # Opt-in rules
 opt_in_rules:
