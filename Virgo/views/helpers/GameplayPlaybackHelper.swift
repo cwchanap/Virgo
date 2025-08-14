@@ -28,8 +28,11 @@ extension GameplayView {
         // Stop InputManager listening
         inputManager.stopListening()
 
-        // Save elapsed time when pausing
-        if let startTime = playbackStartTime {
+        // TIMING SYNC: Save elapsed time using metronome's timing reference
+        if let metronomeTime = metronome.getCurrentPlaybackTime() {
+            pausedElapsedTime += metronomeTime
+        } else if let startTime = playbackStartTime {
+            // Fallback to Date-based calculation if metronome timing unavailable
             pausedElapsedTime += Date().timeIntervalSince(startTime)
         }
         playbackStartTime = nil
@@ -42,12 +45,13 @@ extension GameplayView {
         isPlaying = true
         guard let track = track else { return }
 
-        // Start metronome immediately - no delay
-        metronome.start(bpm: Double(track.bpm), timeSignature: track.timeSignature)
-        
-        // Set playback start time to current time for accurate timing reference
+        // Set playback start time BEFORE starting metronome for synchronized timing reference
         playbackStartTime = Date()
         playbackTimer?.invalidate()
+        
+        // CRITICAL FIX: Calculate synchronized start time for both metronome and BGM
+        // This eliminates the timing gap that made metronome appear "faster"
+        let synchronizedStartDelay: TimeInterval = 0.1 // 100ms buffer for precise sync
         
         // Start InputManager listening with current start time
         if let startTime = playbackStartTime {
@@ -58,27 +62,37 @@ extension GameplayView {
         if let bgmPlayer = bgmPlayer {
             // Check if BGM was previously paused and resume from current position
             if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
-                // For resume, start immediately to match metronome
+                // For resume, start metronome and BGM simultaneously
+                let trackBPM = track.bpm
+                metronome.start(bpm: trackBPM, timeSignature: track.timeSignature)
                 bgmPlayer.play()
-                Logger.audioPlayback("Resumed BGM playback for track: \(track.title)")
+                Logger.audioPlayback("Resumed BGM and metronome playback simultaneously for track: \(track.title)")
             } else {
-                // Reset BGM to beginning
+                // Reset BGM to beginning and synchronize start times
                 bgmPlayer.currentTime = 0
                 
-                if bgmOffsetSeconds > 0 {
-                    // Schedule BGM to start at current device time + BGM offset
-                    // This ensures metronome starts at measure 0, BGM starts when music begins
-                    let deviceTime = bgmPlayer.deviceCurrentTime
-                    let bgmStartTime = deviceTime + bgmOffsetSeconds
-                    bgmPlayer.play(atTime: bgmStartTime)
-                    let message = "Scheduled BGM to start at \(bgmStartTime) (offset: \(bgmOffsetSeconds)s) for track: \(track.title)"
-                    Logger.audioPlayback(message)
-                } else {
-                    // No offset - start BGM immediately to sync with metronome
-                    bgmPlayer.play()
-                    Logger.audioPlayback("Started BGM immediately to sync with metronome for track: \(track.title)")
-                }
+                // CRITICAL FIX: Use consistent timing references for BGM and metronome
+                // BGM uses deviceCurrentTime, metronome uses CFAbsoluteTime - they're different!
+                let bgmDeviceTime = bgmPlayer.deviceCurrentTime
+                let bgmScheduledTime = bgmDeviceTime + synchronizedStartDelay + bgmOffsetSeconds
+                
+                // Schedule BGM to start at BGM's time reference
+                bgmPlayer.play(atTime: bgmScheduledTime)
+                
+                // Start metronome immediately since we can't sync different time references
+                // The 100ms delay in BGM scheduling compensates for metronome startup time
+                let trackBPM = track.bpm
+                
+                metronome.start(bpm: trackBPM, timeSignature: track.timeSignature)
+                
+                let message = "Scheduled synchronized start - BGM at device time: \(bgmScheduledTime) " +
+                            "(BGM offset: \(bgmOffsetSeconds)s, sync buffer: \(synchronizedStartDelay)s)"
+                Logger.audioPlayback(message)
             }
+        } else {
+            // No BGM - start metronome immediately
+            let trackBPM = track.bpm
+            metronome.start(bpm: trackBPM, timeSignature: track.timeSignature)
         }
 
         Logger.audioPlayback("Started playback for track: \(track.title)")
@@ -99,32 +113,40 @@ extension GameplayView {
         // This ensures the purple bar appears at beat 0 before the first timer update
         playbackProgress = 0.0
 
-        // PERFORMANCE FIX: Reduce timer frequency from 10Hz to 2Hz to reduce UI updates
-        // Each timer update triggers multiple @State changes causing expensive view re-renders
-        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
-            self.updatePlaybackPosition(timer: timer)
-        }
+        // CRITICAL FIX: Use metronome callbacks for visual updates instead of separate timer
+        // This eliminates timing desync between audio and visual systems
+        
+        // The visual updates will now be driven by metronome beat callbacks via the existing subscription
+        // This ensures perfect audio-visual synchronization using a single timing source
     }
 
+    // TIMING SYNC: This function is deprecated - visual updates are now handled by metronome callbacks
+    // Keeping for backwards compatibility during transition
     func updatePlaybackPosition(timer: Timer) {
         guard isPlaying else {
             timer.invalidate()
             return
         }
 
-        guard let elapsedTime = calculateElapsedTime(),
-              let track = track else { return }
-
-        let playbackData = calculatePlaybackPosition(elapsedTime: elapsedTime, track: track)
-        updateUIWithPlaybackData(playbackData, timer: timer, track: track)
+        // Visual updates are now driven by metronome callbacks in GameplayView.updateVisualElementsFromMetronome()
     }
 
     // MARK: - Playback Position Helper Methods
 
     func calculateElapsedTime() -> Double? {
-        guard let startTime = playbackStartTime else { return nil }
-        let currentSessionTime = Date().timeIntervalSince(startTime)
-        return pausedElapsedTime + currentSessionTime
+        // TIMING SYNC: Always use metronome's timing reference for perfect sync
+        // This ensures visual elements use the exact same time base as audio
+        if let metronomeTime = metronome.getCurrentPlaybackTime() {
+            let totalTime = pausedElapsedTime + metronomeTime
+            return totalTime
+        } else if isPlaying, let startTime = playbackStartTime {
+            // Fallback only during transition period when metronome timing unavailable
+            let currentSessionTime = Date().timeIntervalSince(startTime)
+            let totalTime = pausedElapsedTime + currentSessionTime
+            return totalTime
+        } else {
+            return nil
+        }
     }
 
     struct PlaybackPositionData {
@@ -136,7 +158,7 @@ extension GameplayView {
     }
 
     func calculatePlaybackPosition(elapsedTime: Double, track: DrumTrack) -> PlaybackPositionData {
-        let secondsPerBeat = 60.0 / Double(track.bpm)
+        let secondsPerBeat = 60.0 / track.bpm
         let beatsElapsed = elapsedTime / secondsPerBeat
         let beatsPerMeasure = Double(track.timeSignature.beatsPerMeasure)
         
@@ -194,7 +216,7 @@ extension GameplayView {
         applyUIUpdates(with: data)
 
         if data.newProgress >= 1.0 {
-            handlePlaybackCompletion(timer: timer, track: track)
+            handlePlaybackCompletion(track: track)
         }
     }
 
@@ -225,26 +247,10 @@ extension GameplayView {
         updateActiveBeat()
         // PERFORMANCE FIX: Update purple bar position once instead of calculating on every render
         updatePurpleBarPosition()
-        
-        let logMessage = "Purple bar discrete sync: measure=\(data.newMeasureIndex), " +
-                       "timer_beat=\(data.newBeatPosition), " +
-                       "discrete_beat=\(discreteBeatPosition)"
-        Logger.debug(logMessage)
-        
-        // DEBUG: Compare timer calculations with metronome timing
-        if let elapsedTime = calculateElapsedTime(), let track = track {
-            let secondsPerBeat = 60.0 / Double(track.bpm)
-            let expectedBeats = elapsedTime / secondsPerBeat
-            let metronomeCurrentBeat = metronome.currentBeat
-            let timerLogMessage = "TIMING COMPARISON: elapsed=\(String(format: "%.3f", elapsedTime))s, " +
-                                "expected_beats=\(String(format: "%.3f", expectedBeats)), " +
-                                "metronome_beat=\(metronomeCurrentBeat)"
-            Logger.debug(timerLogMessage)
-        }
     }
 
-    func handlePlaybackCompletion(timer: Timer, track: DrumTrack) {
-        timer.invalidate()
+    func handlePlaybackCompletion(track: DrumTrack) {
+        // TIMING SYNC: No separate timer to invalidate - completion triggered by metronome callbacks
         isPlaying = false
         metronome.stop()
         playbackProgress = 0.0

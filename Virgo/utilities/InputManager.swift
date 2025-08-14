@@ -65,7 +65,7 @@ class InputManager: ObservableObject {
     
     // Song timing reference
     private var songStartTime: Date?
-    private var bpm: Int = 120
+    private var bpm: Double = 120.0
     private var timeSignature: TimeSignature = .fourFour
     private var notes: [Note] = []
     
@@ -97,14 +97,14 @@ class InputManager: ObservableObject {
 // MARK: - Configuration
 
 extension InputManager {
-    func configure(bpm: Int, timeSignature: TimeSignature, notes: [Note]) {
+    func configure(bpm: Double, timeSignature: TimeSignature, notes: [Note]) {
         self.bpm = bpm
         self.timeSignature = timeSignature
         self.notes = notes.sorted { $0.measureNumber < $1.measureNumber || 
             ($0.measureNumber == $1.measureNumber && $0.measureOffset < $1.measureOffset) }
         
         // Update timing calculations
-        self.secondsPerBeat = 60.0 / Double(bpm)
+        self.secondsPerBeat = 60.0 / bpm
         self.secondsPerMeasure = secondsPerBeat * Double(timeSignature.beatsPerMeasure)
     }
     
@@ -181,7 +181,8 @@ extension InputManager {
         )
     }
     
-    private func findClosestNote(drumType: DrumType, measureNumber: Int, measureOffset: Double, elapsedTime: Double) -> Note? {
+    private func findClosestNote(drumType: DrumType, measureNumber: Int, 
+                                 measureOffset: Double, elapsedTime: Double) -> Note? {
         let searchWindowMs: Double = 200.0 // ±200ms search window
         let searchWindowSeconds = searchWindowMs / 1000.0
         
@@ -191,7 +192,8 @@ extension InputManager {
             guard DrumType.from(noteType: note.noteType) == drumType else { return false }
             
             // Calculate expected time for this note
-            let noteElapsedTime = calculateExpectedTime(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
+            let noteElapsedTime = calculateExpectedTime(measureNumber: note.measureNumber, 
+                                                       measureOffset: note.measureOffset)
             
             // Check if within search window
             return abs(elapsedTime - noteElapsedTime) <= searchWindowSeconds
@@ -311,8 +313,7 @@ extension InputManager {
         }
         
         // Create input port
-        status = MIDIInputPortCreateWithBlock(midiClient, "VirgoInput" as CFString, &midiInputPort) { 
-            [weak self] packetList, _ in
+        status = MIDIInputPortCreateWithBlock(midiClient, "VirgoInput" as CFString, &midiInputPort) { [weak self] packetList, _ in
             self?.handleMIDIPacketList(packetList)
         }
         

@@ -21,14 +21,14 @@ class BeatIndicatorState: ObservableObject {
 struct MetronomeComponent: View {
     @ObservedObject var metronome: MetronomeEngine
     @StateObject private var beatState = BeatIndicatorState()
-    let bpm: Int
+    let bpm: Double
     let timeSignature: TimeSignature
 
     var body: some View {
         VStack(spacing: 20) {
             // BPM and Time Signature Display
             VStack(spacing: 8) {
-                Text("\(bpm)")
+                Text(String(format: "%.2f", bpm))
                     .font(.system(size: 48, weight: .bold, design: .monospaced))
                     .foregroundColor(.white)
 
@@ -57,7 +57,7 @@ struct MetronomeComponent: View {
                 // Play/Stop Button
                 Button(
                     action: {
-                        metronome.toggle(bpm: Double(bpm), timeSignature: timeSignature)
+                        metronome.toggle(bpm: bpm, timeSignature: timeSignature)
                     },
                     label: {
                         Image(systemName: metronome.isEnabled ? "stop.circle.fill" : "play.circle.fill")
@@ -107,7 +107,7 @@ struct MetronomeComponent: View {
 #Preview {
     MetronomeComponent(
         metronome: MetronomeEngine(),
-        bpm: 120,
+        bpm: 120.0,
         timeSignature: .fourFour
     )
     .background(Color.black)
