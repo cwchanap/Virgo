@@ -1,13 +1,15 @@
 //
-//  ProfileView.swift
+//  SettingsView.swift
 //  Virgo
 //
-//  Created by Claude Code on 27/7/2025.
+//  Created by Claude Code on 14/8/2025.
 //
 
 import SwiftUI
 
-struct ProfileView: View {
+struct SettingsView: View {
+    @EnvironmentObject private var metronome: MetronomeEngine
+    
     var body: some View {
         ZStack {
             // Background gradient
@@ -23,16 +25,16 @@ struct ProfileView: View {
                 VStack(spacing: 10) {
                     HStack {
                         VStack(alignment: .leading) {
-                            Text("Profile")
+                            Text("Settings")
                                 .font(.largeTitle)
                                 .fontWeight(.bold)
                                 .foregroundColor(.white)
-                            Text("Manage your account and preferences")
+                            Text("Configure app preferences and controls")
                                 .font(.subheadline)
                                 .foregroundColor(.gray)
                         }
                         Spacer()
-                        Image(systemName: "person.circle")
+                        Image(systemName: "gearshape")
                             .font(.title2)
                             .foregroundColor(.white)
                     }
@@ -42,36 +44,51 @@ struct ProfileView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 16)
 
-                // Profile sections
+                // Settings sections
                 VStack(spacing: 16) {
-                    // Placeholder for future profile features
+                    // Input Settings
+                    NavigationLink(destination: InputSettingsView()) {
+                        settingsRow(
+                            icon: "keyboard.fill",
+                            title: "Input Settings",
+                            subtitle: "Configure keyboard and MIDI mappings",
+                            iconColor: .purple
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Audio Settings
+                    NavigationLink(destination: AudioSettingsView()) {
+                        settingsRow(
+                            icon: "waveform",
+                            title: "Audio Settings",
+                            subtitle: "Configure metronome and playback preferences",
+                            iconColor: .blue
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Placeholder for future settings
                     VStack(spacing: 12) {
                         settingsRowDisabled(
-                            icon: "person.crop.circle",
-                            title: "User Profile",
-                            subtitle: "Manage your account and personal information",
-                            iconColor: .green
-                        )
-                        
-                        settingsRowDisabled(
-                            icon: "trophy.fill",
-                            title: "Achievements",
-                            subtitle: "View your progress and unlocked achievements",
+                            icon: "bell.fill",
+                            title: "Notifications",
+                            subtitle: "Configure app notifications and alerts",
                             iconColor: .orange
                         )
                         
                         settingsRowDisabled(
-                            icon: "chart.bar.fill",
-                            title: "Statistics",
-                            subtitle: "View your practice stats and progress",
+                            icon: "paintbrush.fill",
+                            title: "Appearance",
+                            subtitle: "Customize app theme and visual preferences",
                             iconColor: .cyan
                         )
                         
                         settingsRowDisabled(
-                            icon: "heart.fill",
-                            title: "Favorites",
-                            subtitle: "Manage your favorite songs and charts",
-                            iconColor: .red
+                            icon: "icloud.fill",
+                            title: "Sync Settings",
+                            subtitle: "Manage cloud sync and backup preferences",
+                            iconColor: .green
                         )
                     }
                 }
@@ -80,7 +97,7 @@ struct ProfileView: View {
                 Spacer()
             }
         }
-        .navigationTitle("Profile")
+        .navigationTitle("Settings")
     }
     
     // MARK: - Helper Views
@@ -184,6 +201,7 @@ struct ProfileView: View {
 
 #Preview {
     NavigationView {
-        ProfileView()
+        SettingsView()
+            .environmentObject(MetronomeEngine())
     }
 }
