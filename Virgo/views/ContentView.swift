@@ -85,13 +85,22 @@ struct ContentView: View {
                 .tag(2)
 
             NavigationStack {
+                SettingsView()
+            }
+            .tabItem {
+                Image(systemName: "gearshape")
+                Text("Settings")
+            }
+            .tag(3)
+            
+            NavigationStack {
                 ProfileView()
             }
             .tabItem {
                 Image(systemName: "person")
                 Text("Profile")
             }
-            .tag(3)
+            .tag(4)
         }
         .accentColor(.purple)
         .onAppear {

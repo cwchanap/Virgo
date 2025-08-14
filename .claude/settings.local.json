@@ -49,7 +49,8 @@
       "mcp__github__add_issue_comment",
       "mcp__XcodeBuildMCP__clean_proj",
       "mcp__XcodeBuildMCP__list_schems_proj",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "mcp__XcodeBuildMCP__discover_projs"
     ],
     "deny": []
   }
