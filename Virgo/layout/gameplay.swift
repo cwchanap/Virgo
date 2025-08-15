@@ -42,7 +42,14 @@ struct GameplayLayout {
 
     // MARK: - Note Positions (including spaces between staff lines)
     enum NotePosition: CaseIterable {
+        // Extended positions above staff
+        case aboveLine9      // Far above staff
+        case aboveLine8
+        case aboveLine7
+        case aboveLine6
         case aboveLine5      // Above highest staff line
+        
+        // Main staff positions
         case line5           // Highest staff line
         case spaceBetween4And5
         case line4
@@ -52,13 +59,26 @@ struct GameplayLayout {
         case line2
         case spaceBetween1And2
         case line1           // Lowest staff line
+        
+        // Extended positions below staff
         case spaceBetweenLine1AndBelow  // Between line1 and belowLine1
         case belowLine1      // Below lowest staff line
         case belowLine2      // Even further below (for kick drum)
+        case belowLine3      // Extended below positions
+        case belowLine4
+        case belowLine5
+        case belowLine6      // Far below staff
 
         var yOffset: CGFloat {
             switch self {
+            // Extended positions above staff
+            case .aboveLine9: return -9 * GameplayLayout.staffLineSpacing
+            case .aboveLine8: return -8 * GameplayLayout.staffLineSpacing  
+            case .aboveLine7: return -7 * GameplayLayout.staffLineSpacing
+            case .aboveLine6: return -6 * GameplayLayout.staffLineSpacing
             case .aboveLine5: return -5 * GameplayLayout.staffLineSpacing
+            
+            // Main staff positions
             case .line5: return -4 * GameplayLayout.staffLineSpacing
             case .spaceBetween4And5: return -3.5 * GameplayLayout.staffLineSpacing
             case .line4: return -3 * GameplayLayout.staffLineSpacing
@@ -68,9 +88,15 @@ struct GameplayLayout {
             case .line2: return -1 * GameplayLayout.staffLineSpacing
             case .spaceBetween1And2: return -0.5 * GameplayLayout.staffLineSpacing
             case .line1: return 0 * GameplayLayout.staffLineSpacing
+            
+            // Extended positions below staff
             case .spaceBetweenLine1AndBelow: return 0.5 * GameplayLayout.staffLineSpacing
             case .belowLine1: return 1 * GameplayLayout.staffLineSpacing
             case .belowLine2: return 2 * GameplayLayout.staffLineSpacing
+            case .belowLine3: return 3 * GameplayLayout.staffLineSpacing
+            case .belowLine4: return 4 * GameplayLayout.staffLineSpacing
+            case .belowLine5: return 5 * GameplayLayout.staffLineSpacing
+            case .belowLine6: return 6 * GameplayLayout.staffLineSpacing
             }
         }
 
