@@ -91,7 +91,6 @@ struct AudioSettingsView: View {
                 .cornerRadius(12)
             }
             .padding(.horizontal)
-            .padding(.top)
         }
         .background(
             LinearGradient(

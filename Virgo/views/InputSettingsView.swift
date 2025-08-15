@@ -34,7 +34,6 @@ struct InputSettingsView: View {
                 resetSection
             }
             .padding(.horizontal)
-            .padding(.top)
         }
         .background(
             LinearGradient(
@@ -70,9 +69,9 @@ struct InputSettingsView: View {
             }
             
             VStack(spacing: 12) {
-                Button(action: {
+                Button {
                     showResetAlert = true
-                }) {
+                } label: {
                     HStack {
                         Image(systemName: "arrow.counterclockwise")
                             .foregroundColor(.orange)
@@ -92,12 +91,12 @@ struct InputSettingsView: View {
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .alert("Reset Input Mappings", isPresented: $showResetAlert, actions: {
+                .alert("Reset Input Mappings", isPresented: $showResetAlert) {
                     Button("Cancel", role: .cancel) { }
                     Button("Reset", role: .destructive) {
                         settingsManager.resetToDefaults()
                     }
-                }, message: {
+                } message: {
                     Text("This will reset all keyboard and MIDI mappings to their default values. " +
                          "This action cannot be undone.")
                 })

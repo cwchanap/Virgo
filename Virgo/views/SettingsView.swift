@@ -18,7 +18,7 @@ struct SettingsView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            .ignoresSafeArea()
+            .ignoresSafeArea(.container, edges: .bottom)
 
             VStack(spacing: 20) {
                 // Header
@@ -62,8 +62,19 @@ struct SettingsView: View {
                         settingsRow(
                             icon: "waveform",
                             title: "Audio Settings",
-                            subtitle: "Configure metronome and playback preferences",
+                            subtitle: "Configure audio and playback preferences",
                             iconColor: .blue
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    // Drum Notation Settings
+                    NavigationLink(destination: DrumNotationSettingsView()) {
+                        settingsRow(
+                            icon: "music.note",
+                            title: "Drum Notation",
+                            subtitle: "Configure drum note positions on staff lines",
+                            iconColor: .cyan
                         )
                     }
                     .buttonStyle(PlainButtonStyle())
