@@ -13,6 +13,7 @@ struct DrumNotationSettingsView: View {
     @State private var showResetAlert = false
     @State private var draggedDrumType: DrumType?
     @State private var dragOffset: CGSize = .zero
+    @Environment(\.dismiss) private var dismiss
     
     private let staffHeight: CGFloat = 200
     private let staffLineSpacing: CGFloat = 20
@@ -21,6 +22,34 @@ struct DrumNotationSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                #if os(macOS)
+                // Title section with back button for macOS
+                HStack {
+                    Button(action: { dismiss() }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chevron.left")
+                                .font(.title2)
+                                .foregroundColor(.white)
+                            Text("Back")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    Spacer()
+                    
+                    Text("Drum Notation")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                #endif
+                
                 // Header Section
                 headerSection
                 
@@ -34,6 +63,7 @@ struct DrumNotationSettingsView: View {
                 resetSection
             }
             .padding(.horizontal)
+            .padding(.top, 20)
         }
         .background(
             LinearGradient(
@@ -43,7 +73,10 @@ struct DrumNotationSettingsView: View {
             )
             .ignoresSafeArea(.container, edges: .bottom)
         )
+        #if os(iOS)
         .navigationTitle("Drum Notation")
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .onAppear {
             settingsManager.loadSettings()
         }
