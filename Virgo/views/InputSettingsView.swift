@@ -99,7 +99,7 @@ struct InputSettingsView: View {
                 } message: {
                     Text("This will reset all keyboard and MIDI mappings to their default values. " +
                          "This action cannot be undone.")
-                })
+                }
             }
             .padding()
             .background(Color.black.opacity(0.3))
