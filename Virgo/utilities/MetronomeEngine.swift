@@ -28,7 +28,7 @@ class MetronomeEngine: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     // Configuration
-    var bpm: Int = 120 {
+    var bpm: Double = 120.0 {
         didSet {
             timingEngine.bpm = bpm
         }
@@ -46,9 +46,9 @@ class MetronomeEngine: ObservableObject {
         self.timingEngine = MetronomeTimingEngine()
 
         // Connect timing engine to audio engine
-        timingEngine.onBeat = { [weak self] beat, isAccented in
+        timingEngine.onBeat = { [weak self] beat, isAccented, atTime in
             // Audio playback runs on background thread for precise timing
-            self?.handleBeat(beat: beat, isAccented: isAccented)
+            self?.handleBeat(beat: beat, isAccented: isAccented, atTime: atTime)
         }
 
         // Observe timing engine state
@@ -78,12 +78,20 @@ class MetronomeEngine: ObservableObject {
 
     // MARK: - Playback Control
 
-    func start(bpm: Int, timeSignature: TimeSignature) {
+    func start(bpm: Double, timeSignature: TimeSignature) {
         self.bpm = bpm
         self.timeSignature = timeSignature
 
         audioEngine.resume()
         timingEngine.start()
+    }
+
+    func startAtTime(bpm: Double, timeSignature: TimeSignature, startTime: TimeInterval) {
+        self.bpm = bpm
+        self.timeSignature = timeSignature
+
+        audioEngine.resume()
+        timingEngine.startAtTime(startTime: startTime)
     }
 
     func stop() {
@@ -92,7 +100,7 @@ class MetronomeEngine: ObservableObject {
 
     }
 
-    func toggle(bpm: Int, timeSignature: TimeSignature) {
+    func toggle(bpm: Double, timeSignature: TimeSignature) {
         if isEnabled {
             stop()
         } else {
@@ -100,7 +108,7 @@ class MetronomeEngine: ObservableObject {
         }
     }
 
-    func configure(bpm: Int, timeSignature: TimeSignature) {
+    func configure(bpm: Double, timeSignature: TimeSignature) {
         self.bpm = bpm
         self.timeSignature = timeSignature
     }
@@ -112,9 +120,10 @@ class MetronomeEngine: ObservableObject {
 
     // MARK: - Beat Handling
 
-    private func handleBeat(beat: Int, isAccented: Bool) {
-        // Play audio tick
-        audioEngine.playTick(volume: volume, isAccented: isAccented)
+    private func handleBeat(beat: Int, isAccented: Bool, atTime: AVAudioTime? = nil) {
+        // Play audio tick with precise timing
+        audioEngine.playTick(volume: volume, isAccented: isAccented, atTime: atTime)
+        
     }
 
     // MARK: - Configuration Updates
@@ -123,12 +132,26 @@ class MetronomeEngine: ObservableObject {
         volume = max(0.0, min(1.0, newVolume))
     }
 
-    func updateBPM(_ newBPM: Int) {
-        let clampedBPM = max(40, min(200, newBPM))
+    func updateBPM(_ newBPM: Double) {
+        let clampedBPM = max(40.0, min(200.0, newBPM))
         bpm = clampedBPM
     }
 
     func updateTimeSignature(_ newTimeSignature: TimeSignature) {
         timeSignature = newTimeSignature
+    }
+    
+    // MARK: - Synchronized Timing API
+    
+    /// Get the current playback time from the metronome's timing engine
+    /// This ensures visual elements use the same time reference as audio
+    func getCurrentPlaybackTime() -> TimeInterval? {
+        return timingEngine.getCurrentPlaybackTime()
+    }
+    
+    /// Get the current beat progress from the metronome's timing engine
+    /// Returns precise beat timing for synchronized visual updates
+    func getCurrentBeatProgress() -> (totalBeats: Double, beatInMeasure: Double)? {
+        return timingEngine.getCurrentBeatProgress(timeSignature: timeSignature)
     }
 }

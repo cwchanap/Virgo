@@ -169,7 +169,7 @@ class MetronomeAudioEngine: ObservableObject {
 
     // MARK: - Playback Control
 
-    func playTick(volume: Float = 1.0, isAccented: Bool = false) {
+    func playTick(volume: Float = 1.0, isAccented: Bool = false, atTime: AVAudioTime? = nil) {
         guard !isTestEnvironment else { return }
 
         // Ensure audio engine is running before attempting playback
@@ -186,7 +186,13 @@ class MetronomeAudioEngine: ObservableObject {
             let buffer = try getTickerBuffer()
             let adjustedVolume = isAccented ? min(volume * 1.3, 1.0) : volume
 
-            playerNode.scheduleBuffer(buffer)
+            // Schedule buffer at specific time for precise sync with BGM
+            if let scheduledTime = atTime {
+                playerNode.scheduleBuffer(buffer, at: scheduledTime, options: [], completionHandler: nil)
+            } else {
+                playerNode.scheduleBuffer(buffer) // Immediate playback (fallback)
+            }
+            
             playerNode.volume = adjustedVolume
 
             // Always ensure the player node is playing after scheduling a buffer

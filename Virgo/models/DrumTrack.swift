@@ -49,8 +49,8 @@ final class Chart {
     var artist: String {
         song?.artist ?? "Unknown Artist"
     }
-    var bpm: Int {
-        song?.bpm ?? 120
+    var bpm: Double {
+        song?.bpm ?? 120.0
     }
     var duration: String {
         song?.duration ?? "0:00"
@@ -84,7 +84,7 @@ final class Chart {
 final class Song {
     var title: String
     var artist: String
-    var bpm: Int
+    var bpm: Double
     var duration: String
     var genre: String
     private var _timeSignature: TimeSignature?
@@ -140,7 +140,7 @@ final class Song {
     init(
         title: String,
         artist: String,
-        bpm: Int,
+        bpm: Double,
         duration: String,
         genre: String,
         timeSignature: TimeSignature = .fourFour,
@@ -286,7 +286,7 @@ struct DrumTrack: Equatable {
     // Forward all properties to the chart and its song
     var title: String { chart.title }
     var artist: String { chart.artist }
-    var bpm: Int { chart.bpm }
+    var bpm: Double { chart.bpm }
     var duration: String { chart.duration }
     var genre: String { chart.genre }
     var difficulty: Difficulty { chart.difficulty }

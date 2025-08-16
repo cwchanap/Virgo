@@ -99,7 +99,7 @@ struct MetronomeAudioEngineTests {
 
         // These should not crash in test environment
         audioEngine.playTick()
-        audioEngine.playTick(volume: 0.5, isAccented: true)
+        audioEngine.playTick(volume: 0.5, isAccented: true, atTime: nil)
         audioEngine.stop()
         audioEngine.resume()
     }
@@ -143,7 +143,7 @@ struct MetronomeTimingEngineTests {
         var receivedBeat: Int = 0
         var receivedAccented: Bool = false
 
-        timingEngine.onBeat = { beat, isAccented in
+        timingEngine.onBeat = { beat, isAccented, _ in
             callbackTriggered = true
             receivedBeat = beat
             receivedAccented = isAccented
