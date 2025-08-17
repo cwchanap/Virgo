@@ -136,7 +136,7 @@ enum NoteType: String, Codable, CaseIterable {
     case cowbell = "Cowbell"
 }
 
-enum DrumType: Hashable {
+enum DrumType: Hashable, CaseIterable {
     case kick, snare, hiHat, hiHatPedal, crash, ride, tom1, tom2, tom3, cowbell
 
     var description: String {
@@ -188,6 +188,40 @@ enum DrumType: Hashable {
         .splash: .crash,
         .cowbell: .cowbell
     ]
+}
+
+// MARK: - DrumType Storage Extension
+extension DrumType {
+    var storageKey: String {
+        switch self {
+        case .kick: return "drum_kick"
+        case .snare: return "drum_snare"
+        case .hiHat: return "drum_hihat"
+        case .hiHatPedal: return "drum_hihat_pedal"
+        case .crash: return "drum_crash"
+        case .ride: return "drum_ride"
+        case .tom1: return "drum_tom1"
+        case .tom2: return "drum_tom2"
+        case .tom3: return "drum_tom3"
+        case .cowbell: return "drum_cowbell"
+        }
+    }
+    
+    init?(storageKey: String) {
+        switch storageKey {
+        case "drum_kick": self = .kick
+        case "drum_snare": self = .snare
+        case "drum_hihat": self = .hiHat
+        case "drum_hihat_pedal": self = .hiHatPedal
+        case "drum_crash": self = .crash
+        case "drum_ride": self = .ride
+        case "drum_tom1": self = .tom1
+        case "drum_tom2": self = .tom2
+        case "drum_tom3": self = .tom3
+        case "drum_cowbell": self = .cowbell
+        default: return nil
+        }
+    }
 }
 
 // MARK: - Beam Grouping Constants

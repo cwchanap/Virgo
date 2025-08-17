@@ -25,7 +25,7 @@ struct DrumNotationSettingsView: View {
                 #if os(macOS)
                 // Title section with back button for macOS
                 HStack {
-                    Button(action: { dismiss() }) {
+                    Button(action: { dismiss() }, label: {
                         HStack(spacing: 8) {
                             Image(systemName: "chevron.left")
                                 .font(.title2)
@@ -34,7 +34,7 @@ struct DrumNotationSettingsView: View {
                                 .font(.headline)
                                 .foregroundColor(.white)
                         }
-                    }
+                    })
                     .buttonStyle(PlainButtonStyle())
                     
                     Spacer()
@@ -462,8 +462,18 @@ class DrumNotationSettingsManager: ObservableObject {
         if let data = userDefaults.data(forKey: settingsKey),
            let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
             
-            for (drumTypeString, positionString) in decoded {
-                if let drumType = DrumType.allCases.first(where: { $0.description == drumTypeString }),
+            for (keyString, positionString) in decoded {
+                var drumType: DrumType?
+                
+                // Try new storage key first
+                if let drumTypeFromStorage = DrumType(storageKey: keyString) {
+                    drumType = drumTypeFromStorage
+                } else {
+                    // Fall back to legacy description-based lookup
+                    drumType = DrumType.allCases.first(where: { $0.description == keyString })
+                }
+                
+                if let drumType = drumType,
                    let position = GameplayLayout.NotePosition.allCases.first(where: { $0.rawValue == positionString }) {
                     notePositions[drumType] = position
                 }
@@ -478,7 +488,7 @@ class DrumNotationSettingsManager: ObservableObject {
     
     func saveSettings() {
         let encoded = notePositions.reduce(into: [String: String]()) { result, pair in
-            result[pair.key.description] = pair.value.rawValue
+            result[pair.key.storageKey] = pair.value.rawValue
         }
         
         if let data = try? JSONEncoder().encode(encoded) {

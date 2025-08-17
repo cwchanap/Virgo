@@ -150,8 +150,12 @@ struct MetronomeBasicTests {
         ]
 
         for testCase in testCases {
-            let component = MetronomeComponent(metronome: metronome, bpm: Double(testCase.bpm), timeSignature: testCase.timeSignature)
-            #expect(component.bpm == testCase.bpm)
+            let component = MetronomeComponent(
+                metronome: metronome,
+                bpm: Double(testCase.bpm),
+                timeSignature: testCase.timeSignature
+            )
+            #expect(component.bpm == Double(testCase.bpm))
             #expect(component.timeSignature == testCase.timeSignature)
         }
     }

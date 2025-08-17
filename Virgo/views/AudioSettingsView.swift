@@ -55,7 +55,7 @@ struct AudioSettingsView: View {
                     
                     VStack(spacing: 12) {
                         disabledSettingRow(
-                            icon: "volume.3",
+                            icon: "speaker.wave.3",
                             title: "Master Volume",
                             subtitle: "Control overall app volume"
                         )

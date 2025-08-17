@@ -7,12 +7,7 @@
 
 import Foundation
 
-extension DrumType: CaseIterable {
-    public static var allCases: [DrumType] = [
-        .kick, .snare, .hiHat, .hiHatPedal, .crash, .ride, 
-        .tom1, .tom2, .tom3, .cowbell
-    ]
-    
+extension DrumType {
     var displayName: String {
         switch self {
         case .kick: return "Kick Drum"
