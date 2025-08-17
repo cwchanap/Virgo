@@ -211,7 +211,7 @@ struct SettingsView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         SettingsView()
             .environmentObject(MetronomeEngine())
     }

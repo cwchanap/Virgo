@@ -80,6 +80,12 @@ class InputManager: ObservableObject {
     private var midiClient: MIDIClientRef = 0
     private var midiInputPort: MIDIPortRef = 0
     
+    // Keyboard event monitors for proper cleanup
+    #if os(macOS)
+    private var globalEventMonitor: Any?
+    private var localEventMonitor: Any?
+    #endif
+    
     // Timing calculation cache
     private var secondsPerBeat: Double = 0.5
     private var secondsPerMeasure: Double = 2.0
@@ -90,6 +96,12 @@ class InputManager: ObservableObject {
     }
     
     deinit {
+        // Clean up keyboard event monitors
+        #if os(macOS)
+        stopKeyboardListening()
+        #endif
+        
+        // Clean up MIDI resources
         teardownMIDI()
     }
 }
@@ -98,12 +110,22 @@ class InputManager: ObservableObject {
 
 extension InputManager {
     func configure(bpm: Double, timeSignature: TimeSignature, notes: [Note]) {
+        // Validate BPM range to prevent division by zero and unrealistic values
+        guard bpm > 0.1 && bpm <= 1000.0 else {
+            preconditionFailure("BPM must be between 0.1 and 1000.0, got: \(bpm)")
+        }
+        
+        // Validate time signature
+        guard timeSignature.beatsPerMeasure > 0 else {
+            preconditionFailure("Time signature beats per measure must be positive, got: \(timeSignature.beatsPerMeasure)")
+        }
+        
         self.bpm = bpm
         self.timeSignature = timeSignature
         self.notes = notes.sorted { $0.measureNumber < $1.measureNumber || 
             ($0.measureNumber == $1.measureNumber && $0.measureOffset < $1.measureOffset) }
         
-        // Update timing calculations
+        // Update timing calculations with validated values
         self.secondsPerBeat = 60.0 / bpm
         self.secondsPerMeasure = secondsPerBeat * Double(timeSignature.beatsPerMeasure)
     }
@@ -244,26 +266,47 @@ extension InputManager {
 #if os(macOS)
 extension InputManager {
     private func startKeyboardListening() {
-        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        // Stop any existing monitors first
+        stopKeyboardListening()
+        
+        // Store monitors for proper cleanup
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleKeyboardEvent(event)
         }
         
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleKeyboardEvent(event)
             return event
         }
     }
     
     private func stopKeyboardListening() {
-        // Note: In a real implementation, you'd need to store the event monitor references
-        // and remove them here. For simplicity, this is omitted.
+        // Remove global event monitor
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
+        }
+        
+        // Remove local event monitor
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
+        }
     }
     
     private func handleKeyboardEvent(_ event: NSEvent) {
+        // Guard against nil or invalid events
+        guard event.type == .keyDown else { return }
+        
         let keyString = keyStringFromEvent(event)
         
+        // Validate key string is not empty
+        guard !keyString.isEmpty else { return }
+        
         if let drumType = keyboardMapping[keyString] {
-            let velocity = min(1.0, max(0.1, Double(event.pressure)))
+            // Clamp velocity to valid range [0.1, 1.0]
+            let rawVelocity = Double(event.pressure)
+            let velocity = min(1.0, max(0.1, rawVelocity.isFinite ? rawVelocity : 1.0))
             processInput(drumType, velocity: velocity)
         }
     }

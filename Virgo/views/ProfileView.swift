@@ -183,7 +183,7 @@ struct ProfileView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         ProfileView()
     }
 }

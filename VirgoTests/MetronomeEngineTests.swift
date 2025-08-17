@@ -53,6 +53,47 @@ struct MetronomeEngineTests {
         engine.updateVolume(-0.1)
         #expect(engine.volume == 0.0) // Should clamp to min
     }
+    
+    @Test("MetronomeEngine handles invalid volume values")
+    func testInvalidVolumeHandling() {
+        let engine = MetronomeEngine()
+        let originalVolume = engine.volume
+        
+        // Test infinite values
+        engine.updateVolume(Float.infinity)
+        #expect(engine.volume == originalVolume) // Should maintain original volume
+        
+        engine.updateVolume(-Float.infinity)
+        #expect(engine.volume == originalVolume) // Should maintain original volume
+        
+        // Test NaN
+        engine.updateVolume(Float.nan)
+        #expect(engine.volume == originalVolume) // Should maintain original volume
+    }
+    
+    @Test("MetronomeEngine handles invalid BPM values")
+    func testInvalidBPMHandling() {
+        let engine = MetronomeEngine()
+        let originalBPM = engine.bpm
+        
+        // Test infinite values
+        engine.updateBPM(Double.infinity)
+        #expect(engine.bpm == originalBPM) // Should maintain original BPM
+        
+        engine.updateBPM(-Double.infinity)
+        #expect(engine.bpm == originalBPM) // Should maintain original BPM
+        
+        // Test NaN
+        engine.updateBPM(Double.nan)
+        #expect(engine.bpm == originalBPM) // Should maintain original BPM
+        
+        // Test zero and negative values
+        engine.updateBPM(0.0)
+        #expect(engine.bpm == originalBPM) // Should maintain original BPM
+        
+        engine.updateBPM(-10.0)
+        #expect(engine.bpm == originalBPM) // Should maintain original BPM
+    }
 
     @Test("MetronomeEngine time signature updates correctly")
     func testTimeSignatureUpdate() {

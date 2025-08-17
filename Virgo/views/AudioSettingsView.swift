@@ -191,7 +191,7 @@ struct AudioSettingsView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         AudioSettingsView()
     }
 }
