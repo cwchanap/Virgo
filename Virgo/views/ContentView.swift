@@ -102,7 +102,7 @@ struct ContentView: View {
             }
             .tag(4)
         }
-        .accentColor(.purple)
+        .tint(.purple)
         .onAppear {
             if databaseService == nil {
                 databaseService = DatabaseMaintenanceService(modelContext: modelContext)

@@ -602,7 +602,7 @@ extension GameplayLayout.NotePosition {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         DrumNotationSettingsView()
     }
 }

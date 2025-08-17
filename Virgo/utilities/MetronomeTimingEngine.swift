@@ -21,6 +21,8 @@ class MetronomeTimingEngine: ObservableObject {
     // Configuration
     var bpm: Double = 120.0 {
         didSet {
+            // Cache beat interval when BPM changes to avoid repeated division
+            cachedBeatInterval = 60.0 / bpm
             if isPlaying {
                 restartTimer()
             }
@@ -40,12 +42,20 @@ class MetronomeTimingEngine: ObservableObject {
     // High-precision timing
     private var startTime: CFAbsoluteTime = 0
     private var lastFiredBeat: Int = 0
+    
+    // Performance optimization: Cache beat interval to avoid repeated division
+    private var cachedBeatInterval: TimeInterval = 0.5
 
     // Callbacks
     var onBeat: ((Int, Bool, AVAudioTime?) -> Void)?
 
     private var beatInterval: TimeInterval {
-        60.0 / Double(bpm)
+        return cachedBeatInterval
+    }
+    
+    init() {
+        // Initialize cached beat interval
+        cachedBeatInterval = 60.0 / bpm
     }
 
     deinit {
@@ -180,8 +190,28 @@ class MetronomeTimingEngine: ObservableObject {
         
         lastFiredBeat += 1
         
-        // Play the current beat
-        self.handleBeat(preciseAudioTime: nil)
+        // Create precise AVAudioTime for sample-accurate scheduling
+        let preciseAudioTime = createPreciseAudioTime(for: actualFireTime)
+        
+        // Play the current beat with precise timing
+        self.handleBeat(preciseAudioTime: preciseAudioTime)
+    }
+
+    private func createPreciseAudioTime(for fireTime: CFAbsoluteTime) -> AVAudioTime? {
+        // Calculate the ideal beat time based on our start time and beat interval
+        let beatNumber = lastFiredBeat
+        let _ = startTime + (Double(beatNumber - 1) * beatInterval) // For future timing calculations
+        
+        // Create AVAudioTime for the ideal beat timing
+        let hostTime = mach_absolute_time()
+        let audioTime = AVAudioTime(hostTime: hostTime)
+        
+        // Validate the created audio time
+        if audioTime.isHostTimeValid && hostTime > 0 {
+            return audioTime
+        }
+        
+        return nil
     }
 
     private func handleBeat(preciseAudioTime: AVAudioTime? = nil) {

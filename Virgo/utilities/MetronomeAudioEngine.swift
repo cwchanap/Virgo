@@ -184,11 +184,22 @@ class MetronomeAudioEngine: ObservableObject {
 
         do {
             let buffer = try getTickerBuffer()
-            let adjustedVolume = isAccented ? min(volume * 1.3, 1.0) : volume
+            let adjustedVolume = max(0.0, min(1.0, isAccented ? volume * 1.3 : volume))
 
-            // Schedule buffer at specific time for precise sync with BGM
+            // Verify and validate AVAudioTime timebase for sample-accurate scheduling
             if let scheduledTime = atTime {
-                playerNode.scheduleBuffer(buffer, at: scheduledTime, options: [], completionHandler: nil)
+                // Verify the timebase is valid and compatible with our audio engine
+                let hostTime = scheduledTime.hostTime
+                if hostTime > 0 && scheduledTime.isHostTimeValid {
+                    
+                    // Use the validated time for precise scheduling
+                    playerNode.scheduleBuffer(buffer, at: scheduledTime, options: [], completionHandler: nil)
+                    Logger.audioPlayback("🔊 Scheduled buffer at precise time: \(hostTime)")
+                } else {
+                    // Fallback to immediate playback if time is invalid
+                    playerNode.scheduleBuffer(buffer)
+                    Logger.audioPlayback("🔊 Invalid AVAudioTime - using immediate playback fallback")
+                }
             } else {
                 playerNode.scheduleBuffer(buffer) // Immediate playback (fallback)
             }

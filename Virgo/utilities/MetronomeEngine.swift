@@ -129,15 +129,30 @@ class MetronomeEngine: ObservableObject {
     // MARK: - Configuration Updates
 
     func updateVolume(_ newVolume: Float) {
+        // Validate volume is a finite number
+        guard newVolume.isFinite else {
+            Logger.audioPlayback("Invalid volume value: \(newVolume), using current volume")
+            return
+        }
         volume = max(0.0, min(1.0, newVolume))
     }
 
     func updateBPM(_ newBPM: Double) {
+        // Validate BPM is finite and within reasonable range
+        guard newBPM.isFinite && newBPM > 0 else {
+            Logger.audioPlayback("Invalid BPM value: \(newBPM), keeping current BPM: \(bpm)")
+            return
+        }
         let clampedBPM = max(40.0, min(200.0, newBPM))
         bpm = clampedBPM
     }
 
     func updateTimeSignature(_ newTimeSignature: TimeSignature) {
+        // Validate time signature has positive beats per measure
+        guard newTimeSignature.beatsPerMeasure > 0 else {
+            Logger.audioPlayback("Invalid time signature: \(newTimeSignature), keeping current: \(timeSignature)")
+            return
+        }
         timeSignature = newTimeSignature
     }
     
