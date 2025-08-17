@@ -6,8 +6,25 @@
 //
 
 import Foundation
+import AVFoundation
 
 extension GameplayView {
+    // MARK: - Time Conversion Utilities
+    
+    /// Converts CFAbsoluteTime (metronome timebase) to AVAudioPlayer device time
+    /// This ensures both metronome and BGM use synchronized timing references
+    private func convertToAudioPlayerTime(_ cfTime: CFAbsoluteTime, bgmPlayer: AVAudioPlayer) -> TimeInterval {
+        // Get current times from both domains
+        let currentCFTime = CFAbsoluteTimeGetCurrent()
+        let currentAudioTime = bgmPlayer.deviceCurrentTime
+        
+        // Calculate time offset from current moment
+        let timeOffset = cfTime - currentCFTime
+        
+        // Add the offset to the current audio time to get synchronized audio time
+        return currentAudioTime + timeOffset
+    }
+    
     // MARK: - Actions
     func togglePlayback() {
         isPlaying.toggle()
@@ -49,10 +66,6 @@ extension GameplayView {
         playbackStartTime = Date()
         playbackTimer?.invalidate()
         
-        // CRITICAL FIX: Calculate synchronized start time for both metronome and BGM
-        // This eliminates the timing gap that made metronome appear "faster"
-        let synchronizedStartDelay: TimeInterval = 0.1 // 100ms buffer for precise sync
-        
         // Start InputManager listening with current start time
         if let startTime = playbackStartTime {
             inputManager.startListening(songStartTime: startTime)
@@ -68,26 +81,28 @@ extension GameplayView {
                 bgmPlayer.play()
                 Logger.audioPlayback("Resumed BGM and metronome playback simultaneously for track: \(track.title)")
             } else {
-                // Reset BGM to beginning and synchronize start times
+                // Reset BGM to beginning and schedule synchronized start
                 bgmPlayer.currentTime = 0
                 
-                // CRITICAL FIX: Use consistent timing references for BGM and metronome
-                // BGM uses deviceCurrentTime, metronome uses CFAbsoluteTime - they're different!
-                let bgmDeviceTime = bgmPlayer.deviceCurrentTime
-                let bgmScheduledTime = bgmDeviceTime + synchronizedStartDelay + bgmOffsetSeconds
+                // SYNCHRONIZED START: Use a single common start time for both metronome and BGM
+                // Calculate start time slightly in the future to allow for setup
+                let setupTime: TimeInterval = 0.05 // 50ms setup time
+                let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
                 
-                // Schedule BGM to start at BGM's time reference
+                // Schedule metronome to start at the common time
+                let trackBPM = track.bpm
+                metronome.startAtTime(bpm: trackBPM, timeSignature: track.timeSignature, startTime: commonStartTime)
+                
+                // Convert common start time to BGM's audio time domain
+                let bgmAudioStartTime = convertToAudioPlayerTime(commonStartTime, bgmPlayer: bgmPlayer)
+                
+                // Schedule BGM to start at the corresponding audio time (with optional offset)
+                let bgmScheduledTime = bgmAudioStartTime + bgmOffsetSeconds
                 bgmPlayer.play(atTime: bgmScheduledTime)
                 
-                // Start metronome immediately since we can't sync different time references
-                // The 100ms delay in BGM scheduling compensates for metronome startup time
-                let trackBPM = track.bpm
-                
-                metronome.start(bpm: trackBPM, timeSignature: track.timeSignature)
-                
-                let message = "Scheduled synchronized start - BGM at device time: \(bgmScheduledTime) " +
-                            "(BGM offset: \(bgmOffsetSeconds)s, sync buffer: \(synchronizedStartDelay)s)"
-                Logger.audioPlayback(message)
+                Logger.audioPlayback(
+                    "Synchronized start - Common time: \(commonStartTime), BGM audio time: \(bgmAudioStartTime) (offset: \(bgmOffsetSeconds)s)"
+                )
             }
         } else {
             // No BGM - start metronome immediately

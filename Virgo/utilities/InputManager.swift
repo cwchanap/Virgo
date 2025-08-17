@@ -167,9 +167,11 @@ extension InputManager {
         let elapsedTime = now.timeIntervalSince(songStartTime)
         let result = calculateNoteMatch(for: hit, elapsedTime: elapsedTime)
         
-        // Notify delegate
-        delegate?.inputManager(self, didReceiveHit: hit)
-        delegate?.inputManager(self, didMatchNote: result)
+        // Notify delegate on main thread
+        DispatchQueue.main.async {
+            self.delegate?.inputManager(self, didReceiveHit: hit)
+            self.delegate?.inputManager(self, didMatchNote: result)
+        }
     }
     
     private func calculateNoteMatch(for hit: InputHit, elapsedTime: Double) -> NoteMatchResult {
@@ -312,8 +314,17 @@ extension InputManager {
     }
     
     private func keyStringFromEvent(_ event: NSEvent) -> String {
+        // Handle special keys first
         switch event.keyCode {
         case 49: return "space"
+        case 53: return "escape"
+        case 36: return "return"
+        case 48: return "tab"
+        case 51: return "delete"
+        case 123: return "left"
+        case 124: return "right"
+        case 125: return "down"
+        case 126: return "up"
         case 3: return "f"
         case 38: return "j"
         case 2: return "d"
@@ -322,7 +333,13 @@ extension InputManager {
         case 37: return "l"
         case 41: return "semicolon"
         case 5: return "g"
-        default: return event.characters?.lowercased() ?? ""
+        default:
+            // For regular keys, use the character representation
+            if let characters = event.characters?.lowercased(), !characters.isEmpty {
+                return characters
+            }
+            // Fallback to key code for unmappable keys
+            return "key\(event.keyCode)"
         }
     }
 }

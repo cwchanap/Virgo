@@ -184,7 +184,15 @@ class MetronomeAudioEngine: ObservableObject {
 
         do {
             let buffer = try getTickerBuffer()
-            let adjustedVolume = max(0.0, min(1.0, isAccented ? volume * 1.3 : volume))
+            
+            // Sanitize volume: replace NaN/infinite with safe default
+            let sanitizedVolume = volume.isNaN || volume.isInfinite ? 0.0 : volume
+            
+            // Apply accent multiplier to sanitized volume
+            let accentedVolume = isAccented ? sanitizedVolume * 1.3 : sanitizedVolume
+            
+            // Clamp the final volume between 0.0 and 1.0
+            let adjustedVolume = max(0.0, min(1.0, accentedVolume))
 
             // Verify and validate AVAudioTime timebase for sample-accurate scheduling
             if let scheduledTime = atTime {

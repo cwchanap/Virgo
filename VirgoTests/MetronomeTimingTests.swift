@@ -17,18 +17,18 @@ struct MetronomeTimingTests {
 
     @Test func testBPMToIntervalConversion() {
         // Test common BPM values
-        let testCases: [(bpm: Int, expectedInterval: Double)] = [
-            (60, 1.0),      // 60 BPM = 1 second per beat
-            (120, 0.5),     // 120 BPM = 0.5 seconds per beat
-            (240, 0.25),    // 240 BPM = 0.25 seconds per beat
-            (100, 0.6),     // 100 BPM = 0.6 seconds per beat
-            (166, 60.0/166.0), // BPM 166 from our bug fix
-            (90, 60.0/90.0),   // 90 BPM = 0.667 seconds per beat
-            (150, 0.4)     // 150 BPM = 0.4 seconds per beat
+        let testCases: [(bpm: Double, expectedInterval: Double)] = [
+            (60.0, 1.0),      // 60 BPM = 1 second per beat
+            (120.0, 0.5),     // 120 BPM = 0.5 seconds per beat
+            (240.0, 0.25),    // 240 BPM = 0.25 seconds per beat
+            (100.0, 0.6),     // 100 BPM = 0.6 seconds per beat
+            (166.0, 60.0/166.0), // BPM 166 from our bug fix
+            (90.0, 60.0/90.0),   // 90 BPM = 0.667 seconds per beat
+            (150.0, 0.4)     // 150 BPM = 0.4 seconds per beat
         ]
 
         for testCase in testCases {
-            let calculatedInterval = 60.0 / Double(testCase.bpm)
+            let calculatedInterval = 60.0 / testCase.bpm
             let tolerance = 0.001
 
             #expect(
