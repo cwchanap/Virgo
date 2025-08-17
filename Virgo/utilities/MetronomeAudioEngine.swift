@@ -255,6 +255,34 @@ class MetronomeAudioEngine: ObservableObject {
             Logger.audioPlayback("Failed to resume audio engine: \(error.localizedDescription)")
         }
     }
+    
+    // MARK: - Time Conversion
+    
+    /// Convert CFAbsoluteTime (metronome timebase) to AVAudioEngine timeline
+    /// This ensures sample-accurate synchronization between metronome and external audio
+    func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
+        guard !isTestEnvironment && audioEngine.isRunning else { return nil }
+        
+        // Get current times from both domains
+        let currentCFTime = CFAbsoluteTimeGetCurrent()
+        let currentHostTime = mach_absolute_time()
+        
+        // Calculate time offset from current moment
+        let timeOffset = cfTime - currentCFTime
+        
+        // Convert time offset to host time units (nanoseconds)
+        var timebaseInfo = mach_timebase_info_data_t()
+        mach_timebase_info(&timebaseInfo)
+        let nanosPerTick = Double(timebaseInfo.numer) / Double(timebaseInfo.denom)
+        let offsetNanos = timeOffset * 1_000_000_000.0 // Convert seconds to nanoseconds
+        let hostTimeOffset = UInt64(offsetNanos / nanosPerTick)
+        
+        // Calculate target host time
+        let targetHostTime = currentHostTime + hostTimeOffset
+        
+        // Create AVAudioTime for the target host time
+        return AVAudioTime(hostTime: targetHostTime)
+    }
 }
 
 // MARK: - Errors

@@ -28,7 +28,7 @@ struct ServerSongRow: View {
                     .lineLimit(1)
 
                 HStack {
-                    Label("\(Int(serverSong.bpm)) BPM", systemImage: "metronome")
+                    Label("\(serverSong.bpm.truncatingRemainder(dividedBy: 1) == 0 ? String(format: "%.0f", serverSong.bpm) : String(format: "%.2f", serverSong.bpm)) BPM", systemImage: "metronome")
                         .font(.caption)
                         .foregroundColor(.secondary)
 

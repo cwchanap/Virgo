@@ -13,7 +13,7 @@ extension GameplayView {
     
     /// Converts CFAbsoluteTime (metronome timebase) to AVAudioPlayer device time
     /// This ensures both metronome and BGM use synchronized timing references
-    private func convertToAudioPlayerTime(_ cfTime: CFAbsoluteTime, bgmPlayer: AVAudioPlayer) -> TimeInterval {
+    private func convertToAudioPlayerDeviceTime(_ cfTime: CFAbsoluteTime, bgmPlayer: AVAudioPlayer) -> TimeInterval {
         // Get current times from both domains
         let currentCFTime = CFAbsoluteTimeGetCurrent()
         let currentAudioTime = bgmPlayer.deviceCurrentTime
@@ -81,11 +81,11 @@ extension GameplayView {
                 bgmPlayer.play()
                 Logger.audioPlayback("Resumed BGM and metronome playback simultaneously for track: \(track.title)")
             } else {
-                // Reset BGM to beginning and schedule synchronized start
+                // Reset BGM to beginning and schedule sample-accurate synchronized start
                 bgmPlayer.currentTime = 0
                 
-                // SYNCHRONIZED START: Use a single common start time for both metronome and BGM
-                // Calculate start time slightly in the future to allow for setup
+                // SAMPLE-ACCURATE SYNC: Use single common start time for both audio systems
+                // Calculate start time in the future to allow for setup
                 let setupTime: TimeInterval = 0.05 // 50ms setup time
                 let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
                 
@@ -93,15 +93,13 @@ extension GameplayView {
                 let trackBPM = track.bpm
                 metronome.startAtTime(bpm: trackBPM, timeSignature: track.timeSignature, startTime: commonStartTime)
                 
-                // Convert common start time to BGM's audio time domain
-                let bgmAudioStartTime = convertToAudioPlayerTime(commonStartTime, bgmPlayer: bgmPlayer)
-                
-                // Schedule BGM to start at the corresponding audio time (with optional offset)
-                let bgmScheduledTime = bgmAudioStartTime + bgmOffsetSeconds
+                // Convert common start time to AVAudioPlayer device time for sample-accurate BGM scheduling
+                let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
+                let bgmScheduledTime = bgmDeviceTime + bgmOffsetSeconds
                 bgmPlayer.play(atTime: bgmScheduledTime)
                 
                 Logger.audioPlayback(
-                    "Synchronized start - Common time: \(commonStartTime), BGM audio time: \(bgmAudioStartTime) (offset: \(bgmOffsetSeconds)s)"
+                    "Sample-accurate sync - Common time: \(commonStartTime), BGM device time: \(bgmDeviceTime) (offset: \(bgmOffsetSeconds)s)"
                 )
             }
         } else {

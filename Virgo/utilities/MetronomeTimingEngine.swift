@@ -119,9 +119,11 @@ class MetronomeTimingEngine: ObservableObject {
         timer.schedule(deadline: .now(), repeating: .nanoseconds(nanoseconds))
         
         timer.setEventHandler { [weak self] in
-            guard let self = self else { return }
             let actualFireTime = CFAbsoluteTimeGetCurrent()
-            self.fireBeat(actualFireTime: actualFireTime)
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.fireBeat(actualFireTime: actualFireTime)
+            }
         }
         
         timer.resume()
@@ -156,9 +158,11 @@ class MetronomeTimingEngine: ObservableObject {
         timer.schedule(deadline: .now() + .nanoseconds(startDelayNanos), repeating: .nanoseconds(nanoseconds))
         
         timer.setEventHandler { [weak self] in
-            guard let self = self else { return }
             let actualFireTime = CFAbsoluteTimeGetCurrent()
-            self.fireBeat(actualFireTime: actualFireTime)
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.fireBeat(actualFireTime: actualFireTime)
+            }
         }
         
         timer.setCancelHandler {

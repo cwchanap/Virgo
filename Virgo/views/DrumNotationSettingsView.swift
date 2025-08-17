@@ -386,7 +386,7 @@ struct DrumNotationSettingsView: View {
         // Allow full extended range
         let clampedOffset = max(-9.5, min(6.5, normalizedOffset))
         
-        let closestPosition = positions.min { abs($0.1 - normalizedOffset) < abs($1.1 - normalizedOffset) }
+        let closestPosition = positions.min { abs($0.1 - clampedOffset) < abs($1.1 - clampedOffset) }
         return closestPosition?.0 ?? .line3
     }
     

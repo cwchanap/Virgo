@@ -176,4 +176,5 @@ struct PressableButtonStyle: ButtonStyle {
 
 #Preview {
     MainMenuView()
+        .environmentObject(MetronomeEngine())
 }

@@ -124,4 +124,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .modelContainer(for: Song.self, inMemory: true)
+        .environmentObject(MetronomeEngine())
 }

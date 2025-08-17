@@ -169,4 +169,10 @@ class MetronomeEngine: ObservableObject {
     func getCurrentBeatProgress() -> (totalBeats: Double, beatInMeasure: Double)? {
         return timingEngine.getCurrentBeatProgress(timeSignature: timeSignature)
     }
+    
+    /// Convert CFAbsoluteTime (metronome timebase) to AVAudioEngine node time
+    /// This enables sample-accurate synchronization between metronome and external audio players
+    func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
+        return audioEngine.convertToAudioEngineTime(cfTime)
+    }
 }

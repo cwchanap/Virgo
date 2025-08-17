@@ -129,7 +129,7 @@ struct DownloadedSongRowWithDelete: View {
                         .lineLimit(1)
 
                     HStack(spacing: 12) {
-                        Label("\(song.bpm) BPM", systemImage: "metronome")
+                        Label("\(song.bpm.truncatingRemainder(dividedBy: 1) == 0 ? String(format: "%.0f", song.bpm) : String(format: "%.2f", song.bpm)) BPM", systemImage: "metronome")
                         Label(song.duration, systemImage: "clock")
                         Label(song.genre, systemImage: "music.quarternote.3")
                         Label(song.timeSignature.displayName, systemImage: "music.note")

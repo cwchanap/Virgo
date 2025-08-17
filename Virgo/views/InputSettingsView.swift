@@ -179,27 +179,31 @@ struct InputSettingsView: View {
         selectedDrumType = nil
     }
     
-    // swiftlint:disable:next cyclomatic_complexity
+    private static let specialKeyCodes: [UInt16: String] = [
+        49: "space",
+        53: "escape",
+        36: "return",
+        48: "tab",
+        51: "delete",
+        123: "left",
+        124: "right",
+        125: "down",
+        126: "up"
+    ]
+    
     private func keyStringFromEvent(_ event: NSEvent) -> String {
         // Handle special keys first
-        switch event.keyCode {
-        case 49: return "space"
-        case 53: return "escape"
-        case 36: return "return"
-        case 48: return "tab"
-        case 51: return "delete"
-        case 123: return "left"
-        case 124: return "right"
-        case 125: return "down"
-        case 126: return "up"
-        default:
-            // For regular keys, use the character representation
-            if let characters = event.characters?.lowercased(), !characters.isEmpty {
-                return characters
-            }
-            // Fallback to key code for unmappable keys
-            return "key\(event.keyCode)"
+        if let specialKey = Self.specialKeyCodes[event.keyCode] {
+            return specialKey
         }
+        
+        // For regular keys, use the character representation
+        if let characters = event.characters?.lowercased(), !characters.isEmpty {
+            return characters
+        }
+        
+        // Fallback to key code for unmappable keys
+        return "key\(event.keyCode)"
     }
     #endif
 }
