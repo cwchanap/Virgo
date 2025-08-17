@@ -12,6 +12,10 @@ import SwiftUI
 
 @MainActor
 struct MetronomeBasicTests {
+    
+    private static let testBPM: Double = 120.0
+    private static let highTestBPM: Double = 140.0
+    private static let stressTestBPM: Double = 200.0
 
     @Test func testMetronomeEngineCreation() {
         let metronome = MetronomeEngine()
@@ -27,7 +31,7 @@ struct MetronomeBasicTests {
 
     @Test func testMetronomeConfiguration() {
         let metronome = MetronomeEngine()
-        metronome.configure(bpm: 140.0, timeSignature: .threeFour)
+        metronome.configure(bpm: Self.highTestBPM, timeSignature: .threeFour)
 
         // Configuration should not change public state immediately
         #expect(metronome.isEnabled == false)
@@ -38,7 +42,7 @@ struct MetronomeBasicTests {
         let metronome = MetronomeEngine()
 
         // Test starting
-        metronome.start(bpm: 120.0, timeSignature: .fourFour)
+        metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
         #expect(metronome.isEnabled == true)
         #expect(metronome.currentBeat == 1)
 
@@ -54,11 +58,11 @@ struct MetronomeBasicTests {
         #expect(metronome.isEnabled == false)
 
         // Toggle on
-        metronome.toggle(bpm: 120.0, timeSignature: .fourFour)
+        metronome.toggle(bpm: Self.testBPM, timeSignature: .fourFour)
         #expect(metronome.isEnabled == true)
 
         // Toggle off
-        metronome.toggle(bpm: 120.0, timeSignature: .fourFour)
+        metronome.toggle(bpm: Self.testBPM, timeSignature: .fourFour)
         #expect(metronome.isEnabled == false)
     }
 
@@ -90,8 +94,8 @@ struct MetronomeBasicTests {
 
     @Test func testMetronomeComponentCreation() {
         let metronome = MetronomeEngine()
-        let component = MetronomeComponent(metronome: metronome, bpm: 120, timeSignature: .fourFour)
-        #expect(component.bpm == 120)
+        let component = MetronomeComponent(metronome: metronome, bpm: Self.testBPM, timeSignature: .fourFour)
+        #expect(component.bpm == Self.testBPM)
         #expect(component.timeSignature == .fourFour)
     }
 
@@ -146,7 +150,7 @@ struct MetronomeBasicTests {
         
         let testCases = [
             (bpm: 100, timeSignature: TimeSignature.fourFour),
-            (bpm: 140, timeSignature: TimeSignature.threeFour)
+            (bpm: Int(Self.highTestBPM), timeSignature: TimeSignature.threeFour)
         ]
 
         for testCase in testCases {
@@ -168,7 +172,7 @@ struct MetronomeBasicTests {
     @Test
     func testUIUpdatePerformance() {
         let metronome = MetronomeEngine()
-        metronome.configure(bpm: 200.0, timeSignature: .fourFour) // High BPM for stress test
+        metronome.configure(bpm: Self.stressTestBPM, timeSignature: .fourFour) // High BPM for stress test
 
         let startTime = CFAbsoluteTimeGetCurrent()
 
@@ -187,10 +191,10 @@ struct MetronomeBasicTests {
     @Test
     func testAudioEngineFailure() {
         let metronome = MetronomeEngine()
-        metronome.configure(bpm: 120.0, timeSignature: .fourFour)
+        metronome.configure(bpm: Self.testBPM, timeSignature: .fourFour)
 
         // Test that metronome continues to function even if audio fails
-        metronome.start(bpm: 120.0, timeSignature: .fourFour)
+        metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
         #expect(metronome.isEnabled == true, "Metronome should start even without audio")
 
         // Test basic functionality continues
@@ -206,7 +210,7 @@ struct MetronomeBasicTests {
     @Test
     func testBeatCounterThreadSafety() async {
         let metronome = MetronomeEngine()
-        metronome.configure(bpm: 120.0, timeSignature: .fourFour)
+        metronome.configure(bpm: Self.testBPM, timeSignature: .fourFour)
 
         // Test concurrent access to beat counter
         await withTaskGroup(of: Void.self) { group in
