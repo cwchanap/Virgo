@@ -16,7 +16,7 @@ struct AudioSettingsView: View {
                 #if os(macOS)
                 // Title section with back button for macOS
                 HStack {
-                    Button(action: { dismiss() }) {
+                    Button(action: { dismiss() }, label: {
                         HStack(spacing: 8) {
                             Image(systemName: "chevron.left")
                                 .font(.title2)
@@ -25,7 +25,7 @@ struct AudioSettingsView: View {
                                 .font(.headline)
                                 .foregroundColor(.white)
                         }
-                    }
+                    })
                     .buttonStyle(PlainButtonStyle())
                     
                     Spacer()

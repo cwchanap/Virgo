@@ -27,10 +27,14 @@ extension GameplayView {
     
     // MARK: - Actions
     func togglePlayback() {
+        Logger.audioPlayback("🎮 togglePlayback called - current isPlaying: \(isPlaying)")
         isPlaying.toggle()
+        Logger.audioPlayback("🎮 togglePlayback - new isPlaying state: \(isPlaying)")
         if isPlaying {
+            Logger.audioPlayback("🎮 Starting playback...")
             startPlayback()
         } else {
+            Logger.audioPlayback("🎮 Pausing playback...")
             pausePlayback()
         }
     }
@@ -39,19 +43,20 @@ extension GameplayView {
         playbackTimer?.invalidate()
         playbackTimer = nil
 
-        // Stop metronome
-        metronome.stop()
-        
-        // Stop InputManager listening
-        inputManager.stopListening()
-
-        // TIMING SYNC: Save elapsed time using metronome's timing reference
+        // TIMING SYNC: Save elapsed time using metronome's timing reference BEFORE stopping
         if let metronomeTime = metronome.getCurrentPlaybackTime() {
             pausedElapsedTime += metronomeTime
         } else if let startTime = playbackStartTime {
             // Fallback to Date-based calculation if metronome timing unavailable
             pausedElapsedTime += Date().timeIntervalSince(startTime)
         }
+        
+        // Stop metronome
+        metronome.stop()
+        
+        // Stop InputManager listening
+        inputManager.stopListening()
+        
         playbackStartTime = nil
 
         bgmPlayer?.pause()
@@ -59,8 +64,13 @@ extension GameplayView {
     }
 
     func startPlayback() {
+        Logger.audioPlayback("🎮 startPlayback() called")
         isPlaying = true
-        guard let track = track else { return }
+        guard let track = track else { 
+            Logger.audioPlayback("🎮 ERROR: No track available for playback")
+            return 
+        }
+        Logger.audioPlayback("🎮 Track available: \(track.title), BPM: \(track.bpm)")
 
         // Set playback start time BEFORE starting metronome for synchronized timing reference
         playbackStartTime = Date()
@@ -77,6 +87,7 @@ extension GameplayView {
             if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
                 // For resume, start metronome and BGM simultaneously
                 let trackBPM = track.bpm
+                Logger.audioPlayback("🎮 Resuming: Starting metronome with BPM: \(trackBPM), timeSignature: \(track.timeSignature)")
                 metronome.start(bpm: trackBPM, timeSignature: track.timeSignature)
                 bgmPlayer.play()
                 Logger.audioPlayback("Resumed BGM and metronome playback simultaneously for track: \(track.title)")
@@ -91,6 +102,10 @@ extension GameplayView {
                 
                 // Schedule metronome to start at the common time
                 let trackBPM = track.bpm
+                Logger.audioPlayback(
+                    "🎮 Fresh start: Scheduling metronome at time \(commonStartTime) " +
+                    "with BPM: \(trackBPM), timeSignature: \(track.timeSignature)"
+                )
                 metronome.startAtTime(bpm: trackBPM, timeSignature: track.timeSignature, startTime: commonStartTime)
                 
                 // Convert common start time to AVAudioPlayer device time for sample-accurate BGM scheduling
@@ -105,6 +120,7 @@ extension GameplayView {
         } else {
             // No BGM - start metronome immediately
             let trackBPM = track.bpm
+            Logger.audioPlayback("🎮 No BGM: Starting metronome immediately with BPM: \(trackBPM), timeSignature: \(track.timeSignature)")
             metronome.start(bpm: trackBPM, timeSignature: track.timeSignature)
         }
 

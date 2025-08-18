@@ -23,7 +23,7 @@ struct InputSettingsView: View {
                 #if os(macOS)
                 // Title section with back button for macOS
                 HStack {
-                    Button(action: { dismiss() }) {
+                    Button(action: { dismiss() }, label: {
                         HStack(spacing: 8) {
                             Image(systemName: "chevron.left")
                                 .font(.title2)
@@ -32,7 +32,7 @@ struct InputSettingsView: View {
                                 .font(.headline)
                                 .foregroundColor(.white)
                         }
-                    }
+                    })
                     .buttonStyle(PlainButtonStyle())
                     
                     Spacer()
@@ -175,6 +175,7 @@ struct InputSettingsView: View {
         let keyString = keyStringFromEvent(event)
         settingsManager.setKeyBinding(keyString, for: drumType)
         
+        stopKeyEventMonitoring()
         isCapturingKey = false
         selectedDrumType = nil
     }

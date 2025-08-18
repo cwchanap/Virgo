@@ -119,7 +119,10 @@ struct SavedSongRow: View {
                     .lineLimit(1)
 
                 HStack(spacing: 12) {
-                    Label("\(song.bpm.truncatingRemainder(dividedBy: 1) == 0 ? String(format: "%.0f", song.bpm) : String(format: "%.2f", song.bpm)) BPM", systemImage: "metronome")
+                    let bpmText = song.bpm.truncatingRemainder(dividingBy: 1) == 0 
+                        ? String(format: "%.0f", song.bpm) 
+                        : String(format: "%.2f", song.bpm)
+                    Label("\(bpmText) BPM", systemImage: "metronome")
                     Label(song.duration, systemImage: "clock")
                     Label(song.genre, systemImage: "music.quarternote.3")
                 }
