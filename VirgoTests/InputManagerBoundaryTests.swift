@@ -104,4 +104,3 @@ struct InputManagerBoundaryTests {
         #expect(retrievedMIDIMapping.count == 3)
     }
 }
-

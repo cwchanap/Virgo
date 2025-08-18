@@ -106,102 +106,143 @@ struct DownloadedSongRowWithDelete: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Main song row with delete button
-            HStack(spacing: 12) {
-                // Play/Pause Button
-                Button(action: onPlayTap) {
-                    Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(isPlaying ? .red : .purple)
+            mainSongRow
+            expandedContent
+        }
+        .task {
+            // Load relationship data asynchronously to prevent SwiftData concurrency issues
+            await loadSongRelationshipData()
+        }
+        .onChange(of: song.id) { _, _ in
+            // Reload if song changes
+            Task {
+                await loadSongRelationshipData()
+            }
+        }
+    }
+    
+    private var mainSongRow: some View {
+        HStack(spacing: 12) {
+            playButton
+            songInfoSection
+            Spacer()
+            actionsSection
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(isPlaying ? Color.purple.opacity(0.2) : Color.white.opacity(0.1))
+        .cornerRadius(12)
+    }
+    
+    private var playButton: some View {
+        Button(action: onPlayTap) {
+            Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                .font(.system(size: 40))
+                .foregroundColor(isPlaying ? .red : .purple)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var songInfoSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(song.title)
+                .font(.headline)
+                .lineLimit(1)
+                .foregroundColor(.white)
+
+            Text(song.artist)
+                .font(.subheadline)
+                .foregroundColor(.gray)
+                .lineLimit(1)
+
+            songMetadataLabels
+        }
+    }
+    
+    private var songMetadataLabels: some View {
+        HStack(spacing: 12) {
+            let bpmText = song.bpm.truncatingRemainder(dividingBy: 1) == 0 
+                ? String(format: "%.0f", song.bpm) 
+                : String(format: "%.2f", song.bpm)
+            Label("\(bpmText) BPM", systemImage: "metronome")
+            Label(song.duration, systemImage: "clock")
+            Label(song.genre, systemImage: "music.quarternote.3")
+            Label(song.timeSignature.displayName, systemImage: "music.note")
+            Label("\(measureCount) measures", systemImage: "music.note.list")
+        }
+        .font(.caption)
+        .foregroundColor(.gray)
+    }
+    
+    private var actionsSection: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 8) {
+                saveButton
+                difficultyBadges
+                deleteSection
+            }
+            expandIndicator
+        }
+    }
+    
+    private var saveButton: some View {
+        Button(action: onSaveTap) {
+            Image(systemName: song.isSaved ? "bookmark.fill" : "bookmark")
+                .font(.system(size: 18))
+                .foregroundColor(song.isSaved ? .purple : .gray)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var difficultyBadges: some View {
+        HStack(spacing: 2) {
+            ForEach(song.availableDifficulties, id: \.self) { difficulty in
+                DifficultyBadge(difficulty: difficulty, size: .small)
+            }
+        }
+    }
+    
+    private var deleteSection: some View {
+        Group {
+            if isDeleting {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Deleting...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                .buttonStyle(PlainButtonStyle())
-
-                // Song Info
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(song.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .foregroundColor(.white)
-
-                    Text(song.artist)
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                        .lineLimit(1)
-
-                    HStack(spacing: 12) {
-                        Label("\(song.bpm.truncatingRemainder(dividedBy: 1) == 0 ? String(format: "%.0f", song.bpm) : String(format: "%.2f", song.bpm)) BPM", systemImage: "metronome")
-                        Label(song.duration, systemImage: "clock")
-                        Label(song.genre, systemImage: "music.quarternote.3")
-                        Label(song.timeSignature.displayName, systemImage: "music.note")
-                        Label("\(measureCount) measures", systemImage: "music.note.list")
-                    }
+            } else {
+                Button("Delete") {
+                    onDelete()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .foregroundColor(.red)
+                .disabled(isDeleting)
+            }
+        }
+    }
+    
+    private var expandIndicator: some View {
+        Button(action: handleSongTap) {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.down")
                     .font(.caption)
                     .foregroundColor(.gray)
-                }
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                    .animation(.easeInOut(duration: 0.3), value: isExpanded)
 
-                Spacer()
-
-                // Actions: Save, Difficulties, Expand Indicator, and Delete Button
-                VStack(spacing: 4) {
-                    HStack(spacing: 8) {
-                        // Save Button
-                        Button(action: onSaveTap) {
-                            Image(systemName: song.isSaved ? "bookmark.fill" : "bookmark")
-                                .font(.system(size: 18))
-                                .foregroundColor(song.isSaved ? .purple : .gray)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-
-                        // Available Difficulties
-                        HStack(spacing: 2) {
-                            ForEach(song.availableDifficulties, id: \.self) { difficulty in
-                                DifficultyBadge(difficulty: difficulty, size: .small)
-                            }
-                        }
-
-                        // Delete Button (moved to far right)
-                        if isDeleting {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                                Text("Deleting...")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        } else {
-                            Button("Delete") {
-                                onDelete()
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .foregroundColor(.red)
-                            .disabled(isDeleting)
-                        }
-                    }
-
-                    // Expand indicator
-                    Button(action: handleSongTap) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "chevron.down")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                                .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                                .animation(.easeInOut(duration: 0.3), value: isExpanded)
-
-                            Text("\(chartCount) charts")
-                                .font(.caption2)
-                                .foregroundColor(.gray)
-                        }
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
+                Text("\(chartCount) charts")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(isPlaying ? Color.purple.opacity(0.2) : Color.white.opacity(0.1))
-            .cornerRadius(12)
-
-            // Expanded difficulty options
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var expandedContent: some View {
+        Group {
             if isExpanded {
                 DifficultyExpansionView(
                     charts: charts,
@@ -213,16 +254,6 @@ struct DownloadedSongRowWithDelete: View {
                     removal: .opacity.combined(with: .move(edge: .top))
                 ))
                 .animation(.easeInOut(duration: 0.3), value: isExpanded)
-            }
-        }
-        .task {
-            // Load relationship data asynchronously to prevent SwiftData concurrency issues
-            await loadSongRelationshipData()
-        }
-        .onChange(of: song.id) { _, _ in
-            // Reload if song changes
-            Task {
-                await loadSongRelationshipData()
             }
         }
     }

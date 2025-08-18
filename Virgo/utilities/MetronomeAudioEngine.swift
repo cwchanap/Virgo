@@ -92,9 +92,12 @@ class MetronomeAudioEngine: ObservableObject {
             return existingBuffer
         }
 
+        Logger.audioPlayback("🔊 Looking for ticker asset...")
         guard let tickerData = NSDataAsset(name: "ticker") else {
+            Logger.audioPlayback("🔊 ERROR: ticker asset not found in bundle!")
             throw AudioEngineError.assetNotFound
         }
+        Logger.audioPlayback("🔊 Ticker asset found, data size: \(tickerData.data.count) bytes")
 
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("ticker_cached.wav")
 
@@ -155,6 +158,7 @@ class MetronomeAudioEngine: ObservableObject {
 
             // Cache the buffer for future use
             cachedTickerBuffer = buffer
+            Logger.audioPlayback("🔊 Buffer created successfully - frameLength: \(buffer.frameLength), channels: \(buffer.format.channelCount)")
 
             // Clean up temporary file
             try? FileManager.default.removeItem(at: tempURL)
@@ -170,12 +174,19 @@ class MetronomeAudioEngine: ObservableObject {
     // MARK: - Playback Control
 
     func playTick(volume: Float = 1.0, isAccented: Bool = false, atTime: AVAudioTime? = nil) {
-        guard !isTestEnvironment else { return }
+        Logger.audioPlayback("🔊 playTick() called - volume: \(volume), isAccented: \(isAccented), atTime: \(atTime?.description ?? "immediate")")
+        guard !isTestEnvironment else { 
+            Logger.audioPlayback("🔊 Skipping playTick - test environment detected")
+            return 
+        }
 
         // Ensure audio engine is running before attempting playback
+        Logger.audioPlayback("🔊 Audio engine running state: \(audioEngine.isRunning)")
         if !audioEngine.isRunning {
+            Logger.audioPlayback("🔊 Audio engine not running - attempting to start...")
             do {
                 try audioEngine.start()
+                Logger.audioPlayback("🔊 Audio engine restarted successfully")
             } catch {
                 Logger.audioPlayback("🔊 Failed to restart audio engine: \(error.localizedDescription)")
                 return
@@ -183,7 +194,9 @@ class MetronomeAudioEngine: ObservableObject {
         }
 
         do {
+            Logger.audioPlayback("🔊 Getting ticker buffer...")
             let buffer = try getTickerBuffer()
+            Logger.audioPlayback("🔊 Ticker buffer obtained successfully")
             
             // Sanitize volume: replace NaN/infinite with safe default
             let sanitizedVolume = volume.isNaN || volume.isInfinite ? 0.0 : volume
@@ -193,7 +206,20 @@ class MetronomeAudioEngine: ObservableObject {
             
             // Clamp the final volume between 0.0 and 1.0
             let adjustedVolume = max(0.0, min(1.0, accentedVolume))
+            Logger.audioPlayback(
+                "🔊 Volume processing: original=\(volume), sanitized=\(sanitizedVolume), " +
+                "accented=\(accentedVolume), final=\(adjustedVolume)"
+            )
 
+            // Verify buffer has audio data
+            Logger.audioPlayback("🔊 About to schedule buffer - frameLength: \(buffer.frameLength), format: \(buffer.format)")
+            
+            // Check if buffer actually has audio data
+            if buffer.frameLength == 0 {
+                Logger.audioPlayback("🔊 ERROR: Buffer has zero frame length - no audio data!")
+                return
+            }
+            
             // Verify and validate AVAudioTime timebase for sample-accurate scheduling
             if let scheduledTime = atTime {
                 // Verify the timebase is valid and compatible with our audio engine
@@ -201,27 +227,38 @@ class MetronomeAudioEngine: ObservableObject {
                 if hostTime > 0 && scheduledTime.isHostTimeValid {
                     
                     // Use the validated time for precise scheduling
-                    playerNode.scheduleBuffer(buffer, at: scheduledTime, options: [], completionHandler: nil)
-                    Logger.audioPlayback("🔊 Scheduled buffer at precise time: \(hostTime)")
+                    playerNode.scheduleBuffer(buffer, at: scheduledTime, options: [], completionHandler: { [weak self] in
+                        Logger.audioPlayback("🔊 Buffer playback completed")
+                    })
+                    Logger.audioPlayback("🔊 Scheduled buffer at precise time: \(hostTime) with \(buffer.frameLength) frames")
                 } else {
                     // Fallback to immediate playback if time is invalid
-                    playerNode.scheduleBuffer(buffer)
+                    playerNode.scheduleBuffer(buffer, completionHandler: { [weak self] in
+                        Logger.audioPlayback("🔊 Buffer playback completed (immediate)")
+                    })
                     Logger.audioPlayback("🔊 Invalid AVAudioTime - using immediate playback fallback")
                 }
             } else {
-                playerNode.scheduleBuffer(buffer) // Immediate playback (fallback)
+                playerNode.scheduleBuffer(buffer, completionHandler: { [weak self] in
+                    Logger.audioPlayback("🔊 Buffer playback completed (no time)")
+                })
+                Logger.audioPlayback("🔊 Scheduled buffer immediately with \(buffer.frameLength) frames")
             }
             
             playerNode.volume = adjustedVolume
 
             // Always ensure the player node is playing after scheduling a buffer
+            Logger.audioPlayback("🔊 Player node playing state: \(playerNode.isPlaying)")
             if !playerNode.isPlaying {
+                Logger.audioPlayback("🔊 Starting player node...")
                 playerNode.play()
+                Logger.audioPlayback("🔊 Player node started - new state: \(playerNode.isPlaying)")
             }
 
         } catch {
             Logger.audioPlayback("🔊 Failed to play tick: \(error.localizedDescription)")
         }
+        Logger.audioPlayback("🔊 playTick() completed")
     }
 
     func stop() {

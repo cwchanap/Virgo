@@ -458,7 +458,9 @@ class DrumNotationSettingsManager: ObservableObject {
     private let settingsKey = "DrumNotationSettings"
     
     func loadSettings() {
-        // Load from UserDefaults or use defaults
+        var localPositions: [DrumType: GameplayLayout.NotePosition] = [:]
+        
+        // Load from UserDefaults
         if let data = userDefaults.data(forKey: settingsKey),
            let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
             
@@ -475,15 +477,17 @@ class DrumNotationSettingsManager: ObservableObject {
                 
                 if let drumType = drumType,
                    let position = GameplayLayout.NotePosition.allCases.first(where: { $0.rawValue == positionString }) {
-                    notePositions[drumType] = position
+                    localPositions[drumType] = position
                 }
             }
         }
         
         // Fill in any missing defaults
-        for drumType in DrumType.allCases where notePositions[drumType] == nil {
-            notePositions[drumType] = drumType.notePosition // Use default from extension
+        for drumType in DrumType.allCases where localPositions[drumType] == nil {
+            localPositions[drumType] = drumType.notePosition
         }
+        
+        notePositions = localPositions
     }
     
     func saveSettings() {
@@ -501,15 +505,14 @@ class DrumNotationSettingsManager: ObservableObject {
     }
     
     func setNotePosition(_ position: GameplayLayout.NotePosition, for drumType: DrumType) {
-        notePositions[drumType] = position
+        var updatedPositions = notePositions
+        updatedPositions[drumType] = position
+        notePositions = updatedPositions
         saveSettings()
     }
     
     func resetToDefaults() {
-        notePositions.removeAll()
-        for drumType in DrumType.allCases {
-            notePositions[drumType] = drumType.notePosition
-        }
+        notePositions = Dictionary(uniqueKeysWithValues: DrumType.allCases.map { ($0, $0.notePosition) })
         saveSettings()
     }
 }

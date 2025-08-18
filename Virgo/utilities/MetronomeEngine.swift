@@ -79,19 +79,27 @@ class MetronomeEngine: ObservableObject {
     // MARK: - Playback Control
 
     func start(bpm: Double, timeSignature: TimeSignature) {
+        Logger.audioPlayback("🎵 MetronomeEngine.start() called with BPM: \(bpm), timeSignature: \(timeSignature)")
         self.bpm = bpm
         self.timeSignature = timeSignature
 
+        Logger.audioPlayback("🎵 Resuming audio engine...")
         audioEngine.resume()
+        Logger.audioPlayback("🎵 Starting timing engine...")
         timingEngine.start()
+        Logger.audioPlayback("🎵 MetronomeEngine.start() completed - isEnabled: \(isEnabled)")
     }
 
     func startAtTime(bpm: Double, timeSignature: TimeSignature, startTime: TimeInterval) {
+        Logger.audioPlayback("🎵 MetronomeEngine.startAtTime() called with BPM: \(bpm), timeSignature: \(timeSignature), startTime: \(startTime)")
         self.bpm = bpm
         self.timeSignature = timeSignature
 
+        Logger.audioPlayback("🎵 Resuming audio engine for scheduled start...")
         audioEngine.resume()
+        Logger.audioPlayback("🎵 Starting timing engine at scheduled time...")
         timingEngine.startAtTime(startTime: startTime)
+        Logger.audioPlayback("🎵 MetronomeEngine.startAtTime() completed - isEnabled: \(isEnabled)")
     }
 
     func stop() {
@@ -121,9 +129,10 @@ class MetronomeEngine: ObservableObject {
     // MARK: - Beat Handling
 
     private func handleBeat(beat: Int, isAccented: Bool, atTime: AVAudioTime? = nil) {
+        Logger.audioPlayback("🎵 MetronomeEngine.handleBeat() called - beat: \(beat), isAccented: \(isAccented), volume: \(volume)")
         // Play audio tick with precise timing
         audioEngine.playTick(volume: volume, isAccented: isAccented, atTime: atTime)
-        
+        Logger.audioPlayback("🎵 MetronomeEngine.handleBeat() completed")
     }
 
     // MARK: - Configuration Updates

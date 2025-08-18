@@ -204,10 +204,18 @@ class MetronomeTimingEngine: ObservableObject {
     private func createPreciseAudioTime(for fireTime: CFAbsoluteTime) -> AVAudioTime? {
         // Calculate the ideal beat time based on our start time and beat interval
         let beatNumber = lastFiredBeat
-        let _ = startTime + (Double(beatNumber - 1) * beatInterval) // For future timing calculations
+        let idealBeatTime = startTime + (Double(beatNumber - 1) * beatInterval)
         
-        // Create AVAudioTime for the ideal beat timing
-        let hostTime = mach_absolute_time()
+        // Convert CFAbsoluteTime to host time using mach_timebase_info
+        var timebaseInfo = mach_timebase_info_data_t()
+        let result = mach_timebase_info(&timebaseInfo)
+        guard result == KERN_SUCCESS else { return nil }
+        
+        // Convert seconds to nanoseconds, then to mach absolute ticks
+        let nanoseconds = idealBeatTime * Double(NSEC_PER_SEC)
+        let hostTime = UInt64(nanoseconds * Double(timebaseInfo.denom) / Double(timebaseInfo.numer))
+        
+        // Create AVAudioTime with the calculated host time
         let audioTime = AVAudioTime(hostTime: hostTime)
         
         // Validate the created audio time
@@ -223,6 +231,7 @@ class MetronomeTimingEngine: ObservableObject {
         let beatToPlay = currentBeat
 
         // Use precise timing for sample-accurate audio synchronization
+        Logger.audioPlayback("⏰ TimingEngine firing beat: \(beatToPlay), isAccented: \(isAccented), hasCallback: \(onBeat != nil)")
         onBeat?(beatToPlay, isAccented, preciseAudioTime)
 
         // Update UI properties on main thread

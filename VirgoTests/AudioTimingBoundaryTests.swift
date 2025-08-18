@@ -133,4 +133,3 @@ struct AudioTimingBoundaryTests {
         #expect(zeroAudioTime.isHostTimeValid == false)
     }
 }
-
