@@ -13,15 +13,15 @@ struct ContentViewTests {
 
     @Test func testSearchFilteringByTitle() async throws {
         // Create songs and charts for testing
-        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120, duration: "3:00", genre: "Rock")
+        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120.0, duration: "3:00", genre: "Rock")
         let rockChart = Chart(difficulty: .medium, song: rockSong)
         rockSong.charts = [rockChart]
 
-        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
         let jazzChart = Chart(difficulty: .hard, song: jazzSong)
         jazzSong.charts = [jazzChart]
 
-        let electronicSong = Song(title: "Electronic Beat", artist: "The Rockers", bpm: 128, duration: "3:30", genre: "Electronic")
+        let electronicSong = Song(title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", genre: "Electronic")
         let electronicChart = Chart(difficulty: .easy, song: electronicSong)
         electronicSong.charts = [electronicChart]
 
@@ -47,15 +47,15 @@ struct ContentViewTests {
     }
 
     @Test func testSearchFilteringByArtist() async throws {
-        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120, duration: "3:00", genre: "Rock")
+        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120.0, duration: "3:00", genre: "Rock")
         let rockChart = Chart(difficulty: .medium, song: rockSong)
         rockSong.charts = [rockChart]
 
-        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
         let jazzChart = Chart(difficulty: .hard, song: jazzSong)
         jazzSong.charts = [jazzChart]
 
-        let electronicSong = Song(title: "Electronic Beat", artist: "The Rockers", bpm: 128, duration: "3:30", genre: "Electronic")
+        let electronicSong = Song(title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", genre: "Electronic")
         let electronicChart = Chart(difficulty: .easy, song: electronicSong)
         electronicSong.charts = [electronicChart]
 
@@ -76,11 +76,11 @@ struct ContentViewTests {
     }
 
     @Test func testCaseInsensitiveSearch() async throws {
-        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120, duration: "3:00", genre: "Rock")
+        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120.0, duration: "3:00", genre: "Rock")
         let rockChart = Chart(difficulty: .medium, song: rockSong)
         rockSong.charts = [rockChart]
 
-        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
         let jazzChart = Chart(difficulty: .hard, song: jazzSong)
         jazzSong.charts = [jazzChart]
 
@@ -114,15 +114,15 @@ struct ContentViewTests {
     }
 
     @Test func testEmptySearchBehavior() async throws {
-        let song1 = Song(title: "Track 1", artist: "Artist 1", bpm: 120, duration: "3:00", genre: "Rock")
+        let song1 = Song(title: "Track 1", artist: "Artist 1", bpm: 120.0, duration: "3:00", genre: "Rock")
         let chart1 = Chart(difficulty: .easy, song: song1)
         song1.charts = [chart1]
 
-        let song2 = Song(title: "Track 2", artist: "Artist 2", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let song2 = Song(title: "Track 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
         let chart2 = Chart(difficulty: .medium, song: song2)
         song2.charts = [chart2]
 
-        let song3 = Song(title: "Track 3", artist: "Artist 3", bpm: 160, duration: "5:00", genre: "Metal")
+        let song3 = Song(title: "Track 3", artist: "Artist 3", bpm: 160.0, duration: "5:00", genre: "Metal")
         let chart3 = Chart(difficulty: .hard, song: song3)
         song3.charts = [chart3]
 
@@ -144,15 +144,15 @@ struct ContentViewTests {
     }
 
     @Test func testCombinedTitleAndArtistSearch() async throws {
-        let song1 = Song(title: "Rock Beat", artist: "Jazz Masters", bpm: 120, duration: "3:00", genre: "Fusion")
+        let song1 = Song(title: "Rock Beat", artist: "Jazz Masters", bpm: 120.0, duration: "3:00", genre: "Fusion")
         let chart1 = Chart(difficulty: .medium, song: song1)
         song1.charts = [chart1]
 
-        let song2 = Song(title: "Jazz Rhythm", artist: "Rock Stars", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let song2 = Song(title: "Jazz Rhythm", artist: "Rock Stars", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
         let chart2 = Chart(difficulty: .hard, song: song2)
         song2.charts = [chart2]
 
-        let song3 = Song(title: "Pop Song", artist: "Pop Artists", bpm: 128, duration: "3:30", genre: "Pop")
+        let song3 = Song(title: "Pop Song", artist: "Pop Artists", bpm: 128.0, duration: "3:30", genre: "Pop")
         let chart3 = Chart(difficulty: .easy, song: song3)
         song3.charts = [chart3]
 
@@ -178,15 +178,15 @@ struct ContentViewTests {
     }
 
     @Test func testSearchWithSpecialCharacters() async throws {
-        let song1 = Song(title: "Rock & Roll", artist: "The Band", bpm: 120, duration: "3:00", genre: "Rock")
+        let song1 = Song(title: "Rock & Roll", artist: "The Band", bpm: 120.0, duration: "3:00", genre: "Rock")
         let chart1 = Chart(difficulty: .medium, song: song1)
         song1.charts = [chart1]
 
-        let song2 = Song(title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let song2 = Song(title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
         let chart2 = Chart(difficulty: .hard, song: song2)
         song2.charts = [chart2]
 
-        let song3 = Song(title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95, duration: "3:30", genre: "Hip Hop")
+        let song3 = Song(title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", genre: "Hip Hop")
         let chart3 = Chart(difficulty: .easy, song: song3)
         song3.charts = [chart3]
 
@@ -212,7 +212,7 @@ struct ContentViewTests {
     @Test func testTrackCountDisplay() async throws {
         let emptyTracks: [DrumTrack] = []
 
-        let singleSong = Song(title: "Solo", artist: "Artist", bpm: 100, duration: "2:00", genre: "Pop")
+        let singleSong = Song(title: "Solo", artist: "Artist", bpm: 100.0, duration: "2:00", genre: "Pop")
         let singleChart = Chart(difficulty: .easy, song: singleSong)
         singleSong.charts = [singleChart]
         let singleTrack = [DrumTrack(chart: singleChart)]
@@ -240,7 +240,7 @@ struct ContentViewTests {
             let song = Song(
                 title: "Track \(i)",
                 artist: "Artist \(i % 100)",
-                bpm: 120 + (i % 80),
+                bpm: Double(120 + (i % 80)),
                 duration: "3:\(String(format: "%02d", i % 60))",
                 genre: ["Rock", "Jazz", "Electronic", "Hip Hop"][i % 4],
                 timeSignature: [.fourFour, .threeFour, .sixEight, .fiveFour][i % 4]
@@ -263,15 +263,15 @@ struct ContentViewTests {
     }
 
     @Test func testSearchResultOrdering() async throws {
-        let song1 = Song(title: "A Rock Song", artist: "Artist A", bpm: 120, duration: "3:00", genre: "Rock")
+        let song1 = Song(title: "A Rock Song", artist: "Artist A", bpm: 120.0, duration: "3:00", genre: "Rock")
         let chart1 = Chart(difficulty: .easy, song: song1)
         song1.charts = [chart1]
 
-        let song2 = Song(title: "B Jazz Track", artist: "Artist B", bpm: 140, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
+        let song2 = Song(title: "B Jazz Track", artist: "Artist B", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
         let chart2 = Chart(difficulty: .medium, song: song2)
         song2.charts = [chart2]
 
-        let song3 = Song(title: "C Rock Anthem", artist: "Artist C", bpm: 160, duration: "5:00", genre: "Rock")
+        let song3 = Song(title: "C Rock Anthem", artist: "Artist C", bpm: 160.0, duration: "5:00", genre: "Rock")
         let chart3 = Chart(difficulty: .hard, song: song3)
         song3.charts = [chart3]
 
