@@ -54,8 +54,10 @@ struct TestDataFactory {
     static func createTestTracks() -> [DrumTrack] {
         [
             createTrack(title: "Rock Anthem", artist: "The Rockers", genre: "Rock", difficulty: .medium),
-            createTrack(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
-            createTrack(title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", genre: "Electronic", difficulty: .easy)
+            createTrack(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", 
+                        genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
+            createTrack(title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", 
+                        genre: "Electronic", difficulty: .easy)
         ]
     }
 }
@@ -123,8 +125,10 @@ struct ContentViewTests {
     @Test func testEmptySearchBehavior() async throws {
         let tracks = [
             TestDataFactory.createTrack(title: "Track 1", artist: "Artist 1", difficulty: .easy),
-            TestDataFactory.createTrack(title: "Track 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .medium, timeSignature: .threeFour),
-            TestDataFactory.createTrack(title: "Track 3", artist: "Artist 3", bpm: 160.0, duration: "5:00", genre: "Metal", difficulty: .hard)
+            TestDataFactory.createTrack(title: "Track 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", 
+                                         genre: "Jazz", difficulty: .medium, timeSignature: .threeFour),
+            TestDataFactory.createTrack(title: "Track 3", artist: "Artist 3", bpm: 160.0, duration: "5:00", 
+                                         genre: "Metal", difficulty: .hard)
         ]
 
         // Empty search should return all tracks
@@ -140,9 +144,12 @@ struct ContentViewTests {
 
     @Test func testCombinedTitleAndArtistSearch() async throws {
         let tracks = [
-            TestDataFactory.createTrack(title: "Rock Beat", artist: "Jazz Masters", genre: "Fusion", difficulty: .medium),
-            TestDataFactory.createTrack(title: "Jazz Rhythm", artist: "Rock Stars", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
-            TestDataFactory.createTrack(title: "Pop Song", artist: "Pop Artists", bpm: 128.0, duration: "3:30", genre: "Pop", difficulty: .easy)
+            TestDataFactory.createTrack(title: "Rock Beat", artist: "Jazz Masters", genre: "Fusion", 
+                                         difficulty: .medium),
+            TestDataFactory.createTrack(title: "Jazz Rhythm", artist: "Rock Stars", bpm: 140.0, duration: "4:00", 
+                                         genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
+            TestDataFactory.createTrack(title: "Pop Song", artist: "Pop Artists", bpm: 128.0, duration: "3:30", 
+                                         genre: "Pop", difficulty: .easy)
         ]
 
         // Search for "rock" should find both title and artist matches
@@ -163,8 +170,10 @@ struct ContentViewTests {
     @Test func testSearchWithSpecialCharacters() async throws {
         let tracks = [
             TestDataFactory.createTrack(title: "Rock & Roll", artist: "The Band", difficulty: .medium),
-            TestDataFactory.createTrack(title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
-            TestDataFactory.createTrack(title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", genre: "Hip Hop", difficulty: .easy)
+            TestDataFactory.createTrack(title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140.0, duration: "4:00", 
+                                         genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
+            TestDataFactory.createTrack(title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", 
+                                         genre: "Hip Hop", difficulty: .easy)
         ]
 
         // Test search with ampersand
@@ -182,7 +191,8 @@ struct ContentViewTests {
 
     @Test func testTrackCountDisplay() async throws {
         let emptyTracks: [DrumTrack] = []
-        let singleTrack = [TestDataFactory.createTrack(title: "Solo", artist: "Artist", bpm: 100.0, duration: "2:00", genre: "Pop", difficulty: .easy)]
+        let singleTrack = [TestDataFactory.createTrack(title: "Solo", artist: "Artist", bpm: 100.0, 
+                                                        duration: "2:00", genre: "Pop", difficulty: .easy)]
         let multipleTracks = DrumTrack.sampleData
 
         #expect(emptyTracks.isEmpty)
@@ -223,7 +233,8 @@ struct ContentViewTests {
                 $0.artist.localizedCaseInsensitiveContains(searchTerm)
         }
 
-        // Should find all artists that contain "5" (5, 15, 25, 35, 45, 50-59, 65, 75, 85, 95)
+        // Should find all artists that contain "5"
+        // (5, 15, 25, 35, 45, 50-59, 65, 75, 85, 95)
         #expect(!filtered.isEmpty)
         #expect(filtered.allSatisfy { $0.artist.contains("5") })
     }
@@ -231,8 +242,10 @@ struct ContentViewTests {
     @Test func testSearchResultOrdering() async throws {
         let tracks = [
             TestDataFactory.createTrack(title: "A Rock Song", artist: "Artist A", difficulty: .easy),
-            TestDataFactory.createTrack(title: "B Jazz Track", artist: "Artist B", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .medium, timeSignature: .threeFour),
-            TestDataFactory.createTrack(title: "C Rock Anthem", artist: "Artist C", bpm: 160.0, duration: "5:00", difficulty: .hard)
+            TestDataFactory.createTrack(title: "B Jazz Track", artist: "Artist B", bpm: 140.0, duration: "4:00", 
+                                         genre: "Jazz", difficulty: .medium, timeSignature: .threeFour),
+            TestDataFactory.createTrack(title: "C Rock Anthem", artist: "Artist C", bpm: 160.0, 
+                                         duration: "5:00", difficulty: .hard)
         ]
 
         // Search for "rock" and verify original order is maintained
