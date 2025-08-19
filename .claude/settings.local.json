@@ -51,7 +51,8 @@
       "mcp__XcodeBuildMCP__list_schems_proj",
       "Bash(sed:*)",
       "mcp__XcodeBuildMCP__discover_projs",
-      "Bash(screencapture:*)"
+      "Bash(screencapture:*)",
+      "Bash(xcrun simctl list:*)"
     ],
     "deny": []
   }
