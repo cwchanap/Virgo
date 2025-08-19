@@ -207,3 +207,4 @@ The project includes a Python FastAPI server (`server/`) for serving DTX files:
   - Cache expensive UI calculations to prevent re-computation on every state change
 - **Key Insight**: In SwiftUI, changing any `@Published` property forces re-evaluation of all dependent views, regardless of whether those views actually use the changed property
 - **Performance Pattern**: Avoid `@EnvironmentObject` or `@ObservedObject` with frequently-updating `@Published` properties in views with complex, expensive rendering
+- For build and test, only target macOS is sufficient for now
