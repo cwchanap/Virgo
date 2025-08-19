@@ -274,7 +274,97 @@ extension Chart {
 
 extension Song {
     static var sampleData: [Song] {
-        return []
+        let song1 = Song(
+            title: "Thunder Beat",
+            artist: "Rock Masters",
+            bpm: 140.0,
+            duration: "3:45",
+            genre: "Rock",
+            timeSignature: .fourFour
+        )
+        
+        let song2 = Song(
+            title: "Blast Beat Fury",
+            artist: "Metal Gods",
+            bpm: 180.0,
+            duration: "4:20",
+            genre: "Metal",
+            timeSignature: .fourFour
+        )
+        
+        let song3 = Song(
+            title: "Jazz Groove",
+            artist: "Smooth Collective",
+            bpm: 120.0,
+            duration: "5:30",
+            genre: "Jazz",
+            timeSignature: .fourFour
+        )
+        
+        let song4 = Song(
+            title: "Electronic Pulse",
+            artist: "Digital Beats",
+            bpm: 128.0,
+            duration: "3:15",
+            genre: "Electronic",
+            timeSignature: .fourFour
+        )
+        
+        let song5 = Song(
+            title: "Latin Rhythm",
+            artist: "Salsa Kings",
+            bpm: 95.0,
+            duration: "4:00",
+            genre: "Latin",
+            timeSignature: .fourFour
+        )
+        
+        let song6 = Song(
+            title: "Progressive Complex",
+            artist: "Time Masters",
+            bpm: 160.0,
+            duration: "6:45",
+            genre: "Progressive",
+            timeSignature: .fiveFour
+        )
+        
+        let song7 = Song(
+            title: "Hip Hop Foundation",
+            artist: "Beat Makers",
+            bpm: 85.0,
+            duration: "3:30",
+            genre: "Hip Hop",
+            timeSignature: .fourFour
+        )
+        
+        // Create charts for each song with different difficulties
+        let chart1Easy = Chart(difficulty: .easy, song: song1)
+        let chart1Medium = Chart(difficulty: .medium, song: song1)
+        song1.charts = [chart1Easy, chart1Medium]
+        
+        let chart2Hard = Chart(difficulty: .hard, song: song2)
+        let chart2Expert = Chart(difficulty: .expert, song: song2)
+        song2.charts = [chart2Hard, chart2Expert]
+        
+        let chart3Easy = Chart(difficulty: .easy, song: song3)
+        let chart3Medium = Chart(difficulty: .medium, song: song3)
+        let chart3Hard = Chart(difficulty: .hard, song: song3)
+        song3.charts = [chart3Easy, chart3Medium, chart3Hard]
+        
+        let chart4Medium = Chart(difficulty: .medium, song: song4)
+        song4.charts = [chart4Medium]
+        
+        let chart5Easy = Chart(difficulty: .easy, song: song5)
+        let chart5Medium = Chart(difficulty: .medium, song: song5)
+        song5.charts = [chart5Easy, chart5Medium]
+        
+        let chart6Expert = Chart(difficulty: .expert, song: song6)
+        song6.charts = [chart6Expert]
+        
+        let chart7Easy = Chart(difficulty: .easy, song: song7)
+        song7.charts = [chart7Easy]
+        
+        return [song1, song2, song3, song4, song5, song6, song7]
     }
 }
 

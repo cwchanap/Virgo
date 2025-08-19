@@ -9,27 +9,61 @@ import Testing
 import Foundation
 @testable import Virgo
 
+// MARK: - Test Data Factory
+struct TestDataFactory {
+    static func createSong(
+        title: String,
+        artist: String,
+        bpm: Double = 120.0,
+        duration: String = "3:00",
+        genre: String = "Rock",
+        timeSignature: TimeSignature = .fourFour
+    ) -> Song {
+        Song(
+            title: title,
+            artist: artist,
+            bpm: bpm,
+            duration: duration,
+            genre: genre,
+            timeSignature: timeSignature
+        )
+    }
+    
+    static func createTrack(
+        title: String,
+        artist: String,
+        bpm: Double = 120.0,
+        duration: String = "3:00",
+        genre: String = "Rock",
+        difficulty: Difficulty = .medium,
+        timeSignature: TimeSignature = .fourFour
+    ) -> DrumTrack {
+        let song = createSong(
+            title: title,
+            artist: artist,
+            bpm: bpm,
+            duration: duration,
+            genre: genre,
+            timeSignature: timeSignature
+        )
+        let chart = Chart(difficulty: difficulty, song: song)
+        song.charts = [chart]
+        return DrumTrack(chart: chart)
+    }
+    
+    static func createTestTracks() -> [DrumTrack] {
+        [
+            createTrack(title: "Rock Anthem", artist: "The Rockers", genre: "Rock", difficulty: .medium),
+            createTrack(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
+            createTrack(title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", genre: "Electronic", difficulty: .easy)
+        ]
+    }
+}
+
 struct ContentViewTests {
 
     @Test func testSearchFilteringByTitle() async throws {
-        // Create songs and charts for testing
-        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let rockChart = Chart(difficulty: .medium, song: rockSong)
-        rockSong.charts = [rockChart]
-
-        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
-        let jazzChart = Chart(difficulty: .hard, song: jazzSong)
-        jazzSong.charts = [jazzChart]
-
-        let electronicSong = Song(title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", genre: "Electronic")
-        let electronicChart = Chart(difficulty: .easy, song: electronicSong)
-        electronicSong.charts = [electronicChart]
-
-        let tracks = [
-            DrumTrack(chart: rockChart),
-            DrumTrack(chart: jazzChart),
-            DrumTrack(chart: electronicChart)
-        ]
+        let tracks = TestDataFactory.createTestTracks()
 
         // Test title filtering
         let titleFiltered = tracks.filter { $0.title.localizedCaseInsensitiveContains("rock") }
@@ -47,23 +81,7 @@ struct ContentViewTests {
     }
 
     @Test func testSearchFilteringByArtist() async throws {
-        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let rockChart = Chart(difficulty: .medium, song: rockSong)
-        rockSong.charts = [rockChart]
-
-        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
-        let jazzChart = Chart(difficulty: .hard, song: jazzSong)
-        jazzSong.charts = [jazzChart]
-
-        let electronicSong = Song(title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", genre: "Electronic")
-        let electronicChart = Chart(difficulty: .easy, song: electronicSong)
-        electronicSong.charts = [electronicChart]
-
-        let tracks = [
-            DrumTrack(chart: rockChart),
-            DrumTrack(chart: jazzChart),
-            DrumTrack(chart: electronicChart)
-        ]
+        let tracks = TestDataFactory.createTestTracks()
 
         // Test artist filtering
         let artistFiltered = tracks.filter { $0.artist.localizedCaseInsensitiveContains("rockers") }
@@ -76,18 +94,7 @@ struct ContentViewTests {
     }
 
     @Test func testCaseInsensitiveSearch() async throws {
-        let rockSong = Song(title: "Rock Anthem", artist: "The Rockers", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let rockChart = Chart(difficulty: .medium, song: rockSong)
-        rockSong.charts = [rockChart]
-
-        let jazzSong = Song(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
-        let jazzChart = Chart(difficulty: .hard, song: jazzSong)
-        jazzSong.charts = [jazzChart]
-
-        let tracks = [
-            DrumTrack(chart: rockChart),
-            DrumTrack(chart: jazzChart)
-        ]
+        let tracks = TestDataFactory.createTestTracks().prefix(2).map { $0 } // Use first 2 tracks
 
         // Test uppercase search
         let upperCaseFiltered = tracks.filter {
@@ -114,22 +121,10 @@ struct ContentViewTests {
     }
 
     @Test func testEmptySearchBehavior() async throws {
-        let song1 = Song(title: "Track 1", artist: "Artist 1", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let chart1 = Chart(difficulty: .easy, song: song1)
-        song1.charts = [chart1]
-
-        let song2 = Song(title: "Track 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
-        let chart2 = Chart(difficulty: .medium, song: song2)
-        song2.charts = [chart2]
-
-        let song3 = Song(title: "Track 3", artist: "Artist 3", bpm: 160.0, duration: "5:00", genre: "Metal")
-        let chart3 = Chart(difficulty: .hard, song: song3)
-        song3.charts = [chart3]
-
         let tracks = [
-            DrumTrack(chart: chart1),
-            DrumTrack(chart: chart2),
-            DrumTrack(chart: chart3)
+            TestDataFactory.createTrack(title: "Track 1", artist: "Artist 1", difficulty: .easy),
+            TestDataFactory.createTrack(title: "Track 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .medium, timeSignature: .threeFour),
+            TestDataFactory.createTrack(title: "Track 3", artist: "Artist 3", bpm: 160.0, duration: "5:00", genre: "Metal", difficulty: .hard)
         ]
 
         // Empty search should return all tracks
@@ -144,22 +139,10 @@ struct ContentViewTests {
     }
 
     @Test func testCombinedTitleAndArtistSearch() async throws {
-        let song1 = Song(title: "Rock Beat", artist: "Jazz Masters", bpm: 120.0, duration: "3:00", genre: "Fusion")
-        let chart1 = Chart(difficulty: .medium, song: song1)
-        song1.charts = [chart1]
-
-        let song2 = Song(title: "Jazz Rhythm", artist: "Rock Stars", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
-        let chart2 = Chart(difficulty: .hard, song: song2)
-        song2.charts = [chart2]
-
-        let song3 = Song(title: "Pop Song", artist: "Pop Artists", bpm: 128.0, duration: "3:30", genre: "Pop")
-        let chart3 = Chart(difficulty: .easy, song: song3)
-        song3.charts = [chart3]
-
         let tracks = [
-            DrumTrack(chart: chart1),
-            DrumTrack(chart: chart2),
-            DrumTrack(chart: chart3)
+            TestDataFactory.createTrack(title: "Rock Beat", artist: "Jazz Masters", genre: "Fusion", difficulty: .medium),
+            TestDataFactory.createTrack(title: "Jazz Rhythm", artist: "Rock Stars", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
+            TestDataFactory.createTrack(title: "Pop Song", artist: "Pop Artists", bpm: 128.0, duration: "3:30", genre: "Pop", difficulty: .easy)
         ]
 
         // Search for "rock" should find both title and artist matches
@@ -178,22 +161,10 @@ struct ContentViewTests {
     }
 
     @Test func testSearchWithSpecialCharacters() async throws {
-        let song1 = Song(title: "Rock & Roll", artist: "The Band", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let chart1 = Chart(difficulty: .medium, song: song1)
-        song1.charts = [chart1]
-
-        let song2 = Song(title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
-        let chart2 = Chart(difficulty: .hard, song: song2)
-        song2.charts = [chart2]
-
-        let song3 = Song(title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", genre: "Hip Hop")
-        let chart3 = Chart(difficulty: .easy, song: song3)
-        song3.charts = [chart3]
-
         let tracks = [
-            DrumTrack(chart: chart1),
-            DrumTrack(chart: chart2),
-            DrumTrack(chart: chart3)
+            TestDataFactory.createTrack(title: "Rock & Roll", artist: "The Band", difficulty: .medium),
+            TestDataFactory.createTrack(title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
+            TestDataFactory.createTrack(title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", genre: "Hip Hop", difficulty: .easy)
         ]
 
         // Test search with ampersand
@@ -211,17 +182,12 @@ struct ContentViewTests {
 
     @Test func testTrackCountDisplay() async throws {
         let emptyTracks: [DrumTrack] = []
-
-        let singleSong = Song(title: "Solo", artist: "Artist", bpm: 100.0, duration: "2:00", genre: "Pop")
-        let singleChart = Chart(difficulty: .easy, song: singleSong)
-        singleSong.charts = [singleChart]
-        let singleTrack = [DrumTrack(chart: singleChart)]
-
+        let singleTrack = [TestDataFactory.createTrack(title: "Solo", artist: "Artist", bpm: 100.0, duration: "2:00", genre: "Pop", difficulty: .easy)]
         let multipleTracks = DrumTrack.sampleData
 
         #expect(emptyTracks.isEmpty)
         #expect(singleTrack.count == 1)
-        #expect(multipleTracks.isEmpty) // Since Song.sampleData returns empty array
+        #expect(!multipleTracks.isEmpty) // Should have sample data now
 
         // Test count message formatting
         let emptyMessage = "\(emptyTracks.count) tracks available"
@@ -230,7 +196,7 @@ struct ContentViewTests {
 
         #expect(emptyMessage == "0 tracks available")
         #expect(singleMessage == "1 tracks available")
-        #expect(multipleMessage == "0 tracks available") // Since multipleTracks is empty
+        #expect(multipleMessage == "\(multipleTracks.count) tracks available")
     }
 
     @Test func testSearchPerformanceWithLargeDataset() async throws {
@@ -263,22 +229,10 @@ struct ContentViewTests {
     }
 
     @Test func testSearchResultOrdering() async throws {
-        let song1 = Song(title: "A Rock Song", artist: "Artist A", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let chart1 = Chart(difficulty: .easy, song: song1)
-        song1.charts = [chart1]
-
-        let song2 = Song(title: "B Jazz Track", artist: "Artist B", bpm: 140.0, duration: "4:00", genre: "Jazz", timeSignature: .threeFour)
-        let chart2 = Chart(difficulty: .medium, song: song2)
-        song2.charts = [chart2]
-
-        let song3 = Song(title: "C Rock Anthem", artist: "Artist C", bpm: 160.0, duration: "5:00", genre: "Rock")
-        let chart3 = Chart(difficulty: .hard, song: song3)
-        song3.charts = [chart3]
-
         let tracks = [
-            DrumTrack(chart: chart1),
-            DrumTrack(chart: chart2),
-            DrumTrack(chart: chart3)
+            TestDataFactory.createTrack(title: "A Rock Song", artist: "Artist A", difficulty: .easy),
+            TestDataFactory.createTrack(title: "B Jazz Track", artist: "Artist B", bpm: 140.0, duration: "4:00", genre: "Jazz", difficulty: .medium, timeSignature: .threeFour),
+            TestDataFactory.createTrack(title: "C Rock Anthem", artist: "Artist C", bpm: 160.0, duration: "5:00", difficulty: .hard)
         ]
 
         // Search for "rock" and verify original order is maintained
