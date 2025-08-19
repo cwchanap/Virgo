@@ -90,33 +90,37 @@ struct DrumTrackTests {
     @Test func testSampleDataGeneration() async throws {
         let sampleTracks = DrumTrack.sampleData
 
-        #expect(sampleTracks.isEmpty) // Currently returns empty since Song.sampleData is empty
+        #expect(!sampleTracks.isEmpty) // Should have sample data now
         #expect(sampleTracks.allSatisfy { !$0.title.isEmpty })
         #expect(sampleTracks.allSatisfy { !$0.artist.isEmpty })
         #expect(sampleTracks.allSatisfy { $0.bpm > 0 })
         #expect(sampleTracks.allSatisfy { !$0.duration.isEmpty })
         #expect(sampleTracks.allSatisfy { !$0.genre.isEmpty })
 
-        // Test specific sample tracks (will be skipped since sampleTracks is empty)
+        // Test specific sample tracks
         let thunderBeat = sampleTracks.first { $0.title == "Thunder Beat" }
-        #expect(thunderBeat == nil) // Currently nil since sampleData is empty
+        #expect(thunderBeat != nil)
+        #expect(thunderBeat?.artist == "Rock Masters")
+        #expect(thunderBeat?.bpm == 140.0)
 
         let blastBeat = sampleTracks.first { $0.title == "Blast Beat Fury" }
-        #expect(blastBeat == nil) // Currently nil since sampleData is empty
+        #expect(blastBeat != nil)
+        #expect(blastBeat?.artist == "Metal Gods")
+        #expect(blastBeat?.bpm == 180.0)
     }
 
     @Test func testBPMValidation() async throws {
         let sampleTracks = DrumTrack.sampleData
         let bpmValues = sampleTracks.map { $0.bpm }
 
-        // Since sampleTracks is currently empty, these tests are modified
-        #expect(!bpmValues.contains(85))  // Empty array won't contain values
-        #expect(!bpmValues.contains(95))  // Empty array won't contain values
-        #expect(!bpmValues.contains(180)) // Empty array won't contain values
-        #expect(bpmValues.min() == nil) // Empty array has no min
-        #expect(bpmValues.max() == nil) // Empty array has no max
+        // Test that we have the expected BPM values
+        #expect(bpmValues.contains(85))   // Hip Hop Foundation
+        #expect(bpmValues.contains(95))   // Latin Rhythm
+        #expect(bpmValues.contains(180))  // Blast Beat Fury
+        #expect(bpmValues.min() == 85)    // Minimum BPM
+        #expect(bpmValues.max() == 180)   // Maximum BPM
 
-        // Ensure all BPM values are reasonable for drum tracks (empty array satisfies allSatisfy)
+        // Ensure all BPM values are reasonable for drum tracks
         #expect(bpmValues.allSatisfy { $0 >= 85 && $0 <= 180 })
     }
 
@@ -124,27 +128,27 @@ struct DrumTrackTests {
         let sampleTracks = DrumTrack.sampleData
         let genres = Set(sampleTracks.map { $0.genre })
 
-        // Since sampleTracks is empty, modify expectations
-        #expect(!genres.contains("Rock"))
-        #expect(!genres.contains("Electronic"))
-        #expect(!genres.contains("Jazz"))
-        #expect(!genres.contains("Hip Hop"))
-        #expect(!genres.contains("Metal"))
-        #expect(!genres.contains("Latin"))
-        #expect(!genres.contains("Progressive"))
-        #expect(genres.isEmpty) // Empty set
+        // Test that we have expected genres in sample data
+        #expect(genres.contains("Rock"))
+        #expect(genres.contains("Electronic"))
+        #expect(genres.contains("Jazz"))
+        #expect(genres.contains("Hip Hop"))
+        #expect(genres.contains("Metal"))
+        #expect(genres.contains("Latin"))
+        #expect(genres.contains("Progressive"))
+        #expect(genres.count >= 7) // Should have at least 7 different genres
     }
 
     @Test func testDifficultyLevels() async throws {
         let sampleTracks = DrumTrack.sampleData
         let difficulties = Set(sampleTracks.map { $0.difficulty })
 
-        // Since sampleTracks is empty, modify expectations
-        #expect(!difficulties.contains(.easy))
-        #expect(!difficulties.contains(.medium))
-        #expect(!difficulties.contains(.hard))
-        #expect(!difficulties.contains(.expert))
-        #expect(difficulties.isEmpty) // Empty set
+        // Test that we have all difficulty levels in sample data
+        #expect(difficulties.contains(.easy))
+        #expect(difficulties.contains(.medium))
+        #expect(difficulties.contains(.hard))
+        #expect(difficulties.contains(.expert))
+        #expect(difficulties.count == 4) // Should have all four difficulty levels
     }
 
     @Test func testDurationFormat() async throws {

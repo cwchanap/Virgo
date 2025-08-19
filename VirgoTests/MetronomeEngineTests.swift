@@ -9,6 +9,26 @@ import Testing
 import SwiftUI
 @testable import Virgo
 
+// MARK: - Test Helpers
+struct TestHelpers {
+    /// Wait for a condition to become true with timeout
+    static func waitFor(
+        condition: @escaping () -> Bool,
+        timeout: TimeInterval = 5.0,
+        checkInterval: TimeInterval = 0.1
+    ) async -> Bool {
+        let maxAttempts = Int(timeout / checkInterval)
+        var attempts = 0
+        
+        while !condition() && attempts < maxAttempts {
+            try? await Task.sleep(nanoseconds: UInt64(checkInterval * 1_000_000_000))
+            attempts += 1
+        }
+        
+        return condition()
+    }
+}
+
 @Suite("Metronome Engine Tests")
 @MainActor
 struct MetronomeEngineTests {
@@ -114,11 +134,15 @@ struct MetronomeEngineTests {
         #expect(engine.bpm == 120)
         #expect(engine.timeSignature == .fourFour)
 
-        // Allow some time for the published property to update
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+        // Wait for engine to be enabled
+        let enabledSuccessfully = await TestHelpers.waitFor(condition: { engine.isEnabled })
+        #expect(enabledSuccessfully)
 
         engine.stop()
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+        
+        // Wait for engine to be disabled
+        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled })
+        #expect(disabledSuccessfully)
     }
 }
 
@@ -192,12 +216,15 @@ struct MetronomeTimingEngineTests {
 
         timingEngine.start()
 
-        // Allow some time for the callback to be triggered
-        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 second
+        // Wait for callback to be triggered
+        let callbackTriggeredSuccessfully = await TestHelpers.waitFor(
+            condition: { callbackTriggered },
+            timeout: 10.0 // Give more time for timing engine callback
+        )
 
         timingEngine.stop()
 
-        #expect(callbackTriggered == true)
+        #expect(callbackTriggeredSuccessfully)
         #expect(receivedBeat >= 1)
     }
 }

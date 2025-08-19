@@ -42,8 +42,9 @@ struct BeamGroupingLogicTests {
         
         let beamGroups = BeamGroupingHelper.calculateBeamGroups(from: beats)
         #expect(beamGroups.count == 1)
-        #expect(beamGroups.first?.beats.count == 3)
-        #expect(beamGroups.first?.id.hasPrefix("beam_1_"))
+        #expect(beamGroups.first != nil)
+        #expect(beamGroups.first!.beats.count == 3)
+        #expect(beamGroups.first!.id.hasPrefix("beam_1_"))
     }
     
     @Test("Beam grouping helper creates group for consecutive sixteenth notes")
@@ -57,8 +58,9 @@ struct BeamGroupingLogicTests {
         
         let beamGroups = BeamGroupingHelper.calculateBeamGroups(from: beats)
         #expect(beamGroups.count == 1)
-        #expect(beamGroups.first?.beats.count == 4)
-        #expect(beamGroups.first?.id.hasPrefix("beam_10_"))
+        #expect(beamGroups.first != nil)
+        #expect(beamGroups.first!.beats.count == 4)
+        #expect(beamGroups.first!.id.hasPrefix("beam_10_"))
     }
     
     @Test("Beam grouping helper creates separate groups for non-consecutive notes")
@@ -99,7 +101,8 @@ struct BeamGroupingLogicTests {
         
         let beamGroups = BeamGroupingHelper.calculateBeamGroups(from: beats)
         #expect(beamGroups.count == 1)
-        #expect(beamGroups.first?.beats.count == 4)
+        #expect(beamGroups.first != nil)
+        #expect(beamGroups.first!.beats.count == 4)
     }
     
     @Test("Beam grouping helper respects measure boundaries")
@@ -112,7 +115,8 @@ struct BeamGroupingLogicTests {
         
         let beamGroups = BeamGroupingHelper.calculateBeamGroups(from: beats)
         #expect(beamGroups.count == 1)
-        #expect(beamGroups.first?.beats.count == 2) // Only beats 2 and 3 should be grouped
+        #expect(beamGroups.first != nil)
+        #expect(beamGroups.first!.beats.count == 2) // Only beats 2 and 3 should be grouped
     }
     
     @Test("Beam grouping helper creates unique IDs for multiple groups")
@@ -151,7 +155,9 @@ struct BeamGroupingLogicTests {
         let firstGroup = beamGroups.first { $0.id.contains("1") }
         let secondGroup = beamGroups.first { $0.id.contains("3") }
         
+        #expect(firstGroup != nil)
         #expect(firstGroup?.beats.count == 2)
+        #expect(secondGroup != nil)
         #expect(secondGroup?.beats.count == 2)
     }
     
@@ -165,7 +171,8 @@ struct BeamGroupingLogicTests {
         
         let beamGroups = BeamGroupingHelper.calculateBeamGroups(from: beats)
         #expect(beamGroups.count == 1)
-        #expect(beamGroups.first?.beats.count == 3)
+        #expect(beamGroups.first != nil)
+        #expect(beamGroups.first!.beats.count == 3)
     }
     
     @Test("Beam grouping helper preserves beat order in groups")

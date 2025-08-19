@@ -15,7 +15,7 @@ struct VirgoTests {
     @Test func testAppLaunchConfiguration() async throws {
         // Test that sample data can be loaded
         let sampleTracks = DrumTrack.sampleData
-        #expect(sampleTracks.isEmpty) // Currently returns empty since Song.sampleData is empty
+        #expect(!sampleTracks.isEmpty) // Should have sample data now
 
         // Verify all sample tracks have valid data
         for track in sampleTracks {
@@ -100,12 +100,11 @@ struct VirgoTests {
     @Test func testDataValidation() async throws {
         let sampleTracks = DrumTrack.sampleData
 
-        // Validate BPM ranges are reasonable (skip if empty since sampleData is currently empty)
+        // Validate BPM ranges are reasonable
         let bpmValues = sampleTracks.map { $0.bpm }
-        if !bpmValues.isEmpty {
-            #expect(bpmValues.min()! >= 60) // Minimum reasonable BPM
-            #expect(bpmValues.max()! <= 300) // Maximum reasonable BPM
-        }
+        #expect(!bpmValues.isEmpty) // Should have sample data
+        #expect(bpmValues.min()! >= 60) // Minimum reasonable BPM
+        #expect(bpmValues.max()! <= 300) // Maximum reasonable BPM
 
         // Validate duration format (M:SS)
         for track in sampleTracks {

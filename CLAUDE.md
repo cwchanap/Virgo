@@ -24,6 +24,9 @@ Virgo is a SwiftUI-based drum notation and metronome application for iOS and mac
 - `MetronomeComponent.swift`: Advanced metronome with sample-accurate timing and volume control
 - `DTXAPIClient.swift`: Network client for DTX server integration with file listing, metadata, and download capabilities
 - `DTXFileParser.swift`: Parser for importing DTX drum chart files with complete note parsing
+- `InputManager.swift`: MIDI and keyboard input handling with timing accuracy scoring and note matching
+- `PlaybackService.swift`: Centralized playback state management service
+- `DatabaseMaintenanceService.swift`: SwiftData relationship maintenance and cleanup utilities
 
 ### Data Model
 
@@ -105,15 +108,31 @@ Virgo/
 │   │   ├── BeamView.swift       # Musical beam notation
 │   │   ├── DrumBeatView.swift   # Individual note rendering
 │   │   ├── MetronomeView.swift  # Metronome interface
-│   │   └── MusicNotationViews.swift
+│   │   ├── MusicNotationViews.swift
+│   │   ├── AudioSettingsView.swift # Audio configuration interface
+│   │   ├── InputSettingsView.swift # MIDI/keyboard input configuration
+│   │   ├── SongsTabView.swift   # Unified local/server song listing
+│   │   ├── helpers/             # View helper classes
+│   │   │   └── GameplayPlaybackHelper.swift
+│   │   └── subviews/            # Reusable view components
+│   │       ├── GameplayPlaybackControls.swift
+│   │       ├── GameplaySheetMusicView.swift
+│   │       ├── KeyCapturingOverlay.swift
+│   │       └── MappingSections.swift
 │   ├── models/                  # SwiftData models
 │   │   └── DrumTrack.swift      # Track and Note models with sample data
+│   ├── services/                # Business logic services
+│   │   ├── PlaybackService.swift   # Centralized playback state management
+│   │   └── DatabaseMaintenanceService.swift # SwiftData maintenance utilities
 │   ├── utilities/               # Helper utilities
 │   │   ├── BeamGroupingLogic.swift  # Musical notation beam grouping
 │   │   ├── Logger.swift         # Centralized logging
 │   │   ├── DTXAPIClient.swift   # Server integration for DTX files
 │   │   ├── DTXFileParser.swift   # DTX file format parser
-│   │   └── ServerSongService.swift # Server integration service
+│   │   ├── InputManager.swift   # MIDI/keyboard input with timing scoring
+│   │   ├── MetronomeEngine.swift # Core metronome timing engine
+│   │   ├── ServerSongService.swift # Server integration service
+│   │   └── SwiftDataRelationshipLoader.swift # Async relationship loading utility
 │   ├── constants/               # App constants
 │   │   └── Drum.swift          # Drum type definitions
 │   ├── layout/                  # Layout calculations
@@ -146,6 +165,12 @@ Virgo/
 - **Issue**: Accessing SwiftData relationships (`song.charts`, `chart.notes`) during UI rendering causes concurrency crashes and blocks the main thread
 - **Solution**: Use async caching pattern with `@State` variables and `.task` modifier to load relationship data in background, then update UI on main thread
 - **Implementation**: Views cache relationship counts/data locally and refresh asynchronously when song changes, ensuring immediate UI responsiveness
+- **Utility**: `SwiftDataRelationshipLoader` provides standardized async relationship loading patterns
+
+### Services Architecture
+- **PlaybackService**: `@MainActor` service for centralized playback state management across views
+- **DatabaseMaintenanceService**: Utilities for SwiftData relationship maintenance and cleanup operations
+- **Pattern**: Services are injected as `@EnvironmentObject` and provide single source of truth for business logic
 
 ## Key Technical Features
 
@@ -178,6 +203,13 @@ Virgo/
 - Network entitlements configured for client/server communication
 - Unified Songs tab combines local SwiftData entries with server DTX files
 - Caching system for downloaded DTX files with local storage support
+
+### Input System
+- `InputManager`: Real-time MIDI and keyboard input handling with CoreMIDI integration
+- Timing accuracy scoring system (Perfect/Great/Good/Miss) with configurable tolerance windows
+- Note matching algorithm that compares input timing against expected chart notes
+- Cross-platform input support (MIDI on iOS/macOS, keyboard input on macOS)
+- `InputSettingsManager`: Configurable key/MIDI mappings with UserDefaults persistence
 
 ## FastAPI Backend Server
 
