@@ -52,7 +52,8 @@
       "Bash(sed:*)",
       "mcp__XcodeBuildMCP__discover_projs",
       "Bash(screencapture:*)",
-      "Bash(xcrun simctl list:*)"
+      "Bash(xcrun simctl list:*)",
+      "mcp__XcodeBuildMCP__test_macos"
     ],
     "deny": []
   }
