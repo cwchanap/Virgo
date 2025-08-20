@@ -24,6 +24,7 @@ final class GameplayViewUITests: XCTestCase {
         
         // Navigate to ContentView
         app.buttons["START"].tap()
+        print(app.debugDescription)
         XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
         
         // Navigate to GameplayView by tapping on first track
