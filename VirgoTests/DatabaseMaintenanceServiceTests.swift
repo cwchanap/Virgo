@@ -14,30 +14,30 @@ import Foundation
 @MainActor
 struct DatabaseMaintenanceServiceTests {
     
-    private var testContainer: ModelContainer {
-        let schema = Schema([Song.self, Chart.self, Note.self])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        return try! ModelContainer(for: schema, configurations: [configuration])
+    private var container: ModelContainer {
+        TestContainer.shared.container
+    }
+    
+    private var context: ModelContext {
+        TestContainer.shared.context
     }
     
     @Test("DatabaseMaintenanceService updates chart levels correctly")
-    func testUpdateExistingChartLevels() {
-        let container = testContainer
-        let context = container.mainContext
+    func testUpdateExistingChartLevels() async {
+        await TestSetup.setUp()
+        
         let service = DatabaseMaintenanceService(modelContext: context)
         
         // Create songs with charts that have default level 50
-        let song1 = Song(title: "Song 1", artist: "Artist 1", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let chart1 = Chart(difficulty: .easy, level: 50, song: song1) // Should be updated to 30
-        let chart2 = Chart(difficulty: .expert, level: 50, song: song1) // Should be updated to 90
+        let song1 = TestModelFactory.createSong(in: context, title: "Song 1", artist: "Artist 1", bpm: 120.0, duration: "3:00", genre: "Rock")
+        let chart1 = TestModelFactory.createChart(in: context, difficulty: .easy, level: 50, song: song1) // Should be updated to 30
+        let chart2 = TestModelFactory.createChart(in: context, difficulty: .expert, level: 50, song: song1) // Should be updated to 90
         song1.charts = [chart1, chart2]
         
-        let song2 = Song(title: "Song 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", genre: "Jazz")
-        let chart3 = Chart(difficulty: .medium, level: 60, song: song2) // Should not be updated (not default 50)
+        let song2 = TestModelFactory.createSong(in: context, title: "Song 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", genre: "Jazz")
+        let chart3 = TestModelFactory.createChart(in: context, difficulty: .medium, level: 60, song: song2) // Should not be updated (not default 50)
         song2.charts = [chart3]
         
-        context.insert(song1)
-        context.insert(song2)
         try! context.save()
         
         // Verify initial state
@@ -55,21 +55,25 @@ struct DatabaseMaintenanceServiceTests {
     }
     
     @Test("DatabaseMaintenanceService removes duplicate songs")
-    func testCleanupDuplicateSongs() {
-        let container = testContainer
-        let context = container.mainContext
+    func testCleanupDuplicateSongs() async {
+        await TestSetup.setUp()
+        
         let service = DatabaseMaintenanceService(modelContext: context)
         
         // Create duplicate songs (same title and artist, case insensitive)
-        let song1 = Song(title: "Rock Song", artist: "Rock Band", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let song2 = Song(title: "rock song", artist: "ROCK BAND", bpm: 125.0, duration: "3:10", genre: "Rock") // Duplicate
-        let song3 = Song(title: "Jazz Song", artist: "Jazz Band", bpm: 140.0, duration: "4:00", genre: "Jazz")
-        let song4 = Song(title: "Rock Song", artist: "Rock Band", bpm: 130.0, duration: "3:05", genre: "Rock") // Another duplicate
+        let song1 = TestModelFactory.createSong(
+            in: context, title: "Rock Song", artist: "Rock Band", bpm: 120.0, duration: "3:00", genre: "Rock"
+        )
+        let song2 = TestModelFactory.createSong(
+            in: context, title: "rock song", artist: "ROCK BAND", bpm: 125.0, duration: "3:10", genre: "Rock"
+        ) // Duplicate
+        let song3 = TestModelFactory.createSong(
+            in: context, title: "Jazz Song", artist: "Jazz Band", bpm: 140.0, duration: "4:00", genre: "Jazz"
+        )
+        let song4 = TestModelFactory.createSong(
+            in: context, title: "Rock Song", artist: "Rock Band", bpm: 130.0, duration: "3:05", genre: "Rock"
+        ) // Another duplicate
         
-        context.insert(song1)
-        context.insert(song2)
-        context.insert(song3)
-        context.insert(song4)
         try! context.save()
         
         // Verify initial state
@@ -80,60 +84,56 @@ struct DatabaseMaintenanceServiceTests {
         service.performInitialMaintenance(songs: initialSongs)
         
         // Verify duplicates were removed (song2 and song4 should be deleted)
-        #expect(!song1.isDeleted) // Original should remain
-        #expect(song2.isDeleted) // Duplicate should be deleted
-        #expect(!song3.isDeleted) // Different song should remain
-        #expect(song4.isDeleted) // Duplicate should be deleted
+        TestAssertions.assertNotDeleted(song1) // Original should remain
+        TestAssertions.assertDeleted(song2) // Duplicate should be deleted
+        TestAssertions.assertNotDeleted(song3) // Different song should remain
+        TestAssertions.assertDeleted(song4) // Duplicate should be deleted
     }
     
     @Test("DatabaseMaintenanceService handles songs with same title but different artists")
-    func testDifferentArtistsSameTitleHandling() {
-        let container = testContainer
-        let context = container.mainContext
+    func testDifferentArtistsSameTitleHandling() async {
+        await TestSetup.setUp()
+        
         let service = DatabaseMaintenanceService(modelContext: context)
         
         // Create songs with same title but different artists
-        let song1 = Song(title: "Love Song", artist: "Band A", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let song2 = Song(title: "Love Song", artist: "Band B", bpm: 140.0, duration: "4:00", genre: "Pop")
+        let song1 = TestModelFactory.createSong(in: context, title: "Love Song", artist: "Band A", bpm: 120.0, duration: "3:00", genre: "Rock")
+        let song2 = TestModelFactory.createSong(in: context, title: "Love Song", artist: "Band B", bpm: 140.0, duration: "4:00", genre: "Pop")
         
-        context.insert(song1)
-        context.insert(song2)
         try! context.save()
         
         // Run maintenance
         service.performInitialMaintenance(songs: [song1, song2])
         
         // Both songs should remain (different artists)
-        #expect(!song1.isDeleted)
-        #expect(!song2.isDeleted)
+        TestAssertions.assertNotDeleted(song1)
+        TestAssertions.assertNotDeleted(song2)
     }
     
     @Test("DatabaseMaintenanceService handles songs with same artist but different titles")
-    func testDifferentTitlesSameArtistHandling() {
-        let container = testContainer
-        let context = container.mainContext
+    func testDifferentTitlesSameArtistHandling() async {
+        await TestSetup.setUp()
+        
         let service = DatabaseMaintenanceService(modelContext: context)
         
         // Create songs with same artist but different titles
-        let song1 = Song(title: "Song One", artist: "Great Band", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let song2 = Song(title: "Song Two", artist: "Great Band", bpm: 140.0, duration: "4:00", genre: "Rock")
+        let song1 = TestModelFactory.createSong(in: context, title: "Song One", artist: "Great Band", bpm: 120.0, duration: "3:00", genre: "Rock")
+        let song2 = TestModelFactory.createSong(in: context, title: "Song Two", artist: "Great Band", bpm: 140.0, duration: "4:00", genre: "Rock")
         
-        context.insert(song1)
-        context.insert(song2)
         try! context.save()
         
         // Run maintenance
         service.performInitialMaintenance(songs: [song1, song2])
         
         // Both songs should remain (different titles)
-        #expect(!song1.isDeleted)
-        #expect(!song2.isDeleted)
+        TestAssertions.assertNotDeleted(song1)
+        TestAssertions.assertNotDeleted(song2)
     }
     
     @Test("DatabaseMaintenanceService handles empty song list")
-    func testEmptySongListHandling() {
-        let container = testContainer
-        let context = container.mainContext
+    func testEmptySongListHandling() async {
+        await TestSetup.setUp()
+        
         let service = DatabaseMaintenanceService(modelContext: context)
         
         // Run maintenance with empty list (should not crash)
@@ -144,61 +144,56 @@ struct DatabaseMaintenanceServiceTests {
     }
     
     @Test("DatabaseMaintenanceService preserves charts when removing duplicate songs")
-    func testChartsPreservationDuringDuplicateRemoval() {
-        let container = testContainer
-        let context = container.mainContext
+    func testChartsPreservationDuringDuplicateRemoval() async {
+        await TestSetup.setUp()
+        
         let service = DatabaseMaintenanceService(modelContext: context)
         
         // Create duplicate songs with charts
-        let song1 = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let chart1 = Chart(difficulty: .easy, song: song1)
-        let note1 = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: chart1)
+        let song1 = TestModelFactory.createSong(in: context, title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
+        let chart1 = TestModelFactory.createChart(in: context, difficulty: .easy, song: song1)
+        let note1 = TestModelFactory.createNote(in: context, interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: chart1)
         chart1.notes = [note1]
         song1.charts = [chart1]
         
-        let song2 = Song(title: "test song", artist: "TEST ARTIST", bpm: 125.0, duration: "3:10", genre: "Rock") // Duplicate
-        let chart2 = Chart(difficulty: .medium, song: song2)
+        let song2 = TestModelFactory.createSong(in: context, title: "test song", artist: "TEST ARTIST", bpm: 125.0, duration: "3:10", genre: "Rock") // Duplicate
+        let chart2 = TestModelFactory.createChart(in: context, difficulty: .medium, song: song2)
         song2.charts = [chart2]
         
-        context.insert(song1)
-        context.insert(song2)
         try! context.save()
         
         // Run maintenance
         service.performInitialMaintenance(songs: [song1, song2])
         
         // Original song and its data should remain
-        #expect(!song1.isDeleted)
-        #expect(!chart1.isDeleted)
-        #expect(!note1.isDeleted)
+        TestAssertions.assertNotDeleted(song1)
+        TestAssertions.assertNotDeleted(chart1)
+        TestAssertions.assertNotDeleted(note1)
         
         // Duplicate song should be deleted (cascade deletion will handle its charts)
-        #expect(song2.isDeleted)
-        #expect(chart2.isDeleted) // Should be cascade deleted
+        TestAssertions.assertDeleted(song2)
+        TestAssertions.assertDeleted(chart2) // Should be cascade deleted
     }
     
     @Test("DatabaseMaintenanceService handles special characters in song titles")
-    func testSpecialCharactersInTitles() {
-        let container = testContainer
-        let context = container.mainContext
+    func testSpecialCharactersInTitles() async {
+        await TestSetup.setUp()
+        
         let service = DatabaseMaintenanceService(modelContext: context)
         
         // Create songs with special characters
-        let song1 = Song(title: "Rock & Roll", artist: "The Band", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let song2 = Song(title: "rock & roll", artist: "the band", bpm: 125.0, duration: "3:10", genre: "Rock") // Duplicate
-        let song3 = Song(title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", genre: "Hip Hop")
+        let song1 = TestModelFactory.createSong(in: context, title: "Rock & Roll", artist: "The Band", bpm: 120.0, duration: "3:00", genre: "Rock")
+        let song2 = TestModelFactory.createSong(in: context, title: "rock & roll", artist: "the band", bpm: 125.0, duration: "3:10", genre: "Rock") // Duplicate
+        let song3 = TestModelFactory.createSong(in: context, title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", genre: "Hip Hop")
         
-        context.insert(song1)
-        context.insert(song2)
-        context.insert(song3)
         try! context.save()
         
         // Run maintenance
         service.performInitialMaintenance(songs: [song1, song2, song3])
         
         // First song should remain, duplicate should be removed
-        #expect(!song1.isDeleted)
-        #expect(song2.isDeleted)
-        #expect(!song3.isDeleted) // Different song should remain
+        TestAssertions.assertNotDeleted(song1)
+        TestAssertions.assertDeleted(song2)
+        TestAssertions.assertNotDeleted(song3) // Different song should remain
     }
 }

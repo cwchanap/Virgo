@@ -11,6 +11,7 @@ import SwiftData
 @testable import Virgo
 
 // MARK: - Test Data Factory
+@MainActor
 struct TestDataFactory {
     static func createSong(
         title: String,
@@ -40,7 +41,8 @@ struct TestDataFactory {
         difficulty: Difficulty = .medium,
         timeSignature: TimeSignature = .fourFour
     ) -> DrumTrack {
-        let song = createSong(
+        let song = TestModelFactory.createSong(
+            in: context,
             title: title,
             artist: artist,
             bpm: bpm,
@@ -48,10 +50,9 @@ struct TestDataFactory {
             genre: genre,
             timeSignature: timeSignature
         )
-        let chart = Chart(difficulty: difficulty, song: song)
+        let chart = TestModelFactory.createChart(in: context, difficulty: difficulty, song: song)
         song.charts = [chart]
-        context.insert(song)
-        context.insert(chart)
+        try! context.save()
         return DrumTrack(chart: chart)
     }
     
@@ -66,20 +67,19 @@ struct TestDataFactory {
     }
 }
 
+@MainActor
 struct ContentViewTests {
     
-    // Create a test model container for SwiftData models
-    static let testContainer: ModelContainer = {
-        do {
-            let config = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
-        } catch {
-            fatalError("Failed to create test container: \(error)")
-        }
-    }()
+    private var container: ModelContainer {
+        TestContainer.shared.container
+    }
+    
+    private var context: ModelContext {
+        TestContainer.shared.context
+    }
 
     @Test func testSearchFilteringByTitle() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         let tracks = TestDataFactory.createTestTracks(context: context)
 
         // Test title filtering
@@ -98,7 +98,7 @@ struct ContentViewTests {
     }
 
     @Test func testSearchFilteringByArtist() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         let tracks = TestDataFactory.createTestTracks(context: context)
 
         // Test artist filtering
@@ -112,7 +112,7 @@ struct ContentViewTests {
     }
 
     @Test func testCaseInsensitiveSearch() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         let tracks = TestDataFactory.createTestTracks(context: context).prefix(2).map { $0 } // Use first 2 tracks
 
         // Test uppercase search
@@ -140,7 +140,7 @@ struct ContentViewTests {
     }
 
     @Test func testEmptySearchBehavior() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         let tracks = [
             TestDataFactory.createTrack(context: context, title: "Track 1", artist: "Artist 1", difficulty: .easy),
             TestDataFactory.createTrack(context: context, title: "Track 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", 
@@ -161,7 +161,7 @@ struct ContentViewTests {
     }
 
     @Test func testCombinedTitleAndArtistSearch() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         let tracks = [
             TestDataFactory.createTrack(context: context, title: "Rock Beat", artist: "Jazz Masters", genre: "Fusion", 
                                          difficulty: .medium),
@@ -187,7 +187,7 @@ struct ContentViewTests {
     }
 
     @Test func testSearchWithSpecialCharacters() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         let tracks = [
             TestDataFactory.createTrack(context: context, title: "Rock & Roll", artist: "The Band", difficulty: .medium),
             TestDataFactory.createTrack(context: context, title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140.0, duration: "4:00", 
@@ -210,7 +210,7 @@ struct ContentViewTests {
     }
 
     @Test func testTrackCountDisplay() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         let emptyTracks: [DrumTrack] = []
         let singleTrack = [TestDataFactory.createTrack(context: context, title: "Solo", artist: "Artist", bpm: 100.0, 
                                                         duration: "2:00", genre: "Pop", difficulty: .easy)]
@@ -231,12 +231,13 @@ struct ContentViewTests {
     }
 
     @Test func testSearchPerformanceWithLargeDataset() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         
         // Create a large dataset for performance testing
         var largeTracks: [DrumTrack] = []
         for i in 0..<1000 {
-            let song = Song(
+            let song = TestModelFactory.createSong(
+                in: context,
                 title: "Track \(i)",
                 artist: "Artist \(i % 100)",
                 bpm: Double(120 + (i % 80)),
@@ -244,10 +245,8 @@ struct ContentViewTests {
                 genre: ["Rock", "Jazz", "Electronic", "Hip Hop"][i % 4],
                 timeSignature: [.fourFour, .threeFour, .sixEight, .fiveFour][i % 4]
             )
-            let chart = Chart(difficulty: Difficulty.allCases[i % Difficulty.allCases.count], song: song)
+            let chart = TestModelFactory.createChart(in: context, difficulty: Difficulty.allCases[i % Difficulty.allCases.count], song: song)
             song.charts = [chart]
-            context.insert(song)
-            context.insert(chart)
             largeTracks.append(DrumTrack(chart: chart))
         }
 
@@ -265,7 +264,7 @@ struct ContentViewTests {
     }
 
     @Test func testSearchResultOrdering() async throws {
-        let context = ModelContext(Self.testContainer)
+        await TestSetup.setUp()
         let tracks = [
             TestDataFactory.createTrack(context: context, title: "A Rock Song", artist: "Artist A", difficulty: .easy),
             TestDataFactory.createTrack(context: context, title: "B Jazz Track", artist: "Artist B", bpm: 140.0, duration: "4:00", 
