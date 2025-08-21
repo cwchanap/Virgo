@@ -7,19 +7,32 @@
 
 import Testing
 import Foundation
+import SwiftData
 @testable import Virgo
 
 @Suite("Note Model Tests")
 struct NoteModelTests {
     
+    // Create a test model container for SwiftData models
+    static let testContainer: ModelContainer = {
+        do {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
+        } catch {
+            fatalError("Failed to create test container: \(error)")
+        }
+    }()
+    
     @Test("Note initializes with correct properties")
     func testNoteInitialization() {
+        let context = ModelContext(Self.testContainer)
         let note = Note(
             interval: .eighth, 
             noteType: .bass, 
             measureNumber: 2, 
             measureOffset: 0.5
         )
+        context.insert(note)
         
         #expect(note.interval == .eighth)
         #expect(note.noteType == .bass)
@@ -30,37 +43,48 @@ struct NoteModelTests {
     
     @Test("Note can be created with chart reference")
     func testNoteWithChart() {
+        let context = ModelContext(Self.testContainer)
         let song = Song(title: "Test", artist: "Artist", bpm: 120, duration: "3:00", genre: "Rock")
         let chart = Chart(difficulty: .medium, song: song)
+        context.insert(song)
+        context.insert(chart)
         let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0, chart: chart)
+        context.insert(note)
         
         #expect(note.chart === chart)
     }
     
     @Test("Note handles various intervals correctly")
     func testNoteIntervals() {
+        let context = ModelContext(Self.testContainer)
         let intervals: [NoteInterval] = [.full, .half, .quarter, .eighth, .sixteenth, .thirtysecond]
         
         for interval in intervals {
             let note = Note(interval: interval, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
+            context.insert(note)
             #expect(note.interval == interval)
         }
     }
     
     @Test("Note handles various drum types correctly")
     func testNoteDrumTypes() {
+        let context = ModelContext(Self.testContainer)
         let drumTypes: [NoteType] = [.bass, .snare, .hiHat, .crash, .ride, .highTom, .midTom, .lowTom]
         
         for drumType in drumTypes {
             let note = Note(interval: .quarter, noteType: drumType, measureNumber: 1, measureOffset: 0.0)
+            context.insert(note)
             #expect(note.noteType == drumType)
         }
     }
     
     @Test("Note measure number validation")
     func testNoteMeasureValidation() {
+        let context = ModelContext(Self.testContainer)
         let note1 = Note(interval: .quarter, noteType: .bass, measureNumber: 0, measureOffset: 0.0)
         let note2 = Note(interval: .quarter, noteType: .bass, measureNumber: 100, measureOffset: 0.0)
+        context.insert(note1)
+        context.insert(note2)
         
         #expect(note1.measureNumber == 0)
         #expect(note2.measureNumber == 100)
@@ -68,9 +92,13 @@ struct NoteModelTests {
     
     @Test("Note measure offset validation")
     func testNoteMeasureOffset() {
+        let context = ModelContext(Self.testContainer)
         let note1 = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
         let note2 = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.75)
         let note3 = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 1.0)
+        context.insert(note1)
+        context.insert(note2)
+        context.insert(note3)
         
         #expect(note1.measureOffset == 0.0)
         #expect(note2.measureOffset == 0.75)

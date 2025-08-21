@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import SwiftData
 @testable import Virgo
 
 // MARK: - Test Data Factory
@@ -30,6 +31,7 @@ struct TestDataFactory {
     }
     
     static func createTrack(
+        context: ModelContext,
         title: String,
         artist: String,
         bpm: Double = 120.0,
@@ -48,24 +50,37 @@ struct TestDataFactory {
         )
         let chart = Chart(difficulty: difficulty, song: song)
         song.charts = [chart]
+        context.insert(song)
+        context.insert(chart)
         return DrumTrack(chart: chart)
     }
     
-    static func createTestTracks() -> [DrumTrack] {
+    static func createTestTracks(context: ModelContext) -> [DrumTrack] {
         [
-            createTrack(title: "Rock Anthem", artist: "The Rockers", genre: "Rock", difficulty: .medium),
-            createTrack(title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", 
+            createTrack(context: context, title: "Rock Anthem", artist: "The Rockers", genre: "Rock", difficulty: .medium),
+            createTrack(context: context, title: "Jazz Fusion", artist: "Smooth Players", bpm: 140.0, duration: "4:00", 
                         genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
-            createTrack(title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", 
+            createTrack(context: context, title: "Electronic Beat", artist: "The Rockers", bpm: 128.0, duration: "3:30", 
                         genre: "Electronic", difficulty: .easy)
         ]
     }
 }
 
 struct ContentViewTests {
+    
+    // Create a test model container for SwiftData models
+    static let testContainer: ModelContainer = {
+        do {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
+        } catch {
+            fatalError("Failed to create test container: \(error)")
+        }
+    }()
 
     @Test func testSearchFilteringByTitle() async throws {
-        let tracks = TestDataFactory.createTestTracks()
+        let context = ModelContext(Self.testContainer)
+        let tracks = TestDataFactory.createTestTracks(context: context)
 
         // Test title filtering
         let titleFiltered = tracks.filter { $0.title.localizedCaseInsensitiveContains("rock") }
@@ -83,7 +98,8 @@ struct ContentViewTests {
     }
 
     @Test func testSearchFilteringByArtist() async throws {
-        let tracks = TestDataFactory.createTestTracks()
+        let context = ModelContext(Self.testContainer)
+        let tracks = TestDataFactory.createTestTracks(context: context)
 
         // Test artist filtering
         let artistFiltered = tracks.filter { $0.artist.localizedCaseInsensitiveContains("rockers") }
@@ -96,7 +112,8 @@ struct ContentViewTests {
     }
 
     @Test func testCaseInsensitiveSearch() async throws {
-        let tracks = TestDataFactory.createTestTracks().prefix(2).map { $0 } // Use first 2 tracks
+        let context = ModelContext(Self.testContainer)
+        let tracks = TestDataFactory.createTestTracks(context: context).prefix(2).map { $0 } // Use first 2 tracks
 
         // Test uppercase search
         let upperCaseFiltered = tracks.filter {
@@ -123,11 +140,12 @@ struct ContentViewTests {
     }
 
     @Test func testEmptySearchBehavior() async throws {
+        let context = ModelContext(Self.testContainer)
         let tracks = [
-            TestDataFactory.createTrack(title: "Track 1", artist: "Artist 1", difficulty: .easy),
-            TestDataFactory.createTrack(title: "Track 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", 
+            TestDataFactory.createTrack(context: context, title: "Track 1", artist: "Artist 1", difficulty: .easy),
+            TestDataFactory.createTrack(context: context, title: "Track 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", 
                                          genre: "Jazz", difficulty: .medium, timeSignature: .threeFour),
-            TestDataFactory.createTrack(title: "Track 3", artist: "Artist 3", bpm: 160.0, duration: "5:00", 
+            TestDataFactory.createTrack(context: context, title: "Track 3", artist: "Artist 3", bpm: 160.0, duration: "5:00", 
                                          genre: "Metal", difficulty: .hard)
         ]
 
@@ -143,12 +161,13 @@ struct ContentViewTests {
     }
 
     @Test func testCombinedTitleAndArtistSearch() async throws {
+        let context = ModelContext(Self.testContainer)
         let tracks = [
-            TestDataFactory.createTrack(title: "Rock Beat", artist: "Jazz Masters", genre: "Fusion", 
+            TestDataFactory.createTrack(context: context, title: "Rock Beat", artist: "Jazz Masters", genre: "Fusion", 
                                          difficulty: .medium),
-            TestDataFactory.createTrack(title: "Jazz Rhythm", artist: "Rock Stars", bpm: 140.0, duration: "4:00", 
+            TestDataFactory.createTrack(context: context, title: "Jazz Rhythm", artist: "Rock Stars", bpm: 140.0, duration: "4:00", 
                                          genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
-            TestDataFactory.createTrack(title: "Pop Song", artist: "Pop Artists", bpm: 128.0, duration: "3:30", 
+            TestDataFactory.createTrack(context: context, title: "Pop Song", artist: "Pop Artists", bpm: 128.0, duration: "3:30", 
                                          genre: "Pop", difficulty: .easy)
         ]
 
@@ -168,11 +187,12 @@ struct ContentViewTests {
     }
 
     @Test func testSearchWithSpecialCharacters() async throws {
+        let context = ModelContext(Self.testContainer)
         let tracks = [
-            TestDataFactory.createTrack(title: "Rock & Roll", artist: "The Band", difficulty: .medium),
-            TestDataFactory.createTrack(title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140.0, duration: "4:00", 
+            TestDataFactory.createTrack(context: context, title: "Rock & Roll", artist: "The Band", difficulty: .medium),
+            TestDataFactory.createTrack(context: context, title: "Jazz-Fusion", artist: "Modern Jazz", bpm: 140.0, duration: "4:00", 
                                          genre: "Jazz", difficulty: .hard, timeSignature: .threeFour),
-            TestDataFactory.createTrack(title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", 
+            TestDataFactory.createTrack(context: context, title: "Hip-Hop Beat", artist: "MC Producer", bpm: 95.0, duration: "3:30", 
                                          genre: "Hip Hop", difficulty: .easy)
         ]
 
@@ -190,8 +210,9 @@ struct ContentViewTests {
     }
 
     @Test func testTrackCountDisplay() async throws {
+        let context = ModelContext(Self.testContainer)
         let emptyTracks: [DrumTrack] = []
-        let singleTrack = [TestDataFactory.createTrack(title: "Solo", artist: "Artist", bpm: 100.0, 
+        let singleTrack = [TestDataFactory.createTrack(context: context, title: "Solo", artist: "Artist", bpm: 100.0, 
                                                         duration: "2:00", genre: "Pop", difficulty: .easy)]
         let multipleTracks = DrumTrack.sampleData
 
@@ -210,6 +231,8 @@ struct ContentViewTests {
     }
 
     @Test func testSearchPerformanceWithLargeDataset() async throws {
+        let context = ModelContext(Self.testContainer)
+        
         // Create a large dataset for performance testing
         var largeTracks: [DrumTrack] = []
         for i in 0..<1000 {
@@ -223,6 +246,8 @@ struct ContentViewTests {
             )
             let chart = Chart(difficulty: Difficulty.allCases[i % Difficulty.allCases.count], song: song)
             song.charts = [chart]
+            context.insert(song)
+            context.insert(chart)
             largeTracks.append(DrumTrack(chart: chart))
         }
 
@@ -240,11 +265,12 @@ struct ContentViewTests {
     }
 
     @Test func testSearchResultOrdering() async throws {
+        let context = ModelContext(Self.testContainer)
         let tracks = [
-            TestDataFactory.createTrack(title: "A Rock Song", artist: "Artist A", difficulty: .easy),
-            TestDataFactory.createTrack(title: "B Jazz Track", artist: "Artist B", bpm: 140.0, duration: "4:00", 
+            TestDataFactory.createTrack(context: context, title: "A Rock Song", artist: "Artist A", difficulty: .easy),
+            TestDataFactory.createTrack(context: context, title: "B Jazz Track", artist: "Artist B", bpm: 140.0, duration: "4:00", 
                                          genre: "Jazz", difficulty: .medium, timeSignature: .threeFour),
-            TestDataFactory.createTrack(title: "C Rock Anthem", artist: "Artist C", bpm: 160.0, 
+            TestDataFactory.createTrack(context: context, title: "C Rock Anthem", artist: "Artist C", bpm: 160.0, 
                                          duration: "5:00", difficulty: .hard)
         ]
 
