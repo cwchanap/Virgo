@@ -4,3 +4,9 @@
 server/dtx_files/
 server/__pycache__/
 server/.venv/
+
+# Xcode test results and build artifacts
+*.xcresult/
+Test-*.xcresult/
+DerivedData/
+*.xcuserdata/
