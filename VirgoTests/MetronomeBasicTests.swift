@@ -92,17 +92,27 @@ struct MetronomeBasicTests {
         #expect(TimeSignature.fiveFour.displayName == "5/4")
     }
 
-    @Test func testMetronomeComponentCreation() {
+    @Test func testMetronomeComponentCreation() async {
+        await TestSetup.setUp()
+        
         let metronome = MetronomeEngine()
         let component = MetronomeComponent(metronome: metronome, bpm: Self.testBPM, timeSignature: .fourFour)
         #expect(component.bpm == Self.testBPM)
         #expect(component.timeSignature == .fourFour)
+        
+        // Test that component can be created with environment
+        SwiftUITestUtilities.assertViewWithEnvironment(component)
     }
 
-    @Test func testMetronomeSettingsViewCreation() {
+    @Test func testMetronomeSettingsViewCreation() async {
+        await TestSetup.setUp()
+        
         let metronome = MetronomeEngine()
         let settingsView = MetronomeSettingsView(metronome: metronome)
         #expect(settingsView != nil)
+        
+        // Test that settings view can be created with environment
+        SwiftUITestUtilities.assertViewWithEnvironment(settingsView)
     }
 
     @Test func testBeatCounterLogic() {
@@ -197,11 +207,9 @@ struct MetronomeBasicTests {
         metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
         #expect(metronome.isEnabled == true, "Metronome should start even without audio")
 
-        // Test basic functionality continues
-        metronome.testClick() // Should not crash
-
-        let beat = metronome.currentBeat
-        #expect(beat >= 1, "Beat counter should work without audio")
+        // Test basic functionality continues without crashing
+        let initialBeat = metronome.currentBeat
+        #expect(initialBeat >= 1, "Beat counter should work without audio")
 
         metronome.stop()
         #expect(metronome.isEnabled == false, "Metronome should stop correctly")

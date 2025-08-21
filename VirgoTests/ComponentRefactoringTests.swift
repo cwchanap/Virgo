@@ -14,23 +14,26 @@ import SwiftData
 @MainActor
 struct ComponentRefactoringTests {
     
-    // Create a test model container for SwiftData models
-    static let testContainer: ModelContainer = {
-        do {
-            let config = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try ModelContainer(for: Song.self, Chart.self, Note.self, ServerSong.self, ServerChart.self, configurations: config)
-        } catch {
-            fatalError("Failed to create test container: \(error)")
-        }
-    }()
+    private var container: ModelContainer {
+        TestContainer.shared.container
+    }
+    
+    private var context: ModelContext {
+        TestContainer.shared.context
+    }
 
     @Test("DifficultyBadge displays correct difficulty")
-    func testDifficultyBadgeRendering() {
+    func testDifficultyBadgeRendering() async {
+        await TestSetup.setUp()
+        
         let badge = DifficultyBadge(difficulty: .easy, size: .normal)
 
         // Test that the badge is created without crashing
         #expect(badge.difficulty == .easy)
         #expect(badge.size == .normal)
+        
+        // Test that view can be created without environment issues
+        SwiftUITestUtilities.assertViewWithEnvironment(badge)
     }
 
     @Test("DifficultyBadge size variations work correctly")
@@ -57,9 +60,10 @@ struct ComponentRefactoringTests {
     }
 
     @Test("ExpandableSongRowContainer handles state correctly")
-    func testExpandableSongRowContainer() {
-        let context = ModelContext(Self.testContainer)
-        let mockSong = createMockSong(context: context)
+    func testExpandableSongRowContainer() async {
+        await TestSetup.setUp()
+        
+        let mockSong = TestModelFactory.createSong(in: context)
         let expandedSongId = Binding.constant(Optional<PersistentIdentifier>.none)
         let selectedChart = Binding.constant(Optional<Chart>.none)
         let navigateToGameplay = Binding.constant(false)
@@ -79,11 +83,15 @@ struct ComponentRefactoringTests {
         #expect(container.song.title == "Test Song")
         #expect(container.isPlaying == false)
         #expect(container.isExpanded == false)
+        
+        // Test that view can be created with proper environment
+        SwiftUITestUtilities.assertViewWithEnvironment(container)
     }
 
     @Test("DifficultyExpansionView displays charts correctly")
-    func testDifficultyExpansionView() {
-        let context = ModelContext(Self.testContainer)
+    func testDifficultyExpansionView() async {
+        await TestSetup.setUp()
+        
         let mockCharts = [
             createMockChart(context: context, difficulty: .easy),
             createMockChart(context: context, difficulty: .hard),
@@ -99,11 +107,15 @@ struct ComponentRefactoringTests {
         #expect(expansionView.charts[0].difficulty == .easy)
         #expect(expansionView.charts[1].difficulty == .hard)
         #expect(expansionView.charts[2].difficulty == .expert)
+        
+        // Test that view can be created with proper environment
+        SwiftUITestUtilities.assertViewWithEnvironment(expansionView)
     }
 
     @Test("ChartSelectionCard displays chart information")
-    func testChartSelectionCard() {
-        let context = ModelContext(Self.testContainer)
+    func testChartSelectionCard() async {
+        await TestSetup.setUp()
+        
         let mockChart = createMockChart(context: context, difficulty: .hard)
 
         let selectionCard = ChartSelectionCard(
@@ -113,11 +125,15 @@ struct ComponentRefactoringTests {
 
         #expect(selectionCard.chart.difficulty == .hard)
         #expect(selectionCard.chart.level == 50)
+        
+        // Test that view can be created with proper environment
+        SwiftUITestUtilities.assertViewWithEnvironment(selectionCard)
     }
 
     @Test("ServerSongRow displays server song information")
-    func testServerSongRow() {
-        let context = ModelContext(Self.testContainer)
+    func testServerSongRow() async {
+        await TestSetup.setUp()
+        
         let mockServerSong = createMockServerSong(context: context)
 
         let serverRow = ServerSongRow(
@@ -128,11 +144,15 @@ struct ComponentRefactoringTests {
 
         #expect(serverRow.serverSong.title == "Test Server Song")
         #expect(serverRow.isLoading == false)
+        
+        // Test that view can be created with proper environment
+        SwiftUITestUtilities.assertViewWithEnvironment(serverRow)
     }
 
     @Test("ServerSongRow handles loading state")
-    func testServerSongRowLoadingState() {
-        let context = ModelContext(Self.testContainer)
+    func testServerSongRowLoadingState() async {
+        await TestSetup.setUp()
+        
         let mockServerSong = createMockServerSong(context: context)
 
         let loadingRow = ServerSongRow(
@@ -142,10 +162,15 @@ struct ComponentRefactoringTests {
         )
 
         #expect(loadingRow.isLoading == true)
+        
+        // Test that view can be created with proper environment
+        SwiftUITestUtilities.assertViewWithEnvironment(loadingRow)
     }
 
     @Test("MetronomeComponent displays correctly")
-    func testMetronomeComponent() {
+    func testMetronomeComponent() async {
+        await TestSetup.setUp()
+        
         let mockMetronome = MetronomeEngine()
 
         let component = MetronomeComponent(
@@ -156,6 +181,9 @@ struct ComponentRefactoringTests {
 
         #expect(component.bpm == 120)
         #expect(component.timeSignature == .fourFour)
+        
+        // Test that view can be created with proper environment
+        SwiftUITestUtilities.assertViewWithEnvironment(component)
     }
 }
 
@@ -163,36 +191,33 @@ struct ComponentRefactoringTests {
 
 extension ComponentRefactoringTests {
     private func createMockSong(context: ModelContext) -> Song {
-        let song = Song(
+        return TestModelFactory.createSong(
+            in: context,
             title: "Test Song",
             artist: "Test Artist",
             bpm: 120,
             duration: "3:30",
             genre: "Test Genre"
         )
-        context.insert(song)
-        return song
     }
 
     private func createMockChart(context: ModelContext, difficulty: Difficulty = .easy) -> Chart {
         let song = createMockSong(context: context)
-        let chart = Chart(
+        return TestModelFactory.createChart(
+            in: context,
             difficulty: difficulty,
             level: 50,
             song: song
         )
-        context.insert(chart)
-        return chart
     }
 
     private func createMockServerSong(context: ModelContext) -> ServerSong {
-        let serverSong = ServerSong(
+        return TestModelFactory.createServerSong(
+            in: context,
             songId: "test-song",
             title: "Test Server Song",
             artist: "Test Server Artist",
             bpm: 140.0
         )
-        context.insert(serverSong)
-        return serverSong
     }
 }
