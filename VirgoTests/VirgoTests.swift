@@ -8,9 +8,20 @@
 import Testing
 import Foundation
 import SwiftUI
+import SwiftData
 @testable import Virgo
 
 struct VirgoTests {
+    
+    // Create a test model container for SwiftData models
+    static let testContainer: ModelContainer = {
+        do {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
+        } catch {
+            fatalError("Failed to create test container: \(error)")
+        }
+    }()
 
     @Test func testAppLaunchConfiguration() async throws {
         // Test that sample data can be loaded
@@ -28,9 +39,15 @@ struct VirgoTests {
     }
 
     @Test func testDrumTrackDataIntegrity() async throws {
+        let context = ModelContext(Self.testContainer)
+        
         let song = Song(title: "Test Track", artist: "Test Artist", bpm: 120, duration: "3:45", genre: "Rock")
         let chart = Chart(difficulty: .medium, song: song)
         song.charts = [chart]
+        
+        context.insert(song)
+        context.insert(chart)
+        
         let track = DrumTrack(chart: chart)
 
         // Verify basic properties
@@ -63,20 +80,28 @@ struct VirgoTests {
     }
 
     @Test func testAppConstants() async throws {
+        let context = ModelContext(Self.testContainer)
+        
         // Test that difficulty colors are properly defined
         let easySong = Song(title: "Easy", artist: "Test", bpm: 100, duration: "2:00", genre: "Pop")
         let easyChart = Chart(difficulty: .easy, song: easySong)
         easySong.charts = [easyChart]
+        context.insert(easySong)
+        context.insert(easyChart)
         let easyTrack = DrumTrack(chart: easyChart)
 
         let mediumSong = Song(title: "Medium", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock")
         let mediumChart = Chart(difficulty: .medium, song: mediumSong)
         mediumSong.charts = [mediumChart]
+        context.insert(mediumSong)
+        context.insert(mediumChart)
         let mediumTrack = DrumTrack(chart: mediumChart)
 
         let hardSong = Song(title: "Hard", artist: "Test", bpm: 140, duration: "4:00", genre: "Metal")
         let hardChart = Chart(difficulty: .hard, song: hardSong)
         hardSong.charts = [hardChart]
+        context.insert(hardSong)
+        context.insert(hardChart)
         let hardTrack = DrumTrack(chart: hardChart)
 
         let expertSong = Song(
@@ -89,6 +114,8 @@ struct VirgoTests {
         )
         let expertChart = Chart(difficulty: .expert, song: expertSong)
         expertSong.charts = [expertChart]
+        context.insert(expertSong)
+        context.insert(expertChart)
         let expertTrack = DrumTrack(chart: expertChart)
 
         #expect(easyTrack.difficultyColor == .green)
@@ -142,13 +169,19 @@ struct VirgoTests {
     }
 
     @Test func testSearchLogic() async throws {
+        let context = ModelContext(Self.testContainer)
+        
         let rockSong = Song(title: "Rock Song", artist: "Rock Band", bpm: 120.0, duration: "3:00", genre: "Rock")
         let rockChart = Chart(difficulty: .medium, song: rockSong)
         rockSong.charts = [rockChart]
+        context.insert(rockSong)
+        context.insert(rockChart)
 
         let jazzSong = Song(title: "Jazz Tune", artist: "Jazz Group", bpm: 140.0, duration: "4:00", genre: "Jazz")
         let jazzChart = Chart(difficulty: .hard, song: jazzSong)
         jazzSong.charts = [jazzChart]
+        context.insert(jazzSong)
+        context.insert(jazzChart)
 
         let tracks = [
             DrumTrack(chart: rockChart),
@@ -182,9 +215,12 @@ struct VirgoTests {
         #expect(duration < 0.1)
 
         // Test that difficulty color computation is efficient
+        let context = ModelContext(Self.testContainer)
         let testSong = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
         let testChart = Chart(difficulty: .medium, song: testSong)
         testSong.charts = [testChart]
+        context.insert(testSong)
+        context.insert(testChart)
         let track = DrumTrack(chart: testChart)
         let colorStartTime = Date()
         _ = track.difficultyColor

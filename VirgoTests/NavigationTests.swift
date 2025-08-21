@@ -12,10 +12,23 @@ import SwiftData
 @testable import Virgo
 
 struct NavigationTests {
+    
+    // Create a test model container for SwiftData models
+    static let testContainer: ModelContainer = {
+        do {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
+        } catch {
+            fatalError("Failed to create test container: \(error)")
+        }
+    }()
 
     @Test func testChartSelectionTriggersNavigation() async throws {
+        let context = ModelContext(Self.testContainer)
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
         let chart = Chart(difficulty: .medium, song: song)
+        context.insert(song)
+        context.insert(chart)
 
         // Test that selecting a chart sets the navigation state
         var selectedChart: Chart?

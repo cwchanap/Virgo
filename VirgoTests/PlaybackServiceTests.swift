@@ -13,6 +13,16 @@ import SwiftData
 @MainActor
 struct PlaybackServiceTests {
     
+    // Create a test model container for SwiftData models
+    static let testContainer: ModelContainer = {
+        do {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
+        } catch {
+            fatalError("Failed to create test container: \(error)")
+        }
+    }()
+    
     @Test("PlaybackService initializes with no currently playing song")
     func testInitialization() {
         let service = PlaybackService()
@@ -21,8 +31,10 @@ struct PlaybackServiceTests {
     
     @Test("PlaybackService toggles playback correctly")
     func testTogglePlayback() {
+        let context = ModelContext(Self.testContainer)
         let service = PlaybackService()
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
+        context.insert(song)
         
         // Initially not playing
         #expect(!service.isPlaying(song))
@@ -44,9 +56,12 @@ struct PlaybackServiceTests {
     
     @Test("PlaybackService switches between songs correctly")
     func testSwitchBetweenSongs() {
+        let context = ModelContext(Self.testContainer)
         let service = PlaybackService()
         let song1 = Song(title: "Song 1", artist: "Artist 1", bpm: 120.0, duration: "3:00", genre: "Rock")
         let song2 = Song(title: "Song 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", genre: "Jazz")
+        context.insert(song1)
+        context.insert(song2)
         
         // Start first song
         service.togglePlayback(for: song1)
@@ -65,8 +80,10 @@ struct PlaybackServiceTests {
     
     @Test("PlaybackService stopAll functionality")
     func testStopAll() {
+        let context = ModelContext(Self.testContainer)
         let service = PlaybackService()
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
+        context.insert(song)
         
         // Start playback
         service.togglePlayback(for: song)
@@ -82,12 +99,17 @@ struct PlaybackServiceTests {
     
     @Test("PlaybackService handles multiple songs correctly")
     func testMultipleSongsHandling() {
+        let context = ModelContext(Self.testContainer)
         let service = PlaybackService()
         let songs = [
             Song(title: "Song 1", artist: "Artist 1", bpm: 120.0, duration: "3:00", genre: "Rock"),
             Song(title: "Song 2", artist: "Artist 2", bpm: 140.0, duration: "4:00", genre: "Jazz"),
             Song(title: "Song 3", artist: "Artist 3", bpm: 160.0, duration: "5:00", genre: "Metal")
         ]
+        
+        for song in songs {
+            context.insert(song)
+        }
         
         // Ensure all songs start as not playing
         for song in songs {
@@ -110,8 +132,10 @@ struct PlaybackServiceTests {
     
     @Test("PlaybackService maintains state consistency")
     func testStateConsistency() {
+        let context = ModelContext(Self.testContainer)
         let service = PlaybackService()
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
+        context.insert(song)
         
         // Test that service state matches song state after operations
         service.togglePlayback(for: song)

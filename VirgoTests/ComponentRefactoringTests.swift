@@ -7,11 +7,22 @@
 
 import Testing
 import SwiftUI
+import SwiftData
 @testable import Virgo
 
 @Suite("Component Refactoring Tests")
 @MainActor
 struct ComponentRefactoringTests {
+    
+    // Create a test model container for SwiftData models
+    static let testContainer: ModelContainer = {
+        do {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            return try ModelContainer(for: Song.self, Chart.self, Note.self, ServerSong.self, ServerChart.self, configurations: config)
+        } catch {
+            fatalError("Failed to create test container: \(error)")
+        }
+    }()
 
     @Test("DifficultyBadge displays correct difficulty")
     func testDifficultyBadgeRendering() {
@@ -47,7 +58,8 @@ struct ComponentRefactoringTests {
 
     @Test("ExpandableSongRowContainer handles state correctly")
     func testExpandableSongRowContainer() {
-        let mockSong = createMockSong()
+        let context = ModelContext(Self.testContainer)
+        let mockSong = createMockSong(context: context)
         let expandedSongId = Binding.constant(Optional<PersistentIdentifier>.none)
         let selectedChart = Binding.constant(Optional<Chart>.none)
         let navigateToGameplay = Binding.constant(false)
@@ -71,10 +83,11 @@ struct ComponentRefactoringTests {
 
     @Test("DifficultyExpansionView displays charts correctly")
     func testDifficultyExpansionView() {
+        let context = ModelContext(Self.testContainer)
         let mockCharts = [
-            createMockChart(difficulty: .easy),
-            createMockChart(difficulty: .hard),
-            createMockChart(difficulty: .expert)
+            createMockChart(context: context, difficulty: .easy),
+            createMockChart(context: context, difficulty: .hard),
+            createMockChart(context: context, difficulty: .expert)
         ]
 
         let expansionView = DifficultyExpansionView(
@@ -90,7 +103,8 @@ struct ComponentRefactoringTests {
 
     @Test("ChartSelectionCard displays chart information")
     func testChartSelectionCard() {
-        let mockChart = createMockChart(difficulty: .hard)
+        let context = ModelContext(Self.testContainer)
+        let mockChart = createMockChart(context: context, difficulty: .hard)
 
         let selectionCard = ChartSelectionCard(
             chart: mockChart,
@@ -103,7 +117,8 @@ struct ComponentRefactoringTests {
 
     @Test("ServerSongRow displays server song information")
     func testServerSongRow() {
-        let mockServerSong = createMockServerSong()
+        let context = ModelContext(Self.testContainer)
+        let mockServerSong = createMockServerSong(context: context)
 
         let serverRow = ServerSongRow(
             serverSong: mockServerSong,
@@ -117,7 +132,8 @@ struct ComponentRefactoringTests {
 
     @Test("ServerSongRow handles loading state")
     func testServerSongRowLoadingState() {
-        let mockServerSong = createMockServerSong()
+        let context = ModelContext(Self.testContainer)
+        let mockServerSong = createMockServerSong(context: context)
 
         let loadingRow = ServerSongRow(
             serverSong: mockServerSong,
@@ -146,29 +162,37 @@ struct ComponentRefactoringTests {
 // MARK: - Mock Data Helpers
 
 extension ComponentRefactoringTests {
-    private func createMockSong() -> Song {
-        return Song(
+    private func createMockSong(context: ModelContext) -> Song {
+        let song = Song(
             title: "Test Song",
             artist: "Test Artist",
             bpm: 120,
             duration: "3:30",
             genre: "Test Genre"
         )
+        context.insert(song)
+        return song
     }
 
-    private func createMockChart(difficulty: Difficulty = .easy) -> Chart {
-        return Chart(
+    private func createMockChart(context: ModelContext, difficulty: Difficulty = .easy) -> Chart {
+        let song = createMockSong(context: context)
+        let chart = Chart(
             difficulty: difficulty,
-            level: 50
+            level: 50,
+            song: song
         )
+        context.insert(chart)
+        return chart
     }
 
-    private func createMockServerSong() -> ServerSong {
-        return ServerSong(
+    private func createMockServerSong(context: ModelContext) -> ServerSong {
+        let serverSong = ServerSong(
             songId: "test-song",
             title: "Test Server Song",
             artist: "Test Server Artist",
             bpm: 140.0
         )
+        context.insert(serverSong)
+        return serverSong
     }
 }
