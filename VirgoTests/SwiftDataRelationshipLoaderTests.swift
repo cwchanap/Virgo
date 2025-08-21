@@ -43,24 +43,27 @@ struct SwiftDataRelationshipLoaderTests {
     }
 
     @Test("BaseSwiftDataRelationshipLoader initializes correctly")
-    func testBaseLoaderInitialization() {
-        let mockSong = createMockSong()
-        let defaultData = SongRelationshipData(
-            chartCount: 0,
-            measureCount: 1,
-            charts: [],
-            availableDifficulties: []
-        )
+    func testBaseLoaderInitialization() async {
+        await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let mockSong = TestModelFactory.createSong(in: context)
+            let defaultData = SongRelationshipData(
+                chartCount: 0,
+                measureCount: 1,
+                charts: [],
+                availableDifficulties: []
+            )
 
-        let loader = BaseSwiftDataRelationshipLoader(
-            model: mockSong,
-            defaultData: defaultData
-        ) { _ in
-            return defaultData
+            let loader = BaseSwiftDataRelationshipLoader(
+                model: mockSong,
+                defaultData: defaultData
+            ) { _ in
+                return defaultData
+            }
+
+            #expect(loader.relationshipData.chartCount == 0)
+            #expect(loader.isLoading == false)
         }
-
-        #expect(loader.relationshipData.chartCount == 0)
-        #expect(loader.isLoading == false)
     }
 
     @Test("Array removingDuplicates extension works correctly")
@@ -91,32 +94,3 @@ struct SwiftDataRelationshipLoaderTests {
     }
 }
 
-// MARK: - Mock Data Helpers
-
-extension SwiftDataRelationshipLoaderTests {
-    private func createMockSong() -> Song {
-        return Song(
-            title: "Test Song",
-            artist: "Test Artist",
-            bpm: 120,
-            duration: "3:30",
-            genre: "Test Genre"
-        )
-    }
-
-    private func createMockChart(difficulty: Difficulty = .easy) -> Chart {
-        return Chart(
-            difficulty: difficulty,
-            level: 50
-        )
-    }
-
-    private func createMockNote(measureNumber: Int = 1) -> Note {
-        return Note(
-            interval: .quarter,
-            noteType: .hiHat,
-            measureNumber: measureNumber,
-            measureOffset: 0.0
-        )
-    }
-}

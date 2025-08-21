@@ -52,7 +52,7 @@ class TestContainer {
     }
     
     func reset() {
-        _container = nil
+        modelContainer = nil
     }
     
     private init() {}
