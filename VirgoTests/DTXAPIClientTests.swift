@@ -105,8 +105,14 @@ struct DTXAPIClientTests {
         
         // Clean up any existing value
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        UserDefaults.standard.synchronize()
         
         client.setServerURL("http://test-server.com:8080")
+        UserDefaults.standard.synchronize()
+        
+        // Verify the URL was actually set in UserDefaults
+        let storedURL = UserDefaults.standard.string(forKey: "DTXServerURL")
+        #expect(storedURL == "http://test-server.com:8080", "URL should be stored in UserDefaults")
         
         // Test internal URL construction logic (indirectly)
         let baseURL = client.baseURL
