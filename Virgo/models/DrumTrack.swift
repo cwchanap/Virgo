@@ -61,12 +61,16 @@ final class Chart {
 
     // Safe accessor for notes count
     var notesCount: Int {
-        notes.count
+        // Ensure we don't access notes relationship during concurrent operations
+        guard !isDeleted else { return 0 }
+        return notes.count
     }
 
     // Safe accessor for notes
     var safeNotes: [Note] {
-        notes.filter { !$0.isDeleted }
+        // Ensure we don't access notes relationship during concurrent operations  
+        guard !isDeleted else { return [] }
+        return notes.filter { !$0.isDeleted }
     }
 
     init(difficulty: Difficulty, level: Int? = nil, timeSignature: TimeSignature? = nil,
@@ -102,7 +106,8 @@ final class Song {
         set { _timeSignature = newValue }
     }
 
-    // Convenience accessors
+    // WARNING: These convenience accessors access SwiftData relationships directly
+    // They should be used carefully to avoid concurrency issues in multi-threaded contexts
     var availableDifficulties: [Difficulty] {
         guard !isDeleted else { return [] }
 
@@ -134,7 +139,9 @@ final class Song {
     }
 
     func chart(for difficulty: Difficulty) -> Chart? {
-        return charts.first { $0.difficulty == difficulty }
+        guard !isDeleted else { return nil }
+        
+        return charts.first { $0.difficulty == difficulty && !$0.isDeleted }
     }
 
     init(
