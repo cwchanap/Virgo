@@ -14,171 +14,185 @@ import Foundation
 @MainActor
 struct SwiftDataRelationshipTests {
     
-    private var container: ModelContainer {
-        TestContainer.shared.container
-    }
-    
-    private var context: ModelContext {
-        TestContainer.shared.context
-    }
-    
     @Test("Song-Chart relationship works correctly")
     func testSongChartRelationship() async throws {
-        await TestSetup.setUp()
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            
+            let song = TestModelFactory.createSong(in: context, title: "Test Song", artist: "Test Artist")
+            let chart1 = TestModelFactory.createChart(in: context, difficulty: .easy, song: song)
+            let chart2 = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
+            
+            song.charts = [chart1, chart2]
+            try context.save()
+            
+            // Load relationships safely
+            try await AsyncTestingUtilities.loadRelationships(for: song)
+            
+            // Test forward relationship with safe access
+            let chartsCount = try await AsyncTestingUtilities.safeRelationshipAccess(
+                model: song,
+                relationshipAccessor: { $0.charts.count }
+            )
+            #expect(chartsCount == 2)
+            
+            let charts = try await AsyncTestingUtilities.safeRelationshipAccess(
+                model: song,
+                relationshipAccessor: { $0.charts }
+            )
+            #expect(charts.contains(chart1))
+            #expect(charts.contains(chart2))
+            
+            // Test backward relationship
+            TestAssertions.assertEqual(chart1.song, song)
+            TestAssertions.assertEqual(chart2.song, song)
+            
+            // Test convenience accessors
+            let difficulties = try await AsyncTestingUtilities.safeRelationshipAccess(
+                model: song,
+                relationshipAccessor: { $0.availableDifficulties }
+            )
+            #expect(difficulties.count == 2)
+            #expect(difficulties.contains(.easy))
+            #expect(difficulties.contains(.medium))
         
-        let song = TestModelFactory.createSong(in: context, title: "Test Song", artist: "Test Artist")
-        let chart1 = TestModelFactory.createChart(in: context, difficulty: .easy, song: song)
-        let chart2 = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
-        
-        song.charts = [chart1, chart2]
-        try context.save()
-        
-        // Load relationships safely
-        try await AsyncTestingUtilities.loadRelationships(for: song)
-        
-        // Test forward relationship with safe access
-        let chartsCount = try await AsyncTestingUtilities.safeRelationshipAccess(
-            model: song,
-            relationshipAccessor: { $0.charts.count }
-        )
-        #expect(chartsCount == 2)
-        
-        let charts = try await AsyncTestingUtilities.safeRelationshipAccess(
-            model: song,
-            relationshipAccessor: { $0.charts }
-        )
-        #expect(charts.contains(chart1))
-        #expect(charts.contains(chart2))
-        
-        // Test backward relationship
-        TestAssertions.assertEqual(chart1.song, song)
-        TestAssertions.assertEqual(chart2.song, song)
-        
-        // Test convenience accessors
-        let difficulties = try await AsyncTestingUtilities.safeRelationshipAccess(
-            model: song,
-            relationshipAccessor: { $0.availableDifficulties }
-        )
-        #expect(difficulties.count == 2)
-        #expect(difficulties.contains(.easy))
-        #expect(difficulties.contains(.medium))
-        
-        let easiest = try await AsyncTestingUtilities.safeRelationshipAccess(
-            model: song,
-            relationshipAccessor: { $0.easiestChart }
-        )
-        TestAssertions.assertEqual(easiest, chart1)
+            let easiest = try await AsyncTestingUtilities.safeRelationshipAccess(
+                model: song,
+                relationshipAccessor: { $0.easiestChart }
+            )
+            TestAssertions.assertEqual(easiest, chart1)
+        }
     }
     
     @Test("Chart-Note relationship works correctly")
     func testChartNoteRelationship() async throws {
-        await TestSetup.setUp()
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            
+            let (song, chart) = try await TestModelFactory.createSongWithChart(
+                in: context,
+                title: "Test Song",
+                artist: "Test Artist",
+                noteCount: 2
+            )
+            
+            // Load relationships safely
+            try await AsyncTestingUtilities.loadRelationships(for: chart)
+            
+            // Test forward relationship with safe access
+            let notesCount = try await AsyncTestingUtilities.safeRelationshipAccess(
+                model: chart,
+                relationshipAccessor: { $0.notes.count }
+            )
+            #expect(notesCount == 2)
+            
+            let notes = try await AsyncTestingUtilities.safeRelationshipAccess(
+                model: chart,
+                relationshipAccessor: { $0.notes }
+            )
+            
+            // Test backward relationship
+            for note in notes {
+                TestAssertions.assertEqual(note.chart, chart)
+            }
+            
+            // Test safe accessors
+            let safeNotesCount = try await AsyncTestingUtilities.safeAccess(
+                model: chart,
+                accessor: { $0.notesCount }
+            )
+            #expect(safeNotesCount == 2)
         
-        let (song, chart) = try await TestModelFactory.createSongWithChart(
-            in: context,
-            title: "Test Song",
-            artist: "Test Artist",
-            noteCount: 2
-        )
-        
-        // Load relationships safely
-        try await AsyncTestingUtilities.loadRelationships(for: chart)
-        
-        // Test forward relationship with safe access
-        let notesCount = try await AsyncTestingUtilities.safeRelationshipAccess(
-            model: chart,
-            relationshipAccessor: { $0.notes.count }
-        )
-        #expect(notesCount == 2)
-        
-        let notes = try await AsyncTestingUtilities.safeRelationshipAccess(
-            model: chart,
-            relationshipAccessor: { $0.notes }
-        )
-        
-        // Test backward relationship
-        for note in notes {
-            TestAssertions.assertEqual(note.chart, chart)
+            let safeNotes = try await AsyncTestingUtilities.safeAccess(
+                model: chart,
+                accessor: { $0.safeNotes }
+            )
+            #expect(safeNotes.count == 2)
         }
-        
-        // Test safe accessors
-        let safeNotesCount = try await AsyncTestingUtilities.safeAccess(
-            model: chart,
-            accessor: { $0.notesCount }
-        )
-        #expect(safeNotesCount == 2)
-        
-        let safeNotes = try await AsyncTestingUtilities.safeAccess(
-            model: chart,
-            accessor: { $0.safeNotes }
-        )
-        #expect(safeNotes.count == 2)
     }
     
     @Test("Cascade deletion works correctly")
     func testCascadeDeletion() async {
-        await TestSetup.setUp()
+        await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            
+            let song = TestModelFactory.createSong(
+                in: context,
+                title: "Test Song",
+                artist: "Test Artist",
+                bpm: 120.0,
+                duration: "3:00",
+                genre: "Rock"
+            )
+            let chart = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
+            let note = TestModelFactory.createNote(
+                in: context,
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                chart: chart
+            )
+            
+            chart.notes = [note]
+            song.charts = [chart]
+            
+            // Save to ensure relationships are established
+            try! context.save()
+            
+            // Delete the song
+            context.delete(song)
         
-        let song = TestModelFactory.createSong(in: context, title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
-        let chart = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
-        let note = TestModelFactory.createNote(in: context, interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0, chart: chart)
-        
-        chart.notes = [note]
-        song.charts = [chart]
-        
-        // Save to ensure relationships are established
-        try! context.save()
-        
-        // Delete the song
-        context.delete(song)
-        
-        // Chart and Note should be cascade deleted
-        TestAssertions.assertDeleted(chart)
-        TestAssertions.assertDeleted(note)
+            // Chart and Note should be cascade deleted
+            TestAssertions.assertDeleted(chart)
+            TestAssertions.assertDeleted(note)
+        }
     }
     
     @Test("ServerSong-ServerChart relationship works correctly")
     func testServerSongChartRelationship() async {
-        await TestSetup.setUp()
+        await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            
+            let serverSong = TestModelFactory.createServerSong(
+                in: context,
+                songId: "test-song",
+                title: "Test Server Song",
+                artist: "Server Artist",
+                bpm: 150.0
+            )
+            
+            let serverChart1 = TestModelFactory.createServerChart(
+                in: context,
+                difficulty: "easy",
+                difficultyLabel: "BASIC",
+                level: 30,
+                filename: "bas.dtx",
+                size: 1024,
+                serverSong: serverSong
+            )
+            
+            let serverChart2 = TestModelFactory.createServerChart(
+                in: context,
+                difficulty: "hard",
+                difficultyLabel: "EXTREME",
+                level: 80,
+                filename: "ext.dtx",
+                size: 2048,
+                serverSong: serverSong
+            )
+            
+            serverSong.charts = [serverChart1, serverChart2]
+            
+            // Test forward relationship
+            #expect(serverSong.charts.count == 2)
+            #expect(serverSong.charts.contains(serverChart1))
+            #expect(serverSong.charts.contains(serverChart2))
         
-        let serverSong = TestModelFactory.createServerSong(
-            in: context,
-            songId: "test-song",
-            title: "Test Server Song",
-            artist: "Server Artist",
-            bpm: 150.0
-        )
-        
-        let serverChart1 = TestModelFactory.createServerChart(
-            in: context,
-            difficulty: "easy",
-            difficultyLabel: "BASIC",
-            level: 30,
-            filename: "bas.dtx",
-            size: 1024,
-            serverSong: serverSong
-        )
-        
-        let serverChart2 = TestModelFactory.createServerChart(
-            in: context,
-            difficulty: "hard",
-            difficultyLabel: "EXTREME",
-            level: 80,
-            filename: "ext.dtx",
-            size: 2048,
-            serverSong: serverSong
-        )
-        
-        serverSong.charts = [serverChart1, serverChart2]
-        
-        // Test forward relationship
-        #expect(serverSong.charts.count == 2)
-        #expect(serverSong.charts.contains(serverChart1))
-        #expect(serverSong.charts.contains(serverChart2))
-        
-        // Test backward relationship
-        #expect(serverChart1.serverSong == serverSong)
-        #expect(serverChart2.serverSong == serverSong)
+            // Test backward relationship
+            #expect(serverChart1.serverSong == serverSong)
+            #expect(serverChart2.serverSong == serverSong)
+        }
     }
     
     @Test("Chart difficulty and level relationship")
@@ -245,57 +259,59 @@ struct SwiftDataRelationshipTests {
     
     @Test("Chart handles deleted song gracefully")
     func testChartWithDeletedSong() async throws {
-        await TestSetup.setUp()
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            
+            let song = TestModelFactory.createSong(in: context, title: "Test Song", artist: "Test Artist")
+            let chart = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
+            song.charts = [chart]
+            
+            try context.save()
+            
+            // Load relationships before deletion
+            try await AsyncTestingUtilities.loadRelationships(for: song)
+            try await AsyncTestingUtilities.loadRelationships(for: chart)
+            
+            // Delete the song
+            context.delete(song)
+            try context.save()
+            
+            // Chart should handle the deleted song gracefully with safe access
+            let title = try await AsyncTestingUtilities.safeAccess(
+                model: chart,
+                accessor: { $0.title }
+            )
+            #expect(title == "Unknown Song")
+            
+            let artist = try await AsyncTestingUtilities.safeAccess(
+                model: chart,
+                accessor: { $0.artist }
+            )
+            #expect(artist == "Unknown Artist")
+            
+            let bpm = try await AsyncTestingUtilities.safeAccess(
+                model: chart,
+                accessor: { $0.bpm }
+            )
+            #expect(bpm == 120.0) // Default fallback
+            
+            let duration = try await AsyncTestingUtilities.safeAccess(
+                model: chart,
+                accessor: { $0.duration }
+            )
+            #expect(duration == "0:00")
+            
+            let genre = try await AsyncTestingUtilities.safeAccess(
+                model: chart,
+                accessor: { $0.genre }
+            )
+            #expect(genre == "Unknown")
         
-        let song = TestModelFactory.createSong(in: context, title: "Test Song", artist: "Test Artist")
-        let chart = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
-        song.charts = [chart]
-        
-        try context.save()
-        
-        // Load relationships before deletion
-        try await AsyncTestingUtilities.loadRelationships(for: song)
-        try await AsyncTestingUtilities.loadRelationships(for: chart)
-        
-        // Delete the song
-        context.delete(song)
-        try context.save()
-        
-        // Chart should handle the deleted song gracefully with safe access
-        let title = try await AsyncTestingUtilities.safeAccess(
-            model: chart,
-            accessor: { $0.title }
-        )
-        #expect(title == "Unknown Song")
-        
-        let artist = try await AsyncTestingUtilities.safeAccess(
-            model: chart,
-            accessor: { $0.artist }
-        )
-        #expect(artist == "Unknown Artist")
-        
-        let bpm = try await AsyncTestingUtilities.safeAccess(
-            model: chart,
-            accessor: { $0.bpm }
-        )
-        #expect(bpm == 120.0) // Default fallback
-        
-        let duration = try await AsyncTestingUtilities.safeAccess(
-            model: chart,
-            accessor: { $0.duration }
-        )
-        #expect(duration == "0:00")
-        
-        let genre = try await AsyncTestingUtilities.safeAccess(
-            model: chart,
-            accessor: { $0.genre }
-        )
-        #expect(genre == "Unknown")
-        
-        let timeSignature = try await AsyncTestingUtilities.safeAccess(
-            model: chart,
-            accessor: { $0.timeSignature }
-        )
-        #expect(timeSignature == .fourFour) // Default fallback
+            let timeSignature = try await AsyncTestingUtilities.safeAccess(
+                model: chart,
+                accessor: { $0.timeSignature }
+            )
+            #expect(timeSignature == .fourFour) // Default fallback
+        }
     }
 }
