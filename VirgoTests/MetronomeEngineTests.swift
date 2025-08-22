@@ -9,26 +9,6 @@ import Testing
 import SwiftUI
 @testable import Virgo
 
-// MARK: - Test Helpers
-struct TestHelpers {
-    /// Wait for a condition to become true with timeout
-    static func waitFor(
-        condition: @escaping () -> Bool,
-        timeout: TimeInterval = 5.0,
-        checkInterval: TimeInterval = 0.1
-    ) async -> Bool {
-        let maxAttempts = Int(timeout / checkInterval)
-        var attempts = 0
-        
-        while !condition() && attempts < maxAttempts {
-            try? await Task.sleep(nanoseconds: UInt64(checkInterval * 1_000_000_000))
-            attempts += 1
-        }
-        
-        return condition()
-    }
-}
-
 @Suite("Metronome Engine Tests")
 @MainActor
 struct MetronomeEngineTests {
