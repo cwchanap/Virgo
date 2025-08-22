@@ -26,6 +26,9 @@ struct DTXAPIClientTests {
     func testBaseURLConfiguration() {
         let client = DTXAPIClient()
         
+        // Clean up any existing value
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        
         // Default URL
         let defaultURL = client.baseURL
         #expect(defaultURL == "http://127.0.0.1:8001")
@@ -39,11 +42,17 @@ struct DTXAPIClientTests {
         client.resetToLocalServer()
         let resetURL = client.baseURL
         #expect(resetURL == "http://127.0.0.1:8001")
+        
+        // Clean up after test
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
     }
     
     @Test("DTXAPIClient handles custom server URLs")
     func testCustomServerURLs() {
         let client = DTXAPIClient()
+        
+        // Clean up any existing value
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         
         let testURLs = [
             "http://localhost:3000",
@@ -56,15 +65,25 @@ struct DTXAPIClientTests {
             client.setServerURL(url)
             #expect(client.baseURL == url)
         }
+        
+        // Clean up after test
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
     }
     
     @Test("DTXAPIClient test connection handles invalid URLs gracefully")
     func testConnectionWithInvalidURL() async {
         let client = DTXAPIClient()
+        
+        // Clean up any existing value
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        
         client.setServerURL("invalid-url-format")
         
         let connectionResult = await client.testConnection()
         #expect(connectionResult == false)
+        
+        // Clean up after test
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
     }
     
     @Test("DTXAPIClient error descriptions are meaningful")
@@ -83,6 +102,10 @@ struct DTXAPIClientTests {
     @Test("DTXAPIClient URL construction for various endpoints")
     func testURLConstruction() {
         let client = DTXAPIClient()
+        
+        // Clean up any existing value
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        
         client.setServerURL("http://test-server.com:8080")
         
         // Test internal URL construction logic (indirectly)
@@ -93,11 +116,17 @@ struct DTXAPIClientTests {
         // "\(baseURL)/dtx/list" -> "http://test-server.com:8080/dtx/list"
         // "\(baseURL)/dtx/download/filename.dtx" -> "http://test-server.com:8080/dtx/download/filename.dtx"
         // etc.
+        
+        // Clean up after test
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
     }
     
     @Test("DTXAPIClient handles empty and nil server URLs")
     func testEmptyServerURLs() {
         let client = DTXAPIClient()
+        
+        // Clean up any existing value
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         
         // Empty string should fall back to default
         client.setServerURL("")
@@ -107,6 +136,9 @@ struct DTXAPIClientTests {
         client.setServerURL("http://custom.com")
         client.resetToLocalServer()
         #expect(client.baseURL == "http://127.0.0.1:8001")
+        
+        // Clean up after test
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
     }
     
     @Test("DTXAPIClient session configuration is correct")
@@ -146,21 +178,27 @@ struct DTXAPIClientTests {
     func testURLValidationEdgeCases() {
         let client = DTXAPIClient()
         
+        // Clean up any existing value
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        
         // Test various edge cases for server URLs
         let edgeCaseURLs = [
-            "http://",
-            "https://",
-            "ftp://invalid-protocol.com",
-            "   ",  // whitespace only
-            "http://valid.com:99999",  // very high port
-            "http://127.0.0.1:0"  // port 0
+            ("http://", "http://"),
+            ("https://", "https://"),
+            ("ftp://invalid-protocol.com", "ftp://invalid-protocol.com"),
+            ("   ", "http://127.0.0.1:8001"),  // whitespace only should fall back to default
+            ("http://valid.com:99999", "http://valid.com:99999"),  // very high port
+            ("http://127.0.0.1:0", "http://127.0.0.1:0")  // port 0
         ]
         
-        for url in edgeCaseURLs {
-            client.setServerURL(url)
-            // Should not crash, just store the value
-            #expect(client.baseURL == url)
+        for (inputUrl, expectedUrl) in edgeCaseURLs {
+            client.setServerURL(inputUrl)
+            // Should not crash, and should handle whitespace appropriately
+            #expect(client.baseURL == expectedUrl)
         }
+        
+        // Clean up after test
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
     }
     
     @Test("DTXAPIClient protocols conformance")
@@ -204,6 +242,9 @@ struct DTXAPIClientTests {
     func testConcurrentConfigurationChanges() async {
         let client = DTXAPIClient()
         
+        // Clean up any existing value
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        
         // Test concurrent URL changes
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<10 {
@@ -217,5 +258,8 @@ struct DTXAPIClientTests {
         
         // Should not crash and should have consistent final state
         #expect(client.baseURL == "http://127.0.0.1:8001")
+        
+        // Clean up after test
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
     }
 }

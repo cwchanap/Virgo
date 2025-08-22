@@ -80,7 +80,13 @@ extension DTXAPIClient: DTXConfiguration {
     }
 
     func setServerURL(_ url: String) {
-        UserDefaults.standard.set(url, forKey: "DTXServerURL")
+        // If URL is empty or whitespace only, remove the custom URL to fall back to default
+        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedURL.isEmpty {
+            UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        } else {
+            UserDefaults.standard.set(trimmedURL, forKey: "DTXServerURL")
+        }
     }
 
     func resetToLocalServer() {
