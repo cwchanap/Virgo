@@ -257,8 +257,8 @@ struct SwiftDataRelationshipTests {
         #expect(chart.timeSignature == .fiveFour)
     }
     
-    @Test("Chart handles deleted song gracefully")
-    func testChartWithDeletedSong() async throws {
+    @Test("Chart cascade deletion works correctly")
+    func testChartCascadeDeletion() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             
@@ -272,46 +272,16 @@ struct SwiftDataRelationshipTests {
             try await AsyncTestingUtilities.loadRelationships(for: song)
             try await AsyncTestingUtilities.loadRelationships(for: chart)
             
-            // Delete the song
+            // Verify initial state
+            TestAssertions.assertNotDeleted(song)
+            TestAssertions.assertNotDeleted(chart)
+            
+            // Delete the song - this should cascade delete the chart immediately
             context.delete(song)
-            try context.save()
             
-            // Chart should handle the deleted song gracefully with safe access
-            let title = try await AsyncTestingUtilities.safeAccess(
-                model: chart,
-                accessor: { $0.title }
-            )
-            #expect(title == "Unknown Song")
-            
-            let artist = try await AsyncTestingUtilities.safeAccess(
-                model: chart,
-                accessor: { $0.artist }
-            )
-            #expect(artist == "Unknown Artist")
-            
-            let bpm = try await AsyncTestingUtilities.safeAccess(
-                model: chart,
-                accessor: { $0.bpm }
-            )
-            #expect(bpm == 120.0) // Default fallback
-            
-            let duration = try await AsyncTestingUtilities.safeAccess(
-                model: chart,
-                accessor: { $0.duration }
-            )
-            #expect(duration == "0:00")
-            
-            let genre = try await AsyncTestingUtilities.safeAccess(
-                model: chart,
-                accessor: { $0.genre }
-            )
-            #expect(genre == "Unknown")
-        
-            let timeSignature = try await AsyncTestingUtilities.safeAccess(
-                model: chart,
-                accessor: { $0.timeSignature }
-            )
-            #expect(timeSignature == .fourFour) // Default fallback
+            // Both song and chart should be cascade deleted due to deleteRule: .cascade
+            TestAssertions.assertDeleted(song)
+            TestAssertions.assertDeleted(chart)
         }
     }
 }
