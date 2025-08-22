@@ -89,7 +89,7 @@ struct PlaybackServiceTests {
             service.stopAll()
             #expect(service.currentlyPlaying == nil)
             #expect(!service.isPlaying(song))
-            // Note: stopAll() doesn't modify song.isPlaying - this might be a design decision
+            #expect(!song.isPlaying) // stopAll() should update song.isPlaying
         }
     }
     

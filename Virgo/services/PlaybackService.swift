@@ -53,7 +53,9 @@ class PlaybackService: ObservableObject {
         if let currentId = currentlyPlaying,
            let currentSong = songRefs[currentId]?.song {
             currentSong.isPlaying = false
+            Logger.audioPlayback("Stopped song via stopAll: \(currentSong.title)")
         }
         currentlyPlaying = nil
+        Logger.audioPlayback("Stopped all playback")
     }
 }
