@@ -18,11 +18,6 @@ struct DTXAPIClientTests {
         UserDefaults.standard.synchronize()
     }
     
-    deinit {
-        // Clean UserDefaults after all tests complete
-        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
-    }
-    
     @Test("DTXAPIClient initializes with correct configuration")
     func testAPIClientInitialization() {
         let client = DTXAPIClient()
