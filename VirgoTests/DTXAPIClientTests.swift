@@ -12,6 +12,17 @@ import Foundation
 @Suite("DTX API Client Tests")
 struct DTXAPIClientTests {
     
+    init() async throws {
+        // Clean UserDefaults before any tests run
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        UserDefaults.standard.synchronize()
+    }
+    
+    deinit {
+        // Clean UserDefaults after all tests complete
+        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+    }
+    
     @Test("DTXAPIClient initializes with correct configuration")
     func testAPIClientInitialization() {
         let client = DTXAPIClient()
@@ -28,6 +39,7 @@ struct DTXAPIClientTests {
         
         // Clean up any existing value
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        UserDefaults.standard.synchronize()
         
         // Default URL
         let defaultURL = client.baseURL
@@ -35,16 +47,19 @@ struct DTXAPIClientTests {
         
         // Custom URL
         client.setServerURL("http://custom-server.com:8080")
+        UserDefaults.standard.synchronize()
         let customURL = client.baseURL
         #expect(customURL == "http://custom-server.com:8080")
         
         // Reset to default
         client.resetToLocalServer()
+        UserDefaults.standard.synchronize()
         let resetURL = client.baseURL
         #expect(resetURL == "http://127.0.0.1:8001")
         
         // Clean up after test
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        UserDefaults.standard.synchronize()
     }
     
     @Test("DTXAPIClient handles custom server URLs")
@@ -53,6 +68,7 @@ struct DTXAPIClientTests {
         
         // Clean up any existing value
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        UserDefaults.standard.synchronize()
         
         let testURLs = [
             "http://localhost:3000",
@@ -63,11 +79,13 @@ struct DTXAPIClientTests {
         
         for url in testURLs {
             client.setServerURL(url)
+            UserDefaults.standard.synchronize()
             #expect(client.baseURL == url)
         }
         
         // Clean up after test
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        UserDefaults.standard.synchronize()
     }
     
     @Test("DTXAPIClient test connection handles invalid URLs gracefully")

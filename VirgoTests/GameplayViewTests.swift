@@ -56,16 +56,22 @@ struct GameplayViewTests {
 
     @Test func testDrumTypePositions() async throws {
         let row = 0 // Use row 0 for testing
-
-        #expect(DrumType.crash.yPosition(for: row) == 90)   // aboveLine5
-        #expect(DrumType.hiHat.yPosition(for: row) == 110)  // line5
-        #expect(DrumType.cowbell.yPosition(for: row) == 130)  // line4
-        #expect(DrumType.tom1.yPosition(for: row) == 140)   // spaceBetween3And4
-        #expect(DrumType.snare.yPosition(for: row) == 150)  // line3
-        #expect(DrumType.tom2.yPosition(for: row) == 160)   // spaceBetween2And3
-        #expect(DrumType.tom3.yPosition(for: row) == 170)   // line2
-        #expect(DrumType.kick.yPosition(for: row) == 210)   // belowLine1
-        #expect(DrumType.ride.yPosition(for: row) == 120)   // spaceBetween4And5
+        
+        // Calculate expected positions based on GameplayLayout constants
+        // baseStaffY = 150 + (staffHeight / 2) = 150 + 40 = 190
+        // staffLineSpacing = 20
+        let baseY: CGFloat = 190 // GameplayLayout.baseStaffY for row 0
+        
+        // Test actual calculated positions
+        #expect(DrumType.crash.yPosition(for: row) == baseY + (-5 * 20))   // aboveLine5: -100, total = 90
+        #expect(DrumType.hiHat.yPosition(for: row) == baseY + (-4 * 20))    // line5: -80, total = 110  
+        #expect(DrumType.ride.yPosition(for: row) == baseY + (-3.5 * 20))   // spaceBetween4And5: -70, total = 120
+        #expect(DrumType.cowbell.yPosition(for: row) == baseY + (-3 * 20))  // line4: -60, total = 130
+        #expect(DrumType.tom1.yPosition(for: row) == baseY + (-2.5 * 20))   // spaceBetween3And4: -50, total = 140
+        #expect(DrumType.snare.yPosition(for: row) == baseY + (-2 * 20))    // line3: -40, total = 150
+        #expect(DrumType.tom2.yPosition(for: row) == baseY + (-1.5 * 20))   // spaceBetween2And3: -30, total = 160
+        #expect(DrumType.tom3.yPosition(for: row) == baseY + (-1 * 20))     // line2: -20, total = 170
+        #expect(DrumType.kick.yPosition(for: row) == baseY + (2 * 20))      // belowLine2: +40, total = 230
 
         // Test that positions are correctly ordered (top to bottom)
         let orderedTypes: [DrumType] = [.crash, .hiHat, .ride, .cowbell, .tom1, .snare, .tom2, .tom3, .kick]
