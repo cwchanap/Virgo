@@ -18,12 +18,10 @@ struct AudioTimingBoundaryTests {
         // Test valid AVAudioTime creation
         let validHostTime = mach_absolute_time()
         let validAudioTime = AVAudioTime(hostTime: validHostTime)
-        #expect(validAudioTime != nil)
         #expect(validAudioTime.hostTime > 0)
         
         // Test AVAudioTime with current time
         let currentTime = AVAudioTime(hostTime: mach_absolute_time())
-        #expect(currentTime != nil)
         #expect(currentTime.hostTime > 0)
         
         // Test that we can safely handle nil time references in our logic

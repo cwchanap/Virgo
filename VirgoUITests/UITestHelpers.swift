@@ -22,13 +22,21 @@ extension XCUIElement {
         self.typeText(text)
     }
 
-    /// Wait for element to exist and be hittable
-    func waitForExistenceAndHittable(timeout: TimeInterval = 10) -> Bool {
+    /// Wait for element to exist and be hittable (requires test case context)
+    func waitForExistenceAndHittable(on testCase: XCTestCase, timeout: TimeInterval = 10) -> Bool {
         let existsPredicate = NSPredicate(format: "exists == true")
         let hittablePredicate = NSPredicate(format: "hittable == true")
         let combinedPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [existsPredicate, hittablePredicate])
 
-        let expectation = XCTestCase().expectation(for: combinedPredicate, evaluatedWith: self)
+        let expectation = testCase.expectation(for: combinedPredicate, evaluatedWith: self, handler: nil)
+        let result = XCTWaiter.wait(for: [expectation], timeout: timeout)
+        return result == .completed
+    }
+    
+    /// Wait for element to disappear
+    func waitForNonExistence(timeout: TimeInterval) -> Bool {
+        let predicate = NSPredicate(format: "exists == false")
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: self)
         let result = XCTWaiter.wait(for: [expectation], timeout: timeout)
         return result == .completed
     }

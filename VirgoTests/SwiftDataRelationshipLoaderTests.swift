@@ -43,8 +43,8 @@ struct SwiftDataRelationshipLoaderTests {
     }
 
     @Test("BaseSwiftDataRelationshipLoader initializes correctly")
-    func testBaseLoaderInitialization() async {
-        await TestSetup.withTestSetup {
+    func testBaseLoaderInitialization() async throws {
+        try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let mockSong = TestModelFactory.createSong(in: context)
             let defaultData = SongRelationshipData(
@@ -93,4 +93,3 @@ struct SwiftDataRelationshipLoaderTests {
         #expect(result.isEmpty)
     }
 }
-

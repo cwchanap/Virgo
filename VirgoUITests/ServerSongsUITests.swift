@@ -65,12 +65,20 @@ final class ServerSongsUITests: XCTestCase {
         let emptyStateText = app.staticTexts["No Server Songs"]
         let instructionText = app.staticTexts["Tap the refresh button to load songs from the server"]
         
-        // Wait a bit for network request to complete/timeout
-        Thread.sleep(forTimeInterval: 2)
+        // Wait for either empty state or songs to appear after network request
+        let emptyStateAppeared = emptyStateIcon.waitForExistence(timeout: 8)
+        let songsAppeared = app.staticTexts
+            .matching(NSPredicate(format: "label CONTAINS 'songs available'"))
+            .firstMatch.waitForExistence(timeout: 8)
         
-        if emptyStateIcon.waitForExistence(timeout: 5) {
-            XCTAssertTrue(emptyStateText.exists)
-            XCTAssertTrue(instructionText.exists)
+        XCTAssertTrue(
+            emptyStateAppeared || songsAppeared,
+            "Either empty state or songs should appear after network request"
+        )
+        
+        if emptyStateAppeared {
+            XCTAssertTrue(emptyStateText.exists, "Empty state text should be visible")
+            XCTAssertTrue(instructionText.exists, "Instruction text should be visible")
         }
     }
     
@@ -169,7 +177,8 @@ final class ServerSongsUITests: XCTestCase {
         downloadedTab.tap()
         let downloadedCountText = songCountText.label
         
-        // Counts might be different between tabs
-        print("Downloaded count: \(downloadedCountText), Server count: \(serverCountText)")
+        // Assert that counts are tracked separately between tabs
+        XCTAssertFalse(downloadedCountText.isEmpty, "Downloaded count should be displayed")
+        XCTAssertFalse(serverCountText.isEmpty, "Server count should be displayed")
     }
 }

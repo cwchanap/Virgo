@@ -289,7 +289,6 @@ extension Song {
             genre: "Rock",
             timeSignature: .fourFour
         )
-        
         let song2 = Song(
             title: "Blast Beat Fury",
             artist: "Metal Gods",
@@ -298,7 +297,6 @@ extension Song {
             genre: "Metal",
             timeSignature: .fourFour
         )
-        
         let song3 = Song(
             title: "Jazz Groove",
             artist: "Smooth Collective",
@@ -307,7 +305,6 @@ extension Song {
             genre: "Jazz",
             timeSignature: .fourFour
         )
-        
         let song4 = Song(
             title: "Electronic Pulse",
             artist: "Digital Beats",
@@ -316,7 +313,6 @@ extension Song {
             genre: "Electronic",
             timeSignature: .fourFour
         )
-        
         let song5 = Song(
             title: "Latin Rhythm",
             artist: "Salsa Kings",
@@ -334,7 +330,6 @@ extension Song {
             genre: "Progressive",
             timeSignature: .fiveFour
         )
-        
         let song7 = Song(
             title: "Hip Hop Foundation",
             artist: "Beat Makers",
@@ -343,43 +338,37 @@ extension Song {
             genre: "Hip Hop",
             timeSignature: .fourFour
         )
-        
         // Create charts for each song with different difficulties
-        let chart1Easy = Chart(difficulty: .easy, song: song1)
-        let chart1Medium = Chart(difficulty: .medium, song: song1)
+        let chart1Easy = Chart(difficulty: .easy)
+        let chart1Medium = Chart(difficulty: .medium)
         song1.charts = [chart1Easy, chart1Medium]
-        
-        let chart2Hard = Chart(difficulty: .hard, song: song2)
-        let chart2Expert = Chart(difficulty: .expert, song: song2)
+        let chart2Hard = Chart(difficulty: .hard)
+        let chart2Expert = Chart(difficulty: .expert)
         song2.charts = [chart2Hard, chart2Expert]
-        
-        let chart3Easy = Chart(difficulty: .easy, song: song3)
-        let chart3Medium = Chart(difficulty: .medium, song: song3)
-        let chart3Hard = Chart(difficulty: .hard, song: song3)
+        let chart3Easy = Chart(difficulty: .easy)
+        let chart3Medium = Chart(difficulty: .medium)
+        let chart3Hard = Chart(difficulty: .hard)
         song3.charts = [chart3Easy, chart3Medium, chart3Hard]
-        
-        let chart4Medium = Chart(difficulty: .medium, song: song4)
+        let chart4Medium = Chart(difficulty: .medium)
         song4.charts = [chart4Medium]
         
-        let chart5Easy = Chart(difficulty: .easy, song: song5)
-        let chart5Medium = Chart(difficulty: .medium, song: song5)
+        let chart5Easy = Chart(difficulty: .easy)
+        let chart5Medium = Chart(difficulty: .medium)
         song5.charts = [chart5Easy, chart5Medium]
         
-        let chart6Expert = Chart(difficulty: .expert, song: song6)
+        let chart6Expert = Chart(difficulty: .expert)
         song6.charts = [chart6Expert]
         
-        let chart7Easy = Chart(difficulty: .easy, song: song7)
+        let chart7Easy = Chart(difficulty: .easy)
         song7.charts = [chart7Easy]
         
         return [song1, song2, song3, song4, song5, song6, song7]
     }
 }
-
 // MARK: - Legacy Support for DrumTrack
 // Keeping DrumTrack as a computed structure for backward compatibility
 struct DrumTrack: Equatable {
     let chart: Chart
-
     // Forward all properties to the chart and its song
     var title: String { chart.title }
     var artist: String { chart.artist }
@@ -390,21 +379,17 @@ struct DrumTrack: Equatable {
     var timeSignature: TimeSignature { chart.timeSignature }
     var notes: [Note] { chart.safeNotes }
     var difficultyColor: Color { chart.difficultyColor }
-
     // Legacy properties (these would need to be tracked elsewhere or computed)
     var isPlaying: Bool { chart.song?.isPlaying ?? false }
     var dateAdded: Date { chart.song?.dateAdded ?? Date() }
     var playCount: Int { chart.song?.playCount ?? 0 }
     var isSaved: Bool { chart.song?.isSaved ?? false }
-
     init(chart: Chart) {
         self.chart = chart
     }
-
     static func == (lhs: DrumTrack, rhs: DrumTrack) -> Bool {
         return lhs.chart.persistentModelID == rhs.chart.persistentModelID
     }
-
     static var sampleData: [DrumTrack] {
         Song.sampleData.flatMap { song in
             song.charts.map { chart in
