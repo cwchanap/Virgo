@@ -8,37 +8,32 @@
 import SwiftUI
 import SwiftData
 
-class WeakSongRef {
-    weak var song: Song?
-    
-    init(_ song: Song) {
-        self.song = song
-    }
-}
-
 @MainActor
 class PlaybackService: ObservableObject {
     @Published var currentlyPlaying: PersistentIdentifier?
     
-    private var songRefs: [PersistentIdentifier: WeakSongRef] = [:]
+    private var currentSong: Song?
     
     func togglePlayback(for song: Song) {
-        // Store weak reference to song
-        songRefs[song.id] = WeakSongRef(song)
-        
         // Toggle playback state for the selected song
         if currentlyPlaying == song.id {
+            // Stop current song
             currentlyPlaying = nil
-            song.isPlaying = false
-            Logger.audioPlayback("Stopped song: \(song.title)")
+            currentSong?.isPlaying = false
+            if let currentTitle = currentSong?.title {
+                Logger.audioPlayback("Stopped song: \(currentTitle)")
+            }
+            currentSong = nil
         } else {
             // Stop any currently playing song
-            if let currentId = currentlyPlaying,
-               let previousSong = songRefs[currentId]?.song {
-                previousSong.isPlaying = false
-                Logger.audioPlayback("Stopped previous song: \(previousSong.title)")
+            currentSong?.isPlaying = false
+            if let previousTitle = currentSong?.title {
+                Logger.audioPlayback("Stopped previous song: \(previousTitle)")
             }
+            
+            // Start new song
             currentlyPlaying = song.id
+            currentSong = song
             song.isPlaying = true
             Logger.audioPlayback("Started song: \(song.title)")
         }
@@ -50,12 +45,12 @@ class PlaybackService: ObservableObject {
 
     func stopAll() {
         // Stop currently playing song if any
-        if let currentId = currentlyPlaying,
-           let currentSong = songRefs[currentId]?.song {
+        if let currentSong = currentSong {
             currentSong.isPlaying = false
             Logger.audioPlayback("Stopped song via stopAll: \(currentSong.title)")
         }
         currentlyPlaying = nil
+        self.currentSong = nil
         Logger.audioPlayback("Stopped all playback")
     }
 }

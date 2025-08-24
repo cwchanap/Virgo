@@ -112,8 +112,8 @@ struct SwiftDataRelationshipTests {
     }
     
     @Test("Cascade deletion works correctly")
-    func testCascadeDeletion() async {
-        await TestSetup.withTestSetup {
+    func testCascadeDeletion() async throws {
+        try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             
             let song = TestModelFactory.createSong(
@@ -150,8 +150,8 @@ struct SwiftDataRelationshipTests {
     }
     
     @Test("ServerSong-ServerChart relationship works correctly")
-    func testServerSongChartRelationship() async {
-        await TestSetup.withTestSetup {
+    func testServerSongChartRelationship() async throws {
+        try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             
             let serverSong = TestModelFactory.createServerSong(

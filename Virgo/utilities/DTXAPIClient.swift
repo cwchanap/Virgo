@@ -84,9 +84,27 @@ extension DTXAPIClient: DTXConfiguration {
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedURL.isEmpty {
             UserDefaults.standard.removeObject(forKey: "DTXServerURL")
-        } else {
-            UserDefaults.standard.set(trimmedURL, forKey: "DTXServerURL")
+            return
         }
+        
+        // Validate and normalize the URL
+        guard let parsedURL = URL(string: trimmedURL),
+              let scheme = parsedURL.scheme,
+              let host = parsedURL.host,
+              ["http", "https"].contains(scheme.lowercased()),
+              !host.isEmpty else {
+            // Invalid URL: clear override to fall back to default
+            UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+            return
+        }
+        
+        // Normalize by removing single trailing slash to avoid // in path composition
+        var normalizedURL = trimmedURL
+        if normalizedURL.hasSuffix("/") && !normalizedURL.hasSuffix("//") {
+            normalizedURL = String(normalizedURL.dropLast())
+        }
+        
+        UserDefaults.standard.set(normalizedURL, forKey: "DTXServerURL")
     }
 
     func resetToLocalServer() {

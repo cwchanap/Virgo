@@ -150,8 +150,10 @@ final class SongsTabUITests: XCTestCase {
             // Tap again to collapse
             chartIndicator.tap()
             
-            // Wait for collapse animation
-            Thread.sleep(forTimeInterval: 0.5)
+            // Wait for collapse animation - difficulty button should disappear or become non-hittable
+            let predicate = NSPredicate(format: "exists == false OR isHittable == false")
+            let expectation = self.expectation(for: predicate, evaluatedWith: difficultyButton, handler: nil)
+            wait(for: [expectation], timeout: 2.0)
         }
     }
     
@@ -187,11 +189,17 @@ final class SongsTabUITests: XCTestCase {
                 XCTAssertTrue(deletingText.waitForNonExistence(timeout: 10))
             }
             
-            // Verify song count decreased or empty state appears
-            Thread.sleep(forTimeInterval: 1)
+            // Wait for song count to update or empty state to appear
             let songCountAfter = app.staticTexts.matching(
                 NSPredicate(format: "label CONTAINS 'songs available'")
             ).firstMatch
+            let emptyState = app.staticTexts["No songs available"]
+            
+            // Wait for either count update or empty state
+            let stateUpdated = songCountAfter.waitForExistence(timeout: 3.0) ||
+                               emptyState.waitForExistence(timeout: 3.0)
+            XCTAssertTrue(stateUpdated, "Song count should update or empty state should appear after deletion")
+            
             if songCountAfter.exists {
                 let afterText = songCountAfter.label
                 XCTAssertNotEqual(beforeText, afterText, "Song count should change after deletion")

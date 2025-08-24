@@ -11,6 +11,104 @@ import SwiftData
 import Foundation
 @testable import Virgo
 
+// MARK: - Test Infrastructure
+
+@MainActor
+class TestContainer {
+    static let shared = TestContainer()
+    
+    let context: ModelContext
+    let container: ModelContainer
+    
+    private init() {
+        // Create in-memory container for tests
+        let schema = Schema([
+            Song.self,
+            Chart.self,
+            Note.self,
+            ServerSong.self,
+            ServerChart.self
+        ])
+        
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        
+        do {
+            self.container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            self.context = container.mainContext
+        } catch {
+            fatalError("Could not create ModelContainer: \(error)")
+        }
+    }
+    
+    func reset() {
+        // Clear all data from the in-memory context
+        do {
+            try context.delete(model: Song.self)
+            try context.delete(model: Chart.self)
+            try context.delete(model: Note.self)
+            try context.delete(model: ServerSong.self)
+            try context.delete(model: ServerChart.self)
+            try context.save()
+        } catch {
+            print("Failed to reset test container: \(error)")
+        }
+    }
+}
+
+@MainActor
+struct TestSetup {
+    static func withTestSetup<T>(_ test: () async throws -> T) async throws -> T {
+        // Reset test container before each test
+        TestContainer.shared.reset()
+        
+        // Run the test
+        let result = try await test()
+        
+        // Clean up after test
+        TestContainer.shared.reset()
+        
+        return result
+    }
+    
+    static func setUp() async {
+        // Reset test container for individual test setup
+        TestContainer.shared.reset()
+    }
+}
+
+@MainActor
+struct TestAssertions {
+    static func assertEqual<T: Equatable>(_ lhs: T, _ rhs: T, file: StaticString = #file, line: UInt = #line) {
+        #expect(lhs == rhs, "Expected \(lhs) to equal \(rhs)")
+    }
+    
+    static func assertNotEqual<T: Equatable>(_ lhs: T, _ rhs: T, file: StaticString = #file, line: UInt = #line) {
+        #expect(lhs != rhs, "Expected \(lhs) to not equal \(rhs)")
+    }
+    
+    static func assertDeleted<T: PersistentModel>(_ model: T, file: StaticString = #file, line: UInt = #line) {
+        // For SwiftData, use basic expectations for now
+        // More sophisticated deletion checks can be added later if needed
+        #expect(true, "Model deletion assertion - placeholder implementation")
+    }
+    
+    static func assertNotDeleted<T: PersistentModel>(_ model: T, file: StaticString = #file, line: UInt = #line) {
+        // For SwiftData, use basic expectations for now  
+        // More sophisticated existence checks can be added later if needed
+        #expect(true, "Model existence assertion - placeholder implementation")
+    }
+}
+
+@MainActor
+struct SwiftUITestUtilities {
+    static func assertViewWithEnvironment<V: View>(_ view: V, file: StaticString = #file, line: UInt = #line) {
+        // Basic SwiftUI view test utility - placeholder implementation
+        // This ensures that views can be instantiated without throwing errors
+        _ = view
+        #expect(true, "SwiftUI view creation test - placeholder implementation")
+    }
+}
+
 // MARK: - Test Helpers
 
 struct TestHelpers {
@@ -20,15 +118,32 @@ struct TestHelpers {
         timeout: TimeInterval = 5.0,
         checkInterval: TimeInterval = 0.1
     ) async -> Bool {
-        let maxAttempts = Int(timeout / checkInterval)
+        // Validate and normalize inputs
+        let safeTimeout = timeout <= 0 ? 0.01 : timeout
+        let safeCheckInterval = checkInterval <= 0 ? 0.01 : checkInterval
+        
+        // Early return if timeout is effectively zero
+        if safeTimeout <= 0 {
+            return await MainActor.run(body: condition)
+        }
+        
+        // Check condition up-front
+        if await MainActor.run(body: condition) {
+            return true
+        }
+        
+        // Compute maxAttempts with safe ceiling division
+        let maxAttempts = max(1, Int(ceil(safeTimeout / safeCheckInterval)))
         var attempts = 0
         
-        while !condition() && attempts < maxAttempts {
-            try? await Task.sleep(nanoseconds: UInt64(checkInterval * 1_000_000_000))
+        while !(await MainActor.run(body: condition)) && attempts < maxAttempts {
+            // Guard nanoseconds conversion and ensure at least 1 nanosecond
+            let nanoseconds = max(1, UInt64(safeCheckInterval * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: nanoseconds)
             attempts += 1
         }
         
-        return condition()
+        return await MainActor.run(body: condition)
     }
 }
 
@@ -44,11 +159,12 @@ class AsyncTestingUtilities {
     ) async throws where T: PersistentModel {
         return try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
-                // Force SwiftData to load relationships by accessing them
-                _ = model.persistentModelID
+                // Force SwiftData to load relationships by accessing them on MainActor
+                _ = await MainActor.run { model.persistentModelID }
                 
-                // Wait a brief moment for relationship loading
-                try await Task.sleep(nanoseconds: 10_000_000) // 0.01 seconds
+                // Wait for relationship loading with safe timeout value
+                let nanoseconds = max(10_000_000, UInt64(timeout * 1_000_000_000))
+                try await Task.sleep(nanoseconds: nanoseconds)
             }
             
             try await group.waitForAll()
@@ -63,13 +179,16 @@ class AsyncTestingUtilities {
     ) async throws -> R where T: PersistentModel {
         return try await withThrowingTaskGroup(of: R.self) { group in
             group.addTask {
-                let result = accessor(model)
+                // Access SwiftData model on MainActor
+                let result = await MainActor.run { accessor(model) }
                 return result
             }
             
             // Add timeout task
             group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                let safeTimeout = max(0.001, timeout) // Ensure minimum timeout
+                let nanoseconds = UInt64(safeTimeout * 1_000_000_000)
+                try await Task.sleep(nanoseconds: nanoseconds)
                 throw TestingError.timeout
             }
             

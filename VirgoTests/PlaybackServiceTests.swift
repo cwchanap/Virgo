@@ -20,8 +20,8 @@ struct PlaybackServiceTests {
     }
     
     @Test("PlaybackService toggles playback correctly")
-    func testTogglePlayback() async {
-        await TestSetup.withTestSetup {
+    func testTogglePlayback() async throws {
+        try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let service = PlaybackService()
             let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
@@ -47,8 +47,8 @@ struct PlaybackServiceTests {
     }
     
     @Test("PlaybackService switches between songs correctly")
-    func testSwitchBetweenSongs() async {
-        await TestSetup.withTestSetup {
+    func testSwitchBetweenSongs() async throws {
+        try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let service = PlaybackService()
             let song1 = Song(title: "Song 1", artist: "Artist 1", bpm: 120.0, duration: "3:00", genre: "Rock")
@@ -73,8 +73,8 @@ struct PlaybackServiceTests {
     }
     
     @Test("PlaybackService stopAll functionality")
-    func testStopAll() async {
-        await TestSetup.withTestSetup {
+    func testStopAll() async throws {
+        try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let service = PlaybackService()
             let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
@@ -94,8 +94,8 @@ struct PlaybackServiceTests {
     }
     
     @Test("PlaybackService handles multiple songs correctly")
-    func testMultipleSongsHandling() async {
-        await TestSetup.withTestSetup {
+    func testMultipleSongsHandling() async throws {
+        try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let service = PlaybackService()
             let songs = [
@@ -129,8 +129,8 @@ struct PlaybackServiceTests {
     }
     
     @Test("PlaybackService maintains state consistency")
-    func testStateConsistency() async {
-        await TestSetup.withTestSetup {
+    func testStateConsistency() async throws {
+        try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let service = PlaybackService()
             let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")

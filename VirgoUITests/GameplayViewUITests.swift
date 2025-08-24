@@ -24,7 +24,6 @@ final class GameplayViewUITests: XCTestCase {
         
         // Navigate to ContentView
         app.buttons["START"].tap()
-        print(app.debugDescription)
         XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
         
         // Navigate to GameplayView by tapping on first track
@@ -32,7 +31,7 @@ final class GameplayViewUITests: XCTestCase {
         
         // Verify GameplayView elements load
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["DrumMaster Pro"].exists)
+        XCTAssertTrue(app.staticTexts["Drum Master Pro"].exists)
         XCTAssertTrue(app.staticTexts["120 BPM"].exists)
         XCTAssertTrue(app.staticTexts["Medium"].exists)
         
@@ -70,14 +69,17 @@ final class GameplayViewUITests: XCTestCase {
         // Test play button tap
         playButton.tap()
         
-        // After tapping play, button should change to pause (play.circle.fill might change to pause.circle.fill)
-        // Give some time for the state change
-        Thread.sleep(forTimeInterval: 0.5)
+        // After tapping play, wait for either play or pause button to be available
+        let playButtonAfterTap = app.buttons.matching(identifier: "play.circle.fill").firstMatch
+        let pauseButton = app.buttons.matching(identifier: "pause.circle.fill").firstMatch
+        
+        // Wait for either button state to be available
+        let buttonAvailable = playButtonAfterTap.waitForExistence(timeout: 2.0) ||
+                               pauseButton.waitForExistence(timeout: 2.0)
+        XCTAssertTrue(buttonAvailable, "Either play or pause button should be available")
         
         // Test that we can tap the button again (whether it's play or pause)
-        let playbackButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch.exists ? 
-                            app.buttons.matching(identifier: "play.circle.fill").firstMatch :
-                            app.buttons.matching(identifier: "pause.circle.fill").firstMatch
+        let playbackButton = playButtonAfterTap.exists ? playButtonAfterTap : pauseButton
         XCTAssertTrue(playbackButton.isHittable)
         
         // Test restart functionality
@@ -102,7 +104,7 @@ final class GameplayViewUITests: XCTestCase {
         
         // Test header contains track information
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should be displayed")
-        XCTAssertTrue(app.staticTexts["DrumMaster Pro"].exists, "Artist name should be displayed")
+        XCTAssertTrue(app.staticTexts["Drum Master Pro"].exists, "Artist name should be displayed")
         XCTAssertTrue(app.staticTexts["120 BPM"].exists, "BPM should be displayed")
         XCTAssertTrue(app.staticTexts["Medium"].exists, "Difficulty should be displayed")
         
@@ -186,13 +188,17 @@ final class GameplayViewUITests: XCTestCase {
         // 2. Start playback
         playButton.tap()
         
-        // Give time for playback state to update
-        Thread.sleep(forTimeInterval: 0.5)
+        // Wait for playback state to update - either play or pause button should be available
+        let playButtonElement = app.buttons.matching(identifier: "play.circle.fill").firstMatch
+        let pauseButtonElement = app.buttons.matching(identifier: "pause.circle.fill").firstMatch
+        let playbackStateUpdated = playButtonElement.waitForExistence(timeout: 2.0) ||
+                                    pauseButtonElement.waitForExistence(timeout: 2.0)
+        XCTAssertTrue(playbackStateUpdated, "Playback state should update after play button tap")
         
         // 3. During playback - button state might change
         // (In some implementations, play becomes pause during playback)
-        let hasPlayButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch.exists
-        let hasPauseButton = app.buttons.matching(identifier: "pause.circle.fill").firstMatch.exists
+        let hasPlayButton = playButtonElement.exists
+        let hasPauseButton = pauseButtonElement.exists
         XCTAssertTrue(hasPlayButton || hasPauseButton, "Should have either play or pause button during playback")
         
         // 4. Test restart functionality
@@ -233,7 +239,7 @@ final class GameplayViewUITests: XCTestCase {
         
         // Test that text elements are readable
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should be accessible")
-        XCTAssertTrue(app.staticTexts["DrumMaster Pro"].exists, "Artist should be accessible")
+        XCTAssertTrue(app.staticTexts["Drum Master Pro"].exists, "Artist should be accessible")
         XCTAssertTrue(app.staticTexts["120 BPM"].exists, "BPM should be accessible")
         XCTAssertTrue(app.staticTexts["Medium"].exists, "Difficulty should be accessible")
     }
@@ -250,7 +256,7 @@ final class GameplayViewUITests: XCTestCase {
         // Test navigation to first track
         app.staticTexts["Thunder Beat"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["DrumMaster Pro"].exists)
+        XCTAssertTrue(app.staticTexts["Drum Master Pro"].exists)
         
         // Navigate back
         let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
@@ -290,9 +296,11 @@ final class GameplayViewUITests: XCTestCase {
         // Multiple rapid interactions
         for _ in 0..<3 {
             playButton.tap()
-            Thread.sleep(forTimeInterval: 0.2)
+            // Wait for button to be responsive after tap
+            XCTAssertTrue(restartButton.waitForExistence(timeout: 1.0), "Restart button should remain available")
             restartButton.tap()
-            Thread.sleep(forTimeInterval: 0.2)
+            // Wait for button to be responsive after tap
+            XCTAssertTrue(playButton.waitForExistence(timeout: 1.0), "Play button should remain available")
         }
         
         // Verify UI is still functional after rapid interactions

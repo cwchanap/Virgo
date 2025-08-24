@@ -17,7 +17,10 @@ struct ServerSongModelTests {
     static let testContainer: ModelContainer = {
         do {
             let config = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try ModelContainer(for: Song.self, Chart.self, Note.self, ServerSong.self, ServerChart.self, configurations: config)
+            return try ModelContainer(
+                for: Song.self, Chart.self, Note.self, ServerSong.self, ServerChart.self,
+                configurations: config
+            )
         } catch {
             fatalError("Failed to create test container: \(error)")
         }
@@ -46,7 +49,7 @@ struct ServerSongModelTests {
     @Test("ServerChart can be created with server song reference")
     func testServerChartWithServerSong() {
         let context = ModelContext(Self.testContainer)
-        let serverSong = ServerSong(songId: "test_song", title: "Test", artist: "Artist", bpm: 120)
+        let serverSong = ServerSong(songId: "test_song", title: "Test", artist: "Artist", bpm: 120.0)
         context.insert(serverSong)
         let chart = ServerChart(
             difficulty: "easy",
@@ -166,7 +169,7 @@ struct ServerSongModelTests {
     @Test("ServerSong tracks download status correctly")
     func testServerSongDownloadStatus() {
         let context = ModelContext(Self.testContainer)
-        let serverSong = ServerSong(songId: "download_test", title: "Test", artist: "Artist", bpm: 120)
+        let serverSong = ServerSong(songId: "download_test", title: "Test", artist: "Artist", bpm: 120.0)
         context.insert(serverSong)
         
         // Initially not downloaded
@@ -187,7 +190,7 @@ struct ServerSongModelTests {
     @Test("ServerSong tracks media availability correctly")
     func testServerSongMediaAvailability() {
         let context = ModelContext(Self.testContainer)
-        let serverSong = ServerSong(songId: "media_test", title: "Test", artist: "Artist", bpm: 120)
+        let serverSong = ServerSong(songId: "media_test", title: "Test", artist: "Artist", bpm: 120.0)
         context.insert(serverSong)
         
         // Initially no media available
@@ -205,29 +208,43 @@ struct ServerSongModelTests {
     @Test("ServerChart handles various difficulty levels")
     func testServerChartDifficultyLevels() {
         let context = ModelContext(Self.testContainer)
-        let basicChart = ServerChart(difficulty: "easy", difficultyLabel: "BASIC", level: 10, filename: "bas.dtx", size: 300)
+        let basicChart = ServerChart(
+            difficulty: "easy", difficultyLabel: "BASIC", level: 10, filename: "bas.dtx", size: 300
+        )
         context.insert(basicChart)
-        let advancedChart = ServerChart(difficulty: "medium", difficultyLabel: "ADVANCED", level: 50, filename: "adv.dtx", size: 600)
+        let advancedChart = ServerChart(
+            difficulty: "medium", difficultyLabel: "ADVANCED", level: 50, filename: "adv.dtx", size: 600
+        )
         context.insert(advancedChart)
-        let extremeChart = ServerChart(difficulty: "hard", difficultyLabel: "EXTREME", level: 80, filename: "ext.dtx", size: 900)
+        let extremeChart = ServerChart(
+            difficulty: "hard", difficultyLabel: "EXTREME", level: 80, filename: "ext.dtx", size: 900
+        )
         context.insert(extremeChart)
-        let masterChart = ServerChart(difficulty: "expert", difficultyLabel: "MASTER", level: 95, filename: "mas.dtx", size: 1200)
-        context.insert(masterChart)
+        let expertChart = ServerChart(
+            difficulty: "expert", difficultyLabel: "MASTER", level: 95, filename: "mas.dtx", size: 1200
+        )
+        context.insert(expertChart)
         
         #expect(basicChart.level == 10)
         #expect(advancedChart.level == 50)
         #expect(extremeChart.level == 80)
-        #expect(masterChart.level == 95)
+        #expect(expertChart.level == 95)
     }
     
     @Test("ServerChart handles various file sizes")
     func testServerChartFileSizes() {
         let context = ModelContext(Self.testContainer)
-        let smallChart = ServerChart(difficulty: "easy", difficultyLabel: "BASIC", level: 20, filename: "small.dtx", size: 100)
+        let smallChart = ServerChart(
+            difficulty: "easy", difficultyLabel: "BASIC", level: 20, filename: "small.dtx", size: 100
+        )
         context.insert(smallChart)
-        let mediumChart = ServerChart(difficulty: "medium", difficultyLabel: "ADVANCED", level: 50, filename: "medium.dtx", size: 1000)
+        let mediumChart = ServerChart(
+            difficulty: "medium", difficultyLabel: "ADVANCED", level: 50, filename: "medium.dtx", size: 1000
+        )
         context.insert(mediumChart)
-        let largeChart = ServerChart(difficulty: "hard", difficultyLabel: "EXTREME", level: 80, filename: "large.dtx", size: 10000)
+        let largeChart = ServerChart(
+            difficulty: "hard", difficultyLabel: "EXTREME", level: 80, filename: "large.dtx", size: 10000
+        )
         context.insert(largeChart)
         
         #expect(smallChart.size == 100)
@@ -239,7 +256,7 @@ struct ServerSongModelTests {
     func testServerSongLastUpdated() {
         let context = ModelContext(Self.testContainer)
         let beforeCreation = Date()
-        let serverSong = ServerSong(songId: "time_test", title: "Test", artist: "Artist", bpm: 120)
+        let serverSong = ServerSong(songId: "time_test", title: "Test", artist: "Artist", bpm: 120.0)
         context.insert(serverSong)
         let afterCreation = Date()
         
@@ -254,7 +271,7 @@ struct ServerSongModelTests {
             filename: "test_song_with_spaces.dtx",
             title: "Test Song",
             artist: "Artist",
-            bpm: 120,
+            bpm: 120.0,
             difficultyLevel: 50,
             size: 1000
         )
@@ -266,9 +283,13 @@ struct ServerSongModelTests {
     @Test("ServerChart filename validation")
     func testServerChartFilenames() {
         let context = ModelContext(Self.testContainer)
-        let dtxChart = ServerChart(difficulty: "medium", difficultyLabel: "ADVANCED", level: 50, filename: "song.dtx", size: 1000)
+        let dtxChart = ServerChart(
+            difficulty: "medium", difficultyLabel: "ADVANCED", level: 50, filename: "song.dtx", size: 1000
+        )
         context.insert(dtxChart)
-        let alternativeChart = ServerChart(difficulty: "hard", difficultyLabel: "EXTREME", level: 75, filename: "alternative_file.dtx", size: 1500)
+        let alternativeChart = ServerChart(
+            difficulty: "hard", difficultyLabel: "EXTREME", level: 75, filename: "alternative_file.dtx", size: 1500
+        )
         context.insert(alternativeChart)
         
         #expect(dtxChart.filename.hasSuffix(".dtx"))
