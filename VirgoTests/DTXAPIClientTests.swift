@@ -229,9 +229,9 @@ struct DTXAPIClientTests {
         
         // Test various edge cases for server URLs
         let edgeCaseURLs = [
-            ("http://", "http://"),
-            ("https://", "https://"),
-            ("ftp://invalid-protocol.com", "ftp://invalid-protocol.com"),
+            ("http://", "http://127.0.0.1:8001"),  // Invalid (no host), falls back to default
+            ("https://", "http://127.0.0.1:8001"),  // Invalid (no host), falls back to default
+            ("ftp://invalid-protocol.com", "http://127.0.0.1:8001"),  // Invalid protocol, falls back to default
             ("   ", "http://127.0.0.1:8001"),  // whitespace only should fall back to default
             ("http://valid.com:99999", "http://valid.com:99999"),  // very high port
             ("http://127.0.0.1:0", "http://127.0.0.1:0")  // port 0
