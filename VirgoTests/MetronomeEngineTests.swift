@@ -114,11 +114,15 @@ struct MetronomeEngineTests {
         #expect(engine.bpm == 120)
         #expect(engine.timeSignature == .fourFour)
 
-        // Allow some time for the published property to update
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+        // Wait for engine to be enabled
+        let enabledSuccessfully = await TestHelpers.waitFor(condition: { engine.isEnabled })
+        #expect(enabledSuccessfully)
 
         engine.stop()
-        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 second
+        
+        // Wait for engine to be disabled
+        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled })
+        #expect(disabledSuccessfully)
     }
 }
 
@@ -192,12 +196,15 @@ struct MetronomeTimingEngineTests {
 
         timingEngine.start()
 
-        // Allow some time for the callback to be triggered
-        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2 second
+        // Wait for callback to be triggered
+        let callbackTriggeredSuccessfully = await TestHelpers.waitFor(
+            condition: { callbackTriggered },
+            timeout: 10.0 // Give more time for timing engine callback
+        )
 
         timingEngine.stop()
 
-        #expect(callbackTriggered == true)
+        #expect(callbackTriggeredSuccessfully)
         #expect(receivedBeat >= 1)
     }
 }

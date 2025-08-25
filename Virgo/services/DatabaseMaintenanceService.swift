@@ -20,6 +20,14 @@ class DatabaseMaintenanceService {
         updateExistingChartLevels(songs: songs)
         cleanupDuplicateSongs(songs: songs)
         cleanupOldSampleSongs(songs: songs)
+        
+        // Force a final save to ensure all changes are persisted
+        do {
+            try modelContext.save()
+            Logger.database("performInitialMaintenance completed successfully")
+        } catch {
+            Logger.databaseError(error)
+        }
     }
 
     private func updateExistingChartLevels(songs: [Song]) {

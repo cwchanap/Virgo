@@ -8,22 +8,37 @@
 import Testing
 import Foundation
 import SwiftUI
+import SwiftData
 @testable import Virgo
 
 struct DrumTrackTests {
+    
+    // Create a test model container for SwiftData models
+    static let testContainer: ModelContainer = {
+        do {
+            let config = ModelConfiguration(isStoredInMemoryOnly: true)
+            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
+        } catch {
+            fatalError("Failed to create test container: \(error)")
+        }
+    }()
 
     @Test func testDrumTrackInitialization() async throws {
+        let context = ModelContext(Self.testContainer)
+        
         // Create song and chart first
         let song = Song(
             title: "Test Track",
             artist: "Test Artist",
-            bpm: 120,
+            bpm: 120.0,
             duration: "3:45",
             genre: "Rock",
             timeSignature: .fourFour
         )
 
         let chart = Chart(difficulty: .medium, song: song)
+        context.insert(song)
+        context.insert(chart)
         let track = DrumTrack(chart: chart)
 
         #expect(track.title == "Test Track")
@@ -39,10 +54,12 @@ struct DrumTrackTests {
     }
 
     @Test func testDrumTrackWithCustomDefaults() async throws {
+        let context = ModelContext(Self.testContainer)
+        
         let song = Song(
             title: "Custom Track",
             artist: "Custom Artist",
-            bpm: 140,
+            bpm: 140.0,
             duration: "4:20",
             genre: "Electronic",
             timeSignature: .sixEight,
@@ -53,6 +70,8 @@ struct DrumTrackTests {
 
         let chart = Chart(difficulty: .hard, song: song)
         song.charts = [chart]
+        context.insert(song)
+        context.insert(chart)
         let track = DrumTrack(chart: chart)
 
         #expect(track.isPlaying == true)
@@ -61,24 +80,34 @@ struct DrumTrackTests {
     }
 
     @Test func testDifficultyColors() async throws {
-        let easySong = Song(title: "Easy", artist: "Test", bpm: 100, duration: "2:00", genre: "Pop")
+        let context = ModelContext(Self.testContainer)
+        
+        let easySong = Song(title: "Easy", artist: "Test", bpm: 100.0, duration: "2:00", genre: "Pop")
         let easyChart = Chart(difficulty: .easy, song: easySong)
         easySong.charts = [easyChart]
+        context.insert(easySong)
+        context.insert(easyChart)
         let easyTrack = DrumTrack(chart: easyChart)
 
-        let mediumSong = Song(title: "Medium", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock")
+        let mediumSong = Song(title: "Medium", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
         let mediumChart = Chart(difficulty: .medium, song: mediumSong)
         mediumSong.charts = [mediumChart]
+        context.insert(mediumSong)
+        context.insert(mediumChart)
         let mediumTrack = DrumTrack(chart: mediumChart)
 
-        let hardSong = Song(title: "Hard", artist: "Test", bpm: 140, duration: "4:00", genre: "Metal")
+        let hardSong = Song(title: "Hard", artist: "Test", bpm: 140.0, duration: "4:00", genre: "Metal")
         let hardChart = Chart(difficulty: .hard, song: hardSong)
         hardSong.charts = [hardChart]
+        context.insert(hardSong)
+        context.insert(hardChart)
         let hardTrack = DrumTrack(chart: hardChart)
 
-        let expertSong = Song(title: "Expert", artist: "Test", bpm: 180, duration: "5:00", genre: "Progressive", timeSignature: .fiveFour)
+        let expertSong = Song(title: "Expert", artist: "Test", bpm: 180.0, duration: "5:00", genre: "Progressive", timeSignature: .fiveFour)
         let expertChart = Chart(difficulty: .expert, song: expertSong)
         expertSong.charts = [expertChart]
+        context.insert(expertSong)
+        context.insert(expertChart)
         let expertTrack = DrumTrack(chart: expertChart)
 
         #expect(easyTrack.difficultyColor == .green)
@@ -90,33 +119,37 @@ struct DrumTrackTests {
     @Test func testSampleDataGeneration() async throws {
         let sampleTracks = DrumTrack.sampleData
 
-        #expect(sampleTracks.isEmpty) // Currently returns empty since Song.sampleData is empty
+        #expect(!sampleTracks.isEmpty) // Should have sample data now
         #expect(sampleTracks.allSatisfy { !$0.title.isEmpty })
         #expect(sampleTracks.allSatisfy { !$0.artist.isEmpty })
         #expect(sampleTracks.allSatisfy { $0.bpm > 0 })
         #expect(sampleTracks.allSatisfy { !$0.duration.isEmpty })
         #expect(sampleTracks.allSatisfy { !$0.genre.isEmpty })
 
-        // Test specific sample tracks (will be skipped since sampleTracks is empty)
+        // Test specific sample tracks
         let thunderBeat = sampleTracks.first { $0.title == "Thunder Beat" }
-        #expect(thunderBeat == nil) // Currently nil since sampleData is empty
+        #expect(thunderBeat != nil)
+        #expect(thunderBeat?.artist == "Rock Masters")
+        #expect(thunderBeat?.bpm == 140.0)
 
         let blastBeat = sampleTracks.first { $0.title == "Blast Beat Fury" }
-        #expect(blastBeat == nil) // Currently nil since sampleData is empty
+        #expect(blastBeat != nil)
+        #expect(blastBeat?.artist == "Metal Gods")
+        #expect(blastBeat?.bpm == 180.0)
     }
 
     @Test func testBPMValidation() async throws {
         let sampleTracks = DrumTrack.sampleData
         let bpmValues = sampleTracks.map { $0.bpm }
 
-        // Since sampleTracks is currently empty, these tests are modified
-        #expect(!bpmValues.contains(85))  // Empty array won't contain values
-        #expect(!bpmValues.contains(95))  // Empty array won't contain values
-        #expect(!bpmValues.contains(180)) // Empty array won't contain values
-        #expect(bpmValues.min() == nil) // Empty array has no min
-        #expect(bpmValues.max() == nil) // Empty array has no max
+        // Test that we have the expected BPM values
+        #expect(bpmValues.contains(85))   // Hip Hop Foundation
+        #expect(bpmValues.contains(95))   // Latin Rhythm
+        #expect(bpmValues.contains(180))  // Blast Beat Fury
+        #expect(bpmValues.min() == 85)    // Minimum BPM
+        #expect(bpmValues.max() == 180)   // Maximum BPM
 
-        // Ensure all BPM values are reasonable for drum tracks (empty array satisfies allSatisfy)
+        // Ensure all BPM values are reasonable for drum tracks
         #expect(bpmValues.allSatisfy { $0 >= 85 && $0 <= 180 })
     }
 
@@ -124,27 +157,27 @@ struct DrumTrackTests {
         let sampleTracks = DrumTrack.sampleData
         let genres = Set(sampleTracks.map { $0.genre })
 
-        // Since sampleTracks is empty, modify expectations
-        #expect(!genres.contains("Rock"))
-        #expect(!genres.contains("Electronic"))
-        #expect(!genres.contains("Jazz"))
-        #expect(!genres.contains("Hip Hop"))
-        #expect(!genres.contains("Metal"))
-        #expect(!genres.contains("Latin"))
-        #expect(!genres.contains("Progressive"))
-        #expect(genres.isEmpty) // Empty set
+        // Test that we have expected genres in sample data
+        #expect(genres.contains("Rock"))
+        #expect(genres.contains("Electronic"))
+        #expect(genres.contains("Jazz"))
+        #expect(genres.contains("Hip Hop"))
+        #expect(genres.contains("Metal"))
+        #expect(genres.contains("Latin"))
+        #expect(genres.contains("Progressive"))
+        #expect(genres.count >= 7) // Should have at least 7 different genres
     }
 
     @Test func testDifficultyLevels() async throws {
         let sampleTracks = DrumTrack.sampleData
         let difficulties = Set(sampleTracks.map { $0.difficulty })
 
-        // Since sampleTracks is empty, modify expectations
-        #expect(!difficulties.contains(.easy))
-        #expect(!difficulties.contains(.medium))
-        #expect(!difficulties.contains(.hard))
-        #expect(!difficulties.contains(.expert))
-        #expect(difficulties.isEmpty) // Empty set
+        // Test that we have all difficulty levels in sample data
+        #expect(difficulties.contains(.easy))
+        #expect(difficulties.contains(.medium))
+        #expect(difficulties.contains(.hard))
+        #expect(difficulties.contains(.expert))
+        #expect(difficulties.count == 4) // Should have all four difficulty levels
     }
 
     @Test func testDurationFormat() async throws {
@@ -161,12 +194,12 @@ struct DrumTrackTests {
     }
 
     @Test func testTrackEquality() async throws {
-        let song1 = Song(title: "Test", artist: "Artist", bpm: 120, duration: "3:00", genre: "Rock")
+        let song1 = Song(title: "Test", artist: "Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
         let chart1 = Chart(difficulty: .medium, song: song1)
         song1.charts = [chart1]
         let track1 = DrumTrack(chart: chart1)
 
-        let song2 = Song(title: "Test", artist: "Artist", bpm: 120, duration: "3:00", genre: "Rock")
+        let song2 = Song(title: "Test", artist: "Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
         let chart2 = Chart(difficulty: .medium, song: song2)
         song2.charts = [chart2]
         let track2 = DrumTrack(chart: chart2)
@@ -199,7 +232,7 @@ struct DrumTrackTests {
         #expect(TimeSignature.fiveFour.displayName == "5/4")
 
         // Test that tracks can have time signatures
-        let song = Song(title: "Test", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock", timeSignature: .threeFour)
+        let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock", timeSignature: .threeFour)
         let chart = Chart(difficulty: .medium, song: song)
         song.charts = [chart]
         let track = DrumTrack(chart: chart)

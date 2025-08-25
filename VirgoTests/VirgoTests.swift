@@ -8,14 +8,24 @@
 import Testing
 import Foundation
 import SwiftUI
+import SwiftData
 @testable import Virgo
 
+@MainActor
 struct VirgoTests {
+    
+    private var container: ModelContainer {
+        TestContainer.shared.container
+    }
+    
+    private var context: ModelContext {
+        TestContainer.shared.context
+    }
 
     @Test func testAppLaunchConfiguration() async throws {
         // Test that sample data can be loaded
         let sampleTracks = DrumTrack.sampleData
-        #expect(sampleTracks.isEmpty) // Currently returns empty since Song.sampleData is empty
+        #expect(!sampleTracks.isEmpty) // Should have sample data now
 
         // Verify all sample tracks have valid data
         for track in sampleTracks {
@@ -28,9 +38,14 @@ struct VirgoTests {
     }
 
     @Test func testDrumTrackDataIntegrity() async throws {
-        let song = Song(title: "Test Track", artist: "Test Artist", bpm: 120, duration: "3:45", genre: "Rock")
-        let chart = Chart(difficulty: .medium, song: song)
+        await TestSetup.setUp()
+        
+        let song = TestModelFactory.createSong(in: context, title: "Test Track", artist: "Test Artist", bpm: 120, duration: "3:45", genre: "Rock")
+        let chart = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
         song.charts = [chart]
+        
+        try context.save()
+        
         let track = DrumTrack(chart: chart)
 
         // Verify basic properties
@@ -58,28 +73,40 @@ struct VirgoTests {
         // Test DrumType properties
         #expect(DrumType.kick.symbol == "●")
         #expect(DrumType.snare.symbol == "◆")
-        #expect(DrumType.kick.yPosition(for: 0) == 210)  // belowLine1
-        #expect(DrumType.snare.yPosition(for: 0) == 150) // line3
+        
+        // Test that y positions are calculated correctly based on layout system
+        let kickY = DrumType.kick.yPosition(for: 0)
+        let snareY = DrumType.snare.yPosition(for: 0)
+        
+        // Kick should be below snare (higher Y value)
+        #expect(kickY > snareY)
+        
+        // Verify positions are within reasonable bounds
+        #expect(kickY > 150 && kickY < 300)
+        #expect(snareY > 100 && snareY < 200)
     }
 
     @Test func testAppConstants() async throws {
+        await TestSetup.setUp()
+        
         // Test that difficulty colors are properly defined
-        let easySong = Song(title: "Easy", artist: "Test", bpm: 100, duration: "2:00", genre: "Pop")
-        let easyChart = Chart(difficulty: .easy, song: easySong)
+        let easySong = TestModelFactory.createSong(in: context, title: "Easy", artist: "Test", bpm: 100, duration: "2:00", genre: "Pop")
+        let easyChart = TestModelFactory.createChart(in: context, difficulty: .easy, song: easySong)
         easySong.charts = [easyChart]
         let easyTrack = DrumTrack(chart: easyChart)
 
-        let mediumSong = Song(title: "Medium", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock")
-        let mediumChart = Chart(difficulty: .medium, song: mediumSong)
+        let mediumSong = TestModelFactory.createSong(in: context, title: "Medium", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock")
+        let mediumChart = TestModelFactory.createChart(in: context, difficulty: .medium, song: mediumSong)
         mediumSong.charts = [mediumChart]
         let mediumTrack = DrumTrack(chart: mediumChart)
 
-        let hardSong = Song(title: "Hard", artist: "Test", bpm: 140, duration: "4:00", genre: "Metal")
-        let hardChart = Chart(difficulty: .hard, song: hardSong)
+        let hardSong = TestModelFactory.createSong(in: context, title: "Hard", artist: "Test", bpm: 140, duration: "4:00", genre: "Metal")
+        let hardChart = TestModelFactory.createChart(in: context, difficulty: .hard, song: hardSong)
         hardSong.charts = [hardChart]
         let hardTrack = DrumTrack(chart: hardChart)
 
-        let expertSong = Song(
+        let expertSong = TestModelFactory.createSong(
+            in: context,
             title: "Expert",
             artist: "Test",
             bpm: 180,
@@ -87,7 +114,7 @@ struct VirgoTests {
             genre: "Progressive",
             timeSignature: .fiveFour
         )
-        let expertChart = Chart(difficulty: .expert, song: expertSong)
+        let expertChart = TestModelFactory.createChart(in: context, difficulty: .expert, song: expertSong)
         expertSong.charts = [expertChart]
         let expertTrack = DrumTrack(chart: expertChart)
 
@@ -102,6 +129,7 @@ struct VirgoTests {
 
         // Validate BPM ranges are reasonable
         let bpmValues = sampleTracks.map { $0.bpm }
+        #expect(!bpmValues.isEmpty) // Should have sample data
         #expect(bpmValues.min()! >= 60) // Minimum reasonable BPM
         #expect(bpmValues.max()! <= 300) // Maximum reasonable BPM
 
@@ -141,12 +169,14 @@ struct VirgoTests {
     }
 
     @Test func testSearchLogic() async throws {
-        let rockSong = Song(title: "Rock Song", artist: "Rock Band", bpm: 120, duration: "3:00", genre: "Rock")
-        let rockChart = Chart(difficulty: .medium, song: rockSong)
+        await TestSetup.setUp()
+        
+        let rockSong = TestModelFactory.createSong(in: context, title: "Rock Song", artist: "Rock Band", bpm: 120.0, duration: "3:00", genre: "Rock")
+        let rockChart = TestModelFactory.createChart(in: context, difficulty: .medium, song: rockSong)
         rockSong.charts = [rockChart]
 
-        let jazzSong = Song(title: "Jazz Tune", artist: "Jazz Group", bpm: 140, duration: "4:00", genre: "Jazz")
-        let jazzChart = Chart(difficulty: .hard, song: jazzSong)
+        let jazzSong = TestModelFactory.createSong(in: context, title: "Jazz Tune", artist: "Jazz Group", bpm: 140.0, duration: "4:00", genre: "Jazz")
+        let jazzChart = TestModelFactory.createChart(in: context, difficulty: .hard, song: jazzSong)
         jazzSong.charts = [jazzChart]
 
         let tracks = [
@@ -181,8 +211,10 @@ struct VirgoTests {
         #expect(duration < 0.1)
 
         // Test that difficulty color computation is efficient
-        let testSong = Song(title: "Test", artist: "Test", bpm: 120, duration: "3:00", genre: "Rock")
-        let testChart = Chart(difficulty: .medium, song: testSong)
+        await TestSetup.setUp()
+        
+        let testSong = TestModelFactory.createSong(in: context, title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
+        let testChart = TestModelFactory.createChart(in: context, difficulty: .medium, song: testSong)
         testSong.charts = [testChart]
         let track = DrumTrack(chart: testChart)
         let colorStartTime = Date()

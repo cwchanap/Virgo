@@ -1,4 +1,4 @@
-name: UI Tests
+name: macOS and iPad UI Tests
 
 on:
   push:
@@ -9,10 +9,11 @@ on:
       test_device:
         description: 'Select device to test on'
         required: false
-        default: 'iPhone 15 (iOS 17.5)'
+        default: 'iPad (10th generation)'
         type: choice
         options:
-          - 'iPhone 15 (iOS 17.5)'
+          - 'iPad (10th generation)'
+          - 'macOS'
       specific_test:
         description: 'Run specific test (leave empty for all tests)'
         required: false
@@ -34,11 +35,11 @@ jobs:
       - name: Set test matrix
         id: set-matrix
         run: |
-          # Always use iPhone 15 only
-          echo 'matrix=["platform=iOS Simulator,name=iPhone 15,OS=17.5"]' >> $GITHUB_OUTPUT
+          # Use macOS and iPad for testing
+          echo 'matrix=["platform=macOS", "platform=iOS Simulator,name=iPad (10th generation)"]' >> $GITHUB_OUTPUT
 
   ui-tests:
-    name: Run UI Tests
+    name: Run UI Tests on macOS and iPad
     runs-on: macos-latest
     needs: setup
     
@@ -77,18 +78,22 @@ jobs:
             
       - name: Boot simulator
         run: |
-          # Extract device details from destination
-          DEVICE_NAME=$(echo '${{ matrix.destination }}' | sed -n 's/.*name=\([^,]*\).*/\1/p')
-          OS_VERSION=$(echo '${{ matrix.destination }}' | sed -n 's/.*OS=\([^,]*\).*/\1/p')
-          
-          # Boot the simulator to ensure it's ready
-          DEVICE_ID=$(xcrun simctl list devices available | grep "$DEVICE_NAME" | grep "$OS_VERSION" | head -1 | grep -oE '\[.*\]' | tr -d '[]')
-          if [ ! -z "$DEVICE_ID" ]; then
-            echo "Booting simulator: $DEVICE_NAME ($OS_VERSION) - $DEVICE_ID"
-            xcrun simctl boot "$DEVICE_ID" || true
-            echo "Waiting for simulator to fully boot..."
-            xcrun simctl bootstatus "$DEVICE_ID" -b
-            echo "Simulator is ready!"
+          # Check if this is a simulator destination
+          if [[ '${{ matrix.destination }}' == *"Simulator"* ]]; then
+            # Extract device details from destination
+            DEVICE_NAME=$(echo '${{ matrix.destination }}' | sed -n 's/.*name=\([^,)]*\).*/\1/p')
+            
+            # Boot the simulator to ensure it's ready
+            DEVICE_ID=$(xcrun simctl list devices available | grep "$DEVICE_NAME" | head -1 | grep -oE '\[.*\]' | tr -d '[]')
+            if [ ! -z "$DEVICE_ID" ]; then
+              echo "Booting simulator: $DEVICE_NAME - $DEVICE_ID"
+              xcrun simctl boot "$DEVICE_ID" || true
+              echo "Waiting for simulator to fully boot..."
+              xcrun simctl bootstatus "$DEVICE_ID" -b
+              echo "Simulator is ready!"
+            fi
+          else
+            echo "Running on macOS - no simulator boot required"
           fi
       
       - name: Run UI tests
@@ -126,9 +131,12 @@ jobs:
       - name: Set device name for artifacts
         id: device-name
         run: |
-          DEVICE_NAME=$(echo '${{ matrix.destination }}' | sed -n 's/.*name=\([^,]*\).*/\1/p' | tr ' ' '-')
-          OS_VERSION=$(echo '${{ matrix.destination }}' | sed -n 's/.*OS=\([^,]*\).*/\1/p' | tr '.' '-')
-          echo "device=${DEVICE_NAME}-iOS${OS_VERSION}" >> $GITHUB_OUTPUT
+          if [[ '${{ matrix.destination }}' == *"Simulator"* ]]; then
+            DEVICE_NAME=$(echo '${{ matrix.destination }}' | sed -n 's/.*name=\([^,)]*\).*/\1/p' | tr ' ' '-' | tr '(' '-' | sed 's/-$//')
+            echo "device=${DEVICE_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "device=macOS" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload UI test results
         if: always()

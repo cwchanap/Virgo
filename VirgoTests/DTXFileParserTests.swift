@@ -9,17 +9,6 @@ import Testing
 import Foundation
 @testable import Virgo
 
-enum TestError: Error, CustomStringConvertible {
-    case resourceNotFound(String)
-
-    var description: String {
-        switch self {
-        case .resourceNotFound(let resourceName):
-            return "Test resource not found: \(resourceName). Please ensure it's added to the test bundle."
-        }
-    }
-}
-
 struct DTXFileParserTests {
 
     @Test func testParseDTXMetadata() throws {
@@ -211,20 +200,33 @@ struct DTXFileParserTests {
         #expect(DTXLane.bgm.noteType == nil)
     }
 
-    @Test func testActualDTXFile() throws {
-        // Get the test bundle - use proper test bundle for reliability
-        let testBundle = Bundle.main
+    @Test func testComplexDTXContent() throws {
+        // Use embedded test data instead of external files
+        let complexDTXContent = """
+        ; DTXCreator test file
+        
+        #TITLE: 休暇列車の窓辺で
+        #ARTIST: hapadona feat. Suno AI
+        #PREVIEW: preview.mp3
+        #PREIMAGE: preview.jpg
+        #STAGEFILE: preview.jpg
+        #BPM: 200
+        #DLEVEL: 74
+        
+        ; Measure 1 - Quarter notes on bass drum
+        #00113: 01010101
+        
+        ; Measure 2 - Eighth notes on snare
+        #00112: 0I0J0I0J0I0J0I0J
+        
+        ; Measure 3 - Hi-hat pattern
+        #00111: 01000100
+        
+        ; Measure 4 - Crash cymbal
+        #00118: 01000000
+        """
 
-        guard let url = testBundle.url(
-            forResource: "Kyuuka ressha no madobe de/mas",
-            withExtension: "dtx"
-        ) else {
-            // If the resource is not found, it means the test setup is incomplete.
-            // This should be a test failure, not a skipped test.
-            throw TestError.resourceNotFound("Kyuuka ressha no madobe de/mas.dtx")
-        }
-
-        let chartData = try DTXFileParser.parseChartMetadata(from: url)
+        let chartData = try DTXFileParser.parseChartMetadata(from: complexDTXContent)
 
         #expect(chartData.title == "休暇列車の窓辺で")
         #expect(chartData.artist == "hapadona feat. Suno AI")
@@ -235,10 +237,45 @@ struct DTXFileParserTests {
         // Verify notes were parsed
         #expect(!chartData.notes.isEmpty)
 
-        // Check for expected note types
+        // Check for expected note types from the patterns
         let noteTypes = Set(chartData.notes.compactMap { $0.toNoteType() })
         #expect(noteTypes.contains(NoteType.bass))
         #expect(noteTypes.contains(NoteType.snare))
         #expect(noteTypes.contains(NoteType.hiHat))
+        #expect(noteTypes.contains(NoteType.crash))
+        
+        // Verify measure distribution
+        let measureNumbers = Set(chartData.notes.map { $0.measureNumber })
+        #expect(measureNumbers.contains(0)) // DTX uses 0-based measures
+        #expect(measureNumbers.contains(1))
+        #expect(measureNumbers.contains(2))
+        #expect(measureNumbers.contains(3))
+    }
+    
+    @Test func testDTXFileWithMissingOptionalFields() throws {
+        // Test DTX content with only required fields
+        let minimalDTXContent = """
+        #TITLE: Minimal Song
+        #ARTIST: Test Artist
+        #BPM: 120
+        #DLEVEL: 45
+        
+        ; Simple pattern
+        #00113: 01000000
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: minimalDTXContent)
+
+        #expect(chartData.title == "Minimal Song")
+        #expect(chartData.artist == "Test Artist")
+        #expect(chartData.bpm == 120)
+        #expect(chartData.difficultyLevel == 45)
+        #expect(chartData.preview == nil)
+        #expect(chartData.previewImage == nil)
+        #expect(chartData.stageFile == nil)
+        
+        // Should still have parsed the note
+        #expect(!chartData.notes.isEmpty)
+        #expect(chartData.notes.first?.toNoteType() == .bass)
     }
 }

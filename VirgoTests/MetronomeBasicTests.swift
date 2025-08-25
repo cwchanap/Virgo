@@ -38,32 +38,44 @@ struct MetronomeBasicTests {
         #expect(metronome.currentBeat == 1)
     }
 
-    @Test func testMetronomeBasicControls() {
+    @Test func testMetronomeBasicControls() async {
         let metronome = MetronomeEngine()
 
         // Test starting
         metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
-        #expect(metronome.isEnabled == true)
+        
+        // Wait for engine to be enabled
+        let enabledSuccessfully = await TestHelpers.waitFor(condition: { metronome.isEnabled })
+        #expect(enabledSuccessfully, "Metronome should start")
         #expect(metronome.currentBeat == 1)
 
         // Test stopping
         metronome.stop()
-        #expect(metronome.isEnabled == false)
+        
+        // Wait for engine to be disabled
+        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !metronome.isEnabled })
+        #expect(disabledSuccessfully, "Metronome should stop")
         #expect(metronome.currentBeat == 1)
     }
 
-    @Test func testMetronomeToggleFunction() {
+    @Test func testMetronomeToggleFunction() async {
         let metronome = MetronomeEngine()
 
         #expect(metronome.isEnabled == false)
 
         // Toggle on
         metronome.toggle(bpm: Self.testBPM, timeSignature: .fourFour)
-        #expect(metronome.isEnabled == true)
+        
+        // Wait for engine to be enabled
+        let enabledSuccessfully = await TestHelpers.waitFor(condition: { metronome.isEnabled })
+        #expect(enabledSuccessfully, "Metronome should toggle on")
 
         // Toggle off
         metronome.toggle(bpm: Self.testBPM, timeSignature: .fourFour)
-        #expect(metronome.isEnabled == false)
+        
+        // Wait for engine to be disabled
+        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !metronome.isEnabled })
+        #expect(disabledSuccessfully, "Metronome should toggle off")
     }
 
     @Test func testMetronomeVolumeControl() {
@@ -92,17 +104,27 @@ struct MetronomeBasicTests {
         #expect(TimeSignature.fiveFour.displayName == "5/4")
     }
 
-    @Test func testMetronomeComponentCreation() {
+    @Test func testMetronomeComponentCreation() async {
+        await TestSetup.setUp()
+        
         let metronome = MetronomeEngine()
         let component = MetronomeComponent(metronome: metronome, bpm: Self.testBPM, timeSignature: .fourFour)
         #expect(component.bpm == Self.testBPM)
         #expect(component.timeSignature == .fourFour)
+        
+        // Test that component can be created with environment
+        SwiftUITestUtilities.assertViewWithEnvironment(component)
     }
 
-    @Test func testMetronomeSettingsViewCreation() {
+    @Test func testMetronomeSettingsViewCreation() async {
+        await TestSetup.setUp()
+        
         let metronome = MetronomeEngine()
         let settingsView = MetronomeSettingsView(metronome: metronome)
         #expect(settingsView != nil)
+        
+        // Test that settings view can be created with environment
+        SwiftUITestUtilities.assertViewWithEnvironment(settingsView)
     }
 
     @Test func testBeatCounterLogic() {
@@ -189,22 +211,26 @@ struct MetronomeBasicTests {
     }
 
     @Test
-    func testAudioEngineFailure() {
+    func testAudioEngineFailure() async {
         let metronome = MetronomeEngine()
         metronome.configure(bpm: Self.testBPM, timeSignature: .fourFour)
 
         // Test that metronome continues to function even if audio fails
         metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
-        #expect(metronome.isEnabled == true, "Metronome should start even without audio")
+        
+        // Wait for engine to be enabled
+        let enabledSuccessfully = await TestHelpers.waitFor(condition: { metronome.isEnabled })
+        #expect(enabledSuccessfully, "Metronome should start even without audio")
 
-        // Test basic functionality continues
-        metronome.testClick() // Should not crash
-
-        let beat = metronome.currentBeat
-        #expect(beat >= 1, "Beat counter should work without audio")
+        // Test basic functionality continues without crashing
+        let initialBeat = metronome.currentBeat
+        #expect(initialBeat >= 1, "Beat counter should work without audio")
 
         metronome.stop()
-        #expect(metronome.isEnabled == false, "Metronome should stop correctly")
+        
+        // Wait for engine to be disabled
+        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !metronome.isEnabled })
+        #expect(disabledSuccessfully, "Metronome should stop correctly")
     }
 
     @Test

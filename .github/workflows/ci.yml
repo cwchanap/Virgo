@@ -1,4 +1,4 @@
-name: Unit Test and Archive Build CI
+name: macOS and iPad CI
 
 on:
   push:
@@ -8,13 +8,14 @@ on:
 
 jobs:
   test:
-    name: Run Tests
+    name: Run Tests on macOS and iPad
     runs-on: macos-latest
     
     strategy:
       matrix:
         destination: 
-          - 'platform=iOS Simulator,name=iPhone 15,OS=17.5'
+          - 'platform=macOS'
+          - 'platform=iOS Simulator,name=iPad (10th generation)'
 
     steps:
       - name: Checkout code
@@ -79,6 +80,19 @@ jobs:
         with:
           xcode-version: 'latest-stable'
         
+      - name: Test archive build for macOS
+        run: |
+          xcodebuild archive \
+            -project Virgo.xcodeproj \
+            -scheme Virgo \
+            -destination 'generic/platform=macOS' \
+            -archivePath ./build/Virgo-macOS.xcarchive \
+            -configuration Release \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -allowProvisioningUpdates
+            
       - name: Test archive build for iOS
         run: |
           xcodebuild archive \
