@@ -63,7 +63,7 @@ final class Chart {
     var notesCount: Int {
         // Ensure we don't access notes relationship during concurrent operations
         guard !isDeleted else { return 0 }
-        return notes.count
+        return notes.filter { !$0.isDeleted }.count
     }
 
     // Safe accessor for notes
