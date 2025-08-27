@@ -86,16 +86,14 @@ struct TestAssertions {
         #expect(lhs != rhs, "Expected \(lhs) to not equal \(rhs)")
     }
     
-    static func assertDeleted<T: PersistentModel>(_ model: T, file: StaticString = #file, line: UInt = #line) {
-        // For SwiftData, use basic expectations for now
-        // More sophisticated deletion checks can be added later if needed
-        #expect(true, "Model deletion assertion - placeholder implementation")
+    static func assertDeleted<T: PersistentModel>(_ model: T, in context: ModelContext, file: StaticString = #file, line: UInt = #line) {
+        // Check if model is marked as deleted using isDeleted property
+        #expect(model.isDeleted, "Expected model to be deleted but it still exists")
     }
     
-    static func assertNotDeleted<T: PersistentModel>(_ model: T, file: StaticString = #file, line: UInt = #line) {
-        // For SwiftData, use basic expectations for now  
-        // More sophisticated existence checks can be added later if needed
-        #expect(true, "Model existence assertion - placeholder implementation")
+    static func assertNotDeleted<T: PersistentModel>(_ model: T, in context: ModelContext, file: StaticString = #file, line: UInt = #line) {
+        // Check if model is not marked as deleted using isDeleted property
+        #expect(!model.isDeleted, "Expected model to exist but it is marked as deleted")
     }
 }
 

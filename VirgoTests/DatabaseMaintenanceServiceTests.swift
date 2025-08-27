@@ -94,10 +94,10 @@ struct DatabaseMaintenanceServiceTests {
         service.performInitialMaintenance(songs: initialSongs)
         
         // Verify duplicates were removed (song2 and song4 should be deleted)
-        TestAssertions.assertNotDeleted(song1) // Original should remain
-        TestAssertions.assertDeleted(song2) // Duplicate should be deleted
-        TestAssertions.assertNotDeleted(song3) // Different song should remain
-        TestAssertions.assertDeleted(song4) // Duplicate should be deleted
+        TestAssertions.assertNotDeleted(song1, in: context) // Original should remain
+        TestAssertions.assertDeleted(song2, in: context) // Duplicate should be deleted
+        TestAssertions.assertNotDeleted(song3, in: context) // Different song should remain
+        TestAssertions.assertDeleted(song4, in: context) // Duplicate should be deleted
     }
     
     @Test("DatabaseMaintenanceService handles songs with same title but different artists")
@@ -120,8 +120,8 @@ struct DatabaseMaintenanceServiceTests {
         service.performInitialMaintenance(songs: [song1, song2])
         
         // Both songs should remain (different artists)
-        TestAssertions.assertNotDeleted(song1)
-        TestAssertions.assertNotDeleted(song2)
+        TestAssertions.assertNotDeleted(song1, in: context)
+        TestAssertions.assertNotDeleted(song2, in: context)
     }
     
     @Test("DatabaseMaintenanceService handles songs with same artist but different titles")
@@ -144,8 +144,8 @@ struct DatabaseMaintenanceServiceTests {
         service.performInitialMaintenance(songs: [song1, song2])
         
         // Both songs should remain (different titles)
-        TestAssertions.assertNotDeleted(song1)
-        TestAssertions.assertNotDeleted(song2)
+        TestAssertions.assertNotDeleted(song1, in: context)
+        TestAssertions.assertNotDeleted(song2, in: context)
     }
     
     @Test("DatabaseMaintenanceService handles empty song list")
@@ -188,13 +188,13 @@ struct DatabaseMaintenanceServiceTests {
         service.performInitialMaintenance(songs: [song1, song2])
         
         // Original song and its data should remain
-        TestAssertions.assertNotDeleted(song1)
-        TestAssertions.assertNotDeleted(chart1)
-        TestAssertions.assertNotDeleted(note1)
+        TestAssertions.assertNotDeleted(song1, in: context)
+        TestAssertions.assertNotDeleted(chart1, in: context)
+        TestAssertions.assertNotDeleted(note1, in: context)
         
         // Duplicate song should be deleted (cascade deletion will handle its charts)
-        TestAssertions.assertDeleted(song2)
-        TestAssertions.assertDeleted(chart2) // Should be cascade deleted
+        TestAssertions.assertDeleted(song2, in: context)
+        TestAssertions.assertDeleted(chart2, in: context) // Should be cascade deleted
     }
     
     @Test("DatabaseMaintenanceService handles special characters in song titles")
@@ -220,8 +220,8 @@ struct DatabaseMaintenanceServiceTests {
         service.performInitialMaintenance(songs: [song1, song2, song3])
         
         // First song should remain, duplicate should be removed
-        TestAssertions.assertNotDeleted(song1)
-        TestAssertions.assertDeleted(song2)
-        TestAssertions.assertNotDeleted(song3) // Different song should remain
+        TestAssertions.assertNotDeleted(song1, in: context)
+        TestAssertions.assertDeleted(song2, in: context)
+        TestAssertions.assertNotDeleted(song3, in: context) // Different song should remain
     }
 }

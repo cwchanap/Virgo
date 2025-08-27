@@ -144,8 +144,8 @@ struct SwiftDataRelationshipTests {
             context.delete(song)
         
             // Chart and Note should be cascade deleted
-            TestAssertions.assertDeleted(chart)
-            TestAssertions.assertDeleted(note)
+            TestAssertions.assertDeleted(chart, in: context)
+            TestAssertions.assertDeleted(note, in: context)
         }
     }
     
@@ -273,15 +273,15 @@ struct SwiftDataRelationshipTests {
             try await AsyncTestingUtilities.loadRelationships(for: chart)
             
             // Verify initial state
-            TestAssertions.assertNotDeleted(song)
-            TestAssertions.assertNotDeleted(chart)
+            TestAssertions.assertNotDeleted(song, in: context)
+            TestAssertions.assertNotDeleted(chart, in: context)
             
             // Delete the song - this should cascade delete the chart immediately
             context.delete(song)
             
             // Both song and chart should be cascade deleted due to deleteRule: .cascade
-            TestAssertions.assertDeleted(song)
-            TestAssertions.assertDeleted(chart)
+            TestAssertions.assertDeleted(song, in: context)
+            TestAssertions.assertDeleted(chart, in: context)
         }
     }
 }

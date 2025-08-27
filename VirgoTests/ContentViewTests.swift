@@ -13,24 +13,6 @@ import SwiftData
 // MARK: - Test Data Factory
 @MainActor
 struct TestDataFactory {
-    static func createSong(
-        title: String,
-        artist: String,
-        bpm: Double = 120.0,
-        duration: String = "3:00",
-        genre: String = "Rock",
-        timeSignature: TimeSignature = .fourFour
-    ) -> Song {
-        Song(
-            title: title,
-            artist: artist,
-            bpm: bpm,
-            duration: duration,
-            genre: genre,
-            timeSignature: timeSignature
-        )
-    }
-    
     static func createTrack(
         context: ModelContext,
         title: String,
