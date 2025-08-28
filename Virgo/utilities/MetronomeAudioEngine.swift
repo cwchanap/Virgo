@@ -30,7 +30,7 @@ class MetronomeAudioEngine: ObservableObject {
     private let isTestEnvironment: Bool
 
     init() {
-        self.isTestEnvironment = ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath")
+        self.isTestEnvironment = Self.detectTestEnvironment()
         self.audioEngine = AVAudioEngine()
         self.playerNode = AVAudioPlayerNode()
         #if os(iOS)
@@ -45,6 +45,40 @@ class MetronomeAudioEngine: ObservableObject {
         playerNode.stop()
         audioEngine.stop()
         audioEngine.detach(playerNode)
+    }
+
+    // MARK: - Test Environment Detection
+
+    private static func detectTestEnvironment() -> Bool {
+        // Method 1: XCTest detection (maintains backward compatibility)
+        if ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath") {
+            Logger.audioPlayback("Test environment detected via XCTestConfigurationFilePath argument")
+            return true
+        }
+        
+        // Method 2: Bundle identifier detection (most reliable for Swift Testing)
+        if let bundleIdentifier = Bundle.main.bundleIdentifier,
+           bundleIdentifier.hasSuffix("Tests") {
+            Logger.audioPlayback("Test environment detected via bundle identifier: \(bundleIdentifier)")
+            return true
+        }
+        
+        // Method 3: Environment variables (both XCTest and Swift Testing)
+        let environment = ProcessInfo.processInfo.environment
+        if environment["XCTestConfigurationFilePath"] != nil {
+            Logger.audioPlayback("Test environment detected via XCTestConfigurationFilePath environment variable")
+            return true
+        }
+        
+        // Method 4: Process name detection (catches various test runners)
+        let processName = ProcessInfo.processInfo.processName.lowercased()
+        if processName.contains("xctest") || processName.hasSuffix("tests") {
+            Logger.audioPlayback("Test environment detected via process name: \(processName)")
+            return true
+        }
+        
+        Logger.audioPlayback("No test environment detected - bundle: \(Bundle.main.bundleIdentifier ?? "nil")")
+        return false
     }
 
     // MARK: - Audio Engine Setup
