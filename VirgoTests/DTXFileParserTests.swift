@@ -222,8 +222,8 @@ struct DTXFileParserTests {
         ; Measure 3 - Hi-hat pattern
         #00111: 01000100
         
-        ; Measure 4 - Crash cymbal
-        #00118: 01000000
+        ; Measure 4 - Crash cymbal (lane 16)
+        #00116: 01000000
         """
 
         let chartData = try DTXFileParser.parseChartMetadata(from: complexDTXContent)
