@@ -12,9 +12,18 @@ import os.log
 import UIKit
 #endif
 
+// MARK: - Audio Driver Protocol
+@MainActor
+protocol AudioDriverProtocol {
+    func playTick(volume: Float, isAccented: Bool, atTime: AVAudioTime?)
+    func stop()
+    func resume()
+    func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime?
+}
+
 // MARK: - Audio Engine
 @MainActor
-class MetronomeAudioEngine: ObservableObject {
+class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     private let logger = Logger()
 
     private var audioEngine: AVAudioEngine
