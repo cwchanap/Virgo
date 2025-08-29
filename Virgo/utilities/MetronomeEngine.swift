@@ -23,7 +23,7 @@ class MetronomeEngine: ObservableObject {
     @Published private(set) var currentBeat = 1
 
     // Engine components
-    private let audioEngine: MetronomeAudioEngine
+    private let audioDriver: AudioDriverProtocol
     private let timingEngine: MetronomeTimingEngine
     private var cancellables = Set<AnyCancellable>()
 
@@ -41,8 +41,8 @@ class MetronomeEngine: ObservableObject {
         }
     }
 
-    init() {
-        self.audioEngine = MetronomeAudioEngine()
+    init(audioDriver: AudioDriverProtocol? = nil) {
+        self.audioDriver = audioDriver ?? MetronomeAudioEngine()
         self.timingEngine = MetronomeTimingEngine()
 
         // Connect timing engine to audio engine
@@ -84,7 +84,7 @@ class MetronomeEngine: ObservableObject {
         self.timeSignature = timeSignature
 
         Logger.audioPlayback("🎵 Resuming audio engine...")
-        audioEngine.resume()
+        audioDriver.resume()
         Logger.audioPlayback("🎵 Starting timing engine...")
         timingEngine.start()
         Logger.audioPlayback("🎵 MetronomeEngine.start() completed - isEnabled: \(isEnabled)")
@@ -96,7 +96,7 @@ class MetronomeEngine: ObservableObject {
         self.timeSignature = timeSignature
 
         Logger.audioPlayback("🎵 Resuming audio engine for scheduled start...")
-        audioEngine.resume()
+        audioDriver.resume()
         Logger.audioPlayback("🎵 Starting timing engine at scheduled time...")
         timingEngine.startAtTime(startTime: startTime)
         Logger.audioPlayback("🎵 MetronomeEngine.startAtTime() completed - isEnabled: \(isEnabled)")
@@ -104,7 +104,7 @@ class MetronomeEngine: ObservableObject {
 
     func stop() {
         timingEngine.stop()
-        audioEngine.stop()
+        audioDriver.stop()
 
     }
 
@@ -123,7 +123,7 @@ class MetronomeEngine: ObservableObject {
 
     func testClick() {
         // Play a single test click
-        audioEngine.playTick(volume: volume, isAccented: true)
+        audioDriver.playTick(volume: volume, isAccented: true, atTime: nil)
     }
 
     // MARK: - Beat Handling
@@ -131,7 +131,7 @@ class MetronomeEngine: ObservableObject {
     private func handleBeat(beat: Int, isAccented: Bool, atTime: AVAudioTime? = nil) {
         Logger.audioPlayback("🎵 MetronomeEngine.handleBeat() called - beat: \(beat), isAccented: \(isAccented), volume: \(volume)")
         // Play audio tick with precise timing
-        audioEngine.playTick(volume: volume, isAccented: isAccented, atTime: atTime)
+        audioDriver.playTick(volume: volume, isAccented: isAccented, atTime: atTime)
         Logger.audioPlayback("🎵 MetronomeEngine.handleBeat() completed")
     }
 
@@ -182,6 +182,6 @@ class MetronomeEngine: ObservableObject {
     /// Convert CFAbsoluteTime (metronome timebase) to AVAudioEngine node time
     /// This enables sample-accurate synchronization between metronome and external audio players
     func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
-        return audioEngine.convertToAudioEngineTime(cfTime)
+        return audioDriver.convertToAudioEngineTime(cfTime)
     }
 }
