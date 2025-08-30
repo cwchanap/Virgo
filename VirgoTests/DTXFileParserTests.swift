@@ -217,13 +217,13 @@ struct DTXFileParserTests {
         #00113: 01010101
         
         ; Measure 2 - Eighth notes on snare
-        #00112: 0I0J0I0J0I0J0I0J
+        #00212: 0I0J0I0J0I0J0I0J
         
         ; Measure 3 - Hi-hat pattern
-        #00111: 01000100
+        #00311: 01000100
         
         ; Measure 4 - Crash cymbal (lane 16)
-        #00116: 01000000
+        #00416: 01000000
         """
 
         let chartData = try DTXFileParser.parseChartMetadata(from: complexDTXContent)
@@ -246,10 +246,10 @@ struct DTXFileParserTests {
         
         // Verify measure distribution
         let measureNumbers = Set(chartData.notes.map { $0.measureNumber })
-        #expect(measureNumbers.contains(0)) // DTX uses 0-based measures
-        #expect(measureNumbers.contains(1))
+        #expect(measureNumbers.contains(1)) // DTX uses 1-based measures
         #expect(measureNumbers.contains(2))
         #expect(measureNumbers.contains(3))
+        #expect(measureNumbers.contains(4))
     }
     
     @Test func testDTXFileWithMissingOptionalFields() throws {

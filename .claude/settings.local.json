@@ -55,7 +55,9 @@
       "Bash(xcrun simctl list:*)",
       "mcp__XcodeBuildMCP__test_macos",
       "Bash(xcrun xcresulttool get:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(CODE_SIGNING_REQUIRED=NO )",
+      "Bash(CODE_SIGNING_ALLOWED=NO)"
     ],
     "deny": []
   }

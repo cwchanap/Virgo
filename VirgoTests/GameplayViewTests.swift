@@ -329,6 +329,7 @@ struct GameplayViewTests {
     @Test func testProgressUpdateThrottling() async throws {
         // Test the progress update throttling logic
         let playbackProgress = 0.5
+        let threshold = 0.02
 
         // Test cases for progress throttling (threshold is 0.02)
         let testCases: [(newProgress: Double, shouldUpdate: Bool)] = [
@@ -341,8 +342,11 @@ struct GameplayViewTests {
         ]
 
         for testCase in testCases {
-            let shouldUpdate = abs(playbackProgress - testCase.newProgress) > 0.02
-            #expect(shouldUpdate == testCase.shouldUpdate)
+            let difference = abs(playbackProgress - testCase.newProgress)
+            let shouldUpdate = difference > threshold
+            #expect(shouldUpdate == testCase.shouldUpdate, 
+                "Test case failed for newProgress: \(testCase.newProgress), difference: \(difference), " +
+                "threshold: \(threshold), calculated: \(shouldUpdate), expected: \(testCase.shouldUpdate)")
         }
     }
 }

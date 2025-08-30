@@ -49,7 +49,7 @@ struct ServerSongModelTests {
                 ServerChart(difficulty: "hard", difficultyLabel: "EXTREME", level: 85, filename: "ext.dtx", size: 1200)
             ]
             
-            charts.forEach { context.insert($0) }
+            // Don't insert charts separately - let ServerSong manage them
             
             let serverSong = ServerSong(
                 songId: "custom_song_002",

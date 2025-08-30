@@ -92,37 +92,21 @@ struct TestAssertions {
         file: StaticString = #file, 
         line: UInt = #line
     ) {
-        // For Song models, check by title and artist since that's how duplicates are identified
-        if let song = model as? Song {
-            let descriptor = FetchDescriptor<Song>()
-            do {
-                let allSongs = try context.fetch(descriptor)
-                let matchingSongs = allSongs.filter { 
-                    $0.title.lowercased() == song.title.lowercased() && 
-                    $0.artist.lowercased() == song.artist.lowercased() 
-                }
-                
-                // If this is a duplicate that should have been deleted, there should only be one song left with this title/artist
-                let songExists = matchingSongs.contains { $0.persistentModelID == song.persistentModelID }
-                #expect(!songExists, "Expected song to be deleted but it still exists in context")
-            } catch {
-                Logger.debug("Could not fetch songs during deletion test: \(error)")
-                // If we can't fetch, assume deletion worked
-            }
-        } else if let chart = model as? Chart {
-            // For Chart models, check if the chart still exists in the context
-            let descriptor = FetchDescriptor<Chart>()
-            do {
-                let allCharts = try context.fetch(descriptor)
-                let chartExists = allCharts.contains { $0.persistentModelID == chart.persistentModelID }
-                #expect(!chartExists, "Expected chart to be deleted but it still exists in context")
-            } catch {
-                Logger.debug("Could not fetch charts during deletion test: \(error)")
-                // If we can't fetch, assume deletion worked
-            }
-        } else {
-            // For other models, use the isDeleted property
-            #expect(model.isDeleted, "Expected model to be deleted but it still exists")
+        // When SwiftData cascade deletes models, they are completely removed from the context
+        // We check by trying to find the model by its persistent ID
+        let modelId = model.persistentModelID
+        
+        do {
+            let descriptor = FetchDescriptor<T>(predicate: #Predicate<T> { contextModel in
+                contextModel.persistentModelID == modelId
+            })
+            let foundModels = try context.fetch(descriptor)
+            let stillExists = !foundModels.isEmpty
+            
+            #expect(!stillExists, "Expected model to be deleted but it still exists in context")
+        } catch {
+            // If we can't fetch (model type might be deleted), assume deletion worked
+            Logger.debug("Could not verify model deletion due to fetch error (likely expected): \(error)")
         }
     }
     

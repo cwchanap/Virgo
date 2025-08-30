@@ -77,17 +77,31 @@ xcodebuild -project Virgo.xcodeproj -scheme Virgo build
 
 ### Testing
 ```bash
-# Run unit tests
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' test
+# Run unit tests (CI format - recommended)
+xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  -only-testing:VirgoTests \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  -enableCodeCoverage YES \
+  -destination-timeout 300 \
+  -derivedDataPath ./DerivedData
+
+# Run unit tests (simple format)
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' test
 
 # Run UI tests
 xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:VirgoUITests test
 
 # Run specific test class
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:VirgoTests/VirgoTests test
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' -only-testing:VirgoTests/MetronomeEngineTests test
 
 # Run specific test method
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:VirgoTests/VirgoTests/testAppLaunchConfiguration test
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' -only-testing:VirgoTests/DTXFileParserTests/testComplexDTXContent test
 ```
 
 ### Project Structure

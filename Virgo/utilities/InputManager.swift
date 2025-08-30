@@ -90,12 +90,51 @@ class InputManager: ObservableObject {
     private var secondsPerBeat: Double = 0.5
     private var secondsPerMeasure: Double = 2.0
     
+    // Test environment detection
+    private let isTestEnvironment: Bool
+    
     init() {
+        self.isTestEnvironment = Self.detectTestEnvironment()
         setupMappingsFromSettings()
-        setupMIDI()
+        
+        // Only set up MIDI if not in test environment
+        if !isTestEnvironment {
+            setupMIDI()
+        }
+    }
+    
+    // MARK: - Test Environment Detection
+    
+    private static func detectTestEnvironment() -> Bool {
+        // Method 1: XCTest detection (maintains backward compatibility)
+        if ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath") {
+            return true
+        }
+        
+        // Method 2: Bundle identifier detection (most reliable for Swift Testing)
+        if let bundleIdentifier = Bundle.main.bundleIdentifier,
+           bundleIdentifier.hasSuffix("Tests") {
+            return true
+        }
+        
+        // Method 3: Environment variables (both XCTest and Swift Testing)
+        let environment = ProcessInfo.processInfo.environment
+        if environment["XCTestConfigurationFilePath"] != nil {
+            return true
+        }
+        
+        // Method 4: Process name detection (catches various test runners)
+        let processName = ProcessInfo.processInfo.processName.lowercased()
+        if processName.contains("xctest") || processName.hasSuffix("tests") {
+            return true
+        }
+        
+        return false
     }
     
     deinit {
+        guard !isTestEnvironment else { return }
+        
         // Clean up keyboard event monitors
         #if os(macOS)
         stopKeyboardListening()
