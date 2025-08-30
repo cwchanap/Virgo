@@ -98,7 +98,14 @@ struct MetronomeBasicTests {
             checkInterval: 0.1
         )
         #expect(disabledSuccessfully, "Metronome should stop")
-        #expect(metronome.currentBeat == 1, "Beat should reset to 1 after stopping")
+        
+        // Wait for beat to be reset after stopping
+        let beatResetSuccessfully = await TestHelpers.waitFor(
+            condition: { metronome.currentBeat == 1 },
+            timeout: 2.0,
+            checkInterval: 0.1
+        )
+        #expect(beatResetSuccessfully, "Beat should reset to 1 after stopping")
     }
 
     @Test func testMetronomeToggleFunction() async {
@@ -128,8 +135,13 @@ struct MetronomeBasicTests {
         )
         #expect(disabledSuccessfully, "Metronome should toggle off")
         
-        // Assert beat state has been reset after stopping
-        #expect(metronome.currentBeat == 1, "Beat should be reset to 1 after stopping")
+        // Wait for beat to be reset after stopping
+        let beatResetSuccessfully = await TestHelpers.waitFor(
+            condition: { metronome.currentBeat == 1 },
+            timeout: 2.0,
+            checkInterval: 0.1
+        )
+        #expect(beatResetSuccessfully, "Beat should be reset to 1 after stopping")
     }
 
     @Test func testMetronomeVolumeControl() {
