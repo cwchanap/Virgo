@@ -239,6 +239,11 @@ final class ServerSong {
         self.bgmDownloaded = bgmDownloaded
         self.hasPreview = hasPreview
         self.previewDownloaded = previewDownloaded
+        
+        // Set back-reference for charts
+        for chart in charts {
+            chart.serverSong = self
+        }
     }
 
     // Legacy compatibility for single-file DTX
@@ -268,6 +273,7 @@ final class ServerSong {
             hasBGM: false,
             hasPreview: false
         )
+        // Back-reference is already set in the main initializer
     }
 
 }

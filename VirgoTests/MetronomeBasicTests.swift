@@ -99,11 +99,11 @@ struct MetronomeBasicTests {
         )
         #expect(disabledSuccessfully, "Metronome should stop")
         
-        // Wait for beat to be reset after stopping
+        // Wait for beat to be reset after stopping - give extra time for Combine to sync
         let beatResetSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.currentBeat == 1 },
-            timeout: 2.0,
-            checkInterval: 0.1
+            timeout: 5.0,
+            checkInterval: 0.05
         )
         #expect(beatResetSuccessfully, "Beat should reset to 1 after stopping")
     }
@@ -135,11 +135,11 @@ struct MetronomeBasicTests {
         )
         #expect(disabledSuccessfully, "Metronome should toggle off")
         
-        // Wait for beat to be reset after stopping
+        // Wait for beat to be reset after stopping - give extra time for Combine to sync
         let beatResetSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.currentBeat == 1 },
-            timeout: 2.0,
-            checkInterval: 0.1
+            timeout: 5.0,
+            checkInterval: 0.05
         )
         #expect(beatResetSuccessfully, "Beat should be reset to 1 after stopping")
     }

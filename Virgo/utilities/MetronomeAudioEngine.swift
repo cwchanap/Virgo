@@ -26,10 +26,10 @@ protocol AudioDriverProtocol {
 class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     private let logger = Logger()
 
-    private var audioEngine: AVAudioEngine
-    private var playerNode: AVAudioPlayerNode
+    private var audioEngine: AVAudioEngine?
+    private var playerNode: AVAudioPlayerNode?
     #if os(iOS)
-    private var audioSession: AVAudioSession
+    private var audioSession: AVAudioSession?
     #endif
 
     // Audio buffer cache
@@ -40,19 +40,34 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
 
     init() {
         self.isTestEnvironment = Self.detectTestEnvironment()
-        self.audioEngine = AVAudioEngine()
-        self.playerNode = AVAudioPlayerNode()
-        #if os(iOS)
-        self.audioSession = AVAudioSession.sharedInstance()
-        #endif
-
-        setupAudioEngine()
+        
+        if !isTestEnvironment {
+            // Normal runtime - initialize audio components
+            self.audioEngine = AVAudioEngine()
+            self.playerNode = AVAudioPlayerNode()
+            #if os(iOS)
+            self.audioSession = AVAudioSession.sharedInstance()
+            #endif
+            setupAudioEngine()
+        } else {
+            // Test environment - don't create any audio objects to prevent crashes
+            self.audioEngine = nil
+            self.playerNode = nil
+            #if os(iOS)
+            self.audioSession = nil
+            #endif
+            Logger.audioPlayback("Test environment - no audio objects created to prevent crashes")
+        }
     }
 
     deinit {
         // Perform cleanup synchronously in deinit to avoid closure capture issues
+        guard !isTestEnvironment, let audioEngine = audioEngine, let playerNode = playerNode else { return }
+        
         playerNode.stop()
-        audioEngine.stop()
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
         audioEngine.detach(playerNode)
     }
 
@@ -93,7 +108,7 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     // MARK: - Audio Engine Setup
 
     private func setupAudioEngine() {
-        guard !isTestEnvironment else {
+        guard !isTestEnvironment, let audioEngine = audioEngine, let playerNode = playerNode else {
             Logger.audioPlayback("Test environment detected - skipping audio engine setup")
             return
         }
@@ -101,10 +116,12 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
         do {
             // Configure audio session for iOS
             #if os(iOS)
-            Logger.audioPlayback("Setting up iOS audio session...")
-            try audioSession.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try audioSession.setActive(true)
-            Logger.audioPlayback("iOS audio session configured successfully")
+            if let audioSession = audioSession {
+                Logger.audioPlayback("Setting up iOS audio session...")
+                try audioSession.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+                try audioSession.setActive(true)
+                Logger.audioPlayback("iOS audio session configured successfully")
+            }
             #endif
 
             // Attach and connect player node
@@ -133,6 +150,10 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     private func getTickerBuffer() throws -> AVAudioPCMBuffer {
         if let existingBuffer = cachedTickerBuffer {
             return existingBuffer
+        }
+        
+        guard let playerNode = playerNode else {
+            throw AudioEngineError.audioEngineNotAvailable
         }
 
         Logger.audioPlayback("🔊 Looking for ticker asset...")
@@ -223,6 +244,11 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
             return 
         }
 
+        guard let audioEngine = audioEngine, let playerNode = playerNode else {
+            Logger.audioPlayback("🔊 Audio engine not available - test environment")
+            return
+        }
+        
         // Ensure audio engine is running before attempting playback
         Logger.audioPlayback("🔊 Audio engine running state: \(audioEngine.isRunning)")
         if !audioEngine.isRunning {
@@ -305,14 +331,16 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     }
 
     func stop() {
-        guard !isTestEnvironment else { return }
+        guard !isTestEnvironment, let audioEngine = audioEngine, let playerNode = playerNode else { return }
 
         playerNode.stop()
 
         do {
             audioEngine.stop()
             #if os(iOS)
-            try audioSession.setActive(false)
+            if let audioSession = audioSession {
+                try audioSession.setActive(false)
+            }
             #endif
         } catch {
             Logger.audioPlayback("Failed to stop audio engine: \(error.localizedDescription)")
@@ -320,11 +348,13 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     }
 
     func resume() {
-        guard !isTestEnvironment else { return }
+        guard !isTestEnvironment, let audioEngine = audioEngine else { return }
 
         do {
             #if os(iOS)
-            try audioSession.setActive(true)
+            if let audioSession = audioSession {
+                try audioSession.setActive(true)
+            }
             #endif
 
             if !audioEngine.isRunning {
@@ -341,7 +371,7 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     /// Convert CFAbsoluteTime (metronome timebase) to AVAudioEngine timeline
     /// This ensures sample-accurate synchronization between metronome and external audio
     func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
-        guard !isTestEnvironment && audioEngine.isRunning else { return nil }
+        guard !isTestEnvironment, let audioEngine = audioEngine, audioEngine.isRunning else { return nil }
         
         // Get current times from both domains
         let currentCFTime = CFAbsoluteTimeGetCurrent()
@@ -371,6 +401,7 @@ enum AudioEngineError: Error, LocalizedError {
     case assetNotFound
     case bufferCreationFailed
     case loadingFailed(Error)
+    case audioEngineNotAvailable
 
     var errorDescription: String? {
         switch self {
@@ -380,6 +411,8 @@ enum AudioEngineError: Error, LocalizedError {
             return "Failed to create audio buffer"
         case .loadingFailed(let error):
             return "Failed to load audio buffer: \(error.localizedDescription)"
+        case .audioEngineNotAvailable:
+            return "Audio engine not available in test environment"
         }
     }
 }
