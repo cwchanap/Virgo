@@ -105,7 +105,6 @@ class MetronomeEngine: ObservableObject {
     func stop() {
         timingEngine.stop()
         audioDriver.stop()
-
     }
 
     func toggle(bpm: Double, timeSignature: TimeSignature) {
