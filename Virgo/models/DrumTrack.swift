@@ -273,7 +273,8 @@ final class ServerSong {
             hasBGM: false,
             hasPreview: false
         )
-        // Back-reference is already set in the main initializer
+        // Set back-reference after initialization
+        chart.serverSong = self
     }
 
 }
