@@ -162,6 +162,7 @@ extension DTXAPIClient: DTXNetworking {
         }
     }
 
+    @MainActor
     private func updateLoadingState(isLoading: Bool, error: String?) {
         self.isLoading = isLoading
         self.errorMessage = error

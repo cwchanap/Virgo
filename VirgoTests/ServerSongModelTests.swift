@@ -49,8 +49,6 @@ struct ServerSongModelTests {
                 ServerChart(difficulty: "hard", difficultyLabel: "EXTREME", level: 85, filename: "ext.dtx", size: 1200)
             ]
             
-            // Don't insert charts separately - let ServerSong manage them
-            
             let serverSong = ServerSong(
                 songId: "custom_song_002",
                 title: "Custom Song",
