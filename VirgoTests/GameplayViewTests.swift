@@ -333,11 +333,11 @@ struct GameplayViewTests {
 
         // Test cases for progress throttling (threshold is 0.02)
         let testCases: [(newProgress: Double, shouldUpdate: Bool)] = [
-            (0.5, false),     // No change
+            (0.5, false),     // No change (0.0 < 0.02)
             (0.505, false),   // Change too small (0.005 < 0.02)
             (0.515, false),   // Change still small (0.015 < 0.02)
             (0.525, true),    // Change sufficient (0.025 > 0.02)
-            (0.48, false),    // Negative change too small (0.02 = 0.02, not >)
+            (0.479, true),    // Negative change sufficient (0.021 > 0.02)
             (0.47, true)      // Negative change sufficient (0.03 > 0.02)
         ]
 

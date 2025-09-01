@@ -67,8 +67,30 @@ class MetronomeTimingEngine: ObservableObject {
     // MARK: - Test Environment Detection
     
     private static func detectTestEnvironment() -> Bool {
-        return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
-               ProcessInfo.processInfo.arguments.contains("-XCTest")
+        // Method 1: XCTest detection (maintains backward compatibility)
+        if ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath") {
+            return true
+        }
+        
+        // Method 2: Bundle identifier detection (most reliable for Swift Testing)
+        if let bundleIdentifier = Bundle.main.bundleIdentifier,
+           bundleIdentifier.hasSuffix("Tests") {
+            return true
+        }
+        
+        // Method 3: Environment variables (both XCTest and Swift Testing)
+        let environment = ProcessInfo.processInfo.environment
+        if environment["XCTestConfigurationFilePath"] != nil {
+            return true
+        }
+        
+        // Method 4: Process name detection (catches various test runners)
+        let processName = ProcessInfo.processInfo.processName.lowercased()
+        if processName.contains("xctest") || processName.hasSuffix("tests") {
+            return true
+        }
+        
+        return false
     }
 
     deinit {
@@ -298,13 +320,16 @@ class MetronomeTimingEngine: ObservableObject {
         Logger.audioPlayback("Test environment - simulating beat callback")
         let isAccented = (currentBeat == 1)
         
-        // Simulate the callback with no audio time (test environment)
-        onBeat?(currentBeat, isAccented, nil)
-        
-        // Update beat counter
-        currentBeat += 1
-        if currentBeat > timeSignature.beatsPerMeasure {
-            currentBeat = 1
+        // Ensure state is published on main thread for Combine subscribers
+        Task { @MainActor in
+            // Fire the beat callback
+            onBeat?(currentBeat, isAccented, nil)
+            
+            // Update beat counter on main thread to trigger @Published
+            currentBeat += 1
+            if currentBeat > timeSignature.beatsPerMeasure {
+                currentBeat = 1
+            }
         }
     }
 }

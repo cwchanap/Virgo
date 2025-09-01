@@ -17,40 +17,89 @@ import Foundation
 class TestContainer {
     static let shared = TestContainer()
     
-    let context: ModelContext
-    let container: ModelContainer
+    private let containerCreationQueue = DispatchQueue(label: "TestContainer.creation", attributes: .concurrent)
+    var privateContainer: ModelContainer?
+    var privateContext: ModelContext?
+    
+    var context: ModelContext {
+        if let context = privateContext {
+            return context
+        }
+        return createNewContext()
+    }
+    
+    var container: ModelContainer {
+        if let container = privateContainer {
+            return container
+        }
+        return createNewContainer()
+    }
     
     private init() {
-        // Create in-memory container for tests
-        let schema = Schema([
-            Song.self,
-            Chart.self,
-            Note.self,
-            ServerSong.self,
-            ServerChart.self
-        ])
-        
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        
-        do {
-            self.container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-            self.context = container.mainContext
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+        // Defer initialization to avoid concurrency issues during app startup
+    }
+    
+    private func createNewContainer() -> ModelContainer {
+        return containerCreationQueue.sync {
+            if let container = privateContainer {
+                return container
+            }
+            
+            // Create in-memory container for tests with unique identifier
+            let schema = Schema([
+                Song.self,
+                Chart.self,
+                Note.self,
+                ServerSong.self,
+                ServerChart.self
+            ])
+            
+            let modelConfiguration = ModelConfiguration(
+                schema: schema,
+                isStoredInMemoryOnly: true,
+                allowsSave: true,
+                cloudKitDatabase: .none
+            )
+            
+            do {
+                let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+                privateContainer = container
+                privateContext = container.mainContext
+                return container
+            } catch {
+                fatalError("Could not create ModelContainer: \(error)")
+            }
         }
     }
     
+    private func createNewContext() -> ModelContext {
+        let container = createNewContainer()
+        if let context = privateContext {
+            return context
+        }
+        let context = container.mainContext
+        privateContext = context
+        return context
+    }
+    
     func reset() {
-        // Clear all data from the in-memory context
-        do {
-            try context.delete(model: Song.self)
-            try context.delete(model: Chart.self)
-            try context.delete(model: Note.self)
-            try context.delete(model: ServerSong.self)
-            try context.delete(model: ServerChart.self)
-            try context.save()
-        } catch {
-            print("Failed to reset test container: \(error)")
+        containerCreationQueue.sync(flags: .barrier) {
+            // Clear all data from the in-memory context safely
+            guard let context = privateContext else { return }
+            
+            do {
+                try context.delete(model: Song.self)
+                try context.delete(model: Chart.self)
+                try context.delete(model: Note.self)
+                try context.delete(model: ServerSong.self)
+                try context.delete(model: ServerChart.self)
+                try context.save()
+            } catch {
+                Logger.debug("Failed to reset test container: \(error)")
+                // If reset fails, create a new container entirely
+                privateContainer = nil
+                privateContext = nil
+            }
         }
     }
 }
@@ -58,21 +107,63 @@ class TestContainer {
 @MainActor
 struct TestSetup {
     static func withTestSetup<T>(_ test: () async throws -> T) async throws -> T {
-        // Reset test container before each test
-        TestContainer.shared.reset()
+        // Create an isolated test context for this specific test
+        let isolatedContainer = await createIsolatedContainer()
         
-        // Run the test
-        let result = try await test()
+        // Store the previous container and temporarily replace it
+        let originalContainer = TestContainer.shared.privateContainer
+        let originalContext = TestContainer.shared.privateContext
         
-        // Clean up after test
-        TestContainer.shared.reset()
+        TestContainer.shared.privateContainer = isolatedContainer
+        TestContainer.shared.privateContext = isolatedContainer.mainContext
         
-        return result
+        do {
+            // Run the test with isolated container
+            let result = try await test()
+            
+            // Restore original container
+            TestContainer.shared.privateContainer = originalContainer
+            TestContainer.shared.privateContext = originalContext
+            
+            return result
+        } catch {
+            // Restore original container even on error
+            TestContainer.shared.privateContainer = originalContainer
+            TestContainer.shared.privateContext = originalContext
+            throw error
+        }
     }
     
     static func setUp() async {
-        // Reset test container for individual test setup
-        TestContainer.shared.reset()
+        // Reset test container for individual test setup (thread-safe)
+        await MainActor.run {
+            TestContainer.shared.reset()
+        }
+    }
+    
+    private static func createIsolatedContainer() async -> ModelContainer {
+        return await MainActor.run {
+            let schema = Schema([
+                Song.self,
+                Chart.self,
+                Note.self,
+                ServerSong.self,
+                ServerChart.self
+            ])
+            
+            let modelConfiguration = ModelConfiguration(
+                schema: schema,
+                isStoredInMemoryOnly: true,
+                allowsSave: true,
+                cloudKitDatabase: .none
+            )
+            
+            do {
+                return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            } catch {
+                fatalError("Could not create isolated ModelContainer: \(error)")
+            }
+        }
     }
 }
 
