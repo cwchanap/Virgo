@@ -240,10 +240,8 @@ final class ServerSong {
         self.hasPreview = hasPreview
         self.previewDownloaded = previewDownloaded
         
-        // Set back-reference for charts
-        for chart in charts {
-            chart.serverSong = self
-        }
+        // SwiftData automatically manages bidirectional relationships
+        // No need to manually set back-references as it causes duplication
     }
 
     // Legacy compatibility for single-file DTX
@@ -273,8 +271,7 @@ final class ServerSong {
             hasBGM: false,
             hasPreview: false
         )
-        // Set back-reference after initialization
-        chart.serverSong = self
+        // SwiftData automatically manages bidirectional relationships
     }
 
 }
