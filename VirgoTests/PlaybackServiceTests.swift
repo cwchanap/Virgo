@@ -74,8 +74,8 @@ struct PlaybackServiceTests {
     
     @Test("PlaybackService stopAll functionality")
     func testStopAll() async throws {
-        // Add ultra-massive delay to avoid concurrent test interference with PlaybackService
-        try await Task.sleep(nanoseconds: 2_800_000_000) // 2.8 full seconds - MAXIMUM ISOLATION
+        // Add controlled delay for better test isolation
+        try await Task.sleep(nanoseconds: 300_000_000) // 300ms
         
         try await TestSetup.withTestSetup {
             

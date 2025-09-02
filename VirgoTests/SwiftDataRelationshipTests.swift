@@ -10,7 +10,7 @@ import SwiftData
 import Foundation
 @testable import Virgo
 
-@Suite("SwiftData Relationship Tests")
+@Suite("SwiftData Relationship Tests", .serialized)
 @MainActor
 struct SwiftDataRelationshipTests {
     
@@ -48,8 +48,8 @@ struct SwiftDataRelationshipTests {
     
     @Test("Chart-Note relationship works correctly")
     func testChartNoteRelationship() async throws {
-        // Add ultra-massive delay to avoid concurrent test interference
-        try await Task.sleep(nanoseconds: 3_200_000_000) // 3.2 full seconds - MAXIMUM ISOLATION
+        // Add controlled delay with serialized execution for better isolation
+        try await Task.sleep(nanoseconds: 600_000_000) // 600ms - balanced with serialization
         
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -78,8 +78,8 @@ struct SwiftDataRelationshipTests {
     
     @Test("Cascade deletion works correctly")
     func testCascadeDeletion() async throws {
-        // Add ultra-massive delay to avoid concurrent test interference
-        try await Task.sleep(nanoseconds: 3_800_000_000) // 3.8 full seconds - MAXIMUM ISOLATION
+        // Add controlled delay with serialized execution for better isolation
+        try await Task.sleep(nanoseconds: 700_000_000) // 700ms - balanced with serialization
         
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -114,8 +114,8 @@ struct SwiftDataRelationshipTests {
             // Save to trigger cascade deletion
             try! context.save()
             
-            // Add ultra-massive delay for SwiftData to complete cascade operations in concurrent tests
-            try await Task.sleep(nanoseconds: 4_000_000_000) // 4 full seconds - MAXIMUM ISOLATION
+            // Add controlled delay for SwiftData cascade operations with serialized execution
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second - balanced with serialization
         
             // Chart and Note should be cascade deleted
             TestAssertions.assertDeleted(chart, in: context)
@@ -233,8 +233,8 @@ struct SwiftDataRelationshipTests {
     
     @Test("Chart cascade deletion works correctly")
     func testChartCascadeDeletion() async throws {
-        // Add ultra-massive delay to avoid concurrent test interference
-        try await Task.sleep(nanoseconds: 3_500_000_000) // 3.5 full seconds - MAXIMUM ISOLATION
+        // Add controlled delay with serialized execution for better isolation
+        try await Task.sleep(nanoseconds: 800_000_000) // 800ms - balanced with serialization
         
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -258,8 +258,8 @@ struct SwiftDataRelationshipTests {
             // Save to trigger cascade deletion
             try context.save()
             
-            // Add ultra-massive delay for SwiftData to complete cascade operations in concurrent tests
-            try await Task.sleep(nanoseconds: 4_000_000_000) // 4 full seconds - MAXIMUM ISOLATION
+            // Add controlled delay for SwiftData cascade operations with serialized execution
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second - balanced with serialization
             
             // Both song and chart should be cascade deleted due to deleteRule: .cascade
             TestAssertions.assertDeleted(song, in: context)

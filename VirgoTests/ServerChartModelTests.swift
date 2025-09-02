@@ -86,8 +86,8 @@ struct ServerChartModelTests {
     
     @Test("ServerChart handles various file sizes")
     func testServerChartFileSizes() async throws {
-        // Add ultra-massive delay to avoid concurrent test interference with ServerChart
-        try await Task.sleep(nanoseconds: 2_600_000_000) // 2.6 full seconds - MAXIMUM ISOLATION
+        // Add controlled delay for better test isolation 
+        try await Task.sleep(nanoseconds: 250_000_000) // 250ms
         
         try await TestSetup.withTestSetup {
             
