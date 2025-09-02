@@ -9,7 +9,7 @@ import Testing
 import SwiftUI
 @testable import Virgo
 
-@Suite("Metronome Engine Tests")
+@Suite("Metronome Engine Tests", .serialized)
 @MainActor
 struct MetronomeEngineTests {
 
@@ -106,8 +106,8 @@ struct MetronomeEngineTests {
 
     @Test("MetronomeEngine start/stop functionality")
     func testStartStop() async {
-        // Add ultra-massive delay to avoid concurrent test interference with MetronomeEngine
-        try? await Task.sleep(nanoseconds: 2_500_000_000) // 2.5 full seconds - MAXIMUM ISOLATION
+        // Add controlled delay with serialized execution for better isolation
+        try? await Task.sleep(nanoseconds: 400_000_000) // 400ms - balanced with serialization
         
         let engine = MetronomeEngine()
 
@@ -117,14 +117,14 @@ struct MetronomeEngineTests {
         #expect(engine.bpm == 120)
         #expect(engine.timeSignature == .fourFour)
 
-        // Wait for engine to be enabled
-        let enabledSuccessfully = await TestHelpers.waitFor(condition: { engine.isEnabled }, timeout: 40.0)
+        // Wait for engine to be enabled with balanced timeout
+        let enabledSuccessfully = await TestHelpers.waitFor(condition: { engine.isEnabled }, timeout: 20.0)
         #expect(enabledSuccessfully)
 
         engine.stop()
         
-        // Wait for engine to be disabled
-        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled }, timeout: 40.0)
+        // Wait for engine to be disabled with balanced timeout
+        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled }, timeout: 20.0)
         #expect(disabledSuccessfully)
     }
 }
