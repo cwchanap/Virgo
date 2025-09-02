@@ -87,6 +87,9 @@ struct ServerChartModelTests {
     @Test("ServerChart handles various file sizes")
     func testServerChartFileSizes() async throws {
         try await TestSetup.withTestSetup {
+            // Add delay to avoid concurrent test interference with ServerChart
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            
             let context = TestContainer.shared.context
             let smallChart = ServerChart(
                 difficulty: "easy", difficultyLabel: "BASIC", level: 20, filename: "small.dtx", size: 100
