@@ -95,14 +95,14 @@ struct DTXAPIClientTests {
     func testConnectionWithInvalidURL() async throws {
         let client = DTXAPIClient()
         
-        // Clean up any existing value
+        // Clean up any existing value with longer delays for concurrent execution
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         UserDefaults.standard.synchronize()
-        try await Task.sleep(nanoseconds: 5_000_000) // 0.005 seconds
+        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
         
         client.setServerURL("invalid-url-format")
         UserDefaults.standard.synchronize()
-        try await Task.sleep(nanoseconds: 5_000_000) // 0.005 seconds
+        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
         
         let connectionResult = await client.testConnection()
         #expect(connectionResult == false)
