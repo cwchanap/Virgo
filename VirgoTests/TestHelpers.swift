@@ -107,29 +107,30 @@ class TestContainer {
 @MainActor
 struct TestSetup {
     static func withTestSetup<T>(_ test: () async throws -> T) async throws -> T {
-        // Create an isolated test context for this specific test
-        let isolatedContainer = await createIsolatedContainer()
+        // Simple approach: just reset the shared container before and after each test
+        // This should work better with proper synchronization
         
-        // Store the previous container and temporarily replace it
-        let originalContainer = TestContainer.shared.privateContainer
-        let originalContext = TestContainer.shared.privateContext
+        await MainActor.run {
+            TestContainer.shared.reset()
+        }
         
-        TestContainer.shared.privateContainer = isolatedContainer
-        TestContainer.shared.privateContext = isolatedContainer.mainContext
+        // Add a small delay to ensure any pending SwiftData operations complete
+        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
         
         do {
-            // Run the test with isolated container
             let result = try await test()
             
-            // Restore original container
-            TestContainer.shared.privateContainer = originalContainer
-            TestContainer.shared.privateContext = originalContext
+            // Clean up after test
+            await MainActor.run {
+                TestContainer.shared.reset()
+            }
             
             return result
         } catch {
-            // Restore original container even on error
-            TestContainer.shared.privateContainer = originalContainer
-            TestContainer.shared.privateContext = originalContext
+            // Clean up even on error
+            await MainActor.run {
+                TestContainer.shared.reset()
+            }
             throw error
         }
     }
@@ -138,31 +139,6 @@ struct TestSetup {
         // Reset test container for individual test setup (thread-safe)
         await MainActor.run {
             TestContainer.shared.reset()
-        }
-    }
-    
-    private static func createIsolatedContainer() async -> ModelContainer {
-        return await MainActor.run {
-            let schema = Schema([
-                Song.self,
-                Chart.self,
-                Note.self,
-                ServerSong.self,
-                ServerChart.self
-            ])
-            
-            let modelConfiguration = ModelConfiguration(
-                schema: schema,
-                isStoredInMemoryOnly: true,
-                allowsSave: true,
-                cloudKitDatabase: .none
-            )
-            
-            do {
-                return try ModelContainer(for: schema, configurations: [modelConfiguration])
-            } catch {
-                fatalError("Could not create isolated ModelContainer: \(error)")
-            }
         }
     }
 }

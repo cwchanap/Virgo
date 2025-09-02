@@ -254,24 +254,28 @@ final class ServerSong {
         size: Int,
         isDownloaded: Bool = false
     ) {
-        let chart = ServerChart(
-            difficulty: "medium",
-            difficultyLabel: "STANDARD",
-            level: difficultyLevel,
-            filename: filename,
-            size: size
-        )
+        // Initialize without charts first
         self.init(
             songId: filename.replacingOccurrences(of: ".dtx", with: ""),
             title: title,
             artist: artist,
             bpm: bpm,
-            charts: [chart],
+            charts: [],
             isDownloaded: isDownloaded,
             hasBGM: false,
             hasPreview: false
         )
-        // SwiftData automatically manages bidirectional relationships
+        
+        // Create and add the chart after initialization
+        let chart = ServerChart(
+            difficulty: "medium",
+            difficultyLabel: "STANDARD",
+            level: difficultyLevel,
+            filename: filename,
+            size: size,
+            serverSong: self
+        )
+        self.charts.append(chart)
     }
 
 }
