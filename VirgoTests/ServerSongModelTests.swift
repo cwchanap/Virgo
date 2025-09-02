@@ -44,17 +44,14 @@ struct ServerSongModelTests {
     func testServerSongCustomInitialization() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            let charts = [
-                ServerChart(difficulty: "easy", difficultyLabel: "BASIC", level: 25, filename: "bas.dtx", size: 400),
-                ServerChart(difficulty: "hard", difficultyLabel: "EXTREME", level: 85, filename: "ext.dtx", size: 1200)
-            ]
             
+            // Create ServerSong without charts first
             let serverSong = ServerSong(
                 songId: "custom_song_002",
                 title: "Custom Song",
                 artist: "Custom Artist",
                 bpm: 160.0,
-                charts: charts,
+                charts: [],
                 isDownloaded: true,
                 hasBGM: true,
                 bgmDownloaded: true,
@@ -62,6 +59,26 @@ struct ServerSongModelTests {
                 previewDownloaded: false
             )
             context.insert(serverSong)
+            
+            // Create charts after ServerSong is established
+            let chart1 = ServerChart(
+                difficulty: "easy",
+                difficultyLabel: "BASIC",
+                level: 25,
+                filename: "bas.dtx",
+                size: 400,
+                serverSong: serverSong
+            )
+            let chart2 = ServerChart(
+                difficulty: "hard",
+                difficultyLabel: "EXTREME",
+                level: 85,
+                filename: "ext.dtx",
+                size: 1200,
+                serverSong: serverSong
+            )
+            
+            serverSong.charts.append(contentsOf: [chart1, chart2])
             
             #expect(serverSong.charts.count == 2)
             #expect(serverSong.isDownloaded == true)

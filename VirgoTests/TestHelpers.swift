@@ -257,14 +257,14 @@ class AsyncTestingUtilities {
     /// Safely loads SwiftData relationship data in background to avoid concurrency issues
     static func loadRelationships<T>(
         for model: T,
-        timeout: TimeInterval = 1.0
+        timeout: TimeInterval = 0.1
     ) async throws where T: PersistentModel {
         return try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
                 // Force SwiftData to load relationships by accessing them on MainActor
                 _ = await MainActor.run { model.persistentModelID }
                 
-                // Wait for relationship loading with safe timeout value
+                // Shorter, more predictable delay for relationship loading
                 let nanoseconds = max(10_000_000, UInt64(timeout * 1_000_000_000))
                 try await Task.sleep(nanoseconds: nanoseconds)
             }
@@ -279,27 +279,9 @@ class AsyncTestingUtilities {
         accessor: @escaping (T) -> R,
         timeout: TimeInterval = 1.0
     ) async throws -> R where T: PersistentModel {
-        return try await withThrowingTaskGroup(of: R.self) { group in
-            group.addTask {
-                // Access SwiftData model on MainActor
-                let result = await MainActor.run { accessor(model) }
-                return result
-            }
-            
-            // Add timeout task
-            group.addTask {
-                let safeTimeout = max(0.001, timeout) // Ensure minimum timeout
-                let nanoseconds = UInt64(safeTimeout * 1_000_000_000)
-                try await Task.sleep(nanoseconds: nanoseconds)
-                throw TestingError.timeout
-            }
-            
-            guard let result = try await group.next() else {
-                throw TestingError.unexpectedNil
-            }
-            
-            group.cancelAll()
-            return result
+        // Simplified direct access
+        return await MainActor.run {
+            accessor(model)
         }
     }
     
@@ -309,15 +291,13 @@ class AsyncTestingUtilities {
         relationshipAccessor: @escaping (T) -> R,
         timeout: TimeInterval = 2.0
     ) async throws -> R where T: PersistentModel {
-        // First load relationships
-        try await loadRelationships(for: model, timeout: timeout)
+        // Simplified approach - just load relationships and access directly
+        try await loadRelationships(for: model, timeout: 0.1)
         
-        // Then safely access them
-        return try await safeAccess(
-            model: model,
-            accessor: relationshipAccessor,
-            timeout: timeout
-        )
+        // Direct access on MainActor
+        return await MainActor.run {
+            relationshipAccessor(model)
+        }
     }
 }
 

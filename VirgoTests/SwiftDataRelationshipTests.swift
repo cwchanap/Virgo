@@ -26,40 +26,22 @@ struct SwiftDataRelationshipTests {
             song.charts = [chart1, chart2]
             try context.save()
             
-            // Load relationships safely
-            try await AsyncTestingUtilities.loadRelationships(for: song)
-            
-            // Test forward relationship with safe access
-            let chartsCount = try await AsyncTestingUtilities.safeRelationshipAccess(
-                model: song,
-                relationshipAccessor: { $0.charts.count }
-            )
-            #expect(chartsCount == 2)
-            
-            let charts = try await AsyncTestingUtilities.safeRelationshipAccess(
-                model: song,
-                relationshipAccessor: { $0.charts }
-            )
-            #expect(charts.contains(chart1))
-            #expect(charts.contains(chart2))
+            // Test forward relationship directly
+            #expect(song.charts.count == 2)
+            #expect(song.charts.contains(chart1))
+            #expect(song.charts.contains(chart2))
             
             // Test backward relationship
             TestAssertions.assertEqual(chart1.song, song)
             TestAssertions.assertEqual(chart2.song, song)
             
-            // Test convenience accessors
-            let difficulties = try await AsyncTestingUtilities.safeRelationshipAccess(
-                model: song,
-                relationshipAccessor: { $0.availableDifficulties }
-            )
+            // Test convenience accessors directly
+            let difficulties = song.availableDifficulties
             #expect(difficulties.count == 2)
             #expect(difficulties.contains(.easy))
             #expect(difficulties.contains(.medium))
         
-            let easiest = try await AsyncTestingUtilities.safeRelationshipAccess(
-                model: song,
-                relationshipAccessor: { $0.easiestChart }
-            )
+            let easiest = song.easiestChart
             TestAssertions.assertEqual(easiest, chart1)
         }
     }
@@ -76,38 +58,18 @@ struct SwiftDataRelationshipTests {
                 noteCount: 2
             )
             
-            // Load relationships safely
-            try await AsyncTestingUtilities.loadRelationships(for: chart)
-            
-            // Test forward relationship with safe access
-            let notesCount = try await AsyncTestingUtilities.safeRelationshipAccess(
-                model: chart,
-                relationshipAccessor: { $0.notes.count }
-            )
-            #expect(notesCount == 2)
-            
-            let notes = try await AsyncTestingUtilities.safeRelationshipAccess(
-                model: chart,
-                relationshipAccessor: { $0.notes }
-            )
+            // Test forward relationship directly
+            #expect(chart.notes.count == 2)
+            let notes = chart.notes
             
             // Test backward relationship
             for note in notes {
                 TestAssertions.assertEqual(note.chart, chart)
             }
             
-            // Test safe accessors
-            let safeNotesCount = try await AsyncTestingUtilities.safeAccess(
-                model: chart,
-                accessor: { $0.notesCount }
-            )
-            #expect(safeNotesCount == 2)
-        
-            let safeNotes = try await AsyncTestingUtilities.safeAccess(
-                model: chart,
-                accessor: { $0.safeNotes }
-            )
-            #expect(safeNotes.count == 2)
+            // Test safe accessors directly
+            #expect(chart.notesCount == 2)
+            #expect(chart.safeNotes.count == 2)
         }
     }
     
@@ -142,6 +104,12 @@ struct SwiftDataRelationshipTests {
             
             // Delete the song
             context.delete(song)
+            
+            // Save to trigger cascade deletion
+            try! context.save()
+            
+            // Add longer delay for SwiftData to complete cascade operations in concurrent tests
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         
             // Chart and Note should be cascade deleted
             TestAssertions.assertDeleted(chart, in: context)
@@ -268,16 +236,21 @@ struct SwiftDataRelationshipTests {
             
             try context.save()
             
-            // Load relationships before deletion
-            try await AsyncTestingUtilities.loadRelationships(for: song)
-            try await AsyncTestingUtilities.loadRelationships(for: chart)
+            // Allow SwiftData to settle before deletion test
+            try await Task.sleep(nanoseconds: 50_000_000) // 50ms
             
             // Verify initial state
             TestAssertions.assertNotDeleted(song, in: context)
             TestAssertions.assertNotDeleted(chart, in: context)
             
-            // Delete the song - this should cascade delete the chart immediately
+            // Delete the song - cascade deletion happens during save
             context.delete(song)
+            
+            // Save to trigger cascade deletion
+            try context.save()
+            
+            // Add longer delay for SwiftData to complete cascade operations in concurrent tests
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
             
             // Both song and chart should be cascade deleted due to deleteRule: .cascade
             TestAssertions.assertDeleted(song, in: context)

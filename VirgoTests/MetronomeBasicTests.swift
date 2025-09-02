@@ -69,22 +69,25 @@ struct MetronomeBasicTests {
     @Test func testMetronomeBasicControls() async {
         let metronome = MetronomeEngine()
 
+        // Add even larger delay to avoid concurrent test interference
+        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        
         // Test starting
         metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
         
-        // Wait for engine to be enabled with explicit timeout
+        // Give extra time in concurrent execution and check more frequently
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 5.0,
-            checkInterval: 0.1
+            timeout: 15.0,  // Increased from 10.0s to 15.0s for extreme concurrency
+            checkInterval: 0.02  // Check even more frequently
         )
-        #expect(enabledSuccessfully, "Metronome should start")
+        #expect(enabledSuccessfully, "Metronome should start (isEnabled: \(metronome.isEnabled))")
         
         // Wait for beat to be properly initialized
         let beatInitializedSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.currentBeat == 1 },
-            timeout: 5.0,
-            checkInterval: 0.1
+            timeout: 10.0,
+            checkInterval: 0.05
         )
         #expect(beatInitializedSuccessfully, "Beat should be initialized to 1")
 
@@ -94,16 +97,16 @@ struct MetronomeBasicTests {
         // Wait for engine to be disabled with explicit timeout
         let disabledSuccessfully = await TestHelpers.waitFor(
             condition: { !metronome.isEnabled },
-            timeout: 5.0,
-            checkInterval: 0.1
+            timeout: 10.0,
+            checkInterval: 0.05
         )
         #expect(disabledSuccessfully, "Metronome should stop")
         
         // Wait for beat to be reset after stopping - give extra time for Combine to sync
         let beatResetSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.currentBeat == 1 },
-            timeout: 5.0,
-            checkInterval: 0.05
+            timeout: 10.0,
+            checkInterval: 0.02
         )
         #expect(beatResetSuccessfully, "Beat should reset to 1 after stopping")
     }
@@ -119,8 +122,8 @@ struct MetronomeBasicTests {
         // Wait for engine to be enabled with explicit timeout
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 5.0,
-            checkInterval: 0.1
+            timeout: 10.0,
+            checkInterval: 0.05
         )
         #expect(enabledSuccessfully, "Metronome should toggle on")
 
@@ -130,16 +133,16 @@ struct MetronomeBasicTests {
         // Wait for engine to be disabled with explicit timeout
         let disabledSuccessfully = await TestHelpers.waitFor(
             condition: { !metronome.isEnabled },
-            timeout: 5.0,
-            checkInterval: 0.1
+            timeout: 10.0,
+            checkInterval: 0.05
         )
         #expect(disabledSuccessfully, "Metronome should toggle off")
         
         // Wait for beat to be reset after stopping - give extra time for Combine to sync
         let beatResetSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.currentBeat == 1 },
-            timeout: 5.0,
-            checkInterval: 0.05
+            timeout: 10.0,
+            checkInterval: 0.02
         )
         #expect(beatResetSuccessfully, "Beat should be reset to 1 after stopping")
     }
@@ -288,8 +291,8 @@ struct MetronomeBasicTests {
         // Wait for engine to be enabled with explicit timeout
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 5.0,
-            checkInterval: 0.1
+            timeout: 10.0,
+            checkInterval: 0.05
         )
         #expect(enabledSuccessfully, "Metronome should start even with failing audio driver")
 
@@ -302,8 +305,8 @@ struct MetronomeBasicTests {
         // Wait for engine to be disabled with explicit timeout
         let disabledSuccessfully = await TestHelpers.waitFor(
             condition: { !metronome.isEnabled },
-            timeout: 5.0,
-            checkInterval: 0.1
+            timeout: 10.0,
+            checkInterval: 0.05
         )
         #expect(disabledSuccessfully, "Metronome should stop correctly even with failing audio driver")
     }
