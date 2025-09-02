@@ -94,7 +94,7 @@ struct DTXAPIClientTests {
     @Test("DTXAPIClient test connection handles invalid URLs gracefully")
     func testConnectionWithInvalidURL() async throws {
         // Ultra-massive delay to avoid concurrent test interference in extreme concurrency
-        try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 full seconds
+        try await Task.sleep(nanoseconds: 3_000_000_000) // 3.0 full seconds - MAXIMUM ISOLATION
         
         let client = DTXAPIClient()
         
