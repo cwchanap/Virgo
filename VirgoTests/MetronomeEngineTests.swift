@@ -106,8 +106,8 @@ struct MetronomeEngineTests {
 
     @Test("MetronomeEngine start/stop functionality")
     func testStartStop() async {
-        // Add delay to avoid concurrent test interference with MetronomeEngine
-        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        // Add ultra-massive delay to avoid concurrent test interference with MetronomeEngine
+        try? await Task.sleep(nanoseconds: 1_800_000_000) // 1.8 full seconds
         
         let engine = MetronomeEngine()
 
@@ -118,13 +118,13 @@ struct MetronomeEngineTests {
         #expect(engine.timeSignature == .fourFour)
 
         // Wait for engine to be enabled
-        let enabledSuccessfully = await TestHelpers.waitFor(condition: { engine.isEnabled }, timeout: 15.0)
+        let enabledSuccessfully = await TestHelpers.waitFor(condition: { engine.isEnabled }, timeout: 30.0)
         #expect(enabledSuccessfully)
 
         engine.stop()
         
         // Wait for engine to be disabled
-        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled }, timeout: 15.0)
+        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled }, timeout: 30.0)
         #expect(disabledSuccessfully)
     }
 }

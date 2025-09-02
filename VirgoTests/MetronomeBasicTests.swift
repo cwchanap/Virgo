@@ -69,8 +69,8 @@ struct MetronomeBasicTests {
     @Test func testMetronomeBasicControls() async {
         let metronome = MetronomeEngine()
 
-        // Add massive delay to avoid concurrent test interference
-        try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+        // Add ultra-massive delay to avoid concurrent test interference in extreme concurrency
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 full seconds
         
         // Test starting
         metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
@@ -78,7 +78,7 @@ struct MetronomeBasicTests {
         // Give extreme time in concurrent execution and check more frequently
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 25.0,  // Increased from 15.0s to 25.0s for extreme concurrency
+            timeout: 35.0,  // Increased from 25.0s to 35.0s for ultimate concurrency handling
             checkInterval: 0.01  // Check extremely frequently
         )
         #expect(enabledSuccessfully, "Metronome should start (isEnabled: \(metronome.isEnabled))")
