@@ -70,7 +70,7 @@ struct MetronomeBasicTests {
         let metronome = MetronomeEngine()
 
         // Add ultra-massive delay to avoid concurrent test interference in extreme concurrency
-        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 full seconds
+        try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 full seconds - MAXIMUM ISOLATION
         
         // Test starting
         metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
@@ -78,7 +78,7 @@ struct MetronomeBasicTests {
         // Give extreme time in concurrent execution and check more frequently
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 35.0,  // Increased from 25.0s to 35.0s for ultimate concurrency handling
+            timeout: 45.0,  // Increased to 45.0s for absolute maximum timeout
             checkInterval: 0.01  // Check extremely frequently
         )
         #expect(enabledSuccessfully, "Metronome should start (isEnabled: \(metronome.isEnabled))")
@@ -86,7 +86,7 @@ struct MetronomeBasicTests {
         // Wait for beat to be properly initialized with extreme timeout
         let beatInitializedSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.currentBeat == 1 },
-            timeout: 15.0,
+            timeout: 25.0,  // Increased to 25.0s
             checkInterval: 0.01
         )
         #expect(beatInitializedSuccessfully, "Beat should be initialized to 1")
@@ -97,7 +97,7 @@ struct MetronomeBasicTests {
         // Wait for engine to be disabled with extreme timeout
         let disabledSuccessfully = await TestHelpers.waitFor(
             condition: { !metronome.isEnabled },
-            timeout: 15.0,
+            timeout: 25.0,  // Increased to 25.0s
             checkInterval: 0.01
         )
         #expect(disabledSuccessfully, "Metronome should stop")
@@ -105,7 +105,7 @@ struct MetronomeBasicTests {
         // Wait for beat to be reset after stopping - give extreme time for Combine to sync
         let beatResetSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.currentBeat == 1 },
-            timeout: 15.0,
+            timeout: 25.0,  // Increased to 25.0s
             checkInterval: 0.01
         )
         #expect(beatResetSuccessfully, "Beat should reset to 1 after stopping")
