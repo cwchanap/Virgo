@@ -75,6 +75,9 @@ struct PlaybackServiceTests {
     @Test("PlaybackService stopAll functionality")
     func testStopAll() async throws {
         try await TestSetup.withTestSetup {
+            // Add delay to avoid concurrent test interference with PlaybackService
+            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            
             let context = TestContainer.shared.context
             let service = PlaybackService()
             let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")

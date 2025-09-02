@@ -13,7 +13,10 @@ import Testing
 struct InputManagerBoundaryTests {
     
     @Test("InputManager handles invalid BPM values")
-    func testInvalidBPMConfiguration() {
+    func testInvalidBPMConfiguration() async {
+        // Add delay to avoid concurrent test interference with InputManager
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
         let inputManager = InputManager()
         let notes: [Note] = []
         
@@ -27,7 +30,10 @@ struct InputManagerBoundaryTests {
     }
     
     @Test("InputManager handles boundary BPM values correctly")
-    func testBoundaryBPMValues() {
+    func testBoundaryBPMValues() async {
+        // Add delay to avoid concurrent test interference with InputManager
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
         let inputManager = InputManager()
         let notes: [Note] = []
         
@@ -37,7 +43,10 @@ struct InputManagerBoundaryTests {
     }
     
     @Test("InputManager handles velocity clamping")
-    func testVelocityClamping() {
+    func testVelocityClamping() async {
+        // Add delay to avoid concurrent test interference with InputManager
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
         let inputManager = InputManager()
         
         // This test verifies that velocity values are properly clamped
@@ -50,7 +59,10 @@ struct InputManagerBoundaryTests {
     }
     
     @Test("InputManager handles empty and large note arrays")
-    func testNoteArrayBoundaries() {
+    func testNoteArrayBoundaries() async {
+        // Add delay to avoid concurrent test interference with InputManager
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
         let inputManager = InputManager()
         
         // Test empty notes array
@@ -70,7 +82,10 @@ struct InputManagerBoundaryTests {
     }
     
     @Test("InputManager handles mapping configuration edge cases")
-    func testMappingConfigurationEdgeCases() {
+    func testMappingConfigurationEdgeCases() async {
+        // Add delay to avoid concurrent test interference with InputManager
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        
         let inputManager = InputManager()
         
         // Test empty mappings
