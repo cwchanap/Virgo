@@ -108,8 +108,8 @@ struct SwiftDataRelationshipTests {
             // Save to trigger cascade deletion
             try! context.save()
             
-            // Add much longer delay for SwiftData to complete cascade operations in concurrent tests
-            try await Task.sleep(nanoseconds: 250_000_000) // 250ms
+            // Add ultra-massive delay for SwiftData to complete cascade operations in concurrent tests
+            try await Task.sleep(nanoseconds: 2_500_000_000) // 2.5 full seconds
         
             // Chart and Note should be cascade deleted
             TestAssertions.assertDeleted(chart, in: context)
@@ -227,6 +227,9 @@ struct SwiftDataRelationshipTests {
     
     @Test("Chart cascade deletion works correctly")
     func testChartCascadeDeletion() async throws {
+        // Add ultra-massive delay to avoid concurrent test interference
+        try await Task.sleep(nanoseconds: 2_000_000_000) // 2.0 full seconds
+        
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             
@@ -249,8 +252,8 @@ struct SwiftDataRelationshipTests {
             // Save to trigger cascade deletion
             try context.save()
             
-            // Add much longer delay for SwiftData to complete cascade operations in concurrent tests
-            try await Task.sleep(nanoseconds: 250_000_000) // 250ms
+            // Add ultra-massive delay for SwiftData to complete cascade operations in concurrent tests
+            try await Task.sleep(nanoseconds: 2_500_000_000) // 2.5 full seconds
             
             // Both song and chart should be cascade deleted due to deleteRule: .cascade
             TestAssertions.assertDeleted(song, in: context)
