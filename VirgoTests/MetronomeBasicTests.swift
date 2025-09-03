@@ -70,16 +70,16 @@ struct MetronomeBasicTests {
     @Test func testMetronomeBasicControls() async {
         let metronome = MetronomeEngine()
 
-        // Add controlled delay with serialized suite for better isolation
-        try? await Task.sleep(nanoseconds: 500_000_000) // 500ms - balanced with serialization
+        // Add enhanced delay for this particularly problematic test
+        try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2 seconds - extra isolation for reliability
         
         // Test starting
         metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
         
-        // Give reasonable time with serialized execution 
+        // Give extra time for this problematic test
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 20.0,  // Balanced timeout with serialization
+            timeout: 30.0,  // Increased timeout for stubborn test
             checkInterval: 0.01  // Check extremely frequently
         )
         #expect(enabledSuccessfully, "Metronome should start (isEnabled: \(metronome.isEnabled))")

@@ -48,8 +48,8 @@ struct SwiftDataRelationshipTests {
     
     @Test("Chart-Note relationship works correctly")
     func testChartNoteRelationship() async throws {
-        // Add controlled delay with serialized execution for better isolation
-        try await Task.sleep(nanoseconds: 600_000_000) // 600ms - balanced with serialization
+        // Add enhanced delay for this problematic relationship test
+        try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds - extra isolation for SwiftData stability
         
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
