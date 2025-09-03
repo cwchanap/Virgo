@@ -10,7 +10,7 @@ import Foundation
 import SwiftData
 @testable import Virgo
 
-@Suite("Server Chart Model Tests")
+@Suite("Server Chart Model Tests", .serialized)
 @MainActor
 struct ServerChartModelTests {
     

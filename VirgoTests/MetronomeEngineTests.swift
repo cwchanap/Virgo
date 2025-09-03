@@ -25,7 +25,10 @@ struct MetronomeEngineTests {
     }
 
     @Test("MetronomeEngine BPM updates correctly")
-    func testBPMUpdate() {
+    func testBPMUpdate() async {
+        // Add pre-test delay for stability
+        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+        
         let engine = MetronomeEngine()
 
         engine.updateBPM(140)

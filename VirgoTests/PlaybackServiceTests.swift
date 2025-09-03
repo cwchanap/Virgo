@@ -9,7 +9,7 @@ import Testing
 import SwiftData
 @testable import Virgo
 
-@Suite("PlaybackService Tests")
+@Suite("PlaybackService Tests", .serialized)
 @MainActor
 struct PlaybackServiceTests {
     
