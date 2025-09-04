@@ -84,16 +84,25 @@ class TestContainer {
     
     func reset() {
         containerCreationQueue.sync(flags: .barrier) {
-            // Clear all data from the in-memory context safely
+            // Enhanced cleanup with global state management
             guard let context = privateContext else { return }
             
             do {
-                try context.delete(model: Song.self)
-                try context.delete(model: Chart.self)
+                // Force completion of any pending changes
+                if context.hasChanges {
+                    try context.save()
+                }
+                
+                // Perform thorough model deletion with explicit ordering
                 try context.delete(model: Note.self)
-                try context.delete(model: ServerSong.self)
+                try context.delete(model: Chart.self) 
+                try context.delete(model: Song.self)
                 try context.delete(model: ServerChart.self)
+                try context.delete(model: ServerSong.self)
+                
+                // Force immediate persistence
                 try context.save()
+                
             } catch {
                 Logger.debug("Failed to reset test container: \(error)")
                 // If reset fails, create a new container entirely
@@ -106,16 +115,29 @@ class TestContainer {
 
 @MainActor
 struct TestSetup {
+    // Global test synchronization semaphore
+    private static let testSemaphore = DispatchSemaphore(value: 1)
+    
     static func withTestSetup<T>(_ test: () async throws -> T) async throws -> T {
-        // Simple approach: just reset the shared container before and after each test
-        // This should work better with proper synchronization
+        // Enhanced global test isolation with semaphore synchronization
+        
+        // Acquire global test lock for maximum isolation
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                testSemaphore.wait()
+            }
+        }
+        
+        defer {
+            testSemaphore.signal()
+        }
         
         await MainActor.run {
             TestContainer.shared.reset()
         }
         
-        // Add a small delay to ensure any pending SwiftData operations complete
-        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        // Enhanced delay to ensure complete state cleanup
+        try await Task.sleep(nanoseconds: 50_000_000) // 50ms for thorough isolation
         
         do {
             let result = try await test()

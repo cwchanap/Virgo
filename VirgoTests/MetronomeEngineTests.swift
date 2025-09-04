@@ -132,7 +132,7 @@ struct MetronomeEngineTests {
     }
 }
 
-@Suite("Metronome Audio Engine Tests")
+@Suite("Metronome Audio Engine Tests", .serialized)
 @MainActor
 struct MetronomeAudioEngineTests {
 
@@ -156,7 +156,7 @@ struct MetronomeAudioEngineTests {
     }
 }
 
-@Suite("Metronome Timing Engine Tests")
+@Suite("Metronome Timing Engine Tests", .serialized)
 @MainActor
 struct MetronomeTimingEngineTests {
 

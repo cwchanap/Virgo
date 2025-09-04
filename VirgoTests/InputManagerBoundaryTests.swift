@@ -8,7 +8,7 @@
 import Testing
 @testable import Virgo
 
-@Suite("InputManager Boundary Condition Tests")
+@Suite("InputManager Boundary Condition Tests", .serialized)
 @MainActor
 struct InputManagerBoundaryTests {
     
