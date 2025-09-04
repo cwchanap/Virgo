@@ -10,6 +10,7 @@ import Foundation
 import SwiftUI
 @testable import Virgo
 
+@Suite("Metronome Timing Tests", .serialized)
 @MainActor
 struct MetronomeTimingTests {
 

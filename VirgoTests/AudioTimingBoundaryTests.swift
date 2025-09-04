@@ -9,7 +9,7 @@ import Testing
 import AVFoundation
 @testable import Virgo
 
-@Suite("Audio Timing Boundary Condition Tests")
+@Suite("Audio Timing Boundary Condition Tests", .serialized)
 @MainActor
 struct AudioTimingBoundaryTests {
     
