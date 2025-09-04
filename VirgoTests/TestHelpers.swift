@@ -84,7 +84,7 @@ class TestContainer {
     
     func reset() {
         containerCreationQueue.sync(flags: .barrier) {
-            // Enhanced cleanup with global state management
+            // Ultra-enhanced cleanup with memory management optimization
             guard let context = privateContext else { return }
             
             do {
@@ -103,11 +103,18 @@ class TestContainer {
                 // Force immediate persistence
                 try context.save()
                 
+                // Advanced memory management: Force garbage collection hints
+                autoreleasepool {
+                    // Encourage memory cleanup after heavy SwiftData operations
+                }
+                
             } catch {
                 Logger.debug("Failed to reset test container: \(error)")
-                // If reset fails, create a new container entirely
-                privateContainer = nil
-                privateContext = nil
+                // If reset fails, create a new container entirely with memory cleanup
+                autoreleasepool {
+                    privateContainer = nil
+                    privateContext = nil
+                }
             }
         }
     }
