@@ -115,29 +115,15 @@ class TestContainer {
 
 @MainActor
 struct TestSetup {
-    // Global test synchronization semaphore
-    private static let testSemaphore = DispatchSemaphore(value: 1)
-    
     static func withTestSetup<T>(_ test: () async throws -> T) async throws -> T {
-        // Enhanced global test isolation with semaphore synchronization
-        
-        // Acquire global test lock for maximum isolation
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                testSemaphore.wait()
-            }
-        }
-        
-        defer {
-            testSemaphore.signal()
-        }
+        // Enhanced test isolation with thorough cleanup (without blocking semaphore)
         
         await MainActor.run {
             TestContainer.shared.reset()
         }
         
-        // Enhanced delay to ensure complete state cleanup
-        try await Task.sleep(nanoseconds: 50_000_000) // 50ms for thorough isolation
+        // Balanced delay to ensure complete state cleanup without timeouts
+        try await Task.sleep(nanoseconds: 25_000_000) // 25ms for thorough isolation
         
         do {
             let result = try await test()
