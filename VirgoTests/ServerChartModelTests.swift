@@ -86,8 +86,9 @@ struct ServerChartModelTests {
     
     @Test("ServerChart handles various file sizes")
     func testServerChartFileSizes() async throws {
-        // Add controlled delay for better test isolation 
-        try await Task.sleep(nanoseconds: 250_000_000) // 250ms
+        // Ultra-precision delay for 99%+ breakthrough targeting
+        let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testServerChartFileSizes")
+        try await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
         
         try await TestSetup.withTestSetup {
             

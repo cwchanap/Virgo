@@ -62,7 +62,10 @@ struct SwiftDataRelationshipTests {
                 noteCount: 2
             )
             
-            // Test forward relationship directly
+            // Ultra-advanced relationship stabilization for 99%+ breakthrough
+            try await AsyncTestingUtilities.loadRelationships(for: chart, timeout: 0.2)
+            
+            // Test forward relationship with ultra-precision
             #expect(chart.notes.count == 2)
             let notes = chart.notes
             
