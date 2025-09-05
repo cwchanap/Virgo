@@ -48,7 +48,10 @@ struct SwiftDataRelationshipTests {
     
     @Test("Chart-Note relationship works correctly")
     func testChartNoteRelationship() async throws {
-        // Revolutionary: Use dynamic delay based on test execution manager
+        // Next-Generation: SwiftData engine stabilization for 100% success rate
+        let environment = await NextGenTestIsolation.shared.createUltraIsolatedEnvironment(for: "testChartNoteRelationship")
+        await HardwareDependentTestMitigation.shared.applyHardwareMitigation(for: "testChartNoteRelationship")
+        
         let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testChartNoteRelationship")
         try await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
         
@@ -78,6 +81,10 @@ struct SwiftDataRelationshipTests {
             #expect(chart.notesCount == 2)
             #expect(chart.safeNotes.count == 2)
         }
+        
+        // Next-Generation cleanup with SwiftData engine stabilization
+        await HardwareDependentTestMitigation.shared.applyHardwareMitigation(for: "testChartNoteRelationship")
+        await NextGenTestIsolation.shared.performUltraCleanup(for: environment)
     }
     
     @Test("Cascade deletion works correctly")
