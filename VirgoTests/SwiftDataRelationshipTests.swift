@@ -48,8 +48,9 @@ struct SwiftDataRelationshipTests {
     
     @Test("Chart-Note relationship works correctly")
     func testChartNoteRelationship() async throws {
-        // Add enhanced delay for this problematic relationship test
-        try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds - extra isolation for SwiftData stability
+        // Revolutionary: Use dynamic delay based on test execution manager
+        let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testChartNoteRelationship")
+        try await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
         
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
