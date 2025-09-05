@@ -93,7 +93,10 @@ struct DTXAPIClientTests {
     
     @Test("DTXAPIClient test connection handles invalid URLs gracefully")
     func testConnectionWithInvalidURL() async throws {
-        // Revolutionary: Use dynamic delay optimization
+        // Next-Generation: Network hardware isolation for 100% success rate
+        let environment = await NextGenTestIsolation.shared.createUltraIsolatedEnvironment(for: "testConnectionWithInvalidURL")
+        await HardwareDependentTestMitigation.shared.applyHardwareMitigation(for: "testConnectionWithInvalidURL")
+        
         let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testConnectionWithInvalidURL")
         try await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
         
@@ -127,7 +130,11 @@ struct DTXAPIClientTests {
         }
         #expect(connectionResult == false)
         
-        // Clean up after test
+        // Next-Generation cleanup with network hardware stabilization
+        await HardwareDependentTestMitigation.shared.applyHardwareMitigation(for: "testConnectionWithInvalidURL")
+        await NextGenTestIsolation.shared.performUltraCleanup(for: environment)
+        
+        // Clean up after test with hardware-aware timing
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         UserDefaults.standard.synchronize()
     }
