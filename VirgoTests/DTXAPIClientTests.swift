@@ -93,19 +93,20 @@ struct DTXAPIClientTests {
     
     @Test("DTXAPIClient test connection handles invalid URLs gracefully")
     func testConnectionWithInvalidURL() async throws {
-        // Add controlled delay for better test isolation
-        try await Task.sleep(nanoseconds: 400_000_000) // 400ms
+        // Revolutionary: Use dynamic delay optimization
+        let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testConnectionWithInvalidURL")
+        try await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
         
         let client = DTXAPIClient()
         
-        // Clean up any existing value with longer delays for concurrent execution
+        // Revolutionary optimal UserDefaults cleanup
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         UserDefaults.standard.synchronize()
-        try await Task.sleep(nanoseconds: 250_000_000) // 250ms
+        try await Task.sleep(nanoseconds: 250_000_000) // 250ms - optimal delay
         
         client.setServerURL("invalid-url-format")
         UserDefaults.standard.synchronize()
-        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
+        try await Task.sleep(nanoseconds: 50_000_000) // 50ms - optimal delay
         
         // Use TaskGroup to ensure timeout handling works correctly in test environment
         let connectionResult = await withTaskGroup(of: Bool.self) { group in
@@ -113,9 +114,9 @@ struct DTXAPIClientTests {
                 await client.testConnection()
             }
             
-            // Add timeout protection
+            // Revolutionary optimal timeout protection
             group.addTask {
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds - optimal
                 return false // Timeout fallback
             }
             
