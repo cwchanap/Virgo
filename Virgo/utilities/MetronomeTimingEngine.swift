@@ -12,7 +12,6 @@ import os.log
 // MARK: - Timing Engine
 @MainActor
 class MetronomeTimingEngine: ObservableObject {
-    private let logger = Logger()
     private let isTestEnvironment: Bool
 
     // Timing state
@@ -124,8 +123,8 @@ class MetronomeTimingEngine: ObservableObject {
         currentBeat = 1
         
         if isTestEnvironment {
-            // In test environment, simulate immediate start
-            simulateTestBeat()
+            // In test environment, simulate start with provided timing
+            simulateTestBeat(startTime: startTime)
         } else {
             startTimerAtTime(startTime: startTime)
         }
@@ -315,7 +314,7 @@ class MetronomeTimingEngine: ObservableObject {
     
     // MARK: - Test Environment Simulation
     
-    private func simulateTestBeat() {
+    private func simulateTestBeat(startTime: TimeInterval = 0) {
         // In test environment, immediately fire a beat callback to allow tests to verify functionality
         Logger.audioPlayback("Test environment - simulating beat callback")
         let isAccented = (currentBeat == 1)
