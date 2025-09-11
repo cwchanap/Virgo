@@ -69,73 +69,29 @@ struct MetronomeBasicTests {
 
     @Test
     func testMetronomeBasicControls() async {
-        // Ultimate Infrastructure Transcendence: Root cause resolution for 0.000 second failures
-        await UltimateInfrastructureTranscendence.shared.transcendInfrastructureBarriers(for: "testMetronomeBasicControls")
-        
-        // Precision-Calibrated: Adaptive infrastructure for True 100% success rate
-        let environment = await AdaptiveTestIsolation.shared.createAdaptiveEnvironment(for: "testMetronomeBasicControls")
-        await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testMetronomeBasicControls")
-        
-        let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testMetronomeBasicControls")
-        try? await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
-        
-        // Advanced memory management for problematic test
         let metronome = MetronomeEngine()
         
         // Test starting
         metronome.start(bpm: Self.testBPM, timeSignature: .fourFour)
         
-        // Revolutionary optimal timeout for peak reliability
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 30.0,  // Optimal timeout for peak performance
-            checkInterval: 0.01  // Optimal checking frequency
+            timeout: 2.0,
+            checkInterval: 0.1
         )
-        #expect(enabledSuccessfully, "Metronome should start (isEnabled: \(metronome.isEnabled))")
-        
-        // Revolutionary optimal beat timeout
-        let beatInitializedSuccessfully = await TestHelpers.waitFor(
-            condition: { metronome.currentBeat == 1 },
-            timeout: 15.0,  // Optimal timeout
-            checkInterval: 0.01  // Optimal checking
-        )
-        #expect(beatInitializedSuccessfully, "Beat should be initialized to 1")
+        #expect(enabledSuccessfully, "Metronome should start")
+        #expect(metronome.currentBeat == 1, "Beat should be initialized to 1")
 
         // Test stopping
         metronome.stop()
         
-        // Revolutionary optimal disable timeout
         let disabledSuccessfully = await TestHelpers.waitFor(
             condition: { !metronome.isEnabled },
-            timeout: 15.0,  // Optimal timeout
-            checkInterval: 0.01  // Optimal checking
+            timeout: 2.0,
+            checkInterval: 0.1
         )
         #expect(disabledSuccessfully, "Metronome should stop")
-        
-        // Revolutionary optimal reset timeout
-        let beatResetSuccessfully = await TestHelpers.waitFor(
-            condition: { metronome.currentBeat == 1 },
-            timeout: 15.0,  // Optimal timeout
-            checkInterval: 0.01  // Optimal checking
-        )
-        #expect(beatResetSuccessfully, "Beat should reset to 1 after stopping")
-        
-        // Next-Generation cleanup with hardware stabilization for 100% success rate
-        metronome.stop() // Ensure fully stopped
-        
-        // Precision timing stabilization
-        await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testMetronomeBasicControls")
-        
-        // Ultra-precision state cleanup with hardware synchronization
-        try? await Task.sleep(nanoseconds: 75_000_000) // 75ms hardware-aware cleanup
-        
-        autoreleasepool {
-            // Next-Generation memory pressure relief
-        }
-        
-        // Precision-calibrated final stabilization with adaptive cleanup
-        await AdaptiveTestIsolation.shared.performAdaptiveCleanup(for: environment)
-        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms post-cleanup stabilization
+        #expect(metronome.currentBeat == 1, "Beat should reset to 1 after stopping")
     }
 
     @Test func testMetronomeToggleFunction() async {
@@ -149,7 +105,7 @@ struct MetronomeBasicTests {
         // Wait for engine to be enabled with explicit timeout
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 10.0,
+            timeout: 2.0,
             checkInterval: 0.05
         )
         #expect(enabledSuccessfully, "Metronome should toggle on")
@@ -160,16 +116,16 @@ struct MetronomeBasicTests {
         // Wait for engine to be disabled with extreme timeout
         let disabledSuccessfully = await TestHelpers.waitFor(
             condition: { !metronome.isEnabled },
-            timeout: 15.0,
-            checkInterval: 0.01
+            timeout: 2.0,
+            checkInterval: 0.1
         )
         #expect(disabledSuccessfully, "Metronome should toggle off")
         
         // Wait for beat to be reset after stopping - give extreme time for Combine to sync
         let beatResetSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.currentBeat == 1 },
-            timeout: 15.0,
-            checkInterval: 0.01
+            timeout: 2.0,
+            checkInterval: 0.1
         )
         #expect(beatResetSuccessfully, "Beat should be reset to 1 after stopping")
     }
@@ -318,7 +274,7 @@ struct MetronomeBasicTests {
         // Wait for engine to be enabled with explicit timeout
         let enabledSuccessfully = await TestHelpers.waitFor(
             condition: { metronome.isEnabled },
-            timeout: 10.0,
+            timeout: 2.0,
             checkInterval: 0.05
         )
         #expect(enabledSuccessfully, "Metronome should start even with failing audio driver")
@@ -332,8 +288,8 @@ struct MetronomeBasicTests {
         // Wait for engine to be disabled with extreme timeout
         let disabledSuccessfully = await TestHelpers.waitFor(
             condition: { !metronome.isEnabled },
-            timeout: 15.0,
-            checkInterval: 0.01
+            timeout: 2.0,
+            checkInterval: 0.1
         )
         #expect(disabledSuccessfully, "Metronome should stop correctly even with failing audio driver")
     }

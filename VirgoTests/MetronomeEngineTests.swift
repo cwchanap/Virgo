@@ -121,13 +121,13 @@ struct MetronomeEngineTests {
         #expect(engine.timeSignature == .fourFour)
 
         // Wait for engine to be enabled with balanced timeout
-        let enabledSuccessfully = await TestHelpers.waitFor(condition: { engine.isEnabled }, timeout: 20.0)
+        let enabledSuccessfully = await TestHelpers.waitFor(condition: { engine.isEnabled }, timeout: 2.0)
         #expect(enabledSuccessfully)
 
         engine.stop()
         
         // Wait for engine to be disabled with balanced timeout
-        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled }, timeout: 20.0)
+        let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled }, timeout: 2.0)
         #expect(disabledSuccessfully)
     }
 }
