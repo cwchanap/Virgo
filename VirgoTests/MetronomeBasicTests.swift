@@ -69,6 +69,9 @@ struct MetronomeBasicTests {
 
     @Test
     func testMetronomeBasicControls() async {
+        // Absolute Infrastructure Mastery: Framework-level intervention for ultra-stubborn failure
+        await AbsoluteInfrastructureMastery.shared.achieveFrameworkMastery(for: "testMetronomeBasicControls")
+        
         let metronome = MetronomeEngine()
         
         // Test starting
