@@ -87,11 +87,6 @@ struct ServerChartModelTests {
     @Test("ServerChart handles various file sizes")
     func testServerChartFileSizes() async throws {
         // Precision-Calibrated: Adaptive model persistence optimization for True 100% success rate
-        let environment = await AdaptiveTestIsolation.shared.createAdaptiveEnvironment(for: "testServerChartFileSizes")
-        await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testServerChartFileSizes")
-        
-        let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testServerChartFileSizes")
-        try await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
         
         try await TestSetup.withTestSetup {
             
@@ -113,10 +108,6 @@ struct ServerChartModelTests {
             #expect(mediumChart.size == 1000)
             #expect(largeChart.size == 10000)
         }
-        
-        // Precision-calibrated cleanup with adaptive model persistence management
-        await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testServerChartFileSizes")
-        await AdaptiveTestIsolation.shared.performAdaptiveCleanup(for: environment)
     }
     
     @Test("ServerChart filename validation")
