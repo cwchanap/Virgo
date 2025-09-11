@@ -337,45 +337,45 @@ class AbsoluteInfrastructureMastery {
     // Framework-Level Mastery - Root Infrastructure Preparation
     
     private func masterPlaybackServiceFramework() async {
-        // Pre-initialize PlaybackService framework dependencies
+        // Pre-initialize PlaybackService framework dependencies with optimized timing
         await establishPlaybackServiceFoundation()
         await synchronizeServiceStateFramework()
-        try? await Task.sleep(nanoseconds: 500_000_000) // 500ms framework sync
+        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms optimized framework sync
     }
     
     private func masterMetronomeFramework() async {
-        // Pre-initialize MetronomeEngine framework dependencies
+        // Pre-initialize MetronomeEngine framework dependencies with optimized timing
         await establishMetronomeTimingFoundation()
         await synchronizeAudioFramework()
-        try? await Task.sleep(nanoseconds: 600_000_000) // 600ms framework sync
+        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms optimized framework sync
     }
     
     private func masterSwiftDataLoaderFramework() async {
-        // Pre-initialize SwiftData relationship loader framework
+        // Pre-initialize SwiftData relationship loader framework with optimized timing
         await establishSwiftDataLoaderFoundation()
         await synchronizeContextFramework()
-        try? await Task.sleep(nanoseconds: 700_000_000) // 700ms framework sync
+        try? await Task.sleep(nanoseconds: 250_000_000) // 250ms optimized framework sync
     }
     
     private func masterNetworkConcurrencyFramework() async {
-        // Pre-initialize Network TaskGroup framework dependencies
+        // Pre-initialize Network TaskGroup framework dependencies with optimized timing
         await establishNetworkConcurrencyFoundation()
         await synchronizeTaskGroupFramework()
-        try? await Task.sleep(nanoseconds: 800_000_000) // 800ms framework sync
+        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms optimized framework sync
     }
     
     private func masterSwiftDataRelationshipFramework() async {
-        // Pre-initialize SwiftData relationship framework
+        // Pre-initialize SwiftData relationship framework with optimized timing
         await establishRelationshipFoundation()
         await synchronizeModelFramework()
-        try? await Task.sleep(nanoseconds: 750_000_000) // 750ms framework sync
+        try? await Task.sleep(nanoseconds: 250_000_000) // 250ms optimized framework sync
     }
     
     private func masterServerModelFramework() async {
-        // Pre-initialize ServerModel persistence framework
+        // Pre-initialize ServerModel persistence framework with optimized timing
         await establishServerModelFoundation()
         await synchronizePersistenceFramework()
-        try? await Task.sleep(nanoseconds: 550_000_000) // 550ms framework sync
+        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms optimized framework sync
     }
     
     // Framework Foundation Methods
@@ -384,28 +384,28 @@ class AbsoluteInfrastructureMastery {
         autoreleasepool {
             // Force PlaybackService framework initialization
         }
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms optimized
     }
     
     private func synchronizeServiceStateFramework() async {
         autoreleasepool {
             // Synchronize service state framework
         }
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        try? await Task.sleep(nanoseconds: 75_000_000) // 75ms optimized
     }
     
     private func establishMetronomeTimingFoundation() async {
         autoreleasepool {
             // Force MetronomeEngine timing framework initialization
         }
-        try? await Task.sleep(nanoseconds: 120_000_000)
+        try? await Task.sleep(nanoseconds: 60_000_000) // 60ms optimized
     }
     
     private func synchronizeAudioFramework() async {
         autoreleasepool {
             // Synchronize audio framework
         }
-        try? await Task.sleep(nanoseconds: 180_000_000)
+        try? await Task.sleep(nanoseconds: 80_000_000) // 80ms optimized
     }
     
     private func establishSwiftDataLoaderFoundation() async {
@@ -413,14 +413,14 @@ class AbsoluteInfrastructureMastery {
             // Force SwiftData loader framework initialization
             _ = TestContainer.shared.context
         }
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms optimized
     }
     
     private func synchronizeContextFramework() async {
         autoreleasepool {
             // Synchronize SwiftData context framework
         }
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        try? await Task.sleep(nanoseconds: 125_000_000) // 125ms optimized
     }
     
     private func establishNetworkConcurrencyFoundation() async {
@@ -428,42 +428,42 @@ class AbsoluteInfrastructureMastery {
             // Force network concurrency framework initialization
             _ = URLSession.shared.configuration
         }
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        try? await Task.sleep(nanoseconds: 75_000_000) // 75ms optimized
     }
     
     private func synchronizeTaskGroupFramework() async {
         autoreleasepool {
             // Synchronize TaskGroup framework
         }
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms optimized
     }
     
     private func establishRelationshipFoundation() async {
         autoreleasepool {
             // Force SwiftData relationship framework initialization
         }
-        try? await Task.sleep(nanoseconds: 180_000_000)
+        try? await Task.sleep(nanoseconds: 90_000_000) // 90ms optimized
     }
     
     private func synchronizeModelFramework() async {
         autoreleasepool {
             // Synchronize model framework
         }
-        try? await Task.sleep(nanoseconds: 220_000_000)
+        try? await Task.sleep(nanoseconds: 110_000_000) // 110ms optimized
     }
     
     private func establishServerModelFoundation() async {
         autoreleasepool {
             // Force ServerModel framework initialization
         }
-        try? await Task.sleep(nanoseconds: 120_000_000)
+        try? await Task.sleep(nanoseconds: 60_000_000) // 60ms optimized
     }
     
     private func synchronizePersistenceFramework() async {
         autoreleasepool {
             // Synchronize persistence framework
         }
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        try? await Task.sleep(nanoseconds: 75_000_000) // 75ms optimized
     }
 }
 
