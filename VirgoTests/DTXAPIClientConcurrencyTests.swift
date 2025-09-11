@@ -21,7 +21,7 @@ struct DTXAPIClientConcurrencyTests {
         let environment = await AdaptiveTestIsolation.shared.createAdaptiveEnvironment(for: "testConnectionWithInvalidURL")
         await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testConnectionWithInvalidURL")
         
-        let optimalDelay = TestExecutionManager.shared.getOptimalDelay(for: "testConnectionWithInvalidURL")
+        let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testConnectionWithInvalidURL")
         try await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
         
         let client = DTXAPIClient()
