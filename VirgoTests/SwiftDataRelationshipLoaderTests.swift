@@ -44,9 +44,6 @@ struct SwiftDataRelationshipLoaderTests {
 
     @Test("BaseSwiftDataRelationshipLoader initializes correctly")
     func testBaseLoaderInitialization() async throws {
-        // Absolute Infrastructure Mastery: Framework-level intervention for ultra-stubborn failure
-        await AbsoluteInfrastructureMastery.shared.achieveFrameworkMastery(for: "testBaseLoaderInitialization")
-        
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let mockSong = TestModelFactory.createSong(in: context)
@@ -57,12 +54,18 @@ struct SwiftDataRelationshipLoaderTests {
                 availableDifficulties: []
             )
 
+            // Use autoLoad: false to prevent race condition
             let loader = BaseSwiftDataRelationshipLoader(
                 model: mockSong,
-                defaultData: defaultData
-            ) { _ in
-                return defaultData
-            }
+                defaultData: defaultData,
+                dataLoader: { _ in
+                    return defaultData
+                },
+                autoLoad: false
+            )
+
+            // Now synchronously load the data
+            await loader.loadSync()
 
             #expect(loader.relationshipData.chartCount == 0)
             #expect(loader.isLoading == false)

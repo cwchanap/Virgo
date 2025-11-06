@@ -58,9 +58,6 @@ struct ServerChartModelTests {
     
     @Test("ServerChart handles various difficulty levels")
     func testServerChartDifficultyLevels() async throws {
-        // Absolute Infrastructure Mastery: Framework-level intervention for ultra-stubborn failure
-        await AbsoluteInfrastructureMastery.shared.achieveFrameworkMastery(for: "testServerChartDifficultyLevels")
-        
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let basicChart = ServerChart(
