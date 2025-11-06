@@ -293,6 +293,38 @@ struct CombineTestUtilities {
                 }
         }
     }
+
+    /// Helper to call an action and wait for a specific state change
+    @MainActor
+    static func performAndWait<T>(
+        action: () -> Void,
+        publisher: Published<T>.Publisher,
+        condition: @escaping (T) -> Bool,
+        timeout: TimeInterval = 1.0
+    ) async -> Bool {
+        action()
+        return await waitForPublished(publisher: publisher, condition: condition, timeout: timeout)
+    }
+
+    /// Wait for an observable object's loading state to complete
+    @MainActor
+    static func waitForLoading<T: ObservableObject>(
+        object: T,
+        isLoadingKeyPath: KeyPath<T, Bool>,
+        timeout: TimeInterval = 1.0
+    ) async -> Bool {
+        // If already not loading, return immediately
+        if !object[keyPath: isLoadingKeyPath] {
+            return true
+        }
+
+        // Wait for loading to complete
+        return await TestHelpers.waitFor(
+            condition: { !object[keyPath: isLoadingKeyPath] },
+            timeout: timeout,
+            checkInterval: 0.01
+        )
+    }
 }
 
 // MARK: - Async Testing Utilities

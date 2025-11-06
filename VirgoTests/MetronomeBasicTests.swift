@@ -71,16 +71,28 @@ struct MetronomeBasicTests {
     func testMetronomeBasicControls() async {
         let metronome = MetronomeEngine()
 
-        // Test starting - use sync version for reliable state verification
-        await metronome.startSync(bpm: Self.testBPM, timeSignature: .fourFour)
+        // Test starting - use Combine utility to wait for state change
+        let startSuccess = await CombineTestUtilities.performAndWait(
+            action: { metronome.start(bpm: Self.testBPM, timeSignature: .fourFour) },
+            publisher: metronome.$isEnabled,
+            condition: { $0 == true },
+            timeout: 0.5
+        )
 
-        #expect(metronome.isEnabled, "Metronome should be enabled after startSync")
+        #expect(startSuccess, "Metronome should start successfully")
+        #expect(metronome.isEnabled, "Metronome should be enabled")
         #expect(metronome.currentBeat == 1, "Beat should be initialized to 1")
 
-        // Test stopping - use sync version for reliable state verification
-        await metronome.stopSync()
+        // Test stopping - use Combine utility to wait for state change
+        let stopSuccess = await CombineTestUtilities.performAndWait(
+            action: { metronome.stop() },
+            publisher: metronome.$isEnabled,
+            condition: { $0 == false },
+            timeout: 0.5
+        )
 
-        #expect(!metronome.isEnabled, "Metronome should be disabled after stopSync")
+        #expect(stopSuccess, "Metronome should stop successfully")
+        #expect(!metronome.isEnabled, "Metronome should be disabled")
         #expect(metronome.currentBeat == 1, "Beat should reset to 1 after stopping")
     }
 
@@ -89,12 +101,24 @@ struct MetronomeBasicTests {
 
         #expect(metronome.isEnabled == false)
 
-        // Toggle on - use sync version
-        await metronome.toggleSync(bpm: Self.testBPM, timeSignature: .fourFour)
+        // Toggle on - use Combine utility
+        let toggleOnSuccess = await CombineTestUtilities.performAndWait(
+            action: { metronome.toggle(bpm: Self.testBPM, timeSignature: .fourFour) },
+            publisher: metronome.$isEnabled,
+            condition: { $0 == true },
+            timeout: 0.5
+        )
+        #expect(toggleOnSuccess, "Toggle on should succeed")
         #expect(metronome.isEnabled, "Metronome should be enabled after first toggle")
 
-        // Toggle off - use sync version
-        await metronome.toggleSync(bpm: Self.testBPM, timeSignature: .fourFour)
+        // Toggle off - use Combine utility
+        let toggleOffSuccess = await CombineTestUtilities.performAndWait(
+            action: { metronome.toggle(bpm: Self.testBPM, timeSignature: .fourFour) },
+            publisher: metronome.$isEnabled,
+            condition: { $0 == false },
+            timeout: 0.5
+        )
+        #expect(toggleOffSuccess, "Toggle off should succeed")
         #expect(!metronome.isEnabled, "Metronome should be disabled after second toggle")
         #expect(metronome.currentBeat == 1, "Beat should be reset to 1 after stopping")
     }
@@ -238,16 +262,28 @@ struct MetronomeBasicTests {
         metronome.configure(bpm: Self.testBPM, timeSignature: .fourFour)
 
         // Test that metronome continues to function even if audio fails
-        await metronome.startSync(bpm: Self.testBPM, timeSignature: .fourFour)
+        let startSuccess = await CombineTestUtilities.performAndWait(
+            action: { metronome.start(bpm: Self.testBPM, timeSignature: .fourFour) },
+            publisher: metronome.$isEnabled,
+            condition: { $0 == true },
+            timeout: 0.5
+        )
 
+        #expect(startSuccess, "Start should succeed even with failing audio driver")
         #expect(metronome.isEnabled, "Metronome should start even with failing audio driver")
 
         // Test basic functionality continues without crashing
         let initialBeat = metronome.currentBeat
         #expect(initialBeat >= 1, "Beat counter should work without audio")
 
-        await metronome.stopSync()
+        let stopSuccess = await CombineTestUtilities.performAndWait(
+            action: { metronome.stop() },
+            publisher: metronome.$isEnabled,
+            condition: { $0 == false },
+            timeout: 0.5
+        )
 
+        #expect(stopSuccess, "Stop should succeed even with failing audio driver")
         #expect(!metronome.isEnabled, "Metronome should stop correctly even with failing audio driver")
     }
 
