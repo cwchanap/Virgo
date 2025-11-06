@@ -74,46 +74,24 @@ struct PlaybackServiceTests {
     
     @Test("PlaybackService stopAll functionality")
     func testStopAll() async throws {
-        // Absolute Infrastructure Mastery: Framework-level intervention for ultra-stubborn failure
-        await AbsoluteInfrastructureMastery.shared.achieveFrameworkMastery(for: "testStopAll")
-        
-        // Ultimate Infrastructure Transcendence: Root cause resolution for 0.000 second failures
-        await UltimateInfrastructureTranscendence.shared.transcendInfrastructureBarriers(for: "testStopAll")
-        
-        // Precision-Calibrated: Adaptive system resource optimization for True 100% success rate
-        let environment = await AdaptiveTestIsolation.shared.createAdaptiveEnvironment(for: "testStopAll")
-        await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testStopAll")
-        
-        try await Task.sleep(nanoseconds: 300_000_000) // 300ms - optimal delay
-        
         try await TestSetup.withTestSetup {
-            
             let context = TestContainer.shared.context
             let service = PlaybackService()
             let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120.0, duration: "3:00", genre: "Rock")
             context.insert(song)
-            
-            // Ultra-advanced playback synchronization for 99%+ breakthrough
+
+            // Start playback
             service.togglePlayback(for: song)
-            
-            // Ultra-precision state verification with micro-delays
-            try await Task.sleep(nanoseconds: 10_000_000) // 10ms stabilization
             #expect(service.isPlaying(song))
             #expect(song.isPlaying)
-            
-            // Ultra-advanced stop operation with state synchronization
-            service.stopAll()
-            
-            // Ultra-precision verification with stabilization delay
-            try await Task.sleep(nanoseconds: 20_000_000) // 20ms state propagation
+
+            // Use synchronous stopAll for reliable state verification
+            await service.stopAllSync()
+
             #expect(service.currentlyPlaying == nil)
             #expect(!service.isPlaying(song))
             #expect(!song.isPlaying) // stopAll() should update song.isPlaying
         }
-        
-        // Precision-calibrated cleanup with adaptive system resource management
-        await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testStopAll")
-        await AdaptiveTestIsolation.shared.performAdaptiveCleanup(for: environment)
     }
     
     @Test("PlaybackService handles multiple songs correctly")

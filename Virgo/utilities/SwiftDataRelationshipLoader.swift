@@ -31,20 +31,25 @@ class BaseSwiftDataRelationshipLoader<Model: PersistentModel, Data>: ObservableO
     let model: Model
     private let dataLoader: (Model) async -> Data
     private let defaultData: Data
+    private let autoLoad: Bool
 
     private var loadingTask: Task<Void, Never>?
 
     init(
         model: Model,
         defaultData: Data,
-        dataLoader: @escaping (Model) async -> Data
+        dataLoader: @escaping (Model) async -> Data,
+        autoLoad: Bool = true
     ) {
         self.model = model
         self.defaultData = defaultData
         self.relationshipData = defaultData
         self.dataLoader = dataLoader
+        self.autoLoad = autoLoad
 
-        startObserving()
+        if autoLoad {
+            startObserving()
+        }
     }
 
     deinit {
@@ -94,6 +99,16 @@ class BaseSwiftDataRelationshipLoader<Model: PersistentModel, Data>: ObservableO
             await loadRelationshipData()
         }
     }
+
+    #if DEBUG
+    /// Synchronous load for testing - guarantees data is loaded before returning
+    func loadSync() async {
+        isLoading = true
+        let newData = await dataLoader(model)
+        relationshipData = newData
+        isLoading = false
+    }
+    #endif
 }
 
 // MARK: - Song Relationship Loader

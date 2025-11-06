@@ -14,54 +14,34 @@ struct DTXAPIClientConcurrencyTests {
     
     @Test("DTXAPIClient test connection handles invalid URLs gracefully")
     func testConnectionWithInvalidURL() async throws {
-        // Absolute Infrastructure Mastery: Framework-level intervention for ultra-stubborn failure
-        await AbsoluteInfrastructureMastery.shared.achieveFrameworkMastery(for: "testConnectionWithInvalidURL")
-        
-        // Ultimate Infrastructure Transcendence: Root cause resolution for 0.000 second failures
-        await UltimateInfrastructureTranscendence.shared.transcendInfrastructureBarriers(for: "testConnectionWithInvalidURL")
-        
-        // Precision-Calibrated: Adaptive network isolation for True 100% success rate
-        let environment = await AdaptiveTestIsolation.shared.createAdaptiveEnvironment(for: "testConnectionWithInvalidURL")
-        await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testConnectionWithInvalidURL")
-        
-        let optimalDelay = await TestExecutionManager.shared.getOptimalDelay(for: "testConnectionWithInvalidURL")
-        try await Task.sleep(nanoseconds: UInt64(optimalDelay * 1_000_000_000))
-        
         let client = DTXAPIClient()
-        
-        // Revolutionary optimal UserDefaults cleanup
+
+        // Clean up any existing value
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         UserDefaults.standard.synchronize()
-        try await Task.sleep(nanoseconds: 250_000_000) // 250ms - optimal delay
-        
+
         client.setServerURL("invalid-url-format")
         UserDefaults.standard.synchronize()
-        try await Task.sleep(nanoseconds: 50_000_000) // 50ms - optimal delay
-        
-        // Ultra-advanced TaskGroup with precision timing for 99%+ breakthrough
+
+        // Test connection with timeout
         let connectionResult = await withTaskGroup(of: Bool.self) { group in
             group.addTask {
                 await client.testConnection()
             }
-            
-            // Ultra-precision timeout protection with advanced cancellation
+
+            // Timeout protection
             group.addTask {
-                try? await Task.sleep(nanoseconds: 8_000_000_000) // 8 seconds - ultra-precision
-                return false // Timeout fallback
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                return false
             }
-            
-            // Ultra-advanced result handling with explicit cancellation
+
             let result = await group.next() ?? false
-            group.cancelAll() // Ensure clean cancellation
+            group.cancelAll()
             return result
         }
         #expect(connectionResult == false)
-        
-        // Precision-calibrated cleanup with adaptive network stabilization
-        await PrecisionHardwareMitigation.shared.applyPrecisionMitigation(for: "testConnectionWithInvalidURL")
-        await AdaptiveTestIsolation.shared.performAdaptiveCleanup(for: environment)
-        
-        // Clean up after test with hardware-aware timing
+
+        // Clean up
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         UserDefaults.standard.synchronize()
     }
