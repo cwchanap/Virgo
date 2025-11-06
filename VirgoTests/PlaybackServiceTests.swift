@@ -85,8 +85,8 @@ struct PlaybackServiceTests {
             #expect(service.isPlaying(song))
             #expect(song.isPlaying)
 
-            // Use synchronous stopAll for reliable state verification
-            await service.stopAllSync()
+            // Stop all playback - all state changes are synchronous on @MainActor
+            service.stopAll()
 
             #expect(service.currentlyPlaying == nil)
             #expect(!service.isPlaying(song))

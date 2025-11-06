@@ -54,19 +54,21 @@ struct SwiftDataRelationshipLoaderTests {
                 availableDifficulties: []
             )
 
-            // Use autoLoad: false to prevent race condition
             let loader = BaseSwiftDataRelationshipLoader(
                 model: mockSong,
-                defaultData: defaultData,
-                dataLoader: { _ in
-                    return defaultData
-                },
-                autoLoad: false
+                defaultData: defaultData
+            ) { _ in
+                return defaultData
+            }
+
+            // Wait for loading to complete
+            let loadingCompleted = await CombineTestUtilities.waitForLoading(
+                object: loader,
+                isLoadingKeyPath: \.isLoading,
+                timeout: 1.0
             )
 
-            // Now synchronously load the data
-            await loader.loadSync()
-
+            #expect(loadingCompleted, "Loading should complete")
             #expect(loader.relationshipData.chartCount == 0)
             #expect(loader.isLoading == false)
         }

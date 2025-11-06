@@ -54,19 +54,3 @@ class PlaybackService: ObservableObject {
         Logger.audioPlayback("Stopped all playback")
     }
 }
-
-// MARK: - Test Support
-
-#if DEBUG
-import Combine
-
-extension PlaybackService {
-    /// Synchronous version of stopAll for testing - ensures all state updates are complete
-    func stopAllSync() async {
-        stopAll()
-
-        // Give a moment for state to propagate
-        try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
-    }
-}
-#endif
