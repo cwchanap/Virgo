@@ -14,6 +14,8 @@ import Combine
 
 // MARK: - Test Infrastructure
 
+/// Shared test container for SwiftData models in unit tests
+/// Provides isolated in-memory storage that can be reset between tests
 @MainActor
 class TestContainer {
     static let shared = TestContainer()
@@ -142,8 +144,14 @@ class TestContainer {
     }
 }
 
+/// Test setup utilities for managing test lifecycle
+/// Handles container reset before and after tests to ensure isolation
 @MainActor
 struct TestSetup {
+    /// Run a test with automatic container setup and cleanup
+    /// - Parameter test: The test closure to execute
+    /// - Returns: The result of the test closure
+    /// - Throws: Any error thrown by the test closure
     static func withTestSetup<T>(_ test: () async throws -> T) async throws -> T {
         // Reset container before test
         TestContainer.shared.reset()
@@ -162,12 +170,15 @@ struct TestSetup {
         }
     }
 
+    /// Manually set up the test environment by resetting the container
+    /// Use this when you need more control than `withTestSetup` provides
     static func setUp() async {
         // Reset test container for individual test setup
         TestContainer.shared.reset()
     }
 }
 
+/// Custom assertion utilities for test validation
 @MainActor
 struct TestAssertions {
     static func assertEqual<T: Equatable>(_ lhs: T, _ rhs: T, file: StaticString = #file, line: UInt = #line) {
@@ -238,8 +249,15 @@ struct SwiftUITestUtilities {
 
 // MARK: - Test Helpers
 
+/// Utility functions for test execution and timing
 struct TestHelpers {
-    /// Wait for a condition to become true with timeout
+    /// Wait for a condition to become true with timeout using polling
+    /// - Parameters:
+    ///   - condition: A closure that returns true when the desired condition is met
+    ///   - timeout: Maximum time to wait for the condition (default: 2.0 seconds)
+    ///   - checkInterval: Time between condition checks (default: 0.05 seconds)
+    /// - Returns: true if condition was met within timeout, false otherwise
+    /// - Note: Use `CombineTestUtilities.waitForPublished` for reactive state changes instead
     static func waitFor(
         condition: @escaping () -> Bool,
         timeout: TimeInterval = 2.0,
@@ -268,8 +286,16 @@ struct TestHelpers {
 
 // MARK: - Combine Testing Utilities
 
+/// Utilities for testing Combine publishers and reactive state changes
+/// These utilities properly handle async state updates from Combine publishers
+/// without race conditions or double-resumption crashes
 struct CombineTestUtilities {
     /// Wait for a published value to match a condition
+    /// - Parameters:
+    ///   - publisher: The Combine publisher to observe
+    ///   - condition: A closure that returns true when the desired value is observed
+    ///   - timeout: Maximum time to wait for the condition (default: 1.0 second)
+    /// - Returns: true if condition was met, false if timeout occurred
     @MainActor
     static func waitForPublished<T>(
         publisher: Published<T>.Publisher,
@@ -278,23 +304,46 @@ struct CombineTestUtilities {
     ) async -> Bool {
         await withCheckedContinuation { continuation in
             var cancellable: AnyCancellable?
+            var didResume = false
+            let resumeLock = NSLock()
+
             let timeoutTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                cancellable?.cancel()
-                continuation.resume(returning: false)
+
+                resumeLock.lock()
+                if !didResume {
+                    didResume = true
+                    resumeLock.unlock()
+                    cancellable?.cancel()
+                    continuation.resume(returning: false)
+                } else {
+                    resumeLock.unlock()
+                }
             }
 
             cancellable = publisher
-                .filter(condition)
-                .first()
+                .first(where: condition)
                 .sink { _ in
-                    timeoutTask.cancel()
-                    continuation.resume(returning: true)
+                    resumeLock.lock()
+                    if !didResume {
+                        didResume = true
+                        resumeLock.unlock()
+                        timeoutTask.cancel()
+                        continuation.resume(returning: true)
+                    } else {
+                        resumeLock.unlock()
+                    }
                 }
         }
     }
 
     /// Helper to call an action and wait for a specific state change
+    /// - Parameters:
+    ///   - action: The action to perform
+    ///   - publisher: The Combine publisher to observe for state changes
+    ///   - condition: A closure that returns true when the desired state is reached
+    ///   - timeout: Maximum time to wait for the state change (default: 1.0 second)
+    /// - Returns: true if state change was observed, false if timeout occurred
     @MainActor
     static func performAndWait<T>(
         action: () -> Void,
@@ -307,6 +356,11 @@ struct CombineTestUtilities {
     }
 
     /// Wait for an observable object's loading state to complete
+    /// - Parameters:
+    ///   - object: The observable object to monitor
+    ///   - isLoadingKeyPath: KeyPath to the boolean loading state property
+    ///   - timeout: Maximum time to wait for loading to complete (default: 1.0 second)
+    /// - Returns: true if loading completed, false if timeout occurred
     @MainActor
     static func waitForLoading<T: ObservableObject>(
         object: T,
