@@ -25,10 +25,7 @@ struct MetronomeEngineTests {
     }
 
     @Test("MetronomeEngine BPM updates correctly")
-    func testBPMUpdate() async {
-        // Add pre-test delay for stability
-        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
-        
+    func testBPMUpdate() {
         let engine = MetronomeEngine()
 
         engine.updateBPM(140)
@@ -109,9 +106,6 @@ struct MetronomeEngineTests {
 
     @Test("MetronomeEngine start/stop functionality")
     func testStartStop() async {
-        // Add controlled delay with serialized execution for better isolation
-        try? await Task.sleep(nanoseconds: 400_000_000) // 400ms - balanced with serialization
-        
         let engine = MetronomeEngine()
 
         #expect(engine.isEnabled == false)

@@ -75,12 +75,9 @@ struct SwiftDataRelationshipTests {
     
     @Test("Cascade deletion works correctly")
     func testCascadeDeletion() async throws {
-        // Add controlled delay with serialized execution for better isolation
-        try await Task.sleep(nanoseconds: 700_000_000) // 700ms - balanced with serialization
-        
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            
+
             let song = TestModelFactory.createSong(
                 in: context,
                 title: "Test Song",
@@ -98,23 +95,20 @@ struct SwiftDataRelationshipTests {
                 measureOffset: 0.0,
                 chart: chart
             )
-            
+
             chart.notes = [note]
             song.charts = [chart]
-            
+
             // Save to ensure relationships are established
             try! context.save()
-            
+
             // Delete the song
             context.delete(song)
-            
+
             // Save to trigger cascade deletion
             try! context.save()
-            
-            // Add controlled delay for SwiftData cascade operations with serialized execution
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second - balanced with serialization
-        
-            // Chart and Note should be cascade deleted
+
+            // Chart and Note should be cascade deleted immediately after save
             TestAssertions.assertDeleted(chart, in: context)
             TestAssertions.assertDeleted(note, in: context)
         }
@@ -230,35 +224,26 @@ struct SwiftDataRelationshipTests {
     
     @Test("Chart cascade deletion works correctly")
     func testChartCascadeDeletion() async throws {
-        // Add controlled delay with serialized execution for better isolation
-        try await Task.sleep(nanoseconds: 800_000_000) // 800ms - balanced with serialization
-        
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            
+
             let song = TestModelFactory.createSong(in: context, title: "Test Song", artist: "Test Artist")
             let chart = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
             song.charts = [chart]
-            
+
             try context.save()
-            
-            // Allow SwiftData to settle before deletion test
-            try await Task.sleep(nanoseconds: 50_000_000) // 50ms
-            
+
             // Verify initial state
             TestAssertions.assertNotDeleted(song, in: context)
             TestAssertions.assertNotDeleted(chart, in: context)
-            
+
             // Delete the song - cascade deletion happens during save
             context.delete(song)
-            
+
             // Save to trigger cascade deletion
             try context.save()
-            
-            // Add controlled delay for SwiftData cascade operations with serialized execution
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second - balanced with serialization
-            
-            // Both song and chart should be cascade deleted due to deleteRule: .cascade
+
+            // Both song and chart should be cascade deleted immediately after save
             TestAssertions.assertDeleted(song, in: context)
             TestAssertions.assertDeleted(chart, in: context)
         }

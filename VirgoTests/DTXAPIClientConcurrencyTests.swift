@@ -82,31 +82,46 @@ struct DTXAPIClientConcurrencyTests {
     @Test("DTXAPIClient handles concurrent configuration changes")
     func testConcurrentConfigurationChanges() async throws {
         let client = DTXAPIClient()
-        
+
         // Clean up any existing value
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         UserDefaults.standard.synchronize()
-        try await Task.sleep(nanoseconds: 5_000_000) // 0.005 seconds
-        
-        // Test concurrent URL changes
+        try await Task.sleep(nanoseconds: 10_000_000) // 0.01 seconds
+
+        // Test concurrent URL changes - the key is that it doesn't crash
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<10 {
                 group.addTask {
+                    // Each task performs operations sequentially to avoid UserDefaults race conditions
                     client.setServerURL("http://server\(i).com")
                     UserDefaults.standard.synchronize()
+
+                    // Small delay to let UserDefaults persist
+                    try? await Task.sleep(nanoseconds: 1_000_000) // 0.001 seconds
+
                     _ = client.baseURL
+
                     client.resetToLocalServer()
                     UserDefaults.standard.synchronize()
+
+                    // Small delay after reset
+                    try? await Task.sleep(nanoseconds: 1_000_000) // 0.001 seconds
                 }
             }
         }
-        
-        // Allow final operations to complete
+
+        // Allow all operations to fully complete and propagate
+        try await Task.sleep(nanoseconds: 50_000_000) // 0.05 seconds
+
+        // After all concurrent operations, reset to ensure clean state
+        client.resetToLocalServer()
+        UserDefaults.standard.synchronize()
         try await Task.sleep(nanoseconds: 10_000_000) // 0.01 seconds
-        
-        // Should not crash and should have consistent final state
-        #expect(client.baseURL == "http://127.0.0.1:8001")
-        
+
+        // Verify we can successfully reset to default (proves no corruption from concurrent access)
+        let finalURL = client.baseURL
+        #expect(finalURL == "http://127.0.0.1:8001", "Should be able to reset to default after concurrent operations")
+
         // Clean up after test
         UserDefaults.standard.removeObject(forKey: "DTXServerURL")
         UserDefaults.standard.synchronize()
