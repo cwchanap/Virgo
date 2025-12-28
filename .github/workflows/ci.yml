@@ -1,4 +1,4 @@
-name: macOS and iPad CI
+name: macOS CI
 
 on:
   push:
@@ -8,14 +8,8 @@ on:
 
 jobs:
   test:
-    name: Run Tests on macOS and iPad
+    name: Run Tests on macOS
     runs-on: macos-latest
-    
-    strategy:
-      matrix:
-        destination: 
-          - 'platform=macOS'
-          - 'platform=iOS Simulator,name=iPad (10th generation)'
 
     steps:
       - name: Checkout code
@@ -28,9 +22,6 @@ jobs:
         
       - name: Show Xcode version
         run: xcodebuild -version
-        
-      - name: Show available simulators
-        run: xcrun simctl list devices available
         
       - name: Clean build folder
         run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
@@ -47,7 +38,7 @@ jobs:
           xcodebuild test \
             -project Virgo.xcodeproj \
             -scheme Virgo \
-            -destination '${{ matrix.destination }}' \
+            -destination 'platform=macOS' \
             -configuration Debug \
             -only-testing:VirgoTests \
             ONLY_ACTIVE_ARCH=NO \
@@ -67,7 +58,7 @@ jobs:
             
 
   build-archive:
-    name: Test Archive Build
+    name: Test Archive Build (macOS)
     runs-on: macos-latest
     needs: [test]
     
@@ -87,19 +78,6 @@ jobs:
             -scheme Virgo \
             -destination 'generic/platform=macOS' \
             -archivePath ./build/Virgo-macOS.xcarchive \
-            -configuration Release \
-            ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            -allowProvisioningUpdates
-            
-      - name: Test archive build for iOS
-        run: |
-          xcodebuild archive \
-            -project Virgo.xcodeproj \
-            -scheme Virgo \
-            -destination 'generic/platform=iOS' \
-            -archivePath ./build/Virgo-iOS.xcarchive \
             -configuration Release \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_REQUIRED=NO \

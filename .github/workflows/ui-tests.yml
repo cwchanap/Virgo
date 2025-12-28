@@ -1,4 +1,4 @@
-name: macOS and iPad UI Tests
+name: macOS UI Tests
 
 on:
   push:
@@ -9,10 +9,9 @@ on:
       test_device:
         description: 'Select device to test on'
         required: false
-        default: 'iPad (10th generation)'
+        default: 'macOS'
         type: choice
         options:
-          - 'iPad (10th generation)'
           - 'macOS'
       specific_test:
         description: 'Run specific test (leave empty for all tests)'
@@ -35,11 +34,11 @@ jobs:
       - name: Set test matrix
         id: set-matrix
         run: |
-          # Use macOS and iPad for testing
-          echo 'matrix=["platform=macOS", "platform=iOS Simulator,name=iPad (10th generation)"]' >> $GITHUB_OUTPUT
+          # Use macOS only for testing
+          echo 'matrix=["platform=macOS"]' >> $GITHUB_OUTPUT
 
   ui-tests:
-    name: Run UI Tests on macOS and iPad
+    name: Run UI Tests on macOS
     runs-on: macos-latest
     needs: setup
     
