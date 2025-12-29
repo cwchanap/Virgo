@@ -48,8 +48,8 @@ class BaseSwiftDataRelationshipLoader<Model: PersistentModel, Data>: ObservableO
     }
 
     deinit {
-        Task { @MainActor in
-            self.stopObserving()
+        Task { @MainActor [weak self] in
+            self?.stopObserving()
         }
     }
 

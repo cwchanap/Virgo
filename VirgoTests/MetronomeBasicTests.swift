@@ -149,27 +149,27 @@ struct MetronomeBasicTests {
         #expect(TimeSignature.fiveFour.displayName == "5/4")
     }
 
-    @Test func testMetronomeComponentCreation() async {
-        await TestSetup.setUp()
-        
-        let metronome = MetronomeEngine()
-        let component = MetronomeComponent(metronome: metronome, bpm: Self.testBPM, timeSignature: .fourFour)
-        #expect(component.bpm == Self.testBPM)
-        #expect(component.timeSignature == .fourFour)
-        
-        // Test that component can be created with environment
-        SwiftUITestUtilities.assertViewWithEnvironment(component)
+    @Test func testMetronomeComponentCreation() async throws {
+        try await TestSetup.withTestSetup {
+            let metronome = MetronomeEngine()
+            let component = MetronomeComponent(metronome: metronome, bpm: Self.testBPM, timeSignature: .fourFour)
+            #expect(component.bpm == Self.testBPM)
+            #expect(component.timeSignature == .fourFour)
+            
+            // Test that component can be created with environment
+            SwiftUITestUtilities.assertViewWithEnvironment(component)
+        }
     }
 
-    @Test func testMetronomeSettingsViewCreation() async {
-        await TestSetup.setUp()
-        
-        let metronome = MetronomeEngine()
-        let settingsView = MetronomeSettingsView(metronome: metronome)
-        #expect(settingsView != nil)
-        
-        // Test that settings view can be created with environment
-        SwiftUITestUtilities.assertViewWithEnvironment(settingsView)
+    @Test func testMetronomeSettingsViewCreation() async throws {
+        try await TestSetup.withTestSetup {
+            let metronome = MetronomeEngine()
+            let settingsView = MetronomeSettingsView(metronome: metronome)
+            #expect(settingsView != nil)
+            
+            // Test that settings view can be created with environment
+            SwiftUITestUtilities.assertViewWithEnvironment(settingsView)
+        }
     }
 
     @Test func testBeatCounterLogic() {

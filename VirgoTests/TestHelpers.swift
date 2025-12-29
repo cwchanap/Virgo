@@ -19,6 +19,7 @@ import Combine
 @MainActor
 class TestContainer {
     static let shared = TestContainer()
+    @TaskLocal static var activeContainer: TestContainer?
     
     private let containerCreationQueue = DispatchQueue(label: "TestContainer.creation", attributes: .concurrent)
     var privateContainer: ModelContainer?
@@ -46,24 +47,24 @@ class TestContainer {
     }
     
     var context: ModelContext {
-        if let context = privateContext {
-            return context
+        if let active = Self.activeContainer, active !== self {
+            return active.resolveContext()
         }
-        return createNewContext()
+        return resolveContext()
     }
     
     var container: ModelContainer {
-        if let container = privateContainer {
-            return container
+        if let active = Self.activeContainer, active !== self {
+            return active.resolveContainer()
         }
-        return createNewContainer()
+        return resolveContainer()
     }
     
     private init() {
         // Defer initialization to avoid concurrency issues during app startup
     }
     
-    private func createNewContainer() -> ModelContainer {
+    private func resolveContainer() -> ModelContainer {
         return containerCreationQueue.sync {
             if let container = privateContainer {
                 return container
@@ -96,8 +97,8 @@ class TestContainer {
         }
     }
     
-    private func createNewContext() -> ModelContext {
-        let container = createNewContainer()
+    private func resolveContext() -> ModelContext {
+        let container = resolveContainer()
         if let context = privateContext {
             return context
         }
@@ -107,6 +108,11 @@ class TestContainer {
     }
     
     func reset() {
+        if let active = Self.activeContainer, active !== self {
+            active.reset()
+            return
+        }
+        
         containerCreationQueue.sync(flags: .barrier) {
             // Ultra-enhanced cleanup with memory management optimization
             guard let context = privateContext else { return }
@@ -153,26 +159,38 @@ struct TestSetup {
     /// - Returns: The result of the test closure
     /// - Throws: Any error thrown by the test closure
     static func withTestSetup<T>(_ test: () async throws -> T) async throws -> T {
-        // Reset container before test
-        TestContainer.shared.reset()
+        let testId = UUID().uuidString
+        let container = TestContainer.isolatedContainer(for: testId)
+        
+        return try await TestContainer.$activeContainer.withValue(container) {
+            defer { TestContainer.cleanupIsolatedContainer(for: testId) }
+            
+            // Reset container before test
+            container.reset()
 
-        do {
-            let result = try await test()
+            do {
+                let result = try await test()
 
-            // Cleanup after test
-            TestContainer.shared.reset()
+                // Cleanup after test
+                container.reset()
 
-            return result
-        } catch {
-            // Cleanup even on error
-            TestContainer.shared.reset()
-            throw error
+                return result
+            } catch {
+                // Cleanup even on error
+                container.reset()
+                throw error
+            }
         }
     }
 
     /// Manually set up the test environment by resetting the container
     /// Use this when you need more control than `withTestSetup` provides
     static func setUp() async {
+        if let active = TestContainer.activeContainer {
+            active.reset()
+            return
+        }
+        
         // Reset test container for individual test setup
         TestContainer.shared.reset()
     }
@@ -383,6 +401,17 @@ struct CombineTestUtilities {
 
 // MARK: - Async Testing Utilities
 
+enum TestUserDefaults {
+    static func makeIsolated(suiteName: String = UUID().uuidString) -> (UserDefaults, String) {
+        let fullSuiteName = "VirgoTests.\(suiteName)"
+        guard let userDefaults = UserDefaults(suiteName: fullSuiteName) else {
+            fatalError("Failed to create UserDefaults suite: \(fullSuiteName)")
+        }
+        userDefaults.removePersistentDomain(forName: fullSuiteName)
+        return (userDefaults, fullSuiteName)
+    }
+}
+
 @MainActor
 class AsyncTestingUtilities {
     
@@ -430,59 +459,5 @@ class AsyncTestingUtilities {
         return await MainActor.run {
             relationshipAccessor(model)
         }
-    }
-}
-
-// MARK: - Testing Errors
-
-enum TestingError: Error {
-    case timeout
-    case unexpectedNil
-    case concurrencyViolation
-    case relationshipNotLoaded
-}
-
-// MARK: - Performance Testing Utilities
-
-struct PerformanceTestUtilities {
-    
-    /// Measure execution time of a closure
-    static func measureTime<T>(
-        operation: () throws -> T
-    ) rethrows -> (result: T, duration: TimeInterval) {
-        let startTime = CFAbsoluteTimeGetCurrent()
-        let result = try operation()
-        let endTime = CFAbsoluteTimeGetCurrent()
-        return (result: result, duration: endTime - startTime)
-    }
-    
-    /// Measure async execution time of a closure
-    static func measureAsyncTime<T>(
-        operation: () async throws -> T
-    ) async rethrows -> (result: T, duration: TimeInterval) {
-        let startTime = CFAbsoluteTimeGetCurrent()
-        let result = try await operation()
-        let endTime = CFAbsoluteTimeGetCurrent()
-        return (result: result, duration: endTime - startTime)
-    }
-    
-    /// Assert that an operation completes within a time limit
-    static func assertPerformance<T>(
-        maxDuration: TimeInterval,
-        operation: () throws -> T
-    ) rethrows -> T {
-        let (result, duration) = try measureTime(operation: operation)
-        #expect(duration < maxDuration, "Operation took \(duration)s, expected < \(maxDuration)s")
-        return result
-    }
-    
-    /// Assert that an async operation completes within a time limit
-    static func assertAsyncPerformance<T>(
-        maxDuration: TimeInterval,
-        operation: () async throws -> T
-    ) async rethrows -> T {
-        let (result, duration) = try await measureAsyncTime(operation: operation)
-        #expect(duration < maxDuration, "Async operation took \(duration)s, expected < \(maxDuration)s")
-        return result
     }
 }

@@ -54,18 +54,25 @@ class DTXAPIClient: ObservableObject {
     @Published var errorMessage: String?
 
     internal let session: URLSession
+    private let userDefaults: UserDefaults
 
-    init() {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30.0
-        config.timeoutIntervalForResource = 60.0
-        config.httpMaximumConnectionsPerHost = 2
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        config.waitsForConnectivity = true
-        config.allowsConstrainedNetworkAccess = true
-        config.allowsExpensiveNetworkAccess = true
+    init(userDefaults: UserDefaults = .standard, session: URLSession? = nil) {
+        self.userDefaults = userDefaults
 
-        self.session = URLSession(configuration: config)
+        if let session = session {
+            self.session = session
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 30.0
+            config.timeoutIntervalForResource = 60.0
+            config.httpMaximumConnectionsPerHost = 2
+            config.requestCachePolicy = .reloadIgnoringLocalCacheData
+            config.waitsForConnectivity = true
+            config.allowsConstrainedNetworkAccess = true
+            config.allowsExpensiveNetworkAccess = true
+
+            self.session = URLSession(configuration: config)
+        }
     }
 }
 
@@ -73,7 +80,7 @@ class DTXAPIClient: ObservableObject {
 
 extension DTXAPIClient: DTXConfiguration {
     var baseURL: String {
-        if let customURL = UserDefaults.standard.string(forKey: "DTXServerURL"), !customURL.isEmpty {
+        if let customURL = userDefaults.string(forKey: "DTXServerURL"), !customURL.isEmpty {
             return customURL
         }
         return "http://127.0.0.1:8001"
@@ -83,7 +90,7 @@ extension DTXAPIClient: DTXConfiguration {
         // If URL is empty or whitespace only, remove the custom URL to fall back to default
         let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedURL.isEmpty {
-            UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+            userDefaults.removeObject(forKey: "DTXServerURL")
             return
         }
         
@@ -94,7 +101,7 @@ extension DTXAPIClient: DTXConfiguration {
               ["http", "https"].contains(scheme.lowercased()),
               !host.isEmpty else {
             // Invalid URL: clear override to fall back to default
-            UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+            userDefaults.removeObject(forKey: "DTXServerURL")
             return
         }
         
@@ -104,11 +111,11 @@ extension DTXAPIClient: DTXConfiguration {
             normalizedURL = String(normalizedURL.dropLast())
         }
         
-        UserDefaults.standard.set(normalizedURL, forKey: "DTXServerURL")
+        userDefaults.set(normalizedURL, forKey: "DTXServerURL")
     }
 
     func resetToLocalServer() {
-        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
+        userDefaults.removeObject(forKey: "DTXServerURL")
     }
 
     func testConnection() async -> Bool {

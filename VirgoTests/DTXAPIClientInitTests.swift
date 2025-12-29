@@ -11,19 +11,14 @@ import Foundation
 
 @Suite("DTX API Client Initialization Tests", .serialized)
 struct DTXAPIClientInitTests {
-    
-    init() async throws {
-        // Clean UserDefaults before any tests run
-        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
-        UserDefaults.standard.synchronize()
-        
-        // Small delay to ensure cleanup completes
-        try await Task.sleep(nanoseconds: 10_000_000) // 0.01 seconds
-    }
-    
+
     @Test("DTXAPIClient initializes with correct configuration")
     func testAPIClientInitialization() {
-        let client = DTXAPIClient()
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientInitTests.init.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let client = DTXAPIClient(userDefaults: userDefaults)
         
         // Should initialize without crashing
         #expect(client.isLoading == false)
@@ -46,7 +41,11 @@ struct DTXAPIClientInitTests {
     
     @Test("DTXAPIClient session configuration is correct")
     func testSessionConfiguration() {
-        let client = DTXAPIClient()
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientInitTests.session.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let client = DTXAPIClient(userDefaults: userDefaults)
         let session = client.session
         
         #expect(session.configuration.timeoutIntervalForRequest == 30.0)
@@ -60,7 +59,11 @@ struct DTXAPIClientInitTests {
     
     @Test("DTXAPIClient state management") 
     func testStateManagement() async {
-        let client = DTXAPIClient()
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientInitTests.state.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let client = DTXAPIClient(userDefaults: userDefaults)
         
         // Initial state
         #expect(client.isLoading == false)
@@ -79,7 +82,11 @@ struct DTXAPIClientInitTests {
     
     @Test("DTXAPIClient protocols conformance")
     func testProtocolConformance() {
-        let client = DTXAPIClient()
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientInitTests.protocols.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let client = DTXAPIClient(userDefaults: userDefaults)
         
         // Test that client conforms to expected protocols
         #expect(client is DTXConfiguration)
