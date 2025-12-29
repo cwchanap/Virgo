@@ -23,17 +23,17 @@ struct ComponentRefactoringTests {
     }
 
     @Test("DifficultyBadge displays correct difficulty")
-    func testDifficultyBadgeRendering() async {
-        await TestSetup.setUp()
-        
-        let badge = DifficultyBadge(difficulty: .easy, size: .normal)
+    func testDifficultyBadgeRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let badge = DifficultyBadge(difficulty: .easy, size: .normal)
 
-        // Test that the badge is created without crashing
-        #expect(badge.difficulty == .easy)
-        #expect(badge.size == .normal)
-        
-        // Test that view can be created without environment issues
-        SwiftUITestUtilities.assertViewWithEnvironment(badge)
+            // Test that the badge is created without crashing
+            #expect(badge.difficulty == .easy)
+            #expect(badge.size == .normal)
+            
+            // Test that view can be created without environment issues
+            SwiftUITestUtilities.assertViewWithEnvironment(badge)
+        }
     }
 
     @Test("DifficultyBadge size variations work correctly")
@@ -60,130 +60,130 @@ struct ComponentRefactoringTests {
     }
 
     @Test("ExpandableSongRowContainer handles state correctly")
-    func testExpandableSongRowContainer() async {
-        await TestSetup.setUp()
-        
-        let mockSong = TestModelFactory.createSong(in: context)
-        let expandedSongId = Binding.constant(Optional<PersistentIdentifier>.none)
-        let selectedChart = Binding.constant(Optional<Chart>.none)
-        let navigateToGameplay = Binding.constant(false)
+    func testExpandableSongRowContainer() async throws {
+        try await TestSetup.withTestSetup {
+            let mockSong = TestModelFactory.createSong(in: context)
+            let expandedSongId = Binding.constant(Optional<PersistentIdentifier>.none)
+            let selectedChart = Binding.constant(Optional<Chart>.none)
+            let navigateToGameplay = Binding.constant(false)
 
-        let container = ExpandableSongRowContainer(
-            song: mockSong,
-            isPlaying: false,
-            isExpanded: false,
-            expandedSongId: expandedSongId,
-            selectedChart: selectedChart,
-            navigateToGameplay: navigateToGameplay,
-            onPlayTap: {},
-            onSaveTap: {}
-        )
+            let container = ExpandableSongRowContainer(
+                song: mockSong,
+                isPlaying: false,
+                isExpanded: false,
+                expandedSongId: expandedSongId,
+                selectedChart: selectedChart,
+                navigateToGameplay: navigateToGameplay,
+                onPlayTap: {},
+                onSaveTap: {}
+            )
 
-        // Test that the container is created without crashing
-        #expect(container.song.title == "Test Song")
-        #expect(container.isPlaying == false)
-        #expect(container.isExpanded == false)
-        
-        // Test that view can be created with proper environment
-        SwiftUITestUtilities.assertViewWithEnvironment(container)
+            // Test that the container is created without crashing
+            #expect(container.song.title == "Test Song")
+            #expect(container.isPlaying == false)
+            #expect(container.isExpanded == false)
+            
+            // Test that view can be created with proper environment
+            SwiftUITestUtilities.assertViewWithEnvironment(container)
+        }
     }
 
     @Test("DifficultyExpansionView displays charts correctly")
-    func testDifficultyExpansionView() async {
-        await TestSetup.setUp()
-        
-        let mockCharts = [
-            createMockChart(context: context, difficulty: .easy),
-            createMockChart(context: context, difficulty: .hard),
-            createMockChart(context: context, difficulty: .expert)
-        ]
+    func testDifficultyExpansionView() async throws {
+        try await TestSetup.withTestSetup {
+            let mockCharts = [
+                createMockChart(context: context, difficulty: .easy),
+                createMockChart(context: context, difficulty: .hard),
+                createMockChart(context: context, difficulty: .expert)
+            ]
 
-        let expansionView = DifficultyExpansionView(
-            charts: mockCharts,
-            onChartSelect: { _ in }
-        )
+            let expansionView = DifficultyExpansionView(
+                charts: mockCharts,
+                onChartSelect: { _ in }
+            )
 
-        #expect(expansionView.charts.count == 3)
-        #expect(expansionView.charts[0].difficulty == .easy)
-        #expect(expansionView.charts[1].difficulty == .hard)
-        #expect(expansionView.charts[2].difficulty == .expert)
-        
-        // Test that view can be created with proper environment
-        SwiftUITestUtilities.assertViewWithEnvironment(expansionView)
+            #expect(expansionView.charts.count == 3)
+            #expect(expansionView.charts[0].difficulty == .easy)
+            #expect(expansionView.charts[1].difficulty == .hard)
+            #expect(expansionView.charts[2].difficulty == .expert)
+            
+            // Test that view can be created with proper environment
+            SwiftUITestUtilities.assertViewWithEnvironment(expansionView)
+        }
     }
 
     @Test("ChartSelectionCard displays chart information")
-    func testChartSelectionCard() async {
-        await TestSetup.setUp()
-        
-        let mockChart = createMockChart(context: context, difficulty: .hard)
+    func testChartSelectionCard() async throws {
+        try await TestSetup.withTestSetup {
+            let mockChart = createMockChart(context: context, difficulty: .hard)
 
-        let selectionCard = ChartSelectionCard(
-            chart: mockChart,
-            onSelect: {}
-        )
+            let selectionCard = ChartSelectionCard(
+                chart: mockChart,
+                onSelect: {}
+            )
 
-        #expect(selectionCard.chart.difficulty == .hard)
-        #expect(selectionCard.chart.level == 50)
-        
-        // Test that view can be created with proper environment
-        SwiftUITestUtilities.assertViewWithEnvironment(selectionCard)
+            #expect(selectionCard.chart.difficulty == .hard)
+            #expect(selectionCard.chart.level == 50)
+            
+            // Test that view can be created with proper environment
+            SwiftUITestUtilities.assertViewWithEnvironment(selectionCard)
+        }
     }
 
     @Test("ServerSongRow displays server song information")
-    func testServerSongRow() async {
-        await TestSetup.setUp()
-        
-        let mockServerSong = createMockServerSong(context: context)
+    func testServerSongRow() async throws {
+        try await TestSetup.withTestSetup {
+            let mockServerSong = createMockServerSong(context: context)
 
-        let serverRow = ServerSongRow(
-            serverSong: mockServerSong,
-            isLoading: false,
-            onDownload: {}
-        )
+            let serverRow = ServerSongRow(
+                serverSong: mockServerSong,
+                isLoading: false,
+                onDownload: {}
+            )
 
-        #expect(serverRow.serverSong.title == "Test Server Song")
-        #expect(serverRow.isLoading == false)
-        
-        // Test that view can be created with proper environment
-        SwiftUITestUtilities.assertViewWithEnvironment(serverRow)
+            #expect(serverRow.serverSong.title == "Test Server Song")
+            #expect(serverRow.isLoading == false)
+            
+            // Test that view can be created with proper environment
+            SwiftUITestUtilities.assertViewWithEnvironment(serverRow)
+        }
     }
 
     @Test("ServerSongRow handles loading state")
-    func testServerSongRowLoadingState() async {
-        await TestSetup.setUp()
-        
-        let mockServerSong = createMockServerSong(context: context)
+    func testServerSongRowLoadingState() async throws {
+        try await TestSetup.withTestSetup {
+            let mockServerSong = createMockServerSong(context: context)
 
-        let loadingRow = ServerSongRow(
-            serverSong: mockServerSong,
-            isLoading: true,
-            onDownload: {}
-        )
+            let loadingRow = ServerSongRow(
+                serverSong: mockServerSong,
+                isLoading: true,
+                onDownload: {}
+            )
 
-        #expect(loadingRow.isLoading == true)
-        
-        // Test that view can be created with proper environment
-        SwiftUITestUtilities.assertViewWithEnvironment(loadingRow)
+            #expect(loadingRow.isLoading == true)
+            
+            // Test that view can be created with proper environment
+            SwiftUITestUtilities.assertViewWithEnvironment(loadingRow)
+        }
     }
 
     @Test("MetronomeComponent displays correctly")
-    func testMetronomeComponent() async {
-        await TestSetup.setUp()
-        
-        let mockMetronome = MetronomeEngine()
+    func testMetronomeComponent() async throws {
+        try await TestSetup.withTestSetup {
+            let mockMetronome = MetronomeEngine()
 
-        let component = MetronomeComponent(
-            metronome: mockMetronome,
-            bpm: 120,
-            timeSignature: .fourFour
-        )
+            let component = MetronomeComponent(
+                metronome: mockMetronome,
+                bpm: 120,
+                timeSignature: .fourFour
+            )
 
-        #expect(component.bpm == 120)
-        #expect(component.timeSignature == .fourFour)
-        
-        // Test that view can be created with proper environment
-        SwiftUITestUtilities.assertViewWithEnvironment(component)
+            #expect(component.bpm == 120)
+            #expect(component.timeSignature == .fourFour)
+            
+            // Test that view can be created with proper environment
+            SwiftUITestUtilities.assertViewWithEnvironment(component)
+        }
     }
 }
 

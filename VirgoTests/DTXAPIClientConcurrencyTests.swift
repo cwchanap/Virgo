@@ -14,14 +14,18 @@ struct DTXAPIClientConcurrencyTests {
     
     @Test("DTXAPIClient test connection handles invalid URLs gracefully")
     func testConnectionWithInvalidURL() async throws {
-        let client = DTXAPIClient()
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientConcurrencyTests.invalidURL.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let client = DTXAPIClient(userDefaults: userDefaults)
 
         // Clean up any existing value
-        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
-        UserDefaults.standard.synchronize()
+        userDefaults.removeObject(forKey: "DTXServerURL")
+        userDefaults.synchronize()
 
         client.setServerURL("invalid-url-format")
-        UserDefaults.standard.synchronize()
+        userDefaults.synchronize()
 
         // Test connection with timeout
         let connectionResult = await withTaskGroup(of: Bool.self) { group in
@@ -42,50 +46,58 @@ struct DTXAPIClientConcurrencyTests {
         #expect(connectionResult == false)
 
         // Clean up
-        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
-        UserDefaults.standard.synchronize()
+        userDefaults.removeObject(forKey: "DTXServerURL")
+        userDefaults.synchronize()
     }
     
     @Test("DTXAPIClient UserDefaults integration")
     func testUserDefaultsIntegration() async throws {
-        let client = DTXAPIClient()
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientConcurrencyTests.userDefaults.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let client = DTXAPIClient(userDefaults: userDefaults)
         let testKey = "DTXServerURL"
         
         // Clean up any existing value
-        UserDefaults.standard.removeObject(forKey: testKey)
-        UserDefaults.standard.synchronize()
+        userDefaults.removeObject(forKey: testKey)
+        userDefaults.synchronize()
         try await Task.sleep(nanoseconds: 5_000_000) // 0.005 seconds
         
         // Test setting and getting URL through UserDefaults
         let testURL = "http://test-integration.com:9999"
         client.setServerURL(testURL)
-        UserDefaults.standard.synchronize()
+        userDefaults.synchronize()
         try await Task.sleep(nanoseconds: 5_000_000) // 0.005 seconds
         
-        let storedURL = UserDefaults.standard.string(forKey: testKey)
+        let storedURL = userDefaults.string(forKey: testKey)
         #expect(storedURL == testURL)
         #expect(client.baseURL == testURL)
         
         // Test reset
         client.resetToLocalServer()
-        UserDefaults.standard.synchronize()
+        userDefaults.synchronize()
         try await Task.sleep(nanoseconds: 5_000_000) // 0.005 seconds
-        let resetStoredURL = UserDefaults.standard.string(forKey: testKey)
+        let resetStoredURL = userDefaults.string(forKey: testKey)
         #expect(resetStoredURL == nil)
         #expect(client.baseURL == "http://127.0.0.1:8001")
         
         // Clean up
-        UserDefaults.standard.removeObject(forKey: testKey)
-        UserDefaults.standard.synchronize()
+        userDefaults.removeObject(forKey: testKey)
+        userDefaults.synchronize()
     }
     
     @Test("DTXAPIClient handles concurrent configuration changes")
     func testConcurrentConfigurationChanges() async throws {
-        let client = DTXAPIClient()
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientConcurrencyTests.concurrent.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        let client = DTXAPIClient(userDefaults: userDefaults)
         
         // Clean up any existing value
-        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
-        UserDefaults.standard.synchronize()
+        userDefaults.removeObject(forKey: "DTXServerURL")
+        userDefaults.synchronize()
         try await Task.sleep(nanoseconds: 5_000_000) // 0.005 seconds
         
         // Test concurrent URL changes
@@ -93,10 +105,10 @@ struct DTXAPIClientConcurrencyTests {
             for i in 0..<10 {
                 group.addTask {
                     client.setServerURL("http://server\(i).com")
-                    UserDefaults.standard.synchronize()
+                    userDefaults.synchronize()
                     _ = client.baseURL
                     client.resetToLocalServer()
-                    UserDefaults.standard.synchronize()
+                    userDefaults.synchronize()
                 }
             }
         }
@@ -108,7 +120,7 @@ struct DTXAPIClientConcurrencyTests {
         #expect(client.baseURL == "http://127.0.0.1:8001")
         
         // Clean up after test
-        UserDefaults.standard.removeObject(forKey: "DTXServerURL")
-        UserDefaults.standard.synchronize()
+        userDefaults.removeObject(forKey: "DTXServerURL")
+        userDefaults.synchronize()
     }
 }
