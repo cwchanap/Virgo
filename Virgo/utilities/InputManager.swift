@@ -13,13 +13,13 @@ import AppKit
 
 // MARK: - Input Event Types
 
-struct InputHit {
+struct InputHit: Sendable {
     let drumType: DrumType
     let velocity: Double // 0.0 to 1.0
     let timestamp: Date
 }
 
-struct NoteMatchResult {
+struct NoteMatchResult: Sendable {
     let hitInput: InputHit
     let matchedNote: Note?
     let timingAccuracy: TimingAccuracy
@@ -28,12 +28,12 @@ struct NoteMatchResult {
     let timingError: Double // in milliseconds, positive = late, negative = early
 }
 
-enum TimingAccuracy {
+enum TimingAccuracy: Sendable {
     case perfect    // ±25ms
     case great      // ±50ms
     case good       // ±100ms
     case miss       // >100ms or no note
-    
+
     var toleranceMs: Double {
         switch self {
         case .perfect: return 25.0
@@ -94,44 +94,15 @@ class InputManager: ObservableObject {
     private let isTestEnvironment: Bool
     
     init() {
-        self.isTestEnvironment = Self.detectTestEnvironment()
+        self.isTestEnvironment = TestEnvironment.isRunningTests
         setupMappingsFromSettings()
-        
+
         // Only set up MIDI if not in test environment
         if !isTestEnvironment {
             setupMIDI()
         }
     }
-    
-    // MARK: - Test Environment Detection
-    
-    private static func detectTestEnvironment() -> Bool {
-        // Method 1: XCTest detection (maintains backward compatibility)
-        if ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath") {
-            return true
-        }
-        
-        // Method 2: Bundle identifier detection (most reliable for Swift Testing)
-        if let bundleIdentifier = Bundle.main.bundleIdentifier,
-           bundleIdentifier.hasSuffix("Tests") {
-            return true
-        }
-        
-        // Method 3: Environment variables (both XCTest and Swift Testing)
-        let environment = ProcessInfo.processInfo.environment
-        if environment["XCTestConfigurationFilePath"] != nil {
-            return true
-        }
-        
-        // Method 4: Process name detection (catches various test runners)
-        let processName = ProcessInfo.processInfo.processName.lowercased()
-        if processName.contains("xctest") || processName.hasSuffix("tests") {
-            return true
-        }
-        
-        return false
-    }
-    
+
     deinit {
         guard !isTestEnvironment else { return }
         

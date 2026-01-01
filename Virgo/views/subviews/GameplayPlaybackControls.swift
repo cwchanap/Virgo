@@ -10,13 +10,13 @@ import SwiftUI
 extension GameplayView {
     var controlsView: some View {
         GameplayControlsView(
-            track: track ?? DrumTrack(chart: chart),
-            isPlaying: $isPlaying,
-            playbackProgress: $playbackProgress,
-            metronome: metronome,
-            onPlayPause: togglePlayback,
-            onRestart: restartPlayback,
-            onSkipToEnd: skipToEnd
+            track: viewModel.track ?? DrumTrack(chart: viewModel.chart),
+            isPlaying: $viewModel.isPlaying,
+            playbackProgress: $viewModel.playbackProgress,
+            metronome: viewModel.metronome,
+            onPlayPause: { viewModel.togglePlayback() },
+            onRestart: { viewModel.restartPlayback() },
+            onSkipToEnd: { viewModel.skipToEnd() }
         )
         .background(Color.black)
     }

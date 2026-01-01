@@ -37,6 +37,9 @@ struct GameplayControlsView: View {
                     .frame(height: 4)
             }
             .padding(.horizontal)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Playback progress")
+            .accessibilityValue("\(formatTime(playbackProgress)) of \(track.duration)")
 
             // Main Controls
             HStack(spacing: 24) {
@@ -45,18 +48,24 @@ struct GameplayControlsView: View {
                         .font(.title)
                         .foregroundColor(.white)
                 }
+                .accessibilityLabel("Restart")
+                .accessibilityHint("Restarts the track from the beginning")
 
                 Button(action: onPlayPause) {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 64))
                         .foregroundColor(isPlaying ? .red : .green)
                 }
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
+                .accessibilityHint(isPlaying ? "Pauses playback" : "Starts playback")
 
                 Button(action: onSkipToEnd) {
                     Image(systemName: "forward.end.fill")
                         .font(.title)
                         .foregroundColor(.white)
                 }
+                .accessibilityLabel("Skip to end")
+                .accessibilityHint("Jumps to the end of the track")
             }
 
             // Metronome Controls (simplified for now)
@@ -67,6 +76,9 @@ struct GameplayControlsView: View {
                 }
                 .foregroundColor(metronome.isEnabled ? .purple : .white)
                 .font(.title2)
+                .accessibilityLabel("Metronome")
+                .accessibilityValue(metronome.isEnabled ? "On" : "Off")
+                .accessibilityHint("Toggles the metronome click track")
             }
             .padding(.horizontal)
         }
