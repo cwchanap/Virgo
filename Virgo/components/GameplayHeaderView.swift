@@ -21,6 +21,8 @@ struct GameplayHeaderView: View {
                     .font(.title2)
                     .foregroundColor(.white)
             }
+            .accessibilityLabel("Go back")
+            .accessibilityHint("Returns to the song list")
             .padding(.leading)
 
             Spacer()
@@ -36,6 +38,8 @@ struct GameplayHeaderView: View {
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(track.title) by \(track.artist)")
 
             Spacer()
 
@@ -45,12 +49,16 @@ struct GameplayHeaderView: View {
                         .font(.title2)
                         .foregroundColor(.white)
                 }
+                .accessibilityLabel("Restart")
+                .accessibilityHint("Restarts playback from the beginning")
 
                 Button(action: onPlayPause) {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.largeTitle)
                         .foregroundColor(isPlaying ? .red : .green)
                 }
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
+                .accessibilityHint(isPlaying ? "Pauses the drum track" : "Starts playing the drum track")
             }
             .padding(.trailing)
         }

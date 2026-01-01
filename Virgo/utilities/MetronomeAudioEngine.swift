@@ -38,9 +38,12 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     // Configuration
     private let isTestEnvironment: Bool
 
+    // Interruption handling callback
+    var onInterruption: ((Bool) -> Void)?
+
     init() {
-        self.isTestEnvironment = Self.detectTestEnvironment()
-        
+        self.isTestEnvironment = TestEnvironment.isRunningTests
+
         if !isTestEnvironment {
             // Normal runtime - initialize audio components
             self.audioEngine = AVAudioEngine()
@@ -49,6 +52,7 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
             self.audioSession = AVAudioSession.sharedInstance()
             #endif
             setupAudioEngine()
+            setupAudioSessionNotifications()
         } else {
             // Test environment - don't create any audio objects to prevent crashes
             self.audioEngine = nil
@@ -69,40 +73,6 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
             audioEngine.stop()
         }
         audioEngine.detach(playerNode)
-    }
-
-    // MARK: - Test Environment Detection
-
-    private static func detectTestEnvironment() -> Bool {
-        // Method 1: XCTest detection (maintains backward compatibility)
-        if ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath") {
-            Logger.audioPlayback("Test environment detected via XCTestConfigurationFilePath argument")
-            return true
-        }
-        
-        // Method 2: Bundle identifier detection (most reliable for Swift Testing)
-        if let bundleIdentifier = Bundle.main.bundleIdentifier,
-           bundleIdentifier.hasSuffix("Tests") {
-            Logger.audioPlayback("Test environment detected via bundle identifier: \(bundleIdentifier)")
-            return true
-        }
-        
-        // Method 3: Environment variables (both XCTest and Swift Testing)
-        let environment = ProcessInfo.processInfo.environment
-        if environment["XCTestConfigurationFilePath"] != nil {
-            Logger.audioPlayback("Test environment detected via XCTestConfigurationFilePath environment variable")
-            return true
-        }
-        
-        // Method 4: Process name detection (catches various test runners)
-        let processName = ProcessInfo.processInfo.processName.lowercased()
-        if processName.contains("xctest") || processName.hasSuffix("tests") {
-            Logger.audioPlayback("Test environment detected via process name: \(processName)")
-            return true
-        }
-        
-        Logger.audioPlayback("No test environment detected - bundle: \(Bundle.main.bundleIdentifier ?? "nil")")
-        return false
     }
 
     // MARK: - Audio Engine Setup
@@ -144,6 +114,83 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
             // Continue without audio instead of crashing
         }
     }
+
+    // MARK: - Audio Session Notifications
+
+    private func setupAudioSessionNotifications() {
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleAudioInterruption(notification)
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    private func handleAudioInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        switch type {
+        case .began:
+            // Interruption began - pause playback
+            Logger.audioPlayback("Audio session interruption began (e.g., phone call)")
+            playerNode?.pause()
+            onInterruption?(true)
+
+        case .ended:
+            // Interruption ended - check if we should resume
+            if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                if options.contains(.shouldResume) {
+                    Logger.audioPlayback("Audio session interruption ended - resuming")
+                    do {
+                        try audioEngine?.start()
+                        playerNode?.play()
+                        onInterruption?(false)
+                    } catch {
+                        Logger.audioPlayback("Failed to resume after interruption: \(error.localizedDescription)")
+                    }
+                }
+            }
+
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleRouteChange(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let reasonValue = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+        switch reason {
+        case .oldDeviceUnavailable:
+            // Headphones unplugged - pause playback
+            Logger.audioPlayback("Audio route changed - old device unavailable (headphones unplugged)")
+            playerNode?.pause()
+            onInterruption?(true)
+
+        case .newDeviceAvailable:
+            Logger.audioPlayback("Audio route changed - new device available")
+
+        default:
+            break
+        }
+    }
+    #endif
 
     // MARK: - Audio Buffer Management
 

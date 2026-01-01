@@ -9,28 +9,28 @@ import SwiftUI
 
 extension GameplayView {
     func sheetMusicView(geometry: GeometryProxy) -> some View {
-        let totalHeight = GameplayLayout.totalHeight(for: cachedMeasurePositions)
+        let totalHeight = GameplayLayout.totalHeight(for: viewModel.cachedMeasurePositions)
 
         return ScrollView([.horizontal, .vertical], showsIndicators: false) {
             ZStack(alignment: .topLeading) {
                 // Use cached static staff lines view - created only once
-                if let staticView = staticStaffLinesView {
+                if let staticView = viewModel.staticStaffLinesView {
                     staticView
                 }
 
                 // Dynamic content
                 ZStack(alignment: .topLeading) {
                     // Bar lines
-                    barLinesView(measurePositions: cachedMeasurePositions)
+                    barLinesView(measurePositions: viewModel.cachedMeasurePositions)
 
                     // Clefs and time signatures for each row
-                    clefsAndTimeSignaturesView(measurePositions: cachedMeasurePositions)
+                    clefsAndTimeSignaturesView(measurePositions: viewModel.cachedMeasurePositions)
 
                     // Drum notation
-                    drumNotationView(measurePositions: cachedMeasurePositions)
+                    drumNotationView(measurePositions: viewModel.cachedMeasurePositions)
 
                     // Time-based beat progression bars (purple bars at all quarter note positions)
-                    timeBasedBeatProgressionBars(measurePositions: cachedMeasurePositions)
+                    timeBasedBeatProgressionBars(measurePositions: viewModel.cachedMeasurePositions)
                 }
             }
             .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
@@ -75,7 +75,7 @@ extension GameplayView {
                         )
 
                     // Time Signature - position at center of staff (line 3)
-                    TimeSignatureSymbol(timeSignature: track?.timeSignature ?? TimeSignature.fourFour)
+                    TimeSignatureSymbol(timeSignature: viewModel.track?.timeSignature ?? TimeSignature.fourFour)
                         .frame(width: GameplayLayout.timeSignatureWidth, height: GameplayLayout.staffHeight)
                         .foregroundColor(.white)
                         .position(
@@ -105,7 +105,7 @@ extension GameplayView {
 
             // Double bar line at the very end
             if let lastPosition = measurePositions.last {
-                let measureWidth = GameplayLayout.measureWidth(for: track?.timeSignature ?? TimeSignature.fourFour)
+                let measureWidth = GameplayLayout.measureWidth(for: viewModel.track?.timeSignature ?? TimeSignature.fourFour)
                 let endX = lastPosition.xOffset + measureWidth
                 let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row) // Middle staff line
 
@@ -128,28 +128,28 @@ extension GameplayView {
     func drumNotationView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
         return ZStack {
             // Render beams first (behind notes)
-            ForEach(cachedBeamGroups, id: \.id) { beamGroup in
+            ForEach(viewModel.cachedBeamGroups, id: \.id) { beamGroup in
                 BeamGroupView(
                     beamGroup: beamGroup,
                     measurePositions: measurePositions,
-                    timeSignature: track?.timeSignature ?? TimeSignature.fourFour,
+                    timeSignature: viewModel.track?.timeSignature ?? TimeSignature.fourFour,
                     isActive: false // Keep disabled for performance
                 )
             }
 
             // Then render individual notes
-            ForEach(cachedBeatIndices, id: \.self) { index in
-                let beat = cachedDrumBeats[index]
-                
+            ForEach(viewModel.cachedBeatIndices, id: \.self) { index in
+                let beat = viewModel.cachedDrumBeats[index]
+
                 // PERFORMANCE FIX: Use pre-cached active beat ID instead of calculating for every beat
-                let isCurrentlyActive = activeBeatId == beat.id
+                let isCurrentlyActive = viewModel.activeBeatId == beat.id
 
                 // PERFORMANCE FIX: Use pre-cached positions to avoid expensive per-frame calculations
-                if let cachedPosition = cachedBeatPositions[beat.id] {
+                if let cachedPosition = viewModel.cachedBeatPositions[beat.id] {
                     // Use cached lookup map for O(1) beam group check
-                    let isBeamed = beatToBeamGroupMap[beat.id] != nil
+                    let isBeamed = viewModel.beatToBeamGroupMap[beat.id] != nil
                     let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
-                    let row = measurePositionMap[measureIndex]?.row ?? 0
+                    let row = viewModel.measurePositionMap[measureIndex]?.row ?? 0
 
                     DrumBeatView(
                         beat: beat,
@@ -169,7 +169,7 @@ extension GameplayView {
     func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
         Group {
             // PERFORMANCE FIX: Use pre-cached purple bar position instead of expensive calculation
-            if let position = purpleBarPosition {
+            if let position = viewModel.purpleBarPosition {
                 Rectangle()
                     .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
                     .foregroundColor(Color.purple.opacity(GameplayLayout.activeOpacity))

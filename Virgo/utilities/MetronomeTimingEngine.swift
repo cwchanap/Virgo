@@ -54,42 +54,13 @@ class MetronomeTimingEngine: ObservableObject {
     }
     
     init() {
-        self.isTestEnvironment = Self.detectTestEnvironment()
+        self.isTestEnvironment = TestEnvironment.isRunningTests
         // Initialize cached beat interval
         cachedBeatInterval = 60.0 / bpm
-        
+
         if isTestEnvironment {
             Logger.audioPlayback("Test environment - MetronomeTimingEngine will simulate timing")
         }
-    }
-    
-    // MARK: - Test Environment Detection
-    
-    private static func detectTestEnvironment() -> Bool {
-        // Method 1: XCTest detection (maintains backward compatibility)
-        if ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath") {
-            return true
-        }
-        
-        // Method 2: Bundle identifier detection (most reliable for Swift Testing)
-        if let bundleIdentifier = Bundle.main.bundleIdentifier,
-           bundleIdentifier.hasSuffix("Tests") {
-            return true
-        }
-        
-        // Method 3: Environment variables (both XCTest and Swift Testing)
-        let environment = ProcessInfo.processInfo.environment
-        if environment["XCTestConfigurationFilePath"] != nil {
-            return true
-        }
-        
-        // Method 4: Process name detection (catches various test runners)
-        let processName = ProcessInfo.processInfo.processName.lowercased()
-        if processName.contains("xctest") || processName.hasSuffix("tests") {
-            return true
-        }
-        
-        return false
     }
 
     deinit {

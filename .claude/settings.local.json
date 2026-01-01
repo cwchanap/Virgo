@@ -57,7 +57,10 @@
       "Bash(xcrun xcresulttool get:*)",
       "WebFetch(domain:github.com)",
       "Bash(CODE_SIGNING_REQUIRED=NO )",
-      "Bash(CODE_SIGNING_ALLOWED=NO)"
+      "Bash(CODE_SIGNING_ALLOWED=NO)",
+      "Bash(wc:*)",
+      "mcp__XcodeBuildMCP__build_macos",
+      "mcp__XcodeBuildMCP__session-set-defaults"
     ],
     "deny": []
   }

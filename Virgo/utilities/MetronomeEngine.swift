@@ -9,6 +9,9 @@ import SwiftUI
 import AVFoundation
 import os.log
 import Combine
+#if os(iOS)
+import UIKit
+#endif
 
 // MARK: - Main Metronome Engine
 @MainActor
@@ -26,6 +29,15 @@ class MetronomeEngine: ObservableObject {
     private let audioDriver: AudioDriverProtocol
     private let timingEngine: MetronomeTimingEngine
     private var cancellables = Set<AnyCancellable>()
+
+    // Haptic feedback (iOS only)
+    #if os(iOS)
+    private let accentHapticGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private let normalHapticGenerator = UIImpactFeedbackGenerator(style: .medium)
+    #endif
+
+    /// Enable or disable haptic feedback on beats (iOS only)
+    var hapticFeedbackEnabled: Bool = true
 
     // Configuration
     var bpm: Double = 120.0 {
@@ -131,6 +143,22 @@ class MetronomeEngine: ObservableObject {
         Logger.audioPlayback("🎵 MetronomeEngine.handleBeat() called - beat: \(beat), isAccented: \(isAccented), volume: \(volume)")
         // Play audio tick with precise timing
         audioDriver.playTick(volume: volume, isAccented: isAccented, atTime: atTime)
+
+        // Trigger haptic feedback on iOS
+        #if os(iOS)
+        if hapticFeedbackEnabled {
+            if isAccented {
+                accentHapticGenerator.impactOccurred(intensity: 1.0)
+                // Prepare the normal generator for the next beat
+                normalHapticGenerator.prepare()
+            } else {
+                normalHapticGenerator.impactOccurred(intensity: 0.7)
+                // Prepare for next accent beat
+                accentHapticGenerator.prepare()
+            }
+        }
+        #endif
+
         Logger.audioPlayback("🎵 MetronomeEngine.handleBeat() completed")
     }
 
