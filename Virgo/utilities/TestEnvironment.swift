@@ -16,7 +16,9 @@ enum TestEnvironment {
     static let isRunningTests: Bool = {
         #if DEBUG
         // Method 1: XCTest detection (maintains backward compatibility)
-        if ProcessInfo.processInfo.arguments.contains("XCTestConfigurationFilePath") {
+        if ProcessInfo.processInfo.arguments.contains(where: { arg in
+            arg.hasPrefix("-XCTestConfigurationFilePath") || arg.contains("XCTestConfigurationFilePath")
+        }) {
             Logger.debug("Test environment detected via XCTestConfigurationFilePath argument")
             return true
         }

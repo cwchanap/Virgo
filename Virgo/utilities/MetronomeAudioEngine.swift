@@ -41,6 +41,12 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     // Interruption handling callback
     var onInterruption: ((Bool) -> Void)?
 
+    // MARK: - Observer Tokens
+    #if os(iOS)
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
+    #endif
+
     init() {
         self.isTestEnvironment = TestEnvironment.isRunningTests
 
@@ -67,12 +73,22 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     deinit {
         // Perform cleanup synchronously in deinit to avoid closure capture issues
         guard !isTestEnvironment, let audioEngine = audioEngine, let playerNode = playerNode else { return }
-        
+
         playerNode.stop()
         if audioEngine.isRunning {
             audioEngine.stop()
         }
         audioEngine.detach(playerNode)
+
+        // Remove notification observers
+        #if os(iOS)
+        if let interruptionObserver = interruptionObserver {
+            NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+        if let routeChangeObserver = routeChangeObserver {
+            NotificationCenter.default.removeObserver(routeChangeObserver)
+        }
+        #endif
     }
 
     // MARK: - Audio Engine Setup
@@ -119,7 +135,7 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
 
     private func setupAudioSessionNotifications() {
         #if os(iOS)
-        NotificationCenter.default.addObserver(
+        interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
@@ -127,7 +143,7 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
             self?.handleAudioInterruption(notification)
         }
 
-        NotificationCenter.default.addObserver(
+        routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
@@ -151,7 +167,7 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
             onInterruption?(true)
 
         case .ended:
-            // Interruption ended - check if we should resume
+            // Interruption ended - always notify callback, optionally resume
             if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
                 let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                 if options.contains(.shouldResume) {
@@ -162,8 +178,17 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
                         onInterruption?(false)
                     } catch {
                         Logger.audioPlayback("Failed to resume after interruption: \(error.localizedDescription)")
+                        // Still notify callback even if resume failed
+                        onInterruption?(false)
                     }
+                } else {
+                    Logger.audioPlayback("Audio session interruption ended - system did not request resume")
+                    onInterruption?(false)
                 }
+            } else {
+                // No options provided, notify that interruption ended
+                Logger.audioPlayback("Audio session interruption ended - no resume options provided")
+                onInterruption?(false)
             }
 
         @unknown default:

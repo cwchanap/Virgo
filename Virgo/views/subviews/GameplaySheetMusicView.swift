@@ -138,8 +138,7 @@ extension GameplayView {
             }
 
             // Then render individual notes
-            ForEach(viewModel.cachedBeatIndices, id: \.self) { index in
-                let beat = viewModel.cachedDrumBeats[index]
+            ForEach(viewModel.cachedDrumBeats, id: \.id) { beat in
 
                 // PERFORMANCE FIX: Use pre-cached active beat ID instead of calculating for every beat
                 let isCurrentlyActive = viewModel.activeBeatId == beat.id
