@@ -57,6 +57,12 @@ class MetronomeEngine: ObservableObject {
         self.audioDriver = audioDriver ?? MetronomeAudioEngine()
         self.timingEngine = MetronomeTimingEngine()
 
+        // Prepare haptic generators to reduce first-use latency
+        #if os(iOS)
+        accentHapticGenerator.prepare()
+        normalHapticGenerator.prepare()
+        #endif
+
         // Connect timing engine to audio engine
         timingEngine.onBeat = { [weak self] beat, isAccented, atTime in
             // Audio playback runs on background thread for precise timing

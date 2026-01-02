@@ -588,10 +588,10 @@ struct GameplayViewModelTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         // Don't load data - track will be nil
 
-        // Should not crash
+        // Should not crash and isPlaying should remain false (no track available)
         viewModel.startPlayback()
 
-        #expect(viewModel.isPlaying == true)
+        #expect(viewModel.isPlaying == false)
 
         viewModel.cleanup()
     }

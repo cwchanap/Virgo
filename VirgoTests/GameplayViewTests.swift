@@ -249,7 +249,7 @@ struct GameplayViewTests {
         // Test accessing beats through indices
         for index in cachedBeatIndices {
             let beat = cachedDrumBeats[index]
-            #expect(beat.id == index)
+            #expect(beat.id == UInt64(index))
         }
     }
 
@@ -266,7 +266,7 @@ struct GameplayViewTests {
         let cachedBeamGroups = [beamGroup]
 
         // Simulate the lookup map creation logic from GameplayView
-        var beatToBeamGroupMap: [Int: BeamGroup] = [:]
+        var beatToBeamGroupMap: [UInt64: BeamGroup] = [:]
         for group in cachedBeamGroups {
             for beat in group.beats {
                 beatToBeamGroupMap[beat.id] = group

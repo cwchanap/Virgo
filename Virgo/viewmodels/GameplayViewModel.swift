@@ -71,7 +71,7 @@ final class GameplayViewModel {
     /// Pre-computed beam groups for notation
     var cachedBeamGroups: [BeamGroup] = []
     /// Fast lookup map from beat ID to beam group
-    var beatToBeamGroupMap: [Int: BeamGroup] = [:]
+    var beatToBeamGroupMap: [UInt64: BeamGroup] = [:]
     /// Cached track duration in seconds
     var cachedTrackDuration: Double = 0.0
     /// Cached beat indices for iteration
@@ -79,11 +79,11 @@ final class GameplayViewModel {
     /// Fast lookup map from measure index to position
     var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
     /// Pre-cached beat positions for performance
-    var cachedBeatPositions: [Int: (x: Double, y: Double)] = [:]
+    var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
 
     // MARK: - Visual State
     /// Currently active beat ID for highlighting
-    var activeBeatId: Int?
+    var activeBeatId: UInt64?
     /// Current purple bar position (x, y)
     var purpleBarPosition: (x: Double, y: Double)?
     /// Cached static staff lines view (uses AnyView for type erasure)
@@ -112,6 +112,17 @@ final class GameplayViewModel {
     init(chart: Chart, metronome: MetronomeEngine) {
         self.chart = chart
         self.metronome = metronome
+    }
+
+    // MARK: - Unique ID Generation
+    /// Monotonic counter for generating unique DrumBeat IDs
+    /// Thread-safe: @MainActor ensures all access is on main thread
+    private var nextBeatId: UInt64 = 0
+
+    /// Generate a unique ID for a DrumBeat
+    private func generateBeatId() -> UInt64 {
+        defer { nextBeatId += 1 }
+        return nextBeatId
     }
 
     // MARK: - Data Loading
@@ -166,11 +177,12 @@ final class GameplayViewModel {
 
     func startPlayback() {
         Logger.audioPlayback("🎮 startPlayback() called")
-        isPlaying = true
         guard let track = track else {
             Logger.audioPlayback("🎮 ERROR: No track available for playback")
             return
         }
+
+        isPlaying = true
 
         playbackStartTime = Date()
         playbackTimer?.invalidate()
@@ -413,6 +425,7 @@ final class GameplayViewModel {
     func computeDrumBeats() {
         if cachedNotes.isEmpty {
             cachedDrumBeats = []
+            nextBeatId = 0  // Reset counter for consistency
             return
         }
 
@@ -428,7 +441,7 @@ final class GameplayViewModel {
             let drumTypes = notes.compactMap { DrumType.from(noteType: $0.noteType) }
             let interval = notes.first?.interval ?? .quarter
             return DrumBeat(
-                id: Int(timePosition * 1000),
+                id: generateBeatId(),
                 drums: drumTypes,
                 timePosition: timePosition,
                 interval: interval

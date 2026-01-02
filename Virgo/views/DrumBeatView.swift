@@ -9,7 +9,7 @@ import SwiftUI
 
 // MARK: - Supporting Models
 struct DrumBeat {
-    let id: Int
+    let id: UInt64
     let drums: [DrumType]
     let timePosition: Double
     let interval: NoteInterval
