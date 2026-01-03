@@ -19,7 +19,7 @@ struct InputHit: Sendable {
     let timestamp: Date
 }
 
-struct NoteMatchResult: Sendable {
+struct NoteMatchResult {
     let hitInput: InputHit
     let matchedNote: Note?
     let timingAccuracy: TimingAccuracy
