@@ -184,15 +184,51 @@ final class GameplayViewModel {
 
         isPlaying = true
 
-        playbackStartTime = Date()
         playbackTimer?.invalidate()
+
+        // Check if we're resuming from a pause or starting fresh
+        let isResuming = (bgmPlayer?.currentTime ?? 0) > 0 && !(bgmPlayer?.isPlaying ?? false)
+
+        if isResuming {
+            Logger.audioPlayback("🎮 Resuming playback from \(bgmPlayer?.currentTime ?? 0.0)s")
+
+            // When resuming, calculate the correct state based on current BGM position
+            if let currentTime = bgmPlayer?.currentTime {
+                let secondsPerBeat = 60.0 / track.bpm
+                let elapsedBeats = currentTime / secondsPerBeat
+                let discreteBeats = Int(elapsedBeats)
+
+                // Restore state to match current BGM position
+                totalBeatsElapsed = discreteBeats
+                let beatWithinMeasure = Double(discreteBeats % track.timeSignature.beatsPerMeasure)
+                currentBeatPosition = beatWithinMeasure / Double(track.timeSignature.beatsPerMeasure)
+                currentMeasureIndex = discreteBeats / track.timeSignature.beatsPerMeasure
+                playbackProgress = currentTime / cachedTrackDuration
+
+                // Update derived state
+                currentBeat = findClosestBeatIndex(measureIndex: currentMeasureIndex, beatPosition: currentBeatPosition)
+                lastMetronomeBeat = totalBeatsElapsed
+                lastDiscreteBeat = discreteBeats
+                lastBeatUpdate = discreteBeats
+            }
+
+            // Set playback start time relative to now (for timing calculations)
+            playbackStartTime = Date()
+            pausedElapsedTime = 0.0  // Reset since we're starting fresh from this point
+        } else {
+            Logger.audioPlayback("🎮 Starting fresh playback")
+
+            // Starting from beginning - reset all state
+            resetPlaybackState()
+            pausedElapsedTime = 0.0
+            playbackStartTime = Date()
+        }
 
         if let startTime = playbackStartTime {
             inputManager.startListening(songStartTime: startTime)
         }
 
         startBGMPlayback(track: track)
-        resetPlaybackState()
     }
 
     func pausePlayback() {
@@ -232,6 +268,8 @@ final class GameplayViewModel {
         playbackStartTime = nil
         pausedElapsedTime = 0.0
         bgmPlayer?.stop()
+        metronome.stop()
+        inputManager.stopListening()
         Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")
     }
 
