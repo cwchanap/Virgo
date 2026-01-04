@@ -192,7 +192,7 @@ final class GameplayViewModel {
         if isResuming {
             Logger.audioPlayback("🎮 Resuming playback from \(bgmPlayer?.currentTime ?? 0.0)s")
 
-            // When resuming, calculate the correct state based on current BGM position
+            // When resuming, calculate and restore state based on current BGM position
             if let currentTime = bgmPlayer?.currentTime {
                 let secondsPerBeat = 60.0 / track.bpm
                 let elapsedBeats = currentTime / secondsPerBeat
@@ -210,11 +210,11 @@ final class GameplayViewModel {
                 lastMetronomeBeat = totalBeatsElapsed
                 lastDiscreteBeat = discreteBeats
                 lastBeatUpdate = discreteBeats
-            }
 
-            // Set playback start time relative to now (for timing calculations)
-            playbackStartTime = Date()
-            pausedElapsedTime = 0.0  // Reset since we're starting fresh from this point
+                // Preserve elapsed offset as base time for this playback session
+                pausedElapsedTime = currentTime
+                playbackStartTime = Date()
+            }
         } else {
             Logger.audioPlayback("🎮 Starting fresh playback")
 
