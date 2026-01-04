@@ -6,6 +6,8 @@
 //  and improve maintainability.
 //
 
+// swiftlint:disable file_length type_body_length
+
 import SwiftUI
 import AVFoundation
 import Combine
@@ -167,18 +169,37 @@ final class GameplayViewModel {
 
     func togglePlayback() {
         Logger.audioPlayback("🎮 togglePlayback called - current isPlaying: \(isPlaying)")
-        isPlaying.toggle()
+
+        // Guard: Cannot start playback if data not loaded or track not ready
+        if !isPlaying {
+            guard isDataLoaded else {
+                Logger.audioPlayback("🎮 ERROR: Cannot start playback - data not loaded")
+                return
+            }
+            guard track != nil else {
+                Logger.audioPlayback("🎮 ERROR: Cannot start playback - no track available")
+                return
+            }
+        }
+
         if isPlaying {
-            startPlayback()
-        } else {
             pausePlayback()
+        } else {
+            startPlayback()
         }
     }
 
     func startPlayback() {
         Logger.audioPlayback("🎮 startPlayback() called")
+
+        // Guard: Ensure track is ready before starting playback
         guard let track = track else {
             Logger.audioPlayback("🎮 ERROR: No track available for playback")
+            return
+        }
+
+        guard isDataLoaded else {
+            Logger.audioPlayback("🎮 ERROR: Data not loaded, cannot start playback")
             return
         }
 
@@ -332,6 +353,12 @@ final class GameplayViewModel {
 
     func updateVisualElementsFromMetronome() {
         guard let track = track, isPlaying else { return }
+
+        // Guard: Ensure track duration is initialized to prevent division by zero
+        guard cachedTrackDuration > 0 else {
+            Logger.debug("⚠️ Skipping visual update: cachedTrackDuration not initialized yet")
+            return
+        }
 
         guard let metronomeTime = metronome.getCurrentPlaybackTime() else { return }
         let elapsedTime = pausedElapsedTime + metronomeTime
