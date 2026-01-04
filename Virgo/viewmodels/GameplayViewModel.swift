@@ -9,6 +9,7 @@
 // swiftlint:disable file_length type_body_length
 
 import SwiftUI
+import Observation
 import AVFoundation
 import Combine
 
@@ -253,6 +254,7 @@ final class GameplayViewModel {
     }
 
     func pausePlayback() {
+        isPlaying = false
         playbackTimer?.invalidate()
         playbackTimer = nil
 
