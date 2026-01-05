@@ -216,8 +216,11 @@ final class GameplayViewModel {
 
             // When resuming, calculate and restore state based on current BGM position
             if let currentTime = bgmPlayer?.currentTime {
+                // Convert audio time to timeline position (account for BGM offset)
+                let actualElapsedTime = currentTime + bgmOffsetSeconds
+
                 let secondsPerBeat = 60.0 / track.bpm
-                let elapsedBeats = currentTime / secondsPerBeat
+                let elapsedBeats = actualElapsedTime / secondsPerBeat
                 let discreteBeats = Int(elapsedBeats)
 
                 // Restore state to match current BGM position
@@ -225,7 +228,7 @@ final class GameplayViewModel {
                 let beatWithinMeasure = Double(discreteBeats % track.timeSignature.beatsPerMeasure)
                 currentBeatPosition = beatWithinMeasure / Double(track.timeSignature.beatsPerMeasure)
                 currentMeasureIndex = discreteBeats / track.timeSignature.beatsPerMeasure
-                playbackProgress = currentTime / cachedTrackDuration
+                playbackProgress = actualElapsedTime / cachedTrackDuration
 
                 // Update derived state
                 currentBeat = findClosestBeatIndex(measureIndex: currentMeasureIndex, beatPosition: currentBeatPosition)
@@ -234,7 +237,7 @@ final class GameplayViewModel {
                 lastBeatUpdate = discreteBeats
 
                 // Preserve elapsed offset as base time for this playback session
-                pausedElapsedTime = currentTime
+                pausedElapsedTime = actualElapsedTime
                 playbackStartTime = Date()
             }
         } else {
