@@ -56,9 +56,9 @@ struct BeamView: View {
            let firstBeat = beamedBeats.first,
            let lastBeat = beamedBeats.last {
 
-            // Calculate beam positions
-            let firstMeasureIndex = firstBeat.id / 1000
-            let lastMeasureIndex = lastBeat.id / 1000
+            // Calculate beam positions using timePosition instead of encoded ID
+            let firstMeasureIndex = MeasureUtils.measureIndex(from: firstBeat.timePosition)
+            let lastMeasureIndex = MeasureUtils.measureIndex(from: lastBeat.timePosition)
 
             if let firstMeasurePos = measurePositions.first(where: { $0.measureIndex == firstMeasureIndex }),
                let lastMeasurePos = measurePositions.first(where: { $0.measureIndex == lastMeasureIndex }),
