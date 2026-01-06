@@ -271,6 +271,7 @@ final class GameplayViewModel {
         inputManager.stopListening()
         playbackStartTime = nil
         bgmPlayer?.pause()
+        purpleBarPosition = nil
         Logger.audioPlayback("Paused playback for track: \(track?.title ?? "Unknown")")
     }
 
@@ -296,6 +297,7 @@ final class GameplayViewModel {
         bgmPlayer?.stop()
         metronome.stop()
         inputManager.stopListening()
+        purpleBarPosition = nil
         Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")
     }
 
@@ -325,6 +327,7 @@ final class GameplayViewModel {
         lastMetronomeBeat = 0
         lastDiscreteBeat = -1
         playbackProgress = 0.0
+        purpleBarPosition = nil
     }
 
     private func startBGMPlayback(track: DrumTrack) {
