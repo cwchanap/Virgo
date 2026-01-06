@@ -13,8 +13,8 @@ import Foundation
 enum TestEnvironment {
     /// Cached result of test environment detection.
     /// Evaluated once at first access for performance.
+    /// Works in both Debug and Release configurations to prevent audio/MIDI crashes in CI tests.
     static let isRunningTests: Bool = {
-        #if DEBUG
         // Method 1: XCTest detection (maintains backward compatibility)
         if ProcessInfo.processInfo.arguments.contains(where: { arg in
             arg.hasPrefix("-XCTestConfigurationFilePath") || arg.contains("XCTestConfigurationFilePath")
@@ -42,7 +42,6 @@ enum TestEnvironment {
             Logger.debug("Test environment detected via process name: \(processName)")
             return true
         }
-        #endif
 
         return false
     }()
