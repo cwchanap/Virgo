@@ -289,12 +289,15 @@ class MetronomeTimingEngine: ObservableObject {
         // In test environment, immediately fire a beat callback to allow tests to verify functionality
         Logger.audioPlayback("Test environment - simulating beat callback")
         let isAccented = (currentBeat == 1)
-        
+
         // Ensure state is published on main thread for Combine subscribers
         Task { @MainActor in
+            // Guard: Don't update beat if playback has stopped (prevents race in parallel tests)
+            guard isPlaying else { return }
+
             // Fire the beat callback
             onBeat?(currentBeat, isAccented, nil)
-            
+
             // Update beat counter on main thread to trigger @Published
             currentBeat += 1
             if currentBeat > timeSignature.beatsPerMeasure {
