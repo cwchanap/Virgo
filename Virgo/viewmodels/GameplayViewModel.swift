@@ -228,7 +228,14 @@ final class GameplayViewModel {
                 let beatWithinMeasure = Double(discreteBeats % track.timeSignature.beatsPerMeasure)
                 currentBeatPosition = beatWithinMeasure / Double(track.timeSignature.beatsPerMeasure)
                 currentMeasureIndex = discreteBeats / track.timeSignature.beatsPerMeasure
-                playbackProgress = actualElapsedTime / cachedTrackDuration
+
+                // Guard against zero duration to prevent division by zero
+                if cachedTrackDuration > 0 {
+                    playbackProgress = actualElapsedTime / cachedTrackDuration
+                } else {
+                    Logger.warning("⚠️ Cannot calculate playback progress: cachedTrackDuration is zero")
+                    playbackProgress = 0.0
+                }
 
                 // Update derived state
                 currentBeat = findClosestBeatIndex(measureIndex: currentMeasureIndex, beatPosition: currentBeatPosition)
