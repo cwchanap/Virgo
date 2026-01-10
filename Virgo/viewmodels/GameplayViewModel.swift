@@ -204,8 +204,6 @@ final class GameplayViewModel {
             return
         }
 
-        isPlaying = true
-
         playbackTimer?.invalidate()
 
         // Check if we're resuming from a pause or starting fresh
@@ -216,7 +214,7 @@ final class GameplayViewModel {
 
             // When resuming, calculate and restore state based on current BGM position
             if let currentTime = bgmPlayer?.currentTime {
-                // Convert audio time to timeline position (account for BGM offset)
+                // Convert audio time to timeline position (accounting for BGM offset)
                 let actualElapsedTime = currentTime + bgmOffsetSeconds
 
                 let secondsPerBeat = 60.0 / track.bpm
@@ -245,7 +243,6 @@ final class GameplayViewModel {
 
                 // Preserve elapsed offset as base time for this playback session
                 pausedElapsedTime = actualElapsedTime
-                playbackStartTime = Date()
             }
         } else {
             Logger.audioPlayback("🎮 Starting fresh playback")
@@ -253,8 +250,12 @@ final class GameplayViewModel {
             // Starting from beginning - reset all state
             resetPlaybackState()
             pausedElapsedTime = 0.0
-            playbackStartTime = Date()
         }
+
+        // Set playback state AFTER setup operations complete
+        // This ensures UI state accurately reflects whether playback setup succeeded
+        isPlaying = true
+        playbackStartTime = Date()
 
         if let startTime = playbackStartTime {
             inputManager.startListening(songStartTime: startTime)
