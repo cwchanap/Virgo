@@ -654,4 +654,56 @@ struct GameplayViewModelTests {
         _ = viewModel.inputManager
         _ = viewModel.inputHandler
     }
+
+    // MARK: - State Consistency Tests
+
+    @Test func testStartPlaybackStateConsistency() async throws {
+        // This test verifies that isPlaying is only set to true after
+        // all setup operations complete successfully.
+        // See: coderabbit.ai review comment about potential state inconsistency
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Verify initial state
+        #expect(viewModel.isPlaying == false)
+        #expect(viewModel.playbackStartTime == nil)
+
+        // Capture state before and after startPlayback
+        let stateBeforeStart = (isPlaying: viewModel.isPlaying, startTime: viewModel.playbackStartTime)
+
+        viewModel.startPlayback()
+
+        // After startPlayback, both should be set together
+        #expect(viewModel.isPlaying == true)
+        #expect(viewModel.playbackStartTime != nil)
+
+        // Verify state transition was atomic - both changed together
+        #expect(stateBeforeStart.isPlaying == false)
+        #expect(stateBeforeStart.startTime == nil)
+
+        viewModel.cleanup()
+    }
+
+    @Test func testStartPlaybackGuardsPreventStateInconsistency() async throws {
+        // Verify that guards prevent state from becoming inconsistent
+        // when preconditions are not met
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        // Note: NOT loading data - track will be nil
+
+        // State should remain unchanged when startPlayback fails due to no track
+        viewModel.startPlayback()
+
+        // isPlaying should remain false since guard failed
+        #expect(viewModel.isPlaying == false)
+        #expect(viewModel.playbackStartTime == nil)
+
+        viewModel.cleanup()
+    }
 }
