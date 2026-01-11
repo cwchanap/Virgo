@@ -11,6 +11,7 @@ import SwiftUI
 @testable import Virgo
 
 @MainActor
+// swiftlint:disable:next type_body_length
 struct GameplayViewModelTests {
 
     // MARK: - Test Helpers
@@ -705,5 +706,140 @@ struct GameplayViewModelTests {
         #expect(viewModel.playbackStartTime == nil)
 
         viewModel.cleanup()
+    }
+
+    // MARK: - Pause/Resume Input Timing Tests
+
+    @Test func testResumePlaybackPreservesInputTimingAlignment() async throws {
+        // Test that input timing stays aligned after pause/resume.
+        // This addresses the bug where InputManager resets timing on resume,
+        // causing hit matching to be shifted by already-elapsed duration.
+        //
+        // The fix ensures playbackStartTime on resume is set to Date() - pausedElapsedTime,
+        // which makes InputManager's elapsed time calculation (now - songStartTime)
+        // correctly account for the already-elapsed duration.
+        let chart = createTestChart(noteCount: 16)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Start fresh playback
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true)
+
+        guard let firstStartTime = viewModel.playbackStartTime else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        // Simulate some elapsed time (e.g., 2 beats worth at 120 BPM = 1 second)
+        let simulatedElapsedSeconds: Double = 1.0
+
+        // Simulate pause by setting BGM player state
+        // In a real scenario, the metronome would have advanced
+        viewModel.bgmPlayer?.currentTime = simulatedElapsedSeconds
+
+        // Pause playback
+        viewModel.pausePlayback()
+        #expect(viewModel.isPlaying == false)
+        #expect(viewModel.playbackStartTime == nil)
+
+        // Verify pausedElapsedTime was accumulated
+        let pausedTimeAfterPause = viewModel.pausedElapsedTime
+        #expect(pausedTimeAfterPause > 0.0, "pausedElapsedTime should be > 0 after pause")
+
+        // Resume playback
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true)
+
+        guard let resumeStartTime = viewModel.playbackStartTime else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        // CRITICAL VERIFICATION: The resume start time must be adjusted backward
+        // to account for the paused duration. This ensures InputManager calculates
+        // correct elapsed time: now - resumeStartTime ≈ pausedElapsedTime
+        #expect(resumeStartTime < firstStartTime,
+               "Resume start time should be adjusted backward to account for paused time")
+
+        // Additional check: the backward adjustment should be approximately equal to
+        // the accumulated paused time (within generous tolerance for parallel test execution)
+        let timeBetweenStartTimes = firstStartTime.timeIntervalSince(resumeStartTime)
+        let toleranceMultiplier: Double = 2.0  // Allow 2x for parallel execution variance
+        #expect(
+            abs(timeBetweenStartTimes - pausedTimeAfterPause) < (pausedTimeAfterPause * toleranceMultiplier),
+            "Time between start times (≈\(timeBetweenStartTimes)s) should be " +
+            "approximately paused elapsed time (≈\(pausedTimeAfterPause)s)"
+        )
+
+        viewModel.cleanup()
+    }
+
+    @Test func testResumePlaybackMultipleTimesMaintainsTiming() async throws {
+        // Test multiple pause/resume cycles to ensure timing stays correct.
+        // The key fix is that each resume adjusts songStartTime backward by
+        // total pausedElapsedTime, maintaining input timing alignment.
+        let chart = createTestChart(noteCount: 20)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // First cycle: start -> pause -> resume
+        viewModel.startPlayback()
+        viewModel.bgmPlayer?.currentTime = 0.5
+        viewModel.pausePlayback()
+        let pausedAfterFirst = viewModel.pausedElapsedTime
+
+        guard let firstStartTime = viewModel.playbackStartTime else {
+            throw TestError.playbackStartTimeNil
+        }
+        #expect(firstStartTime != nil, "First start time should be set")
+
+        viewModel.startPlayback()
+        guard let startTimeAfterFirstResume = viewModel.playbackStartTime else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        // Verify the second start time is earlier than the first one
+        // (it's adjusted backward by pausedTime)
+        #expect(startTimeAfterFirstResume < firstStartTime,
+               "Resume start time should be adjusted backward to account for paused time")
+
+        // Second cycle: pause -> resume
+        viewModel.bgmPlayer?.currentTime = 1.0
+        viewModel.pausePlayback()
+        let pausedAfterSecond = viewModel.pausedElapsedTime
+        #expect(pausedAfterSecond > pausedAfterFirst, "Second pause should have more elapsed time")
+
+        viewModel.startPlayback()
+        guard let startTimeAfterSecondResume = viewModel.playbackStartTime else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        // Verify the third start time is even earlier (backward adjustment accumulates)
+        #expect(startTimeAfterSecondResume < startTimeAfterFirstResume,
+               "Second resume should adjust start time further backward")
+
+        // The backward adjustment should accumulate across pause/resume cycles
+        let timeBetweenResumes = startTimeAfterFirstResume.timeIntervalSince(startTimeAfterSecondResume)
+        let expectedTimeBetween = pausedAfterSecond - pausedAfterFirst
+
+        // Allow generous tolerance for parallel test execution variations
+        let toleranceMultiplier: Double = 2.0
+        let tolerance = max(0.5, expectedTimeBetween * toleranceMultiplier)
+        #expect(
+            abs(timeBetweenResumes - expectedTimeBetween) < tolerance,
+            "Time between resumes (≈\(timeBetweenResumes)s) should approximately " +
+            "equal difference in paused times (≈\(expectedTimeBetween)s)"
+        )
+
+        viewModel.cleanup()
+    }
+
+    enum TestError: Error {
+        case playbackStartTimeNil
     }
 }

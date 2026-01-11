@@ -252,7 +252,12 @@ final class GameplayViewModel {
             pausedElapsedTime = 0.0
         }
 
-        playbackStartTime = Date()
+        // Calculate song start time accounting for paused elapsed time
+        // This ensures InputManager timing calculations stay aligned after resume
+        // InputManager computes elapsed time as: now - songStartTime
+        // By subtracting pausedElapsedTime, we effectively set songStartTime to when playback originally started
+        let adjustedSongStartTime = Date().addingTimeInterval(-pausedElapsedTime)
+        playbackStartTime = adjustedSongStartTime
 
         if let startTime = playbackStartTime {
             inputManager.startListening(songStartTime: startTime)
