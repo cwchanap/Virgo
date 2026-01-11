@@ -252,9 +252,6 @@ final class GameplayViewModel {
             pausedElapsedTime = 0.0
         }
 
-        // Set playback state AFTER setup operations complete
-        // This ensures UI state accurately reflects whether playback setup succeeded
-        isPlaying = true
         playbackStartTime = Date()
 
         if let startTime = playbackStartTime {
@@ -262,6 +259,10 @@ final class GameplayViewModel {
         }
 
         startBGMPlayback(track: track)
+
+        // Set playback state AFTER all operations succeed
+        // This ensures UI state accurately reflects whether playback actually started
+        isPlaying = true
     }
 
     func pausePlayback() {
