@@ -769,8 +769,7 @@ struct GameplayViewModelTests {
         let toleranceMultiplier: Double = 2.0  // Allow 2x for parallel execution variance
         #expect(
             abs(timeBetweenStartTimes - pausedTimeAfterPause) < (pausedTimeAfterPause * toleranceMultiplier),
-            "Time between start times (≈\(timeBetweenStartTimes)s) should be " +
-            "approximately paused elapsed time (≈\(pausedTimeAfterPause)s)"
+            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately paused elapsed time (≈\(pausedTimeAfterPause)s)"
         )
 
         viewModel.cleanup()
@@ -796,7 +795,6 @@ struct GameplayViewModelTests {
         guard let firstStartTime = viewModel.playbackStartTime else {
             throw TestError.playbackStartTimeNil
         }
-        #expect(firstStartTime != nil, "First start time should be set")
 
         viewModel.startPlayback()
         guard let startTimeAfterFirstResume = viewModel.playbackStartTime else {
@@ -832,8 +830,7 @@ struct GameplayViewModelTests {
         let tolerance = max(0.5, expectedTimeBetween * toleranceMultiplier)
         #expect(
             abs(timeBetweenResumes - expectedTimeBetween) < tolerance,
-            "Time between resumes (≈\(timeBetweenResumes)s) should approximately " +
-            "equal difference in paused times (≈\(expectedTimeBetween)s)"
+            "Time between resumes (≈\(timeBetweenResumes)s) should approximately equal difference in paused times (≈\(expectedTimeBetween)s)"
         )
 
         viewModel.cleanup()
