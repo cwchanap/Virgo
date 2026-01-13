@@ -788,13 +788,12 @@ struct GameplayViewModelTests {
 
         // First cycle: start -> pause -> resume
         viewModel.startPlayback()
-        viewModel.bgmPlayer?.currentTime = 0.5
-        viewModel.pausePlayback()
-        let pausedAfterFirst = viewModel.pausedElapsedTime
-
         guard let firstStartTime = viewModel.playbackStartTime else {
             throw TestError.playbackStartTimeNil
         }
+        viewModel.bgmPlayer?.currentTime = 0.5
+        viewModel.pausePlayback()
+        let pausedAfterFirst = viewModel.pausedElapsedTime
 
         viewModel.startPlayback()
         guard let startTimeAfterFirstResume = viewModel.playbackStartTime else {
