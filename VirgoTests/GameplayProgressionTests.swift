@@ -16,7 +16,6 @@ struct GameplayProgressionTests {
 
     @Test func testCompleteGameplayProgression() {
         // Test the complete progression flow from GameplayView
-        let bpm = 120
         let timeSignature = TimeSignature.fourFour
 
         // Simulate metronome beat sequence over 2 measures
@@ -172,8 +171,6 @@ struct GameplayProgressionTests {
         #expect(abs(beatPosition - 0.5) < 0.001)
 
         // This should work regardless of whether there are actual notes at this position
-        let emptyDrumBeats: [DrumBeat] = [] // No notes in track
-
         // Beat progression should still calculate correctly
         #expect(measureIndex == 1)
         #expect(abs(beatPosition - 0.5) < 0.001)
