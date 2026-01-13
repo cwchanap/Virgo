@@ -10,3 +10,4 @@ server/.venv/
 Test-*.xcresult/
 DerivedData/
 *.xcuserdata/
+TestResults/
