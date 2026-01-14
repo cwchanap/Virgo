@@ -835,6 +835,81 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testResumeMetronomeOnlyPlaybackPreservesState() async throws {
+        // Test that metronome-only sessions (without BGM) preserve playback state
+        // across pause/resume. This addresses the regression where metronome-only
+        // sessions always restart from the beginning on resume.
+        //
+        // The fix uses pausedElapsedTime > 0 as the primary resume indicator,
+        // which works for both BGM and metronome-only sessions.
+        let chart = createTestChart(noteCount: 16)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Ensure no BGM player is loaded (metronome-only session)
+        #expect(viewModel.bgmPlayer == nil, "This test requires metronome-only session (no BGM)")
+
+        // Start fresh playback
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true)
+        #expect(viewModel.currentMeasureIndex == 0, "Should start at measure 0")
+        #expect(viewModel.totalBeatsElapsed == 0, "Should start with 0 elapsed beats")
+
+        guard let firstStartTime = viewModel.playbackStartTime else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        // Simulate some playback progress
+        // In a real scenario, the metronome would advance over time.
+        // Here we manually simulate elapsed time being captured during pause.
+        let simulatedElapsedSeconds: Double = 1.0  // 1 second at 120 BPM = 2 beats
+
+        // Pause playback
+        viewModel.pausePlayback()
+        #expect(viewModel.isPlaying == false)
+        #expect(viewModel.playbackStartTime == nil)
+
+        // Manually set pausedElapsedTime to simulate metronome advancement
+        // This simulates what would happen if playback ran for 1 second
+        viewModel.pausedElapsedTime = simulatedElapsedSeconds
+        let pausedTimeAfterPause = viewModel.pausedElapsedTime
+        #expect(pausedTimeAfterPause > 0.0, "pausedElapsedTime should be > 0 after pause")
+
+        // Resume playback
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true)
+
+        guard let resumeStartTime = viewModel.playbackStartTime else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        // CRITICAL VERIFICATION: The resume start time must be adjusted backward
+        // to account for the paused duration. This ensures InputManager calculates
+        // the correct elapsed time: now - resumeStartTime ≈ pausedElapsedTime
+        #expect(resumeStartTime < firstStartTime,
+               "Resume start time should be adjusted backward to account for paused time")
+
+        // Verify pausedElapsedTime was preserved and used to restore state
+        let timeBetweenStartTimes = firstStartTime.timeIntervalSince(resumeStartTime)
+        let toleranceMultiplier: Double = 2.0
+        #expect(
+            abs(timeBetweenStartTimes - pausedTimeAfterPause) < (pausedTimeAfterPause * toleranceMultiplier),
+            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately equal paused elapsed time (≈\(pausedTimeAfterPause)s)"
+        )
+
+        // Verify playback state was restored, not reset to beginning
+        // The state should reflect the elapsed time from pausedElapsedTime
+        #expect(viewModel.totalBeatsElapsed > 0, "Should have elapsed beats after resume")
+        #expect(viewModel.currentMeasureIndex > 0 || viewModel.currentBeatPosition > 0,
+               "Should have progressed from beginning after resume")
+
+        // Cleanup
+        viewModel.cleanup()
+    }
+
     enum TestError: Error {
         case playbackStartTimeNil
     }

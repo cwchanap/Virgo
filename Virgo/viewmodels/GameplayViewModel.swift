@@ -207,43 +207,49 @@ final class GameplayViewModel {
         playbackTimer?.invalidate()
 
         // Check if we're resuming from a pause or starting fresh
-        let isResuming = (bgmPlayer?.currentTime ?? 0) > 0 && !(bgmPlayer?.isPlaying ?? false)
+        // Use pausedElapsedTime as primary indicator for resume (works for both BGM and metronome-only sessions)
+        let isResuming = pausedElapsedTime > 0.0
 
         if isResuming {
-            Logger.audioPlayback("🎮 Resuming playback from \(bgmPlayer?.currentTime ?? 0.0)s")
-
-            // When resuming, calculate and restore state based on current BGM position
-            if let currentTime = bgmPlayer?.currentTime {
+            // When resuming, calculate and restore state based on elapsed time
+            // For BGM sessions, use BGM position as source of truth
+            // For metronome-only sessions, use pausedElapsedTime
+            let actualElapsedTime: Double
+            if let bgmPlayer = bgmPlayer, bgmPlayer.currentTime > 0 {
+                Logger.audioPlayback("🎮 Resuming BGM playback from \(bgmPlayer.currentTime)s")
                 // Convert audio time to timeline position (accounting for BGM offset)
-                let actualElapsedTime = currentTime + bgmOffsetSeconds
-
-                let secondsPerBeat = 60.0 / track.bpm
-                let elapsedBeats = actualElapsedTime / secondsPerBeat
-                let discreteBeats = Int(elapsedBeats)
-
-                // Restore state to match current BGM position
-                totalBeatsElapsed = discreteBeats
-                let beatWithinMeasure = Double(discreteBeats % track.timeSignature.beatsPerMeasure)
-                currentBeatPosition = beatWithinMeasure / Double(track.timeSignature.beatsPerMeasure)
-                currentMeasureIndex = discreteBeats / track.timeSignature.beatsPerMeasure
-
-                // Guard against zero duration to prevent division by zero
-                if cachedTrackDuration > 0 {
-                    playbackProgress = actualElapsedTime / cachedTrackDuration
-                } else {
-                    Logger.warning("⚠️ Cannot calculate playback progress: cachedTrackDuration is zero")
-                    playbackProgress = 0.0
-                }
-
-                // Update derived state
-                currentBeat = findClosestBeatIndex(measureIndex: currentMeasureIndex, beatPosition: currentBeatPosition)
-                lastMetronomeBeat = totalBeatsElapsed
-                lastDiscreteBeat = discreteBeats
-                lastBeatUpdate = discreteBeats
-
-                // Preserve elapsed offset as base time for this playback session
-                pausedElapsedTime = actualElapsedTime
+                actualElapsedTime = bgmPlayer.currentTime + bgmOffsetSeconds
+            } else {
+                Logger.audioPlayback("🎮 Resuming metronome-only playback from \(pausedElapsedTime)s")
+                actualElapsedTime = pausedElapsedTime
             }
+
+            let secondsPerBeat = 60.0 / track.bpm
+            let elapsedBeats = actualElapsedTime / secondsPerBeat
+            let discreteBeats = Int(elapsedBeats)
+
+            // Restore state to match current position
+            totalBeatsElapsed = discreteBeats
+            let beatWithinMeasure = Double(discreteBeats % track.timeSignature.beatsPerMeasure)
+            currentBeatPosition = beatWithinMeasure / Double(track.timeSignature.beatsPerMeasure)
+            currentMeasureIndex = discreteBeats / track.timeSignature.beatsPerMeasure
+
+            // Guard against zero duration to prevent division by zero
+            if cachedTrackDuration > 0 {
+                playbackProgress = actualElapsedTime / cachedTrackDuration
+            } else {
+                Logger.warning("⚠️ Cannot calculate playback progress: cachedTrackDuration is zero")
+                playbackProgress = 0.0
+            }
+
+            // Update derived state
+            currentBeat = findClosestBeatIndex(measureIndex: currentMeasureIndex, beatPosition: currentBeatPosition)
+            lastMetronomeBeat = totalBeatsElapsed
+            lastDiscreteBeat = discreteBeats
+            lastBeatUpdate = discreteBeats
+
+            // Preserve elapsed offset as base time for this playback session
+            pausedElapsedTime = actualElapsedTime
         } else {
             Logger.audioPlayback("🎮 Starting fresh playback")
 
@@ -346,10 +352,14 @@ final class GameplayViewModel {
 
     private func startBGMPlayback(track: DrumTrack) {
         if let bgmPlayer = bgmPlayer {
+            // Resume BGM playback: player has current position and is not playing
             if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
+                Logger.audioPlayback("🎮 Resuming BGM at \(bgmPlayer.currentTime)s")
                 metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
                 bgmPlayer.play()
             } else {
+                // Starting fresh BGM playback
+                Logger.audioPlayback("🎮 Starting fresh BGM playback")
                 bgmPlayer.currentTime = 0
                 let setupTime: TimeInterval = 0.05
                 let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
@@ -360,6 +370,8 @@ final class GameplayViewModel {
                 bgmPlayer.play(atTime: bgmScheduledTime)
             }
         } else {
+            // Metronome-only playback
+            Logger.audioPlayback("🎮 Starting metronome-only playback")
             metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
         }
     }
