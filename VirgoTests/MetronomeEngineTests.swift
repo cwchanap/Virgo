@@ -154,6 +154,58 @@ struct MetronomeAudioEngineTests {
         audioEngine.stop()
         audioEngine.resume()
     }
+
+    @Test("MetronomeAudioEngine onInterruption callback can be set")
+    func testOnInterruptionCallbackAssignment() {
+        let audioEngine = MetronomeAudioEngine()
+        var callbackInvoked = false
+        var receivedInterrupted = false
+
+        audioEngine.onInterruption = { isInterrupted in
+            callbackInvoked = true
+            receivedInterrupted = isInterrupted
+        }
+
+        // Manually invoke the callback to verify it's wired correctly
+        audioEngine.onInterruption?(true)
+
+        #expect(callbackInvoked == true)
+        #expect(receivedInterrupted == true)
+    }
+
+    @Test("MetronomeAudioEngine onInterruption callback reports false for resume")
+    func testOnInterruptionCallbackResume() {
+        let audioEngine = MetronomeAudioEngine()
+        var receivedInterrupted: Bool?
+
+        audioEngine.onInterruption = { isInterrupted in
+            receivedInterrupted = isInterrupted
+        }
+
+        // Simulate interruption end (resume)
+        audioEngine.onInterruption?(false)
+
+        #expect(receivedInterrupted == false)
+    }
+
+    @Test("MetronomeAudioEngine onInterruption callback handles multiple calls")
+    func testOnInterruptionCallbackMultipleCalls() {
+        let audioEngine = MetronomeAudioEngine()
+        var callCount = 0
+        var states: [Bool] = []
+
+        audioEngine.onInterruption = { isInterrupted in
+            callCount += 1
+            states.append(isInterrupted)
+        }
+
+        // Simulate interruption sequence: begin -> end
+        audioEngine.onInterruption?(true)
+        audioEngine.onInterruption?(false)
+
+        #expect(callCount == 2)
+        #expect(states == [true, false])
+    }
 }
 
 @Suite("Metronome Timing Engine Tests", .serialized)

@@ -68,21 +68,21 @@ final class GameplayViewModel {
 
     // MARK: - Cached Layout Data
     /// Pre-computed drum beats from notes
-    var cachedDrumBeats: [DrumBeat] = []
+    private(set) var cachedDrumBeats: [DrumBeat] = []
     /// Pre-computed measure positions for layout
-    var cachedMeasurePositions: [GameplayLayout.MeasurePosition] = []
+    private(set) var cachedMeasurePositions: [GameplayLayout.MeasurePosition] = []
     /// Pre-computed beam groups for notation
-    var cachedBeamGroups: [BeamGroup] = []
+    private(set) var cachedBeamGroups: [BeamGroup] = []
     /// Fast lookup map from beat ID to beam group
-    var beatToBeamGroupMap: [UInt64: BeamGroup] = [:]
+    private(set) var beatToBeamGroupMap: [UInt64: BeamGroup] = [:]
     /// Cached track duration in seconds
-    var cachedTrackDuration: Double = 0.0
+    private(set) var cachedTrackDuration: Double = 0.0
     /// Cached beat indices for iteration
-    var cachedBeatIndices: [Int] = []
+    private(set) var cachedBeatIndices: [Int] = []
     /// Fast lookup map from measure index to position
-    var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
+    private(set) var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
     /// Pre-cached beat positions for performance
-    var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
+    private(set) var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
 
     // MARK: - Visual State
     /// Currently active beat ID for highlighting
@@ -143,7 +143,10 @@ final class GameplayViewModel {
 
     /// Sets up gameplay after data is loaded
     func setupGameplay() {
-        guard let track = track else { return }
+        guard let track = track else {
+            Logger.audioPlayback("setupGameplay() called but track is nil - data not loaded yet")
+            return
+        }
 
         computeDrumBeats()
         computeCachedLayoutData()
