@@ -157,7 +157,12 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     private func handleAudioInterruption(_ notification: Notification) {
         guard let info = notification.userInfo,
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            Logger.audioPlayback("Audio interruption with malformed data - pausing as safety")
+            playerNode?.pause()
+            onInterruption?(true)
+            return
+        }
 
         switch type {
         case .began:
@@ -178,8 +183,8 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
                         onInterruption?(false)
                     } catch {
                         Logger.audioPlayback("Failed to resume after interruption: \(error.localizedDescription)")
-                        // Still notify callback even if resume failed
-                        onInterruption?(false)
+                        // Resume failed - report still interrupted so UI stays paused
+                        onInterruption?(true)
                     }
                 } else {
                     Logger.audioPlayback("Audio session interruption ended - system did not request resume")
@@ -192,14 +197,19 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
             }
 
         @unknown default:
-            break
+            Logger.audioPlayback("Unknown audio interruption type (\(typeValue)) - pausing as safety")
+            playerNode?.pause()
+            onInterruption?(true)
         }
     }
 
     private func handleRouteChange(_ notification: Notification) {
         guard let info = notification.userInfo,
               let reasonValue = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
+            Logger.audioPlayback("Route change with malformed data - ignoring (non-critical)")
+            return
+        }
 
         switch reason {
         case .oldDeviceUnavailable:
@@ -368,19 +378,19 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
                 if hostTime > 0 && scheduledTime.isHostTimeValid {
                     
                     // Use the validated time for precise scheduling
-                    playerNode.scheduleBuffer(buffer, at: scheduledTime, options: [], completionHandler: { [weak self] in
+                    playerNode.scheduleBuffer(buffer, at: scheduledTime, options: [], completionHandler: {
                         Logger.audioPlayback("🔊 Buffer playback completed")
                     })
                     Logger.audioPlayback("🔊 Scheduled buffer at precise time: \(hostTime) with \(buffer.frameLength) frames")
                 } else {
                     // Fallback to immediate playback if time is invalid
-                    playerNode.scheduleBuffer(buffer, completionHandler: { [weak self] in
+                    playerNode.scheduleBuffer(buffer, completionHandler: {
                         Logger.audioPlayback("🔊 Buffer playback completed (immediate)")
                     })
                     Logger.audioPlayback("🔊 Invalid AVAudioTime - using immediate playback fallback")
                 }
             } else {
-                playerNode.scheduleBuffer(buffer, completionHandler: { [weak self] in
+                playerNode.scheduleBuffer(buffer, completionHandler: {
                     Logger.audioPlayback("🔊 Buffer playback completed (no time)")
                 })
                 Logger.audioPlayback("🔊 Scheduled buffer immediately with \(buffer.frameLength) frames")
