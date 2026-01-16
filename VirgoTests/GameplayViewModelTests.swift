@@ -769,7 +769,7 @@ struct GameplayViewModelTests {
         let toleranceMultiplier: Double = 2.0  // Allow 2x for parallel execution variance
         #expect(
             abs(timeBetweenStartTimes - pausedTimeAfterPause) < (pausedTimeAfterPause * toleranceMultiplier),
-            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately paused elapsed time (≈\(pausedTimeAfterPause)s)"
+            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately equal paused elapsed time (≈\(pausedTimeAfterPause)s)"
         )
 
         viewModel.cleanup()
