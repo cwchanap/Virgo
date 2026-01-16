@@ -30,6 +30,10 @@ class MetronomeEngine: ObservableObject {
     private let timingEngine: MetronomeTimingEngine
     private var cancellables = Set<AnyCancellable>()
 
+    /// Callback invoked when audio interruption state changes (e.g., phone call, Siri)
+    /// Parameter is true when interrupted (playback should pause), false when interruption ends
+    var onInterruption: ((Bool) -> Void)?
+
     // Haptic feedback (iOS only)
     #if os(iOS)
     private let accentHapticGenerator = UIImpactFeedbackGenerator(style: .heavy)
@@ -67,6 +71,15 @@ class MetronomeEngine: ObservableObject {
         timingEngine.onBeat = { [weak self] beat, isAccented, atTime in
             // Audio playback runs on background thread for precise timing
             self?.handleBeat(beat: beat, isAccented: isAccented, atTime: atTime)
+        }
+
+        // Wire up audio interruption handling (iOS only)
+        // This forwards interruption events from the audio engine to external listeners
+        if let audioEngine = self.audioDriver as? MetronomeAudioEngine {
+            audioEngine.onInterruption = { [weak self] isInterrupted in
+                Logger.audioPlayback("MetronomeEngine received interruption: \(isInterrupted ? "began" : "ended")")
+                self?.onInterruption?(isInterrupted)
+            }
         }
 
         // Observe timing engine state
@@ -153,14 +166,16 @@ class MetronomeEngine: ObservableObject {
         // Trigger haptic feedback on iOS
         #if os(iOS)
         if hapticFeedbackEnabled {
-            if isAccented {
-                accentHapticGenerator.impactOccurred(intensity: 1.0)
-                // Prepare the normal generator for the next beat
-                normalHapticGenerator.prepare()
-            } else {
-                normalHapticGenerator.impactOccurred(intensity: 0.7)
-                // Prepare for next accent beat
-                accentHapticGenerator.prepare()
+            Task { @MainActor in
+                if isAccented {
+                    accentHapticGenerator.impactOccurred(intensity: 1.0)
+                    // Prepare the normal generator for the next beat
+                    normalHapticGenerator.prepare()
+                } else {
+                    normalHapticGenerator.impactOccurred(intensity: 0.7)
+                    // Prepare for next accent beat
+                    accentHapticGenerator.prepare()
+                }
             }
         }
         #endif

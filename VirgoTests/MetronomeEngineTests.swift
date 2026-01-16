@@ -130,6 +130,28 @@ struct MetronomeEngineTests {
         let disabledSuccessfully = await TestHelpers.waitFor(condition: { !engine.isEnabled }, timeout: 2.0)
         #expect(disabledSuccessfully)
     }
+
+    @Test("MetronomeEngine onInterruption callback can be set and invoked")
+    func testOnInterruptionCallback() {
+        let engine = MetronomeEngine()
+        var callbackInvoked = false
+        var receivedInterrupted: Bool?
+
+        engine.onInterruption = { isInterrupted in
+            callbackInvoked = true
+            receivedInterrupted = isInterrupted
+        }
+
+        // Manually invoke to verify the callback is accessible
+        engine.onInterruption?(true)
+
+        #expect(callbackInvoked == true)
+        #expect(receivedInterrupted == true)
+
+        // Test with false (interruption ended)
+        engine.onInterruption?(false)
+        #expect(receivedInterrupted == false)
+    }
 }
 
 @Suite("Metronome Audio Engine Tests", .serialized)

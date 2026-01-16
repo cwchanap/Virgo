@@ -162,6 +162,26 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testPausePlaybackIsIdempotent() async throws {
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        viewModel.startPlayback()
+        viewModel.pausePlayback()
+        let pausedAfterFirst = viewModel.pausedElapsedTime
+
+        viewModel.pausePlayback()
+
+        #expect(viewModel.pausedElapsedTime == pausedAfterFirst)
+        #expect(viewModel.isPlaying == false)
+
+        viewModel.cleanup()
+    }
+
     @Test func testStartPlayback() async throws {
         let chart = createTestChart()
         let metronome = createTestMetronome()
@@ -905,6 +925,65 @@ struct GameplayViewModelTests {
         #expect(viewModel.totalBeatsElapsed > 0, "Should have elapsed beats after resume")
         #expect(viewModel.currentMeasureIndex > 0 || viewModel.currentBeatPosition > 0,
                "Should have progressed from beginning after resume")
+
+        // Cleanup
+        viewModel.cleanup()
+    }
+
+    @Test func testAudioInterruptionPausesPlayback() async {
+        // Test that audio interruptions (phone calls, Siri, etc.) pause playback.
+        // This verifies the interruption handling chain:
+        // MetronomeAudioEngine.onInterruption -> MetronomeEngine.onInterruption -> GameplayViewModel.pausePlayback
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Start playback
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true, "Playback should be active")
+
+        // Simulate audio interruption by invoking the metronome's callback
+        // This mimics what happens when iOS sends an interruption notification
+        metronome.onInterruption?(true)
+
+        // Verify playback was paused
+        #expect(viewModel.isPlaying == false, "Playback should be paused after interruption")
+        #expect(viewModel.playbackStartTime == nil, "playbackStartTime should be nil after pause")
+
+        // Verify state is preserved (not reset)
+        // pausedElapsedTime should have captured the elapsed time
+        // (in this test it may be 0 or small since we just started)
+
+        // Cleanup
+        viewModel.cleanup()
+    }
+
+    @Test func testAudioInterruptionEndDoesNotAutoResume() async {
+        // Test that when audio interruption ends, playback does NOT automatically resume.
+        // Users should manually resume to avoid unexpected audio playback.
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Start playback
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true)
+
+        // Simulate interruption begin
+        metronome.onInterruption?(true)
+        #expect(viewModel.isPlaying == false, "Should be paused after interruption")
+
+        // Simulate interruption end
+        metronome.onInterruption?(false)
+
+        // Verify playback is still paused (not auto-resumed)
+        #expect(viewModel.isPlaying == false, "Should remain paused after interruption ends - no auto-resume")
 
         // Cleanup
         viewModel.cleanup()

@@ -155,6 +155,22 @@ final class GameplayViewModel {
         setupBGMPlayer()
         cachedTrackDuration = calculateTrackDuration()
         inputManager.configure(bpm: track.bpm, timeSignature: track.timeSignature, notes: cachedNotes)
+        setupInterruptionHandling()
+    }
+
+    /// Sets up audio interruption handling to pause playback on phone calls, Siri, etc.
+    private func setupInterruptionHandling() {
+        metronome.onInterruption = { [weak self] isInterrupted in
+            guard let self = self else { return }
+            if isInterrupted {
+                Logger.audioPlayback("Audio interruption began - pausing gameplay")
+                self.pausePlayback()
+            } else {
+                // Interruption ended - user can manually resume if desired
+                // We don't auto-resume to avoid unexpected playback
+                Logger.audioPlayback("Audio interruption ended - user can resume manually")
+            }
+        }
     }
 
     /// Sets up metronome subscription for visual sync
@@ -280,6 +296,7 @@ final class GameplayViewModel {
     }
 
     func pausePlayback() {
+        guard isPlaying else { return }
         isPlaying = false
         playbackTimer?.invalidate()
         playbackTimer = nil
@@ -330,6 +347,7 @@ final class GameplayViewModel {
         playbackTimer?.invalidate()
         playbackTimer = nil
         metronome.stop()
+        metronome.onInterruption = nil
         bgmPlayer?.stop()
         bgmPlayer = nil
         inputManager.stopListening()
