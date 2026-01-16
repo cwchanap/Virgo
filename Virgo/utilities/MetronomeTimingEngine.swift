@@ -292,7 +292,7 @@ class MetronomeTimingEngine: ObservableObject {
 
         // Ensure state is published on main thread for Combine subscribers
         Task { @MainActor in
-            // Guard: Don't update beat if playback has stopped (prevents race in parallel tests)
+            // Guard: Don't update beat if playback has stopped to avoid publishing stale state
             guard isPlaying else { return }
 
             // Fire the beat callback
