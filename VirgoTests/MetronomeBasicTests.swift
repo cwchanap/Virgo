@@ -81,7 +81,10 @@ struct MetronomeBasicTests {
 
         #expect(startSuccess, "Metronome should start successfully")
         #expect(metronome.isEnabled, "Metronome should be enabled")
-        #expect(metronome.currentBeat == 1, "Beat should be initialized to 1")
+        #expect(
+            (1...TimeSignature.fourFour.beatsPerMeasure).contains(metronome.currentBeat),
+            "Beat should be within valid range after starting"
+        )
 
         // Test stopping - use Combine utility to wait for state change
         let stopSuccess = await CombineTestUtilities.performAndWait(

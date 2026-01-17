@@ -287,4 +287,73 @@ struct MetronomeTimingEngineTests {
         #expect(callbackTriggeredSuccessfully)
         #expect(receivedBeat >= 1)
     }
+
+    @Test("MetronomeEngine preserves beat phase when resuming")
+    func testBeatPhasePreservationOnResume() {
+        let timingEngine = MetronomeTimingEngine()
+        timingEngine.bpm = 120
+        timingEngine.timeSignature = .fourFour
+
+        // Test resuming at beat 5 (should be beat 2 of second measure)
+        let totalBeatsElapsed = 5
+        let startTime: TimeInterval = 100.0
+
+        timingEngine.startAtTime(startTime: startTime, totalBeatsElapsed: totalBeatsElapsed)
+
+        // After starting with totalBeatsElapsed=5, currentBeat should be:
+        // 5 % 4 + 1 = 2 (second beat of the measure, since we're 1-indexed)
+        #expect(timingEngine.currentBeat == 2)
+        #expect(timingEngine.isPlaying == true)
+
+        timingEngine.stop()
+
+        // Test resuming at beat 8 (should be beat 1 of third measure)
+        timingEngine.startAtTime(startTime: startTime, totalBeatsElapsed: 8)
+
+        // After starting with totalBeatsElapsed=8, currentBeat should be:
+        // 8 % 4 + 1 = 1 (first beat of the measure)
+        #expect(timingEngine.currentBeat == 1)
+
+        timingEngine.stop()
+
+        // Test resuming at beat 0 (should be beat 1 of first measure)
+        timingEngine.startAtTime(startTime: startTime, totalBeatsElapsed: 0)
+
+        // After starting with totalBeatsElapsed=0, currentBeat should be:
+        // 0 % 4 + 1 = 1 (first beat of the measure)
+        #expect(timingEngine.currentBeat == 1)
+
+        timingEngine.stop()
+    }
+
+    @Test("MetronomeEngine handles different time signatures on resume")
+    func testBeatPhasePreservationWithDifferentTimeSignatures() {
+        let timingEngine = MetronomeTimingEngine()
+
+        // Test with 3/4 time signature
+        timingEngine.bpm = 120
+        timingEngine.timeSignature = .threeFour
+
+        // Resume at beat 4 (should be beat 1 of second measure)
+        timingEngine.startAtTime(startTime: 100.0, totalBeatsElapsed: 4)
+        #expect(timingEngine.currentBeat == 2) // 4 % 3 = 1, +1 = 2
+
+        timingEngine.stop()
+
+        // Resume at beat 6 (should be beat 1 of third measure)
+        timingEngine.startAtTime(startTime: 100.0, totalBeatsElapsed: 6)
+        #expect(timingEngine.currentBeat == 1) // 6 % 3 = 0, +1 = 1
+
+        timingEngine.stop()
+
+        // Test with 6/8 time signature
+        timingEngine.bpm = 120
+        timingEngine.timeSignature = .sixEight
+
+        // Resume at beat 7 (should be beat 2 of second measure)
+        timingEngine.startAtTime(startTime: 100.0, totalBeatsElapsed: 7)
+        #expect(timingEngine.currentBeat == 2) // 7 % 6 = 1, +1 = 2
+
+        timingEngine.stop()
+    }
 }
