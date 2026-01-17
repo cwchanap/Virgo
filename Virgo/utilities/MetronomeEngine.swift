@@ -121,15 +121,24 @@ class MetronomeEngine: ObservableObject {
         Logger.audioPlayback("🎵 MetronomeEngine.start() completed - isEnabled: \(isEnabled)")
     }
 
-    func startAtTime(bpm: Double, timeSignature: TimeSignature, startTime: TimeInterval) {
-        Logger.audioPlayback("🎵 MetronomeEngine.startAtTime() called with BPM: \(bpm), timeSignature: \(timeSignature), startTime: \(startTime)")
+    func startAtTime(
+        bpm: Double,
+        timeSignature: TimeSignature,
+        startTime: TimeInterval,
+        totalBeatsElapsed: Int = 0
+    ) {
+        let logMessage = "MetronomeEngine.startAtTime() called with BPM: \(bpm), "
+            + "timeSignature: \(timeSignature), "
+            + "startTime: \(startTime), "
+            + "totalBeatsElapsed: \(totalBeatsElapsed)"
+        Logger.audioPlayback("🎵 \(logMessage)")
         self.bpm = bpm
         self.timeSignature = timeSignature
 
         Logger.audioPlayback("🎵 Resuming audio engine for scheduled start...")
         audioDriver.resume()
         Logger.audioPlayback("🎵 Starting timing engine at scheduled time...")
-        timingEngine.startAtTime(startTime: startTime)
+        timingEngine.startAtTime(startTime: startTime, totalBeatsElapsed: totalBeatsElapsed)
         Logger.audioPlayback("🎵 MetronomeEngine.startAtTime() completed - isEnabled: \(isEnabled)")
     }
 

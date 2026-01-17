@@ -87,17 +87,21 @@ class MetronomeTimingEngine: ObservableObject {
         }
     }
 
-    func startAtTime(startTime: TimeInterval) {
+    func startAtTime(startTime: TimeInterval, totalBeatsElapsed: Int = 0) {
         guard !isPlaying else { return }
 
         isPlaying = true
-        currentBeat = 1
-        
+        // Calculate current beat within measure (1-indexed)
+        let beatsPerMeasure = timeSignature.beatsPerMeasure
+        let beatInMeasure = totalBeatsElapsed % beatsPerMeasure + 1
+        currentBeat = beatInMeasure
+        lastFiredBeat = totalBeatsElapsed
+
         if isTestEnvironment {
             // In test environment, simulate start with provided timing
             simulateTestBeat(startTime: startTime)
         } else {
-            startTimerAtTime(startTime: startTime)
+            startTimerAtTime(startTime: startTime, totalBeatsElapsed: totalBeatsElapsed)
         }
     }
 
@@ -123,22 +127,22 @@ class MetronomeTimingEngine: ObservableObject {
 
     // MARK: - Timer Management
 
-    private func startTimer() {
+    private func startTimer(initialBeatsElapsed: Int = 0) {
         stopTimer()
 
-        // Record start time and reset beat counter
+        // Record start time and initialize beat counter
         startTime = CFAbsoluteTimeGetCurrent()
-        lastFiredBeat = 0
-        
+        lastFiredBeat = initialBeatsElapsed
+
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
         beatTimer = timer
 
         // Use nanoseconds precision for accurate timing
         let nanoseconds = Int(beatInterval * 1_000_000_000)
 
-        // Use repeating timer with nanosecond precision 
+        // Use repeating timer with nanosecond precision
         timer.schedule(deadline: .now(), repeating: .nanoseconds(nanoseconds))
-        
+
         timer.setEventHandler { [weak self] in
             let actualFireTime = CFAbsoluteTimeGetCurrent()
             Task { @MainActor in
@@ -146,38 +150,38 @@ class MetronomeTimingEngine: ObservableObject {
                 self.fireBeat(actualFireTime: actualFireTime)
             }
         }
-        
+
         timer.resume()
     }
 
-    private func startTimerAtTime(startTime: TimeInterval) {
+    private func startTimerAtTime(startTime: TimeInterval, totalBeatsElapsed: Int = 0) {
         stopTimer()
 
         // Calculate when to actually start relative to current time
         let currentTime = CFAbsoluteTimeGetCurrent()
         let delayUntilStart = startTime - currentTime
-        
+
         if delayUntilStart <= 0 {
             // Start time has already passed, start immediately
             self.startTime = currentTime
-            startTimer()
+            startTimer(initialBeatsElapsed: totalBeatsElapsed)
             return
         }
-        
+
         // Schedule timer to start at the specified time
         self.startTime = startTime
-        lastFiredBeat = 0
-        
+        lastFiredBeat = totalBeatsElapsed
+
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
         beatTimer = timer
-        
+
         // Use nanoseconds precision for accurate timing
         let nanoseconds = Int(beatInterval * 1_000_000_000)
         let startDelayNanos = Int(delayUntilStart * 1_000_000_000)
-        
+
         // Schedule first beat at the precise start time, then repeat at beat intervals
         timer.schedule(deadline: .now() + .nanoseconds(startDelayNanos), repeating: .nanoseconds(nanoseconds))
-        
+
         timer.setEventHandler { [weak self] in
             let actualFireTime = CFAbsoluteTimeGetCurrent()
             Task { @MainActor in
@@ -185,13 +189,13 @@ class MetronomeTimingEngine: ObservableObject {
                 self.fireBeat(actualFireTime: actualFireTime)
             }
         }
-        
+
         timer.setCancelHandler {
             Logger.debug("🕐 Scheduled timer cancelled")
         }
-        
+
         timer.resume()
-        
+
     }
 
     private func stopTimer() {
@@ -252,7 +256,11 @@ class MetronomeTimingEngine: ObservableObject {
         let beatToPlay = currentBeat
 
         // Use precise timing for sample-accurate audio synchronization
-        Logger.audioPlayback("⏰ TimingEngine firing beat: \(beatToPlay), isAccented: \(isAccented), hasCallback: \(onBeat != nil)")
+        let hasCallback = onBeat != nil
+        let logMessage = "TimingEngine firing beat: \(beatToPlay), "
+            + "isAccented: \(isAccented), "
+            + "hasCallback: \(hasCallback)"
+        Logger.audioPlayback("⏰ \(logMessage)")
         onBeat?(beatToPlay, isAccented, preciseAudioTime)
 
         // Update UI properties on main thread

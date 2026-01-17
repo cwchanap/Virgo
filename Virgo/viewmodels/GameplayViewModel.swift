@@ -373,27 +373,78 @@ final class GameplayViewModel {
 
     private func startBGMPlayback(track: DrumTrack) {
         if let bgmPlayer = bgmPlayer {
+            // Check if we're resuming from a pause
+            let isResuming = pausedElapsedTime > 0.0
+
             // Resume BGM playback: player has current position and is not playing
             if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
                 Logger.audioPlayback("🎮 Resuming BGM at \(bgmPlayer.currentTime)s")
-                metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
+                // Use startAtTime with totalBeatsElapsed to preserve beat phase on resume
+                let setupTime: TimeInterval = 0.05
+                let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
+                metronome.startAtTime(
+                    bpm: track.bpm,
+                    timeSignature: track.timeSignature,
+                    startTime: commonStartTime,
+                    totalBeatsElapsed: totalBeatsElapsed
+                )
                 bgmPlayer.play()
+            } else if isResuming {
+                // Resuming during initial silent offset period (BGM hasn't started yet)
+                // Calculate remaining offset time and schedule accordingly
+                Logger.audioPlayback("🎮 Resuming during BGM offset period")
+                bgmPlayer.currentTime = 0
+                let setupTime: TimeInterval = 0.05
+                let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
+
+                // Use totalBeatsElapsed to preserve beat phase on resume
+                metronome.startAtTime(
+                    bpm: track.bpm,
+                    timeSignature: track.timeSignature,
+                    startTime: commonStartTime,
+                    totalBeatsElapsed: totalBeatsElapsed
+                )
+
+                // Calculate remaining offset time (total offset minus elapsed time)
+                let remainingOffset = max(0, bgmOffsetSeconds - pausedElapsedTime)
+                let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
+                let bgmScheduledTime = bgmDeviceTime + remainingOffset
+                bgmPlayer.play(atTime: bgmScheduledTime)
             } else {
                 // Starting fresh BGM playback
                 Logger.audioPlayback("🎮 Starting fresh BGM playback")
                 bgmPlayer.currentTime = 0
                 let setupTime: TimeInterval = 0.05
                 let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-                metronome.startAtTime(bpm: track.bpm, timeSignature: track.timeSignature, startTime: commonStartTime)
+                metronome.startAtTime(
+                    bpm: track.bpm,
+                    timeSignature: track.timeSignature,
+                    startTime: commonStartTime
+                )
 
-                let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
+                let bgmDeviceTime = convertToAudioPlayerDeviceTime(
+                    commonStartTime,
+                    bgmPlayer: bgmPlayer
+                )
                 let bgmScheduledTime = bgmDeviceTime + bgmOffsetSeconds
                 bgmPlayer.play(atTime: bgmScheduledTime)
             }
         } else {
-            // Metronome-only playback
-            Logger.audioPlayback("🎮 Starting metronome-only playback")
-            metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
+            // Metronome-only playback - preserve beat phase on resume
+            if pausedElapsedTime > 0.0 {
+                Logger.audioPlayback("🎮 Resuming metronome-only playback with beat offset")
+                let setupTime: TimeInterval = 0.05
+                let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
+                metronome.startAtTime(
+                    bpm: track.bpm,
+                    timeSignature: track.timeSignature,
+                    startTime: commonStartTime,
+                    totalBeatsElapsed: totalBeatsElapsed
+                )
+            } else {
+                Logger.audioPlayback("🎮 Starting metronome-only playback")
+                metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
+            }
         }
     }
 
