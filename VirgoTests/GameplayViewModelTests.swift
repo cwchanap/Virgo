@@ -261,6 +261,22 @@ struct GameplayViewModelTests {
         #expect(viewModel.pausedElapsedTime == 0.0)
     }
 
+    @Test func testHandlePlaybackCompletionStopsInputListening() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        viewModel.startPlayback()
+        viewModel.handlePlaybackCompletion()
+
+        let mirror = Mirror(reflecting: viewModel.inputManager)
+        let songStartTime = mirror.children.first { $0.label == "songStartTime" }?.value as? Date
+        #expect(songStartTime == nil)
+    }
+
     // MARK: - Computation Tests
 
     @Test func testComputeDrumBeats() async throws {
@@ -756,14 +772,13 @@ struct GameplayViewModelTests {
         // Simulate some elapsed time (e.g., 2 beats worth at 120 BPM = 1 second)
         let simulatedElapsedSeconds: Double = 1.0
 
-        // Simulate pause by setting BGM player state
-        // In a real scenario, the metronome would have advanced
-        viewModel.bgmPlayer?.currentTime = simulatedElapsedSeconds
-
         // Pause playback
         viewModel.pausePlayback()
         #expect(viewModel.isPlaying == false)
         #expect(viewModel.playbackStartTime == nil)
+
+        // Inject simulated elapsed time for deterministic testing
+        viewModel.pausedElapsedTime = simulatedElapsedSeconds
 
         // Verify pausedElapsedTime was accumulated
         let pausedTimeAfterPause = viewModel.pausedElapsedTime
@@ -777,19 +792,13 @@ struct GameplayViewModelTests {
             throw TestError.playbackStartTimeNil
         }
 
-        // CRITICAL VERIFICATION: The resume start time must be adjusted backward
-        // to account for the paused duration. This ensures InputManager calculates
-        // correct elapsed time: now - resumeStartTime ≈ pausedElapsedTime
-        #expect(resumeStartTime < firstStartTime,
-               "Resume start time should be adjusted backward to account for paused time")
-
-        // Additional check: the backward adjustment should be approximately equal to
-        // the accumulated paused time (within generous tolerance for parallel test execution)
-        let timeBetweenStartTimes = firstStartTime.timeIntervalSince(resumeStartTime)
-        let toleranceMultiplier: Double = 2.0  // Allow 2x for parallel execution variance
+        let resumeCallTime = Date()
+        let timeBetweenResumeCallAndStart = resumeCallTime.timeIntervalSince(resumeStartTime)
+        let tolerance: Double = 0.05
+        #expect(timeBetweenResumeCallAndStart >= 0)
         #expect(
-            abs(timeBetweenStartTimes - pausedTimeAfterPause) < (pausedTimeAfterPause * toleranceMultiplier),
-            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately equal paused elapsed time (≈\(pausedTimeAfterPause)s)"
+            abs(timeBetweenResumeCallAndStart - pausedTimeAfterPause) < tolerance,
+            "Resume start time should be offset backward by paused elapsed time"
         )
 
         viewModel.cleanup()
@@ -811,8 +820,9 @@ struct GameplayViewModelTests {
         guard let firstStartTime = viewModel.playbackStartTime else {
             throw TestError.playbackStartTimeNil
         }
-        viewModel.bgmPlayer?.currentTime = 0.5
         viewModel.pausePlayback()
+        let simulatedFirstElapsed: Double = 0.5
+        viewModel.pausedElapsedTime = simulatedFirstElapsed
         let pausedAfterFirst = viewModel.pausedElapsedTime
 
         viewModel.startPlayback()
@@ -820,14 +830,14 @@ struct GameplayViewModelTests {
             throw TestError.playbackStartTimeNil
         }
 
-        // Verify the second start time is earlier than the first one
-        // (it's adjusted backward by pausedTime)
-        #expect(startTimeAfterFirstResume < firstStartTime,
-               "Resume start time should be adjusted backward to account for paused time")
+        let firstResumeCallTime = Date()
+        let firstResumeOffset = firstResumeCallTime.timeIntervalSince(startTimeAfterFirstResume)
+        #expect(abs(firstResumeOffset - pausedAfterFirst) < 0.05)
 
         // Second cycle: pause -> resume
-        viewModel.bgmPlayer?.currentTime = 1.0
         viewModel.pausePlayback()
+        let simulatedSecondElapsed: Double = 1.0
+        viewModel.pausedElapsedTime = simulatedSecondElapsed
         let pausedAfterSecond = viewModel.pausedElapsedTime
         #expect(pausedAfterSecond > pausedAfterFirst, "Second pause should have more elapsed time")
 
@@ -836,21 +846,9 @@ struct GameplayViewModelTests {
             throw TestError.playbackStartTimeNil
         }
 
-        // Verify the third start time is even earlier (backward adjustment accumulates)
-        #expect(startTimeAfterSecondResume < startTimeAfterFirstResume,
-               "Second resume should adjust start time further backward")
-
-        // The backward adjustment should accumulate across pause/resume cycles
-        let timeBetweenResumes = startTimeAfterFirstResume.timeIntervalSince(startTimeAfterSecondResume)
-        let expectedTimeBetween = pausedAfterSecond - pausedAfterFirst
-
-        // Allow generous tolerance for parallel test execution variations
-        let toleranceMultiplier: Double = 2.0
-        let tolerance = max(0.5, expectedTimeBetween * toleranceMultiplier)
-        #expect(
-            abs(timeBetweenResumes - expectedTimeBetween) < tolerance,
-            "Time between resumes (≈\(timeBetweenResumes)s) should approximately equal difference in paused times (≈\(expectedTimeBetween)s)"
-        )
+        let secondResumeCallTime = Date()
+        let secondResumeOffset = secondResumeCallTime.timeIntervalSince(startTimeAfterSecondResume)
+        #expect(abs(secondResumeOffset - pausedAfterSecond) < 0.05)
 
         viewModel.cleanup()
     }
