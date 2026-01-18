@@ -9,6 +9,15 @@ import Testing
 import SwiftUI
 @testable import Virgo
 
+private func timingEngineValue<T>(
+    _ timingEngine: MetronomeTimingEngine,
+    label: String,
+    as type: T.Type = T.self
+) -> T? {
+    let mirror = Mirror(reflecting: timingEngine)
+    return mirror.children.first { $0.label == label }?.value as? T
+}
+
 @Suite("Metronome Engine Tests", .serialized)
 @MainActor
 struct MetronomeEngineTests {
@@ -353,6 +362,32 @@ struct MetronomeTimingEngineTests {
         // Resume at beat 7 (should be beat 2 of second measure)
         timingEngine.startAtTime(startTime: 100.0, totalBeatsElapsed: 7)
         #expect(timingEngine.currentBeat == 2) // 7 % 6 = 1, +1 = 2
+
+        timingEngine.stop()
+    }
+
+    @Test("MetronomeTimingEngine stores beat origin offset on resume")
+    func testBeatOriginOffsetOnResume() {
+        let timingEngine = MetronomeTimingEngine()
+        timingEngine.bpm = 120
+
+        let startTime: TimeInterval = 100.0
+        let totalBeatsElapsed = 4
+        timingEngine.startAtTime(startTime: startTime, totalBeatsElapsed: totalBeatsElapsed)
+
+        let beatOffset = timingEngineValue(timingEngine, label: "beatOffset", as: Int.self)
+        let beatOriginTime = timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self)
+        let storedStartTime = timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+
+        #expect(beatOffset == totalBeatsElapsed)
+        #expect(storedStartTime == startTime)
+
+        let expectedOriginTime = startTime - (Double(totalBeatsElapsed) * (60.0 / timingEngine.bpm))
+        if let beatOriginTime {
+            #expect(abs(beatOriginTime - expectedOriginTime) < 0.0001)
+        } else {
+            #expect(false, "Expected beatOriginTime to be set")
+        }
 
         timingEngine.stop()
     }

@@ -78,7 +78,9 @@ class MetronomeEngine: ObservableObject {
         if let audioEngine = self.audioDriver as? MetronomeAudioEngine {
             audioEngine.onInterruption = { [weak self] isInterrupted in
                 Logger.audioPlayback("MetronomeEngine received interruption: \(isInterrupted ? "began" : "ended")")
-                self?.onInterruption?(isInterrupted)
+                Task { @MainActor in
+                    self?.onInterruption?(isInterrupted)
+                }
             }
         }
 

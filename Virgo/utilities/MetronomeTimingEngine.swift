@@ -41,7 +41,9 @@ class MetronomeTimingEngine: ObservableObject {
     
     // High-precision timing
     private var startTime: CFAbsoluteTime = 0
+    private var beatOriginTime: CFAbsoluteTime = 0
     private var lastFiredBeat: Int = 0
+    private var beatOffset: Int = 0
     
     // Performance optimization: Cache beat interval to avoid repeated division
     private var cachedBeatInterval: TimeInterval = 0.5
@@ -99,7 +101,7 @@ class MetronomeTimingEngine: ObservableObject {
 
         if isTestEnvironment {
             // In test environment, simulate start with provided timing
-            simulateTestBeat(startTime: startTime)
+            simulateTestBeat(startTime: startTime, beatOffset: totalBeatsElapsed)
         } else {
             startTimerAtTime(startTime: startTime, totalBeatsElapsed: totalBeatsElapsed)
         }
@@ -115,6 +117,9 @@ class MetronomeTimingEngine: ObservableObject {
         }
         
         currentBeat = 1
+        beatOffset = 0
+        startTime = 0
+        beatOriginTime = 0
     }
 
     func toggle() {
@@ -132,6 +137,8 @@ class MetronomeTimingEngine: ObservableObject {
 
         // Record start time and initialize beat counter
         startTime = CFAbsoluteTimeGetCurrent()
+        beatOffset = initialBeatsElapsed
+        beatOriginTime = startTime - (Double(beatOffset) * beatInterval)
         lastFiredBeat = initialBeatsElapsed
 
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
@@ -170,6 +177,8 @@ class MetronomeTimingEngine: ObservableObject {
 
         // Schedule timer to start at the specified time
         self.startTime = startTime
+        beatOffset = totalBeatsElapsed
+        beatOriginTime = startTime - (Double(beatOffset) * beatInterval)
         lastFiredBeat = totalBeatsElapsed
 
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
@@ -229,7 +238,7 @@ class MetronomeTimingEngine: ObservableObject {
     private func createPreciseAudioTime(for fireTime: CFAbsoluteTime) -> AVAudioTime? {
         // Calculate the ideal beat time based on our start time and beat interval
         let beatNumber = lastFiredBeat
-        let idealBeatTime = startTime + (Double(beatNumber - 1) * beatInterval)
+        let idealBeatTime = beatOriginTime + (Double(beatNumber - 1) * beatInterval)
         
         // Convert CFAbsoluteTime to host time using mach_timebase_info
         var timebaseInfo = mach_timebase_info_data_t()
@@ -293,10 +302,15 @@ class MetronomeTimingEngine: ObservableObject {
     
     // MARK: - Test Environment Simulation
     
-    private func simulateTestBeat(startTime: TimeInterval = 0) {
+    private func simulateTestBeat(startTime: TimeInterval = 0, beatOffset: Int = 0) {
         // In test environment, immediately fire a beat callback to allow tests to verify functionality
         Logger.audioPlayback("Test environment - simulating beat callback")
         let isAccented = (currentBeat == 1)
+
+        let effectiveStartTime = startTime == 0 ? CFAbsoluteTimeGetCurrent() : startTime
+        self.startTime = effectiveStartTime
+        self.beatOffset = beatOffset
+        beatOriginTime = effectiveStartTime - (Double(beatOffset) * beatInterval)
 
         // Ensure state is published on main thread for Combine subscribers
         Task { @MainActor in

@@ -388,7 +388,8 @@ final class GameplayViewModel {
                     startTime: commonStartTime,
                     totalBeatsElapsed: totalBeatsElapsed
                 )
-                bgmPlayer.play()
+                let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
+                bgmPlayer.play(atTime: bgmDeviceTime)
             } else if isResuming {
                 // Resuming during initial silent offset period (BGM hasn't started yet)
                 // Calculate remaining offset time and schedule accordingly
@@ -581,9 +582,10 @@ final class GameplayViewModel {
         return result
     }
 
-    private func handlePlaybackCompletion() {
+    func handlePlaybackCompletion() {
         isPlaying = false
         metronome.stop()
+        inputManager.stopListening()
         resetPlaybackState()
         playbackStartTime = nil
         pausedElapsedTime = 0.0
