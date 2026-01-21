@@ -17,3 +17,4 @@ ui-test-*.log
 ui-test-build-output-*.log
 ui-test-results-*/
 ui-test-results-diagnostics
+ui-test-activity-log.json
