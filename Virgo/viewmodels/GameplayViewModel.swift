@@ -21,6 +21,7 @@ final class GameplayViewModel {
     // MARK: - Dependencies
     let chart: Chart
     let metronome: MetronomeEngine
+    let practiceSettings: PracticeSettingsService
 
     // MARK: - Cached SwiftData Relationships
     /// Cached song to avoid main thread blocking from relationship access
@@ -112,9 +113,39 @@ final class GameplayViewModel {
 
     // MARK: - Initialization
 
-    init(chart: Chart, metronome: MetronomeEngine) {
+    @MainActor
+    init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService? = nil) {
         self.chart = chart
         self.metronome = metronome
+        // Create PracticeSettingsService here to ensure MainActor isolation
+        self.practiceSettings = practiceSettings ?? PracticeSettingsService()
+    }
+
+    // MARK: - Speed Control
+
+    /// Calculates the effective BPM based on current speed multiplier.
+    /// This should be used for all timing calculations instead of track.bpm directly.
+    func effectiveBPM() -> Double {
+        return practiceSettings.effectiveBPM(baseBPM: track?.bpm ?? 120.0)
+    }
+
+    /// Updates the playback speed. Can be called during active playback.
+    /// - Parameter newSpeed: Speed multiplier (0.25 to 1.5)
+    func updateSpeed(_ newSpeed: Double) {
+        practiceSettings.setSpeed(newSpeed)
+
+        // If playing, update metronome and BGM rate immediately
+        if isPlaying {
+            metronome.updateBPM(effectiveBPM())
+
+            // Adjust BGM playback rate (AVAudioPlayer supports 0.5 to 2.0)
+            if let bgmPlayer = bgmPlayer {
+                bgmPlayer.enableRate = true
+                bgmPlayer.rate = Float(max(0.5, min(2.0, newSpeed)))
+            }
+
+            Logger.audioPlayback("Live speed change to \(Int(newSpeed * 100))% (\(Int(effectiveBPM())) BPM)")
+        }
     }
 
     // MARK: - Unique ID Generation
@@ -148,12 +179,17 @@ final class GameplayViewModel {
             return
         }
 
+        // Load saved speed for this chart (SC-06: Remember last-used speed)
+        practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
+
         computeDrumBeats()
         computeCachedLayoutData()
         bgmOffsetSeconds = calculateBGMOffset()
-        metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
+        // Use effective BPM (base × speed multiplier) for metronome
+        metronome.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature)
         setupBGMPlayer()
         cachedTrackDuration = calculateTrackDuration()
+        // InputManager uses BASE BPM - timing tolerances remain fixed regardless of speed
         inputManager.configure(bpm: track.bpm, timeSignature: track.timeSignature, notes: cachedNotes)
         setupInterruptionHandling()
     }
@@ -243,7 +279,8 @@ final class GameplayViewModel {
                 actualElapsedTime = pausedElapsedTime
             }
 
-            let secondsPerBeat = 60.0 / track.bpm
+            // Use effective BPM for beat calculation during speed-adjusted playback
+            let secondsPerBeat = 60.0 / effectiveBPM()
             let elapsedBeats = actualElapsedTime / secondsPerBeat
             let discreteBeats = Int(elapsedBeats)
 
@@ -344,6 +381,9 @@ final class GameplayViewModel {
     // MARK: - Cleanup
 
     func cleanup() {
+        // Save speed setting for this chart (SC-06: Remember last-used speed)
+        practiceSettings.saveSpeed(practiceSettings.speedMultiplier, for: chart.persistentModelID)
+
         playbackTimer?.invalidate()
         playbackTimer = nil
         metronome.stop()
@@ -372,7 +412,16 @@ final class GameplayViewModel {
     }
 
     private func startBGMPlayback(track: DrumTrack) {
+        // Calculate effective BPM once for this method
+        let currentEffectiveBPM = effectiveBPM()
+        let currentSpeedMultiplier = practiceSettings.speedMultiplier
+
         if let bgmPlayer = bgmPlayer {
+            // Enable rate control for BGM speed adjustment
+            bgmPlayer.enableRate = true
+            // Apply speed multiplier to BGM (clamped to AVAudioPlayer's 0.5-2.0 range)
+            bgmPlayer.rate = Float(max(0.5, min(2.0, currentSpeedMultiplier)))
+
             // Check if we're resuming from a pause
             let isResuming = pausedElapsedTime > 0.0
 
@@ -383,7 +432,7 @@ final class GameplayViewModel {
                 let setupTime: TimeInterval = 0.05
                 let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
                 metronome.startAtTime(
-                    bpm: track.bpm,
+                    bpm: currentEffectiveBPM,
                     timeSignature: track.timeSignature,
                     startTime: commonStartTime,
                     totalBeatsElapsed: totalBeatsElapsed
@@ -400,7 +449,7 @@ final class GameplayViewModel {
 
                 // Use totalBeatsElapsed to preserve beat phase on resume
                 metronome.startAtTime(
-                    bpm: track.bpm,
+                    bpm: currentEffectiveBPM,
                     timeSignature: track.timeSignature,
                     startTime: commonStartTime,
                     totalBeatsElapsed: totalBeatsElapsed
@@ -418,7 +467,7 @@ final class GameplayViewModel {
                 let setupTime: TimeInterval = 0.05
                 let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
                 metronome.startAtTime(
-                    bpm: track.bpm,
+                    bpm: currentEffectiveBPM,
                     timeSignature: track.timeSignature,
                     startTime: commonStartTime
                 )
@@ -437,14 +486,14 @@ final class GameplayViewModel {
                 let setupTime: TimeInterval = 0.05
                 let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
                 metronome.startAtTime(
-                    bpm: track.bpm,
+                    bpm: currentEffectiveBPM,
                     timeSignature: track.timeSignature,
                     startTime: commonStartTime,
                     totalBeatsElapsed: totalBeatsElapsed
                 )
             } else {
                 Logger.audioPlayback("🎮 Starting metronome-only playback")
-                metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
+                metronome.start(bpm: currentEffectiveBPM, timeSignature: track.timeSignature)
             }
         }
     }
@@ -470,7 +519,8 @@ final class GameplayViewModel {
         guard let metronomeTime = metronome.getCurrentPlaybackTime() else { return }
         let elapsedTime = pausedElapsedTime + metronomeTime
 
-        let secondsPerBeat = 60.0 / track.bpm
+        // Use effective BPM for visual sync (speed-adjusted)
+        let secondsPerBeat = 60.0 / effectiveBPM()
         let totalBeatsElapsedFloat = elapsedTime / secondsPerBeat
         let discreteTotalBeats = Int(totalBeatsElapsedFloat)
 
@@ -508,7 +558,8 @@ final class GameplayViewModel {
             return
         }
 
-        let secondsPerBeat = 60.0 / track.bpm
+        // Use effective BPM for visual sync (speed-adjusted)
+        let secondsPerBeat = 60.0 / effectiveBPM()
         let totalBeatsElapsed = elapsedTime / secondsPerBeat
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
 
