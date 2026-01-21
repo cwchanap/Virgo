@@ -13,3 +13,7 @@ DerivedData*/
 TestResults/
 build-for-testing*.log
 ui-test-*/
+ui-test-*.log
+ui-test-build-output-*.log
+ui-test-results-*/
+ui-test-results-diagnostics
