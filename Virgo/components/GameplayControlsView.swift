@@ -12,9 +12,11 @@ struct GameplayControlsView: View {
     @Binding var isPlaying: Bool
     @Binding var playbackProgress: Double
     @ObservedObject var metronome: MetronomeEngine
+    @ObservedObject var practiceSettings: PracticeSettingsService
     let onPlayPause: () -> Void
     let onRestart: () -> Void
     let onSkipToEnd: () -> Void
+    let onSpeedChange: (Double) -> Void
 
     var body: some View {
         VStack(spacing: 16) {
@@ -40,6 +42,10 @@ struct GameplayControlsView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Playback progress")
             .accessibilityValue("\(formatTime(playbackProgress)) of \(track.duration)")
+
+            // Speed Control Section
+            speedControlSection
+                .padding(.horizontal)
 
             // Main Controls
             HStack(spacing: 24) {
@@ -92,6 +98,84 @@ struct GameplayControlsView: View {
         )
     }
 
+    // MARK: - Speed Control Section
+
+    private var speedControlSection: some View {
+        VStack(spacing: 10) {
+            // Header row with label and current speed display
+            HStack {
+                Text("Speed")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                Spacer()
+                Text(practiceSettings.formattedSpeed)
+                    .font(.headline)
+                    .foregroundColor(.purple)
+                Text("(\(practiceSettings.formattedEffectiveBPM(baseBPM: track.bpm)))")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+
+            // Preset buttons row
+            HStack(spacing: 8) {
+                ForEach(PracticeSettingsService.speedPresets, id: \.self) { preset in
+                    Button(action: {
+                        onSpeedChange(preset)
+                    }) {
+                        Text("\(Int(preset * 100))%")
+                            .font(.caption)
+                            .fontWeight(isSpeedSelected(preset) ? .bold : .regular)
+                            .foregroundColor(isSpeedSelected(preset) ? .white : .gray)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(isSpeedSelected(preset) ? Color.purple : Color.gray.opacity(0.3))
+                            )
+                    }
+                    .accessibilityLabel("Speed \(Int(preset * 100)) percent")
+                    .accessibilityAddTraits(isSpeedSelected(preset) ? .isSelected : [])
+                }
+            }
+
+            // Slider for fine-grained control
+            HStack(spacing: 8) {
+                Text("25%")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+                    .frame(width: 30)
+
+                Slider(
+                    value: Binding(
+                        get: { practiceSettings.speedMultiplier },
+                        set: { newValue in
+                            // Snap to 5% increments
+                            let snapped = (newValue / PracticeSettingsService.speedIncrement).rounded()
+                                * PracticeSettingsService.speedIncrement
+                            onSpeedChange(snapped)
+                        }
+                    ),
+                    in: PracticeSettingsService.minSpeed...PracticeSettingsService.maxSpeed
+                )
+                .accentColor(.purple)
+
+                Text("150%")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
+                    .frame(width: 35)
+            }
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Speed control")
+    }
+
+    private func isSpeedSelected(_ preset: Double) -> Bool {
+        abs(practiceSettings.speedMultiplier - preset) < 0.01
+    }
+
+    // MARK: - Time Formatting
+
     private func formatTime(_ progress: Double) -> String {
         let duration = parseDuration(track.duration)
         let currentSeconds = Int(progress * duration)
@@ -113,9 +197,11 @@ struct GameplayControlsView: View {
         isPlaying: .constant(false),
         playbackProgress: .constant(0.3),
         metronome: MetronomeEngine(),
+        practiceSettings: PracticeSettingsService(),
         onPlayPause: {},
         onRestart: {},
-        onSkipToEnd: {}
+        onSkipToEnd: {},
+        onSpeedChange: { _ in }
     )
     .background(Color.black)
 }
