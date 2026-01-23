@@ -86,16 +86,38 @@ class PracticeSettingsService: ObservableObject {
 
     // MARK: - Persistence (SC-06: Remember last-used speed per song/chart)
 
+    /// Creates a stable persistence key from a PersistentIdentifier.
+    /// Uses the identifier's string description for stability across app launches.
+    /// - Parameter chartID: The persistent identifier of the chart
+    /// - Returns: A stable string key for UserDefaults storage
+    private func persistenceKey(for chartID: PersistentIdentifier) -> String {
+        // Use String(describing:) which provides a stable representation
+        // based on the underlying entity and ID, unlike hashValue
+        return String(describing: chartID)
+    }
+
     /// Loads the saved speed for a specific chart.
     /// - Parameter chartID: The persistent identifier of the chart
     /// - Returns: The saved speed multiplier, or 1.0 if none saved
     func loadSpeed(for chartID: PersistentIdentifier) -> Double {
-        let key = chartID.hashValue.description
+        let key = persistenceKey(for: chartID)
         guard let speeds = userDefaults.dictionary(forKey: settingsKey) as? [String: Double],
               let savedSpeed = speeds[key] else {
             return 1.0
         }
-        return savedSpeed
+
+        // Validate loaded value is within bounds and finite
+        guard savedSpeed.isFinite else {
+            Logger.warning("Loaded non-finite speed value for chart \(key), using default 1.0")
+            return 1.0
+        }
+
+        let clampedSpeed = max(Self.minSpeed, min(Self.maxSpeed, savedSpeed))
+        if clampedSpeed != savedSpeed {
+            Logger.warning("Loaded out-of-range speed \(savedSpeed) for chart, clamped to \(clampedSpeed)")
+        }
+
+        return clampedSpeed
     }
 
     /// Saves the current speed for a specific chart.
@@ -103,11 +125,18 @@ class PracticeSettingsService: ObservableObject {
     ///   - speed: The speed multiplier to save
     ///   - chartID: The persistent identifier of the chart
     func saveSpeed(_ speed: Double, for chartID: PersistentIdentifier) {
-        let key = chartID.hashValue.description
+        let key = persistenceKey(for: chartID)
         var speeds = userDefaults.dictionary(forKey: settingsKey) as? [String: Double] ?? [:]
         speeds[key] = speed
         userDefaults.set(speeds, forKey: settingsKey)
-        Logger.debug("Saved speed \(Int(speed * 100))% for chart \(key)")
+
+        // Verify persistence succeeded
+        if let verified = userDefaults.dictionary(forKey: settingsKey) as? [String: Double],
+           verified[key] == speed {
+            Logger.debug("Saved speed \(Int(speed * 100))% for chart")
+        } else {
+            Logger.error("Failed to persist speed setting - value may not be saved")
+        }
     }
 
     /// Loads saved speed for a chart and applies it to current state.
