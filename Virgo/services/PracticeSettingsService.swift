@@ -125,15 +125,30 @@ class PracticeSettingsService: ObservableObject {
     ///   - speed: The speed multiplier to save
     ///   - chartID: The persistent identifier of the chart
     func saveSpeed(_ speed: Double, for chartID: PersistentIdentifier) {
+        // Validate speed value is finite
+        guard speed.isFinite else {
+            Logger.warning("Attempted to save non-finite speed value, ignoring")
+            return
+        }
+
+        // Clamp speed to valid range
+        let clampedSpeed = max(Self.minSpeed, min(Self.maxSpeed, speed))
+        if clampedSpeed != speed {
+            Logger.warning(
+                "Speed \(speed) out of valid range [\(Self.minSpeed), \(Self.maxSpeed)], " +
+                    "clamping to \(clampedSpeed)"
+            )
+        }
+
         let key = persistenceKey(for: chartID)
         var speeds = userDefaults.dictionary(forKey: settingsKey) as? [String: Double] ?? [:]
-        speeds[key] = speed
+        speeds[key] = clampedSpeed
         userDefaults.set(speeds, forKey: settingsKey)
 
         // Verify persistence succeeded
         if let verified = userDefaults.dictionary(forKey: settingsKey) as? [String: Double],
-           verified[key] == speed {
-            Logger.debug("Saved speed \(Int(speed * 100))% for chart")
+           verified[key] == clampedSpeed {
+            Logger.debug("Saved speed \(Int(clampedSpeed * 100))% for chart")
         } else {
             Logger.error("Failed to persist speed setting - value may not be saved")
         }
