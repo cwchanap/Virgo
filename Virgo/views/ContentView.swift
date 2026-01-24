@@ -24,8 +24,11 @@ struct ContentView: View {
 
     @State private var databaseService: DatabaseMaintenanceService?
 
+    /// Detects if the app is running in UI testing mode.
+    /// Uses a custom launch argument "-UITesting" to distinguish from unit tests.
+    /// UI tests should append app.launchArguments.append("-UITesting") in setUp().
     private var isUITesting: Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        ProcessInfo.processInfo.arguments.contains("-UITesting")
     }
 
     var body: some View {

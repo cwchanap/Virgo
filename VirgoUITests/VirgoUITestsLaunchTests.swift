@@ -15,6 +15,11 @@ final class VirgoUITestsLaunchTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+
+        // Add custom launch argument to distinguish UI tests from unit tests
+        // ContentView.isUITesting checks for this argument
+        let app = XCUIApplication()
+        app.launchArguments.append("-UITesting")
     }
 
     @MainActor

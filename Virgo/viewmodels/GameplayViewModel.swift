@@ -150,6 +150,11 @@ final class GameplayViewModel {
                         "BGM rate clamped from \(Int(newSpeed * 100))% to 50% - " +
                             "AVAudioPlayer limitation may cause audio desync"
                     )
+                } else if newSpeed > 2.0 {
+                    Logger.warning(
+                        "BGM rate clamped from \(Int(newSpeed * 100))% to 200% - " +
+                            "AVAudioPlayer limitation may cause audio desync"
+                    )
                 }
             }
 
