@@ -917,8 +917,7 @@ struct GameplayViewModelTests {
         #expect(
             abs(timeBetweenStartTimes - pausedTimeAfterPause) <
                 (pausedTimeAfterPause * toleranceMultiplier),
-            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately " +
-                "equal paused elapsed time (≈\(pausedTimeAfterPause)s)"
+            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately equal paused elapsed time (≈\(pausedTimeAfterPause)s)"
         )
 
         // Verify playback state was restored, not reset to beginning
