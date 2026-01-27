@@ -193,8 +193,10 @@ final class GameplayViewModel {
             return
         }
 
-        // Load saved speed for this chart (SC-06: Remember last-used speed)
-        practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
+        // Load saved speed for this chart (SC-06: Remember last-used speed) unless preconfigured
+        if practiceSettings.speedMultiplier == 1.0 {
+            practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
+        }
 
         computeDrumBeats()
         computeCachedLayoutData()
