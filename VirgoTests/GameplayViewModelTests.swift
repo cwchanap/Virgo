@@ -492,6 +492,23 @@ struct GameplayViewModelTests {
         #expect(duration >= 8.0)
     }
 
+    @Test func testTrackDurationScalesWithSpeedMultiplier() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        let baseDuration = viewModel.calculateTrackDuration()
+        viewModel.updateSpeed(0.5)
+
+        let slowedDuration = viewModel.calculateTrackDuration()
+        #expect(slowedDuration > baseDuration, "Duration should increase at slower speeds")
+    }
+
     // MARK: - BGM Offset Calculation Tests
 
     @Test func testCalculateBGMOffsetWithFirstMeasureNote() async throws {
@@ -1033,7 +1050,9 @@ struct GameplayViewModelTests {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
 
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
@@ -1041,7 +1060,10 @@ struct GameplayViewModelTests {
         viewModel.startPlayback()
         #expect(viewModel.isPlaying == true)
 
-        let initialBPM = viewModel.effectiveBPM()
+        guard let track = viewModel.track else {
+            throw TestError.playbackStartTimeNil
+        }
+        let baseBPM = track.bpm
         let tolerance = 0.01
 
         // Change speed during playback
@@ -1053,7 +1075,7 @@ struct GameplayViewModelTests {
             "Speed should be updated to 75%"
         )
         #expect(
-            abs(viewModel.effectiveBPM() - (initialBPM * 0.75)) < tolerance,
+            abs(viewModel.effectiveBPM() - (baseBPM * 0.75)) < tolerance,
             "Effective BPM should reflect new speed"
         )
 
@@ -1085,8 +1107,8 @@ struct GameplayViewModelTests {
         // Set speed to 25% (below AVAudioPlayer's minimum of 50%)
         viewModel.updateSpeed(0.25)
 
-        // Verify practiceSettings has 25%
-        #expect(viewModel.practiceSettings.speedMultiplier == 0.25, "Speed should be set to 25%")
+        // Verify practiceSettings clamped to 50% to keep BGM in sync
+        #expect(viewModel.practiceSettings.speedMultiplier == 0.5, "Speed should be clamped to 50% with BGM")
 
         // Verify BGM rate is clamped to 0.5 (not 0.25)
         if let bgmPlayer = viewModel.bgmPlayer {

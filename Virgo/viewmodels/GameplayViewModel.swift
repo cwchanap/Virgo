@@ -133,6 +133,8 @@ final class GameplayViewModel {
     /// - Parameter newSpeed: Speed multiplier (0.25 to 1.5)
     func updateSpeed(_ newSpeed: Double) {
         practiceSettings.setSpeed(newSpeed)
+        enforceBGMMinimumSpeedIfNeeded()
+        refreshTimingCaches()
 
         // If playing, update metronome and BGM rate immediately
         if isPlaying {
@@ -200,11 +202,11 @@ final class GameplayViewModel {
 
         computeDrumBeats()
         computeCachedLayoutData()
-        bgmOffsetSeconds = calculateBGMOffset()
+        setupBGMPlayer()
+        enforceBGMMinimumSpeedIfNeeded()
+        refreshTimingCaches()
         // Use effective BPM (base × speed multiplier) for metronome
         metronome.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature)
-        setupBGMPlayer()
-        cachedTrackDuration = calculateTrackDuration()
         // InputManager uses BASE BPM - timing tolerances remain fixed regardless of speed
         inputManager.configure(bpm: track.bpm, timeSignature: track.timeSignature, notes: cachedNotes)
         setupInterruptionHandling()
@@ -425,6 +427,21 @@ final class GameplayViewModel {
         lastDiscreteBeat = -1
         playbackProgress = 0.0
         purpleBarPosition = nil
+    }
+
+    private func refreshTimingCaches() {
+        guard isDataLoaded, track != nil else { return }
+        bgmOffsetSeconds = calculateBGMOffset()
+        cachedTrackDuration = calculateTrackDuration()
+    }
+
+    private func enforceBGMMinimumSpeedIfNeeded() {
+        guard bgmPlayer != nil else { return }
+        let minimumSpeed = 0.5
+        if practiceSettings.speedMultiplier < minimumSpeed {
+            Logger.warning("BGM enabled - clamping speed to 50% to keep audio in sync")
+            practiceSettings.setSpeed(minimumSpeed)
+        }
     }
 
     private func startBGMPlayback(track: DrumTrack) {
@@ -791,8 +808,10 @@ final class GameplayViewModel {
 
         let secondsPerBeat = 60.0 / track.bpm
         let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
-
-        return calculateTrackDurationInSeconds(secondsPerMeasure: secondsPerMeasure)
+        let baseDuration = calculateTrackDurationInSeconds(secondsPerMeasure: secondsPerMeasure)
+        let speedMultiplier = practiceSettings.speedMultiplier
+        guard speedMultiplier > 0 else { return baseDuration }
+        return baseDuration / speedMultiplier
     }
 
     func calculateBGMOffset() -> Double {
@@ -809,7 +828,9 @@ final class GameplayViewModel {
             let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
             let noteTimeSeconds = Double(earliestNote.measureNumber - 1) * secondsPerMeasure +
                 (earliestNote.measureOffset * secondsPerMeasure)
-            return noteTimeSeconds
+            let speedMultiplier = practiceSettings.speedMultiplier
+            guard speedMultiplier > 0 else { return noteTimeSeconds }
+            return noteTimeSeconds / speedMultiplier
         }
 
         return 0.0
