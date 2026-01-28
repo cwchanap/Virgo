@@ -119,20 +119,21 @@ struct GameplayControlsView: View {
             // Preset buttons row
             HStack(spacing: 8) {
                 ForEach(PracticeSettingsService.speedPresets, id: \.self) { preset in
-                    Button(action: {
-                        onSpeedChange(preset)
-                    }) {
-                        Text("\(Int(preset * 100))%")
-                            .font(.caption)
-                            .fontWeight(isSpeedSelected(preset) ? .bold : .regular)
-                            .foregroundColor(isSpeedSelected(preset) ? .white : .gray)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(isSpeedSelected(preset) ? Color.purple : Color.gray.opacity(0.3))
-                            )
-                    }
+                    Button(
+                        action: { onSpeedChange(preset) },
+                        label: {
+                            Text("\(Int(preset * 100))%")
+                                .font(.caption)
+                                .fontWeight(isSpeedSelected(preset) ? .bold : .regular)
+                                .foregroundColor(isSpeedSelected(preset) ? .white : .gray)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(isSpeedSelected(preset) ? Color.purple : Color.gray.opacity(0.3))
+                                )
+                        }
+                    )
                     .accessibilityLabel("Speed \(Int(preset * 100)) percent")
                     .accessibilityAddTraits(isSpeedSelected(preset) ? .isSelected : [])
                 }
