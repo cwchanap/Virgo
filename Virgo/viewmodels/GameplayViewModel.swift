@@ -143,25 +143,32 @@ final class GameplayViewModel {
             // Adjust BGM playback rate (AVAudioPlayer supports 0.5 to 2.0)
             if let bgmPlayer = bgmPlayer {
                 bgmPlayer.enableRate = true
-                let clampedRate = Float(max(0.5, min(2.0, practiceSettings.speedMultiplier)))
-                bgmPlayer.rate = clampedRate
-
-                // Warn if BGM rate is clamped (causes desync with metronome)
-                if practiceSettings.speedMultiplier < 0.5 {
-                    Logger.warning(
-                        "BGM rate clamped from \(Int(practiceSettings.speedMultiplier * 100))% to 50% - " +
-                            "AVAudioPlayer limitation may cause audio desync"
-                    )
-                } else if practiceSettings.speedMultiplier > 2.0 {
-                    Logger.warning(
-                        "BGM rate clamped from \(Int(practiceSettings.speedMultiplier * 100))% to 200% - " +
-                            "AVAudioPlayer limitation may cause audio desync"
-                    )
-                }
+                bgmPlayer.rate = clampedBGMRate(for: practiceSettings.speedMultiplier)
             }
 
             Logger.audioPlayback("Live speed change to \(Int(practiceSettings.speedMultiplier * 100))% (\(Int(effectiveBPM())) BPM)")
         }
+    }
+
+    /// Returns a clamped BGM playback rate for AVAudioPlayer while logging clamp warnings.
+    /// Internal for unit testing.
+    func clampedBGMRate(for speedMultiplier: Double) -> Float {
+        let clampedRate = Float(max(0.5, min(2.0, speedMultiplier)))
+
+        // Warn if BGM rate is clamped (causes desync with metronome)
+        if speedMultiplier < 0.5 {
+            Logger.warning(
+                "BGM rate clamped from \(Int(speedMultiplier * 100))% to 50% - " +
+                    "AVAudioPlayer limitation may cause audio desync"
+            )
+        } else if speedMultiplier > 2.0 {
+            Logger.warning(
+                "BGM rate clamped from \(Int(speedMultiplier * 100))% to 200% - " +
+                    "AVAudioPlayer limitation may cause audio desync"
+            )
+        }
+
+        return clampedRate
     }
 
     // MARK: - Unique ID Generation
@@ -453,16 +460,7 @@ final class GameplayViewModel {
             // Enable rate control for BGM speed adjustment
             bgmPlayer.enableRate = true
             // Apply speed multiplier to BGM (clamped to AVAudioPlayer's 0.5-2.0 range)
-            let clampedRate = Float(max(0.5, min(2.0, currentSpeedMultiplier)))
-            bgmPlayer.rate = clampedRate
-
-            // Warn if BGM rate is clamped (causes desync with metronome)
-            if currentSpeedMultiplier < 0.5 {
-                Logger.warning(
-                    "BGM rate clamped from \(Int(currentSpeedMultiplier * 100))% to 50% - " +
-                        "AVAudioPlayer limitation may cause audio desync"
-                )
-            }
+            bgmPlayer.rate = clampedBGMRate(for: currentSpeedMultiplier)
 
             // Check if we're resuming from a pause
             let isResuming = pausedElapsedTime > 0.0

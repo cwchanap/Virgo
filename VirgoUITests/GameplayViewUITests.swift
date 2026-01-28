@@ -9,13 +9,16 @@ import XCTest
 
 final class GameplayViewUITests: XCTestCase {
 
+    private var app: XCUIApplication!
+
     override func setUpWithError() throws {
         continueAfterFailure = false
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument
-        let app = XCUIApplication()
+        app = XCUIApplication()
         app.launchArguments.append("-UITesting")
+        app.launch()
     }
 
     override func tearDownWithError() throws {
@@ -24,9 +27,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewNavigation() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to ContentView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
@@ -49,9 +49,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewPlaybackControls() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -94,9 +91,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewHeaderElements() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -117,9 +111,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewSheetMusicArea() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -143,9 +134,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewControlsArea() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -170,9 +158,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewPlaybackSequence() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
