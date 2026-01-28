@@ -1262,7 +1262,71 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
-    enum TestError: Error {
+        enum TestError: Error {
         case playbackStartTimeNil
     }
+
+    @Test func testMetronomeBPMMatchesEffectiveBPMOnSpeedChange() async throws {
+        // This test verifies that the metronome BPM matches effectiveBPM after speed changes.
+        // This ensures synchronization between metronome audio, visual timing, and BGM.
+        // Previously, updateBPM clamped to 40-200 which caused desync at extreme speeds.
+
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Verify track was loaded
+        guard let track = viewModel.track else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        // Test 1: Normal speed (100%)
+        viewModel.startPlayback()
+        let normalEffectiveBPM = viewModel.effectiveBPM()
+        #expect(metronome.bpm == normalEffectiveBPM, "Metronome BPM should match effective BPM at 100% speed")
+        viewModel.pausePlayback()
+
+        // Test 2: Slow speed (50%) - common for practice
+        viewModel.practiceSettings.setSpeed(0.5)
+        viewModel.startPlayback()
+        let slowEffectiveBPM = viewModel.effectiveBPM()
+        #expect(metronome.bpm == slowEffectiveBPM, "Metronome BPM should match effective BPM at 50% speed")
+        #expect(abs(metronome.bpm - (track.bpm * 0.5)) < 0.01, "Metronome BPM should be 50% of base BPM")
+        viewModel.pausePlayback()
+
+        // Test 3: Very slow speed (25%) - for learning complex patterns
+        // If base BPM is 120, effective BPM would be 30 (previously clamped to 40)
+        viewModel.practiceSettings.setSpeed(0.25)
+        viewModel.startPlayback()
+        let verySlowEffectiveBPM = viewModel.effectiveBPM()
+        #expect(metronome.bpm == verySlowEffectiveBPM, "Metronome BPM should match effective BPM at 25% speed (no clamping)")
+        #expect(abs(metronome.bpm - (track.bpm * 0.25)) < 0.01, "Metronome BPM should be 25% of base BPM")
+        viewModel.pausePlayback()
+
+        // Test 4: Fast speed (150%) - for endurance training
+        viewModel.practiceSettings.setSpeed(1.5)
+        viewModel.startPlayback()
+        let fastEffectiveBPM = viewModel.effectiveBPM()
+        #expect(metronome.bpm == fastEffectiveBPM, "Metronome BPM should match effective BPM at 150% speed")
+        #expect(abs(metronome.bpm - (track.bpm * 1.5)) < 0.01, "Metronome BPM should be 150% of base BPM")
+        viewModel.pausePlayback()
+
+        // Test 5: Live speed change during playback
+        // Start at 75% speed
+        viewModel.practiceSettings.setSpeed(0.75)
+        viewModel.startPlayback()
+        #expect(metronome.bpm == track.bpm * 0.75, "Initial metronome BPM should be correct")
+
+        // Change speed to 125% while playing
+        viewModel.updateSpeed(1.25)
+        let updatedEffectiveBPM = viewModel.effectiveBPM()
+        #expect(metronome.bpm == updatedEffectiveBPM, "Metronome BPM should update to match new effective BPM during live speed change")
+        #expect(abs(metronome.bpm - (track.bpm * 1.25)) < 0.01, "Metronome BPM should be 125% of base BPM after live change")
+
+        viewModel.cleanup()
+    }
 }
+

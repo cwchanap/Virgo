@@ -206,13 +206,20 @@ class MetronomeEngine: ObservableObject {
     }
 
     func updateBPM(_ newBPM: Double) {
-        // Validate BPM is finite and within reasonable range
+        // Validate BPM is finite and positive
         guard newBPM.isFinite && newBPM > 0 else {
             Logger.audioPlayback("Invalid BPM value: \(newBPM), keeping current BPM: \(bpm)")
             return
         }
-        let clampedBPM = max(40.0, min(200.0, newBPM))
-        bpm = clampedBPM
+
+        // Log extreme BPM values for debugging
+        if newBPM < 20 {
+            Logger.warning("Very low BPM (\(String(format: "%.1f", newBPM))) - ensure this matches practice intent")
+        } else if newBPM > 300 {
+            Logger.warning("Very high BPM (\(String(format: "%.1f", newBPM))) - ensure this matches practice intent")
+        }
+
+        bpm = newBPM
     }
 
     func updateTimeSignature(_ newTimeSignature: TimeSignature) {
