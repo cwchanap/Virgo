@@ -1153,6 +1153,23 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testBGMRateClampsAtAVAudioPlayerBounds() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        let highClampedRate = viewModel.clampedBGMRate(for: 2.5)
+        #expect(highClampedRate == 2.0, "BGM rate should clamp to 2.0 when speed exceeds 200%")
+
+        let lowClampedRate = viewModel.clampedBGMRate(for: 0.25)
+        #expect(lowClampedRate == 0.5, "BGM rate should clamp to 0.5 when speed is below 50%")
+
+        viewModel.cleanup()
+    }
+
     @Test func testSetupGameplayLoadsPersistedSpeed() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()

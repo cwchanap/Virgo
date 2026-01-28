@@ -9,6 +9,8 @@ import XCTest
 
 final class VirgoUITests: XCTestCase {
 
+    private var app: XCUIApplication!
+
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.
 
@@ -17,7 +19,7 @@ final class VirgoUITests: XCTestCase {
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument
-        let app = XCUIApplication()
+        app = XCUIApplication()
         app.launchArguments.append("-UITesting")
 
         // In UI tests it's important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
@@ -29,7 +31,6 @@ final class VirgoUITests: XCTestCase {
 
     @MainActor
     func testMainMenuNavigation() throws {
-        let app = XCUIApplication()
         app.launch()
 
         // Verify main menu elements are present
@@ -47,7 +48,6 @@ final class VirgoUITests: XCTestCase {
 
     @MainActor
     func testDrumTracksListDisplay() throws {
-        let app = XCUIApplication()
         app.launch()
 
         // Navigate to songs
@@ -72,7 +72,6 @@ final class VirgoUITests: XCTestCase {
 
     @MainActor
     func testSearchFunctionality() throws {
-        let app = XCUIApplication()
         app.launch()
         app.buttons["START"].tap()
 
@@ -105,7 +104,7 @@ final class VirgoUITests: XCTestCase {
 
         // Wait for all tracks to be visible again after clearing search
         let allTracksVisible = expectation(description: "All tracks visible after clear")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
             if app.staticTexts["Thunder Beat"].exists &&
                 app.staticTexts["Jazz Groove"].exists {
                 allTracksVisible.fulfill()
@@ -122,7 +121,6 @@ final class VirgoUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewNavigation() throws {
-        let app = XCUIApplication()
         app.launch()
         app.buttons["START"].tap()
 
@@ -163,7 +161,6 @@ final class VirgoUITests: XCTestCase {
 
     @MainActor
     func testTabNavigation() throws {
-        let app = XCUIApplication()
         app.launch()
         app.buttons["START"].tap()
 
@@ -196,7 +193,8 @@ final class VirgoUITests: XCTestCase {
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            app.launch()
+            app.terminate()
         }
     }
 }
