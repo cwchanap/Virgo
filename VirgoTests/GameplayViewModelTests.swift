@@ -931,10 +931,11 @@ struct GameplayViewModelTests {
         // Verify pausedElapsedTime was preserved and used to restore state
         let timeBetweenStartTimes = firstStartTime.timeIntervalSince(resumeStartTime)
         let toleranceMultiplier: Double = 2.0
+        let timeDifference = abs(timeBetweenStartTimes - pausedTimeAfterPause)
+        let tolerance = pausedTimeAfterPause * toleranceMultiplier
         #expect(
-            abs(timeBetweenStartTimes - pausedTimeAfterPause) <
-                (pausedTimeAfterPause * toleranceMultiplier),
-            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately equal paused elapsed time (≈\(pausedTimeAfterPause)s)"
+            timeDifference < tolerance,
+            "Time difference (\(timeDifference)s) should be less than tolerance (\(tolerance)s)"
         )
 
         // Verify playback state was restored, not reset to beginning
@@ -1302,7 +1303,10 @@ struct GameplayViewModelTests {
         viewModel.practiceSettings.setSpeed(0.25)
         viewModel.startPlayback()
         let verySlowEffectiveBPM = viewModel.effectiveBPM()
-        #expect(metronome.bpm == verySlowEffectiveBPM, "Metronome BPM should match effective BPM at 25% speed (no clamping)")
+        #expect(
+            metronome.bpm == verySlowEffectiveBPM,
+            "Metronome BPM should match effective BPM at 25% speed"
+        )
         #expect(abs(metronome.bpm - (track.bpm * 0.25)) < 0.01, "Metronome BPM should be 25% of base BPM")
         viewModel.pausePlayback()
 
@@ -1323,10 +1327,15 @@ struct GameplayViewModelTests {
         // Change speed to 125% while playing
         viewModel.updateSpeed(1.25)
         let updatedEffectiveBPM = viewModel.effectiveBPM()
-        #expect(metronome.bpm == updatedEffectiveBPM, "Metronome BPM should update to match new effective BPM during live speed change")
-        #expect(abs(metronome.bpm - (track.bpm * 1.25)) < 0.01, "Metronome BPM should be 125% of base BPM after live change")
+        #expect(
+            metronome.bpm == updatedEffectiveBPM,
+            "Metronome BPM should update to match new effective BPM during live speed change"
+        )
+        #expect(
+            abs(metronome.bpm - (track.bpm * 1.25)) < 0.01,
+            "Metronome BPM should be 125% of base BPM after live change"
+        )
 
         viewModel.cleanup()
     }
 }
-
