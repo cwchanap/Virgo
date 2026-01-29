@@ -8,6 +8,13 @@ server/.venv/
 # Xcode test results and build artifacts
 *.xcresult/
 Test-*.xcresult/
-DerivedData/
+DerivedData*/
 *.xcuserdata/
 TestResults/
+build-for-testing*.log
+ui-test-*/
+ui-test-*.log
+ui-test-build-output-*.log
+ui-test-results-*/
+ui-test-results-diagnostics
+ui-test-activity-log.json

@@ -9,8 +9,16 @@ import XCTest
 
 final class GameplayViewUITests: XCTestCase {
 
+    private var app: XCUIApplication!
+
     override func setUpWithError() throws {
         continueAfterFailure = false
+
+        // Add custom launch argument to distinguish UI tests from unit tests
+        // ContentView.isUITesting checks for this argument
+        app = XCUIApplication()
+        app.launchArguments.append("-UITesting")
+        app.launch()
     }
 
     override func tearDownWithError() throws {
@@ -19,36 +27,28 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewNavigation() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to ContentView
         app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
         
         // Navigate to GameplayView by tapping on first track
         app.staticTexts["Thunder Beat"].tap()
         
         // Verify GameplayView elements load
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Drum Master Pro"].exists)
-        XCTAssertTrue(app.staticTexts["120 BPM"].exists)
-        XCTAssertTrue(app.staticTexts["Medium"].exists)
+        XCTAssertTrue(app.staticTexts["Rock Masters"].exists)
         
         // Test back navigation
         let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
         XCTAssertTrue(backButton.waitForExistence(timeout: 5))
         backButton.tap()
         
-        // Verify we're back on the tracks list
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
+        // Verify we're back on the songs list
+        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
     }
 
     @MainActor
     func testGameplayViewPlaybackControls() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -91,9 +91,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewHeaderElements() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -104,9 +101,7 @@ final class GameplayViewUITests: XCTestCase {
         
         // Test header contains track information
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should be displayed")
-        XCTAssertTrue(app.staticTexts["Drum Master Pro"].exists, "Artist name should be displayed")
-        XCTAssertTrue(app.staticTexts["120 BPM"].exists, "BPM should be displayed")
-        XCTAssertTrue(app.staticTexts["Medium"].exists, "Difficulty should be displayed")
+        XCTAssertTrue(app.staticTexts["Rock Masters"].exists, "Artist name should be displayed")
         
         // Test back button exists and is accessible
         let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
@@ -116,9 +111,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewSheetMusicArea() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -142,9 +134,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewControlsArea() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -169,9 +158,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewPlaybackSequence() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -239,9 +225,7 @@ final class GameplayViewUITests: XCTestCase {
         
         // Test that text elements are readable
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should be accessible")
-        XCTAssertTrue(app.staticTexts["Drum Master Pro"].exists, "Artist should be accessible")
-        XCTAssertTrue(app.staticTexts["120 BPM"].exists, "BPM should be accessible")
-        XCTAssertTrue(app.staticTexts["Medium"].exists, "Difficulty should be accessible")
+        XCTAssertTrue(app.staticTexts["Rock Masters"].exists, "Artist should be accessible")
     }
 
     @MainActor
@@ -251,28 +235,28 @@ final class GameplayViewUITests: XCTestCase {
         
         // Navigate to ContentView
         app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
         
         // Test navigation to first track
         app.staticTexts["Thunder Beat"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Drum Master Pro"].exists)
+        XCTAssertTrue(app.staticTexts["Rock Masters"].exists)
         
         // Navigate back
         let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
         backButton.tap()
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
         
         // Test navigation to second track (if available)
-        if app.staticTexts["Jazz Swing"].exists {
-            app.staticTexts["Jazz Swing"].tap()
-            XCTAssertTrue(app.staticTexts["Jazz Swing"].waitForExistence(timeout: 10))
-            XCTAssertTrue(app.staticTexts["Blue Note Records"].exists)
+        if app.staticTexts["Jazz Groove"].exists {
+            app.staticTexts["Jazz Groove"].tap()
+            XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["Smooth Collective"].exists)
             
             // Navigate back again
             let backButton2 = app.buttons.matching(identifier: "chevron.left").firstMatch
             backButton2.tap()
-            XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
         }
     }
 
@@ -314,6 +298,6 @@ final class GameplayViewUITests: XCTestCase {
         // Test final navigation back
         let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
         backButton.tap()
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
     }
 }

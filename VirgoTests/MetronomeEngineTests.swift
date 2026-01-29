@@ -37,18 +37,18 @@ struct MetronomeEngineTests {
     func testBPMUpdate() async {
         // Add pre-test delay for stability
         try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
-        
+
         let engine = MetronomeEngine()
 
         engine.updateBPM(140)
         #expect(engine.bpm == 140)
 
-        // Test clamping
+        // Test that updateBPM no longer clamps - allows full range for sync with visuals
         engine.updateBPM(300)
-        #expect(engine.bpm == 200) // Should clamp to max
+        #expect(engine.bpm == 300) // Should accept high BPM (no clamping)
 
         engine.updateBPM(10)
-        #expect(engine.bpm == 40) // Should clamp to min
+        #expect(engine.bpm == 10) // Should accept low BPM (no clamping)
     }
 
     @Test("MetronomeEngine volume updates correctly")
@@ -87,24 +87,51 @@ struct MetronomeEngineTests {
     func testInvalidBPMHandling() {
         let engine = MetronomeEngine()
         let originalBPM = engine.bpm
-        
+
         // Test infinite values
         engine.updateBPM(Double.infinity)
         #expect(engine.bpm == originalBPM) // Should maintain original BPM
-        
+
         engine.updateBPM(-Double.infinity)
         #expect(engine.bpm == originalBPM) // Should maintain original BPM
-        
+
         // Test NaN
         engine.updateBPM(Double.nan)
         #expect(engine.bpm == originalBPM) // Should maintain original BPM
-        
+
         // Test zero and negative values
         engine.updateBPM(0.0)
         #expect(engine.bpm == originalBPM) // Should maintain original BPM
-        
+
         engine.updateBPM(-10.0)
         #expect(engine.bpm == originalBPM) // Should maintain original BPM
+    }
+
+    @Test("MetronomeBPM accepts full range for speed sync")
+    func testBPMRangeForSpeedSync() {
+        let engine = MetronomeEngine()
+
+        // Test low BPM scenarios (slow practice)
+        // 120 BPM at 25% speed = 30 BPM
+        engine.updateBPM(30)
+        #expect(engine.bpm == 30, "Should accept 30 BPM for slow practice")
+
+        // 100 BPM at 20% speed = 20 BPM
+        engine.updateBPM(20)
+        #expect(engine.bpm == 20, "Should accept 20 BPM for very slow practice")
+
+        // Test normal range
+        engine.updateBPM(120)
+        #expect(engine.bpm == 120, "Should accept normal 120 BPM")
+
+        // Test high BPM scenarios (fast practice)
+        // 160 BPM at 150% speed = 240 BPM
+        engine.updateBPM(240)
+        #expect(engine.bpm == 240, "Should accept 240 BPM for fast practice")
+
+        // 180 BPM at 150% speed = 270 BPM
+        engine.updateBPM(270)
+        #expect(engine.bpm == 270, "Should accept 270 BPM for fast practice")
     }
 
     @Test("MetronomeEngine time signature updates correctly")

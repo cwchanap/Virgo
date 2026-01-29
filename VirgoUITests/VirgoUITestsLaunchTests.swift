@@ -9,17 +9,23 @@ import XCTest
 
 final class VirgoUITestsLaunchTests: XCTestCase {
 
+    private var app: XCUIApplication!
+
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true
     }
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+
+        // Add custom launch argument to distinguish UI tests from unit tests
+        // ContentView.isUITesting checks for this argument
+        app = XCUIApplication()
+        app.launchArguments.append("-UITesting")
     }
 
     @MainActor
     func testLaunch() throws {
-        let app = XCUIApplication()
         app.launch()
 
         // Wait for app to fully launch
