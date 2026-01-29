@@ -455,8 +455,14 @@ struct GameplayViewModelTests {
     @Test func testCalculateTrackDuration() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
 
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: practiceSettings
+        )
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
@@ -480,7 +486,13 @@ struct GameplayViewModelTests {
         }
 
         let metronome = createTestMetronome()
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: practiceSettings
+        )
 
         await viewModel.loadChartData()
         viewModel.setupGameplay()
