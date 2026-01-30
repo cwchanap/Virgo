@@ -198,14 +198,17 @@ final class GameplayViewModel {
     // MARK: - Setup
 
     /// Sets up gameplay after data is loaded
-    func setupGameplay() {
+    /// - Parameter loadPersistedSpeed: Whether to load the saved speed for this chart.
+    ///   Pass `false` to use a preconfigured speed instead of the saved value.
+    ///   Defaults to `true` to load saved speed (SC-06: Remember last-used speed).
+    func setupGameplay(loadPersistedSpeed: Bool = true) {
         guard let track = track else {
             Logger.audioPlayback("setupGameplay() called but track is nil - data not loaded yet")
             return
         }
 
-        // Load saved speed for this chart (SC-06: Remember last-used speed) unless preconfigured
-        if practiceSettings.speedMultiplier == 1.0 {
+        // Load saved speed for this chart unless caller explicitly requested preconfigured speed
+        if loadPersistedSpeed {
             practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
         }
 
