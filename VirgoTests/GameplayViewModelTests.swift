@@ -1255,7 +1255,8 @@ struct GameplayViewModelTests {
         // Set speed to 50%
         viewModel.practiceSettings.setSpeed(0.5)
 
-        viewModel.setupGameplay()
+        // Use loadPersistedSpeed: false to preserve the preconfigured speed
+        viewModel.setupGameplay(loadPersistedSpeed: false)
 
         // We can't directly access InputManager.bpm (it's private), but we can verify
         // that the effective BPM is different from base BPM at this speed, confirming
