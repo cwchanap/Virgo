@@ -1041,19 +1041,33 @@ struct GameplayViewModelTests {
             abs(viewModel.effectiveBPM() - baseBPM) < tolerance,
             "At 100% speed, effective BPM should equal base BPM"
         )
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - baseBPM) < tolerance,
+            "InputManager should be configured with effective BPM at 100% speed"
+        )
 
         // Set speed to 50%
         viewModel.practiceSettings.setSpeed(0.5)
+        viewModel.setupGameplay(loadPersistedSpeed: false)
         #expect(
             abs(viewModel.effectiveBPM() - (baseBPM * 0.5)) < tolerance,
             "At 50% speed, effective BPM should be half of base BPM"
         )
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.5)) < tolerance,
+            "InputManager should be configured with effective BPM at 50% speed"
+        )
 
         // Set speed to 150%
         viewModel.practiceSettings.setSpeed(1.5)
+        viewModel.setupGameplay(loadPersistedSpeed: false)
         #expect(
             abs(viewModel.effectiveBPM() - (baseBPM * 1.5)) < tolerance,
             "At 150% speed, effective BPM should be 1.5x base BPM"
+        )
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 1.5)) < tolerance,
+            "InputManager should be configured with effective BPM at 150% speed"
         )
 
         viewModel.cleanup()
@@ -1090,6 +1104,10 @@ struct GameplayViewModelTests {
         #expect(
             abs(viewModel.effectiveBPM() - (baseBPM * 0.75)) < tolerance,
             "Effective BPM should reflect new speed"
+        )
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.75)) < tolerance,
+            "InputManager should be configured with effective BPM after speed change"
         )
 
         // Verify metronome was updated (it should still be playing)
@@ -1235,11 +1253,8 @@ struct GameplayViewModelTests {
         #expect(loadedSpeed == 0.75, "Speed should be saved on cleanup")
     }
 
-    @Test func testInputManagerConfiguredWithBaseBPM() async throws {
-        // This test verifies that InputManager is configured with base BPM, not effective BPM.
-        // This is important because timing tolerances should remain constant regardless of playback speed.
-        // The GameplayViewModel.swift code explicitly documents this at line 193:
-        // "InputManager uses BASE BPM - timing tolerances remain fixed regardless of speed"
+    @Test func testInputManagerConfiguredWithEffectiveBPM() async throws {
+        // This test verifies that InputManager is configured with effective BPM so scoring matches playback speed.
 
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
@@ -1258,10 +1273,6 @@ struct GameplayViewModelTests {
         // Use loadPersistedSpeed: false to preserve the preconfigured speed
         viewModel.setupGameplay(loadPersistedSpeed: false)
 
-        // We can't directly access InputManager.bpm (it's private), but we can verify
-        // that the effective BPM is different from base BPM at this speed, confirming
-        // that if InputManager was incorrectly configured with effectiveBPM, timing
-        // would be affected
         let baseBPM = track.bpm
         let effectiveBPM = viewModel.effectiveBPM()
 
@@ -1269,9 +1280,10 @@ struct GameplayViewModelTests {
         let tolerance = 0.01
         #expect(abs(effectiveBPM - (baseBPM * 0.5)) < tolerance, "Effective BPM should be 50% of base at this speed")
         #expect(abs(effectiveBPM - baseBPM) > tolerance, "At 50% speed, effective BPM should differ from base BPM")
-
-        // The code at GameplayViewModel.swift:193 explicitly configures InputManager with track.bpm (base BPM)
-        // This test documents that behavior and ensures it doesn't accidentally change
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.5)) < tolerance,
+            "InputManager should be configured with effective BPM when speed changes"
+        )
 
         viewModel.cleanup()
     }

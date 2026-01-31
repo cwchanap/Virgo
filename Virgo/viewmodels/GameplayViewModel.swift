@@ -132,13 +132,48 @@ final class GameplayViewModel {
     /// Updates the playback speed. Can be called during active playback.
     /// - Parameter newSpeed: Speed multiplier (0.25 to 1.5)
     func updateSpeed(_ newSpeed: Double) {
+        let previousSpeed = practiceSettings.speedMultiplier
         practiceSettings.setSpeed(newSpeed)
         enforceBGMMinimumSpeedIfNeeded()
         refreshTimingCaches()
 
         // If playing, update metronome and BGM rate immediately
         if isPlaying {
-            metronome.updateBPM(effectiveBPM())
+            let effectiveBPMValue = effectiveBPM()
+            if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0 {
+                pausedElapsedTime += metronomeTime
+                let speedRatio = previousSpeed / practiceSettings.speedMultiplier
+                pausedElapsedTime *= speedRatio
+                let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
+                totalBeatsElapsed = beatOffset
+                metronome.stop()
+                let startTime = CFAbsoluteTimeGetCurrent() + 0.05
+                metronome.startAtTime(
+                    bpm: effectiveBPMValue,
+                    timeSignature: track?.timeSignature ?? .fourFour,
+                    startTime: startTime,
+                    totalBeatsElapsed: beatOffset
+                )
+            } else {
+                metronome.updateBPM(effectiveBPMValue)
+            }
+
+            if let playbackStartTime = playbackStartTime, previousSpeed > 0 {
+                let elapsedSinceStart = Date().timeIntervalSince(playbackStartTime)
+                let speedRatio = previousSpeed / practiceSettings.speedMultiplier
+                let adjustedElapsed = elapsedSinceStart * speedRatio
+                let newStartTime = Date().addingTimeInterval(-adjustedElapsed)
+                self.playbackStartTime = newStartTime
+                inputManager.startListening(songStartTime: newStartTime)
+            }
+
+            if previousSpeed > 0 {
+                inputManager.configure(
+                    bpm: effectiveBPMValue,
+                    timeSignature: track?.timeSignature ?? .fourFour,
+                    notes: cachedNotes
+                )
+            }
 
             // Adjust BGM playback rate (AVAudioPlayer supports 0.5 to 2.0)
             if let bgmPlayer = bgmPlayer {
@@ -147,8 +182,7 @@ final class GameplayViewModel {
             }
 
             let speedPercent = Int(practiceSettings.speedMultiplier * 100)
-            let effectiveBPMValue = Int(effectiveBPM())
-            Logger.audioPlayback("Live speed change to \(speedPercent)% (\(effectiveBPMValue) BPM)")
+            Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
         }
     }
 
@@ -219,8 +253,8 @@ final class GameplayViewModel {
         refreshTimingCaches()
         // Use effective BPM (base × speed multiplier) for metronome
         metronome.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature)
-        // InputManager uses BASE BPM - timing tolerances remain fixed regardless of speed
-        inputManager.configure(bpm: track.bpm, timeSignature: track.timeSignature, notes: cachedNotes)
+        // InputManager should use effective BPM so scoring matches playback speed
+        inputManager.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature, notes: cachedNotes)
         setupInterruptionHandling()
     }
 
