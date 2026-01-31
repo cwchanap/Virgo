@@ -68,6 +68,8 @@ class InputManager: ObservableObject {
     private var bpm: Double = 120.0
     private var timeSignature: TimeSignature = .fourFour
     private var notes: [Note] = []
+
+    var configuredBPM: Double { bpm }
     
     // Input mapping configuration
     private var keyboardMapping: [String: DrumType] = [:]
