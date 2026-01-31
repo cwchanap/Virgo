@@ -185,6 +185,31 @@ struct ComponentRefactoringTests {
             SwiftUITestUtilities.assertViewWithEnvironment(component)
         }
     }
+
+    @Test("GameplayControlsView renders correctly")
+    func testGameplayControlsViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            guard let track = DrumTrack.sampleData.first else {
+                #expect(false, "Sample track data should be available")
+                return
+            }
+
+            let controlsView = GameplayControlsView(
+                track: track,
+                isPlaying: .constant(false),
+                playbackProgress: .constant(0.25),
+                metronome: MetronomeEngine(),
+                practiceSettings: PracticeSettingsService(),
+                onPlayPause: {},
+                onRestart: {},
+                onSkipToEnd: {},
+                onSpeedChange: { _ in }
+            )
+
+            #expect(controlsView.track.title == track.title)
+            SwiftUITestUtilities.assertViewWithEnvironment(controlsView)
+        }
+    }
 }
 
 // MARK: - Mock Data Helpers

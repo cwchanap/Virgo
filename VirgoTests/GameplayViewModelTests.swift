@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 //
 //  GameplayViewModelTests.swift
 //  VirgoTests
@@ -454,8 +455,14 @@ struct GameplayViewModelTests {
     @Test func testCalculateTrackDuration() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
 
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: practiceSettings
+        )
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
@@ -479,7 +486,13 @@ struct GameplayViewModelTests {
         }
 
         let metronome = createTestMetronome()
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: practiceSettings
+        )
 
         await viewModel.loadChartData()
         viewModel.setupGameplay()
@@ -489,6 +502,23 @@ struct GameplayViewModelTests {
         // With default 120 BPM and 4/4 time, each measure is 2 seconds
         // 4 measures = 8 seconds
         #expect(duration >= 8.0)
+    }
+
+    @Test func testTrackDurationScalesWithSpeedMultiplier() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        let baseDuration = viewModel.calculateTrackDuration()
+        viewModel.updateSpeed(0.5)
+
+        let slowedDuration = viewModel.calculateTrackDuration()
+        #expect(slowedDuration > baseDuration, "Duration should increase at slower speeds")
     }
 
     // MARK: - BGM Offset Calculation Tests
@@ -913,9 +943,11 @@ struct GameplayViewModelTests {
         // Verify pausedElapsedTime was preserved and used to restore state
         let timeBetweenStartTimes = firstStartTime.timeIntervalSince(resumeStartTime)
         let toleranceMultiplier: Double = 2.0
+        let timeDifference = abs(timeBetweenStartTimes - pausedTimeAfterPause)
+        let tolerance = pausedTimeAfterPause * toleranceMultiplier
         #expect(
-            abs(timeBetweenStartTimes - pausedTimeAfterPause) < (pausedTimeAfterPause * toleranceMultiplier),
-            "Time between start times (≈\(timeBetweenStartTimes)s) should approximately equal paused elapsed time (≈\(pausedTimeAfterPause)s)"
+            timeDifference < tolerance,
+            "Time difference (\(timeDifference)s) should be less than tolerance (\(tolerance)s)"
         )
 
         // Verify playback state was restored, not reset to beginning
@@ -987,7 +1019,375 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
-    enum TestError: Error {
+    // MARK: - Speed Control Integration Tests
+
+    @Test func testEffectiveBPMCalculation() async throws {
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Get base BPM (should be 120.0 for test charts without songs)
+        guard let track = viewModel.track else {
+            throw TestError.playbackStartTimeNil // Reuse existing error
+        }
+        let baseBPM = track.bpm
+        let tolerance = 0.01
+
+        // Default speed is 1.0, so effective BPM should equal track BPM
+        #expect(
+            abs(viewModel.effectiveBPM() - baseBPM) < tolerance,
+            "At 100% speed, effective BPM should equal base BPM"
+        )
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - baseBPM) < tolerance,
+            "InputManager should be configured with effective BPM at 100% speed"
+        )
+
+        // Set speed to 50%
+        viewModel.practiceSettings.setSpeed(0.5)
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        #expect(
+            abs(viewModel.effectiveBPM() - (baseBPM * 0.5)) < tolerance,
+            "At 50% speed, effective BPM should be half of base BPM"
+        )
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.5)) < tolerance,
+            "InputManager should be configured with effective BPM at 50% speed"
+        )
+
+        // Set speed to 150%
+        viewModel.practiceSettings.setSpeed(1.5)
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        #expect(
+            abs(viewModel.effectiveBPM() - (baseBPM * 1.5)) < tolerance,
+            "At 150% speed, effective BPM should be 1.5x base BPM"
+        )
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 1.5)) < tolerance,
+            "InputManager should be configured with effective BPM at 150% speed"
+        )
+
+        viewModel.cleanup()
+    }
+
+    @Test func testUpdateSpeedDuringPlayback() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Start playback at default speed
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true)
+
+        guard let track = viewModel.track else {
+            throw TestError.playbackStartTimeNil
+        }
+        let baseBPM = track.bpm
+        let tolerance = 0.01
+
+        // Change speed during playback
+        viewModel.updateSpeed(0.75)
+
+        // Verify speed was applied
+        #expect(
+            viewModel.practiceSettings.speedMultiplier == 0.75,
+            "Speed should be updated to 75%"
+        )
+        #expect(
+            abs(viewModel.effectiveBPM() - (baseBPM * 0.75)) < tolerance,
+            "Effective BPM should reflect new speed"
+        )
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.75)) < tolerance,
+            "InputManager should be configured with effective BPM after speed change"
+        )
+
+        // Verify metronome was updated (it should still be playing)
+        // Note: We can't directly verify metronome.bpm was updated, but we can check playback continues
+        #expect(viewModel.isPlaying == true, "Playback should continue after speed change")
+
+        viewModel.cleanup()
+    }
+
+    @Test func testUpdateSpeedBeforePlaybackReconfiguresInputManager() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        guard let track = viewModel.track else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        #expect(viewModel.isPlaying == false)
+
+        let baseBPM = track.bpm
+        let tolerance = 0.01
+
+        viewModel.updateSpeed(0.75)
+
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.75)) < tolerance,
+            "InputManager should be configured with effective BPM after pre-playback speed change"
+        )
+
+        viewModel.cleanup()
+    }
+
+    @Test func testBGMRateClampedAtMinimumSpeed() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // For this test, we need BGM to be present
+        // The test will verify clamping behavior if BGM exists
+        guard viewModel.bgmPlayer != nil else {
+            // Skip test if no BGM (metronome-only)
+            return
+        }
+
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true)
+
+        // Set speed to 25% (below AVAudioPlayer's minimum of 50%)
+        viewModel.updateSpeed(0.25)
+
+        // Verify practiceSettings clamped to 50% to keep BGM in sync
+        #expect(viewModel.practiceSettings.speedMultiplier == 0.5, "Speed should be clamped to 50% with BGM")
+
+        // Verify BGM rate is clamped to 0.5 (not 0.25)
+        if let bgmPlayer = viewModel.bgmPlayer {
+            #expect(bgmPlayer.rate == 0.5, "BGM rate should be clamped to 0.5 (50%) when speed is below 50%")
+        }
+
+        viewModel.cleanup()
+    }
+
+    @Test func testBGMRateAllowsFullSpeedRange() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // For this test, we need BGM to be present
+        guard viewModel.bgmPlayer != nil else {
+            // Skip test if no BGM (metronome-only)
+            return
+        }
+
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying == true)
+
+        // Set speed to 150% (within AVAudioPlayer's range)
+        viewModel.updateSpeed(1.5)
+
+        // Verify BGM rate is NOT clamped
+        if let bgmPlayer = viewModel.bgmPlayer {
+            #expect(bgmPlayer.rate == 1.5, "BGM rate should be 1.5 when speed is 150% (within supported range)")
+        }
+
+        // Set speed to 75%
+        viewModel.updateSpeed(0.75)
+
+        if let bgmPlayer = viewModel.bgmPlayer {
+            #expect(bgmPlayer.rate == 0.75, "BGM rate should be 0.75 when speed is 75% (within supported range)")
+        }
+
+        viewModel.cleanup()
+    }
+
+    @Test func testBGMRateClampsAtAVAudioPlayerBounds() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        let highClampedRate = viewModel.clampedBGMRate(for: 2.5)
+        #expect(highClampedRate == 2.0, "BGM rate should clamp to 2.0 when speed exceeds 200%")
+
+        let lowClampedRate = viewModel.clampedBGMRate(for: 0.25)
+        #expect(lowClampedRate == 0.5, "BGM rate should clamp to 0.5 when speed is below 50%")
+
+        viewModel.cleanup()
+    }
+
+    @Test func testSetupGameplayLoadsPersistedSpeed() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        // Create isolated UserDefaults for this test
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+
+        // Save speed for this chart
+        practiceSettings.saveSpeed(0.5, for: chart.persistentModelID)
+
+        // Create new ViewModel (simulating reopening gameplay for this chart)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Verify speed was loaded
+        #expect(
+            viewModel.practiceSettings.speedMultiplier == 0.5,
+            "Speed should be loaded from persistence on setup"
+        )
+        #expect(
+            viewModel.effectiveBPM() == (viewModel.track?.bpm ?? 120.0) * 0.5,
+            "Effective BPM should reflect loaded speed"
+        )
+
+        viewModel.cleanup()
+    }
+
+    @Test func testCleanupSavesCurrentSpeed() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        // Create isolated UserDefaults for this test
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Set speed
+        viewModel.updateSpeed(0.75)
+
+        // Cleanup (should save speed)
+        viewModel.cleanup()
+
+        // Verify speed was saved by loading it directly
+        let loadedSpeed = practiceSettings.loadSpeed(for: chart.persistentModelID)
+        #expect(loadedSpeed == 0.75, "Speed should be saved on cleanup")
+    }
+
+    @Test func testInputManagerConfiguredWithEffectiveBPM() async throws {
+        // This test verifies that InputManager is configured with effective BPM so scoring matches playback speed.
+
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+
+        // Verify track was loaded
+        guard let track = viewModel.track else {
+            throw TestError.playbackStartTimeNil // Reuse existing error
+        }
+
+        // Set speed to 50%
+        viewModel.practiceSettings.setSpeed(0.5)
+
+        // Use loadPersistedSpeed: false to preserve the preconfigured speed
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let baseBPM = track.bpm
+        let effectiveBPM = viewModel.effectiveBPM()
+
+        // Use small tolerance for floating point comparison
+        let tolerance = 0.01
+        #expect(abs(effectiveBPM - (baseBPM * 0.5)) < tolerance, "Effective BPM should be 50% of base at this speed")
+        #expect(abs(effectiveBPM - baseBPM) > tolerance, "At 50% speed, effective BPM should differ from base BPM")
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.5)) < tolerance,
+            "InputManager should be configured with effective BPM when speed changes"
+        )
+
+        viewModel.cleanup()
+    }
+
+        enum TestError: Error {
         case playbackStartTimeNil
+    }
+
+    @Test func testMetronomeBPMMatchesEffectiveBPMOnSpeedChange() async throws {
+        // This test verifies that the metronome BPM matches effectiveBPM after speed changes.
+        // This ensures synchronization between metronome audio, visual timing, and BGM.
+        // Previously, updateBPM clamped to 40-200 which caused desync at extreme speeds.
+
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Verify track was loaded
+        guard let track = viewModel.track else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        // Test 1: Normal speed (100%)
+        viewModel.startPlayback()
+        let normalEffectiveBPM = viewModel.effectiveBPM()
+        #expect(metronome.bpm == normalEffectiveBPM, "Metronome BPM should match effective BPM at 100% speed")
+        viewModel.pausePlayback()
+
+        // Test 2: Slow speed (50%) - common for practice
+        viewModel.practiceSettings.setSpeed(0.5)
+        viewModel.startPlayback()
+        let slowEffectiveBPM = viewModel.effectiveBPM()
+        #expect(metronome.bpm == slowEffectiveBPM, "Metronome BPM should match effective BPM at 50% speed")
+        #expect(abs(metronome.bpm - (track.bpm * 0.5)) < 0.01, "Metronome BPM should be 50% of base BPM")
+        viewModel.pausePlayback()
+
+        // Test 3: Very slow speed (25%) - for learning complex patterns
+        // If base BPM is 120, effective BPM would be 30 (previously clamped to 40)
+        viewModel.practiceSettings.setSpeed(0.25)
+        viewModel.startPlayback()
+        let verySlowEffectiveBPM = viewModel.effectiveBPM()
+        #expect(
+            metronome.bpm == verySlowEffectiveBPM,
+            "Metronome BPM should match effective BPM at 25% speed"
+        )
+        #expect(abs(metronome.bpm - (track.bpm * 0.25)) < 0.01, "Metronome BPM should be 25% of base BPM")
+        viewModel.pausePlayback()
+
+        // Test 4: Fast speed (150%) - for endurance training
+        viewModel.practiceSettings.setSpeed(1.5)
+        viewModel.startPlayback()
+        let fastEffectiveBPM = viewModel.effectiveBPM()
+        #expect(metronome.bpm == fastEffectiveBPM, "Metronome BPM should match effective BPM at 150% speed")
+        #expect(abs(metronome.bpm - (track.bpm * 1.5)) < 0.01, "Metronome BPM should be 150% of base BPM")
+        viewModel.pausePlayback()
+
+        // Test 5: Live speed change during playback
+        // Start at 75% speed
+        viewModel.practiceSettings.setSpeed(0.75)
+        viewModel.startPlayback()
+        #expect(metronome.bpm == track.bpm * 0.75, "Initial metronome BPM should be correct")
+
+        // Change speed to 125% while playing
+        viewModel.updateSpeed(1.25)
+        let updatedEffectiveBPM = viewModel.effectiveBPM()
+        #expect(
+            metronome.bpm == updatedEffectiveBPM,
+            "Metronome BPM should update to match new effective BPM during live speed change"
+        )
+        #expect(
+            abs(metronome.bpm - (track.bpm * 1.25)) < 0.01,
+            "Metronome BPM should be 125% of base BPM after live change"
+        )
+
+        viewModel.cleanup()
     }
 }

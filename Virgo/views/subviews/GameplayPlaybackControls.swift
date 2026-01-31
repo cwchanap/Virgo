@@ -14,9 +14,11 @@ extension GameplayView {
             isPlaying: $viewModel.isPlaying,
             playbackProgress: $viewModel.playbackProgress,
             metronome: viewModel.metronome,
+            practiceSettings: viewModel.practiceSettings,
             onPlayPause: { viewModel.togglePlayback() },
             onRestart: { viewModel.restartPlayback() },
-            onSkipToEnd: { viewModel.skipToEnd() }
+            onSkipToEnd: { viewModel.skipToEnd() },
+            onSpeedChange: { viewModel.updateSpeed($0) }
         )
         .background(Color.black)
     }

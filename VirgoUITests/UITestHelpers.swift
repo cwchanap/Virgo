@@ -55,10 +55,10 @@ extension XCTestCase {
     /// Wait for app to finish loading with data
     func waitForDataLoad(app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
         // Wait for both UI elements and data to be present
-        let drumTracksTitle = app.staticTexts["Drum Tracks"]
+        let songsTitle = app.staticTexts["Songs"]
         let firstTrack = app.staticTexts["Thunder Beat"]
 
-        return waitForElements([drumTracksTitle, firstTrack], timeout: timeout)
+        return waitForElements([songsTitle, firstTrack], timeout: timeout)
     }
     
     /// Navigate to Songs tab and wait for it to load

@@ -24,6 +24,13 @@ struct ContentView: View {
 
     @State private var databaseService: DatabaseMaintenanceService?
 
+    /// Detects if the app is running in UI testing mode.
+    /// Uses a custom launch argument "-UITesting" to distinguish from unit tests.
+    /// UI tests should append app.launchArguments.append("-UITesting") in setUp().
+    private var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("-UITesting")
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             // Songs Tab with Sub-tabs
@@ -104,6 +111,9 @@ struct ContentView: View {
         }
         .tint(.purple)
         .onAppear {
+            if isUITesting {
+                seedUITestDataIfNeeded()
+            }
             if databaseService == nil {
                 databaseService = DatabaseMaintenanceService(modelContext: modelContext)
             }
@@ -118,6 +128,29 @@ struct ContentView: View {
     private func toggleSave(for song: Song) {
         song.isSaved.toggle()
         Logger.database("Song \(song.title) \(song.isSaved ? "saved" : "unsaved")")
+    }
+
+    private func seedUITestDataIfNeeded() {
+        guard allSongs.isEmpty else { return }
+
+        let sampleSongs = Song.sampleData
+        for song in sampleSongs {
+            song.genre = "DTX Import"
+            for chart in song.charts {
+                chart.song = song
+            }
+            modelContext.insert(song)
+            for chart in song.charts {
+                modelContext.insert(chart)
+            }
+        }
+
+        do {
+            try modelContext.save()
+            Logger.database("Seeded UI test songs")
+        } catch {
+            Logger.databaseError(error)
+        }
     }
 }
 

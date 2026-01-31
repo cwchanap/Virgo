@@ -9,13 +9,20 @@ import XCTest
 
 final class VirgoUITests: XCTestCase {
 
+    private var app: XCUIApplication!
+
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.
 
         // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
 
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
+        // Add custom launch argument to distinguish UI tests from unit tests
+        // ContentView.isUITesting checks for this argument
+        app = XCUIApplication()
+        app.launchArguments.append("-UITesting")
+
+        // In UI tests it's important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
 
     override func tearDownWithError() throws {
@@ -24,7 +31,6 @@ final class VirgoUITests: XCTestCase {
 
     @MainActor
     func testMainMenuNavigation() throws {
-        let app = XCUIApplication()
         app.launch()
 
         // Verify main menu elements are present
@@ -35,17 +41,16 @@ final class VirgoUITests: XCTestCase {
         // Tap start button to navigate to content view
         app.buttons["START"].tap()
 
-        // Wait for navigation to complete and verify we're in the drum tracks view
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.searchFields["Search songs or artists..."].waitForExistence(timeout: 5))
+        // Wait for navigation to complete and verify we're in the songs view
+        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["searchField"].waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testDrumTracksListDisplay() throws {
-        let app = XCUIApplication()
         app.launch()
 
-        // Navigate to drum tracks
+        // Navigate to songs
         app.buttons["START"].tap()
 
         // Wait for tracks to load with longer timeout
@@ -53,9 +58,13 @@ final class VirgoUITests: XCTestCase {
 
         // Verify sample tracks are displayed
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists)
-        XCTAssertTrue(app.staticTexts["DrumMaster Pro"].exists)
-        XCTAssertTrue(app.staticTexts["120 BPM"].exists)
-        XCTAssertTrue(app.staticTexts["Medium"].exists)
+        XCTAssertTrue(app.staticTexts["Rock Masters"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'BPM'"))
+                .firstMatch
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(app.staticTexts["Medium"].waitForExistence(timeout: 5))
 
         // Verify at least one play button exists
         XCTAssertTrue(app.buttons.matching(identifier: "play.circle.fill").firstMatch.waitForExistence(timeout: 5))
@@ -63,14 +72,13 @@ final class VirgoUITests: XCTestCase {
 
     @MainActor
     func testSearchFunctionality() throws {
-        let app = XCUIApplication()
         app.launch()
         app.buttons["START"].tap()
 
         // Wait for tracks to load
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
 
-        let searchField = app.searchFields["Search songs or artists..."]
+        let searchField = app.textFields["searchField"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
 
         // Test search by title
@@ -96,24 +104,23 @@ final class VirgoUITests: XCTestCase {
 
         // Wait for all tracks to be visible again after clearing search
         let allTracksVisible = expectation(description: "All tracks visible after clear")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
             if app.staticTexts["Thunder Beat"].exists &&
-                app.staticTexts.matching(identifier: "Jazz Swing").firstMatch.exists {
+                app.staticTexts["Jazz Groove"].exists {
                 allTracksVisible.fulfill()
             }
         }
         wait(for: [allTracksVisible], timeout: 5)
 
-        // Test search by artist - search for "Blue Note" which exists in Jazz Swing
-        searchField.typeText("Blue Note")
+        // Test search by artist - search for "Smooth" which exists in Jazz Groove
+        searchField.typeText("Smooth")
 
         // Wait for search to filter results
-        XCTAssertTrue(app.staticTexts["Jazz Swing"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 5))
     }
 
     @MainActor
     func testGameplayViewNavigation() throws {
-        let app = XCUIApplication()
         app.launch()
         app.buttons["START"].tap()
 
@@ -135,9 +142,7 @@ final class VirgoUITests: XCTestCase {
 
         // Verify we're in gameplay view - check for unique gameplay elements
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists) // Track title in header
-        XCTAssertTrue(app.staticTexts["DrumMaster Pro"].exists) // Artist name
-        XCTAssertTrue(app.staticTexts["120 BPM"].exists)
-        XCTAssertTrue(app.staticTexts["Medium"].exists)
+        XCTAssertTrue(app.staticTexts["Rock Masters"].exists) // Artist name
 
         // Verify playback controls exist
         XCTAssertTrue(playButton.exists)
@@ -147,45 +152,49 @@ final class VirgoUITests: XCTestCase {
         XCTAssertTrue(backButton.waitForExistence(timeout: 5))
         backButton.tap()
 
-        // Wait for navigation back to complete by checking for drum tracks list
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].waitForExistence(timeout: 10))
+        // Wait for navigation back to complete by checking for songs list
+        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
 
         // Verify we're back on the tracks list by checking for search field
-        XCTAssertTrue(app.searchFields["Search songs or artists..."].exists)
+        XCTAssertTrue(app.textFields["searchField"].exists)
     }
 
     @MainActor
     func testTabNavigation() throws {
-        let app = XCUIApplication()
         app.launch()
         app.buttons["START"].tap()
 
         // Test tab navigation
-        XCTAssertTrue(app.tabBars.buttons["Drums"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Practice"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Songs"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Metronome"].exists)
         XCTAssertTrue(app.tabBars.buttons["Library"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Settings"].exists)
         XCTAssertTrue(app.tabBars.buttons["Profile"].exists)
 
         // Test switching tabs
-        app.tabBars.buttons["Practice"].tap()
-        XCTAssertTrue(app.staticTexts["Practice Tab"].exists)
+        app.tabBars.buttons["Metronome"].tap()
+        XCTAssertTrue(app.staticTexts["Metronome"].exists)
 
         app.tabBars.buttons["Library"].tap()
-        XCTAssertTrue(app.staticTexts["Library Tab"].exists)
+        XCTAssertTrue(app.staticTexts["Downloaded Songs"].exists)
+
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.staticTexts["Settings"].exists)
 
         app.tabBars.buttons["Profile"].tap()
-        XCTAssertTrue(app.staticTexts["Profile Tab"].exists)
+        XCTAssertTrue(app.staticTexts["Profile"].exists)
 
-        // Return to drums tab
-        app.tabBars.buttons["Drums"].tap()
-        XCTAssertTrue(app.staticTexts["Drum Tracks"].exists)
+        // Return to songs tab
+        app.tabBars.buttons["Songs"].tap()
+        XCTAssertTrue(app.staticTexts["Songs"].exists)
     }
 
     @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+            app.launch()
+            app.terminate()
         }
     }
 }

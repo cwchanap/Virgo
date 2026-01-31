@@ -21,6 +21,7 @@ final class GameplayViewModel {
     // MARK: - Dependencies
     let chart: Chart
     let metronome: MetronomeEngine
+    let practiceSettings: PracticeSettingsService
 
     // MARK: - Cached SwiftData Relationships
     /// Cached song to avoid main thread blocking from relationship access
@@ -112,9 +113,99 @@ final class GameplayViewModel {
 
     // MARK: - Initialization
 
-    init(chart: Chart, metronome: MetronomeEngine) {
+    @MainActor
+    init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService? = nil) {
         self.chart = chart
         self.metronome = metronome
+        // Create PracticeSettingsService here to ensure MainActor isolation
+        self.practiceSettings = practiceSettings ?? PracticeSettingsService()
+    }
+
+    // MARK: - Speed Control
+
+    /// Calculates the effective BPM based on current speed multiplier.
+    /// This should be used for all timing calculations instead of track.bpm directly.
+    func effectiveBPM() -> Double {
+        return practiceSettings.effectiveBPM(baseBPM: track?.bpm ?? 120.0)
+    }
+
+    /// Updates the playback speed. Can be called during active playback.
+    /// - Parameter newSpeed: Speed multiplier (0.25 to 1.5)
+    func updateSpeed(_ newSpeed: Double) {
+        let previousSpeed = practiceSettings.speedMultiplier
+        practiceSettings.setSpeed(newSpeed)
+        enforceBGMMinimumSpeedIfNeeded()
+        refreshTimingCaches()
+        let effectiveBPMValue = effectiveBPM()
+
+        if isDataLoaded, let track = track {
+            // Keep input timing aligned even before playback starts.
+            inputManager.configure(
+                bpm: effectiveBPMValue,
+                timeSignature: track.timeSignature,
+                notes: cachedNotes
+            )
+        }
+
+        // If playing, update metronome and BGM rate immediately
+        if isPlaying {
+            if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0 {
+                pausedElapsedTime += metronomeTime
+                let speedRatio = previousSpeed / practiceSettings.speedMultiplier
+                pausedElapsedTime *= speedRatio
+                let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
+                totalBeatsElapsed = beatOffset
+                metronome.stop()
+                let startTime = CFAbsoluteTimeGetCurrent() + 0.05
+                metronome.startAtTime(
+                    bpm: effectiveBPMValue,
+                    timeSignature: track?.timeSignature ?? .fourFour,
+                    startTime: startTime,
+                    totalBeatsElapsed: beatOffset
+                )
+            } else {
+                metronome.updateBPM(effectiveBPMValue)
+            }
+
+            if let playbackStartTime = playbackStartTime, previousSpeed > 0 {
+                let elapsedSinceStart = Date().timeIntervalSince(playbackStartTime)
+                let speedRatio = previousSpeed / practiceSettings.speedMultiplier
+                let adjustedElapsed = elapsedSinceStart * speedRatio
+                let newStartTime = Date().addingTimeInterval(-adjustedElapsed)
+                self.playbackStartTime = newStartTime
+                inputManager.startListening(songStartTime: newStartTime)
+            }
+
+            // Adjust BGM playback rate (AVAudioPlayer supports 0.5 to 2.0)
+            if let bgmPlayer = bgmPlayer {
+                bgmPlayer.enableRate = true
+                bgmPlayer.rate = clampedBGMRate(for: practiceSettings.speedMultiplier)
+            }
+
+            let speedPercent = Int(practiceSettings.speedMultiplier * 100)
+            Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
+        }
+    }
+
+    /// Returns a clamped BGM playback rate for AVAudioPlayer while logging clamp warnings.
+    /// Internal for unit testing.
+    func clampedBGMRate(for speedMultiplier: Double) -> Float {
+        let clampedRate = Float(max(0.5, min(2.0, speedMultiplier)))
+
+        // Warn if BGM rate is clamped (causes desync with metronome)
+        if speedMultiplier < 0.5 {
+            Logger.warning(
+                "BGM rate clamped from \(Int(speedMultiplier * 100))% to 50% - " +
+                    "AVAudioPlayer limitation may cause audio desync"
+            )
+        } else if speedMultiplier > 2.0 {
+            Logger.warning(
+                "BGM rate clamped from \(Int(speedMultiplier * 100))% to 200% - " +
+                    "AVAudioPlayer limitation may cause audio desync"
+            )
+        }
+
+        return clampedRate
     }
 
     // MARK: - Unique ID Generation
@@ -142,19 +233,29 @@ final class GameplayViewModel {
     // MARK: - Setup
 
     /// Sets up gameplay after data is loaded
-    func setupGameplay() {
+    /// - Parameter loadPersistedSpeed: Whether to load the saved speed for this chart.
+    ///   Pass `false` to use a preconfigured speed instead of the saved value.
+    ///   Defaults to `true` to load saved speed (SC-06: Remember last-used speed).
+    func setupGameplay(loadPersistedSpeed: Bool = true) {
         guard let track = track else {
             Logger.audioPlayback("setupGameplay() called but track is nil - data not loaded yet")
             return
         }
 
+        // Load saved speed for this chart unless caller explicitly requested preconfigured speed
+        if loadPersistedSpeed {
+            practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
+        }
+
         computeDrumBeats()
         computeCachedLayoutData()
-        bgmOffsetSeconds = calculateBGMOffset()
-        metronome.configure(bpm: track.bpm, timeSignature: track.timeSignature)
         setupBGMPlayer()
-        cachedTrackDuration = calculateTrackDuration()
-        inputManager.configure(bpm: track.bpm, timeSignature: track.timeSignature, notes: cachedNotes)
+        enforceBGMMinimumSpeedIfNeeded()
+        refreshTimingCaches()
+        // Use effective BPM (base × speed multiplier) for metronome
+        metronome.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature)
+        // InputManager should use effective BPM so scoring matches playback speed
+        inputManager.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature, notes: cachedNotes)
         setupInterruptionHandling()
     }
 
@@ -243,7 +344,8 @@ final class GameplayViewModel {
                 actualElapsedTime = pausedElapsedTime
             }
 
-            let secondsPerBeat = 60.0 / track.bpm
+            // Use effective BPM for beat calculation during speed-adjusted playback
+            let secondsPerBeat = 60.0 / effectiveBPM()
             let elapsedBeats = actualElapsedTime / secondsPerBeat
             let discreteBeats = Int(elapsedBeats)
 
@@ -344,6 +446,9 @@ final class GameplayViewModel {
     // MARK: - Cleanup
 
     func cleanup() {
+        // Save speed setting for this chart (SC-06: Remember last-used speed)
+        practiceSettings.saveSpeed(practiceSettings.speedMultiplier, for: chart.persistentModelID)
+
         playbackTimer?.invalidate()
         playbackTimer = nil
         metronome.stop()
@@ -371,81 +476,106 @@ final class GameplayViewModel {
         purpleBarPosition = nil
     }
 
+    private func refreshTimingCaches() {
+        guard isDataLoaded, track != nil else { return }
+        bgmOffsetSeconds = calculateBGMOffset()
+        cachedTrackDuration = calculateTrackDuration()
+    }
+
+    private func enforceBGMMinimumSpeedIfNeeded() {
+        guard bgmPlayer != nil else { return }
+        let minimumSpeed = 0.5
+        if practiceSettings.speedMultiplier < minimumSpeed {
+            Logger.warning("BGM enabled - clamping speed to 50% to keep audio in sync")
+            practiceSettings.setSpeed(minimumSpeed)
+        }
+    }
+
     private func startBGMPlayback(track: DrumTrack) {
+        let currentEffectiveBPM = effectiveBPM()
+        let currentSpeedMultiplier = practiceSettings.speedMultiplier
+
         if let bgmPlayer = bgmPlayer {
-            // Check if we're resuming from a pause
+            bgmPlayer.enableRate = true
+            bgmPlayer.rate = clampedBGMRate(for: currentSpeedMultiplier)
+
             let isResuming = pausedElapsedTime > 0.0
 
-            // Resume BGM playback: player has current position and is not playing
             if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
-                Logger.audioPlayback("🎮 Resuming BGM at \(bgmPlayer.currentTime)s")
-                // Use startAtTime with totalBeatsElapsed to preserve beat phase on resume
-                let setupTime: TimeInterval = 0.05
-                let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-                metronome.startAtTime(
-                    bpm: track.bpm,
-                    timeSignature: track.timeSignature,
-                    startTime: commonStartTime,
-                    totalBeatsElapsed: totalBeatsElapsed
-                )
-                let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
-                bgmPlayer.play(atTime: bgmDeviceTime)
+                resumeBGMFromPosition(track: track, bgmPlayer: bgmPlayer, effectiveBPM: currentEffectiveBPM)
             } else if isResuming {
-                // Resuming during initial silent offset period (BGM hasn't started yet)
-                // Calculate remaining offset time and schedule accordingly
-                Logger.audioPlayback("🎮 Resuming during BGM offset period")
-                bgmPlayer.currentTime = 0
-                let setupTime: TimeInterval = 0.05
-                let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-
-                // Use totalBeatsElapsed to preserve beat phase on resume
-                metronome.startAtTime(
-                    bpm: track.bpm,
-                    timeSignature: track.timeSignature,
-                    startTime: commonStartTime,
-                    totalBeatsElapsed: totalBeatsElapsed
-                )
-
-                // Calculate remaining offset time (total offset minus elapsed time)
-                let remainingOffset = max(0, bgmOffsetSeconds - pausedElapsedTime)
-                let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
-                let bgmScheduledTime = bgmDeviceTime + remainingOffset
-                bgmPlayer.play(atTime: bgmScheduledTime)
+                resumeBGMDuringOffset(track: track, bgmPlayer: bgmPlayer, effectiveBPM: currentEffectiveBPM)
             } else {
-                // Starting fresh BGM playback
-                Logger.audioPlayback("🎮 Starting fresh BGM playback")
-                bgmPlayer.currentTime = 0
-                let setupTime: TimeInterval = 0.05
-                let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-                metronome.startAtTime(
-                    bpm: track.bpm,
-                    timeSignature: track.timeSignature,
-                    startTime: commonStartTime
-                )
-
-                let bgmDeviceTime = convertToAudioPlayerDeviceTime(
-                    commonStartTime,
-                    bgmPlayer: bgmPlayer
-                )
-                let bgmScheduledTime = bgmDeviceTime + bgmOffsetSeconds
-                bgmPlayer.play(atTime: bgmScheduledTime)
+                startFreshBGMPlayback(track: track, bgmPlayer: bgmPlayer, effectiveBPM: currentEffectiveBPM)
             }
         } else {
-            // Metronome-only playback - preserve beat phase on resume
-            if pausedElapsedTime > 0.0 {
-                Logger.audioPlayback("🎮 Resuming metronome-only playback with beat offset")
-                let setupTime: TimeInterval = 0.05
-                let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-                metronome.startAtTime(
-                    bpm: track.bpm,
-                    timeSignature: track.timeSignature,
-                    startTime: commonStartTime,
-                    totalBeatsElapsed: totalBeatsElapsed
-                )
-            } else {
-                Logger.audioPlayback("🎮 Starting metronome-only playback")
-                metronome.start(bpm: track.bpm, timeSignature: track.timeSignature)
-            }
+            startMetronomeOnlyPlayback(track: track, effectiveBPM: currentEffectiveBPM)
+        }
+    }
+
+    private func resumeBGMFromPosition(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) {
+        Logger.audioPlayback("🎮 Resuming BGM at \(bgmPlayer.currentTime)s")
+        let setupTime: TimeInterval = 0.05
+        let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
+        metronome.startAtTime(
+            bpm: effectiveBPM,
+            timeSignature: track.timeSignature,
+            startTime: commonStartTime,
+            totalBeatsElapsed: totalBeatsElapsed
+        )
+        let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
+        bgmPlayer.play(atTime: bgmDeviceTime)
+    }
+
+    private func resumeBGMDuringOffset(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) {
+        Logger.audioPlayback("🎮 Resuming during BGM offset period")
+        bgmPlayer.currentTime = 0
+        let setupTime: TimeInterval = 0.05
+        let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
+
+        metronome.startAtTime(
+            bpm: effectiveBPM,
+            timeSignature: track.timeSignature,
+            startTime: commonStartTime,
+            totalBeatsElapsed: totalBeatsElapsed
+        )
+
+        let remainingOffset = max(0, bgmOffsetSeconds - pausedElapsedTime)
+        let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
+        let bgmScheduledTime = bgmDeviceTime + remainingOffset
+        bgmPlayer.play(atTime: bgmScheduledTime)
+    }
+
+    private func startFreshBGMPlayback(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) {
+        Logger.audioPlayback("🎮 Starting fresh BGM playback")
+        bgmPlayer.currentTime = 0
+        let setupTime: TimeInterval = 0.05
+        let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
+        metronome.startAtTime(
+            bpm: effectiveBPM,
+            timeSignature: track.timeSignature,
+            startTime: commonStartTime
+        )
+
+        let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
+        let bgmScheduledTime = bgmDeviceTime + bgmOffsetSeconds
+        bgmPlayer.play(atTime: bgmScheduledTime)
+    }
+
+    private func startMetronomeOnlyPlayback(track: DrumTrack, effectiveBPM: Double) {
+        if pausedElapsedTime > 0.0 {
+            Logger.audioPlayback("🎮 Resuming metronome-only playback with beat offset")
+            let setupTime: TimeInterval = 0.05
+            let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
+            metronome.startAtTime(
+                bpm: effectiveBPM,
+                timeSignature: track.timeSignature,
+                startTime: commonStartTime,
+                totalBeatsElapsed: totalBeatsElapsed
+            )
+        } else {
+            Logger.audioPlayback("🎮 Starting metronome-only playback")
+            metronome.start(bpm: effectiveBPM, timeSignature: track.timeSignature)
         }
     }
 
@@ -470,7 +600,8 @@ final class GameplayViewModel {
         guard let metronomeTime = metronome.getCurrentPlaybackTime() else { return }
         let elapsedTime = pausedElapsedTime + metronomeTime
 
-        let secondsPerBeat = 60.0 / track.bpm
+        // Use effective BPM for visual sync (speed-adjusted)
+        let secondsPerBeat = 60.0 / effectiveBPM()
         let totalBeatsElapsedFloat = elapsedTime / secondsPerBeat
         let discreteTotalBeats = Int(totalBeatsElapsedFloat)
 
@@ -508,7 +639,8 @@ final class GameplayViewModel {
             return
         }
 
-        let secondsPerBeat = 60.0 / track.bpm
+        // Use effective BPM for visual sync (speed-adjusted)
+        let secondsPerBeat = 60.0 / effectiveBPM()
         let totalBeatsElapsed = elapsedTime / secondsPerBeat
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
 
@@ -715,8 +847,10 @@ final class GameplayViewModel {
 
         let secondsPerBeat = 60.0 / track.bpm
         let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
-
-        return calculateTrackDurationInSeconds(secondsPerMeasure: secondsPerMeasure)
+        let baseDuration = calculateTrackDurationInSeconds(secondsPerMeasure: secondsPerMeasure)
+        let speedMultiplier = practiceSettings.speedMultiplier
+        guard speedMultiplier > 0 else { return baseDuration }
+        return baseDuration / speedMultiplier
     }
 
     func calculateBGMOffset() -> Double {
@@ -733,7 +867,9 @@ final class GameplayViewModel {
             let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
             let noteTimeSeconds = Double(earliestNote.measureNumber - 1) * secondsPerMeasure +
                 (earliestNote.measureOffset * secondsPerMeasure)
-            return noteTimeSeconds
+            let speedMultiplier = practiceSettings.speedMultiplier
+            guard speedMultiplier > 0 else { return noteTimeSeconds }
+            return noteTimeSeconds / speedMultiplier
         }
 
         return 0.0
@@ -758,7 +894,9 @@ final class GameplayViewModel {
             Logger.audioPlayback("BGM player setup successful for track: \(track?.title ?? "Unknown")")
         } catch {
             bgmLoadingError = "Failed to load BGM: \(error.localizedDescription)"
-            Logger.audioPlayback("Failed to setup BGM player: \(error.localizedDescription)")
+            Logger.error("Failed to setup BGM player: \(error.localizedDescription)")
         }
     }
 }
+
+// swiftlint:enable file_length type_body_length
