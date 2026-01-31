@@ -1117,6 +1117,33 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testUpdateSpeedBeforePlaybackReconfiguresInputManager() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        guard let track = viewModel.track else {
+            throw TestError.playbackStartTimeNil
+        }
+
+        #expect(viewModel.isPlaying == false)
+
+        let baseBPM = track.bpm
+        let tolerance = 0.01
+
+        viewModel.updateSpeed(0.75)
+
+        #expect(
+            abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.75)) < tolerance,
+            "InputManager should be configured with effective BPM after pre-playback speed change"
+        )
+
+        viewModel.cleanup()
+    }
+
     @Test func testBGMRateClampedAtMinimumSpeed() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
