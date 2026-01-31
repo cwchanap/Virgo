@@ -136,10 +136,19 @@ final class GameplayViewModel {
         practiceSettings.setSpeed(newSpeed)
         enforceBGMMinimumSpeedIfNeeded()
         refreshTimingCaches()
+        let effectiveBPMValue = effectiveBPM()
+
+        if isDataLoaded, let track = track {
+            // Keep input timing aligned even before playback starts.
+            inputManager.configure(
+                bpm: effectiveBPMValue,
+                timeSignature: track.timeSignature,
+                notes: cachedNotes
+            )
+        }
 
         // If playing, update metronome and BGM rate immediately
         if isPlaying {
-            let effectiveBPMValue = effectiveBPM()
             if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0 {
                 pausedElapsedTime += metronomeTime
                 let speedRatio = previousSpeed / practiceSettings.speedMultiplier
@@ -165,14 +174,6 @@ final class GameplayViewModel {
                 let newStartTime = Date().addingTimeInterval(-adjustedElapsed)
                 self.playbackStartTime = newStartTime
                 inputManager.startListening(songStartTime: newStartTime)
-            }
-
-            if previousSpeed > 0 {
-                inputManager.configure(
-                    bpm: effectiveBPMValue,
-                    timeSignature: track?.timeSignature ?? .fourFour,
-                    notes: cachedNotes
-                )
             }
 
             // Adjust BGM playback rate (AVAudioPlayer supports 0.5 to 2.0)
