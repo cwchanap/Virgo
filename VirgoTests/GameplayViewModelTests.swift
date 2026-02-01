@@ -163,6 +163,23 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testBGMTimelineElapsedTimeScalesWithSpeed() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        viewModel.bgmOffsetSeconds = 0.5
+        viewModel.practiceSettings.setSpeed(0.5)
+
+        let timelineElapsed = viewModel.bgmTimelineElapsedTime(for: 2.0)
+        #expect(abs(timelineElapsed - 4.5) < 0.001, "BGM timeline should scale by speed and include offset")
+
+        viewModel.cleanup()
+    }
+
     @Test func testPausePlaybackIsIdempotent() async throws {
         let chart = createTestChart()
         let metronome = createTestMetronome()

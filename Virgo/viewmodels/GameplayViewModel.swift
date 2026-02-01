@@ -208,6 +208,17 @@ final class GameplayViewModel {
         return clampedRate
     }
 
+    /// Converts audio-file time into the speed-adjusted timeline used for beat/progress math.
+    /// Internal for unit testing.
+    func bgmTimelineElapsedTime(for bgmCurrentTime: TimeInterval) -> Double {
+        let speedMultiplier = practiceSettings.speedMultiplier
+        guard speedMultiplier > 0 else {
+            return bgmCurrentTime + bgmOffsetSeconds
+        }
+
+        return (bgmCurrentTime / speedMultiplier) + bgmOffsetSeconds
+    }
+
     // MARK: - Unique ID Generation
     /// Monotonic counter for generating unique DrumBeat IDs
     /// Thread-safe: @MainActor ensures all access is on main thread
@@ -337,8 +348,8 @@ final class GameplayViewModel {
             let actualElapsedTime: Double
             if let bgmPlayer = bgmPlayer, bgmPlayer.currentTime > 0 {
                 Logger.audioPlayback("🎮 Resuming BGM playback from \(bgmPlayer.currentTime)s")
-                // Convert audio time to timeline position (accounting for BGM offset)
-                actualElapsedTime = bgmPlayer.currentTime + bgmOffsetSeconds
+                // Convert audio time to timeline position (accounting for speed + BGM offset)
+                actualElapsedTime = bgmTimelineElapsedTime(for: bgmPlayer.currentTime)
             } else {
                 Logger.audioPlayback("🎮 Resuming metronome-only playback from \(pausedElapsedTime)s")
                 actualElapsedTime = pausedElapsedTime
