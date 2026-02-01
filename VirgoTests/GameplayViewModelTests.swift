@@ -1025,7 +1025,9 @@ struct GameplayViewModelTests {
         let chart = createTestChart()
         let metronome = createTestMetronome()
 
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
