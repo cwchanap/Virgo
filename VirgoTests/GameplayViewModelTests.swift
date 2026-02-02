@@ -163,6 +163,25 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testUpdateSpeedWhilePausedRescalesElapsedTime() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        viewModel.pausedElapsedTime = 2.0
+        viewModel.updateSpeed(0.5)
+
+        #expect(
+            abs(viewModel.pausedElapsedTime - 4.0) < 0.001,
+            "Paused elapsed time should scale to the new speed timeline"
+        )
+
+        viewModel.cleanup()
+    }
+
     @Test func testBGMTimelineElapsedTimeScalesWithSpeed() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
