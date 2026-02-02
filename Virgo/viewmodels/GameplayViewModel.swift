@@ -184,6 +184,9 @@ final class GameplayViewModel {
 
             let speedPercent = Int(practiceSettings.speedMultiplier * 100)
             Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
+        } else if pausedElapsedTime > 0, previousSpeed > 0 {
+            let speedRatio = previousSpeed / practiceSettings.speedMultiplier
+            pausedElapsedTime *= speedRatio
         }
     }
 
