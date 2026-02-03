@@ -163,7 +163,7 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
-    @Test func testUpdateSpeedWhilePausedRescalesElapsedTime() async throws {
+    @Test func testRescheduleBGMForSpeedChangeNoBGM() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
 
@@ -171,6 +171,23 @@ struct GameplayViewModelTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
+        let didReschedule = viewModel.rescheduleBGMForSpeedChange(commonStartTime: CFAbsoluteTimeGetCurrent())
+        #expect(didReschedule == false, "Reschedule should be a no-op without an active BGM player")
+
+        viewModel.cleanup()
+    }
+
+    @Test func testUpdateSpeedWhilePausedRescalesElapsedTime() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        viewModel.practiceSettings.setSpeed(1.0)
         viewModel.pausedElapsedTime = 2.0
         viewModel.updateSpeed(0.5)
 

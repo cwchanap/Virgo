@@ -149,6 +149,11 @@ final class GameplayViewModel {
 
         // If playing, update metronome and BGM rate immediately
         if isPlaying {
+            if let bgmPlayer = bgmPlayer {
+                bgmPlayer.enableRate = true
+                bgmPlayer.rate = clampedBGMRate(for: practiceSettings.speedMultiplier)
+            }
+
             if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0 {
                 pausedElapsedTime += metronomeTime
                 let speedRatio = previousSpeed / practiceSettings.speedMultiplier
@@ -163,6 +168,7 @@ final class GameplayViewModel {
                     startTime: startTime,
                     totalBeatsElapsed: beatOffset
                 )
+                rescheduleBGMForSpeedChange(commonStartTime: startTime)
             } else {
                 metronome.updateBPM(effectiveBPMValue)
             }
@@ -174,12 +180,6 @@ final class GameplayViewModel {
                 let newStartTime = Date().addingTimeInterval(-adjustedElapsed)
                 self.playbackStartTime = newStartTime
                 inputManager.startListening(songStartTime: newStartTime)
-            }
-
-            // Adjust BGM playback rate (AVAudioPlayer supports 0.5 to 2.0)
-            if let bgmPlayer = bgmPlayer {
-                bgmPlayer.enableRate = true
-                bgmPlayer.rate = clampedBGMRate(for: practiceSettings.speedMultiplier)
             }
 
             let speedPercent = Int(practiceSettings.speedMultiplier * 100)
@@ -220,6 +220,20 @@ final class GameplayViewModel {
         }
 
         return (bgmCurrentTime / speedMultiplier) + bgmOffsetSeconds
+    }
+
+    /// Reschedules BGM playback to align with a metronome restart on speed changes.
+    /// Internal for unit testing.
+    @discardableResult
+    func rescheduleBGMForSpeedChange(commonStartTime: CFAbsoluteTime) -> Bool {
+        guard let bgmPlayer = bgmPlayer, bgmPlayer.isPlaying else {
+            return false
+        }
+
+        bgmPlayer.pause()
+        let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
+        bgmPlayer.play(atTime: bgmDeviceTime)
+        return true
     }
 
     // MARK: - Unique ID Generation
