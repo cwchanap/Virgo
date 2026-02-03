@@ -50,11 +50,6 @@ struct GameplayViewModelTests {
         return MetronomeEngine()
     }
 
-    private func createTestPracticeSettings() -> PracticeSettingsService {
-        let (userDefaults, _) = TestUserDefaults.makeIsolated()
-        return PracticeSettingsService(userDefaults: userDefaults)
-    }
-
     // MARK: - Initialization Tests
 
     @Test func testInitialization() async throws {
