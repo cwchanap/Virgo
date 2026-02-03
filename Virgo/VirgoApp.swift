@@ -14,6 +14,7 @@ import UIKit
 @main
 struct VirgoApp: App {
     @StateObject private var sharedMetronome = MetronomeEngine()
+    @StateObject private var sharedPracticeSettings = PracticeSettingsService()
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -49,6 +50,7 @@ struct VirgoApp: App {
         WindowGroup {
             MainMenuView()
                 .environmentObject(sharedMetronome)
+                .environmentObject(sharedPracticeSettings)
         }
         .modelContainer(sharedModelContainer)
     }

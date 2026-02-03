@@ -114,11 +114,10 @@ final class GameplayViewModel {
     // MARK: - Initialization
 
     @MainActor
-    init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService? = nil) {
+    init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService) {
         self.chart = chart
         self.metronome = metronome
-        // Create PracticeSettingsService here to ensure MainActor isolation
-        self.practiceSettings = practiceSettings ?? PracticeSettingsService()
+        self.practiceSettings = practiceSettings
     }
 
     // MARK: - Speed Control
@@ -187,6 +186,12 @@ final class GameplayViewModel {
         } else if pausedElapsedTime > 0, previousSpeed > 0 {
             let speedRatio = previousSpeed / practiceSettings.speedMultiplier
             pausedElapsedTime *= speedRatio
+            if cachedTrackDuration > 0 {
+                playbackProgress = pausedElapsedTime / cachedTrackDuration
+            } else {
+                Logger.warning("⚠️ Cannot update playback progress: cachedTrackDuration is zero")
+                playbackProgress = 0.0
+            }
         }
     }
 

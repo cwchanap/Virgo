@@ -14,11 +14,16 @@ struct GameplayView: View {
     /// Consolidated state management - replaces 40+ individual @State variables
     @State var viewModel: GameplayViewModel
 
+    @EnvironmentObject private var practiceSettings: PracticeSettingsService
     @Environment(\.dismiss) private var dismiss
 
     // PERFORMANCE FIX: Accept metronome as parameter instead of @EnvironmentObject
-    init(chart: Chart, metronome: MetronomeEngine) {
-        self._viewModel = State(initialValue: GameplayViewModel(chart: chart, metronome: metronome))
+    init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService) {
+        self._viewModel = State(initialValue: GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: practiceSettings
+        ))
     }
 
     var body: some View {
@@ -48,6 +53,16 @@ struct GameplayView: View {
         .background(Color.black)
         .foregroundColor(.white)
         .task {
+            if viewModel.practiceSettings !== practiceSettings {
+                viewModel = GameplayViewModel(
+                    chart: viewModel.chart,
+                    metronome: viewModel.metronome,
+                    practiceSettings: practiceSettings
+                )
+                viewModel.inputManager.delegate = viewModel.inputHandler
+                viewModel.setupMetronomeSubscription()
+            }
+
             // Load SwiftData relationships asynchronously to avoid blocking main thread
             await viewModel.loadChartData()
             viewModel.setupGameplay()
