@@ -9,6 +9,10 @@ import SwiftUI
 
 #if DEBUG
 #Preview {
-    GameplayView(chart: Song.sampleData.first!.charts.first!, metronome: MetronomeEngine())
+    GameplayView(
+        chart: Song.sampleData.first!.charts.first!,
+        metronome: MetronomeEngine(),
+        practiceSettings: PracticeSettingsService()
+    )
 }
 #endif

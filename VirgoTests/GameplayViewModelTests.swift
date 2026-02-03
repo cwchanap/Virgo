@@ -15,6 +15,11 @@ import SwiftUI
 // swiftlint:disable:next type_body_length
 struct GameplayViewModelTests {
 
+    private func createTestPracticeSettings() -> PracticeSettingsService {
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        return PracticeSettingsService(userDefaults: userDefaults)
+    }
+
     // MARK: - Test Helpers
 
     /// Creates a test Chart with sample notes
@@ -45,13 +50,19 @@ struct GameplayViewModelTests {
         return MetronomeEngine()
     }
 
+    private func createTestPracticeSettings() -> PracticeSettingsService {
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        return PracticeSettingsService(userDefaults: userDefaults)
+    }
+
     // MARK: - Initialization Tests
 
     @Test func testInitialization() async throws {
         let chart = createTestChart()
         let metronome = createTestMetronome()
+        let practiceSettings = createTestPracticeSettings()
 
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
 
         #expect(viewModel.chart === chart)
         #expect(viewModel.metronome === metronome)
@@ -64,8 +75,9 @@ struct GameplayViewModelTests {
     @Test func testInitialStateIsCorrect() async throws {
         let chart = createTestChart()
         let metronome = createTestMetronome()
+        let practiceSettings = createTestPracticeSettings()
 
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
 
         // Verify all initial state values
         #expect(viewModel.cachedSong == nil)
@@ -181,8 +193,7 @@ struct GameplayViewModelTests {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
 
-        let (userDefaults, _) = TestUserDefaults.makeIsolated()
-        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let practiceSettings = createTestPracticeSettings()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
         viewModel.setupGameplay(loadPersistedSpeed: false)
@@ -191,9 +202,16 @@ struct GameplayViewModelTests {
         viewModel.pausedElapsedTime = 2.0
         viewModel.updateSpeed(0.5)
 
+        let expectedProgress = viewModel.cachedTrackDuration > 0
+            ? viewModel.pausedElapsedTime / viewModel.cachedTrackDuration
+            : 0.0
         #expect(
             abs(viewModel.pausedElapsedTime - 4.0) < 0.001,
             "Paused elapsed time should scale to the new speed timeline"
+        )
+        #expect(
+            abs(viewModel.playbackProgress - expectedProgress) < 0.001,
+            "Playback progress should update to match rescaled elapsed time"
         )
 
         viewModel.cleanup()
@@ -553,8 +571,8 @@ struct GameplayViewModelTests {
         let duration = viewModel.calculateTrackDuration()
 
         // With default 120 BPM and 4/4 time, each measure is 2 seconds
-        // 4 measures = 8 seconds
-        #expect(duration >= 8.0)
+        #expect(abs(duration - 8.0) < 0.01, "Duration should be 8 seconds for 4 measures at 120 BPM")
+        #expect(viewModel.cachedTrackDuration == duration)
     }
 
     @Test func testTrackDurationScalesWithSpeedMultiplier() async throws {
@@ -1444,5 +1462,14 @@ struct GameplayViewModelTests {
         )
 
         viewModel.cleanup()
+    }
+}
+
+@MainActor
+private extension GameplayViewModel {
+    convenience init(chart: Chart, metronome: MetronomeEngine) {
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        self.init(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
     }
 }
