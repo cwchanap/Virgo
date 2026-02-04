@@ -231,13 +231,20 @@ final class GameplayViewModel {
     /// Internal for unit testing.
     @discardableResult
     func rescheduleBGMForSpeedChange(commonStartTime: CFAbsoluteTime) -> Bool {
-        guard let bgmPlayer = bgmPlayer, bgmPlayer.isPlaying else {
+        guard let bgmPlayer = bgmPlayer else {
             return false
         }
 
         bgmPlayer.pause()
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
-        bgmPlayer.play(atTime: bgmDeviceTime)
+        let remainingOffset = remainingBGMOffset()
+        let scheduledTime: TimeInterval
+        if remainingOffset > 0, bgmPlayer.currentTime == 0 {
+            scheduledTime = bgmDeviceTime + remainingOffset
+        } else {
+            scheduledTime = bgmDeviceTime
+        }
+        bgmPlayer.play(atTime: scheduledTime)
         return true
     }
 
@@ -573,7 +580,7 @@ final class GameplayViewModel {
             totalBeatsElapsed: totalBeatsElapsed
         )
 
-        let remainingOffset = max(0, bgmOffsetSeconds - pausedElapsedTime)
+        let remainingOffset = remainingBGMOffset()
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
         let bgmScheduledTime = bgmDeviceTime + remainingOffset
         bgmPlayer.play(atTime: bgmScheduledTime)
@@ -617,6 +624,12 @@ final class GameplayViewModel {
         let currentAudioTime = bgmPlayer.deviceCurrentTime
         let timeOffset = cfTime - currentCFTime
         return currentAudioTime + timeOffset
+    }
+
+    /// Remaining BGM offset delay based on the current paused elapsed time.
+    /// Internal for unit testing.
+    func remainingBGMOffset() -> Double {
+        max(0, bgmOffsetSeconds - pausedElapsedTime)
     }
 
     // MARK: - Visual Updates

@@ -194,12 +194,13 @@ struct ComponentRefactoringTests {
                 return
             }
 
+            let practiceSettings = PracticeSettingsService()
             let controlsView = GameplayControlsView(
                 track: track,
                 isPlaying: .constant(false),
                 playbackProgress: .constant(0.25),
                 metronome: MetronomeEngine(),
-                practiceSettings: PracticeSettingsService(),
+                practiceSettings: practiceSettings,
                 onPlayPause: {},
                 onRestart: {},
                 onSkipToEnd: {},
@@ -208,6 +209,37 @@ struct ComponentRefactoringTests {
 
             #expect(controlsView.track.title == track.title)
             SwiftUITestUtilities.assertViewWithEnvironment(controlsView)
+        }
+    }
+
+    @Test("GameplayControlsView uses speed-adjusted duration")
+    func testGameplayControlsViewAdjustedDuration() async throws {
+        try await TestSetup.withTestSetup {
+            guard let track = DrumTrack.sampleData.first else {
+                #expect(false, "Sample track data should be available")
+                return
+            }
+
+            let practiceSettings = PracticeSettingsService()
+            practiceSettings.setSpeed(0.5)
+            let controlsView = GameplayControlsView(
+                track: track,
+                isPlaying: .constant(false),
+                playbackProgress: .constant(0.0),
+                metronome: MetronomeEngine(),
+                practiceSettings: practiceSettings,
+                onPlayPause: {},
+                onRestart: {},
+                onSkipToEnd: {},
+                onSpeedChange: { _ in }
+            )
+
+            let baseDuration = track.duration.split(separator: ":").compactMap { Double($0) }.count == 2
+                ? track.duration.split(separator: ":").compactMap { Double($0) }[0] * 60
+                    + track.duration.split(separator: ":").compactMap { Double($0) }[1]
+                : 180.0
+            let adjustedDuration = controlsView.adjustedDurationSeconds()
+            #expect(abs(adjustedDuration - baseDuration / 0.5) < 0.001)
         }
     }
 }
