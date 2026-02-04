@@ -170,6 +170,25 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testRemainingBGMOffsetAccountsForPausedElapsedTime() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        viewModel.bgmOffsetSeconds = 1.2
+        viewModel.pausedElapsedTime = 0.4
+
+        #expect(
+            abs(viewModel.remainingBGMOffset() - 0.8) < 0.001,
+            "Remaining BGM offset should subtract paused elapsed time"
+        )
+
+        viewModel.cleanup()
+    }
+
     @Test func testRescheduleBGMForSpeedChangeNoBGM() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()

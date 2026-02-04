@@ -9,11 +9,12 @@ import SwiftUI
 
 #if DEBUG
 #Preview {
+    let practiceSettings = PracticeSettingsService()
     GameplayView(
         chart: Song.sampleData.first!.charts.first!,
         metronome: MetronomeEngine(),
-        practiceSettings: PracticeSettingsService()
+        practiceSettings: practiceSettings
     )
-    .environmentObject(PracticeSettingsService())
+    .environmentObject(practiceSettings)
 }
 #endif

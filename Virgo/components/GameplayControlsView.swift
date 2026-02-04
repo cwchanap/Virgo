@@ -19,17 +19,18 @@ struct GameplayControlsView: View {
     let onSpeedChange: (Double) -> Void
 
     var body: some View {
+        let adjustedDuration = adjustedDurationSeconds()
         VStack(spacing: 16) {
             // Progress Bar
             VStack(spacing: 8) {
                 HStack {
-                    Text(formatTime(playbackProgress))
+                    Text(formatTime(playbackProgress, durationSeconds: adjustedDuration))
                         .font(.caption)
                         .foregroundColor(.gray)
 
                     Spacer()
 
-                    Text(track.duration)
+                    Text(formatDuration(adjustedDuration))
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
@@ -41,7 +42,9 @@ struct GameplayControlsView: View {
             .padding(.horizontal)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Playback progress")
-            .accessibilityValue("\(formatTime(playbackProgress)) of \(track.duration)")
+            .accessibilityValue(
+                "\(formatTime(playbackProgress, durationSeconds: adjustedDuration)) of \(formatDuration(adjustedDuration))"
+            )
 
             // Speed Control Section
             speedControlSection
@@ -78,7 +81,8 @@ struct GameplayControlsView: View {
             HStack {
                 Button("♩") {
                     // Toggle metronome
-                    metronome.toggle(bpm: track.bpm, timeSignature: track.timeSignature)
+                    let effectiveBPM = practiceSettings.effectiveBPM(baseBPM: track.bpm)
+                    metronome.toggle(bpm: effectiveBPM, timeSignature: track.timeSignature)
                 }
                 .foregroundColor(metronome.isEnabled ? .purple : .white)
                 .font(.title2)
@@ -179,12 +183,25 @@ struct GameplayControlsView: View {
 
     // MARK: - Time Formatting
 
-    private func formatTime(_ progress: Double) -> String {
-        let duration = parseDuration(track.duration)
-        let currentSeconds = Int(progress * duration)
+    private func formatTime(_ progress: Double, durationSeconds: Double) -> String {
+        let currentSeconds = Int(progress * durationSeconds)
         let minutes = currentSeconds / 60
         let seconds = currentSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func formatDuration(_ durationSeconds: Double) -> String {
+        let totalSeconds = Int(durationSeconds)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    func adjustedDurationSeconds() -> Double {
+        let duration = parseDuration(track.duration)
+        let speedMultiplier = practiceSettings.speedMultiplier
+        guard speedMultiplier > 0 else { return duration }
+        return duration / speedMultiplier
     }
 
     private func parseDuration(_ duration: String) -> Double {
