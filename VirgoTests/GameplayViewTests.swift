@@ -9,7 +9,18 @@ import Testing
 import Foundation
 @testable import Virgo
 
+@MainActor
 struct GameplayViewTests {
+
+    @Test func testGameplayViewInitializationWithPracticeSettings() async throws {
+        let chart = Chart(difficulty: .easy)
+        let metronome = MetronomeEngine()
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+
+        let view = GameplayView(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        _ = view
+    }
 
     @Test func testDrumBeatCreation() async throws {
         let beat = DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0, interval: .quarter)

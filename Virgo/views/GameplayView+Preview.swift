@@ -14,5 +14,6 @@ import SwiftUI
         metronome: MetronomeEngine(),
         practiceSettings: PracticeSettingsService()
     )
+    .environmentObject(PracticeSettingsService())
 }
 #endif
