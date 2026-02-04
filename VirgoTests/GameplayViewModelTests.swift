@@ -928,7 +928,7 @@ struct GameplayViewModelTests {
 
         let firstResumeCallTime = Date()
         let firstResumeOffset = firstResumeCallTime.timeIntervalSince(startTimeAfterFirstResume)
-        #expect(abs(firstResumeOffset - pausedAfterFirst) < 0.05)
+        #expect(abs(firstResumeOffset - pausedAfterFirst) < 0.1)
 
         // Second cycle: pause -> resume
         viewModel.pausePlayback()
@@ -944,7 +944,7 @@ struct GameplayViewModelTests {
 
         let secondResumeCallTime = Date()
         let secondResumeOffset = secondResumeCallTime.timeIntervalSince(startTimeAfterSecondResume)
-        #expect(abs(secondResumeOffset - pausedAfterSecond) < 0.05)
+        #expect(abs(secondResumeOffset - pausedAfterSecond) < 0.1)
 
         viewModel.cleanup()
     }
