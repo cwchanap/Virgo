@@ -22,6 +22,7 @@ final class GameplayViewModel {
     let chart: Chart
     let metronome: MetronomeEngine
     let practiceSettings: PracticeSettingsService
+    private var lastAppliedSpeedMultiplier: Double
 
     // MARK: - Cached SwiftData Relationships
     /// Cached song to avoid main thread blocking from relationship access
@@ -118,6 +119,7 @@ final class GameplayViewModel {
         self.chart = chart
         self.metronome = metronome
         self.practiceSettings = practiceSettings
+        self.lastAppliedSpeedMultiplier = practiceSettings.speedMultiplier
     }
 
     // MARK: - Speed Control
@@ -133,8 +135,22 @@ final class GameplayViewModel {
     func updateSpeed(_ newSpeed: Double) {
         let previousSpeed = practiceSettings.speedMultiplier
         practiceSettings.setSpeed(newSpeed)
+        applySpeedChange(previousSpeed: previousSpeed)
+    }
+
+    /// Applies updates when practice settings change without recreating the view model.
+    /// - Parameter practiceSettings: The shared practice settings service.
+    func updateSettings(_ practiceSettings: PracticeSettingsService) {
+        guard practiceSettings === self.practiceSettings else { return }
+        applySpeedChange(previousSpeed: lastAppliedSpeedMultiplier)
+    }
+
+    private func applySpeedChange(previousSpeed: Double) {
         enforceBGMMinimumSpeedIfNeeded()
         refreshTimingCaches()
+        let currentSpeed = practiceSettings.speedMultiplier
+        guard abs(previousSpeed - currentSpeed) > 0.0001 else { return }
+        lastAppliedSpeedMultiplier = currentSpeed
         let effectiveBPMValue = effectiveBPM()
 
         if isDataLoaded, let track = track {
@@ -150,12 +166,12 @@ final class GameplayViewModel {
         if isPlaying {
             if let bgmPlayer = bgmPlayer {
                 bgmPlayer.enableRate = true
-                bgmPlayer.rate = clampedBGMRate(for: practiceSettings.speedMultiplier)
+                bgmPlayer.rate = clampedBGMRate(for: currentSpeed)
             }
 
-            if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0 {
+            if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0, currentSpeed > 0 {
                 pausedElapsedTime += metronomeTime
-                let speedRatio = previousSpeed / practiceSettings.speedMultiplier
+                let speedRatio = previousSpeed / currentSpeed
                 pausedElapsedTime *= speedRatio
                 let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
                 totalBeatsElapsed = beatOffset
@@ -172,19 +188,19 @@ final class GameplayViewModel {
                 metronome.updateBPM(effectiveBPMValue)
             }
 
-            if let playbackStartTime = playbackStartTime, previousSpeed > 0 {
+            if let playbackStartTime = playbackStartTime, previousSpeed > 0, currentSpeed > 0 {
                 let elapsedSinceStart = Date().timeIntervalSince(playbackStartTime)
-                let speedRatio = previousSpeed / practiceSettings.speedMultiplier
+                let speedRatio = previousSpeed / currentSpeed
                 let adjustedElapsed = elapsedSinceStart * speedRatio
                 let newStartTime = Date().addingTimeInterval(-adjustedElapsed)
                 self.playbackStartTime = newStartTime
                 inputManager.startListening(songStartTime: newStartTime)
             }
 
-            let speedPercent = Int(practiceSettings.speedMultiplier * 100)
+            let speedPercent = Int(currentSpeed * 100)
             Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
-        } else if pausedElapsedTime > 0, previousSpeed > 0 {
-            let speedRatio = previousSpeed / practiceSettings.speedMultiplier
+        } else if pausedElapsedTime > 0, previousSpeed > 0, currentSpeed > 0 {
+            let speedRatio = previousSpeed / currentSpeed
             pausedElapsedTime *= speedRatio
             if cachedTrackDuration > 0 {
                 playbackProgress = pausedElapsedTime / cachedTrackDuration

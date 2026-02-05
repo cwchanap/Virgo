@@ -230,6 +230,11 @@ class MetronomeEngine: ObservableObject {
         }
         timeSignature = newTimeSignature
     }
+
+    func update(bpm newBPM: Double, timeSignature newTimeSignature: TimeSignature) {
+        updateBPM(newBPM)
+        updateTimeSignature(newTimeSignature)
+    }
     
     // MARK: - Synchronized Timing API
     

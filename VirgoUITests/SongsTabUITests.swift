@@ -8,14 +8,16 @@
 import XCTest
 
 final class SongsTabUITests: XCTestCase {
+    private var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument
-        let app = XCUIApplication()
+        app = XCUIApplication()
         app.launchArguments.append("-UITesting")
+        app.launch()
     }
 
     override func tearDownWithError() throws {
@@ -26,8 +28,6 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testSongsTabNavigation() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Navigate to Songs tab via Content View (which shows SongsTabView)
@@ -50,8 +50,6 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongsEmpty() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Ensure we're on Downloaded tab (default)
@@ -69,8 +67,6 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongsWithData() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Ensure we're on Downloaded tab
@@ -100,8 +96,6 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongsPlayback() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Ensure we're on Downloaded tab
@@ -129,8 +123,6 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongExpansion() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Ensure we're on Downloaded tab
@@ -164,8 +156,6 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongDeletion() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Ensure we're on Downloaded tab

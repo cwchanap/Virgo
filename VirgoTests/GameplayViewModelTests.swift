@@ -1266,10 +1266,8 @@ struct GameplayViewModelTests {
         viewModel.setupGameplay()
 
         // For this test, we need BGM to be present
-        // The test will verify clamping behavior if BGM exists
         guard viewModel.bgmPlayer != nil else {
-            // Skip test if no BGM (metronome-only)
-            return
+            throw TestError.bgmPlayerMissing
         }
 
         viewModel.startPlayback()
@@ -1428,8 +1426,9 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
-        enum TestError: Error {
+    enum TestError: Error {
         case playbackStartTimeNil
+        case bgmPlayerMissing
     }
 
     @Test func testMetronomeBPMMatchesEffectiveBPMOnSpeedChange() async throws {

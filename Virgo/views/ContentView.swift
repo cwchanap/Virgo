@@ -159,4 +159,5 @@ struct ContentView: View {
     ContentView()
         .modelContainer(for: Song.self, inMemory: true)
         .environmentObject(MetronomeEngine())
+        .environmentObject(PracticeSettingsService())
 }
