@@ -8,14 +8,16 @@
 import XCTest
 
 final class ServerSongsUITests: XCTestCase {
+    private var app: XCUIApplication!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument
-        let app = XCUIApplication()
+        app = XCUIApplication()
         app.launchArguments.append("-UITesting")
+        app.launch()
     }
 
     override func tearDownWithError() throws {
@@ -24,8 +26,6 @@ final class ServerSongsUITests: XCTestCase {
 
     @MainActor
     func testServerSongsTab() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Switch to Server tab
@@ -56,8 +56,6 @@ final class ServerSongsUITests: XCTestCase {
     
     @MainActor
     func testServerSongsEmptyState() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Switch to Server tab
@@ -89,8 +87,6 @@ final class ServerSongsUITests: XCTestCase {
     
     @MainActor
     func testServerSongsRefreshButton() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Switch to Server tab
@@ -115,8 +111,6 @@ final class ServerSongsUITests: XCTestCase {
     
     @MainActor
     func testSongsTabSearchFunctionality() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Test search in Downloaded tab
@@ -156,8 +150,6 @@ final class ServerSongsUITests: XCTestCase {
     
     @MainActor
     func testSongsTabSongCounter() throws {
-        let app = XCUIApplication()
-        app.launch()
         app.buttons["START"].tap()
         
         // Check Downloaded tab song count

@@ -53,16 +53,6 @@ struct GameplayView: View {
         .background(Color.black)
         .foregroundColor(.white)
         .task {
-            if viewModel.practiceSettings !== practiceSettings {
-                viewModel = GameplayViewModel(
-                    chart: viewModel.chart,
-                    metronome: viewModel.metronome,
-                    practiceSettings: practiceSettings
-                )
-                viewModel.inputManager.delegate = viewModel.inputHandler
-                viewModel.setupMetronomeSubscription()
-            }
-
             // Load SwiftData relationships asynchronously to avoid blocking main thread
             await viewModel.loadChartData()
             viewModel.setupGameplay()
@@ -73,6 +63,9 @@ struct GameplayView: View {
             viewModel.inputManager.delegate = viewModel.inputHandler
             // Setup metronome subscription for visual sync
             viewModel.setupMetronomeSubscription()
+        }
+        .onChange(of: practiceSettings.speedMultiplier) { _, _ in
+            viewModel.updateSettings(practiceSettings)
         }
         .onDisappear {
             viewModel.cleanup()

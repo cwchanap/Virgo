@@ -103,14 +103,9 @@ final class VirgoUITests: XCTestCase {
         }
 
         // Wait for all tracks to be visible again after clearing search
-        let allTracksVisible = expectation(description: "All tracks visible after clear")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-            if app.staticTexts["Thunder Beat"].exists &&
-                app.staticTexts["Jazz Groove"].exists {
-                allTracksVisible.fulfill()
-            }
-        }
-        wait(for: [allTracksVisible], timeout: 5)
+        let thunderBeatVisible = app.staticTexts["Thunder Beat"].waitForExistence(timeout: 5)
+        let jazzGrooveVisible = app.staticTexts["Jazz Groove"].waitForExistence(timeout: 5)
+        XCTAssertTrue(thunderBeatVisible && jazzGrooveVisible, "All tracks should be visible after clearing search")
 
         // Test search by artist - search for "Smooth" which exists in Jazz Groove
         searchField.typeText("Smooth")
