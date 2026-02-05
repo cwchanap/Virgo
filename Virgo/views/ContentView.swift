@@ -29,7 +29,7 @@ struct ContentView: View {
     /// Uses a custom launch argument "-UITesting" to distinguish from unit tests.
     /// UI tests should append app.launchArguments.append("-UITesting") in setUp().
     private var isUITesting: Bool {
-        ProcessInfo.processInfo.arguments.contains("-UITesting")
+        ProcessInfo.processInfo.arguments.contains(LaunchArguments.uiTesting)
     }
 
     var body: some View {

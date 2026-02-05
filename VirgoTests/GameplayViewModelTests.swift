@@ -170,6 +170,32 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testUpdateSpeedUpdatesMetronomeWhenEnabledAndNotPlaying() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+        let practiceSettings = createTestPracticeSettings()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let toggleSuccess = await CombineTestUtilities.performAndWait(
+            action: { metronome.toggle(bpm: viewModel.effectiveBPM(), timeSignature: .fourFour) },
+            publisher: metronome.$isEnabled,
+            condition: { $0 == true },
+            timeout: 0.5
+        )
+        #expect(toggleSuccess, "Metronome should start before updating speed")
+
+        viewModel.updateSpeed(0.75)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let expectedBPM = viewModel.effectiveBPM()
+        #expect(abs(metronome.bpm - expectedBPM) < 0.001)
+
+        metronome.stop()
+        viewModel.cleanup()
+    }
+
     @Test func testRemainingBGMOffsetAccountsForPausedElapsedTime() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()

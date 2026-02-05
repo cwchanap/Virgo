@@ -37,6 +37,10 @@ struct VirgoTests {
         }
     }
 
+    @Test func testLaunchArgumentsConstant() async throws {
+        #expect(LaunchArguments.uiTesting == "-UITesting")
+    }
+
     @Test func testDrumTrackDataIntegrity() async throws {
         try await TestSetup.withTestSetup {
             let song = TestModelFactory.createSong(

@@ -39,7 +39,7 @@ struct VirgoApp: App {
     }()
 
     init() {
-        if ProcessInfo.processInfo.arguments.contains("UITesting") {
+        if ProcessInfo.processInfo.arguments.contains(LaunchArguments.uiTesting) {
             #if canImport(UIKit)
             UIView.setAnimationsEnabled(false)
             #endif
