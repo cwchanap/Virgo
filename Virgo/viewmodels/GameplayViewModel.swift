@@ -193,6 +193,10 @@ final class GameplayViewModel {
                 playbackProgress = 0.0
             }
         }
+
+        if !isPlaying, metronome.isEnabled {
+            metronome.updateBPM(effectiveBPMValue)
+        }
     }
 
     /// Returns a clamped BGM playback rate for AVAudioPlayer while logging clamp warnings.
