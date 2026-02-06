@@ -45,6 +45,42 @@ struct GameplayViewModelTests {
         return chart
     }
 
+    /// Creates a test Chart with sample notes and a Song linked to the test BGM asset
+    private func createTestChartWithBGM(
+        noteCount: Int = 4,
+        measuresCount: Int = 1
+    ) -> Chart {
+        // Create a song with BGM file path pointing to the asset
+        let song = Song(
+            title: "Test Song with BGM",
+            artist: "Test Artist",
+            bpm: 120.0,
+            duration: "3:00",
+            genre: "Test"
+        )
+        // Set the BGM file path to the asset in the bundle
+        if let bgmURL = Bundle.main.url(forResource: "bgm", withExtension: nil) {
+            song.bgmFilePath = bgmURL.path
+        }
+
+        let chart = Chart(difficulty: .medium, song: song)
+
+        // Add sample notes across measures
+        for i in 0..<noteCount {
+            let measureNumber = (i / 4) + 1
+            let measureOffset = Double(i % 4) * 0.25
+            let note = Note(
+                interval: .quarter,
+                noteType: i % 2 == 0 ? .bass : .snare,
+                measureNumber: measureNumber,
+                measureOffset: measureOffset
+            )
+            chart.notes.append(note)
+        }
+
+        return chart
+    }
+
     /// Creates a test MetronomeEngine
     private func createTestMetronome() -> MetronomeEngine {
         return MetronomeEngine()
