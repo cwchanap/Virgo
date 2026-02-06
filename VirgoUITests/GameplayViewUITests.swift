@@ -199,9 +199,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewAccessibility() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -230,9 +227,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewMultipleTracksNavigation() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to ContentView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
@@ -262,9 +256,6 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewStabilityDuringInteraction() throws {
-        let app = XCUIApplication()
-        app.launch()
-        
         // Navigate to GameplayView
         app.buttons["START"].tap()
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
