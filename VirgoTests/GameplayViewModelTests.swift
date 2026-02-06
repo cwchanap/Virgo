@@ -45,10 +45,10 @@ struct GameplayViewModelTests {
         return chart
     }
 
-    /// Creates a test Chart with sample notes and a Song linked to the test BGM asset
+    /// Creates a test Chart with sample notes and a Song linked to the test BGM asset.
+    /// Measures are generated based on noteCount (noteCount / 4 determines the number of measures).
     private func createTestChartWithBGM(
-        noteCount: Int = 4,
-        measuresCount: Int = 1
+        noteCount: Int = 4
     ) -> Chart {
         // Create a song with BGM file path pointing to the asset
         let song = Song(
