@@ -13,10 +13,10 @@ struct GameplayView: View {
     // MARK: - Dependencies
     /// Shared practice settings service - single source of truth injected via environment
     @EnvironmentObject private var practiceSettings: PracticeSettingsService
-    @EnvironmentObject private var metronome: MetronomeEngine
     @Environment(\.dismiss) private var dismiss
 
     let chart: Chart
+    let metronome: MetronomeEngine
 
     // MARK: - ViewModel
     /// Consolidated state management - initialized lazily with environment dependencies
@@ -24,8 +24,9 @@ struct GameplayView: View {
     /// Cached fallback track to avoid constructing a new DrumTrack on every render
     @State private var cachedFallbackTrack: DrumTrack
 
-    init(chart: Chart) {
+    init(chart: Chart, metronome: MetronomeEngine) {
         self.chart = chart
+        self.metronome = metronome
         self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
     }
 
