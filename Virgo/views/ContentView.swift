@@ -56,7 +56,7 @@ struct ContentView: View {
             )
             .navigationDestination(isPresented: $navigateToGameplay) {
                 if let chart = selectedChart {
-                    GameplayView(chart: chart)
+                    GameplayView(chart: chart, metronome: metronome)
                 }
             }
             .tabItem {

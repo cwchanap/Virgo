@@ -12,9 +12,9 @@ import SwiftUI
     let practiceSettings = PracticeSettingsService()
     let metronome = MetronomeEngine()
     GameplayView(
-        chart: Song.sampleData.first!.charts.first!
+        chart: Song.sampleData.first!.charts.first!,
+        metronome: metronome
     )
     .environmentObject(practiceSettings)
-    .environmentObject(metronome)
 }
 #endif
