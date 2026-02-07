@@ -9,33 +9,43 @@ import SwiftUI
 
 extension GameplayView {
     func sheetMusicView(geometry: GeometryProxy) -> some View {
+        // If viewModel is not yet initialized, show a placeholder
+        guard let viewModel = viewModel else {
+            return AnyView(
+                Color.black
+                    .overlay(Text("Loading...").foregroundColor(.white))
+            )
+        }
+
         let totalHeight = GameplayLayout.totalHeight(for: viewModel.cachedMeasurePositions)
 
-        return ScrollView([.horizontal, .vertical], showsIndicators: false) {
-            ZStack(alignment: .topLeading) {
-                // Use cached static staff lines view - created only once
-                if let staticView = viewModel.staticStaffLinesView {
-                    staticView
-                }
-
-                // Dynamic content
+        return AnyView(
+            ScrollView([.horizontal, .vertical], showsIndicators: false) {
                 ZStack(alignment: .topLeading) {
-                    // Bar lines
-                    barLinesView(measurePositions: viewModel.cachedMeasurePositions)
+                    // Use cached static staff lines view - created only once
+                    if let staticView = viewModel.staticStaffLinesView {
+                        staticView
+                    }
 
-                    // Clefs and time signatures for each row
-                    clefsAndTimeSignaturesView(measurePositions: viewModel.cachedMeasurePositions)
+                    // Dynamic content
+                    ZStack(alignment: .topLeading) {
+                        // Bar lines
+                        barLinesView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
 
-                    // Drum notation
-                    drumNotationView(measurePositions: viewModel.cachedMeasurePositions)
+                        // Clefs and time signatures for each row
+                        clefsAndTimeSignaturesView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
 
-                    // Time-based beat progression bars (purple bars at all quarter note positions)
-                    timeBasedBeatProgressionBars(measurePositions: viewModel.cachedMeasurePositions)
+                        // Drum notation
+                        drumNotationView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
+
+                        // Time-based beat progression bars (purple bars at all quarter note positions)
+                        timeBasedBeatProgressionBars(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
+                    }
                 }
+                .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
             }
-            .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
-        }
-        .background(Color.gray.opacity(0.1))
+            .background(Color.gray.opacity(0.1))
+        )
     }
 
     func staffLinesView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
@@ -59,7 +69,7 @@ extension GameplayView {
         }
     }
 
-    func clefsAndTimeSignaturesView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+    func clefsAndTimeSignaturesView(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
         let rows = Set(measurePositions.map { $0.row })
 
         return ZStack {
@@ -87,7 +97,7 @@ extension GameplayView {
         }
     }
 
-    func barLinesView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+    func barLinesView(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
         ZStack {
             // Regular bar lines
             ForEach(measurePositions, id: \.measureIndex) { position in
@@ -125,7 +135,7 @@ extension GameplayView {
         }
     }
 
-    func drumNotationView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+    func drumNotationView(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
         return ZStack {
             // Render beams first (behind notes)
             ForEach(viewModel.cachedBeamGroups, id: \.id) { beamGroup in
@@ -165,7 +175,7 @@ extension GameplayView {
         }
     }
 
-    func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+    func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
         Group {
             // PERFORMANCE FIX: Use pre-cached purple bar position instead of expensive calculation
             if let position = viewModel.purpleBarPosition {

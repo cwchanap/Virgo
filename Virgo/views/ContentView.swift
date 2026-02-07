@@ -11,7 +11,6 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var metronome: MetronomeEngine
-    @EnvironmentObject private var practiceSettings: PracticeSettingsService
     @Query private var allSongs: [Song]
     @Query private var serverSongs: [ServerSong]
     @StateObject private var serverSongService = ServerSongService()
@@ -57,7 +56,7 @@ struct ContentView: View {
             )
             .navigationDestination(isPresented: $navigateToGameplay) {
                 if let chart = selectedChart {
-                    GameplayView(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+                    GameplayView(chart: chart)
                 }
             }
             .tabItem {

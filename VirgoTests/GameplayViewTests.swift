@@ -18,7 +18,9 @@ struct GameplayViewTests {
         let (userDefaults, _) = TestUserDefaults.makeIsolated()
         let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
 
-        let view = GameplayView(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        let view = GameplayView(chart: chart)
+            .environmentObject(metronome)
+            .environmentObject(practiceSettings)
         _ = view
     }
 

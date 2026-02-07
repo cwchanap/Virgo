@@ -10,20 +10,31 @@ import AVFoundation
 import Combine
 
 struct GameplayView: View {
-    // MARK: - ViewModel
-    /// Consolidated state management - replaces 40+ individual @State variables
-    @State var viewModel: GameplayViewModel
-
+    // MARK: - Dependencies
+    /// Shared practice settings service - single source of truth injected via environment
     @EnvironmentObject private var practiceSettings: PracticeSettingsService
+    @EnvironmentObject private var metronome: MetronomeEngine
     @Environment(\.dismiss) private var dismiss
 
-    // PERFORMANCE FIX: Accept metronome as parameter instead of @EnvironmentObject
-    init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService) {
-        self._viewModel = State(initialValue: GameplayViewModel(
-            chart: chart,
-            metronome: metronome,
-            practiceSettings: practiceSettings
-        ))
+    let chart: Chart
+
+    // MARK: - ViewModel
+    /// Consolidated state management - initialized lazily with environment dependencies
+    @State var viewModel: GameplayViewModel?
+
+    init(chart: Chart) {
+        self.chart = chart
+    }
+
+    /// Creates a binding for isPlaying when viewModel exists, or returns a constant false binding
+    private var isPlayingBinding: Binding<Bool> {
+        guard let viewModel = viewModel else {
+            return .constant(false)
+        }
+        return Binding(
+            get: { viewModel.isPlaying },
+            set: { viewModel.isPlaying = $0 }
+        )
     }
 
     var body: some View {
@@ -31,11 +42,11 @@ struct GameplayView: View {
             VStack(spacing: 0) {
                 // Header with track info and controls
                 GameplayHeaderView(
-                    track: viewModel.track ?? DrumTrack(chart: viewModel.chart),
-                    isPlaying: $viewModel.isPlaying,
+                    track: viewModel?.track ?? DrumTrack(chart: chart),
+                    isPlaying: isPlayingBinding,
                     onDismiss: { dismiss() },
-                    onPlayPause: { viewModel.togglePlayback() },
-                    onRestart: { viewModel.restartPlayback() }
+                    onPlayPause: { viewModel?.togglePlayback() },
+                    onRestart: { viewModel?.restartPlayback() }
                 )
                 .background(Color.black)
 
@@ -53,22 +64,30 @@ struct GameplayView: View {
         .background(Color.black)
         .foregroundColor(.white)
         .task {
+            // Initialize viewModel with environment dependencies
+            if viewModel == nil {
+                viewModel = GameplayViewModel(
+                    chart: chart,
+                    metronome: metronome,
+                    practiceSettings: practiceSettings
+                )
+            }
             // Load SwiftData relationships asynchronously to avoid blocking main thread
-            await viewModel.loadChartData()
-            viewModel.setupGameplay()
+            await viewModel?.loadChartData()
+            viewModel?.setupGameplay()
         }
         .onAppear {
-            Logger.userAction("Opened gameplay view for track: \(viewModel.track?.title ?? "Unknown")")
+            Logger.userAction("Opened gameplay view for track: \(viewModel?.track?.title ?? "Unknown")")
             // Setup InputManager delegate
-            viewModel.inputManager.delegate = viewModel.inputHandler
+            viewModel?.inputManager.delegate = viewModel?.inputHandler
             // Setup metronome subscription for visual sync
-            viewModel.setupMetronomeSubscription()
+            viewModel?.setupMetronomeSubscription()
         }
         .onChange(of: practiceSettings.speedMultiplier) { _, _ in
-            viewModel.updateSettings(practiceSettings)
+            viewModel?.updateSettings(practiceSettings)
         }
         .onDisappear {
-            viewModel.cleanup()
+            viewModel?.cleanup()
         }
     }
 }
