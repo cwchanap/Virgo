@@ -21,9 +21,12 @@ struct GameplayView: View {
     // MARK: - ViewModel
     /// Consolidated state management - initialized lazily with environment dependencies
     @State var viewModel: GameplayViewModel?
+    /// Cached fallback track to avoid constructing a new DrumTrack on every render
+    @State private var cachedFallbackTrack: DrumTrack
 
     init(chart: Chart) {
         self.chart = chart
+        self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
     }
 
     /// Creates a binding for isPlaying when viewModel exists, or returns a constant false binding
@@ -42,7 +45,7 @@ struct GameplayView: View {
             VStack(spacing: 0) {
                 // Header with track info and controls
                 GameplayHeaderView(
-                    track: viewModel?.track ?? DrumTrack(chart: chart),
+                    track: viewModel?.track ?? cachedFallbackTrack,
                     isPlaying: isPlayingBinding,
                     onDismiss: { dismiss() },
                     onPlayPause: { viewModel?.togglePlayback() },
@@ -75,13 +78,10 @@ struct GameplayView: View {
             // Load SwiftData relationships asynchronously to avoid blocking main thread
             await viewModel?.loadChartData()
             viewModel?.setupGameplay()
-        }
-        .onAppear {
-            Logger.userAction("Opened gameplay view for track: \(viewModel?.track?.title ?? "Unknown")")
-            // Setup InputManager delegate
+            // Setup InputManager delegate and metronome subscription after viewModel is ready
             viewModel?.inputManager.delegate = viewModel?.inputHandler
-            // Setup metronome subscription for visual sync
             viewModel?.setupMetronomeSubscription()
+            Logger.userAction("Opened gameplay view for track: \(viewModel?.track?.title ?? "Unknown")")
         }
         .onChange(of: practiceSettings.speedMultiplier) { _, _ in
             viewModel?.updateSettings(practiceSettings)
