@@ -186,6 +186,10 @@ final class GameplayViewModel {
                 rescheduleBGMForSpeedChange(commonStartTime: startTime)
             } else {
                 metronome.updateBPM(effectiveBPMValue)
+                // Reschedule BGM to align with new rate when metronome time is unavailable
+                let startTime = CFAbsoluteTimeGetCurrent() + 0.05
+                rescheduleBGMForSpeedChange(commonStartTime: startTime)
+                Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
             }
 
             if let playbackStartTime = playbackStartTime, previousSpeed > 0, currentSpeed > 0 {
