@@ -131,9 +131,16 @@ struct ContentView: View {
     }
 
     private func seedUITestDataIfNeeded() {
-        guard allSongs.isEmpty else { return }
+        // Check for specific fixture songs rather than just isEmpty
+        // This ensures UI tests always have the expected data even if
+        // the simulator/device has songs from previous runs
+        let fixtureTitles = Set(Song.sampleData.map { $0.title })
+        let existingTitles = Set(allSongs.map { $0.title })
+        let missingFixtures = fixtureTitles.subtracting(existingTitles)
+        
+        guard !missingFixtures.isEmpty else { return }
 
-        let sampleSongs = Song.sampleData
+        let sampleSongs = Song.sampleData.filter { missingFixtures.contains($0.title) }
         for song in sampleSongs {
             song.genre = "DTX Import"
             for chart in song.charts {
@@ -147,7 +154,7 @@ struct ContentView: View {
 
         do {
             try modelContext.save()
-            Logger.database("Seeded UI test songs")
+            Logger.database("Seeded \(sampleSongs.count) missing UI test songs: \(missingFixtures.sorted().joined(separator: ", "))")
         } catch {
             Logger.databaseError(error)
         }
