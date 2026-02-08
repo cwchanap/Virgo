@@ -100,12 +100,8 @@ struct GameplayControlsView: View {
                 endPoint: .bottom
             )
         )
-        .onChange(of: practiceSettings.speedMultiplier) { _, _ in
-            let effectiveBPM = practiceSettings.effectiveBPM(baseBPM: track.bpm)
-            if metronome.isEnabled {
-                metronome.update(bpm: effectiveBPM, timeSignature: track.timeSignature)
-            }
-        }
+        // Note: Metronome BPM sync on speed change is handled by
+        // GameplayViewModel.applySpeedChange() — no .onChange needed here.
     }
 
     // MARK: - Speed Control Section

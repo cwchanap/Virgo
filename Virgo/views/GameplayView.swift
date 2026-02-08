@@ -70,6 +70,9 @@ struct GameplayView: View {
         .task {
             // Initialize viewModel with environment dependencies
             if viewModel == nil {
+                // Reset shared speed to default before loading chart-specific speed,
+                // so the UI doesn't briefly show the previous chart's stale speed.
+                practiceSettings.resetSpeed()
                 viewModel = GameplayViewModel(
                     chart: chart,
                     metronome: metronome,
@@ -78,6 +81,7 @@ struct GameplayView: View {
             }
             // Load SwiftData relationships asynchronously to avoid blocking main thread
             await viewModel?.loadChartData()
+            // setupGameplay loads the persisted speed for this chart (SC-06)
             viewModel?.setupGameplay()
             // Setup InputManager delegate and metronome subscription after viewModel is ready
             viewModel?.inputManager.delegate = viewModel?.inputHandler
