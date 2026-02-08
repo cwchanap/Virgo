@@ -1266,10 +1266,7 @@ struct GameplayViewModelTests {
         viewModel.setupGameplay()
 
         // For this test, we need BGM to be present
-        guard viewModel.bgmPlayer != nil else {
-            // Skip test if no BGM (e.g., CI environment without audio files)
-            return
-        }
+        let bgmPlayer = try #require(viewModel.bgmPlayer, "No BGM available in CI")
 
         viewModel.startPlayback()
         #expect(viewModel.isPlaying == true)
@@ -1281,9 +1278,7 @@ struct GameplayViewModelTests {
         #expect(viewModel.practiceSettings.speedMultiplier == 0.5, "Speed should be clamped to 50% with BGM")
 
         // Verify BGM rate is clamped to 0.5 (not 0.25)
-        if let bgmPlayer = viewModel.bgmPlayer {
-            #expect(bgmPlayer.rate == 0.5, "BGM rate should be clamped to 0.5 (50%) when speed is below 50%")
-        }
+        #expect(bgmPlayer.rate == 0.5, "BGM rate should be clamped to 0.5 (50%) when speed is below 50%")
 
         viewModel.cleanup()
     }
@@ -1297,10 +1292,7 @@ struct GameplayViewModelTests {
         viewModel.setupGameplay()
 
         // For this test, we need BGM to be present
-        guard viewModel.bgmPlayer != nil else {
-            // Skip test if no BGM (metronome-only)
-            return
-        }
+        let bgmPlayer = try #require(viewModel.bgmPlayer, "No BGM available in CI")
 
         viewModel.startPlayback()
         #expect(viewModel.isPlaying == true)
@@ -1309,16 +1301,12 @@ struct GameplayViewModelTests {
         viewModel.updateSpeed(1.5)
 
         // Verify BGM rate is NOT clamped
-        if let bgmPlayer = viewModel.bgmPlayer {
-            #expect(bgmPlayer.rate == 1.5, "BGM rate should be 1.5 when speed is 150% (within supported range)")
-        }
+        #expect(bgmPlayer.rate == 1.5, "BGM rate should be 1.5 when speed is 150% (within supported range)")
 
         // Set speed to 75%
         viewModel.updateSpeed(0.75)
 
-        if let bgmPlayer = viewModel.bgmPlayer {
-            #expect(bgmPlayer.rate == 0.75, "BGM rate should be 0.75 when speed is 75% (within supported range)")
-        }
+        #expect(bgmPlayer.rate == 0.75, "BGM rate should be 0.75 when speed is 75% (within supported range)")
 
         viewModel.cleanup()
     }
