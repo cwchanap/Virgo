@@ -1361,6 +1361,43 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testSharedPracticeSettingsResetBeforeNewChart() async throws {
+        // Simulates the stale-speed scenario: Song A sets speed to 50%,
+        // then Song B is opened. The shared PracticeSettingsService should
+        // be reset to 1.0 before the new chart's persisted speed is loaded,
+        // preventing the UI from briefly showing Song A's speed.
+        let chartA = createTestChart(noteCount: 4)
+        let chartB = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let sharedSettings = PracticeSettingsService(userDefaults: userDefaults)
+
+        // --- Session A: play at 50% and cleanup ---
+        let vmA = GameplayViewModel(chart: chartA, metronome: metronome, practiceSettings: sharedSettings)
+        await vmA.loadChartData()
+        vmA.setupGameplay(loadPersistedSpeed: false)
+        vmA.updateSpeed(0.5)
+        vmA.cleanup()   // saves 50% for chartA
+
+        // Shared service still holds stale 50% from Song A
+        #expect(sharedSettings.speedMultiplier == 0.5, "Stale speed from Song A should persist in shared service")
+
+        // --- Simulate what GameplayView.task does for Song B ---
+        // 1. Reset speed before creating ViewModel (as the fix does)
+        sharedSettings.resetSpeed()
+        #expect(sharedSettings.speedMultiplier == 1.0, "Speed should be reset to 1.0 before new chart")
+
+        // 2. Create ViewModel for Song B
+        let vmB = GameplayViewModel(chart: chartB, metronome: metronome, practiceSettings: sharedSettings)
+        await vmB.loadChartData()
+        vmB.setupGameplay()  // loads persisted speed for chartB (none saved → stays 1.0)
+
+        #expect(sharedSettings.speedMultiplier == 1.0, "Song B should use default speed since none was saved")
+
+        vmB.cleanup()
+    }
+
     @Test func testCleanupSavesCurrentSpeed() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
