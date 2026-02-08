@@ -309,6 +309,7 @@ final class GameplayViewModel {
         // Load saved speed for this chart unless caller explicitly requested preconfigured speed
         if loadPersistedSpeed {
             practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
+            lastAppliedSpeedMultiplier = practiceSettings.speedMultiplier
         }
 
         computeDrumBeats()

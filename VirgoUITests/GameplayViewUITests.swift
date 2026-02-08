@@ -242,10 +242,10 @@ final class GameplayViewUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
         
         // Test navigation to second track (if available)
-        if app.staticTexts["Jazz Groove"].exists {
+        if app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10) {
             app.staticTexts["Jazz Groove"].tap()
             XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10))
-            XCTAssertTrue(app.staticTexts["Smooth Collective"].exists)
+            XCTAssertTrue(app.staticTexts["Smooth Collective"].waitForExistence(timeout: 10))
             
             // Navigate back again
             let backButton2 = app.buttons.matching(identifier: "chevron.left").firstMatch
