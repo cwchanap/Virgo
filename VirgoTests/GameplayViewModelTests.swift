@@ -1144,7 +1144,7 @@ struct GameplayViewModelTests {
 
         // Get base BPM (should be 120.0 for test charts without songs)
         guard let track = viewModel.track else {
-            throw TestError.playbackStartTimeNil // Reuse existing error
+            throw TestError.trackMissing
         }
         let baseBPM = track.bpm
         let tolerance = 0.01
@@ -1459,6 +1459,7 @@ struct GameplayViewModelTests {
     enum TestError: Error {
         case playbackStartTimeNil
         case bgmPlayerMissing
+        case trackMissing
     }
 
     @Test func testMetronomeBPMMatchesEffectiveBPMOnSpeedChange() async throws {

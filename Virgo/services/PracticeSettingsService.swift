@@ -87,13 +87,17 @@ class PracticeSettingsService: ObservableObject {
     // MARK: - Persistence (SC-06: Remember last-used speed per song/chart)
 
     /// Creates a stable persistence key from a PersistentIdentifier.
-    /// Uses the identifier's string description for stability across app launches.
+    /// Uses JSON encoding for a stable, deterministic representation across app launches.
     /// - Parameter chartID: The persistent identifier of the chart
     /// - Returns: A stable string key for UserDefaults storage
     private func persistenceKey(for chartID: PersistentIdentifier) -> String {
-        // Use String(describing:) which provides a stable representation
-        // based on the underlying entity and ID, unlike hashValue
-        return String(describing: chartID)
+        // Encode using JSONEncoder for stable, deterministic representation
+        guard let data = try? JSONEncoder().encode(chartID),
+              let key = String(data: data, encoding: .utf8) else {
+            // Fallback: use a hash-based identifier if encoding fails
+            return "chart_\(chartID.hashValue)"
+        }
+        return key
     }
 
     /// Loads the saved speed for a specific chart.
