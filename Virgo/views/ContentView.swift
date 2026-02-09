@@ -31,6 +31,10 @@ struct ContentView: View {
         ProcessInfo.processInfo.arguments.contains(LaunchArguments.uiTesting)
     }
 
+    private var shouldResetState: Bool {
+        ProcessInfo.processInfo.arguments.contains(LaunchArguments.resetState)
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             // Songs Tab with Sub-tabs
@@ -111,6 +115,9 @@ struct ContentView: View {
         }
         .tint(.purple)
         .onAppear {
+            if shouldResetState {
+                clearPersistedTestState()
+            }
             if isUITesting {
                 seedUITestDataIfNeeded()
             }
@@ -130,6 +137,15 @@ struct ContentView: View {
         Logger.database("Song \(song.title) \(song.isSaved ? "saved" : "unsaved")")
     }
 
+    private func clearPersistedTestState() {
+        // Delete all existing songs and their cascaded charts/notes for a clean test slate
+        for song in allSongs {
+            modelContext.delete(song)
+        }
+        try? modelContext.save()
+        Logger.database("Cleared persisted test state for UI test isolation")
+    }
+
     private func seedUITestDataIfNeeded() {
         // Check for specific fixture songs rather than just isEmpty
         // This ensures UI tests always have the expected data even if
@@ -141,13 +157,20 @@ struct ContentView: View {
         guard !missingFixtures.isEmpty else { return }
 
         let sampleSongs = Song.sampleData.filter { missingFixtures.contains($0.title) }
-        for song in sampleSongs {
-            song.genre = "DTX Import"
-            for chart in song.charts {
-                chart.song = song
-            }
+        for templateSong in sampleSongs {
+            // Create a fresh Song instance to avoid mutating shared/static sampleData
+            let song = Song(
+                title: templateSong.title,
+                artist: templateSong.artist,
+                bpm: templateSong.bpm,
+                duration: templateSong.duration,
+                genre: "DTX Import",
+                timeSignature: templateSong.timeSignature
+            )
             modelContext.insert(song)
-            for chart in song.charts {
+            for templateChart in templateSong.charts {
+                let chart = Chart(difficulty: templateChart.difficulty, level: templateChart.level)
+                chart.song = song
                 modelContext.insert(chart)
             }
         }

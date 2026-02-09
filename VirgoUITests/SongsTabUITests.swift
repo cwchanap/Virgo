@@ -17,6 +17,7 @@ final class SongsTabUITests: XCTestCase {
         // ContentView.isUITesting checks for this argument
         app = XCUIApplication()
         app.launchArguments.append("-UITesting")
+        app.launchArguments.append("-ResetState")
         app.launch()
     }
 

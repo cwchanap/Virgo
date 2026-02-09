@@ -9,4 +9,5 @@ import Foundation
 
 enum LaunchArguments {
     static let uiTesting = "-UITesting"
+    static let resetState = "-ResetState"
 }
