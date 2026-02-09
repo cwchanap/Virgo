@@ -18,6 +18,11 @@ struct GameplayControlsView: View {
     let onSkipToEnd: () -> Void
     let onSpeedChange: (Double) -> Void
 
+    /// Debounce timer for speed slider to prevent rapid applySpeedChange calls during drags
+    @State private var speedDebounceTimer: Timer?
+    /// Debounce interval in seconds (100ms) for speed slider updates
+    private let speedDebounceInterval: TimeInterval = 0.1
+
     var body: some View {
         let adjustedDuration = adjustedDurationSeconds()
         VStack(spacing: 16) {
@@ -159,7 +164,11 @@ struct GameplayControlsView: View {
                             // Snap to 5% increments
                             let snapped = (newValue / PracticeSettingsService.speedIncrement).rounded()
                                 * PracticeSettingsService.speedIncrement
-                            onSpeedChange(snapped)
+                            // Debounce speed changes to prevent metronome stop/start churn during slider drags
+                            speedDebounceTimer?.invalidate()
+                            speedDebounceTimer = Timer.scheduledTimer(withTimeInterval: speedDebounceInterval, repeats: false) { _ in
+                                onSpeedChange(snapped)
+                            }
                         }
                     ),
                     in: PracticeSettingsService.minSpeed...PracticeSettingsService.maxSpeed

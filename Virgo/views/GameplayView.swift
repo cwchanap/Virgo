@@ -68,6 +68,8 @@ struct GameplayView: View {
         .background(Color.black)
         .foregroundColor(.white)
         .task {
+            // Reset speed to default before creating ViewModel to prevent stale speed from previous chart
+            practiceSettings.resetSpeed()
             // Initialize viewModel with environment dependencies
             if viewModel == nil {
                 viewModel = GameplayViewModel(

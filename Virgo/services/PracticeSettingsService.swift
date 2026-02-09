@@ -9,6 +9,7 @@
 
 import Foundation
 import SwiftData
+import CryptoKit
 
 /// Service that manages practice settings for gameplay sessions.
 /// Handles speed control state, validation, and per-chart persistence.
@@ -94,9 +95,15 @@ class PracticeSettingsService: ObservableObject {
         // Encode using JSONEncoder for stable, deterministic representation
         guard let data = try? JSONEncoder().encode(chartID),
               let key = String(data: data, encoding: .utf8) else {
-            // Fallback: use description which is deterministic across launches
-            // (hashValue is process-randomized and unsuitable for persistence)
-            return "chart_\(String(describing: chartID))"
+            // Fallback: use stable SHA-256 digest
+            // PersistentIdentifier's description format is stable across launches
+            // SHA-256 produces a deterministic, stable hash of the identifier string
+            let stableIdentifier = String(describing: chartID)
+            let inputData = Data(stableIdentifier.utf8)
+            let digest = SHA256.hash(data: inputData)
+            let hashString = digest.compactMap { String(format: "%02x", $0) }.joined()
+            // Use first 32 characters of hex digest for a reasonably short but unique key
+            return "chart_\(String(hashString.prefix(32)))"
         }
         return key
     }
