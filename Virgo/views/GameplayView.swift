@@ -76,14 +76,17 @@ struct GameplayView: View {
                     practiceSettings: practiceSettings
                 )
             }
+            guard let vm = viewModel else { return }
             // Load SwiftData relationships asynchronously to avoid blocking main thread
-            await viewModel?.loadChartData()
+            await vm.loadChartData()
+            // Check cancellation after the async boundary to avoid setup with incomplete state
+            guard !Task.isCancelled else { return }
             // setupGameplay loads the persisted speed for this chart (SC-06)
-            viewModel?.setupGameplay()
+            vm.setupGameplay()
             // Setup InputManager delegate and metronome subscription after viewModel is ready
-            viewModel?.inputManager.delegate = viewModel?.inputHandler
-            viewModel?.setupMetronomeSubscription()
-            Logger.userAction("Opened gameplay view for track: \(viewModel?.track?.title ?? "Unknown")")
+            vm.inputManager.delegate = vm.inputHandler
+            vm.setupMetronomeSubscription()
+            Logger.userAction("Opened gameplay view for track: \(vm.track?.title ?? "Unknown")")
         }
         .onChange(of: practiceSettings.speedMultiplier) { _, _ in
             viewModel?.updateSettings(practiceSettings)

@@ -94,8 +94,9 @@ class PracticeSettingsService: ObservableObject {
         // Encode using JSONEncoder for stable, deterministic representation
         guard let data = try? JSONEncoder().encode(chartID),
               let key = String(data: data, encoding: .utf8) else {
-            // Fallback: use a hash-based identifier if encoding fails
-            return "chart_\(chartID.hashValue)"
+            // Fallback: use description which is deterministic across launches
+            // (hashValue is process-randomized and unsuitable for persistence)
+            return "chart_\(String(describing: chartID))"
         }
         return key
     }

@@ -1201,7 +1201,7 @@ struct GameplayViewModelTests {
         #expect(viewModel.isPlaying == true)
 
         guard let track = viewModel.track else {
-            throw TestError.playbackStartTimeNil
+            throw TestError.trackMissing
         }
         let baseBPM = track.bpm
         let tolerance = 0.01
@@ -1239,7 +1239,7 @@ struct GameplayViewModelTests {
         viewModel.setupGameplay()
 
         guard let track = viewModel.track else {
-            throw TestError.playbackStartTimeNil
+            throw TestError.trackMissing
         }
 
         #expect(viewModel.isPlaying == false)
@@ -1485,7 +1485,7 @@ struct GameplayViewModelTests {
 
         // Verify track was loaded
         guard let track = viewModel.track else {
-            throw TestError.playbackStartTimeNil // Reuse existing error
+            throw TestError.trackMissing
         }
 
         // Set speed to 50%
@@ -1529,7 +1529,7 @@ struct GameplayViewModelTests {
 
         // Verify track was loaded
         guard let track = viewModel.track else {
-            throw TestError.playbackStartTimeNil
+            throw TestError.trackMissing
         }
 
         // Test 1: Normal speed (100%)
