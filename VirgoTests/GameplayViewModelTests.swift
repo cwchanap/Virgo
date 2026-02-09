@@ -1421,6 +1421,59 @@ struct GameplayViewModelTests {
         #expect(loadedSpeed == 0.75, "Speed should be saved on cleanup")
     }
 
+    @Test func testCleanupDoesNotSaveSpeedWhenDataNotLoaded() async throws {
+        // Regression test for race condition where quickly dismissing GameplayView
+        // could save the previous chart's shared speed under the current chart's ID
+        // before its own persisted speed was loaded.
+        //
+        // Scenario:
+        // 1. User plays Chart A at 1.5x speed
+        // 2. User backs out (saves 1.5x for Chart A)
+        // 3. User quickly opens Chart B (ViewModel created with sharedSettings at 1.5x)
+        // 4. User immediately backs out BEFORE loadChartData/setupGameplay completes
+        // 5. Without the fix, cleanup() would save 1.5x for Chart B, corrupting its setting
+
+        let chartA = createTestChart(noteCount: 4)
+        let chartB = createTestChart(noteCount: 4)
+        let metronome = createTestMetronome()
+
+        // Shared practice settings (simulates the injected environment object)
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let sharedSettings = PracticeSettingsService(userDefaults: userDefaults)
+
+        // --- Simulate playing Chart A at 1.5x speed ---
+        let vmA = GameplayViewModel(chart: chartA, metronome: metronome, practiceSettings: sharedSettings)
+        await vmA.loadChartData()
+        vmA.setupGameplay()
+        vmA.updateSpeed(1.5)
+        vmA.cleanup()  // Saves 1.5x for Chart A
+
+        #expect(sharedSettings.speedMultiplier == 1.5, "Shared settings should retain last used speed")
+        #expect(sharedSettings.loadSpeed(for: chartA.persistentModelID) == 1.5, "Chart A should have 1.5x saved")
+
+        // --- Simulate quickly opening and closing Chart B before setup completes ---
+        // Create ViewModel for Chart B (inherits 1.5x from shared settings)
+        let vmB = GameplayViewModel(chart: chartB, metronome: metronome, practiceSettings: sharedSettings)
+
+        // NOTE: We intentionally do NOT call loadChartData/setupGameplay
+        // This simulates the user dismissing the view before async setup completes
+        #expect(vmB.isDataLoaded == false, "Data should not be loaded in this scenario")
+
+        // Pre-set Chart B's saved speed to 0.75x (its intended default)
+        sharedSettings.saveSpeed(0.75, for: chartB.persistentModelID)
+        // Reset shared speed to simulate fresh state
+        sharedSettings.setSpeed(1.0)
+        // But vmB still has the stale 1.5x from when it was created
+        #expect(vmB.practiceSettings.speedMultiplier == 1.0, "Practice settings speed should be reset")
+
+        // Cleanup without data loaded - should NOT save anything
+        vmB.cleanup()
+
+        // Verify Chart B's saved speed was NOT corrupted
+        let chartBSpeed = sharedSettings.loadSpeed(for: chartB.persistentModelID)
+        #expect(chartBSpeed == 0.75, "Chart B's saved speed should not be corrupted by early cleanup")
+    }
+
     @Test func testInputManagerConfiguredWithEffectiveBPM() async throws {
         // This test verifies that InputManager is configured with effective BPM so scoring matches playback speed.
 

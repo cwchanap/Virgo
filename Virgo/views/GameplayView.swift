@@ -20,7 +20,7 @@ struct GameplayView: View {
 
     // MARK: - ViewModel
     /// Consolidated state management - initialized lazily with environment dependencies
-    @State private var viewModel: GameplayViewModel?
+    @State var viewModel: GameplayViewModel?
     /// Cached fallback track to avoid constructing a new DrumTrack on every render
     @State private var cachedFallbackTrack: DrumTrack
 

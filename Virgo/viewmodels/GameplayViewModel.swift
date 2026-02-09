@@ -512,7 +512,12 @@ final class GameplayViewModel {
 
     func cleanup() {
         // Save speed setting for this chart (SC-06: Remember last-used speed)
-        practiceSettings.saveSpeed(practiceSettings.speedMultiplier, for: chart.persistentModelID)
+        // Guard: Only save if data was loaded and this chart's persisted speed was applied.
+        // Prevents race condition where quickly dismissing the view could save the previous
+        // chart's shared speed under the current chart's ID before its own speed was loaded.
+        if isDataLoaded {
+            practiceSettings.saveSpeed(practiceSettings.speedMultiplier, for: chart.persistentModelID)
+        }
 
         playbackTimer?.invalidate()
         playbackTimer = nil
