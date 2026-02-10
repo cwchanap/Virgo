@@ -13,18 +13,24 @@ import Observation
 import AVFoundation
 import Combine
 
-/// ViewModel for GameplayView that consolidates state management
-/// and provides a clean separation between UI and business logic.
-@Observable
-@MainActor
-final class GameplayViewModel {
-    // MARK: - Dependencies
-    let chart: Chart
-    let metronome: MetronomeEngine
-    let practiceSettings: PracticeSettingsService
-    private var lastAppliedSpeedMultiplier: Double
+    /// ViewModel for GameplayView that consolidates state management
+    /// and provides a clean separation between UI and business logic.
+    @Observable
+    @MainActor
+    final class GameplayViewModel {
+        // MARK: - Dependencies
+        let chart: Chart
+        let metronome: MetronomeEngine
+        let practiceSettings: PracticeSettingsService
+        private var lastAppliedSpeedMultiplier: Double
 
-    // MARK: - Cached SwiftData Relationships
+        // MARK: - Speed Change Debounce
+        /// Timestamp of last speed change application for debouncing
+        private var lastSpeedChangeTimestamp: Date?
+        /// Minimum interval between speed change applications (100ms)
+        private let speedChangeDebounceInterval: TimeInterval = 0.1
+
+        // MARK: - Cached SwiftData Relationships
     /// Cached song to avoid main thread blocking from relationship access
     var cachedSong: Song?
     /// Cached notes array to avoid relationship access during rendering
@@ -146,6 +152,14 @@ final class GameplayViewModel {
     }
 
     private func applySpeedChange(previousSpeed: Double) {
+        // Debounce: ignore updates that arrive within the debounce interval
+        let now = Date()
+        if let lastTimestamp = lastSpeedChangeTimestamp,
+           now.timeIntervalSince(lastTimestamp) < speedChangeDebounceInterval {
+            return
+        }
+        lastSpeedChangeTimestamp = now
+
         // Bug 5 fix: Apply clamped speed once if needed, avoiding redundant .onChange re-entry
         if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
             practiceSettings.setSpeed(clampedSpeed)
