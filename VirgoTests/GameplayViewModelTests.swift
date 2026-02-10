@@ -1474,6 +1474,55 @@ struct GameplayViewModelTests {
         #expect(chartBSpeed == 0.75, "Chart B's saved speed should not be corrupted by early cleanup")
     }
 
+    @Test func testCleanupDoesNotSaveSpeedWhenPersistedSpeedNotLoaded() async throws {
+        // Regression test for race condition where quickly dismissing GameplayView
+        // after loadChartData() but before setupGameplay() could save the default
+        // speed (1.0) under the current chart's ID, overwriting its persisted speed.
+        //
+        // Scenario (Bug P1):
+        // 1. Chart B has persisted speed of 0.75x saved
+        // 2. User opens Chart B
+        // 3. GameplayView.task calls resetSpeed() → speed becomes 1.0 (default)
+        // 4. GameplayView.task calls loadChartData() → isDataLoaded = true
+        // 5. User quickly dismisses view BEFORE setupGameplay() loads persisted speed
+        // 6. cleanup() is called with isDataLoaded=true but speed still at 1.0
+        // 7. Without the fix, cleanup() would save 1.0 for Chart B, corrupting 0.75x
+
+        let chart = createTestChart(noteCount: 4)
+        let metronome = createTestMetronome()
+
+        // Isolated UserDefaults for this test
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+
+        // Pre-set chart's saved speed to 0.75x
+        practiceSettings.saveSpeed(0.75, for: chart.persistentModelID)
+        #expect(practiceSettings.loadSpeed(for: chart.persistentModelID) == 0.75, "Chart should have 0.75x pre-saved")
+
+        // Simulate GameplayView.task flow up to loadChartData:
+        // 1. Reset speed to default (as GameplayView.task does)
+        practiceSettings.resetSpeed()
+        #expect(practiceSettings.speedMultiplier == 1.0, "Speed should be reset to default 1.0")
+
+        // 2. Create ViewModel and load chart data (but NOT setupGameplay)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        #expect(viewModel.isDataLoaded == true, "Data should be loaded")
+        // NOTE: We intentionally do NOT call setupGameplay() - this simulates
+        // the user dismissing the view right after loadChartData() but before
+        // setupGameplay() had a chance to load the persisted speed
+
+        // At this point, speed is still 1.0 (default), not the chart's 0.75x
+        #expect(practiceSettings.speedMultiplier == 1.0, "Speed should still be default 1.0")
+
+        // Cleanup - should NOT save the default speed since persisted speed was never loaded
+        viewModel.cleanup()
+
+        // Verify chart's saved speed was NOT corrupted with the default 1.0
+        let savedSpeed = practiceSettings.loadSpeed(for: chart.persistentModelID)
+        #expect(savedSpeed == 0.75, "Chart's saved speed should NOT be overwritten with default 1.0")
+    }
+
     @Test func testInputManagerConfiguredWithEffectiveBPM() async throws {
         // This test verifies that InputManager is configured with effective BPM so scoring matches playback speed.
 
