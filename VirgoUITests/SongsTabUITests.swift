@@ -29,8 +29,11 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testSongsTabNavigation() throws {
-        app.buttons["START"].tap()
-        
+        // Wait for START button to appear before tapping to avoid flakiness
+        let startButton = app.buttons["START"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5), "START button should exist")
+        startButton.tap()
+
         // Navigate to Songs tab via Content View (which shows SongsTabView)
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
         
