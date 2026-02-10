@@ -117,8 +117,12 @@ struct ContentView: View {
         .onAppear {
             if shouldResetState {
                 clearPersistedTestState()
-            }
-            if isUITesting {
+                // When resetting state in UI testing mode, unconditionally seed fresh data
+                // to avoid stale data issues from @Query not refreshing synchronously
+                if isUITesting {
+                    seedUITestData()
+                }
+            } else if isUITesting {
                 seedUITestDataIfNeeded()
             }
             if databaseService == nil {
@@ -142,8 +146,13 @@ struct ContentView: View {
         for song in allSongs {
             modelContext.delete(song)
         }
-        try? modelContext.save()
-        Logger.database("Cleared persisted test state for UI test isolation")
+        do {
+            try modelContext.save()
+            Logger.database("Cleared persisted test state for UI test isolation")
+        } catch {
+            Logger.databaseError(error)
+            assertionFailure("Failed to clear persisted test state: \(error.localizedDescription)")
+        }
     }
 
     private func seedUITestDataIfNeeded() {
@@ -153,10 +162,17 @@ struct ContentView: View {
         let fixtureTitles = Set(Song.sampleData.map { $0.title })
         let existingTitles = Set(allSongs.map { $0.title })
         let missingFixtures = fixtureTitles.subtracting(existingTitles)
-        
+
         guard !missingFixtures.isEmpty else { return }
 
-        let sampleSongs = Song.sampleData.filter { missingFixtures.contains($0.title) }
+        seedUITestData(missingFixtures: missingFixtures)
+    }
+
+    /// Unconditionally seeds all UI test data. Used after reset to ensure fresh data.
+    private func seedUITestData(missingFixtures: Set<String>? = nil) {
+        let fixturesToSeed = missingFixtures ?? Set(Song.sampleData.map { $0.title })
+        let sampleSongs = Song.sampleData.filter { fixturesToSeed.contains($0.title) }
+
         for templateSong in sampleSongs {
             // Create a fresh Song instance to avoid mutating shared/static sampleData
             let song = Song(
@@ -177,9 +193,10 @@ struct ContentView: View {
 
         do {
             try modelContext.save()
-            Logger.database("Seeded \(sampleSongs.count) missing UI test songs: \(missingFixtures.sorted().joined(separator: ", "))")
+            Logger.database("Seeded \(sampleSongs.count) UI test songs: \(fixturesToSeed.sorted().joined(separator: ", "))")
         } catch {
             Logger.databaseError(error)
+            assertionFailure("Failed to seed UI test data: \(error.localizedDescription)")
         }
     }
 }

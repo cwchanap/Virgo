@@ -188,7 +188,8 @@ struct GameplayViewModelTests {
         #expect(toggleSuccess, "Metronome should start before updating speed")
 
         viewModel.updateSpeed(0.75)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
+        try await Task.sleep(nanoseconds: 150_000_000)
         let expectedBPM = viewModel.effectiveBPM()
         #expect(abs(metronome.bpm - expectedBPM) < 0.001)
 
@@ -241,6 +242,9 @@ struct GameplayViewModelTests {
         viewModel.practiceSettings.setSpeed(1.0)
         viewModel.pausedElapsedTime = 2.0
         viewModel.updateSpeed(0.5)
+
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
+        try await Task.sleep(nanoseconds: 150_000_000)
 
         let expectedProgress = viewModel.cachedTrackDuration > 0
             ? viewModel.pausedElapsedTime / viewModel.cachedTrackDuration
@@ -1209,6 +1213,9 @@ struct GameplayViewModelTests {
         // Change speed during playback
         viewModel.updateSpeed(0.75)
 
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
         // Verify speed was applied
         #expect(
             viewModel.practiceSettings.speedMultiplier == 0.75,
@@ -1248,6 +1255,9 @@ struct GameplayViewModelTests {
         let tolerance = 0.01
 
         viewModel.updateSpeed(0.75)
+
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
+        try await Task.sleep(nanoseconds: 150_000_000)
 
         #expect(
             abs(viewModel.inputManager.configuredBPM - (baseBPM * 0.75)) < tolerance,
@@ -1348,6 +1358,9 @@ struct GameplayViewModelTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
+        // Wait for any async setup operations (enforceBGMMinimumSpeedIfNeeded) to complete
+        try await Task.sleep(nanoseconds: 50_000_000)
+
         // Verify speed was loaded
         #expect(
             viewModel.practiceSettings.speedMultiplier == 0.5,
@@ -1378,6 +1391,8 @@ struct GameplayViewModelTests {
         await vmA.loadChartData()
         vmA.setupGameplay(loadPersistedSpeed: false)
         vmA.updateSpeed(0.5)
+        // Wait for trailing-edge debounce timer to fire
+        try await Task.sleep(nanoseconds: 150_000_000)
         vmA.cleanup()   // saves 50% for chartA
 
         // Shared service still holds stale 50% from Song A
@@ -1413,6 +1428,9 @@ struct GameplayViewModelTests {
         // Set speed
         viewModel.updateSpeed(0.75)
 
+        // Wait for trailing-edge debounce timer to fire before cleanup
+        try await Task.sleep(nanoseconds: 150_000_000)
+
         // Cleanup (should save speed)
         viewModel.cleanup()
 
@@ -1446,6 +1464,8 @@ struct GameplayViewModelTests {
         await vmA.loadChartData()
         vmA.setupGameplay()
         vmA.updateSpeed(1.5)
+        // Wait for trailing-edge debounce timer to fire
+        try await Task.sleep(nanoseconds: 150_000_000)
         vmA.cleanup()  // Saves 1.5x for Chart A
 
         #expect(sharedSettings.speedMultiplier == 1.5, "Shared settings should retain last used speed")
@@ -1623,6 +1643,8 @@ struct GameplayViewModelTests {
 
         // Change speed to 125% while playing
         viewModel.updateSpeed(1.25)
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
+        try await Task.sleep(nanoseconds: 150_000_000)
         let updatedEffectiveBPM = viewModel.effectiveBPM()
         #expect(
             metronome.bpm == updatedEffectiveBPM,

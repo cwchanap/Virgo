@@ -24,11 +24,15 @@ import Combine
         let practiceSettings: PracticeSettingsService
         private var lastAppliedSpeedMultiplier: Double
 
-        // MARK: - Speed Change Debounce
-        /// Timestamp of last speed change application for debouncing
-        private var lastSpeedChangeTimestamp: Date?
-        /// Minimum interval between speed change applications (100ms)
-        private let speedChangeDebounceInterval: TimeInterval = 0.1
+    // MARK: - Speed Change Debounce
+    /// Timestamp of last speed change application for debouncing
+    private var lastSpeedChangeTimestamp: Date?
+    /// Minimum interval between speed change applications (100ms)
+    private let speedChangeDebounceInterval: TimeInterval = 0.1
+    /// Pending speed change timer for trailing-edge debounce
+    private var speedChangeTimer: Timer?
+    /// Latest pending speed value waiting to be applied
+    private var latestPendingSpeed: Double?
 
         // MARK: - Cached SwiftData Relationships
     /// Cached song to avoid main thread blocking from relationship access
@@ -154,14 +158,31 @@ import Combine
     }
 
     private func applySpeedChange(previousSpeed: Double) {
-        // Debounce: ignore updates that arrive within the debounce interval
-        let now = Date()
-        if let lastTimestamp = lastSpeedChangeTimestamp,
-           now.timeIntervalSince(lastTimestamp) < speedChangeDebounceInterval {
-            return
-        }
-        lastSpeedChangeTimestamp = now
+        // Trailing-edge debounce: store the latest speed and schedule application
+        let targetSpeed = practiceSettings.speedMultiplier
+        latestPendingSpeed = targetSpeed
 
+        // Cancel any existing pending timer
+        speedChangeTimer?.invalidate()
+
+        // Schedule a new timer to apply the speed change after the debounce interval
+        speedChangeTimer = Timer.scheduledTimer(withTimeInterval: speedChangeDebounceInterval, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+
+            // Only apply if we still have a pending speed
+            guard let pendingSpeed = self.latestPendingSpeed else { return }
+
+            // Update timestamp when actually applying
+            self.lastSpeedChangeTimestamp = Date()
+            self.latestPendingSpeed = nil
+
+            // Apply the speed change
+            self.applySpeedChangeInternal(previousSpeed: previousSpeed, targetSpeed: pendingSpeed)
+        }
+    }
+
+    /// Internal method that actually applies the speed change after debouncing
+    private func applySpeedChangeInternal(previousSpeed: Double, targetSpeed: Double) {
         // Bug 5 fix: Apply clamped speed once if needed, avoiding redundant .onChange re-entry
         if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
             practiceSettings.setSpeed(clampedSpeed)
@@ -329,13 +350,19 @@ import Combine
         if loadPersistedSpeed {
             practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
             lastAppliedSpeedMultiplier = practiceSettings.speedMultiplier
-            hasLoadedPersistedSpeed = true
         }
+
+        // Flag indicates gameplay was set up successfully (not that persisted speed was loaded)
+        // This ensures cleanup() saves speed whenever setupGameplay completes
+        hasLoadedPersistedSpeed = true
 
         computeDrumBeats()
         computeCachedLayoutData()
         setupBGMPlayer()
-        enforceBGMMinimumSpeedIfNeeded()
+        // Apply clamped speed if BGM minimum enforcement returns a value
+        if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
+            practiceSettings.setSpeed(clampedSpeed)
+        }
         refreshTimingCaches()
         // Use effective BPM (base × speed multiplier) for metronome
         metronome.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature)

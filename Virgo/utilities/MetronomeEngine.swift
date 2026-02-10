@@ -18,6 +18,12 @@ import UIKit
 class MetronomeEngine: ObservableObject {
     private let logger = Logger()
 
+    // MARK: - BPM Range Constants
+    /// Minimum safe BPM value to prevent timing/performance issues (allows 10 BPM for extremely slow practice)
+    static let minBPM: Double = 10.0
+    /// Maximum safe BPM value to prevent timing/performance issues (allows 300 BPM for fast practice at 150% speed)
+    static let maxBPM: Double = 300.0
+
     // Published properties for UI
     @Published var isEnabled = false
     @Published var volume: Float = 0.7
@@ -212,14 +218,16 @@ class MetronomeEngine: ObservableObject {
             return
         }
 
-        // Log extreme BPM values for debugging
-        if newBPM < 20 {
-            Logger.warning("Very low BPM (\(String(format: "%.1f", newBPM))) - ensure this matches practice intent")
-        } else if newBPM > 300 {
-            Logger.warning("Very high BPM (\(String(format: "%.1f", newBPM))) - ensure this matches practice intent")
+        // Clamp BPM to safe range and log if clamping occurs
+        let clampedBPM = max(Self.minBPM, min(Self.maxBPM, newBPM))
+        if clampedBPM != newBPM {
+            Logger.warning(
+                "BPM clamped from \(String(format: "%.1f", newBPM)) to \(String(format: "%.1f", clampedBPM)) " +
+                "(valid range: \(Self.minBPM)-\(Self.maxBPM))"
+            )
         }
 
-        bpm = newBPM
+        bpm = clampedBPM
     }
 
     func updateTimeSignature(_ newTimeSignature: TimeSignature) {
