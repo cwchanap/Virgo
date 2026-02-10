@@ -25,6 +25,7 @@ extension GameplayView {
                     playbackProgress: playbackProgressBinding,
                     metronome: viewModel.metronome,
                     practiceSettings: viewModel.practiceSettings,
+                    cachedTrackDuration: viewModel.cachedTrackDuration,
                     onPlayPause: { viewModel.togglePlayback() },
                     onRestart: { viewModel.restartPlayback() },
                     onSkipToEnd: { viewModel.skipToEnd() },

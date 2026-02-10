@@ -146,7 +146,10 @@ final class GameplayViewModel {
     }
 
     private func applySpeedChange(previousSpeed: Double) {
-        enforceBGMMinimumSpeedIfNeeded()
+        // Bug 5 fix: Apply clamped speed once if needed, avoiding redundant .onChange re-entry
+        if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
+            practiceSettings.setSpeed(clampedSpeed)
+        }
         refreshTimingCaches()
         let currentSpeed = practiceSettings.speedMultiplier
         guard abs(previousSpeed - currentSpeed) > 0.0001 else { return }
@@ -552,13 +555,16 @@ final class GameplayViewModel {
         cachedTrackDuration = calculateTrackDuration()
     }
 
-    private func enforceBGMMinimumSpeedIfNeeded() {
-        guard bgmPlayer != nil else { return }
+    /// Returns the clamped speed if BGM is present and speed is below minimum, nil otherwise.
+    /// Bug 5 fix: Returns value instead of calling setSpeed directly to avoid redundant .onChange re-entry.
+    private func enforceBGMMinimumSpeedIfNeeded() -> Double? {
+        guard bgmPlayer != nil else { return nil }
         let minimumSpeed = 0.5
         if practiceSettings.speedMultiplier < minimumSpeed {
             Logger.warning("BGM enabled - clamping speed to 50% to keep audio in sync")
-            practiceSettings.setSpeed(minimumSpeed)
+            return minimumSpeed
         }
+        return nil
     }
 
     private func startBGMPlayback(track: DrumTrack) {
@@ -965,6 +971,8 @@ final class GameplayViewModel {
 
         do {
             bgmPlayer = try AVAudioPlayer(contentsOf: bgmURL)
+            // Bug 4 fix: enableRate must be set before prepareToPlay() for correct buffer allocation
+            bgmPlayer?.enableRate = true
             bgmPlayer?.prepareToPlay()
             bgmPlayer?.volume = 0.7
             Logger.audioPlayback("BGM player setup successful for track: \(track?.title ?? "Unknown")")
