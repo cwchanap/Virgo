@@ -201,6 +201,7 @@ struct ComponentRefactoringTests {
                 playbackProgress: .constant(0.25),
                 metronome: MetronomeEngine(),
                 practiceSettings: practiceSettings,
+                cachedTrackDuration: 180.0,
                 onPlayPause: {},
                 onRestart: {},
                 onSkipToEnd: {},
@@ -212,7 +213,7 @@ struct ComponentRefactoringTests {
         }
     }
 
-    @Test("GameplayControlsView uses speed-adjusted duration")
+    @Test("GameplayControlsView uses speed-adjusted duration from cachedTrackDuration")
     func testGameplayControlsViewAdjustedDuration() async throws {
         try await TestSetup.withTestSetup {
             guard let track = DrumTrack.sampleData.first else {
@@ -222,24 +223,24 @@ struct ComponentRefactoringTests {
 
             let practiceSettings = PracticeSettingsService()
             practiceSettings.setSpeed(0.5)
+            let cachedTrackDuration = 180.0 // Use consistent value from view model
             let controlsView = GameplayControlsView(
                 track: track,
                 isPlaying: .constant(false),
                 playbackProgress: .constant(0.0),
                 metronome: MetronomeEngine(),
                 practiceSettings: practiceSettings,
+                cachedTrackDuration: cachedTrackDuration,
                 onPlayPause: {},
                 onRestart: {},
                 onSkipToEnd: {},
                 onSpeedChange: { _ in }
             )
 
-            let baseDuration = track.duration.split(separator: ":").compactMap { Double($0) }.count == 2
-                ? track.duration.split(separator: ":").compactMap { Double($0) }[0] * 60
-                    + track.duration.split(separator: ":").compactMap { Double($0) }[1]
-                : 180.0
+            // Bug 2 fix: adjustedDurationSeconds now uses cachedTrackDuration from view model
+            // for consistency with progress bar calculation
             let adjustedDuration = controlsView.adjustedDurationSeconds()
-            #expect(abs(adjustedDuration - baseDuration / 0.5) < 0.001)
+            #expect(abs(adjustedDuration - cachedTrackDuration / 0.5) < 0.001)
         }
     }
 }
