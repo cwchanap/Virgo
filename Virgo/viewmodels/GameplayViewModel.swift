@@ -37,6 +37,8 @@ import Combine
     var cachedNotes: [Note] = []
     /// Flag indicating whether async data loading is complete
     var isDataLoaded = false
+    /// Flag indicating whether the chart's persisted speed was loaded (prevents saving before load)
+    private var hasLoadedPersistedSpeed = false
 
     // MARK: - Track State
     /// Cached DrumTrack instance to avoid repeated object creation
@@ -327,6 +329,7 @@ import Combine
         if loadPersistedSpeed {
             practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
             lastAppliedSpeedMultiplier = practiceSettings.speedMultiplier
+            hasLoadedPersistedSpeed = true
         }
 
         computeDrumBeats()
@@ -529,10 +532,10 @@ import Combine
 
     func cleanup() {
         // Save speed setting for this chart (SC-06: Remember last-used speed)
-        // Guard: Only save if data was loaded and this chart's persisted speed was applied.
-        // Prevents race condition where quickly dismissing the view could save the previous
-        // chart's shared speed under the current chart's ID before its own speed was loaded.
-        if isDataLoaded {
+        // Guard: Only save if the chart's persisted speed was actually loaded.
+        // Prevents race condition where quickly dismissing the view could save the
+        // default speed (1.0) under the current chart's ID before its own speed was loaded.
+        if hasLoadedPersistedSpeed {
             practiceSettings.saveSpeed(practiceSettings.speedMultiplier, for: chart.persistentModelID)
         }
 
