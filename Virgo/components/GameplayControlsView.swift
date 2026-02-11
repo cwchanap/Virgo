@@ -129,7 +129,10 @@ struct GameplayControlsView: View {
             HStack(spacing: 8) {
                 ForEach(PracticeSettingsService.speedPresets, id: \.self) { preset in
                     Button(
-                        action: { onSpeedChange(preset) },
+                        action: {
+                            practiceSettings.setSpeed(preset)
+                            onSpeedChange(preset)
+                        },
                         label: {
                             Text("\(Int(preset * 100))%")
                                 .font(.caption)

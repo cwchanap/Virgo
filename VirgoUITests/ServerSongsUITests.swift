@@ -21,7 +21,7 @@ final class ServerSongsUITests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        app.terminate()
+        app?.terminate()
     }
 
     @MainActor
