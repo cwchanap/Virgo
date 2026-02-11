@@ -13,16 +13,16 @@ import Observation
 import AVFoundation
 import Combine
 
-    /// ViewModel for GameplayView that consolidates state management
-    /// and provides a clean separation between UI and business logic.
-    @Observable
-    @MainActor
-    final class GameplayViewModel {
-        // MARK: - Dependencies
-        let chart: Chart
-        let metronome: MetronomeEngine
-        let practiceSettings: PracticeSettingsService
-        private var lastAppliedSpeedMultiplier: Double
+/// ViewModel for GameplayView that consolidates state management
+/// and provides a clean separation between UI and business logic.
+@Observable
+@MainActor
+final class GameplayViewModel {
+    // MARK: - Dependencies
+    let chart: Chart
+    let metronome: MetronomeEngine
+    let practiceSettings: PracticeSettingsService
+    private var lastAppliedSpeedMultiplier: Double
 
     // MARK: - Speed Change Debounce
     /// Timestamp of last speed change application for debouncing
@@ -34,7 +34,7 @@ import Combine
     /// Latest pending speed value waiting to be applied
     private var latestPendingSpeed: Double?
 
-        // MARK: - Cached SwiftData Relationships
+    // MARK: - Cached SwiftData Relationships
     /// Cached song to avoid main thread blocking from relationship access
     var cachedSong: Song?
     /// Cached notes array to avoid relationship access during rendering
@@ -186,12 +186,12 @@ import Combine
             self.latestPendingSpeed = nil
 
             // Apply the speed change
-            self.applySpeedChangeInternal(previousSpeed: previousApplied, targetSpeed: pendingSpeed)
+            self.applySpeedChangeInternal(previousSpeed: previousApplied)
         }
     }
 
     /// Internal method that actually applies the speed change after debouncing
-    private func applySpeedChangeInternal(previousSpeed: Double, targetSpeed: Double) {
+    private func applySpeedChangeInternal(previousSpeed: Double) {
         // Skip speed application during initialization before data is loaded
         guard isDataLoaded else {
             Logger.debug("Speed change skipped - data not yet loaded")
@@ -576,6 +576,12 @@ import Combine
     // MARK: - Cleanup
 
     func cleanup() {
+        // Cancel any pending debounced speed changes before saving/cleanup
+        // to prevent timer firing after cleanup and corrupting state
+        speedChangeTimer?.invalidate()
+        speedChangeTimer = nil
+        latestPendingSpeed = nil
+
         // Save speed setting for this chart (SC-06: Remember last-used speed per chart)
         // Guard: Only save if the chart's persisted speed was actually loaded.
         // Prevents race condition where quickly dismissing the view could save the

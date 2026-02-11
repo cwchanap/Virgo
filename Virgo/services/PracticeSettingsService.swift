@@ -56,6 +56,11 @@ class PracticeSettingsService: ObservableObject {
         }
 
         let clampedSpeed = max(Self.minSpeed, min(Self.maxSpeed, speed))
+
+        // Skip redundant updates to prevent unnecessary @Published notifications
+        // (avoids double notifications when view calls setSpeed before updateSpeed)
+        guard abs(clampedSpeed - speedMultiplier) > 0.001 else { return }
+
         speedMultiplier = clampedSpeed
 
         Logger.userAction("Speed set to \(Int(clampedSpeed * 100))%")
