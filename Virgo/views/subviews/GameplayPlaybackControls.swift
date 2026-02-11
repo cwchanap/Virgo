@@ -12,11 +12,11 @@ extension GameplayView {
         Group {
             if let viewModel = viewModel {
                 let isPlayingBinding = Binding(
-                    get: { viewModel.isPlaying },
+                    get: { self.viewModel?.isPlaying ?? false },
                     set: { self.viewModel?.isPlaying = $0 }
                 )
                 let playbackProgressBinding = Binding(
-                    get: { viewModel.playbackProgress },
+                    get: { self.viewModel?.playbackProgress ?? 0.0 },
                     set: { self.viewModel?.playbackProgress = $0 }
                 )
                 GameplayControlsView(

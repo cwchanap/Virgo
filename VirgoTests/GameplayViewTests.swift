@@ -12,7 +12,8 @@ import Foundation
 @MainActor
 struct GameplayViewTests {
 
-    @Test func testGameplayViewInitializationWithPracticeSettings() async throws {
+    // Smoke test: Verifies GameplayView initializes without crashing with PracticeSettingsService
+    @Test func testGameplayViewInitializationDoesNotCrash() async throws {
         let chart = Chart(difficulty: .easy)
         let metronome = MetronomeEngine()
         let (userDefaults, _) = TestUserDefaults.makeIsolated()

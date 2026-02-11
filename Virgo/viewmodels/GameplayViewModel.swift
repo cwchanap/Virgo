@@ -168,25 +168,27 @@ final class GameplayViewModel {
 
         // Schedule a new timer to apply the speed change after the debounce interval
         speedChangeTimer = Timer.scheduledTimer(withTimeInterval: speedChangeDebounceInterval, repeats: false) { [weak self] _ in
-            guard let self = self else {
-                Logger.debug("Speed change timer fired after ViewModel deallocation - change discarded")
-                return
+            Task { @MainActor in
+                guard let self = self else {
+                    Logger.debug("Speed change timer fired after ViewModel deallocation - change discarded")
+                    return
+                }
+
+                // Only apply if we still have a pending speed
+                guard let pendingSpeed = self.latestPendingSpeed else { return }
+
+                // Use lastAppliedSpeedMultiplier (the actual last-applied speed) instead of a
+                // captured previousSpeed parameter, which could be stale from a debounced-away
+                // intermediate slider value
+                let previousApplied = self.lastAppliedSpeedMultiplier
+
+                // Update timestamp when actually applying
+                self.lastSpeedChangeTimestamp = Date()
+                self.latestPendingSpeed = nil
+
+                // Apply the speed change
+                self.applySpeedChangeInternal(previousSpeed: previousApplied)
             }
-
-            // Only apply if we still have a pending speed
-            guard let pendingSpeed = self.latestPendingSpeed else { return }
-
-            // Use lastAppliedSpeedMultiplier (the actual last-applied speed) instead of a
-            // captured previousSpeed parameter, which could be stale from a debounced-away
-            // intermediate slider value
-            let previousApplied = self.lastAppliedSpeedMultiplier
-
-            // Update timestamp when actually applying
-            self.lastSpeedChangeTimestamp = Date()
-            self.latestPendingSpeed = nil
-
-            // Apply the speed change
-            self.applySpeedChangeInternal(previousSpeed: previousApplied)
         }
     }
 
@@ -300,8 +302,7 @@ final class GameplayViewModel {
     func bgmTimelineElapsedTime(for bgmCurrentTime: TimeInterval) -> Double {
         let speedMultiplier = practiceSettings.speedMultiplier
         guard speedMultiplier > 0 else {
-            Logger.error("bgmTimelineElapsedTime called with zero speedMultiplier - returning unscaled time")
-            return bgmCurrentTime + bgmOffsetSeconds
+            fatalError("bgmTimelineElapsedTime called with zero speedMultiplier - calculateBGMOffset()/bgmOffsetSeconds is invalid")
         }
 
         return (bgmCurrentTime / speedMultiplier) + bgmOffsetSeconds

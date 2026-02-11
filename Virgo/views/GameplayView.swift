@@ -78,6 +78,12 @@ struct GameplayView: View {
                     practiceSettings: practiceSettings
                 )
             }
+            // Check if the task was cancelled immediately after viewModel creation
+            if Task.isCancelled {
+                viewModel?.cleanup()
+                viewModel = nil
+                return
+            }
             guard let vm = viewModel else { return }
             // Load SwiftData relationships asynchronously to avoid blocking main thread
             await vm.loadChartData()

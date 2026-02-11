@@ -241,17 +241,16 @@ final class GameplayViewUITests: XCTestCase {
         backButton.tap()
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
         
-        // Test navigation to second track (if available)
-        if app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10) {
-            app.staticTexts["Jazz Groove"].tap()
-            XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10))
-            XCTAssertTrue(app.staticTexts["Smooth Collective"].waitForExistence(timeout: 10))
-            
-            // Navigate back again
-            let backButton2 = app.buttons.matching(identifier: "chevron.left").firstMatch
-            backButton2.tap()
-            XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
-        }
+        // Test navigation to second track (must always be present)
+        XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10), "Jazz Groove track must be available")
+        app.staticTexts["Jazz Groove"].tap()
+        XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Smooth Collective"].waitForExistence(timeout: 10))
+
+        // Navigate back again
+        let backButton2 = app.buttons.matching(identifier: "chevron.left").firstMatch
+        backButton2.tap()
+        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
     }
 
     @MainActor
