@@ -85,7 +85,7 @@ class PracticeSettingsService: ObservableObject {
         return "\(Int(effectiveBPM(baseBPM: baseBPM))) BPM"
     }
 
-    // MARK: - Persistence (SC-06: Remember last-used speed per song/chart)
+    // MARK: - Persistence (SC-06: Remember last-used speed per chart)
 
     /// Creates a stable persistence key from a PersistentIdentifier.
     /// Uses JSON encoding for a stable, deterministic representation across app launches.
@@ -93,19 +93,26 @@ class PracticeSettingsService: ObservableObject {
     /// - Returns: A stable string key for UserDefaults storage
     private func persistenceKey(for chartID: PersistentIdentifier) -> String {
         // Encode using JSONEncoder for stable, deterministic representation
-        guard let data = try? JSONEncoder().encode(chartID),
-              let key = String(data: data, encoding: .utf8) else {
-            // Fallback: use stable SHA-256 digest
-            // PersistentIdentifier's description format is stable across launches
-            // SHA-256 produces a deterministic, stable hash of the identifier string
-            let stableIdentifier = String(describing: chartID)
-            let inputData = Data(stableIdentifier.utf8)
-            let digest = SHA256.hash(data: inputData)
-            let hashString = digest.compactMap { String(format: "%02x", $0) }.joined()
-            // Use first 32 characters of hex digest for a reasonably short but unique key
-            return "chart_\(String(hashString.prefix(32)))"
+        do {
+            let data = try JSONEncoder().encode(chartID)
+            if let key = String(data: data, encoding: .utf8) {
+                return key
+            }
+            Logger.error("Failed to convert PersistentIdentifier JSON data to UTF-8 string")
+        } catch {
+            Logger.error("Failed to JSON-encode PersistentIdentifier: \(error.localizedDescription)")
         }
-        return key
+
+        // Fallback: SHA-256 digest of description string.
+        // Note: PersistentIdentifier.description stability is not guaranteed by Apple API;
+        // this fallback may produce different keys across OS/framework updates.
+        // The primary JSONEncoder path should handle most cases reliably.
+        let stableIdentifier = String(describing: chartID)
+        let inputData = Data(stableIdentifier.utf8)
+        let digest = SHA256.hash(data: inputData)
+        let hashString = digest.compactMap { String(format: "%02x", $0) }.joined()
+        // Use first 32 hex characters (128 bits) of SHA-256 digest
+        return "chart_\(String(hashString.prefix(32)))"
     }
 
     /// Loads the saved speed for a specific chart.

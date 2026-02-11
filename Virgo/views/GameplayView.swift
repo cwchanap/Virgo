@@ -90,9 +90,6 @@ struct GameplayView: View {
             vm.setupMetronomeSubscription()
             Logger.userAction("Opened gameplay view for track: \(vm.track?.title ?? "Unknown")")
         }
-        .onChange(of: practiceSettings.speedMultiplier) { _, _ in
-            viewModel?.updateSettings(practiceSettings)
-        }
         .onDisappear {
             viewModel?.cleanup()
         }
