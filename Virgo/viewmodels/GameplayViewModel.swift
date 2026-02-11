@@ -368,11 +368,10 @@ final class GameplayViewModel {
         if loadPersistedSpeed {
             practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
             lastAppliedSpeedMultiplier = practiceSettings.speedMultiplier
+            // Only set the flag when we actually load a persisted speed
+            // This ensures cleanup() doesn't save before persisted speed is loaded
+            hasLoadedPersistedSpeed = true
         }
-
-        // Flag indicates gameplay was set up successfully (not that persisted speed was loaded)
-        // This ensures cleanup() saves speed whenever setupGameplay completes
-        hasLoadedPersistedSpeed = true
 
         computeDrumBeats()
         computeCachedLayoutData()
