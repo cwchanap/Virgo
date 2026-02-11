@@ -13,17 +13,13 @@ struct GameplayControlsView: View {
     @Binding var playbackProgress: Double
     @ObservedObject var metronome: MetronomeEngine
     @ObservedObject var practiceSettings: PracticeSettingsService
-    /// Track duration from view model for consistent progress calculation (Bug 2 fix)
+    /// Track duration from view model, already speed-adjusted by calculateTrackDuration()
     let cachedTrackDuration: Double
     let onPlayPause: () -> Void
     let onRestart: () -> Void
     let onSkipToEnd: () -> Void
     let onSpeedChange: (Double) -> Void
 
-    /// Debounce timer for speed slider to prevent rapid applySpeedChange calls during drags
-    @State private var speedDebounceTimer: Timer?
-    /// Debounce interval in seconds (100ms) for speed slider updates
-    private let speedDebounceInterval: TimeInterval = 0.1
 
     var body: some View {
         let adjustedDuration = adjustedDurationSeconds()
@@ -107,12 +103,6 @@ struct GameplayControlsView: View {
                 endPoint: .bottom
             )
         )
-        // Bug 3 fix: Invalidate debounce timer when view disappears to prevent
-        // stale speed values from being written after cleanup
-        .onDisappear {
-            speedDebounceTimer?.invalidate()
-            speedDebounceTimer = nil
-        }
         // Note: Metronome BPM sync on speed change is handled by
         // GameplayViewModel.applySpeedChange() — no .onChange needed here.
     }
@@ -174,11 +164,8 @@ struct GameplayControlsView: View {
                                 * PracticeSettingsService.speedIncrement
                             // Update speed multiplier immediately for responsive UI feedback
                             practiceSettings.setSpeed(snapped)
-                            // Debounce the expensive onSpeedChange call that restarts the metronome
-                            speedDebounceTimer?.invalidate()
-                            speedDebounceTimer = Timer.scheduledTimer(withTimeInterval: speedDebounceInterval, repeats: false) { _ in
-                                onSpeedChange(snapped)
-                            }
+                            // Delegate to ViewModel which has its own trailing-edge debounce
+                            onSpeedChange(snapped)
                         }
                     ),
                     in: PracticeSettingsService.minSpeed...PracticeSettingsService.maxSpeed
@@ -219,11 +206,10 @@ struct GameplayControlsView: View {
     }
 
     /// Returns the speed-adjusted track duration in seconds.
-    /// Uses cachedTrackDuration from view model for consistency with progress bar (Bug 2 fix).
+    /// cachedTrackDuration from the view model is already divided by speedMultiplier
+    /// in calculateTrackDuration(), so return it directly to avoid double-division.
     func adjustedDurationSeconds() -> Double {
-        let speedMultiplier = practiceSettings.speedMultiplier
-        guard speedMultiplier > 0 else { return cachedTrackDuration }
-        return cachedTrackDuration / speedMultiplier
+        return cachedTrackDuration
     }
 }
 

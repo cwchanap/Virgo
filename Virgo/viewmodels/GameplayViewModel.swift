@@ -73,7 +73,7 @@ import Combine
     var lastDiscreteBeat: Int = -1
     /// Last beat update index
     var lastBeatUpdate: Int = -1
-    /// Timer for playback updates (deprecated - now using metronome callbacks)
+    /// Timer reference retained for cleanup during state transitions (periodic updates driven by metronome callbacks)
     var playbackTimer: Timer?
     /// Playback start time for timing calculations
     var playbackStartTime: Date?
@@ -145,19 +145,20 @@ import Combine
     /// Updates the playback speed. Can be called during active playback.
     /// - Parameter newSpeed: Speed multiplier (0.25 to 1.5)
     func updateSpeed(_ newSpeed: Double) {
-        let previousSpeed = practiceSettings.speedMultiplier
         practiceSettings.setSpeed(newSpeed)
-        applySpeedChange(previousSpeed: previousSpeed)
+        applySpeedChange()
     }
 
     /// Applies updates when practice settings change without recreating the view model.
     /// - Parameter practiceSettings: The shared practice settings service.
+    /// Reacts to external changes in the shared practice settings (e.g., from .onChange modifier).
+    /// Verifies the caller's reference matches this ViewModel's instance before applying.
     func updateSettings(_ practiceSettings: PracticeSettingsService) {
         guard practiceSettings === self.practiceSettings else { return }
-        applySpeedChange(previousSpeed: lastAppliedSpeedMultiplier)
+        applySpeedChange()
     }
 
-    private func applySpeedChange(previousSpeed: Double) {
+    private func applySpeedChange() {
         // Trailing-edge debounce: store the latest speed and schedule application
         let targetSpeed = practiceSettings.speedMultiplier
         latestPendingSpeed = targetSpeed
@@ -167,23 +168,37 @@ import Combine
 
         // Schedule a new timer to apply the speed change after the debounce interval
         speedChangeTimer = Timer.scheduledTimer(withTimeInterval: speedChangeDebounceInterval, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
+            guard let self = self else {
+                Logger.debug("Speed change timer fired after ViewModel deallocation - change discarded")
+                return
+            }
 
             // Only apply if we still have a pending speed
             guard let pendingSpeed = self.latestPendingSpeed else { return }
+
+            // Use lastAppliedSpeedMultiplier (the actual last-applied speed) instead of a
+            // captured previousSpeed parameter, which could be stale from a debounced-away
+            // intermediate slider value
+            let previousApplied = self.lastAppliedSpeedMultiplier
 
             // Update timestamp when actually applying
             self.lastSpeedChangeTimestamp = Date()
             self.latestPendingSpeed = nil
 
             // Apply the speed change
-            self.applySpeedChangeInternal(previousSpeed: previousSpeed, targetSpeed: pendingSpeed)
+            self.applySpeedChangeInternal(previousSpeed: previousApplied, targetSpeed: pendingSpeed)
         }
     }
 
     /// Internal method that actually applies the speed change after debouncing
     private func applySpeedChangeInternal(previousSpeed: Double, targetSpeed: Double) {
-        // Bug 5 fix: Apply clamped speed once if needed, avoiding redundant .onChange re-entry
+        // Skip speed application during initialization before data is loaded
+        guard isDataLoaded else {
+            Logger.debug("Speed change skipped - data not yet loaded")
+            return
+        }
+
+        // Enforce BGM minimum speed if needed, applying once to avoid redundant .onChange re-entry
         if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
             practiceSettings.setSpeed(clampedSpeed)
         }
@@ -260,7 +275,7 @@ import Combine
     }
 
     /// Returns a clamped BGM playback rate for AVAudioPlayer while logging clamp warnings.
-    /// Internal for unit testing.
+    /// Exposed as non-private to enable unit testing.
     func clampedBGMRate(for speedMultiplier: Double) -> Float {
         let clampedRate = Float(max(0.5, min(2.0, speedMultiplier)))
 
@@ -285,6 +300,7 @@ import Combine
     func bgmTimelineElapsedTime(for bgmCurrentTime: TimeInterval) -> Double {
         let speedMultiplier = practiceSettings.speedMultiplier
         guard speedMultiplier > 0 else {
+            Logger.error("bgmTimelineElapsedTime called with zero speedMultiplier - returning unscaled time")
             return bgmCurrentTime + bgmOffsetSeconds
         }
 
@@ -308,13 +324,15 @@ import Combine
         } else {
             scheduledTime = bgmDeviceTime
         }
-        bgmPlayer.play(atTime: scheduledTime)
-        return true
+        let success = bgmPlayer.play(atTime: scheduledTime)
+        if !success {
+            Logger.error("BGM play(atTime:) failed during speed change reschedule (scheduled: \(scheduledTime))")
+        }
+        return success
     }
 
     // MARK: - Unique ID Generation
     /// Monotonic counter for generating unique DrumBeat IDs
-    /// Thread-safe: @MainActor ensures all access is on main thread
     private var nextBeatId: UInt64 = 0
 
     /// Generate a unique ID for a DrumBeat
@@ -558,7 +576,7 @@ import Combine
     // MARK: - Cleanup
 
     func cleanup() {
-        // Save speed setting for this chart (SC-06: Remember last-used speed)
+        // Save speed setting for this chart (SC-06: Remember last-used speed per chart)
         // Guard: Only save if the chart's persisted speed was actually loaded.
         // Prevents race condition where quickly dismissing the view could save the
         // default speed (1.0) under the current chart's ID before its own speed was loaded.
@@ -600,7 +618,7 @@ import Combine
     }
 
     /// Returns the clamped speed if BGM is present and speed is below minimum, nil otherwise.
-    /// Bug 5 fix: Returns value instead of calling setSpeed directly to avoid redundant .onChange re-entry.
+    /// Returns value instead of calling setSpeed directly, preventing .onChange re-entry.
     private func enforceBGMMinimumSpeedIfNeeded() -> Double? {
         guard bgmPlayer != nil else { return nil }
         let minimumSpeed = 0.5
@@ -644,7 +662,9 @@ import Combine
             totalBeatsElapsed: totalBeatsElapsed
         )
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
-        bgmPlayer.play(atTime: bgmDeviceTime)
+        if !bgmPlayer.play(atTime: bgmDeviceTime) {
+            Logger.error("BGM play(atTime:) failed during resume from position")
+        }
     }
 
     private func resumeBGMDuringOffset(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) {
@@ -663,7 +683,9 @@ import Combine
         let remainingOffset = remainingBGMOffset()
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
         let bgmScheduledTime = bgmDeviceTime + remainingOffset
-        bgmPlayer.play(atTime: bgmScheduledTime)
+        if !bgmPlayer.play(atTime: bgmScheduledTime) {
+            Logger.error("BGM play(atTime:) failed during resume in offset period")
+        }
     }
 
     private func startFreshBGMPlayback(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) {
@@ -679,7 +701,9 @@ import Combine
 
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
         let bgmScheduledTime = bgmDeviceTime + bgmOffsetSeconds
-        bgmPlayer.play(atTime: bgmScheduledTime)
+        if !bgmPlayer.play(atTime: bgmScheduledTime) {
+            Logger.error("BGM play(atTime:) failed during fresh playback start")
+        }
     }
 
     private func startMetronomeOnlyPlayback(track: DrumTrack, effectiveBPM: Double) {
@@ -975,7 +999,10 @@ import Combine
         let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
         let baseDuration = calculateTrackDurationInSeconds(secondsPerMeasure: secondsPerMeasure)
         let speedMultiplier = practiceSettings.speedMultiplier
-        guard speedMultiplier > 0 else { return baseDuration }
+        guard speedMultiplier > 0 else {
+            Logger.error("calculateTrackDuration called with zero speedMultiplier - returning base duration")
+            return baseDuration
+        }
         return baseDuration / speedMultiplier
     }
 
@@ -994,7 +1021,10 @@ import Combine
             let noteTimeSeconds = Double(earliestNote.measureNumber - 1) * secondsPerMeasure +
                 (earliestNote.measureOffset * secondsPerMeasure)
             let speedMultiplier = practiceSettings.speedMultiplier
-            guard speedMultiplier > 0 else { return noteTimeSeconds }
+            guard speedMultiplier > 0 else {
+                Logger.error("calculateBGMOffset called with zero speedMultiplier - returning unscaled offset")
+                return noteTimeSeconds
+            }
             return noteTimeSeconds / speedMultiplier
         }
 
@@ -1015,7 +1045,7 @@ import Combine
 
         do {
             bgmPlayer = try AVAudioPlayer(contentsOf: bgmURL)
-            // Bug 4 fix: enableRate must be set before prepareToPlay() for correct buffer allocation
+            // enableRate must be set before prepareToPlay() for AVAudioPlayer to allocate rate-adjustment buffers
             bgmPlayer?.enableRate = true
             bgmPlayer?.prepareToPlay()
             bgmPlayer?.volume = 0.7

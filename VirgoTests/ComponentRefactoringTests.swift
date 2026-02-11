@@ -213,7 +213,7 @@ struct ComponentRefactoringTests {
         }
     }
 
-    @Test("GameplayControlsView uses speed-adjusted duration from cachedTrackDuration")
+    @Test("GameplayControlsView returns cachedTrackDuration directly (already speed-adjusted)")
     func testGameplayControlsViewAdjustedDuration() async throws {
         try await TestSetup.withTestSetup {
             guard let track = DrumTrack.sampleData.first else {
@@ -223,7 +223,7 @@ struct ComponentRefactoringTests {
 
             let practiceSettings = PracticeSettingsService()
             practiceSettings.setSpeed(0.5)
-            let cachedTrackDuration = 180.0 // Use consistent value from view model
+            let cachedTrackDuration = 180.0 // Already speed-adjusted by calculateTrackDuration()
             let controlsView = GameplayControlsView(
                 track: track,
                 isPlaying: .constant(false),
@@ -237,10 +237,10 @@ struct ComponentRefactoringTests {
                 onSpeedChange: { _ in }
             )
 
-            // Bug 2 fix: adjustedDurationSeconds now uses cachedTrackDuration from view model
-            // for consistency with progress bar calculation
+            // cachedTrackDuration is already divided by speedMultiplier in
+            // calculateTrackDuration(), so adjustedDurationSeconds returns it directly
             let adjustedDuration = controlsView.adjustedDurationSeconds()
-            #expect(abs(adjustedDuration - cachedTrackDuration / 0.5) < 0.001)
+            #expect(abs(adjustedDuration - cachedTrackDuration) < 0.001)
         }
     }
 }
