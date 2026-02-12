@@ -302,7 +302,9 @@ final class GameplayViewModel {
     func bgmTimelineElapsedTime(for bgmCurrentTime: TimeInterval) -> Double {
         let speedMultiplier = practiceSettings.speedMultiplier
         guard speedMultiplier > 0 else {
-            fatalError("bgmTimelineElapsedTime called with zero speedMultiplier - calculateBGMOffset()/bgmOffsetSeconds is invalid")
+            assertionFailure("bgmTimelineElapsedTime called with zero speedMultiplier - calculateBGMOffset()/bgmOffsetSeconds is invalid")
+            // Return safe fallback value for release builds
+            return bgmOffsetSeconds
         }
 
         return (bgmCurrentTime / speedMultiplier) + bgmOffsetSeconds
