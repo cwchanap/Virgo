@@ -382,6 +382,9 @@ final class GameplayViewModel {
         // Apply clamped speed if BGM minimum enforcement returns a value
         if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
             practiceSettings.setSpeed(clampedSpeed)
+            // Update the baseline to reflect the effective speed actually in use
+            // This ensures subsequent live speed changes calculate correct ratios
+            lastAppliedSpeedMultiplier = clampedSpeed
         }
         refreshTimingCaches()
         // Use effective BPM (base × speed multiplier) for metronome

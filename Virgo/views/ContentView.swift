@@ -35,6 +35,10 @@ struct ContentView: View {
         ProcessInfo.processInfo.arguments.contains(LaunchArguments.resetState)
     }
 
+    private var shouldSkipSeed: Bool {
+        ProcessInfo.processInfo.arguments.contains(LaunchArguments.skipSeed)
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
             // Songs Tab with Sub-tabs
@@ -119,10 +123,11 @@ struct ContentView: View {
                 clearPersistedTestState()
                 // When resetting state in UI testing mode, unconditionally seed fresh data
                 // to avoid stale data issues from @Query not refreshing synchronously
-                if isUITesting {
+                // Skip seeding if -SkipSeed flag is present (for empty-state tests)
+                if isUITesting && !shouldSkipSeed {
                     seedUITestData()
                 }
-            } else if isUITesting {
+            } else if isUITesting && !shouldSkipSeed {
                 seedUITestDataIfNeeded()
             }
             if databaseService == nil {
