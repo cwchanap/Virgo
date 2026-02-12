@@ -173,7 +173,7 @@ struct GameplayControlsView: View {
                     ),
                     in: PracticeSettingsService.minSpeed...PracticeSettingsService.maxSpeed
                 )
-                .accentColor(.purple)
+                .tint(.purple)
                 .accessibilityLabel("Speed adjustment slider")
                 .accessibilityValue("\(Int(practiceSettings.speedMultiplier * 100)) percent")
 

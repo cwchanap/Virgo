@@ -25,14 +25,23 @@ final class SongsTabUITests: XCTestCase {
         app.terminate()
     }
 
+    // MARK: - Helper Methods
+
+    /// Waits for the START button to appear and taps it.
+    /// Use this instead of directly calling app.buttons["START"].tap() to avoid flakiness.
+    @MainActor
+    private func tapStartButton() {
+        let startButton = app.buttons["START"]
+        XCTAssertTrue(startButton.waitForExistence(timeout: 5), "START button should exist")
+        startButton.tap()
+    }
+
     // MARK: - Songs Tab Tests
     
     @MainActor
     func testSongsTabNavigation() throws {
         // Wait for START button to appear before tapping to avoid flakiness
-        let startButton = app.buttons["START"]
-        XCTAssertTrue(startButton.waitForExistence(timeout: 5), "START button should exist")
-        startButton.tap()
+        tapStartButton()
 
         // Navigate to Songs tab via Content View (which shows SongsTabView)
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
@@ -54,7 +63,7 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongsEmpty() throws {
-        app.buttons["START"].tap()
+        tapStartButton()
         
         // Ensure we're on Downloaded tab (default)
         let downloadedTab = app.buttons["Downloaded"]
@@ -71,7 +80,7 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongsWithData() throws {
-        app.buttons["START"].tap()
+        tapStartButton()
         
         // Ensure we're on Downloaded tab
         let downloadedTab = app.buttons["Downloaded"]
@@ -100,7 +109,7 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongsPlayback() throws {
-        app.buttons["START"].tap()
+        tapStartButton()
         
         // Ensure we're on Downloaded tab
         let downloadedTab = app.buttons["Downloaded"]
@@ -127,7 +136,7 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongExpansion() throws {
-        app.buttons["START"].tap()
+        tapStartButton()
         
         // Ensure we're on Downloaded tab
         let downloadedTab = app.buttons["Downloaded"]
@@ -160,7 +169,7 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongDeletion() throws {
-        app.buttons["START"].tap()
+        tapStartButton()
         
         // Ensure we're on Downloaded tab
         let downloadedTab = app.buttons["Downloaded"]

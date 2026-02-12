@@ -1286,6 +1286,9 @@ struct GameplayViewModelTests {
         // Set speed to 25% (below AVAudioPlayer's minimum of 50%)
         viewModel.updateSpeed(0.25)
 
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
         // Verify practiceSettings clamped to 50% to keep BGM in sync
         #expect(viewModel.practiceSettings.speedMultiplier == 0.5, "Speed should be clamped to 50% with BGM")
 
@@ -1314,11 +1317,17 @@ struct GameplayViewModelTests {
         // Set speed to 150% (within AVAudioPlayer's range)
         viewModel.updateSpeed(1.5)
 
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
         // Verify BGM rate is NOT clamped
         #expect(bgmPlayer.rate == 1.5, "BGM rate should be 1.5 when speed is 150% (within supported range)")
 
         // Set speed to 75%
         viewModel.updateSpeed(0.75)
+
+        // Wait for trailing-edge debounce timer to fire
+        try await Task.sleep(nanoseconds: 300_000_000)
 
         #expect(bgmPlayer.rate == 0.75, "BGM rate should be 0.75 when speed is 75% (within supported range)")
 
