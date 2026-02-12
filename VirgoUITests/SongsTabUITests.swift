@@ -21,6 +21,16 @@ final class SongsTabUITests: XCTestCase {
         app.launch()
     }
 
+    /// Launches the app with -SkipSeed flag for tests that need empty state
+    private func launchAppSkippingSeed() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments.append("-UITesting")
+        app.launchArguments.append("-ResetState")
+        app.launchArguments.append("-SkipSeed")
+        app.launch()
+    }
+
     override func tearDownWithError() throws {
         app.terminate()
     }
@@ -63,15 +73,18 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongsEmpty() throws {
+        // This test needs empty state, so relaunch with -SkipSeed flag
+        launchAppSkippingSeed()
+
         tapStartButton()
-        
+
         // Ensure we're on Downloaded tab (default)
         let downloadedTab = app.buttons["Downloaded"]
         XCTAssertTrue(downloadedTab.waitForExistence(timeout: 5))
         if !downloadedTab.isSelected {
             downloadedTab.tap()
         }
-        
+
         // Verify empty state is shown
         XCTAssertTrue(app.images["arrow.down.circle"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["No Downloaded Songs"].exists)

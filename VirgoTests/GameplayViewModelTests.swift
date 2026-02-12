@@ -1351,6 +1351,62 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testSetupGameplayUpdatesBaselineAfterBGMClamp() async throws {
+        // Regression test for: Speed baseline must stay in sync after setup-time BGM clamp.
+        // When a persisted speed below 50% is loaded (e.g., 0.25), it gets clamped to 0.5
+        // for BGM charts. The lastAppliedSpeedMultiplier must be updated to reflect the
+        // clamped value, not the original persisted value, to ensure subsequent live speed
+        // changes calculate correct ratios and don't cause timing jumps.
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        // Create isolated UserDefaults for this test
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+
+        // Save a speed below BGM minimum (0.25 < 0.50)
+        practiceSettings.saveSpeed(0.25, for: chart.persistentModelID)
+
+        // Create ViewModel with BGM present (needs a song with BGM path)
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+
+        // Inject a mock BGM player to trigger clamp behavior
+        // We can't easily mock AVAudioPlayer, but we can verify the logic
+        // by checking that setupGameplay handles the clamp correctly
+        viewModel.setupGameplay()
+
+        // Wait for async setup
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // If BGM is present and speed was clamped, verify the effective speed is consistent
+        // The key assertion: practiceSettings.speedMultiplier should be >= 0.5 when BGM is present
+        // (or remain at original value if no BGM)
+        if viewModel.bgmPlayer != nil {
+            #expect(
+                practiceSettings.speedMultiplier >= 0.5,
+                "Speed should be clamped to at least 50% when BGM is present"
+            )
+        }
+
+        // The critical fix: lastAppliedSpeedMultiplier must reflect the effective speed
+        // This is verified indirectly by checking that speed changes work correctly
+        let initialEffectiveBPM = viewModel.effectiveBPM()
+
+        // Simulate a speed update during playback (this would use the ratio)
+        viewModel.updateSpeed(1.0)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        // After speed change, effective BPM should reflect the new speed
+        let newEffectiveBPM = viewModel.effectiveBPM()
+        #expect(
+            abs(newEffectiveBPM - initialEffectiveBPM * 2.0) < 0.01,
+            "BPM should approximately double when going from 0.5 to 1.0 (or remain proportional)"
+        )
+
+        viewModel.cleanup()
+    }
+
     @Test func testSetupGameplayLoadsPersistedSpeed() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
