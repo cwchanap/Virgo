@@ -8,18 +8,11 @@
 import SwiftUI
 
 extension GameplayView {
+    @ViewBuilder
     func sheetMusicView(geometry: GeometryProxy) -> some View {
-        // If viewModel is not yet initialized, show a placeholder
-        guard let viewModel = viewModel else {
-            return AnyView(
-                Color.black
-                    .overlay(Text("Loading...").foregroundColor(.white))
-            )
-        }
+        if let viewModel = viewModel {
+            let totalHeight = GameplayLayout.totalHeight(for: viewModel.cachedMeasurePositions)
 
-        let totalHeight = GameplayLayout.totalHeight(for: viewModel.cachedMeasurePositions)
-
-        return AnyView(
             ScrollView([.horizontal, .vertical], showsIndicators: false) {
                 ZStack(alignment: .topLeading) {
                     // Use cached static staff lines view - created only once
@@ -29,23 +22,22 @@ extension GameplayView {
 
                     // Dynamic content
                     ZStack(alignment: .topLeading) {
-                        // Bar lines
                         barLinesView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
 
-                        // Clefs and time signatures for each row
                         clefsAndTimeSignaturesView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
 
-                        // Drum notation
                         drumNotationView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
 
-                        // Time-based beat progression bars (purple bars at all quarter note positions)
                         timeBasedBeatProgressionBars(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
                     }
                 }
                 .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
             }
             .background(Color.gray.opacity(0.1))
-        )
+        } else {
+            Color.black
+                .overlay(Text("Loading...").foregroundColor(.white))
+        }
     }
 
     func staffLinesView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
