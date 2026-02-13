@@ -48,9 +48,10 @@ class BaseSwiftDataRelationshipLoader<Model: PersistentModel, Data>: ObservableO
     }
 
     deinit {
-        Task { @MainActor [weak self] in
-            self?.stopObserving()
-        }
+        // Avoid scheduling async work that captures a deallocating instance.
+        // Synchronously cancel any in-flight task during teardown.
+        loadingTask?.cancel()
+        loadingTask = nil
     }
 
     func startObserving() {
