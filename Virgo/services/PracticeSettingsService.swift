@@ -41,6 +41,31 @@ final class PracticeSettingsService: ObservableObject {
 
     private let userDefaults: UserDefaults
     private let settingsKey = "PracticeSettingsSpeedMultipliers"
+    private var sessionSpeedCache: [PersistentIdentifier: Double] = [:]
+
+    /// Reads persisted speed map with tolerant numeric decoding.
+    /// UserDefaults may bridge numeric values as NSNumber on some OS/runtime combinations.
+    private func readPersistedSpeeds() -> [String: Double] {
+        guard let raw = userDefaults.dictionary(forKey: settingsKey) else {
+            return [:]
+        }
+
+        var speeds: [String: Double] = [:]
+        speeds.reserveCapacity(raw.count)
+
+        for (key, value) in raw {
+            if let doubleValue = value as? Double {
+                speeds[key] = doubleValue
+            } else if let numberValue = value as? NSNumber {
+                speeds[key] = numberValue.doubleValue
+            } else if let stringValue = value as? String,
+                      let parsedValue = Double(stringValue) {
+                speeds[key] = parsedValue
+            }
+        }
+
+        return speeds
+    }
 
     // MARK: - Initialization
 
@@ -127,9 +152,13 @@ final class PracticeSettingsService: ObservableObject {
     /// - Parameter chartID: The persistent identifier of the chart
     /// - Returns: The saved speed multiplier, or 1.0 if none saved
     func loadSpeed(for chartID: PersistentIdentifier) -> Double {
+        if let cachedSpeed = sessionSpeedCache[chartID] {
+            return cachedSpeed
+        }
+
         let key = persistenceKey(for: chartID)
-        guard let speeds = userDefaults.dictionary(forKey: settingsKey) as? [String: Double],
-              let savedSpeed = speeds[key] else {
+        let speeds = readPersistedSpeeds()
+        guard let savedSpeed = speeds[key] else {
             return 1.0
         }
 
@@ -144,6 +173,7 @@ final class PracticeSettingsService: ObservableObject {
             Logger.warning("Loaded out-of-range speed \(savedSpeed) for chart, clamped to \(clampedSpeed)")
         }
 
+        sessionSpeedCache[chartID] = clampedSpeed
         return clampedSpeed
     }
 
@@ -168,13 +198,14 @@ final class PracticeSettingsService: ObservableObject {
         }
 
         let key = persistenceKey(for: chartID)
-        var speeds = userDefaults.dictionary(forKey: settingsKey) as? [String: Double] ?? [:]
+        var speeds = readPersistedSpeeds()
         speeds[key] = clampedSpeed
+        sessionSpeedCache[chartID] = clampedSpeed
         userDefaults.set(speeds, forKey: settingsKey)
 
         // Verify persistence succeeded
-        if let verified = userDefaults.dictionary(forKey: settingsKey) as? [String: Double],
-           verified[key] == clampedSpeed {
+        let verified = readPersistedSpeeds()
+        if verified[key] == clampedSpeed {
             Logger.debug("Saved speed \(Int(clampedSpeed * 100))% for chart")
         } else {
             Logger.error("Failed to persist speed setting - value may not be saved")
@@ -190,6 +221,7 @@ final class PracticeSettingsService: ObservableObject {
 
     /// Clears all saved speed settings.
     func clearAllSavedSpeeds() {
+        sessionSpeedCache.removeAll()
         userDefaults.removeObject(forKey: settingsKey)
         Logger.debug("Cleared all saved speed settings")
     }
