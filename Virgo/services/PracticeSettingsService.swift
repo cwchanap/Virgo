@@ -14,7 +14,7 @@ import CryptoKit
 /// Service that manages practice settings for gameplay sessions.
 /// Handles speed control state, validation, and per-chart persistence.
 @MainActor
-class PracticeSettingsService: ObservableObject {
+final class PracticeSettingsService: ObservableObject {
     // MARK: - Constants
 
     /// Minimum allowed speed multiplier (25%)
@@ -25,6 +25,9 @@ class PracticeSettingsService: ObservableObject {
 
     /// Speed adjustment increment for slider (5%)
     static let speedIncrement: Double = 0.05
+
+    /// Threshold below which speed changes are considered redundant
+    private static let speedChangeThreshold: Double = 0.001
 
     /// Preset speed options for quick selection
     static let speedPresets: [Double] = [0.50, 0.75, 1.00, 1.25]
@@ -51,15 +54,15 @@ class PracticeSettingsService: ObservableObject {
     /// - Parameter speed: The desired speed multiplier (will be clamped to valid range)
     func setSpeed(_ speed: Double) {
         guard speed.isFinite else {
-            Logger.warning("PracticeSettingsService: Invalid speed value (non-finite), ignoring")
+            Logger.error("PracticeSettingsService.setSpeed() received non-finite value (\(speed)) - indicates caller arithmetic bug")
             return
         }
 
         let clampedSpeed = max(Self.minSpeed, min(Self.maxSpeed, speed))
 
         // Skip redundant updates to prevent unnecessary @Published notifications
-        // (avoids double notifications when view calls setSpeed before updateSpeed)
-        guard abs(clampedSpeed - speedMultiplier) > 0.001 else { return }
+        // (e.g., when the slider view calls setSpeed immediately before the debounced ViewModel applies the same value)
+        guard abs(clampedSpeed - speedMultiplier) > Self.speedChangeThreshold else { return }
 
         speedMultiplier = clampedSpeed
 

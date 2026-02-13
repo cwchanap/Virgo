@@ -43,12 +43,12 @@ struct MetronomeEngineTests {
         engine.updateBPM(140)
         #expect(engine.bpm == 140)
 
-        // Test that updateBPM no longer clamps - allows full range for sync with visuals
+        // Test that updateBPM accepts the full 10-300 BPM range needed for speed-adjusted playback
         engine.updateBPM(300)
-        #expect(engine.bpm == 300) // Should accept high BPM (no clamping)
+        #expect(engine.bpm == 300) // Should accept 300 BPM (within expanded range)
 
         engine.updateBPM(10)
-        #expect(engine.bpm == 10) // Should accept low BPM (no clamping)
+        #expect(engine.bpm == 10) // Should accept 10 BPM (within expanded range)
     }
 
     @Test("MetronomeEngine volume updates correctly")

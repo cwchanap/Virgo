@@ -25,9 +25,9 @@ final class GameplayViewModel {
     private var lastAppliedSpeedMultiplier: Double
 
     // MARK: - Speed Change Debounce
-    /// Timestamp of last speed change application for debouncing
+    /// Timestamp of last speed change application (diagnostic only)
     private var lastSpeedChangeTimestamp: Date?
-    /// Minimum interval between speed change applications (100ms)
+    /// Minimum interval between speed change applications
     private let speedChangeDebounceInterval: TimeInterval = 0.1
     /// Pending speed change timer for trailing-edge debounce
     private var speedChangeTimer: Timer?
@@ -139,7 +139,11 @@ final class GameplayViewModel {
     /// Calculates the effective BPM based on current speed multiplier.
     /// This should be used for all timing calculations instead of track.bpm directly.
     func effectiveBPM() -> Double {
-        return practiceSettings.effectiveBPM(baseBPM: track?.bpm ?? 120.0)
+        guard let track = track else {
+            Logger.error("effectiveBPM() called with nil track - using fallback 120 BPM")
+            return practiceSettings.effectiveBPM(baseBPM: 120.0)
+        }
+        return practiceSettings.effectiveBPM(baseBPM: track.bpm)
     }
 
     /// Updates the playback speed. Can be called during active playback.
@@ -151,8 +155,8 @@ final class GameplayViewModel {
 
     /// Applies updates when practice settings change without recreating the view model.
     /// - Parameter practiceSettings: The shared practice settings service.
-    /// Reacts to external changes in the shared practice settings (e.g., from .onChange modifier).
     /// Verifies the caller's reference matches this ViewModel's instance before applying.
+    /// Note: Currently unused - intended for future .onChange modifier integration.
     func updateSettings(_ practiceSettings: PracticeSettingsService) {
         guard practiceSettings === self.practiceSettings else { return }
         applySpeedChange()
@@ -170,12 +174,12 @@ final class GameplayViewModel {
         speedChangeTimer = Timer.scheduledTimer(withTimeInterval: speedChangeDebounceInterval, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else {
-                    Logger.debug("Speed change timer fired after ViewModel deallocation - change discarded")
+                    Logger.warning("Speed change timer fired after ViewModel deallocation - user's speed change was discarded")
                     return
                 }
 
                 // Only apply if we still have a pending speed
-                guard let pendingSpeed = self.latestPendingSpeed else { return }
+                guard self.latestPendingSpeed != nil else { return }
 
                 // Use lastAppliedSpeedMultiplier (the actual last-applied speed) instead of a
                 // captured previousSpeed parameter, which could be stale from a debounced-away
@@ -266,7 +270,7 @@ final class GameplayViewModel {
             if cachedTrackDuration > 0 {
                 playbackProgress = pausedElapsedTime / cachedTrackDuration
             } else {
-                Logger.warning("⚠️ Cannot update playback progress: cachedTrackDuration is zero")
+                Logger.warning("Cannot update playback progress: cachedTrackDuration is zero")
                 playbackProgress = 0.0
             }
         }
@@ -302,8 +306,8 @@ final class GameplayViewModel {
     func bgmTimelineElapsedTime(for bgmCurrentTime: TimeInterval) -> Double {
         let speedMultiplier = practiceSettings.speedMultiplier
         guard speedMultiplier > 0 else {
-            assertionFailure("bgmTimelineElapsedTime called with zero speedMultiplier - calculateBGMOffset()/bgmOffsetSeconds is invalid")
-            // Return safe fallback value for release builds
+            assertionFailure("bgmTimelineElapsedTime called with zero speedMultiplier")
+            Logger.error("bgmTimelineElapsedTime called with zero speedMultiplier - returning bgmOffsetSeconds as fallback")
             return bgmOffsetSeconds
         }
 
@@ -351,6 +355,13 @@ final class GameplayViewModel {
         cachedSong = chart.song
         cachedNotes = chart.notes.map { $0 }
 
+        if cachedSong == nil {
+            Logger.error("loadChartData: chart.song relationship returned nil")
+        }
+        if cachedNotes.isEmpty {
+            Logger.warning("loadChartData: chart.notes returned empty array - chart may have no notes or relationship failed to load")
+        }
+
         track = DrumTrack(chart: chart)
         isDataLoaded = true
     }
@@ -363,7 +374,7 @@ final class GameplayViewModel {
     ///   Defaults to `true` to load saved speed (SC-06: Remember last-used speed).
     func setupGameplay(loadPersistedSpeed: Bool = true) {
         guard let track = track else {
-            Logger.audioPlayback("setupGameplay() called but track is nil - data not loaded yet")
+            Logger.error("setupGameplay() called but track is nil - data not loaded yet")
             return
         }
 
@@ -429,11 +440,11 @@ final class GameplayViewModel {
         // Guard: Cannot start playback if data not loaded or track not ready
         if !isPlaying {
             guard isDataLoaded else {
-                Logger.audioPlayback("🎮 ERROR: Cannot start playback - data not loaded")
+                Logger.error("Cannot start playback - data not loaded")
                 return
             }
             guard track != nil else {
-                Logger.audioPlayback("🎮 ERROR: Cannot start playback - no track available")
+                Logger.error("Cannot start playback - no track available")
                 return
             }
         }
@@ -450,12 +461,12 @@ final class GameplayViewModel {
 
         // Guard: Ensure track is ready before starting playback
         guard let track = track else {
-            Logger.audioPlayback("🎮 ERROR: No track available for playback")
+            Logger.error("No track available for playback")
             return
         }
 
         guard isDataLoaded else {
-            Logger.audioPlayback("🎮 ERROR: Data not loaded, cannot start playback")
+            Logger.error("Data not loaded, cannot start playback")
             return
         }
 
@@ -1004,7 +1015,10 @@ final class GameplayViewModel {
     }
 
     func calculateTrackDuration() -> Double {
-        guard let track = track else { return 0.0 }
+        guard let track = track else {
+            Logger.error("calculateTrackDuration() called with nil track - returning 0.0")
+            return 0.0
+        }
 
         let secondsPerBeat = 60.0 / track.bpm
         let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
