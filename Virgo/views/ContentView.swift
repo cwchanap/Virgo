@@ -118,12 +118,12 @@ struct ContentView: View {
         }
         .tint(.purple)
         .onAppear {
-            if shouldResetState {
+            if isUITesting && shouldResetState {
                 clearPersistedTestState()
                 // When resetting state in UI testing mode, unconditionally seed fresh data
                 // to avoid stale data issues from @Query not refreshing synchronously
                 // Skip seeding if -SkipSeed flag is present (for empty-state tests)
-                if isUITesting && !shouldSkipSeed {
+                if !shouldSkipSeed {
                     seedUITestData()
                 }
             } else if isUITesting && !shouldSkipSeed {

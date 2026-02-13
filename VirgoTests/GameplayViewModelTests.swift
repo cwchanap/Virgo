@@ -632,6 +632,9 @@ struct GameplayViewModelTests {
         let baseDuration = viewModel.calculateTrackDuration()
         viewModel.updateSpeed(0.5)
 
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
         let slowedDuration = viewModel.calculateTrackDuration()
         #expect(slowedDuration > baseDuration, "Duration should increase at slower speeds")
     }
