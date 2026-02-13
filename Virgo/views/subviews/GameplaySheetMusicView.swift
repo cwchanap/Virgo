@@ -18,6 +18,9 @@ extension GameplayView {
                     // Use cached static staff lines view - created only once
                     if let staticView = viewModel.staticStaffLinesView {
                         staticView
+                    } else {
+                        // Fallback: render dynamic staff lines when static view is not available
+                        staffLinesView(measurePositions: viewModel.cachedMeasurePositions)
                     }
 
                     // Dynamic content
