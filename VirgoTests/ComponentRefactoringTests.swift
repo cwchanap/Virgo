@@ -238,9 +238,8 @@ struct ComponentRefactoringTests {
             )
 
             // cachedTrackDuration is already divided by speedMultiplier in
-            // calculateTrackDuration(), so adjustedDurationSeconds returns it directly
-            let adjustedDuration = controlsView.adjustedDurationSeconds()
-            #expect(abs(adjustedDuration - cachedTrackDuration) < 0.001)
+            // calculateTrackDuration(), so the view should use it directly.
+            #expect(abs(controlsView.cachedTrackDuration - cachedTrackDuration) < 0.001)
         }
     }
 }
