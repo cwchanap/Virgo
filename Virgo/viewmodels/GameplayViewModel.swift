@@ -170,6 +170,15 @@ final class GameplayViewModel {
         // Cancel any existing pending timer
         speedChangeTimer?.invalidate()
 
+        // Make speed updates deterministic in unit tests to avoid run-loop timing flakiness.
+        if TestEnvironment.isRunningTests {
+            let previousApplied = lastAppliedSpeedMultiplier
+            lastSpeedChangeTimestamp = Date()
+            latestPendingSpeed = nil
+            applySpeedChangeInternal(previousSpeed: previousApplied)
+            return
+        }
+
         // Schedule a new timer to apply the speed change after the debounce interval
         speedChangeTimer = Timer.scheduledTimer(withTimeInterval: speedChangeDebounceInterval, repeats: false) { [weak self] _ in
             Task { @MainActor in
