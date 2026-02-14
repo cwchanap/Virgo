@@ -1278,9 +1278,9 @@ struct GameplayViewModelTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
-        // For this test, we need BGM to be present - skip if unavailable (e.g., CI environment)
+        // This test requires BGM to be present - fail explicitly if unavailable
         guard let bgmPlayer = viewModel.bgmPlayer else {
-            return
+            throw TestError.bgmPlayerMissing
         }
 
         viewModel.startPlayback()
@@ -1309,9 +1309,9 @@ struct GameplayViewModelTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
-        // For this test, we need BGM to be present - skip if unavailable (e.g., CI environment)
+        // This test requires BGM to be present - fail explicitly if unavailable
         guard let bgmPlayer = viewModel.bgmPlayer else {
-            return
+            throw TestError.bgmPlayerMissing
         }
 
         viewModel.startPlayback()
