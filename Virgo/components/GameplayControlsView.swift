@@ -22,7 +22,7 @@ struct GameplayControlsView: View {
 
 
     var body: some View {
-        let adjustedDuration = adjustedDurationSeconds()
+        let adjustedDuration = cachedTrackDuration
         VStack(spacing: 16) {
             // Progress Bar
             VStack(spacing: 8) {
@@ -130,7 +130,6 @@ struct GameplayControlsView: View {
                 ForEach(PracticeSettingsService.speedPresets, id: \.self) { preset in
                     Button(
                         action: {
-                            practiceSettings.setSpeed(preset)
                             onSpeedChange(preset)
                         },
                         label: {
@@ -165,8 +164,6 @@ struct GameplayControlsView: View {
                             // Snap to 5% increments
                             let snapped = (newValue / PracticeSettingsService.speedIncrement).rounded()
                                 * PracticeSettingsService.speedIncrement
-                            // Update speed multiplier immediately for responsive UI feedback
-                            practiceSettings.setSpeed(snapped)
                             // Delegate to ViewModel which has its own trailing-edge debounce
                             onSpeedChange(snapped)
                         }
@@ -208,12 +205,6 @@ struct GameplayControlsView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
-    /// Returns the speed-adjusted track duration in seconds.
-    /// cachedTrackDuration from the view model is already divided by speedMultiplier
-    /// in calculateTrackDuration(), so return it directly to avoid double-division.
-    func adjustedDurationSeconds() -> Double {
-        return cachedTrackDuration
-    }
 }
 
 #Preview {
