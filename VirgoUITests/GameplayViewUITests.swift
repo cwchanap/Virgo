@@ -22,7 +22,8 @@ final class GameplayViewUITests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
-        app.terminate()
+        // Safely terminate app only if it was successfully initialized in setUpWithError
+        app?.terminate()
     }
 
     @MainActor
