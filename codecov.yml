@@ -1,0 +1,35 @@
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+
+ignore:
+  - "**/*.generated.swift"
+  - "**/DerivedData/**"
+  - "**/build/**"
+  - "**/*.xctest/**"
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+  require_base: yes
+  require_head: yes
+
+flags:
+  unit-tests:
+    carryforward: false
+  ui-tests:
+    carryforward: false
