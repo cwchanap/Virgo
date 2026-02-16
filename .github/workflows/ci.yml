@@ -55,6 +55,38 @@ jobs:
           name: test-results
           path: ./DerivedData/Logs/Test/*.xcresult
           retention-days: 30
+
+      - name: Install xcresultparser
+        if: always()
+        run: brew install xcresultparser
+
+      - name: Export Coverage Report
+        if: always()
+        run: |
+          RESULT_BUNDLE="./DerivedData/Logs/Test/*.xcresult"
+          COVERAGE_DIR="$GITHUB_WORKSPACE/coverage"
+          COVERAGE_REPORT="$COVERAGE_DIR/cobertura.xml"
+          
+          if [ ! -d "$RESULT_BUNDLE" ]; then
+            echo "No xcresult bundle found"
+            exit 0
+          fi
+          
+          if ! xcrun xccov view --report "$RESULT_BUNDLE" >/dev/null 2>&1; then
+            echo "No coverage report available"
+            exit 0
+          fi
+          
+          mkdir -p "$COVERAGE_DIR"
+          xcresultparser --output-format cobertura --project-root "$GITHUB_WORKSPACE" "$RESULT_BUNDLE" > "$COVERAGE_REPORT"
+
+      - name: Upload Coverage Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-results
+          path: coverage
+          if-no-files-found: warn
             
 
   build-archive:
@@ -83,3 +115,26 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             -allowProvisioningUpdates
+
+  codecov:
+    name: Upload Coverage to Codecov
+    runs-on: macos-latest
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download coverage results
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-results
+          path: coverage-results
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage-results/cobertura.xml
+          disable_search: true
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
