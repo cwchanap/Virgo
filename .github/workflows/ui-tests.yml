@@ -157,3 +157,79 @@ jobs:
             ./ui-test-results
             ./ui-test-output.log
           retention-days: 7
+
+      - name: Install xcresultparser
+        if: always()
+        run: brew install xcresultparser
+
+      - name: Export UI Test Coverage Report
+        if: always()
+        run: |
+          set -e
+          COVERAGE_DIR="$GITHUB_WORKSPACE/ui-test-coverage"
+          COVERAGE_REPORT="$COVERAGE_DIR/cobertura.xml"
+
+          echo "Finding xcresult bundles..."
+          RESULT_BUNDLES=(./ui-test-results/*.xcresult)
+
+          if [ ! -e "${RESULT_BUNDLES[0]}" ]; then
+            echo "No xcresult bundle found at ./ui-test-results/"
+            mkdir -p "$COVERAGE_DIR"
+            echo "No coverage available" > "$COVERAGE_REPORT"
+            exit 0
+          fi
+
+          RESULT_BUNDLE="${RESULT_BUNDLES[0]}"
+          echo "Found xcresult bundle: $RESULT_BUNDLE"
+
+          if ! xcrun xccov view --report "$RESULT_BUNDLE" >/dev/null 2>&1; then
+            echo "No coverage report available in $RESULT_BUNDLE"
+            mkdir -p "$COVERAGE_DIR"
+            echo "No coverage available" > "$COVERAGE_REPORT"
+            exit 0
+          fi
+
+          mkdir -p "$COVERAGE_DIR"
+          echo "Exporting coverage to Cobertura format..."
+          xcresultparser --output-format cobertura --project-root "$GITHUB_WORKSPACE" "$RESULT_BUNDLE" > "$COVERAGE_REPORT" || true
+
+          if [ ! -s "$COVERAGE_REPORT" ]; then
+            echo "Coverage export failed or produced empty file"
+            echo "No coverage available" > "$COVERAGE_REPORT"
+          fi
+
+          echo "Coverage report created at $COVERAGE_REPORT"
+          ls -la "$COVERAGE_DIR"
+
+      - name: Upload UI Test Coverage Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-coverage-results
+          path: ui-test-coverage
+          if-no-files-found: warn
+
+  upload-coverage:
+    name: Upload UI Test Coverage to Codecov
+    runs-on: macos-latest
+    needs: ui-tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download coverage results
+        uses: actions/download-artifact@v4
+        with:
+          name: ui-test-coverage-results
+          path: coverage-results
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage-results/cobertura.xml
+          flags: ui-tests
+          disable_search: true
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
