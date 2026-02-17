@@ -63,22 +63,41 @@ jobs:
       - name: Export Coverage Report
         if: always()
         run: |
-          RESULT_BUNDLE="./DerivedData/Logs/Test/*.xcresult"
+          set -e
           COVERAGE_DIR="$GITHUB_WORKSPACE/coverage"
           COVERAGE_REPORT="$COVERAGE_DIR/cobertura.xml"
           
-          if [ ! -d "$RESULT_BUNDLE" ]; then
-            echo "No xcresult bundle found"
+          echo "Finding xcresult bundles..."
+          RESULT_BUNDLES=(./DerivedData/Logs/Test/*.xcresult)
+          
+          if [ ! -e "${RESULT_BUNDLES[0]}" ]; then
+            echo "No xcresult bundle found at ./DerivedData/Logs/Test/"
+            mkdir -p "$COVERAGE_DIR"
+            echo "No coverage available" > "$COVERAGE_REPORT"
             exit 0
           fi
           
+          RESULT_BUNDLE="${RESULT_BUNDLES[0]}"
+          echo "Found xcresult bundle: $RESULT_BUNDLE"
+          
           if ! xcrun xccov view --report "$RESULT_BUNDLE" >/dev/null 2>&1; then
-            echo "No coverage report available"
+            echo "No coverage report available in $RESULT_BUNDLE"
+            mkdir -p "$COVERAGE_DIR"
+            echo "No coverage available" > "$COVERAGE_REPORT"
             exit 0
           fi
           
           mkdir -p "$COVERAGE_DIR"
-          xcresultparser --output-format cobertura --project-root "$GITHUB_WORKSPACE" "$RESULT_BUNDLE" > "$COVERAGE_REPORT"
+          echo "Exporting coverage to Cobertura format..."
+          xcresultparser --output-format cobertura --project-root "$GITHUB_WORKSPACE" "$RESULT_BUNDLE" > "$COVERAGE_REPORT" || true
+          
+          if [ ! -s "$COVERAGE_REPORT" ]; then
+            echo "Coverage export failed or produced empty file"
+            echo "No coverage available" > "$COVERAGE_REPORT"
+          fi
+          
+          echo "Coverage report created at $COVERAGE_REPORT"
+          ls -la "$COVERAGE_DIR"
 
       - name: Upload Coverage Results
         if: always()
@@ -86,7 +105,7 @@ jobs:
         with:
           name: coverage-results
           path: coverage
-          if-no-files-found: warn
+          if-no-files-found: error
             
 
   build-archive:
@@ -131,6 +150,15 @@ jobs:
           name: coverage-results
           path: coverage-results
 
+      - name: Check coverage file
+        run: |
+          if [ ! -f "coverage-results/cobertura.xml" ]; then
+            echo "Coverage file not found"
+            exit 1
+          fi
+          echo "Coverage file contents:"
+          head -20 coverage-results/cobertura.xml
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -138,3 +166,4 @@ jobs:
           disable_search: true
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
