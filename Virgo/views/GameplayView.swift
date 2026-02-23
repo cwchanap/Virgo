@@ -48,6 +48,10 @@ struct GameplayView: View {
                 GameplayHeaderView(
                     track: viewModel?.track ?? cachedFallbackTrack,
                     isPlaying: isPlayingBinding,
+                    currentScore: viewModel?.scoreEngine.score ?? 0,
+                    currentCombo: viewModel?.scoreEngine.combo ?? 0,
+                    showMilestoneAnimation: viewModel?.showMilestoneAnimation ?? false,
+                    showComboBreakFeedback: viewModel?.showComboBreakFeedback ?? false,
                     onDismiss: { dismiss() },
                     onPlayPause: { viewModel?.togglePlayback() },
                     onRestart: { viewModel?.restartPlayback() }
@@ -93,11 +97,33 @@ struct GameplayView: View {
             vm.setupGameplay()
             // Setup InputManager delegate and metronome subscription after viewModel is ready
             vm.inputManager.delegate = vm.inputHandler
+            vm.wireInputHandler()
             vm.setupMetronomeSubscription()
             Logger.userAction("Opened gameplay view for track: \(vm.track?.title ?? "Unknown")")
         }
         .onDisappear {
             viewModel?.cleanup()
+        }
+        .sheet(isPresented: Binding(
+            get: { viewModel?.isShowingSessionResults ?? false },
+            set: { viewModel?.isShowingSessionResults = $0 }
+        )) {
+            if let vm = viewModel {
+                SessionResultsView(
+                    finalScore: vm.sessionFinalScore,
+                    highScore: vm.highScoreService.highScore(for: chart.persistentModelID),
+                    scoreEngine: vm.scoreEngine,
+                    onPlayAgain: {
+                        vm.isShowingSessionResults = false
+                        vm.restartPlayback()
+                        vm.togglePlayback()
+                    },
+                    onDone: {
+                        vm.isShowingSessionResults = false
+                        dismiss()
+                    }
+                )
+            }
         }
     }
 }

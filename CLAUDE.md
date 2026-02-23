@@ -6,78 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Virgo is a SwiftUI-based drum notation and metronome application for iOS and macOS. The app provides interactive drum track visualization with musical notation, metronome functionality, and gameplay-style views for practicing drum patterns.
 
-### Architecture
-
-- **SwiftUI + SwiftData**: Modern declarative UI with Core Data replacement
-- **Multi-platform**: Supports iOS 18.5+ and macOS 14.0+
-- **Component-Based Architecture**: Modular design with reusable components
-- **AVFoundation**: Audio engine for metronome and sound playback
-- **Organized File Structure**: Clear separation by feature (components, views, models, utilities)
-
-### Key Components
-
-- `VirgoApp.swift`: Main app entry point with SwiftData ModelContainer and shared MetronomeEngine
-- `MainMenuView.swift`: Animated splash screen with navigation to main app
-- `ContentView.swift`: Primary track listing interface with unified Songs tab supporting local and server DTX files
-- `GameplayView.swift`: Full-screen musical notation display with playback controls
-- `DrumTrack.swift`: SwiftData models (Song, Chart, Note) with relationships for complex drum patterns
-- `MetronomeComponent.swift`: Advanced metronome with sample-accurate timing and volume control
-- `DTXAPIClient.swift`: Network client for DTX server integration with file listing, metadata, and download capabilities
-- `DTXFileParser.swift`: Parser for importing DTX drum chart files with complete note parsing
-- `InputManager.swift`: MIDI and keyboard input handling with timing accuracy scoring and note matching
-- `PlaybackService.swift`: Centralized playback state management service
-- `DatabaseMaintenanceService.swift`: SwiftData relationship maintenance and cleanup utilities
-
-### Data Model
-
-The app uses SwiftData with five primary models:
-- `Song`: Local track metadata (title, artist, BPM, time signature, duration, genre)
-- `Chart`: Difficulty-specific charts linked to songs with relationships to Notes
-- `Note`: Individual drum notes with interval, type, measure number, and timing offset
-- `ServerSong`: Server-based tracks with download and caching support
-- `ServerChart`: Server chart data with DTX file integration
-- Rich sample data with complex multi-measure drum patterns
-- Unified interface combining local SwiftData entries with server DTX files
-
-## Development Setup
-
-### Initial Setup
-```bash
-# One-time setup after cloning
-./scripts/setup-git-hooks.sh
-```
-
-This sets up:
-- SwiftLint pre-commit hooks for code quality
-- Automatic linting on staged files before commit
-- Blocks commits with linting errors
-
-### Code Quality
-```bash
-# Manual linting
-swiftlint lint
-
-# Auto-fix linting issues
-swiftlint lint --fix
-```
+- **SwiftUI + SwiftData**: Modern declarative UI with persistent storage
+- **Multi-platform**: iOS 18.5+ and macOS 14.0+
+- **AVFoundation**: Audio engine for metronome and song preview playback
 
 ## Development Commands
 
-### Building
+### Build & Test (macOS target is sufficient for development)
 ```bash
-# Build for iOS Simulator
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' build
-
 # Build for macOS
 xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' build
 
-# Build all targets
-xcodebuild -project Virgo.xcodeproj -scheme Virgo build
-```
-
-### Testing
-```bash
-# Run unit tests (CI format - recommended)
+# Run all unit tests (CI format - recommended)
 xcodebuild test \
   -project Virgo.xcodeproj \
   -scheme Virgo \
@@ -91,166 +31,126 @@ xcodebuild test \
   -destination-timeout 300 \
   -derivedDataPath ./DerivedData
 
-# Run unit tests (simple format)
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' test
-
-# Run UI tests
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=iOS Simulator,name=iPhone 15' -only-testing:VirgoUITests test
-
 # Run specific test class
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' -only-testing:VirgoTests/MetronomeEngineTests test
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' \
+  -only-testing:VirgoTests/MetronomeEngineTests test
 
 # Run specific test method
-xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' -only-testing:VirgoTests/DTXFileParserTests/testComplexDTXContent test
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' \
+  -only-testing:VirgoTests/DTXFileParserTests/testComplexDTXContent test
 ```
 
-### Project Structure
-```
-Virgo/
-├── Virgo.xcodeproj/              # Xcode project configuration
-├── Virgo/                        # Main app source code
-│   ├── VirgoApp.swift           # App entry point with SwiftData and MetronomeEngine
-│   ├── components/              # Reusable UI components
-│   │   ├── GameplayControlsView.swift
-│   │   ├── GameplayHeaderView.swift
-│   │   ├── MetronomeComponent.swift    # Core metronome with AVFoundation
-│   │   └── MetronomeSettingsComponent.swift
-│   ├── views/                   # Main view controllers
-│   │   ├── ContentView.swift    # Track listing
-│   │   ├── GameplayView.swift   # Musical notation display
-│   │   ├── MainMenuView.swift   # Splash screen
-│   │   ├── BeamView.swift       # Musical beam notation
-│   │   ├── DrumBeatView.swift   # Individual note rendering
-│   │   ├── MetronomeView.swift  # Metronome interface
-│   │   ├── MusicNotationViews.swift
-│   │   ├── AudioSettingsView.swift # Audio configuration interface
-│   │   ├── InputSettingsView.swift # MIDI/keyboard input configuration
-│   │   ├── SongsTabView.swift   # Unified local/server song listing
-│   │   ├── helpers/             # View helper classes
-│   │   │   └── GameplayPlaybackHelper.swift
-│   │   └── subviews/            # Reusable view components
-│   │       ├── GameplayPlaybackControls.swift
-│   │       ├── GameplaySheetMusicView.swift
-│   │       ├── KeyCapturingOverlay.swift
-│   │       └── MappingSections.swift
-│   ├── models/                  # SwiftData models
-│   │   └── DrumTrack.swift      # Track and Note models with sample data
-│   ├── services/                # Business logic services
-│   │   ├── PlaybackService.swift   # Centralized playback state management
-│   │   └── DatabaseMaintenanceService.swift # SwiftData maintenance utilities
-│   ├── utilities/               # Helper utilities
-│   │   ├── BeamGroupingLogic.swift  # Musical notation beam grouping
-│   │   ├── Logger.swift         # Centralized logging
-│   │   ├── DTXAPIClient.swift   # Server integration for DTX files
-│   │   ├── DTXFileParser.swift   # DTX file format parser
-│   │   ├── InputManager.swift   # MIDI/keyboard input with timing scoring
-│   │   ├── MetronomeEngine.swift # Core metronome timing engine
-│   │   ├── ServerSongService.swift # Server integration service
-│   │   └── SwiftDataRelationshipLoader.swift # Async relationship loading utility
-│   ├── constants/               # App constants
-│   │   └── Drum.swift          # Drum type definitions
-│   ├── layout/                  # Layout calculations
-│   │   └── gameplay.swift       # Musical notation positioning
-│   └── Assets.xcassets/         # App icons, colors, and audio assets
-├── VirgoTests/                  # Unit tests (Swift Testing framework)
-├── VirgoUITests/               # UI automation tests
-├── scripts/                    # Development scripts
-    ├── setup-git-hooks.sh      # Git hooks installation
-    └── git-hooks/              # Pre-commit hooks
-└── server/                     # FastAPI backend server
-    ├── main.py                # Server entry point
-    ├── dtx_files/             # DTX file storage
-    └── requirements.txt       # Python dependencies
+### Code Quality
+```bash
+swiftlint lint         # Manual lint
+swiftlint lint --fix   # Auto-fix
 ```
 
-## Development Notes
+### Initial Setup
+```bash
+./scripts/setup-git-hooks.sh   # Installs SwiftLint pre-commit hook
+```
 
-- The app uses Swift Testing framework (not XCTest) for unit tests
-- SwiftData models include complex Note relationships with detailed drum patterns
-- MetronomeEngine uses AVFoundation for sample-accurate audio timing
-- Musical notation rendering with precise positioning and beam grouping
-- Component architecture separates UI from business logic effectively
-- Test environment detection disables audio components during testing
-- Centralized logging with categorized output (audioPlayback, userAction, debug)
-- Multi-platform target supports both iOS and macOS with adaptive UI
-- SwiftLint configuration customized for the project with relaxed rules for necessary patterns
+## Architecture
 
-### SwiftData Concurrency
-- **Issue**: Accessing SwiftData relationships (`song.charts`, `chart.notes`) during UI rendering causes concurrency crashes and blocks the main thread
-- **Solution**: Use async caching pattern with `@State` variables and `.task` modifier to load relationship data in background, then update UI on main thread
-- **Implementation**: Views cache relationship counts/data locally and refresh asynchronously when song changes, ensuring immediate UI responsiveness
-- **Utility**: `SwiftDataRelationshipLoader` provides standardized async relationship loading patterns
+### Data Model (SwiftData)
+Five primary models in `models/DrumTrack.swift`:
+- `Song`: Local track metadata (title, artist, BPM, time signature, duration, genre, bgmFilePath, previewFilePath)
+- `Chart`: Difficulty-specific charts linked to songs
+- `Note`: Individual drum notes (interval, type, measureNumber, measureOffset)
+- `ServerSong` / `ServerChart`: Server-based tracks with download/cache support
 
-### Services Architecture
-- **PlaybackService**: `@MainActor` service for centralized playback state management across views
-- **DatabaseMaintenanceService**: Utilities for SwiftData relationship maintenance and cleanup operations
-- **Pattern**: Services are injected as `@EnvironmentObject` and provide single source of truth for business logic
+### Metronome System (Three-Layer Architecture)
+`MetronomeEngine` is the public facade that composes two internal engines:
+- `MetronomeAudioEngine`: Implements `AudioDriverProtocol`, handles AVFoundation audio buffer playback and iOS audio session management
+- `MetronomeTimingEngine`: Uses `DispatchSourceTimer` for nanosecond-precision beat scheduling; exposes `onBeat` callback and `@Published currentBeat`
+- `MetronomeEngine`: Wires the two together, exposes `@Published` state for UI, handles haptic feedback (iOS). Accepts an `AudioDriverProtocol` in `init` for test injection.
 
-## Key Technical Features
+### Gameplay Architecture
+`GameplayView` delegates all state to `GameplayViewModel` (`@Observable @MainActor`):
+- Caches SwiftData relationships (`cachedNotes`, `cachedSong`) to avoid main-thread blocking
+- Pre-computes layout data (`cachedDrumBeats`, `cachedMeasurePositions`, `cachedBeamGroups`, `cachedBeatPositions`) to avoid per-frame recalculation
+- Manages BGM (`AVAudioPlayer`) synchronized with metronome via `CFAbsoluteTime`
+- Handles speed changes with trailing-edge debounce (100ms) to avoid slider jitter
+- `GameplayView+InputManagerDelegate.swift` and `GameplayView+Preview.swift` are extensions of `GameplayView`
 
-### Metronome System
-- `MetronomeEngine`: Core audio engine with AVFoundation integration
-- Sample-accurate timing with buffer scheduling
-- Volume control with accent patterns (stronger beat 1)
-- Thread-safe audio buffer caching with `AudioBufferCache` actor
-- Test environment detection for unit testing compatibility
+### Services Layer
+All services are `@MainActor`:
+- `PlaybackService`: Simple song playback state for the library list
+- `AudioPlaybackService`: Song preview playback (cached `AVAudioPlayer` instances, FIFO cache of 10)
+- `PracticeSettingsService`: Speed control (0.25x–1.5x), per-chart persistence via `UserDefaults` with `CryptoKit` SHA-256 keying
+- `DatabaseMaintenanceService`: SwiftData relationship maintenance and cleanup
 
-### Musical Notation
-- Complex drum pattern visualization with proper musical notation
-- Beam grouping logic for connected eighth/sixteenth notes
-- Multi-measure layout with staff lines, clefs, and time signatures
-- Real-time playback indication with beat highlighting
-- Scrollable gameplay view with measure-based positioning
-
-### Audio Architecture
-- Cached audio assets using NSDataAsset for ticker sounds
-- Configurable audio session for iOS (playback category with mix-with-others)
-- Non-fatal error handling for audio engine failures
-- Proper resource cleanup in deinitializer
-
-### Server Integration
-- `DTXAPIClient`: Network client for connecting to FastAPI backend server
-- Configurable server URL (defaults to http://127.0.0.1:8001)
-- REST API endpoints for listing, downloading, and parsing DTX files
-- Error handling for network connectivity and server responses
-- User preferences for server configuration with UserDefaults storage
-- Network entitlements configured for client/server communication
-- Unified Songs tab combines local SwiftData entries with server DTX files
-- Caching system for downloaded DTX files with local storage support
+### Server Song Management
+Refactored into focused utilities under `utilities/`:
+- `ServerSongDownloader`: Downloads DTX files from FastAPI backend
+- `ServerSongFileManager`: Local file system operations for downloaded songs
+- `ServerSongCache`: In-memory caching for server song metadata
+- `ServerSongStatusManager`: Tracks download/delete state and syncs with SwiftData
 
 ### Input System
-- `InputManager`: Real-time MIDI and keyboard input handling with CoreMIDI integration
-- Timing accuracy scoring system (Perfect/Great/Good/Miss) with configurable tolerance windows
-- Note matching algorithm that compares input timing against expected chart notes
-- Cross-platform input support (MIDI on iOS/macOS, keyboard input on macOS)
-- `InputSettingsManager`: Configurable key/MIDI mappings with UserDefaults persistence
+- `InputManager`: Real-time MIDI and keyboard input with timing accuracy scoring (Perfect/Great/Good/Miss)
+- `InputSettingsManager`: Configurable key/MIDI mappings persisted in `UserDefaults`
+
+## Key Technical Patterns
+
+### SwiftData Concurrency
+Accessing `song.charts` or `chart.notes` during UI rendering causes crashes. Use the async caching pattern:
+```swift
+@State private var cachedItems: [Item] = []
+// In .task modifier: load asynchronously, update @State on main thread
+```
+`SwiftDataRelationshipLoader` provides standardized helpers for this.
+
+### @Observable vs @ObservableObject
+`GameplayViewModel` uses Swift 5.9's `@Observable` macro (not `ObservableObject`). This requires `import Observation` and avoids the `@Published` wrapper—all stored properties are automatically tracked.
+
+### SwiftUI Performance: Avoid @Published in Complex View Hierarchies
+Frequently-updating `@Published` properties on `@EnvironmentObject` or `@ObservedObject` force re-evaluation of every dependent view. `MetronomeEngine.$currentBeat` must NOT be observed directly in `GameplayView` (which contains hundreds of notation subviews). Instead, `GameplayViewModel` subscribes via Combine and batches visual updates.
+
+### Test Environment Detection
+`TestEnvironment.isRunningTests` (checks `XCTestCase` class existence) is used by audio components to skip AVFoundation initialization. `LaunchArguments` defines shared constants (`-UITesting`, `-ResetState`, `-SkipSeed`) for UI test launch configuration.
+
+### Audio/Metronome Synchronization
+BGM (`AVAudioPlayer`) and metronome are synchronized using a common `CFAbsoluteTime` start point, converted to `AVAudioTime` for sample-accurate scheduling. Speed changes reschedule both engines with a shared `startTime` to prevent drift.
+
+## Project Structure
+```
+Virgo/
+├── Virgo.xcodeproj/
+├── Virgo/
+│   ├── VirgoApp.swift           # App entry point; creates ModelContainer and MetronomeEngine
+│   ├── components/              # Reusable UI components (song rows, difficulty badges, metronome)
+│   ├── views/                   # Feature views (ContentView, GameplayView, SongsTabView, etc.)
+│   │   ├── subviews/            # View decompositions
+│   │   └── helpers/             # (deprecated path - logic moved to ViewModel)
+│   ├── viewmodels/
+│   │   └── GameplayViewModel.swift  # All gameplay state and logic
+│   ├── models/                  # SwiftData models (DrumTrack.swift, DrumType+Extensions.swift)
+│   ├── services/                # Business logic services
+│   ├── utilities/               # Shared utilities (audio engines, parsers, input, logging)
+│   ├── constants/               # Drum type definitions
+│   ├── layout/                  # Musical notation layout calculations
+│   └── Assets.xcassets/
+├── VirgoTests/                  # Unit tests (Swift Testing framework, not XCTest)
+├── VirgoUITests/                # UI automation tests
+├── scripts/                     # setup-git-hooks.sh
+└── server/                      # FastAPI backend (main.py, dtx_files/, requirements.txt)
+```
 
 ## FastAPI Backend Server
-
-The project includes a Python FastAPI server (`server/`) for serving DTX files:
-- Local development server at `http://localhost:8000`
-- Cloudflare Workers deployment support
-- REST API for listing, downloading, and parsing DTX files
-- CORS-enabled for local iOS/macOS client development
+- Local dev: `http://127.0.0.1:8001` (configurable via UserDefaults)
+- Endpoints: list, download, and parse DTX files
 - Shift-JIS encoding support for Japanese DTX files
+- CORS-enabled; Cloudflare Workers deployment supported
 
 ## Memory Archive
 
-### SwiftData and Concurrency
-- SwiftData concurrency issue discovered where complex Note relationships cause threading conflicts during background model updates
+### SwiftUI Performance - @Published and Massive View Re-renders
+- **Critical**: `@Published` on `@EnvironmentObject` triggers re-evaluation of ALL dependent views, even those not using the changed property
+- **Case**: `MetronomeEngine.$currentBeat` as `@EnvironmentObject` in `GameplayView` caused complete UI unresponsiveness (scrolling >5s delay) because every beat tick forced re-render of hundreds of notation subviews
+- **Fix**: Use `GameplayViewModel` (`@Observable`) as the intermediary; it subscribes to metronome beats and batches visual state updates
 
-### SwiftUI Performance - @Published Properties and Massive View Re-renders
-- **Critical Issue**: `@Published` properties in `@EnvironmentObject` or `@ObservedObject` can cause massive UI performance issues in complex view hierarchies
-- **Specific Case**: `MetronomeEngine` with `@Published var currentBeat` used as `@EnvironmentObject` in `GameplayView` caused complete UI unresponsiveness during playback
-- **Root Cause**: Every time `currentBeat` updated (every metronome beat), SwiftUI re-evaluated the entire `GameplayView` hierarchy containing hundreds of `DrumBeatView`, `BeamGroupView`, staff lines, and other complex musical notation views
-- **Symptoms**: 
-  - UI becomes completely unresponsive during playback (scrolling takes >5 seconds)
-  - Other UI elements (buttons, sliders) respond slowly (1-2 seconds delay)
-  - Performance issues disappear when playback is paused
-- **Solution**: Isolate frequently-updating `@Published` properties from complex view hierarchies
-  - Move audio-only state updates to non-published properties
-  - Use separate, lightweight UI state objects for views that need frequent updates
-  - Cache expensive UI calculations to prevent re-computation on every state change
-- **Key Insight**: In SwiftUI, changing any `@Published` property forces re-evaluation of all dependent views, regardless of whether those views actually use the changed property
-- **Performance Pattern**: Avoid `@EnvironmentObject` or `@ObservedObject` with frequently-updating `@Published` properties in views with complex, expensive rendering
-- For build and test, only target macOS is sufficient for now
+### SwiftData Concurrency
+- Accessing SwiftData relationships during UI rendering causes threading crashes
+- Always use async caching pattern: load in `.task`, cache in `@State`, render from cache
