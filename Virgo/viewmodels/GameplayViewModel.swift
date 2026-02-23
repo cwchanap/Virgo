@@ -120,6 +120,31 @@ final class GameplayViewModel {
     /// Input handler delegate
     var inputHandler = GameplayInputHandler()
 
+    // MARK: - Scoring State
+    /// All combo and scoring state
+    var scoreEngine = ScoreEngine()
+    /// Final score captured at session end (survives resetScoring)
+    var sessionFinalScore: Int = 0
+    /// Whether the session results sheet is visible
+    var isShowingSessionResults: Bool = false
+    /// Non-nil for one render cycle to drive milestone animation (10/25/50/100)
+    var showMilestoneAnimation: Bool = false
+    /// True briefly after a combo break to drive visual feedback
+    var showComboBreakFeedback: Bool = false
+    /// Notes already scored via explicit hit — skipped by missed-note scan
+    private var scoredNoteIDs: Set<ObjectIdentifier> = []
+    /// High-water mark for missed-note scan (timePosition units)
+    private var lastScannedTimePosition: Double = 0.0
+
+    // MARK: - High Score
+    let highScoreService: HighScoreService
+
+    // MARK: - Haptic Generators (iOS only)
+    #if os(iOS)
+    private let hitHapticGenerator = UIImpactFeedbackGenerator(style: .light)
+    private let comboBreakHapticGenerator = UINotificationFeedbackGenerator()
+    #endif
+
     // MARK: - Subscriptions
     /// Metronome beat subscription for visual sync
     var metronomeSubscription: AnyCancellable?
@@ -127,12 +152,31 @@ final class GameplayViewModel {
     // MARK: - Initialization
 
     @MainActor
-    init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService) {
+    init(
+        chart: Chart,
+        metronome: MetronomeEngine,
+        practiceSettings: PracticeSettingsService,
+        highScoreService: HighScoreService
+    ) {
         self.chart = chart
         self.metronome = metronome
         self.practiceSettings = practiceSettings
+        self.highScoreService = highScoreService
         self.lastAppliedSpeedMultiplier = practiceSettings.speedMultiplier
     }
+
+    @MainActor
+    convenience init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService) {
+        self.init(chart: chart, metronome: metronome, practiceSettings: practiceSettings, highScoreService: HighScoreService())
+    }
+
+    #if DEBUG
+    @MainActor
+    convenience init(chart: Chart, metronome: MetronomeEngine) {
+        let ps = PracticeSettingsService()
+        self.init(chart: chart, metronome: metronome, practiceSettings: ps, highScoreService: HighScoreService())
+    }
+    #endif
 
     // MARK: - Speed Control
 
@@ -644,6 +688,7 @@ final class GameplayViewModel {
         lastDiscreteBeat = -1
         playbackProgress = 0.0
         purpleBarPosition = nil
+        resetScoring()
     }
 
     private func refreshTimingCaches() {
@@ -807,6 +852,9 @@ final class GameplayViewModel {
             updatePurpleBarPosition()
             updateActiveBeat()
 
+            let playheadTimePosition = Double(measureIndex) + beatPosition
+            scanForMissedNotes(upToTimePosition: playheadTimePosition)
+
             if playbackProgress >= 1.0 {
                 handlePlaybackCompletion()
             }
@@ -903,11 +951,19 @@ final class GameplayViewModel {
         isPlaying = false
         metronome.stop()
         inputManager.stopListening()
+        // Capture final score before reset clears scoreEngine
+        let finalScore = scoreEngine.score
+        let isNewRecord = highScoreService.saveIfHighScore(finalScore, for: chart.persistentModelID)
         resetPlaybackState()
         playbackStartTime = nil
         pausedElapsedTime = 0.0
         bgmPlayer?.stop()
-        Logger.audioPlayback("Playback finished for track: \(track?.title ?? "Unknown")")
+        // Set session result after reset (resetScoring zeroes sessionFinalScore)
+        sessionFinalScore = finalScore
+        isShowingSessionResults = true
+        Logger.audioPlayback(
+            "Playback finished. Score: \(finalScore)\(isNewRecord ? " (new high score!)" : "")"
+        )
     }
 
     // MARK: - Computation Methods
@@ -1067,6 +1123,99 @@ final class GameplayViewModel {
         }
 
         return 0.0
+    }
+
+    // MARK: - Scoring Methods
+
+    /// Process a note match result from InputManager. Called by GameplayInputHandler closure.
+    func recordHit(result: NoteMatchResult) {
+        guard isPlaying else { return }
+
+        // Track which notes were explicitly scored to prevent missed-note double-counting
+        if let note = result.matchedNote {
+            scoredNoteIDs.insert(ObjectIdentifier(note))
+        }
+
+        let prevCombo = scoreEngine.combo
+        scoreEngine.processHit(accuracy: result.timingAccuracy)
+
+        if result.timingAccuracy == .miss {
+            triggerComboBreakFeedback()
+        } else {
+            triggerHitHaptic()
+            if let _ = ScoreEngine.milestone(crossedFrom: prevCombo, to: scoreEngine.combo) {
+                triggerMilestoneAnimation()
+            }
+        }
+
+        Logger.userAction("Score: \(scoreEngine.score) | Combo: \(scoreEngine.combo)x")
+    }
+
+    /// Scan cachedNotes for notes that scrolled past without any hit attempt.
+    func scanForMissedNotes(upToTimePosition playheadPosition: Double) {
+        for note in cachedNotes {
+            let noteTimePos = MeasureUtils.timePosition(
+                measureNumber: note.measureNumber,
+                measureOffset: note.measureOffset
+            )
+            guard noteTimePos > lastScannedTimePosition,
+                  noteTimePos < playheadPosition else { continue }
+            let noteID = ObjectIdentifier(note)
+            guard !scoredNoteIDs.contains(noteID) else { continue }
+            scoredNoteIDs.insert(noteID)
+            scoreEngine.processMissedNote()
+        }
+        lastScannedTimePosition = max(lastScannedTimePosition, playheadPosition)
+    }
+
+    /// Resets all scoring state. Called by resetPlaybackState() on restart and completion.
+    func resetScoring() {
+        scoreEngine.reset()
+        sessionFinalScore = 0
+        isShowingSessionResults = false
+        showMilestoneAnimation = false
+        showComboBreakFeedback = false
+        scoredNoteIDs = []
+        lastScannedTimePosition = 0.0
+    }
+
+    /// Wire GameplayInputHandler closures to ViewModel scoring methods.
+    func wireInputHandler() {
+        inputHandler.onNoteResult = { [weak self] result in
+            self?.recordHit(result: result)
+        }
+    }
+
+    private func triggerMilestoneAnimation() {
+        showMilestoneAnimation = true
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            if self?.showMilestoneAnimation == true {
+                self?.showMilestoneAnimation = false
+            }
+        }
+    }
+
+    private func triggerComboBreakFeedback() {
+        guard scoreEngine.combo == 0 else { return }
+        showComboBreakFeedback = true
+        triggerComboBreakHaptic()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            self?.showComboBreakFeedback = false
+        }
+    }
+
+    private func triggerHitHaptic() {
+        #if os(iOS)
+        hitHapticGenerator.impactOccurred(intensity: 0.6)
+        #endif
+    }
+
+    private func triggerComboBreakHaptic() {
+        #if os(iOS)
+        comboBreakHapticGenerator.notificationOccurred(.warning)
+        #endif
     }
 
     // MARK: - BGM Setup
