@@ -16,6 +16,19 @@ import SwiftData
 @MainActor
 struct HighScoreServiceTests {
 
+    // MARK: - Helper
+
+    /// Creates and inserts a Song and Chart, saves the context, and returns the Chart.
+    private func makeTestChart(difficulty: Difficulty = .medium) throws -> Chart {
+        let context = TestContainer.shared.context
+        let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
+        context.insert(song)
+        let chart = Chart(difficulty: difficulty, song: song)
+        context.insert(chart)
+        try context.save()
+        return chart
+    }
+
     // MARK: - Default State
 
     @Test("Default high score is 0 for an unseen chart")
@@ -23,12 +36,7 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             #expect(service.highScore(for: chart.persistentModelID) == 0)
         }
@@ -41,12 +49,7 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             let isNew = service.saveIfHighScore(1500, for: chart.persistentModelID)
             #expect(isNew == true)
@@ -59,12 +62,7 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             _ = service.saveIfHighScore(1000, for: chart.persistentModelID)
             let isNew = service.saveIfHighScore(1500, for: chart.persistentModelID)
@@ -78,12 +76,7 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             _ = service.saveIfHighScore(1500, for: chart.persistentModelID)
             let isNew = service.saveIfHighScore(500, for: chart.persistentModelID)
@@ -97,12 +90,7 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             _ = service.saveIfHighScore(1000, for: chart.persistentModelID)
             let isNew = service.saveIfHighScore(1000, for: chart.persistentModelID)
@@ -117,12 +105,7 @@ struct HighScoreServiceTests {
     func testPersistsAcrossInstances() async throws {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             let service1 = HighScoreService(userDefaults: ud)
             _ = service1.saveIfHighScore(2000, for: chart.persistentModelID)
@@ -139,14 +122,8 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chartA = Chart(difficulty: .easy, song: song)
-            let chartB = Chart(difficulty: .hard, song: song)
-            context.insert(chartA)
-            context.insert(chartB)
-            try context.save()
+            let chartA = try makeTestChart(difficulty: .easy)
+            let chartB = try makeTestChart(difficulty: .hard)
 
             _ = service.saveIfHighScore(100, for: chartA.persistentModelID)
             _ = service.saveIfHighScore(500, for: chartB.persistentModelID)
@@ -163,12 +140,7 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             _ = service.saveIfHighScore(1000, for: chart.persistentModelID)
             service.clearAllHighScores()
@@ -183,12 +155,7 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             let isNew = service.saveIfHighScore(-1, for: chart.persistentModelID)
             #expect(isNew == false)
@@ -201,12 +168,7 @@ struct HighScoreServiceTests {
         try await TestSetup.withTestSetup {
             let (ud, _) = TestUserDefaults.makeIsolated()
             let service = HighScoreService(userDefaults: ud)
-            let context = TestContainer.shared.context
-            let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Rock")
-            context.insert(song)
-            let chart = Chart(difficulty: .medium, song: song)
-            context.insert(chart)
-            try context.save()
+            let chart = try makeTestChart()
 
             let isNew = service.saveIfHighScore(0, for: chart.persistentModelID)
             #expect(isNew == false)

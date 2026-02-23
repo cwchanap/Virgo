@@ -125,6 +125,8 @@ final class GameplayViewModel {
     var scoreEngine = ScoreEngine()
     /// Final score captured at session end (survives resetScoring)
     var sessionFinalScore: Int = 0
+    /// High score recorded before the session-end save — used by SessionResultsView to determine isNewHighScore
+    var sessionPreviousHighScore: Int = 0
     /// Whether the session results sheet is visible
     var isShowingSessionResults: Bool = false
     /// Non-nil for one render cycle to drive milestone animation (10/25/50/100)
@@ -953,6 +955,7 @@ final class GameplayViewModel {
         inputManager.stopListening()
         // Capture final score before reset clears scoreEngine
         let finalScore = scoreEngine.score
+        let previousHighScore = highScoreService.highScore(for: chart.persistentModelID)
         let isNewRecord = highScoreService.saveIfHighScore(finalScore, for: chart.persistentModelID)
         resetPlaybackState()
         playbackStartTime = nil
@@ -960,6 +963,7 @@ final class GameplayViewModel {
         bgmPlayer?.stop()
         // Set session result after reset (resetScoring zeroes sessionFinalScore)
         sessionFinalScore = finalScore
+        sessionPreviousHighScore = previousHighScore
         isShowingSessionResults = true
         Logger.audioPlayback(
             "Playback finished. Score: \(finalScore)\(isNewRecord ? " (new high score!)" : "")"
@@ -1140,10 +1144,10 @@ final class GameplayViewModel {
         scoreEngine.processHit(accuracy: result.timingAccuracy)
 
         if result.timingAccuracy == .miss {
-            triggerComboBreakFeedback()
+            if prevCombo > 0 { triggerComboBreakFeedback() }
         } else {
             triggerHitHaptic()
-            if let _ = ScoreEngine.milestone(crossedFrom: prevCombo, to: scoreEngine.combo) {
+            if ScoreEngine.milestone(crossedFrom: prevCombo, to: scoreEngine.combo) != nil {
                 triggerMilestoneAnimation()
             }
         }

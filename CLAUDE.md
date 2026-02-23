@@ -80,6 +80,7 @@ All services are `@MainActor`:
 - `AudioPlaybackService`: Song preview playback (cached `AVAudioPlayer` instances, FIFO cache of 10)
 - `PracticeSettingsService`: Speed control (0.25x–1.5x), per-chart persistence via `UserDefaults` with `CryptoKit` SHA-256 keying
 - `DatabaseMaintenanceService`: SwiftData relationship maintenance and cleanup
+- `HighScoreService`: Per-chart best-score persistence via `UserDefaults` with `CryptoKit` SHA-256 keying
 
 ### Server Song Management
 Refactored into focused utilities under `utilities/`:
@@ -115,7 +116,7 @@ Frequently-updating `@Published` properties on `@EnvironmentObject` or `@Observe
 BGM (`AVAudioPlayer`) and metronome are synchronized using a common `CFAbsoluteTime` start point, converted to `AVAudioTime` for sample-accurate scheduling. Speed changes reschedule both engines with a shared `startTime` to prevent drift.
 
 ## Project Structure
-```
+```text
 Virgo/
 ├── Virgo.xcodeproj/
 ├── Virgo/

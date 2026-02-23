@@ -112,6 +112,7 @@ struct GameplayView: View {
                 SessionResultsView(
                     finalScore: vm.sessionFinalScore,
                     highScore: vm.highScoreService.highScore(for: chart.persistentModelID),
+                    previousHighScore: vm.sessionPreviousHighScore,
                     scoreEngine: vm.scoreEngine,
                     onPlayAgain: {
                         vm.isShowingSessionResults = false
