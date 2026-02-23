@@ -13,7 +13,7 @@ import CryptoKit
 
 /// Service that persists the best score achieved for each chart.
 @MainActor
-final class HighScoreService {
+final class HighScoreService: ObservableObject {
 
     // MARK: - Constants
 
@@ -44,11 +44,11 @@ final class HighScoreService {
     func saveIfHighScore(_ score: Int, for chartID: PersistentIdentifier) -> Bool {
         guard score > 0 else { return false }
 
-        let current = highScore(for: chartID)
-        guard score > current else { return false }
-
         let key = persistenceKey(for: chartID)
         var scores = readPersistedScores()
+        let current = scores[key] ?? 0
+        guard score > current else { return false }
+
         scores[key] = score
         userDefaults.set(scores, forKey: settingsKey)
 

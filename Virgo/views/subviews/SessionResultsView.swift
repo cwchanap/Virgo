@@ -10,11 +10,12 @@ import SwiftUI
 struct SessionResultsView: View {
     let finalScore: Int
     let highScore: Int
+    let previousHighScore: Int
     let scoreEngine: ScoreEngine
     let onPlayAgain: () -> Void
     let onDone: () -> Void
 
-    private var isNewHighScore: Bool { finalScore > 0 && finalScore > highScore }
+    private var isNewHighScore: Bool { finalScore > 0 && finalScore > previousHighScore }
 
     var body: some View {
         NavigationStack {
@@ -120,13 +121,14 @@ struct SessionResultsView: View {
 #Preview {
     var engine = ScoreEngine()
     for _ in 0..<15 { engine.processHit(accuracy: .perfect) }
-    for _ in 0..<5  { engine.processHit(accuracy: .great) }
-    for _ in 0..<2  { engine.processHit(accuracy: .good) }
-    for _ in 0..<3  { engine.processHit(accuracy: .miss) }
+    for _ in 0..<5 { engine.processHit(accuracy: .great) }
+    for _ in 0..<2 { engine.processHit(accuracy: .good) }
+    for _ in 0..<3 { engine.processHit(accuracy: .miss) }
 
     return SessionResultsView(
         finalScore: 2450,
-        highScore: 2100,
+        highScore: 2450,
+        previousHighScore: 2100,
         scoreEngine: engine,
         onPlayAgain: {},
         onDone: {}

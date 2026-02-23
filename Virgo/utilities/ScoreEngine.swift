@@ -47,23 +47,18 @@ struct ScoreEngine {
         switch accuracy {
         case .perfect:
             perfectCount += 1
-            combo += 1
-            maxCombo = max(maxCombo, combo)
-            score += pointsForCurrentCombo(accuracy: accuracy)
         case .great:
             greatCount += 1
-            combo += 1
-            maxCombo = max(maxCombo, combo)
-            score += pointsForCurrentCombo(accuracy: accuracy)
         case .good:
             goodCount += 1
-            combo += 1
-            maxCombo = max(maxCombo, combo)
-            score += pointsForCurrentCombo(accuracy: accuracy)
         case .miss:
             missCount += 1
             combo = 0
+            return
         }
+        combo += 1
+        maxCombo = max(maxCombo, combo)
+        score += pointsForCurrentCombo(accuracy: accuracy)
     }
 
     /// Process a note that scrolled past without a hit attempt.
