@@ -113,7 +113,7 @@ struct GameplayView: View {
                     finalScore: vm.sessionFinalScore,
                     highScore: vm.highScoreService.highScore(for: chart.persistentModelID),
                     previousHighScore: vm.sessionPreviousHighScore,
-                    scoreEngine: vm.scoreEngine,
+                    scoreEngine: vm.sessionScoreEngine,
                     onPlayAgain: {
                         vm.isShowingSessionResults = false
                         vm.restartPlayback()
