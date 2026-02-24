@@ -22,7 +22,11 @@ final class HighScoreService: ObservableObject {
     // MARK: - Dependencies
 
     private let userDefaults: UserDefaults
-    private let jsonEncoder = JSONEncoder()
+    private let jsonEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
 
     // MARK: - Initialization
 
