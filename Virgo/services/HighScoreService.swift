@@ -22,6 +22,7 @@ final class HighScoreService: ObservableObject {
     // MARK: - Dependencies
 
     private let userDefaults: UserDefaults
+    private let jsonEncoder = JSONEncoder()
 
     // MARK: - Initialization
 
@@ -68,7 +69,7 @@ final class HighScoreService: ObservableObject {
     /// Uses the same JSONEncoder + SHA-256 fallback strategy as PracticeSettingsService.
     private func persistenceKey(for chartID: PersistentIdentifier) -> String {
         do {
-            let data = try JSONEncoder().encode(chartID)
+            let data = try jsonEncoder.encode(chartID)
             if let key = String(data: data, encoding: .utf8) {
                 return key
             }

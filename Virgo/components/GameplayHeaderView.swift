@@ -112,7 +112,7 @@ private struct ComboCounterView: View {
     }
 
     private var comboColor: Color {
-        showBreak ? .red : (showMilestone ? .yellow : .orange)
+        showMilestone ? .yellow : .orange
     }
 }
 

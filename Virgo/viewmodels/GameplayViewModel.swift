@@ -123,6 +123,8 @@ final class GameplayViewModel {
     // MARK: - Scoring State
     /// All combo and scoring state
     var scoreEngine = ScoreEngine()
+    /// Snapshot of scoreEngine captured at session end before resetScoring clears it
+    var sessionScoreEngine = ScoreEngine()
     /// Final score captured at session end (survives resetScoring)
     var sessionFinalScore: Int = 0
     /// High score recorded before the session-end save — used by SessionResultsView to determine isNewHighScore
@@ -953,10 +955,11 @@ final class GameplayViewModel {
         isPlaying = false
         metronome.stop()
         inputManager.stopListening()
-        // Capture final score before reset clears scoreEngine
+        // Capture final score and snapshot scoreEngine before reset clears them
         let finalScore = scoreEngine.score
         let previousHighScore = highScoreService.highScore(for: chart.persistentModelID)
         let isNewRecord = highScoreService.saveIfHighScore(finalScore, for: chart.persistentModelID)
+        sessionScoreEngine = scoreEngine
         resetPlaybackState()
         playbackStartTime = nil
         pausedElapsedTime = 0.0
