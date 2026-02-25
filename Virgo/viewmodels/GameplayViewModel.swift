@@ -637,6 +637,10 @@ final class GameplayViewModel {
     }
 
     func skipToEnd() {
+        // Only process a skip when actively playing; calling this on an idle or paused
+        // session would run scanForMissedNotes + handlePlaybackCompletion with a
+        // zero/partial score and open the results sheet unintentionally.
+        guard isPlaying else { return }
         playbackTimer?.invalidate()
         playbackTimer = nil
         Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")

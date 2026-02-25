@@ -60,10 +60,11 @@ final class HighScoreService: ObservableObject {
         let verified = readPersistedScores()
         if verified[key] == score {
             Logger.debug("New high score \(score) saved for chart")
+            return true
         } else {
             Logger.error("HighScoreService: write verification failed — high score \(score) was not persisted")
+            return false
         }
-        return true
     }
 
     /// Removes all persisted high scores.

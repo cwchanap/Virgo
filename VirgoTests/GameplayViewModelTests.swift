@@ -406,6 +406,24 @@ struct GameplayViewModelTests {
         #expect(viewModel.pausedElapsedTime == 0.0)
     }
 
+    @Test func testSkipToEndWhenNotPlayingIsNoOp() async throws {
+        // Regression guard: skipToEnd() must not trigger scoring or show the results
+        // sheet when playback has not been started (or has been paused/stopped).
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Do NOT call startPlayback() — isPlaying is false.
+        viewModel.skipToEnd()
+
+        #expect(viewModel.isPlaying == false)
+        #expect(viewModel.isShowingSessionResults == false)
+        #expect(viewModel.playbackProgress == 0.0)
+    }
+
     @Test func testHandlePlaybackCompletionStopsInputListening() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
