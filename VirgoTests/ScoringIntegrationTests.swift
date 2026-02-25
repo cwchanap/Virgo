@@ -103,8 +103,11 @@ struct ScoringIntegrationTests {
     func testMissBreaksCombo() {
         let vm = makeViewModel()
         vm.isPlaying = true
-        vm.recordHit(result: makePerfectResult())
-        vm.recordHit(result: makePerfectResult())
+        // Keep results alive so their Notes share no memory address before each recordHit.
+        let r1 = makePerfectResult()
+        let r2 = makePerfectResult()
+        vm.recordHit(result: r1)
+        vm.recordHit(result: r2)
         #expect(vm.scoreEngine.combo == 2)
         let scoreBefore = vm.scoreEngine.score
         vm.recordHit(result: makeMissResult())
@@ -125,8 +128,10 @@ struct ScoringIntegrationTests {
     func testComboAccumulates() {
         let vm = makeViewModel()
         vm.isPlaying = true
-        for _ in 0..<5 {
-            vm.recordHit(result: makePerfectResult())
+        // Create all results upfront to keep Notes alive with distinct addresses.
+        let results = (0..<5).map { _ in makePerfectResult() }
+        for result in results {
+            vm.recordHit(result: result)
         }
         #expect(vm.scoreEngine.combo == 5)
     }
@@ -135,11 +140,13 @@ struct ScoringIntegrationTests {
     func testScoreUsesComboMultiplierAt10() {
         let vm = makeViewModel()
         vm.isPlaying = true
-        for _ in 0..<9 {
-            vm.recordHit(result: makePerfectResult())
+        // Create all results upfront to keep Notes alive with distinct addresses.
+        let results = (0..<10).map { _ in makePerfectResult() }
+        for result in results.prefix(9) {
+            vm.recordHit(result: result)
         }
         let scoreAt9 = vm.scoreEngine.score
-        vm.recordHit(result: makePerfectResult()) // combo becomes 10, tier 1.5x
+        vm.recordHit(result: results[9]) // combo becomes 10, tier 1.5x
         #expect(vm.scoreEngine.combo == 10)
         #expect(vm.scoreEngine.score == scoreAt9 + 150) // 100 × 1.0 × 1.5
     }
@@ -148,11 +155,13 @@ struct ScoringIntegrationTests {
     func testMilestoneAt10SetsFlag() {
         let vm = makeViewModel()
         vm.isPlaying = true
-        for _ in 0..<9 {
-            vm.recordHit(result: makePerfectResult())
+        // Create all results upfront to keep Notes alive with distinct addresses.
+        let results = (0..<10).map { _ in makePerfectResult() }
+        for result in results.prefix(9) {
+            vm.recordHit(result: result)
         }
         #expect(vm.showMilestoneAnimation == false)
-        vm.recordHit(result: makePerfectResult()) // combo 10
+        vm.recordHit(result: results[9]) // combo 10
         #expect(vm.showMilestoneAnimation == true)
     }
 
@@ -162,8 +171,10 @@ struct ScoringIntegrationTests {
     func testResetScoring() {
         let vm = makeViewModel()
         vm.isPlaying = true
-        vm.recordHit(result: makePerfectResult())
-        vm.recordHit(result: makePerfectResult())
+        let r1 = makePerfectResult()
+        let r2 = makePerfectResult()
+        vm.recordHit(result: r1)
+        vm.recordHit(result: r2)
         vm.resetScoring()
         #expect(vm.scoreEngine.score == 0)
         #expect(vm.scoreEngine.combo == 0)
@@ -176,8 +187,10 @@ struct ScoringIntegrationTests {
     func testRestartResetsScoring() {
         let vm = makeViewModel()
         vm.isPlaying = true
-        vm.recordHit(result: makePerfectResult())
-        vm.recordHit(result: makePerfectResult())
+        let r1 = makePerfectResult()
+        let r2 = makePerfectResult()
+        vm.recordHit(result: r1)
+        vm.recordHit(result: r2)
         #expect(vm.scoreEngine.combo == 2)
         vm.restartPlayback()
         #expect(vm.scoreEngine.score == 0)

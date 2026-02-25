@@ -1138,9 +1138,11 @@ final class GameplayViewModel {
     func recordHit(result: NoteMatchResult) {
         guard isPlaying else { return }
 
-        // Track which notes were explicitly scored to prevent missed-note double-counting
+        // Prevent duplicate scoring: if this note was already scored (e.g. double-tap
+        // within InputManager's search window), discard the repeated result entirely.
         if let note = result.matchedNote {
-            scoredNoteIDs.insert(ObjectIdentifier(note))
+            let noteID = ObjectIdentifier(note)
+            guard scoredNoteIDs.insert(noteID).inserted else { return }
         }
 
         let prevCombo = scoreEngine.combo
@@ -1160,19 +1162,31 @@ final class GameplayViewModel {
 
     /// Scan cachedNotes for notes that scrolled past without any hit attempt.
     func scanForMissedNotes(upToTimePosition playheadPosition: Double) {
+        // Offset the miss boundary by the good-tier late tolerance so that late hits
+        // arriving within ±100 ms can still score before we auto-mark them missed.
+        let bpm = effectiveBPM()
+        let beatsPerMeasure = Double(track?.timeSignature.beatsPerMeasure ?? 4)
+        let secondsPerMeasure = beatsPerMeasure * 60.0 / bpm
+        let lateWindowInMeasures = TimingAccuracy.good.toleranceMs / 1000.0 / secondsPerMeasure
+        let scanBoundary = playheadPosition - lateWindowInMeasures
+
+        // Bail out when not enough time has elapsed to guarantee any note is past the window.
+        guard scanBoundary > lastScannedTimePosition else { return }
+
         for note in cachedNotes {
             let noteTimePos = MeasureUtils.timePosition(
                 measureNumber: note.measureNumber,
                 measureOffset: note.measureOffset
             )
-            guard noteTimePos > lastScannedTimePosition,
-                  noteTimePos < playheadPosition else { continue }
+            // Use >= so notes at position 0.0 (first chart note) are not skipped.
+            guard noteTimePos >= lastScannedTimePosition,
+                  noteTimePos < scanBoundary else { continue }
             let noteID = ObjectIdentifier(note)
             guard !scoredNoteIDs.contains(noteID) else { continue }
             scoredNoteIDs.insert(noteID)
             scoreEngine.processMissedNote()
         }
-        lastScannedTimePosition = max(lastScannedTimePosition, playheadPosition)
+        lastScannedTimePosition = scanBoundary
     }
 
     /// Resets all scoring state. Called by resetPlaybackState() on restart and completion.
