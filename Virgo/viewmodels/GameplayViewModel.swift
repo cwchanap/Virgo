@@ -637,17 +637,10 @@ final class GameplayViewModel {
     }
 
     func skipToEnd() {
-        playbackProgress = 1.0
-        isPlaying = false
         playbackTimer?.invalidate()
         playbackTimer = nil
-        playbackStartTime = nil
-        pausedElapsedTime = 0.0
-        bgmPlayer?.stop()
-        metronome.stop()
-        inputManager.stopListening()
-        purpleBarPosition = nil
         Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")
+        handlePlaybackCompletion()
     }
 
     // MARK: - Cleanup
