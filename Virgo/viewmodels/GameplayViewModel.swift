@@ -640,7 +640,13 @@ final class GameplayViewModel {
         playbackTimer?.invalidate()
         playbackTimer = nil
         Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")
+        // Process all remaining unscored notes as misses before saving the score,
+        // so the saved record reflects a complete run rather than a partial one.
+        scanForMissedNotes(upToTimePosition: .infinity)
         handlePlaybackCompletion()
+        // handlePlaybackCompletion resets playbackProgress to 0; restore the end position
+        // so the UI and unit-test expectations see the track as fully played.
+        playbackProgress = 1.0
     }
 
     // MARK: - Cleanup
@@ -853,6 +859,8 @@ final class GameplayViewModel {
             scanForMissedNotes(upToTimePosition: playheadTimePosition)
 
             if playbackProgress >= 1.0 {
+                // Flush any notes in the final beat that the periodic scan hasn't reached yet.
+                scanForMissedNotes(upToTimePosition: .infinity)
                 handlePlaybackCompletion()
             }
         }
@@ -1130,6 +1138,14 @@ final class GameplayViewModel {
     /// Process a note match result from InputManager. Called by GameplayInputHandler closure.
     func recordHit(result: NoteMatchResult) {
         guard isPlaying else { return }
+
+        // Flush any notes that were missed before this hit so combo state is correct
+        // when processHit runs (handles 8th/16th notes within the same beat).
+        let hitTimePos = MeasureUtils.timePosition(
+            measureNumber: result.measureNumber,
+            measureOffset: result.measureOffset
+        )
+        scanForMissedNotes(upToTimePosition: hitTimePos)
 
         // Prevent duplicate scoring: if this note was already scored (e.g. double-tap
         // within InputManager's search window), discard the repeated result entirely.
