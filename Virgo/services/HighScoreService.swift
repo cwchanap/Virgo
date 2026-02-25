@@ -57,7 +57,12 @@ final class HighScoreService: ObservableObject {
         scores[key] = score
         userDefaults.set(scores, forKey: settingsKey)
 
-        Logger.debug("New high score \(score) saved for chart")
+        let verified = readPersistedScores()
+        if verified[key] == score {
+            Logger.debug("New high score \(score) saved for chart")
+        } else {
+            Logger.error("HighScoreService: write verification failed — high score \(score) was not persisted")
+        }
         return true
     }
 
@@ -82,7 +87,9 @@ final class HighScoreService: ObservableObject {
             Logger.error("HighScoreService: Failed to encode PersistentIdentifier: \(error.localizedDescription)")
         }
 
-        // SHA-256 fallback
+        // SHA-256 fallback: PersistentIdentifier.description stability is not guaranteed by Apple API.
+        // Log a warning so key-mismatch issues can be diagnosed post-hoc.
+        Logger.warning("HighScoreService: Using SHA-256 fallback key for chart \(String(describing: chartID).prefix(40))")
         let stableIdentifier = String(describing: chartID)
         let inputData = Data(stableIdentifier.utf8)
         let digest = SHA256.hash(data: inputData)
@@ -100,6 +107,8 @@ final class HighScoreService: ObservableObject {
                 scores[key] = intValue
             } else if let numberValue = value as? NSNumber {
                 scores[key] = numberValue.intValue
+            } else {
+                Logger.warning("HighScoreService: unexpected value type \(type(of: value)) for key \(key) — skipping")
             }
         }
         return scores
