@@ -1199,6 +1199,10 @@ final class GameplayViewModel {
         // Bail out when not enough time has elapsed to guarantee any note is past the window.
         guard scanBoundary > lastScannedTimePosition else { return }
 
+        // Capture combo before the loop so we can fire break feedback exactly once
+        // if any auto-missed note drops the combo from non-zero to zero.
+        let prevCombo = scoreEngine.combo
+
         // Walk forward from the cursor; notes are sorted ascending by time position,
         // so we stop as soon as we reach a note at or beyond the scan boundary.
         // This is O(new notes this tick) rather than O(totalNotes).
@@ -1219,6 +1223,13 @@ final class GameplayViewModel {
             missedNoteScanCursor += 1
         }
         lastScannedTimePosition = scanBoundary
+
+        // Fire combo-break feedback if any auto-miss above broke the combo.
+        // Mirrors the same guard in recordHit; triggerComboBreakFeedback also
+        // double-checks combo == 0 internally, so no duplication risk.
+        if prevCombo > 0 && scoreEngine.combo == 0 {
+            triggerComboBreakFeedback()
+        }
     }
 
     /// Resets all scoring state. Called by resetPlaybackState() on restart and completion.
