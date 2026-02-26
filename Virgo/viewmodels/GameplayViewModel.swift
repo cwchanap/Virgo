@@ -127,8 +127,10 @@ final class GameplayViewModel {
     var sessionScoreEngine = ScoreEngine()
     /// Final score captured at session end (survives resetScoring)
     var sessionFinalScore: Int = 0
-    /// High score recorded before the session-end save — used by SessionResultsView to determine isNewHighScore
-    var sessionPreviousHighScore: Int = 0
+    /// Whether the verified save returned a new high-score record (set by handlePlaybackCompletion).
+    /// Passed directly to SessionResultsView so the NEW HIGH SCORE badge reflects
+    /// whether the write actually succeeded, not just a local score comparison.
+    var sessionIsNewRecord: Bool = false
     /// Whether the session results sheet is visible
     var isShowingSessionResults: Bool = false
     /// Non-nil for one render cycle to drive milestone animation (10/25/50/100)
@@ -137,6 +139,12 @@ final class GameplayViewModel {
     var showComboBreakFeedback: Bool = false
     /// Notes already scored via explicit hit — skipped by missed-note scan
     private var scoredNoteIDs: Set<ObjectIdentifier> = []
+    /// Notes sorted by ascending time position; built once after data load.
+    /// Enables the missed-note scan to walk forward without re-scanning the full list.
+    private var sortedNotesByTimePosition: [Note] = []
+    /// Cursor into sortedNotesByTimePosition; advanced forward-only each scan tick.
+    /// Avoids O(totalNotes) scan on every metronome callback (now O(new notes)).
+    private var missedNoteScanCursor: Int = 0
     /// High-water mark for missed-note scan (timePosition units)
     private var lastScannedTimePosition: Double = 0.0
 
@@ -415,6 +423,12 @@ final class GameplayViewModel {
     func loadChartData() async {
         cachedSong = chart.song
         cachedNotes = chart.notes.map { $0 }
+        // Pre-sort notes by time position once so scanForMissedNotes can advance
+        // a forward-only cursor instead of re-walking the full list each tick.
+        sortedNotesByTimePosition = cachedNotes.sorted {
+            MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
+            < MeasureUtils.timePosition(measureNumber: $1.measureNumber, measureOffset: $1.measureOffset)
+        }
 
         if cachedSong == nil {
             Logger.error("loadChartData: chart.song relationship returned nil")
@@ -962,7 +976,6 @@ final class GameplayViewModel {
         inputManager.stopListening()
         // Capture final score and snapshot scoreEngine before reset clears them
         let finalScore = scoreEngine.score
-        let previousHighScore = highScoreService.highScore(for: chart.persistentModelID)
         let isNewRecord = highScoreService.saveIfHighScore(finalScore, for: chart.persistentModelID)
         sessionScoreEngine = scoreEngine
         resetPlaybackState()
@@ -971,7 +984,7 @@ final class GameplayViewModel {
         bgmPlayer?.stop()
         // Set session result after reset (resetScoring zeroes sessionFinalScore)
         sessionFinalScore = finalScore
-        sessionPreviousHighScore = previousHighScore
+        sessionIsNewRecord = isNewRecord
         isShowingSessionResults = true
         Logger.audioPlayback(
             "Playback finished. Score: \(finalScore)\(isNewRecord ? " (new high score!)" : "")"
@@ -1186,18 +1199,24 @@ final class GameplayViewModel {
         // Bail out when not enough time has elapsed to guarantee any note is past the window.
         guard scanBoundary > lastScannedTimePosition else { return }
 
-        for note in cachedNotes {
+        // Walk forward from the cursor; notes are sorted ascending by time position,
+        // so we stop as soon as we reach a note at or beyond the scan boundary.
+        // This is O(new notes this tick) rather than O(totalNotes).
+        while missedNoteScanCursor < sortedNotesByTimePosition.count {
+            let note = sortedNotesByTimePosition[missedNoteScanCursor]
             let noteTimePos = MeasureUtils.timePosition(
                 measureNumber: note.measureNumber,
                 measureOffset: note.measureOffset
             )
-            // Use >= so notes at position 0.0 (first chart note) are not skipped.
-            guard noteTimePos >= lastScannedTimePosition,
-                  noteTimePos < scanBoundary else { continue }
+            // All remaining notes are at or after the miss boundary — done for this tick.
+            if noteTimePos >= scanBoundary { break }
+            // Mark as miss only if no explicit hit was recorded for this note.
             let noteID = ObjectIdentifier(note)
-            guard !scoredNoteIDs.contains(noteID) else { continue }
-            scoredNoteIDs.insert(noteID)
-            scoreEngine.processMissedNote()
+            if !scoredNoteIDs.contains(noteID) {
+                scoredNoteIDs.insert(noteID)
+                scoreEngine.processMissedNote()
+            }
+            missedNoteScanCursor += 1
         }
         lastScannedTimePosition = scanBoundary
     }
@@ -1206,10 +1225,12 @@ final class GameplayViewModel {
     func resetScoring() {
         scoreEngine.reset()
         sessionFinalScore = 0
+        sessionIsNewRecord = false
         isShowingSessionResults = false
         showMilestoneAnimation = false
         showComboBreakFeedback = false
         scoredNoteIDs = []
+        missedNoteScanCursor = 0
         lastScannedTimePosition = 0.0
     }
 

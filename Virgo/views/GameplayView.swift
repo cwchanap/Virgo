@@ -48,10 +48,7 @@ struct GameplayView: View {
                 GameplayHeaderView(
                     track: viewModel?.track ?? cachedFallbackTrack,
                     isPlaying: isPlayingBinding,
-                    currentScore: viewModel?.scoreEngine.score ?? 0,
-                    currentCombo: viewModel?.scoreEngine.combo ?? 0,
-                    showMilestoneAnimation: viewModel?.showMilestoneAnimation ?? false,
-                    showComboBreakFeedback: viewModel?.showComboBreakFeedback ?? false,
+                    viewModel: viewModel,
                     onDismiss: { dismiss() },
                     onPlayPause: { viewModel?.togglePlayback() },
                     onRestart: { viewModel?.restartPlayback() }
@@ -112,7 +109,7 @@ struct GameplayView: View {
                 SessionResultsView(
                     finalScore: vm.sessionFinalScore,
                     highScore: vm.highScoreService.highScore(for: chart.persistentModelID),
-                    previousHighScore: vm.sessionPreviousHighScore,
+                    isNewRecord: vm.sessionIsNewRecord,
                     scoreEngine: vm.sessionScoreEngine,
                     onPlayAgain: {
                         vm.isShowingSessionResults = false
