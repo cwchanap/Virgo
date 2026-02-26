@@ -10,12 +10,15 @@ import SwiftUI
 struct SessionResultsView: View {
     let finalScore: Int
     let highScore: Int
-    let previousHighScore: Int
+    /// Whether the save service confirmed this score as a verified new record.
+    /// Derived from `HighScoreService.saveIfHighScore` return value rather than
+    /// a local score comparison, so the badge only appears when the write succeeded.
+    let isNewRecord: Bool
     let scoreEngine: ScoreEngine
     let onPlayAgain: () -> Void
     let onDone: () -> Void
 
-    private var isNewHighScore: Bool { finalScore > 0 && finalScore > previousHighScore }
+    private var isNewHighScore: Bool { finalScore > 0 && isNewRecord }
 
     var body: some View {
         NavigationStack {
@@ -128,7 +131,7 @@ struct SessionResultsView: View {
     return SessionResultsView(
         finalScore: 2450,
         highScore: 2450,
-        previousHighScore: 2100,
+        isNewRecord: true,
         scoreEngine: engine,
         onPlayAgain: {},
         onDone: {}

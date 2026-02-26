@@ -10,10 +10,11 @@ import SwiftUI
 struct GameplayHeaderView: View {
     let track: DrumTrack
     @Binding var isPlaying: Bool
-    let currentScore: Int
-    let currentCombo: Int
-    let showMilestoneAnimation: Bool
-    let showComboBreakFeedback: Bool
+    /// The ViewModel is accepted here (instead of individual score values) so that
+    /// only this subview's body observes scoreEngine / animation flags.
+    /// GameplayView.body never reads those properties and avoids costly full-tree
+    /// re-renders on every hit or miss.
+    let viewModel: GameplayViewModel?
     let onDismiss: () -> Void
     let onPlayPause: () -> Void
     let onRestart: () -> Void
@@ -47,17 +48,19 @@ struct GameplayHeaderView: View {
 
             Spacer()
 
-            // Score and combo display
+            // Score and combo display — reading from viewModel here keeps the
+            // observation dependency scoped to this subview only.
             VStack(alignment: .trailing, spacing: 2) {
-                Text("\(currentScore)")
+                let score = viewModel?.scoreEngine.score ?? 0
+                Text("\(score)")
                     .font(.system(.body, design: .monospaced).weight(.semibold))
                     .foregroundColor(.white)
-                    .accessibilityLabel("Score: \(currentScore)")
+                    .accessibilityLabel("Score: \(score)")
 
                 ComboCounterView(
-                    combo: currentCombo,
-                    showMilestone: showMilestoneAnimation,
-                    showBreak: showComboBreakFeedback
+                    combo: viewModel?.scoreEngine.combo ?? 0,
+                    showMilestone: viewModel?.showMilestoneAnimation ?? false,
+                    showBreak: viewModel?.showComboBreakFeedback ?? false
                 )
             }
 
@@ -120,10 +123,7 @@ private struct ComboCounterView: View {
     GameplayHeaderView(
         track: DrumTrack.sampleData.first!,
         isPlaying: .constant(false),
-        currentScore: 1250,
-        currentCombo: 7,
-        showMilestoneAnimation: false,
-        showComboBreakFeedback: false,
+        viewModel: nil,
         onDismiss: {},
         onPlayPause: {},
         onRestart: {}

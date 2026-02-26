@@ -811,6 +811,152 @@ struct GameplayViewModelTests {
         }
     }
 
+    // MARK: - Miss Scan Cursor Tests
+
+    @Test("scanForMissedNotes cursor does not double-count misses on repeated calls")
+    func testScanCursorNoDuplicateMisses() async throws {
+        let chart = createTestChart(noteCount: 4)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // First scan covers the full track
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+        let missesAfterFirstScan = viewModel.scoreEngine.missCount
+
+        // Second scan at the same (infinity) boundary must not add more misses
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+        #expect(viewModel.scoreEngine.missCount == missesAfterFirstScan,
+                "Repeated scan should not double-count misses")
+
+        viewModel.cleanup()
+    }
+
+    @Test("scanForMissedNotes cursor advances correctly across incremental windows")
+    func testScanCursorIncrementalWindows() async throws {
+        let chart = createTestChart(noteCount: 4)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // Scan up to a mid-point position (before any notes are expected)
+        viewModel.scanForMissedNotes(upToTimePosition: 0.0)
+        let missesAtStart = viewModel.scoreEngine.missCount
+
+        // Scan all the way to the end
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+        let missesAtEnd = viewModel.scoreEngine.missCount
+
+        // Total misses from both incremental calls must equal the result of a
+        // single full scan — no double-counting, no missed notes skipped.
+        viewModel.resetScoring()
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+        let missesFullScan = viewModel.scoreEngine.missCount
+
+        #expect(missesAtStart + (missesAtEnd - missesAtStart) == missesFullScan,
+                "Incremental cursor scans should total the same as a single full scan")
+
+        viewModel.cleanup()
+    }
+
+    @Test("scanForMissedNotes cursor resets after resetScoring")
+    func testScanCursorResetsOnResetScoring() async throws {
+        let chart = createTestChart(noteCount: 4)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // Advance the cursor to the end
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+        let firstRunMisses = viewModel.scoreEngine.missCount
+
+        // Reset and re-scan — cursor must be back at zero so all notes are processed again
+        viewModel.resetScoring()
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+        let secondRunMisses = viewModel.scoreEngine.missCount
+
+        #expect(secondRunMisses == firstRunMisses,
+                "After resetScoring() the cursor should restart and produce the same miss count")
+
+        viewModel.cleanup()
+    }
+
+    // MARK: - Session New Record Tests
+
+    @Test("sessionIsNewRecord is true when handlePlaybackCompletion saves a new high score")
+    func testSessionIsNewRecordSetOnNewHighScore() async throws {
+        let chart = createTestChart(noteCount: 1)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // Inject a hit so the score is > 0 and exceeds the default high score of 0
+        viewModel.scoreEngine.processHit(accuracy: .perfect)
+        viewModel.handlePlaybackCompletion()
+
+        #expect(viewModel.sessionIsNewRecord == true,
+                "A score beating the previous best should set sessionIsNewRecord")
+
+        viewModel.cleanup()
+    }
+
+    @Test("sessionIsNewRecord is false when score does not beat the existing high score")
+    func testSessionIsNewRecordFalseWhenScoreNotBeaten() async throws {
+        let chart = createTestChart(noteCount: 1)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Seed a high score so the next session can't beat it
+        viewModel.highScoreService.saveIfHighScore(99999, for: chart.persistentModelID)
+
+        viewModel.startPlayback()
+        // Score 1 point — far below the seeded record
+        viewModel.scoreEngine.processHit(accuracy: .good)
+        viewModel.handlePlaybackCompletion()
+
+        #expect(viewModel.sessionIsNewRecord == false,
+                "A score below the existing record should leave sessionIsNewRecord false")
+
+        viewModel.cleanup()
+    }
+
+    @Test("sessionIsNewRecord resets to false after resetScoring")
+    func testSessionIsNewRecordResetsOnResetScoring() async throws {
+        let chart = createTestChart(noteCount: 1)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        viewModel.scoreEngine.processHit(accuracy: .perfect)
+        viewModel.handlePlaybackCompletion()
+        #expect(viewModel.sessionIsNewRecord == true)
+
+        // Simulate restarting (which calls resetScoring internally)
+        viewModel.resetScoring()
+        #expect(viewModel.sessionIsNewRecord == false,
+                "resetScoring() should clear sessionIsNewRecord")
+
+        viewModel.cleanup()
+    }
+
     // MARK: - Edge Case Tests
 
     @Test func testStartPlaybackWithoutTrack() async throws {
