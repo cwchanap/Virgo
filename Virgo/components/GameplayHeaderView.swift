@@ -111,7 +111,7 @@ private struct ComboCounterView: View {
                     .transition(.opacity)
             }
         }
-        .accessibilityLabel(showBreak ? "BREAK" : (combo > 0 ? "Combo: \(combo)" : ""))
+        .accessibilityLabel(combo > 0 ? "Combo: \(combo)" : (showBreak ? "BREAK" : ""))
     }
 
     private var comboColor: Color {

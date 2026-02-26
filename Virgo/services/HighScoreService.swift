@@ -13,7 +13,7 @@ import CryptoKit
 
 /// Service that persists the best score achieved for each chart.
 @MainActor
-final class HighScoreService: ObservableObject {
+final class HighScoreService {
 
     // MARK: - Constants
 
