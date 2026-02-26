@@ -424,6 +424,81 @@ struct GameplayViewModelTests {
         #expect(viewModel.playbackProgress == 0.0)
     }
 
+    @Test("skipToEnd preserves all position fields from just before completion")
+    func testSkipToEndPreservesPositionStateConsistently() async throws {
+        // Regression guard for the P3 inconsistency where handlePlaybackCompletion()
+        // zeroed currentBeat/measureIndex/rawBeatPosition while skipToEnd() only
+        // restored playbackProgress, leaving fields in a contradictory state.
+        let chart = createTestChart(noteCount: 4)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // Simulate mid-song position state (mimics what the metronome callback would set)
+        viewModel.currentBeat = 3
+        viewModel.currentMeasureIndex = 2
+        viewModel.rawBeatPosition = 7.5
+        viewModel.currentBeatPosition = 3.0
+        viewModel.currentQuarterNotePosition = 12.0
+        viewModel.totalBeatsElapsed = 8
+
+        viewModel.skipToEnd()
+
+        // All position fields must reflect the pre-skip snapshot — none should be 0
+        // (which would indicate resetPlaybackState() ran without restoration).
+        #expect(viewModel.playbackProgress == 1.0)
+        #expect(viewModel.currentBeat == 3,
+                "currentBeat must be preserved from the pre-skip snapshot")
+        #expect(viewModel.currentMeasureIndex == 2,
+                "currentMeasureIndex must be preserved from the pre-skip snapshot")
+        #expect(viewModel.rawBeatPosition == 7.5,
+                "rawBeatPosition must be preserved from the pre-skip snapshot")
+        #expect(viewModel.currentBeatPosition == 3.0,
+                "currentBeatPosition must be preserved from the pre-skip snapshot")
+        #expect(viewModel.currentQuarterNotePosition == 12.0,
+                "currentQuarterNotePosition must be preserved from the pre-skip snapshot")
+        #expect(viewModel.totalBeatsElapsed == 8,
+                "totalBeatsElapsed must be preserved from the pre-skip snapshot")
+        #expect(viewModel.isPlaying == false)
+
+        viewModel.cleanup()
+    }
+
+    @Test("resetScoring synchronously clears both feedback flags so stale tasks cannot race")
+    func testResetScoringClearsFeedbackFlagsImmediately() async throws {
+        // The feedback tasks sleep for 0.8s / 0.4s before clearing their flags.
+        // resetScoring() must clear the flags synchronously AND cancel the tasks
+        // so that a new session started immediately after a reset cannot have its
+        // first milestone/combo-break animation cut short by the old task waking up.
+        let chart = createTestChart(noteCount: 4)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // Reach a combo milestone by injecting 10 perfect hits to trigger showMilestoneAnimation
+        for _ in 0..<10 {
+            viewModel.scoreEngine.processHit(accuracy: .perfect)
+        }
+        viewModel.showMilestoneAnimation = true
+        viewModel.showComboBreakFeedback = true
+
+        // resetScoring() must clear both flags synchronously
+        viewModel.resetScoring()
+
+        #expect(viewModel.showMilestoneAnimation == false,
+                "resetScoring() must clear showMilestoneAnimation synchronously")
+        #expect(viewModel.showComboBreakFeedback == false,
+                "resetScoring() must clear showComboBreakFeedback synchronously")
+
+        viewModel.cleanup()
+    }
+
     @Test func testHandlePlaybackCompletionStopsInputListening() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()

@@ -135,8 +135,14 @@ final class GameplayViewModel {
     var isShowingSessionResults: Bool = false
     /// Non-nil for one render cycle to drive milestone animation (10/25/50/100)
     var showMilestoneAnimation: Bool = false
+    /// Retained handle for the delayed milestone-animation reset; cancelled before
+    /// retriggering so a rapid second milestone cannot be cut short by the first task.
+    private var milestoneAnimationTask: Task<Void, Never>?
     /// True briefly after a combo break to drive visual feedback
     var showComboBreakFeedback: Bool = false
+    /// Retained handle for the delayed combo-break-feedback reset; same rationale as
+    /// milestoneAnimationTask — cancels the old timer before starting a new one.
+    private var comboBreakFeedbackTask: Task<Void, Never>?
     /// Notes already scored via explicit hit — skipped by missed-note scan
     private var scoredNoteIDs: Set<ObjectIdentifier> = []
     /// Notes sorted by ascending time position; built once after data load.
@@ -661,10 +667,29 @@ final class GameplayViewModel {
         // Process all remaining unscored notes as misses before saving the score,
         // so the saved record reflects a complete run rather than a partial one.
         scanForMissedNotes(upToTimePosition: .infinity)
+        // Capture the full position snapshot BEFORE handlePlaybackCompletion()
+        // calls resetPlaybackState(), which zeros every field. Restoring all of
+        // them keeps the frozen-at-end UI consistent (progress bar, purple bar,
+        // beat/measure position all agree) whether or not the results sheet is
+        // visible.
+        let endBeat = currentBeat
+        let endQNPosition = currentQuarterNotePosition
+        let endTotalBeats = totalBeatsElapsed
+        let endBeatPosition = currentBeatPosition
+        let endRawBeatPosition = rawBeatPosition
+        let endMeasureIndex = currentMeasureIndex
+        let endPurpleBarPosition = purpleBarPosition
         handlePlaybackCompletion()
-        // handlePlaybackCompletion resets playbackProgress to 0; restore the end position
-        // so the UI and unit-test expectations see the track as fully played.
+        // Restore the end-of-song position so all playback fields are mutually
+        // consistent (playbackProgress = 1.0 and position state at the last beat).
         playbackProgress = 1.0
+        currentBeat = endBeat
+        currentQuarterNotePosition = endQNPosition
+        totalBeatsElapsed = endTotalBeats
+        currentBeatPosition = endBeatPosition
+        rawBeatPosition = endRawBeatPosition
+        currentMeasureIndex = endMeasureIndex
+        purpleBarPosition = endPurpleBarPosition
     }
 
     // MARK: - Cleanup
@@ -1243,6 +1268,12 @@ final class GameplayViewModel {
         scoredNoteIDs = []
         missedNoteScanCursor = 0
         lastScannedTimePosition = 0.0
+        // Cancel any in-flight feedback reset tasks so they cannot clear flags on
+        // the fresh session that is about to start.
+        milestoneAnimationTask?.cancel()
+        milestoneAnimationTask = nil
+        comboBreakFeedbackTask?.cancel()
+        comboBreakFeedbackTask = nil
     }
 
     /// Wire GameplayInputHandler closures to ViewModel scoring methods.
@@ -1253,21 +1284,23 @@ final class GameplayViewModel {
     }
 
     private func triggerMilestoneAnimation() {
+        milestoneAnimationTask?.cancel()
         showMilestoneAnimation = true
-        Task { @MainActor [weak self] in
+        milestoneAnimationTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
-            if self?.showMilestoneAnimation == true {
-                self?.showMilestoneAnimation = false
-            }
+            guard !Task.isCancelled else { return }
+            self?.showMilestoneAnimation = false
         }
     }
 
     private func triggerComboBreakFeedback() {
         guard scoreEngine.combo == 0 else { return }
+        comboBreakFeedbackTask?.cancel()
         showComboBreakFeedback = true
         triggerComboBreakHaptic()
-        Task { @MainActor [weak self] in
+        comboBreakFeedbackTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
             self?.showComboBreakFeedback = false
         }
     }
