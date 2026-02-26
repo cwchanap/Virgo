@@ -148,7 +148,7 @@ struct ScoringIntegrationTests {
         let scoreAt9 = vm.scoreEngine.score
         vm.recordHit(result: results[9]) // combo becomes 10, tier 1.5x
         #expect(vm.scoreEngine.combo == 10)
-        #expect(vm.scoreEngine.score == scoreAt9 + 150) // 100 × 1.0 × 1.5
+        #expect(vm.scoreEngine.score == scoreAt9 + 150) // 100 × 1.5
     }
 
     @Test("Milestone at combo 10 sets showMilestoneAnimation")
