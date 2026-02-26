@@ -890,6 +890,53 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test("scanForMissedNotes triggers combo-break feedback when a scrolled-past note drops the combo")
+    func testScanMissTriggersComboBreakFeedback() async throws {
+        let chart = createTestChart(noteCount: 2)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // Build a non-zero combo so a miss can break it
+        viewModel.scoreEngine.processHit(accuracy: .perfect)
+        #expect(viewModel.scoreEngine.combo > 0, "Precondition: combo should be non-zero before scan")
+
+        // Auto-miss all notes by scanning to infinity
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+
+        // The combo should be broken and the feedback flag raised
+        #expect(viewModel.scoreEngine.combo == 0, "Combo should be 0 after auto-miss scan")
+        #expect(viewModel.showComboBreakFeedback == true,
+                "Combo-break feedback should fire when scanForMissedNotes breaks the combo")
+
+        viewModel.cleanup()
+    }
+
+    @Test("scanForMissedNotes does not trigger combo-break feedback when combo was already zero")
+    func testScanMissNoFeedbackWhenComboAlreadyZero() async throws {
+        let chart = createTestChart(noteCount: 2)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // Combo is 0 already (no hits placed)
+        #expect(viewModel.scoreEngine.combo == 0, "Precondition: combo should be zero")
+
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+
+        // Feedback must remain false — there was no combo to break
+        #expect(viewModel.showComboBreakFeedback == false,
+                "No combo-break feedback should fire when combo was already zero")
+
+        viewModel.cleanup()
+    }
+
     // MARK: - Session New Record Tests
 
     @Test("sessionIsNewRecord is true when handlePlaybackCompletion saves a new high score")
