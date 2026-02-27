@@ -158,7 +158,7 @@ final class GameplayViewModel {
     /// Whether playback completion has been scheduled (prevents double-scheduling during grace period)
     private var completionScheduled = false
     /// Task for delayed completion to allow late-tolerance window for final notes
-    private var completionTask: Task<Void, Never>?
+    var completionTask: Task<Void, Never>?
 
     // MARK: - High Score
     let highScoreService: HighScoreService
@@ -722,6 +722,11 @@ final class GameplayViewModel {
 
         playbackTimer?.invalidate()
         playbackTimer = nil
+        // Cancel any pending grace-period completion so it cannot persist score
+        // state after the view has been dismissed.
+        completionTask?.cancel()
+        completionTask = nil
+        completionScheduled = false
         metronome.stop()
         metronome.onInterruption = nil
         bgmPlayer?.stop()
@@ -917,25 +922,23 @@ final class GameplayViewModel {
             // late-but-valid hit (within ±100ms) can be scored.
             if playbackProgress >= 1.0 && !completionScheduled {
                 completionScheduled = true
-                let gracePeriodMs = TimingAccuracy.good.toleranceMs
+                let gracePeriodNs = UInt64(TimingAccuracy.good.toleranceMs * 1_000_000)
                 completionTask = Task { @MainActor [weak self] in
-                    // Continue scanning during grace period so regular missed-note logic
-                    // applies with proper tolerance offset.
-                    let intervalMs = 16.0 // ~60fps update interval
-                    var remainingMs = gracePeriodMs
-                    while remainingMs > 0, !Task.isCancelled {
-                        do {
-                            try await Task.sleep(nanoseconds: UInt64(intervalMs * 1_000_000))
-                        } catch {
-                            break
-                        }
-                        remainingMs -= intervalMs
-                        // Keep scanning with advancing playhead (using infinity ensures
-                        // all notes are eventually evaluated with tolerance).
-                        self?.scanForMissedNotes(upToTimePosition: .infinity)
+                    // Sleep the full late-tolerance window so that hits arriving
+                    // between ~0–100ms after the last note can still be scored via
+                    // recordHit before we auto-miss and finalize.
+                    // Do NOT scan during the sleep: passing .infinity to
+                    // scanForMissedNotes on every tick would mark all remaining
+                    // notes missed immediately on the first iteration.
+                    do {
+                        try await Task.sleep(nanoseconds: gracePeriodNs)
+                    } catch {
+                        return // cancelled
                     }
-                    // After grace period, finalize completion (unless cancelled).
                     guard !Task.isCancelled else { return }
+                    // Grace period elapsed — mark any still-unscored notes missed,
+                    // then finalize the session.
+                    self?.scanForMissedNotes(upToTimePosition: .infinity)
                     self?.handlePlaybackCompletion()
                 }
             }
