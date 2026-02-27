@@ -595,6 +595,47 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test("scanForMissedNotes(.infinity) before a recordHit causes the hit to be treated as duplicate")
+    func testScanToInfinityBeforeHitPreemptsScoring() async throws {
+        // Regression guard for P1: proves that calling scanForMissedNotes(.infinity)
+        // (as the old grace-period polling loop did on its first 16ms tick) puts notes
+        // into scoredNoteIDs as misses, causing any subsequent recordHit for those
+        // same notes to be discarded as duplicates.
+        //
+        // The fix removes the per-tick scan during the grace sleep, so this situation
+        // can no longer arise during the grace period.
+        let chart = createTestChart(noteCount: 2)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.isPlaying = true
+
+        // Simulate the OLD grace-period first-tick behaviour: scan everything as missed.
+        viewModel.scanForMissedNotes(upToTimePosition: .infinity)
+        let missesAfterScan = viewModel.scoreEngine.missCount
+        #expect(missesAfterScan > 0, "Precondition: notes must have been auto-missed by the scan")
+
+        // A hit that arrives now is a duplicate — score must not change.
+        let scoreBeforeHit = viewModel.scoreEngine.score
+        if let note = viewModel.cachedNotes.first {
+            let dummyResult = NoteMatchResult(
+                hitInput: InputHit(drumType: .snare, velocity: 1.0, timestamp: Date()),
+                matchedNote: note,
+                timingAccuracy: .perfect,
+                measureNumber: note.measureNumber,
+                measureOffset: note.measureOffset,
+                timingError: 0.0
+            )
+            viewModel.recordHit(result: dummyResult)
+        }
+        #expect(viewModel.scoreEngine.score == scoreBeforeHit,
+                "Hit after a full scan must be discarded as a duplicate")
+
+        viewModel.cleanup()
+    }
+
     // MARK: - Computation Tests
 
     @Test func testComputeDrumBeats() async throws {
@@ -915,6 +956,33 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
 
         #expect(viewModel.playbackTimer == nil)
+    }
+
+    @Test("cleanup() cancels and clears any pending completion task")
+    func testCleanupCancelsCompletionTask() async throws {
+        // Regression guard for P2: if the user dismisses gameplay during the
+        // grace period, cleanup() must cancel the in-flight completionTask so
+        // it cannot persist score/high-score state after the screen is gone.
+        let chart = createTestChart(noteCount: 4)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.startPlayback()
+
+        // Inject a dummy task to simulate the grace-period task being in-flight.
+        let sentinel = Task<Void, Never> {
+            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 s sentinel
+        }
+        viewModel.completionTask = sentinel
+
+        viewModel.cleanup()
+
+        #expect(viewModel.completionTask == nil,
+                "cleanup() must nil completionTask so the stale task cannot fire")
+        #expect(sentinel.isCancelled,
+                "cleanup() must cancel the in-flight completionTask")
     }
 
     // MARK: - State Management Tests
