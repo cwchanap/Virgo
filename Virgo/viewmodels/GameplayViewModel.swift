@@ -934,7 +934,8 @@ final class GameplayViewModel {
                         // all notes are eventually evaluated with tolerance).
                         self?.scanForMissedNotes(upToTimePosition: .infinity)
                     }
-                    // After grace period, finalize completion.
+                    // After grace period, finalize completion (unless cancelled).
+                    guard !Task.isCancelled else { return }
                     self?.handlePlaybackCompletion()
                 }
             }
