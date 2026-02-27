@@ -154,6 +154,12 @@ final class GameplayViewModel {
     /// High-water mark for missed-note scan (timePosition units)
     private var lastScannedTimePosition: Double = 0.0
 
+    // MARK: - Completion Scheduling
+    /// Whether playback completion has been scheduled (prevents double-scheduling during grace period)
+    private var completionScheduled = false
+    /// Task for delayed completion to allow late-tolerance window for final notes
+    private var completionTask: Task<Void, Never>?
+
     // MARK: - High Score
     let highScoreService: HighScoreService
 
@@ -630,6 +636,11 @@ final class GameplayViewModel {
         playbackTimer?.invalidate()
         playbackTimer = nil
 
+        // Cancel scheduled completion if user pauses during grace period
+        completionTask?.cancel()
+        completionTask = nil
+        completionScheduled = false
+
         if let metronomeTime = metronome.getCurrentPlaybackTime() {
             pausedElapsedTime += metronomeTime
         } else if let startTime = playbackStartTime {
@@ -901,10 +912,31 @@ final class GameplayViewModel {
             let playheadTimePosition = Double(measureIndex) + beatPosition
             scanForMissedNotes(upToTimePosition: playheadTimePosition)
 
-            if playbackProgress >= 1.0 {
-                // Flush any notes in the final beat that the periodic scan hasn't reached yet.
-                scanForMissedNotes(upToTimePosition: .infinity)
-                handlePlaybackCompletion()
+            // Schedule delayed completion to preserve late-tolerance window for final notes.
+            // Without this, notes near the end get instantly marked as missed before a
+            // late-but-valid hit (within ±100ms) can be scored.
+            if playbackProgress >= 1.0 && !completionScheduled {
+                completionScheduled = true
+                let gracePeriodMs = TimingAccuracy.good.toleranceMs
+                completionTask = Task { @MainActor [weak self] in
+                    // Continue scanning during grace period so regular missed-note logic
+                    // applies with proper tolerance offset.
+                    let intervalMs = 16.0 // ~60fps update interval
+                    var remainingMs = gracePeriodMs
+                    while remainingMs > 0, !Task.isCancelled {
+                        do {
+                            try await Task.sleep(nanoseconds: UInt64(intervalMs * 1_000_000))
+                        } catch {
+                            break
+                        }
+                        remainingMs -= intervalMs
+                        // Keep scanning with advancing playhead (using infinity ensures
+                        // all notes are eventually evaluated with tolerance).
+                        self?.scanForMissedNotes(upToTimePosition: .infinity)
+                    }
+                    // After grace period, finalize completion.
+                    self?.handlePlaybackCompletion()
+                }
             }
         }
     }
@@ -1274,6 +1306,10 @@ final class GameplayViewModel {
         milestoneAnimationTask = nil
         comboBreakFeedbackTask?.cancel()
         comboBreakFeedbackTask = nil
+        // Cancel scheduled completion and reset flag for next session
+        completionTask?.cancel()
+        completionTask = nil
+        completionScheduled = false
     }
 
     /// Wire GameplayInputHandler closures to ViewModel scoring methods.
