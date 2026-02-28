@@ -423,3 +423,107 @@ struct ScoreEngineTests {
         #expect(result.timingTendency == .balanced)
     }
 }
+
+@Suite("ScoreEngine Timing Analytics Tests")
+struct ScoreEngineTimingAnalyticsTests {
+    // MARK: - totalHits / totalNotes
+
+    @Test("totalHits is sum of perfect + great + good")
+    func testTotalHits() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect)
+        engine.processHit(accuracy: .great)
+        engine.processHit(accuracy: .good)
+        engine.processHit(accuracy: .miss)
+        #expect(engine.totalHits == 3)
+    }
+
+    @Test("totalNotes is totalHits + missCount")
+    func testTotalNotes() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect)
+        engine.processHit(accuracy: .miss)
+        engine.processMissedNote()
+        #expect(engine.totalNotes == 3)
+    }
+
+    // MARK: - Early/Late Percentage
+
+    @Test("earlyPercentage and latePercentage are 0 when no timing data")
+    func testEarlyLatePercentageEmptyEngine() {
+        let engine = ScoreEngine()
+        #expect(engine.earlyPercentage == 0.0)
+        #expect(engine.latePercentage == 0.0)
+    }
+
+    @Test("earlyPercentage and latePercentage sum to ≤ 100 (exact-zero deviations count neither)")
+    func testEarlyLatePercentageExcludesZero() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -10.0)
+        engine.processHit(accuracy: .perfect, timingError: 0.0)
+        engine.processHit(accuracy: .perfect, timingError: 10.0)
+        #expect(abs(engine.earlyPercentage - (1.0 / 3.0 * 100.0)) < 0.001)
+        #expect(abs(engine.latePercentage - (1.0 / 3.0 * 100.0)) < 0.001)
+        #expect(engine.earlyPercentage + engine.latePercentage < 100.0)
+    }
+
+    @Test("earlyPercentage is 100 when all hits are early")
+    func testEarlyPercentageAllEarly() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -5.0)
+        engine.processHit(accuracy: .great, timingError: -20.0)
+        #expect(engine.earlyPercentage == 100.0)
+        #expect(engine.latePercentage == 0.0)
+    }
+
+    // MARK: - timingTendency Boundary
+
+    @Test("timingTendency is .balanced at exactly -5ms boundary")
+    func testTimingTendencyExactlyNegativeFive() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -5.0)
+        #expect(engine.timingTendency == .balanced)
+    }
+
+    @Test("timingTendency is .balanced at exactly +5ms boundary")
+    func testTimingTendencyExactlyPositiveFive() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: 5.0)
+        #expect(engine.timingTendency == .balanced)
+    }
+
+    @Test("timingTendency is .early just past the -5ms threshold")
+    func testTimingTendencyJustPastEarlyThreshold() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -5.1)
+        #expect(engine.timingTendency == .early)
+    }
+
+    @Test("timingTendency is .late just past the +5ms threshold")
+    func testTimingTendencyJustPastLateThreshold() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: 5.1)
+        #expect(engine.timingTendency == .late)
+    }
+
+    // MARK: - processMissedNote isolation
+
+    @Test("processMissedNote does not add to timingDeviations")
+    func testProcessMissedNoteNoTimingData() {
+        var engine = ScoreEngine()
+        engine.processMissedNote()
+        engine.processMissedNote()
+        #expect(engine.timingDeviations.isEmpty)
+        #expect(engine.averageTimingDeviation == nil)
+    }
+
+    @Test("timingDeviations unaffected by interleaved processMissedNote calls")
+    func testTimingDeviationsUnaffectedByMissedNotes() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -8.0)
+        engine.processMissedNote()
+        engine.processHit(accuracy: .great, timingError: 12.0)
+        engine.processMissedNote()
+        #expect(engine.timingDeviations == [-8.0, 12.0])
+    }
+}
