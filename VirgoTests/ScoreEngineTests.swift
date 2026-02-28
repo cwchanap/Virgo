@@ -293,4 +293,133 @@ struct ScoreEngineTests {
         let result = engine.sessionResult(totalNotes: 1, previousHighScore: 1000)
         #expect(result.isNewHighScore == false)
     }
+
+    // MARK: - Timing Deviation: Data Collection
+
+    @Test("Timing deviations stored for non-miss hits")
+    func testTimingDeviationTracking() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -10.0)
+        engine.processHit(accuracy: .great, timingError: 20.0)
+        engine.processHit(accuracy: .good, timingError: 5.0)
+        #expect(engine.timingDeviations == [-10.0, 20.0, 5.0])
+    }
+
+    @Test("Timing deviations not stored for miss hits")
+    func testTimingDataNotStoredForMisses() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .miss, timingError: 30.0)
+        engine.processHit(accuracy: .perfect, timingError: nil)
+        #expect(engine.timingDeviations.isEmpty)
+    }
+
+    @Test("reset() clears timing deviations")
+    func testResetClearsTimingData() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -5.0)
+        engine.processHit(accuracy: .great, timingError: 10.0)
+        engine.reset()
+        #expect(engine.timingDeviations.isEmpty)
+    }
+
+    // MARK: - Timing Deviation: Computed Stats
+
+    @Test("averageTimingDeviation is nil when no timing data")
+    func testAverageTimingDeviationNilWhenEmpty() {
+        let engine = ScoreEngine()
+        #expect(engine.averageTimingDeviation == nil)
+    }
+
+    @Test("averageTimingDeviation computes mean correctly")
+    func testAverageTimingDeviation() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -10.0)
+        engine.processHit(accuracy: .perfect, timingError: 10.0)
+        engine.processHit(accuracy: .perfect, timingError: -5.0)
+        // mean = (-10 + 10 + -5) / 3 = -5/3 ≈ -1.667
+        #expect(engine.averageTimingDeviation != nil)
+        #expect(abs(engine.averageTimingDeviation! - (-5.0 / 3.0)) < 0.001)
+    }
+
+    @Test("earlyCount and lateCount correct with mixed timing data")
+    func testEarlyLateBreakdown() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -15.0)
+        engine.processHit(accuracy: .perfect, timingError: -8.0)
+        engine.processHit(accuracy: .perfect, timingError: 12.0)
+        #expect(engine.earlyCount == 2)
+        #expect(engine.lateCount == 1)
+    }
+
+    @Test("timingTendency returns .early when average < -5ms")
+    func testTimingTendencyEarly() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -20.0)
+        engine.processHit(accuracy: .perfect, timingError: -15.0)
+        #expect(engine.timingTendency == .early)
+    }
+
+    @Test("timingTendency returns .late when average > +5ms")
+    func testTimingTendencyLate() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: 20.0)
+        engine.processHit(accuracy: .perfect, timingError: 10.0)
+        #expect(engine.timingTendency == .late)
+    }
+
+    @Test("timingTendency returns .balanced when average is within ±5ms")
+    func testTimingTendencyBalanced() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -3.0)
+        engine.processHit(accuracy: .perfect, timingError: 3.0)
+        #expect(engine.timingTendency == .balanced)
+    }
+
+    @Test("timingTendency returns .balanced when no timing data")
+    func testTimingTendencyBalancedWhenEmpty() {
+        let engine = ScoreEngine()
+        #expect(engine.timingTendency == .balanced)
+    }
+
+    // MARK: - Accuracy Percentage
+
+    @Test("accuracyPercentage is 100% when all hits are perfect")
+    func testAccuracyPercentageAllPerfect() {
+        var engine = ScoreEngine()
+        for _ in 0..<10 { engine.processHit(accuracy: .perfect) }
+        #expect(engine.accuracyPercentage == 100.0)
+    }
+
+    @Test("accuracyPercentage is 0% when no notes played")
+    func testAccuracyPercentageNoNotes() {
+        let engine = ScoreEngine()
+        #expect(engine.accuracyPercentage == 0.0)
+    }
+
+    @Test("accuracyPercentage correct with mix of hits and misses")
+    func testAccuracyPercentageWithMisses() {
+        var engine = ScoreEngine()
+        for _ in 0..<8 { engine.processHit(accuracy: .perfect) }
+        for _ in 0..<2 { engine.processHit(accuracy: .miss) }
+        #expect(engine.accuracyPercentage == 80.0)
+    }
+
+    // MARK: - SessionResult: Timing Data
+
+    @Test("sessionResult includes timing statistics")
+    func testSessionResultIncludesTimingData() {
+        var engine = ScoreEngine()
+        engine.processHit(accuracy: .perfect, timingError: -10.0)
+        engine.processHit(accuracy: .great, timingError: 20.0)
+        engine.processHit(accuracy: .miss)
+
+        let result = engine.sessionResult(totalNotes: 3, previousHighScore: 0)
+        #expect(result.accuracyPercentage == (2.0 / 3.0) * 100.0)
+        #expect(result.timingDeviations == [-10.0, 20.0])
+        #expect(result.earlyCount == 1)
+        #expect(result.lateCount == 1)
+        #expect(result.averageTimingDeviation != nil)
+        #expect(abs(result.averageTimingDeviation! - 5.0) < 0.001)
+        #expect(result.timingTendency == .balanced)
+    }
 }
