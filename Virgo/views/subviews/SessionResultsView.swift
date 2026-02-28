@@ -5,6 +5,7 @@
 //  End-of-session results sheet shown after playback completes.
 //
 
+import Charts
 import SwiftUI
 
 struct SessionResultsView: View {
@@ -25,58 +26,89 @@ struct SessionResultsView: View {
             ZStack {
                 Color.black.ignoresSafeArea()
 
-                VStack(spacing: 24) {
-                    // New high score badge
-                    if isNewHighScore {
-                        Text("NEW HIGH SCORE!")
-                            .font(.system(.caption, design: .rounded).weight(.bold))
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.yellow)
-                            .clipShape(Capsule())
-                    }
-
-                    // Score
-                    VStack(spacing: 4) {
-                        Text("\(finalScore)")
-                            .font(.system(size: 56, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                        Text("SCORE")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-
-                    // Stats grid
-                    statsGrid
-
-                    Spacer()
-
-                    // Actions
-                    VStack(spacing: 12) {
-                        Button(action: onPlayAgain) {
-                            Text("Play Again")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.green)
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // New high score badge
+                        if isNewHighScore {
+                            Text("NEW HIGH SCORE!")
+                                .font(.system(.caption, design: .rounded).weight(.bold))
                                 .foregroundColor(.black)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.yellow)
+                                .clipShape(Capsule())
                         }
 
-                        Button(action: onDone) {
-                            Text("Done")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.white.opacity(0.15))
-                                .foregroundColor(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        // Accuracy ring + Score
+                        HStack(spacing: 32) {
+                            AccuracyCircleView(percentage: scoreEngine.accuracyPercentage)
+
+                            VStack(spacing: 4) {
+                                Text("\(finalScore)")
+                                    .font(.system(size: 44, weight: .bold, design: .monospaced))
+                                    .foregroundColor(.white)
+                                Text("SCORE")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
                         }
+
+                        // Hit breakdown chart
+                        AccuracyBreakdownChart(
+                            perfectCount: scoreEngine.perfectCount,
+                            greatCount: scoreEngine.greatCount,
+                            goodCount: scoreEngine.goodCount,
+                            missCount: scoreEngine.missCount
+                        )
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal)
+
+                        // Timing deviation
+                        TimingDeviationView(
+                            averageDeviation: scoreEngine.averageTimingDeviation,
+                            earlyPercentage: scoreEngine.earlyPercentage,
+                            latePercentage: scoreEngine.latePercentage,
+                            tendency: scoreEngine.timingTendency
+                        )
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal)
+
+                        // Max combo + best score
+                        statsGrid
+
+                        // Actions
+                        VStack(spacing: 12) {
+                            Button(action: onPlayAgain) {
+                                Text("Play Again")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.green)
+                                    .foregroundColor(.black)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+
+                            Button(action: onDone) {
+                                Text("Done")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.white.opacity(0.15))
+                                    .foregroundColor(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 24)
                     }
-                    .padding(.horizontal)
+                    .padding(.top, 24)
                 }
-                .padding(.top, 32)
             }
             .navigationTitle("Results")
             #if os(iOS)
@@ -87,19 +119,9 @@ struct SessionResultsView: View {
     }
 
     private var statsGrid: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 0) {
-                statCell(label: "PERFECT", value: "\(scoreEngine.perfectCount)", color: .cyan)
-                statCell(label: "GREAT", value: "\(scoreEngine.greatCount)", color: .green)
-            }
-            HStack(spacing: 0) {
-                statCell(label: "GOOD", value: "\(scoreEngine.goodCount)", color: .yellow)
-                statCell(label: "MISS", value: "\(scoreEngine.missCount)", color: .red)
-            }
-            HStack(spacing: 0) {
-                statCell(label: "MAX COMBO", value: "\(scoreEngine.maxCombo)x", color: .orange)
-                statCell(label: "BEST SCORE", value: "\(highScore)", color: .purple)
-            }
+        HStack(spacing: 0) {
+            statCell(label: "MAX COMBO", value: "\(scoreEngine.maxCombo)x", color: .orange)
+            statCell(label: "BEST SCORE", value: "\(highScore)", color: .purple)
         }
         .padding(.horizontal)
     }
@@ -123,9 +145,9 @@ struct SessionResultsView: View {
 
 #Preview {
     var engine = ScoreEngine()
-    for _ in 0..<15 { engine.processHit(accuracy: .perfect) }
-    for _ in 0..<5 { engine.processHit(accuracy: .great) }
-    for _ in 0..<2 { engine.processHit(accuracy: .good) }
+    for _ in 0..<15 { engine.processHit(accuracy: .perfect, timingError: -8.0) }
+    for _ in 0..<5 { engine.processHit(accuracy: .great, timingError: 15.0) }
+    for _ in 0..<2 { engine.processHit(accuracy: .good, timingError: 45.0) }
     for _ in 0..<3 { engine.processHit(accuracy: .miss) }
 
     return SessionResultsView(

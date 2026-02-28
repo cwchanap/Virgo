@@ -8,6 +8,15 @@
 
 import Foundation
 
+// MARK: - TimingTendency
+
+/// Player's overall timing direction across a session.
+enum TimingTendency: Equatable {
+    case early     // average deviation < -5ms
+    case late      // average deviation > +5ms
+    case balanced  // -5ms to +5ms
+}
+
 // MARK: - SessionResult
 
 /// Immutable snapshot of a completed gameplay session's results.
@@ -21,6 +30,13 @@ struct SessionResult: Equatable {
     let totalNotes: Int
     let isNewHighScore: Bool
     let previousHighScore: Int
+    // Timing statistics
+    let accuracyPercentage: Double
+    let averageTimingDeviation: Double?
+    let earlyCount: Int
+    let lateCount: Int
+    let timingTendency: TimingTendency
+    let timingDeviations: [Double]
 }
 
 // MARK: - ScoreEngine
@@ -38,12 +54,57 @@ struct ScoreEngine {
     private(set) var greatCount: Int = 0
     private(set) var goodCount: Int = 0
     private(set) var missCount: Int = 0
+    private(set) var timingDeviations: [Double] = []
+
+    // MARK: - Computed Stats
+
+    var totalHits: Int { perfectCount + greatCount + goodCount }
+    var totalNotes: Int { totalHits + missCount }
+
+    /// Hit accuracy as a percentage (0–100). Returns 0 when no notes played.
+    var accuracyPercentage: Double {
+        guard totalNotes > 0 else { return 0.0 }
+        return Double(totalHits) / Double(totalNotes) * 100.0
+    }
+
+    /// Mean timing deviation across all scored (non-miss) hits. Nil when no data.
+    var averageTimingDeviation: Double? {
+        guard !timingDeviations.isEmpty else { return nil }
+        return timingDeviations.reduce(0.0, +) / Double(timingDeviations.count)
+    }
+
+    /// Number of hits where the player was early (negative deviation).
+    var earlyCount: Int { timingDeviations.filter { $0 < 0 }.count }
+
+    /// Number of hits where the player was late (positive deviation).
+    var lateCount: Int { timingDeviations.filter { $0 > 0 }.count }
+
+    /// Early hit share as a percentage (0–100). Returns 0 when no timing data.
+    var earlyPercentage: Double {
+        guard !timingDeviations.isEmpty else { return 0.0 }
+        return Double(earlyCount) / Double(timingDeviations.count) * 100.0
+    }
+
+    /// Late hit share as a percentage (0–100). Returns 0 when no timing data.
+    var latePercentage: Double {
+        guard !timingDeviations.isEmpty else { return 0.0 }
+        return Double(lateCount) / Double(timingDeviations.count) * 100.0
+    }
+
+    /// Player's overall timing tendency for this session.
+    var timingTendency: TimingTendency {
+        guard let avg = averageTimingDeviation else { return .balanced }
+        if avg < -5.0 { return .early }
+        if avg > 5.0 { return .late }
+        return .balanced
+    }
 
     // MARK: - Mutating API
 
     /// Process a player hit with the given accuracy tier.
     /// Non-miss hits increment combo before scoring (combo-then-score ordering).
-    mutating func processHit(accuracy: TimingAccuracy) {
+    /// Pass `timingError` (ms, negative = early, positive = late) to collect timing data.
+    mutating func processHit(accuracy: TimingAccuracy, timingError: Double? = nil) {
         switch accuracy {
         case .perfect:
             perfectCount += 1
@@ -59,6 +120,9 @@ struct ScoreEngine {
         combo += 1
         maxCombo = max(maxCombo, combo)
         score += pointsForCurrentCombo(accuracy: accuracy)
+        if let error = timingError {
+            timingDeviations.append(error)
+        }
     }
 
     /// Process a note that scrolled past without a hit attempt.
@@ -77,6 +141,7 @@ struct ScoreEngine {
         greatCount = 0
         goodCount = 0
         missCount = 0
+        timingDeviations = []
     }
 
     // MARK: - Session Result
@@ -92,7 +157,13 @@ struct ScoreEngine {
             missCount: missCount,
             totalNotes: totalNotes,
             isNewHighScore: score > previousHighScore,
-            previousHighScore: previousHighScore
+            previousHighScore: previousHighScore,
+            accuracyPercentage: accuracyPercentage,
+            averageTimingDeviation: averageTimingDeviation,
+            earlyCount: earlyCount,
+            lateCount: lateCount,
+            timingTendency: timingTendency,
+            timingDeviations: timingDeviations
         )
     }
 

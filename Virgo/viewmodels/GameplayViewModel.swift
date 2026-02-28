@@ -1233,7 +1233,7 @@ final class GameplayViewModel {
         }
 
         let prevCombo = scoreEngine.combo
-        scoreEngine.processHit(accuracy: result.timingAccuracy)
+        scoreEngine.processHit(accuracy: result.timingAccuracy, timingError: result.timingError)
 
         if result.timingAccuracy == .miss {
             if prevCombo > 0 { triggerComboBreakFeedback() }
