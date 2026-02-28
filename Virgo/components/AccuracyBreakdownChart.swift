@@ -36,7 +36,7 @@ struct AccuracyBreakdownChart: View {
                 .font(.caption)
                 .foregroundColor(.gray)
 
-            Chart(data) { tier in
+            Charts.Chart(data) { tier in
                 BarMark(
                     x: .value("Tier", tier.label),
                     y: .value("Count", tier.count)
