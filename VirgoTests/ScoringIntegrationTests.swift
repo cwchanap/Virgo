@@ -218,4 +218,92 @@ struct ScoringIntegrationTests {
         vm.handlePlaybackCompletion()
         #expect(vm.scoreEngine.score == 0) // reset, sessionFinalScore holds the final
     }
+
+    // MARK: - Timing Error Passthrough
+
+    @Test("recordHit passes timingError into scoreEngine.timingDeviations for perfect hit")
+    func testTimingErrorPassthroughPerfect() {
+        let vm = makeViewModel()
+        vm.isPlaying = true
+        let result = NoteMatchResult(
+            hitInput: InputHit(drumType: .snare, velocity: 1.0, timestamp: Date()),
+            matchedNote: Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            timingAccuracy: .perfect,
+            measureNumber: 1,
+            measureOffset: 0.0,
+            timingError: -12.5
+        )
+        vm.recordHit(result: result)
+        #expect(vm.scoreEngine.timingDeviations == [-12.5])
+    }
+
+    @Test("recordHit passes timingError into scoreEngine.timingDeviations for great hit")
+    func testTimingErrorPassthroughGreat() {
+        let vm = makeViewModel()
+        vm.isPlaying = true
+        let result = NoteMatchResult(
+            hitInput: InputHit(drumType: .snare, velocity: 1.0, timestamp: Date()),
+            matchedNote: Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            timingAccuracy: .great,
+            measureNumber: 1,
+            measureOffset: 0.0,
+            timingError: 35.0
+        )
+        vm.recordHit(result: result)
+        #expect(vm.scoreEngine.timingDeviations == [35.0])
+    }
+
+    @Test("recordHit does not add timing data for miss")
+    func testTimingErrorNotStoredForMiss() {
+        let vm = makeViewModel()
+        vm.isPlaying = true
+        vm.recordHit(result: makeMissResult())
+        #expect(vm.scoreEngine.timingDeviations.isEmpty)
+    }
+
+    @Test("handlePlaybackCompletion snapshots timing deviations in sessionScoreEngine")
+    func testHandlePlaybackCompletionPreservesTimingDeviations() {
+        let vm = makeViewModel()
+        vm.isPlaying = true
+        let r1 = NoteMatchResult(
+            hitInput: InputHit(drumType: .snare, velocity: 1.0, timestamp: Date()),
+            matchedNote: Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            timingAccuracy: .perfect,
+            measureNumber: 1,
+            measureOffset: 0.0,
+            timingError: -10.0
+        )
+        let r2 = NoteMatchResult(
+            hitInput: InputHit(drumType: .snare, velocity: 1.0, timestamp: Date()),
+            matchedNote: Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            timingAccuracy: .great,
+            measureNumber: 1,
+            measureOffset: 0.0,
+            timingError: 20.0
+        )
+        vm.recordHit(result: r1)
+        vm.recordHit(result: r2)
+        vm.handlePlaybackCompletion()
+        // sessionScoreEngine is the snapshot; live scoreEngine was reset
+        #expect(vm.sessionScoreEngine.timingDeviations == [-10.0, 20.0])
+        #expect(vm.scoreEngine.timingDeviations.isEmpty)
+    }
+
+    @Test("resetScoring clears timingDeviations")
+    func testResetScoringClearsTimingDeviations() {
+        let vm = makeViewModel()
+        vm.isPlaying = true
+        let result = NoteMatchResult(
+            hitInput: InputHit(drumType: .snare, velocity: 1.0, timestamp: Date()),
+            matchedNote: Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            timingAccuracy: .perfect,
+            measureNumber: 1,
+            measureOffset: 0.0,
+            timingError: -5.0
+        )
+        vm.recordHit(result: result)
+        #expect(!vm.scoreEngine.timingDeviations.isEmpty)
+        vm.resetScoring()
+        #expect(vm.scoreEngine.timingDeviations.isEmpty)
+    }
 }
