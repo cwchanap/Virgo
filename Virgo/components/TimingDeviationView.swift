@@ -38,9 +38,19 @@ struct TimingDeviationView: View {
 
                 // Early / Late split bar
                 GeometryReader { geo in
-                    let earlyWidth = (geo.size.width * CGFloat(max(0, earlyPercentage / 100.0))).rounded(.down)
-                    let lateWidth = (geo.size.width * CGFloat(max(0, latePercentage / 100.0))).rounded(.down)
-                    let neutralWidth = max(0, geo.size.width - earlyWidth - lateWidth)
+                    // Clamp percentages to valid range and ensure sum ≤ 100
+                    let clampedEarly = max(0, min(100, earlyPercentage))
+                    let clampedLate = max(0, min(100, latePercentage))
+                    let adjustedLate = min(clampedLate, 100 - clampedEarly)
+
+                    // Account for HStack spacing (1pt between 3 segments = 2pt total)
+                    let totalSpacing: CGFloat = 2
+                    let availableWidth = max(0, geo.size.width - totalSpacing)
+
+                    let earlyWidth = (availableWidth * CGFloat(clampedEarly / 100.0)).rounded(.down)
+                    let lateWidth = (availableWidth * CGFloat(adjustedLate / 100.0)).rounded(.down)
+                    let neutralWidth = max(0, availableWidth - earlyWidth - lateWidth)
+
                     HStack(spacing: 1) {
                         Rectangle()
                             .fill(Color.blue.opacity(0.7))
