@@ -29,7 +29,7 @@ class GameplayInputHandler: InputManagerDelegate {
 
         if result.matchedNote != nil {
             let logMessage = "Note matched: \(result.hitInput.drumType.description) - \(accuracyText) " +
-            "(\(result.timingError.formatted(.number.precision(.fractionLength(0))))ms) " +
+            "(\(result.timingError?.formatted(.number.precision(.fractionLength(0))) ?? "0")ms) " +
             "at measure \(result.measureNumber)"
             Logger.userAction(logMessage)
         } else {

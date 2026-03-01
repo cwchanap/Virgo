@@ -56,7 +56,7 @@ struct ScoringIntegrationTests {
             timingAccuracy: .miss,
             measureNumber: 1,
             measureOffset: 0.0,
-            timingError: 999.0
+            timingError: nil
         )
     }
 
@@ -259,6 +259,24 @@ struct ScoringIntegrationTests {
         vm.isPlaying = true
         vm.recordHit(result: makeMissResult())
         #expect(vm.scoreEngine.timingDeviations.isEmpty)
+    }
+
+    @Test("miss with nil timingError (real InputManager miss) does not pollute timing stats")
+    func testMissWithNilTimingErrorNotRecorded() {
+        let vm = makeViewModel()
+        vm.isPlaying = true
+        let result = NoteMatchResult(
+            hitInput: InputHit(drumType: .snare, velocity: 1.0, timestamp: Date()),
+            matchedNote: nil,
+            timingAccuracy: .miss,
+            measureNumber: 1,
+            measureOffset: 0.0,
+            timingError: nil
+        )
+        vm.recordHit(result: result)
+        #expect(vm.scoreEngine.timingDeviations.isEmpty)
+        #expect(vm.scoreEngine.earlyCount == 0)
+        #expect(vm.scoreEngine.lateCount == 0)
     }
 
     @Test("handlePlaybackCompletion snapshots timing deviations in sessionScoreEngine")

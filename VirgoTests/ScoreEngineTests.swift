@@ -313,13 +313,18 @@ struct ScoreEngineTests {
         #expect(engine.timingDeviations.isEmpty)
     }
 
-    @Test("reset() clears timing deviations")
+    @Test("reset() clears timing deviations and all timing counters")
     func testResetClearsTimingData() {
         var engine = ScoreEngine()
         engine.processHit(accuracy: .perfect, timingError: -5.0)
         engine.processHit(accuracy: .great, timingError: 10.0)
         engine.reset()
         #expect(engine.timingDeviations.isEmpty)
+        #expect(engine.averageTimingDeviation == nil)
+        #expect(engine.earlyCount == 0)
+        #expect(engine.lateCount == 0)
+        #expect(engine.earlyPercentage == 0.0)
+        #expect(engine.latePercentage == 0.0)
     }
 
     // MARK: - Timing Deviation: Computed Stats
