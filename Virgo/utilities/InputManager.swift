@@ -25,7 +25,7 @@ struct NoteMatchResult {
     let timingAccuracy: TimingAccuracy
     let measureNumber: Int
     let measureOffset: Double
-    let timingError: Double // in milliseconds, positive = late, negative = early
+    let timingError: Double? // in milliseconds, positive = late, negative = early; nil when no note matched
 }
 
 enum TimingAccuracy: Sendable {
@@ -251,9 +251,9 @@ extension InputManager {
         return Double(measureIndex) * secondsPerMeasure + (measureOffset * secondsPerMeasure)
     }
     
-    private func calculateTimingAccuracy(matchedNote: Note?, actualTime: Double) -> (TimingAccuracy, Double) {
+    private func calculateTimingAccuracy(matchedNote: Note?, actualTime: Double) -> (TimingAccuracy, Double?) {
         guard let note = matchedNote else {
-            return (.miss, 0.0)
+            return (.miss, nil)
         }
         
         let expectedTime = calculateExpectedTime(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
