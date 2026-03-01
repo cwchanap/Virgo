@@ -55,6 +55,9 @@ struct ScoreEngine {
     private(set) var goodCount: Int = 0
     private(set) var missCount: Int = 0
     private(set) var timingDeviations: [Double] = []
+    private(set) var earlyCount: Int = 0
+    private(set) var lateCount: Int = 0
+    private var timingDeviationSum: Double = 0.0
 
     // MARK: - Computed Stats
 
@@ -68,24 +71,21 @@ struct ScoreEngine {
     }
 
     /// Mean timing deviation across all scored (non-miss) hits. Nil when no data.
+    /// O(1) — uses a running sum maintained in `processHit`.
     var averageTimingDeviation: Double? {
         guard !timingDeviations.isEmpty else { return nil }
-        return timingDeviations.reduce(0.0, +) / Double(timingDeviations.count)
+        return timingDeviationSum / Double(timingDeviations.count)
     }
 
-    /// Number of hits where the player was early (negative deviation).
-    var earlyCount: Int { timingDeviations.filter { $0 < 0 }.count }
-
-    /// Number of hits where the player was late (positive deviation).
-    var lateCount: Int { timingDeviations.filter { $0 > 0 }.count }
-
     /// Early hit share as a percentage (0–100). Returns 0 when no timing data.
+    /// O(1) — uses a running counter maintained in `processHit`.
     var earlyPercentage: Double {
         guard !timingDeviations.isEmpty else { return 0.0 }
         return Double(earlyCount) / Double(timingDeviations.count) * 100.0
     }
 
     /// Late hit share as a percentage (0–100). Returns 0 when no timing data.
+    /// O(1) — uses a running counter maintained in `processHit`.
     var latePercentage: Double {
         guard !timingDeviations.isEmpty else { return 0.0 }
         return Double(lateCount) / Double(timingDeviations.count) * 100.0
@@ -122,6 +122,9 @@ struct ScoreEngine {
         score += pointsForCurrentCombo(accuracy: accuracy)
         if let error = timingError {
             timingDeviations.append(error)
+            timingDeviationSum += error
+            if error < 0 { earlyCount += 1 }
+            else if error > 0 { lateCount += 1 }
         }
     }
 
@@ -142,6 +145,9 @@ struct ScoreEngine {
         goodCount = 0
         missCount = 0
         timingDeviations = []
+        earlyCount = 0
+        lateCount = 0
+        timingDeviationSum = 0.0
     }
 
     // MARK: - Session Result
