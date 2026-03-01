@@ -43,7 +43,7 @@ Virgo is a **SwiftUI-first, single-process, multi-platform application** structu
 
 ### Architectural Boundaries
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                          App Layer                               │
 │  VirgoApp.swift — ModelContainer + @StateObject shared services  │
@@ -87,7 +87,7 @@ Virgo is a **SwiftUI-first, single-process, multi-platform application** structu
 
 ### C4 Context Diagram
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────────┐
 │                    External Systems                               │
 │                                                                  │
@@ -114,7 +114,7 @@ Virgo is a **SwiftUI-first, single-process, multi-platform application** structu
 
 ### Component Interaction Diagram
 
-```
+```text
 VirgoApp
   ├── ModelContainer (shared SQLite store)
   ├── MetronomeEngine (@StateObject, injected via .environmentObject)
@@ -144,7 +144,7 @@ GameplayView
 
 ### Data Flow — Gameplay Session
 
-```
+```text
 User (MIDI/Keyboard)
     │
     ▼
@@ -241,7 +241,7 @@ struct VirgoApp: App {
 - Manages speed changes with debounce (100ms trailing-edge)
 
 **Lifecycle:**
-```
+```text
 init()              ← Constructor injection of chart, metronome, practiceSettings
 loadChartData()     ← Async SwiftData relationship loading
 setupGameplay()     ← BGM, caches, persisted speed
@@ -347,7 +347,7 @@ Multi-purpose infrastructure not fitting service or engine categories:
 
 ### 3.7 Three-Layer Metronome Architecture
 
-```
+```text
 MetronomeEngine (public facade, @MainActor ObservableObject)
   ├── MetronomeTimingEngine  — DispatchSourceTimer, beat scheduling
   │     └── onBeat callback → MetronomeEngine.handleBeat()
@@ -368,7 +368,7 @@ MetronomeEngine (public facade, @MainActor ObservableObject)
 
 ### Dependency Rules
 
-```
+```text
 View → ViewModel → Engine/Service → Persistence
   ↕          ↕           ↕
 Utility ← Utility ← Utility
@@ -406,7 +406,7 @@ Utility ← Utility ← Utility
 
 ### SwiftData Model Hierarchy
 
-```
+```text
 Song (@Model)
   │  title, artist, bpm, duration, genre, timeSignature
   │  isPlaying, dateAdded, playCount, isSaved
@@ -515,7 +515,11 @@ Logger.error("…")              // .error with ❌ prefix
 Logger.critical("…")           // .critical with 🚨 prefix
 ```
 
-**All string interpolation uses `privacy: .public`** — no PII logged.
+Use explicit privacy annotations for interpolated values: prefer `.private` or `.sensitive` (or framework-equivalent) for user/data-bearing fields, and use `.public` only for vetted non-sensitive values.
+
+```swift
+logger.info("userID=\(userID, privacy: .private), build=\(buildName, privacy: .public)")
+```
 
 ---
 
@@ -584,7 +588,7 @@ Logger.critical("…")           // .critical with 🚨 prefix
 
 ### 7.2 Environment Propagation
 
-```
+```text
 VirgoApp
   MetronomeEngine      → .environmentObject → all descendant views
   PracticeSettingsService → .environmentObject → all descendant views
@@ -914,7 +918,7 @@ let service = HighScoreService(userDefaults: userDefaults)
 
 ### Build Configurations
 
-```
+```text
 Debug   — DEBUG flag, Logger.debug() active, animations can be disabled for UI tests
 Release — Production, debug logs suppressed
 ```
@@ -935,7 +939,7 @@ Release — Production, debug logs suppressed
 
 ### Code Signing
 
-```
+```bash
 # Unit test builds — signing disabled for CI
 CODE_SIGNING_REQUIRED=NO
 CODE_SIGNING_ALLOWED=NO
@@ -1182,7 +1186,7 @@ struct GameplayView: View {
 
 - **SwiftLint** — enforced via pre-commit hook (`scripts/setup-git-hooks.sh`)
   - Auto-fix mode available: `swiftlint lint --fix`
-  - Configuration: `codecov.yml` (root level)
+    - Configuration: `.swiftlint.yml` (root level)
 - **CI Test Suite** — full unit test run on every push
   - `xcodebuild test -only-testing:VirgoTests` (macOS destination)
   - Code coverage enabled (`-enableCodeCoverage YES`)

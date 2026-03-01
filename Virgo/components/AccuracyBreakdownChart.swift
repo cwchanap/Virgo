@@ -24,9 +24,9 @@ struct AccuracyBreakdownChart: View {
     private var data: [TierData] {
         [
             TierData(label: "Perfect", count: perfectCount, color: .cyan),
-            TierData(label: "Great",   count: greatCount,   color: .green),
-            TierData(label: "Good",    count: goodCount,    color: .yellow),
-            TierData(label: "Miss",    count: missCount,    color: .red)
+            TierData(label: "Great", count: greatCount, color: .green),
+            TierData(label: "Good", count: goodCount, color: .yellow),
+            TierData(label: "Miss", count: missCount, color: .red)
         ]
     }
 
