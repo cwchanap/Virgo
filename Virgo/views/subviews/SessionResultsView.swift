@@ -5,7 +5,6 @@
 //  End-of-session results sheet shown after playback completes.
 //
 
-import Charts
 import SwiftUI
 
 struct SessionResultsView: View {

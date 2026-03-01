@@ -15,7 +15,7 @@ struct AccuracyBreakdownChart: View {
     let missCount: Int
 
     private struct TierData: Identifiable {
-        let id = UUID()
+        var id: String { label }
         let label: String
         let count: Int
         let color: Color

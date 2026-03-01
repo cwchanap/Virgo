@@ -3,7 +3,7 @@
 > **Generated:** 2026-02-28  
 > **Technology Stack:** Swift 5.9+ / SwiftUI / SwiftData / AVFoundation / CoreMIDI  
 > **Architecture Pattern:** MVVM + Service Layer  
-> **Platforms:** iOS 18.5+ · macOS 14.0+  
+> **Platforms:** iOS 17.5+ · macOS 14.0+  
 > **Detail Level:** Implementation-Ready
 
 ---
