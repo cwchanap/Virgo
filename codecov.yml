@@ -19,6 +19,8 @@ ignore:
   - "**/*.generated.swift"
   - "**/DerivedData/**"
   - "**/build/**"
+  - "**/VirgoTests/**"
+  - "**/VirgoUITests/**"
   - "**/*.xctest/**"
 
 comment:
