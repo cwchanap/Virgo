@@ -8,6 +8,7 @@
 import Testing
 import SwiftData
 import SwiftUI
+import Foundation
 @testable import Virgo
 
 @Suite("SwiftData Relationship Loader Tests")
@@ -71,6 +72,179 @@ struct SwiftDataRelationshipLoaderTests {
             #expect(loadingCompleted, "Loading should complete")
             #expect(loader.relationshipData.chartCount == 0)
             #expect(loader.isLoading == false)
+        }
+    }
+
+    @Test("SongRelationshipLoader computes chart count, measure count, and sorted difficulties")
+    func testSongRelationshipLoaderComputedData() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+
+            let song = TestModelFactory.createSong(in: context, title: "Loader Song", artist: "Loader Artist")
+            let hardChart = TestModelFactory.createChart(in: context, difficulty: .hard, song: song)
+            let easyChart = TestModelFactory.createChart(in: context, difficulty: .easy, song: song)
+            let duplicateEasyChart = TestModelFactory.createChart(in: context, difficulty: .easy, song: song)
+
+            let noteA = TestModelFactory.createNote(
+                in: context,
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 2,
+                measureOffset: 0.0,
+                chart: hardChart
+            )
+            let noteB = TestModelFactory.createNote(
+                in: context,
+                interval: .eighth,
+                noteType: .bass,
+                measureNumber: 5,
+                measureOffset: 0.5,
+                chart: easyChart
+            )
+
+            hardChart.notes = [noteA]
+            easyChart.notes = [noteB]
+            duplicateEasyChart.notes = []
+            song.charts = [hardChart, easyChart, duplicateEasyChart]
+            try context.save()
+
+            let loader = SongRelationshipLoader(song: song)
+            let loaded = await TestHelpers.waitFor(
+                condition: {
+                    loader.relationshipData.chartCount == 3 &&
+                    loader.relationshipData.measureCount == 5 &&
+                    loader.relationshipData.availableDifficulties == [.easy, .hard] &&
+                    loader.isLoading == false
+                },
+                timeout: 2.0,
+                checkInterval: 0.01
+            )
+
+            #expect(loaded)
+            #expect(loader.relationshipData.chartCount == 3)
+            #expect(loader.relationshipData.measureCount == 5)
+            #expect(loader.relationshipData.charts.count == 3)
+            #expect(loader.relationshipData.availableDifficulties == [.easy, .hard])
+            #expect(loader.isLoading == false)
+            loader.stopObserving()
+        }
+    }
+
+    @Test("ChartRelationshipLoader computes notes count and measure count")
+    func testChartRelationshipLoaderComputedData() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+
+            let song = TestModelFactory.createSong(in: context)
+            let chart = TestModelFactory.createChart(in: context, difficulty: .medium, song: song)
+
+            let note1 = TestModelFactory.createNote(
+                in: context,
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                chart: chart
+            )
+            let note2 = TestModelFactory.createNote(
+                in: context,
+                interval: .eighth,
+                noteType: .snare,
+                measureNumber: 4,
+                measureOffset: 0.5,
+                chart: chart
+            )
+
+            chart.notes = [note1, note2]
+            song.charts = [chart]
+            try context.save()
+
+            let loader = ChartRelationshipLoader(chart: chart)
+            let loaded = await TestHelpers.waitFor(
+                condition: {
+                    loader.relationshipData.notesCount == 2 &&
+                    loader.relationshipData.measureCount == 4 &&
+                    loader.relationshipData.notes.count == 2 &&
+                    loader.isLoading == false
+                },
+                timeout: 2.0,
+                checkInterval: 0.01
+            )
+
+            #expect(loaded)
+            #expect(loader.relationshipData.notesCount == 2)
+            #expect(loader.relationshipData.measureCount == 4)
+            #expect(loader.relationshipData.notes.count == 2)
+            #expect(loader.isLoading == false)
+            loader.stopObserving()
+        }
+    }
+
+    @Test("BaseSwiftDataRelationshipLoader refresh reloads and replaces previous data")
+    func testBaseLoaderRefreshReplacesData() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let mockSong = TestModelFactory.createSong(in: context)
+
+            var loadCount = 0
+            let loader = BaseSwiftDataRelationshipLoader(
+                model: mockSong,
+                defaultData: 0
+            ) { _ in
+                try? await Task.sleep(nanoseconds: 20_000_000)
+                loadCount += 1
+                return loadCount
+            }
+
+            let initialLoaded = await TestHelpers.waitFor(
+                condition: { loader.relationshipData >= 1 && loader.isLoading == false },
+                timeout: 1.5,
+                checkInterval: 0.01
+            )
+
+            #expect(initialLoaded)
+            let firstValue = loader.relationshipData
+            #expect(firstValue >= 1)
+
+            loader.refresh()
+            let refreshed = await TestHelpers.waitFor(
+                condition: { loader.relationshipData > firstValue && loader.isLoading == false },
+                timeout: 1.5,
+                checkInterval: 0.01
+            )
+
+            #expect(refreshed)
+            #expect(loader.relationshipData > firstValue)
+            loader.stopObserving()
+        }
+    }
+
+    @Test("BaseSwiftDataRelationshipLoader stopObserving cancels in-flight load")
+    func testBaseLoaderStopObservingCancelsLoad() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let mockSong = TestModelFactory.createSong(in: context)
+
+            let loader = BaseSwiftDataRelationshipLoader(
+                model: mockSong,
+                defaultData: "default"
+            ) { _ in
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                return "loaded"
+            }
+
+            // Cancel any auto-started load first so we can control timing for this assertion.
+            loader.stopObserving()
+
+            let loadingTask = Task {
+                await loader.loadRelationshipData()
+            }
+
+            try await Task.sleep(nanoseconds: 30_000_000)
+            loader.stopObserving()
+            await loadingTask.value
+
+            #expect(loader.relationshipData == "default")
         }
     }
 
