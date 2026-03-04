@@ -5,6 +5,7 @@ import Foundation
 
 @Suite("ServerSongService Tests", .serialized)
 @MainActor
+// swiftlint:disable type_body_length
 struct ServerSongServiceTests {
     private final class MockURLProtocol: URLProtocol {
         static var requestHandler: ((URLRequest) throws -> (Int, Data))?
@@ -37,6 +38,58 @@ struct ServerSongServiceTests {
         override func stopLoading() {}
     }
 
+    @MainActor
+    private final class MockServerSongCache: ServerSongCache {
+        var loadResult: Result<[ServerSong], Error> = .success([])
+        var refreshError: Error?
+        var refreshCalls: [Bool] = []
+
+        override func loadServerSongs(modelContext: ModelContext) async throws -> [ServerSong] {
+            switch loadResult {
+            case .success(let songs):
+                return songs
+            case .failure(let error):
+                throw error
+            }
+        }
+
+        override func refreshServerSongs(modelContext: ModelContext, forceClear: Bool = false) async throws {
+            refreshCalls.append(forceClear)
+            if let refreshError {
+                throw refreshError
+            }
+        }
+    }
+
+    private final class MockServerSongDownloader: ServerSongDownloader {
+        var result: (Bool, String?) = (true, nil)
+        var receivedSongIDs: [String] = []
+
+        override func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
+            receivedSongIDs.append(serverSong.songId)
+            return result
+        }
+    }
+
+    @MainActor
+    private final class MockServerSongStatusManager: ServerSongStatusManager {
+        var deleteDownloadedResult = true
+        var deleteLocalResult = true
+        var refreshDownloadStatusCalled = false
+
+        override func deleteDownloadedSong(_ serverSong: ServerSong, modelContext: ModelContext) async -> Bool {
+            deleteDownloadedResult
+        }
+
+        override func deleteLocalSong(_ song: Song, container: ModelContainer) async -> Bool {
+            deleteLocalResult
+        }
+
+        override func refreshDownloadStatus(modelContext: ModelContext) async {
+            refreshDownloadStatusCalled = true
+        }
+    }
+
     @Test("loadServerSongs returns empty list when modelContext is not set")
     func testLoadServerSongsWithoutModelContext() async {
         let service = ServerSongService()
@@ -59,6 +112,94 @@ struct ServerSongServiceTests {
         #expect(service.errorMessage == nil)
     }
 
+    @Test("loadServerSongs returns cache data when context is available")
+    func testLoadServerSongsWithContextUsesCacheResult() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let cache = MockServerSongCache()
+            let expectedSong = ServerSong(songId: "cached-song", title: "Cached", artist: "Artist", bpm: 120.0)
+            cache.loadResult = .success([expectedSong])
+
+            let service = ServerSongService(cache: cache)
+            service.setModelContext(context)
+
+            let songs = await service.loadServerSongs()
+            #expect(songs.count == 1)
+            #expect(songs.first?.songId == "cached-song")
+        }
+    }
+
+    @Test("loadServerSongs returns empty list when cache throws")
+    func testLoadServerSongsHandlesCacheError() async throws {
+        struct ExpectedError: Error {}
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let cache = MockServerSongCache()
+            cache.loadResult = .failure(ExpectedError())
+
+            let service = ServerSongService(cache: cache)
+            service.setModelContext(context)
+
+            let songs = await service.loadServerSongs()
+            #expect(songs.isEmpty)
+        }
+    }
+
+    @Test("refreshServerSongs calls cache with forceClear false")
+    func testRefreshServerSongsUsesForceClearFalse() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let cache = MockServerSongCache()
+            let service = ServerSongService(cache: cache)
+            service.setModelContext(context)
+
+            await service.refreshServerSongs()
+
+            #expect(cache.refreshCalls == [false])
+            #expect(service.isRefreshing == false)
+            #expect(service.errorMessage == nil)
+        }
+    }
+
+    @Test("forceRefreshServerSongs calls cache with forceClear true")
+    func testForceRefreshServerSongsUsesForceClearTrue() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let cache = MockServerSongCache()
+            let service = ServerSongService(cache: cache)
+            service.setModelContext(context)
+
+            await service.forceRefreshServerSongs()
+
+            #expect(cache.refreshCalls == [true])
+            #expect(service.isRefreshing == false)
+            #expect(service.errorMessage == nil)
+        }
+    }
+
+    @Test("refreshServerSongs sets error message when cache refresh fails")
+    func testRefreshServerSongsFailureSetsError() async throws {
+        struct RefreshFailure: LocalizedError {
+            var errorDescription: String? { "boom" }
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let cache = MockServerSongCache()
+            cache.refreshError = RefreshFailure()
+            let service = ServerSongService(cache: cache)
+            service.setModelContext(context)
+
+            await service.refreshServerSongs()
+
+            #expect(cache.refreshCalls == [false])
+            #expect(service.isRefreshing == false)
+            #expect(service.errorMessage?.contains("Failed to refresh server songs") == true)
+            #expect(service.errorMessage?.contains("boom") == true)
+        }
+    }
+
     @Test("deleteDownloadedSong returns false when modelContext is not set")
     func testDeleteDownloadedSongWithoutModelContext() async {
         let service = ServerSongService()
@@ -67,6 +208,23 @@ struct ServerSongServiceTests {
         let success = await service.deleteDownloadedSong(serverSong)
 
         #expect(success == false)
+    }
+
+    @Test("deleteDownloadedSong sets error when status manager fails")
+    func testDeleteDownloadedSongFailureSetsError() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let statusManager = MockServerSongStatusManager()
+            statusManager.deleteDownloadedResult = false
+            let service = ServerSongService(statusManager: statusManager)
+            service.setModelContext(context)
+
+            let serverSong = ServerSong(songId: "song-fail", title: "Fail", artist: "Artist", bpm: 120.0)
+            let success = await service.deleteDownloadedSong(serverSong)
+
+            #expect(success == false)
+            #expect(service.errorMessage == "Failed to delete downloaded song")
+        }
     }
 
     @Test("deleteLocalSong returns false and sets error when modelContext is missing")
@@ -94,6 +252,42 @@ struct ServerSongServiceTests {
         #expect(service.deletingSongs == [key])
     }
 
+    @Test("deleteLocalSong sets error and clears deleting state when manager fails")
+    func testDeleteLocalSongFailureWithContext() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let statusManager = MockServerSongStatusManager()
+            statusManager.deleteLocalResult = false
+            let service = ServerSongService(statusManager: statusManager)
+            service.setModelContext(context)
+
+            let song = Song(title: "Fail Local", artist: "Artist", bpm: 100.0, duration: "1:00", genre: "DTX Import")
+            let success = await service.deleteLocalSong(song)
+
+            #expect(success == false)
+            #expect(service.errorMessage == "Failed to delete local song")
+            #expect(service.deletingSongs.isEmpty)
+        }
+    }
+
+    @Test("deleteLocalSong succeeds and clears deleting state when manager succeeds")
+    func testDeleteLocalSongSuccessWithContext() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let statusManager = MockServerSongStatusManager()
+            statusManager.deleteLocalResult = true
+            let service = ServerSongService(statusManager: statusManager)
+            service.setModelContext(context)
+
+            let song = Song(title: "Delete Local", artist: "Artist", bpm: 100.0, duration: "1:00", genre: "DTX Import")
+            let success = await service.deleteLocalSong(song)
+
+            #expect(success)
+            #expect(service.errorMessage == nil)
+            #expect(service.deletingSongs.isEmpty)
+        }
+    }
+
     @Test("downloadAndImportSong returns false when song is already downloaded")
     func testDownloadAndImportSongAlreadyDownloaded() async {
         let service = ServerSongService()
@@ -109,6 +303,51 @@ struct ServerSongServiceTests {
 
         #expect(success == false)
         #expect(service.downloadingSongs.isEmpty)
+    }
+
+    @Test("downloadAndImportSong sets error from downloader failure")
+    func testDownloadAndImportSongDownloaderFailureSetsError() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let downloader = MockServerSongDownloader()
+            downloader.result = (false, "Synthetic downloader failure")
+            let service = ServerSongService(downloader: downloader)
+            service.setModelContext(context)
+
+            let serverSong = ServerSong(songId: "download-fail", title: "Fail", artist: "Artist", bpm: 120.0)
+            let success = await service.downloadAndImportSong(serverSong)
+
+            #expect(success == false)
+            #expect(service.errorMessage == "Synthetic downloader failure")
+            #expect(service.downloadingSongs.isEmpty)
+            #expect(serverSong.isDownloaded == false)
+            #expect(downloader.receivedSongIDs == ["download-fail"])
+        }
+    }
+
+    @Test("downloadAndImportSong success marks song downloaded and refreshes status")
+    func testDownloadAndImportSongSuccessRefreshesStatus() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let downloader = MockServerSongDownloader()
+            downloader.result = (true, nil)
+            let statusManager = MockServerSongStatusManager()
+            let service = ServerSongService(downloader: downloader, statusManager: statusManager)
+            service.setModelContext(context)
+
+            let serverSong = ServerSong(songId: "download-ok", title: "OK", artist: "Artist", bpm: 120.0)
+            context.insert(serverSong)
+            try context.save()
+
+            let success = await service.downloadAndImportSong(serverSong)
+
+            #expect(success)
+            #expect(serverSong.isDownloaded == true)
+            #expect(service.errorMessage == nil)
+            #expect(service.downloadingSongs.isEmpty)
+            #expect(statusManager.refreshDownloadStatusCalled)
+            #expect(downloader.receivedSongIDs == ["download-ok"])
+        }
     }
 
     @Test("downloadAndImportSong returns false when song is already being downloaded")

@@ -123,8 +123,7 @@ struct ScoreEngine {
         if let error = timingError {
             timingDeviations.append(error)
             timingDeviationSum += error
-            if error < 0 { earlyCount += 1 }
-            else if error > 0 { lateCount += 1 }
+            if error < 0 { earlyCount += 1 } else if error > 0 { lateCount += 1 }
         }
     }
 
