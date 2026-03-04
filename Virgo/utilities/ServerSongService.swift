@@ -9,9 +9,19 @@ class ServerSongService: ObservableObject {
     @MainActor @Published var deletingSongs: Set<String> = []
 
     private var modelContext: ModelContext?
-    private let cache = ServerSongCache()
-    private let downloader = ServerSongDownloader()
-    private let statusManager = ServerSongStatusManager()
+    private let cache: ServerSongCache
+    private let downloader: ServerSongDownloader
+    private let statusManager: ServerSongStatusManager
+
+    init(
+        cache: ServerSongCache = ServerSongCache(),
+        downloader: ServerSongDownloader = ServerSongDownloader(),
+        statusManager: ServerSongStatusManager = ServerSongStatusManager()
+    ) {
+        self.cache = cache
+        self.downloader = downloader
+        self.statusManager = statusManager
+    }
 
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
