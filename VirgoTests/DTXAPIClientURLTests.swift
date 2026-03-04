@@ -210,4 +210,18 @@ struct DTXAPIClientURLTests {
         let result = await client.testConnection()
         #expect(result == false)
     }
+
+    @Test("testConnection returns false when URL cannot be constructed from base URL")
+    func testTestConnectionWhenBaseURLCannotFormURL() async {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientURLTests.testConnectionInvalidConstructedURL.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        userDefaults.set("http://exa mple.com", forKey: "DTXServerURL")
+        let client = DTXAPIClient(userDefaults: userDefaults)
+
+        let result = await client.testConnection()
+        #expect(result == false)
+    }
 }

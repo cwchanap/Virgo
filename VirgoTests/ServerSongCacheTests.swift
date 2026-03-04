@@ -7,6 +7,10 @@ import Foundation
 @MainActor
 // swiftlint:disable type_body_length
 struct ServerSongCacheTests {
+    private enum SaveHookError: Error {
+        case forced
+    }
+
     private final class RequestedPathsStore {
         var values: [String] = []
     }
@@ -174,6 +178,71 @@ struct ServerSongCacheTests {
             #expect(loadedSongs.isEmpty)
             let persistedSongs = try context.fetch(FetchDescriptor<ServerSong>())
             #expect(persistedSongs.isEmpty)
+        }
+    }
+
+    @Test("loadServerSongs refreshes empty cache and returns fetched songs")
+    func testLoadServerSongsRefreshesEmptyCacheAndReturnsFetchedSongs() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongCacheTests.loadRefreshSuccess.\(UUID().uuidString)"
+        )
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+        let cache = ServerSongCache(apiClient: apiClient)
+
+        var requestedPaths: [String] = []
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            requestedPaths.append(path)
+
+            if path == "/dtx/list" {
+                let payload = """
+                {
+                  "songs": [
+                    {
+                      "song_id": "fresh-song",
+                      "title": "Fresh Song",
+                      "artist": "Fresh Artist",
+                      "bpm": 132.0,
+                      "charts": [
+                        {
+                          "difficulty": "easy",
+                          "difficulty_label": "BASIC",
+                          "level": 20,
+                          "filename": "fresh_easy.dtx",
+                          "size": 1024
+                        }
+                      ]
+                    }
+                  ],
+                  "individual_files": []
+                }
+                """
+                return (200, Data(payload.utf8))
+            }
+
+            return (404, Data())
+        }
+
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+
+            let loadedSongs = try await cache.loadServerSongs(modelContext: context)
+
+            #expect(loadedSongs.count == 1)
+            #expect(loadedSongs.first?.songId == "fresh-song")
+            #expect(loadedSongs.first?.title == "Fresh Song")
+            #expect(loadedSongs.first?.charts.count == 1)
+            #expect(requestedPaths == ["/dtx/list", "/dtx/list"])
         }
     }
 
@@ -392,6 +461,198 @@ struct ServerSongCacheTests {
             let capturedPaths = requestedPaths
             lock.unlock()
             #expect(capturedPaths == ["/dtx/list"])
+        }
+    }
+
+    @Test("refreshServerSongs rethrows when insertion save fails")
+    func testRefreshServerSongsInsertionSaveFailure() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongCacheTests.insertionSaveFailure.\(UUID().uuidString)"
+        )
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+
+        var saveCalls = 0
+        let cache = ServerSongCache(
+            apiClient: apiClient,
+            saveContext: { _ in
+                saveCalls += 1
+                throw SaveHookError.forced
+            }
+        )
+
+        MockURLProtocol.requestHandler = { request in
+            if request.url?.path == "/dtx/list" {
+                let payload = """
+                {
+                  "songs": [
+                    {
+                      "song_id": "insert-fail-song",
+                      "title": "Insert Fail",
+                      "artist": "Artist",
+                      "bpm": 120.0,
+                      "charts": []
+                    }
+                  ],
+                  "individual_files": []
+                }
+                """
+                return (200, Data(payload.utf8))
+            }
+            return (404, Data())
+        }
+
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+
+            var didThrow = false
+            do {
+                try await cache.refreshServerSongs(modelContext: context, forceClear: true)
+            } catch {
+                didThrow = true
+            }
+
+            #expect(didThrow)
+            #expect(saveCalls == 1)
+        }
+    }
+
+    @Test("refreshServerSongs rethrows when clearExistingServerSongs batch save fails")
+    func testRefreshServerSongsClearExistingSaveFailure() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongCacheTests.clearExistingSaveFailure.\(UUID().uuidString)"
+        )
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+
+        var saveCalls = 0
+        let cache = ServerSongCache(
+            apiClient: apiClient,
+            saveContext: { _ in
+                saveCalls += 1
+                throw SaveHookError.forced
+            }
+        )
+
+        MockURLProtocol.requestHandler = { request in
+            if request.url?.path == "/dtx/list" {
+                let payload = """
+                {
+                  "songs": [
+                    {
+                      "song_id": "refresh-song",
+                      "title": "Refresh Song",
+                      "artist": "Artist",
+                      "bpm": 123.0,
+                      "charts": []
+                    }
+                  ],
+                  "individual_files": []
+                }
+                """
+                return (200, Data(payload.utf8))
+            }
+            return (404, Data())
+        }
+
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            context.insert(ServerSong(songId: "existing-song", title: "Existing", artist: "Artist", bpm: 100.0))
+            try context.save()
+
+            var didThrow = false
+            do {
+                try await cache.refreshServerSongs(modelContext: context, forceClear: true)
+            } catch {
+                didThrow = true
+            }
+
+            #expect(didThrow)
+            #expect(saveCalls == 1)
+        }
+    }
+
+    @Test("refreshServerSongs applies defaults when metadata fields are null")
+    func testRefreshServerSongsMetadataNullFieldDefaults() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongCacheTests.metadataNullDefaults.\(UUID().uuidString)"
+        )
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+        let cache = ServerSongCache(apiClient: apiClient)
+
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            if path == "/dtx/list" {
+                let payload = """
+                {
+                  "songs": [],
+                  "individual_files": [
+                    {"filename": "legacy_nulls.dtx", "size": 333}
+                  ]
+                }
+                """
+                return (200, Data(payload.utf8))
+            }
+
+            if path == "/dtx/metadata/legacy_nulls.dtx" {
+                let payload = """
+                {
+                  "filename": "legacy_nulls.dtx",
+                  "metadata": {
+                    "title": null,
+                    "artist": null,
+                    "bpm": null,
+                    "level": null
+                  }
+                }
+                """
+                return (200, Data(payload.utf8))
+            }
+
+            return (404, Data())
+        }
+
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+
+            try await cache.refreshServerSongs(modelContext: context)
+
+            let serverSongs = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(serverSongs.count == 1)
+
+            let song = serverSongs[0]
+            #expect(song.title == "legacy_nulls")
+            #expect(song.artist == "Unknown Artist")
+            #expect(song.bpm == 120.0)
+            #expect(song.charts.first?.level == 50)
         }
     }
 }

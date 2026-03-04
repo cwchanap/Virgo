@@ -12,15 +12,18 @@ class ServerSongService: ObservableObject {
     private let cache: ServerSongCache
     private let downloader: ServerSongDownloader
     private let statusManager: ServerSongStatusManager
+    private let saveModelContext: (ModelContext) throws -> Void
 
     init(
         cache: ServerSongCache = ServerSongCache(),
         downloader: ServerSongDownloader = ServerSongDownloader(),
-        statusManager: ServerSongStatusManager = ServerSongStatusManager()
+        statusManager: ServerSongStatusManager = ServerSongStatusManager(),
+        saveModelContext: @escaping (ModelContext) throws -> Void = { context in try context.save() }
     ) {
         self.cache = cache
         self.downloader = downloader
         self.statusManager = statusManager
+        self.saveModelContext = saveModelContext
     }
 
     func setModelContext(_ context: ModelContext) {
@@ -118,7 +121,7 @@ class ServerSongService: ObservableObject {
                 // Save the updated status to ensure UI reflects the change
                 if let modelContext = modelContext {
                     do {
-                        try modelContext.save()
+                        try saveModelContext(modelContext)
                     } catch {
                         Logger.debug("Failed to save download status: \(error)")
                     }

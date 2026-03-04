@@ -223,4 +223,64 @@ struct ServerSongDownloaderTests {
             #expect(importedCharts.isEmpty)
         }
     }
+
+    @Test("downloadAndImportSong uses 1:00 duration fallback for charts with no notes")
+    func testDownloadAndImportSongUsesEmptyNotesDurationFallback() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongDownloaderTests.emptyNotesDuration.\(UUID().uuidString)"
+        )
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+        let downloader = ServerSongDownloader(apiClient: apiClient)
+
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            if path == "/dtx/download/empty-notes/empty.dtx" {
+                let dtxContent = "#TITLE: Empty Notes\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 12"
+                let data = dtxContent.data(using: .shiftJIS) ?? Data(dtxContent.utf8)
+                return (200, data)
+            }
+            return (404, Data())
+        }
+
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+
+            let chart = ServerChart(
+                difficulty: "easy",
+                difficultyLabel: "Easy",
+                level: 12,
+                filename: "empty.dtx",
+                size: 10
+            )
+            let serverSong = ServerSong(
+                songId: "empty-notes",
+                title: "Empty Notes",
+                artist: "Tester",
+                bpm: 120.0,
+                charts: [chart],
+                isDownloaded: false
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+
+            #expect(success)
+            #expect(errorMessage == nil)
+
+            let verificationContext = ModelContext(container)
+            let songs = try verificationContext.fetch(FetchDescriptor<Song>())
+            let importedSong = songs.first { $0.title == "Empty Notes" && $0.artist == "Tester" }
+            #expect(importedSong != nil)
+            #expect(importedSong?.duration == "1:00")
+        }
+    }
 }

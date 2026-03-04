@@ -3,7 +3,16 @@ import SwiftData
 
 /// Manages download and deletion status for server songs
 class ServerSongStatusManager {
-    private let fileManager = ServerSongFileManager()
+    private let fileManager: ServerSongFileManager
+    private let saveContext: (ModelContext) throws -> Void
+
+    init(
+        fileManager: ServerSongFileManager = ServerSongFileManager(),
+        saveContext: @escaping (ModelContext) throws -> Void = { context in try context.save() }
+    ) {
+        self.fileManager = fileManager
+        self.saveContext = saveContext
+    }
 
     /// Delete a downloaded server song from local storage
     @MainActor
@@ -26,7 +35,7 @@ class ServerSongStatusManager {
                 modelContext.delete(song)
             }
 
-            try modelContext.save()
+            try saveContext(modelContext)
 
             // Update server song status
             serverSong.isDownloaded = false
@@ -62,7 +71,7 @@ class ServerSongStatusManager {
                 )
 
                 if hasUpdates {
-                    try backgroundContext.save()
+                    try saveContext(backgroundContext)
                 }
 
                 return true
@@ -107,7 +116,7 @@ class ServerSongStatusManager {
             }
 
             if hasUpdates {
-                try modelContext.save()
+                try saveContext(modelContext)
             }
         } catch {
             Logger.debug("Failed to refresh download status: \(error)")
@@ -128,11 +137,6 @@ class ServerSongStatusManager {
             return nil
         }
 
-        guard !songToDelete.isDeleted else {
-            Logger.debug("Song is already deleted")
-            return nil
-        }
-
         return songToDelete
     }
 
@@ -150,7 +154,7 @@ class ServerSongStatusManager {
     /// Delete song from context and save
     private func deleteSongFromContext(_ song: Song, context: ModelContext) throws {
         context.delete(song)
-        try context.save()
+        try saveContext(context)
     }
 
     /// Update server song download status after local song deletion

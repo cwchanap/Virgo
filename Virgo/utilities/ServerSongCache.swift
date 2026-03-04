@@ -4,9 +4,14 @@ import SwiftData
 /// Handles server song loading, caching, and data processing
 class ServerSongCache {
     private let apiClient: DTXAPIClient
+    private let saveContext: (ModelContext) throws -> Void
 
-    init(apiClient: DTXAPIClient = DTXAPIClient()) {
+    init(
+        apiClient: DTXAPIClient = DTXAPIClient(),
+        saveContext: @escaping (ModelContext) throws -> Void = { context in try context.save() }
+    ) {
         self.apiClient = apiClient
+        self.saveContext = saveContext
     }
 
     /// Load server songs from cache or refresh from server if needed
@@ -22,8 +27,9 @@ class ServerSongCache {
 
             // If cache is empty or stale (older than 5 minutes for development), refresh from server
             let fiveMinutesAgo = Date().addingTimeInterval(-300)
-            let shouldRefresh = cachedSongs.isEmpty ||
-                cachedSongs.first?.lastUpdated ?? Date.distantPast < fiveMinutesAgo
+            let shouldRefresh = cachedSongs.first.map { song in
+                song.lastUpdated < fiveMinutesAgo
+            } ?? true
 
             if shouldRefresh {
                 try await refreshServerSongs(modelContext: modelContext, forceClear: false)
@@ -48,7 +54,7 @@ class ServerSongCache {
 
             // Save any status updates
             if hasUpdates {
-                try modelContext.save()
+                try saveContext(modelContext)
             }
 
             return cachedSongs
@@ -119,7 +125,7 @@ class ServerSongCache {
 
             // Save the insertions
             do {
-                try modelContext.save()
+                try saveContext(modelContext)
             } catch {
                 Logger.debug("Error during insertion save: \(error)")
                 throw error
@@ -150,7 +156,7 @@ class ServerSongCache {
 
             // Save after each batch to avoid accumulating too many changes
             do {
-                try modelContext.save()
+                try saveContext(modelContext)
             } catch {
                 Logger.database("Failed to save deletion batch: \(error)")
                 throw error
