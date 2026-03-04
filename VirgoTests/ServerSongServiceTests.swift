@@ -1,10 +1,42 @@
 import Testing
 import SwiftData
+import Foundation
 @testable import Virgo
 
 @Suite("ServerSongService Tests", .serialized)
 @MainActor
 struct ServerSongServiceTests {
+    private final class MockURLProtocol: URLProtocol {
+        static var requestHandler: ((URLRequest) throws -> (Int, Data))?
+
+        override class func canInit(with request: URLRequest) -> Bool { true }
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+        override func startLoading() {
+            guard let handler = Self.requestHandler else {
+                client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+                return
+            }
+
+            do {
+                let (statusCode, data) = try handler(request)
+                let response = HTTPURLResponse(
+                    url: request.url ?? URL(string: "https://example.test")!,
+                    statusCode: statusCode,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
+            } catch {
+                client?.urlProtocol(self, didFailWithError: error)
+            }
+        }
+
+        override func stopLoading() {}
+    }
+
     @Test("loadServerSongs returns empty list when modelContext is not set")
     func testLoadServerSongsWithoutModelContext() async {
         let service = ServerSongService()
@@ -146,6 +178,239 @@ struct ServerSongServiceTests {
             #expect(success)
             #expect(serverSong.isDownloaded == false)
             TestAssertions.assertDeleted(importedSong, in: context)
+        }
+    }
+
+    @Test("downloadAndImportSong imports song without charts and marks as downloaded")
+    func testDownloadAndImportSongSuccessWithoutCharts() async throws {
+        let serverURLKey = "DTXServerURL"
+        let originalURL = UserDefaults.standard.string(forKey: serverURLKey)
+        UserDefaults.standard.set("://invalid-base-url", forKey: serverURLKey)
+        defer {
+            if let originalURL {
+                UserDefaults.standard.set(originalURL, forKey: serverURLKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: serverURLKey)
+            }
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let service = ServerSongService()
+            service.setModelContext(context)
+
+            let serverSong = ServerSong(
+                songId: "download-success",
+                title: "Fresh Song",
+                artist: "Fresh Artist",
+                bpm: 135.5,
+                charts: [],
+                isDownloaded: false
+            )
+            context.insert(serverSong)
+            try context.save()
+
+            let success = await service.downloadAndImportSong(serverSong)
+
+            #expect(success)
+            #expect(service.errorMessage == nil)
+            #expect(service.downloadingSongs.isEmpty)
+            #expect(serverSong.isDownloaded == true)
+
+            let importedSongs = try context.fetch(FetchDescriptor<Song>())
+            let matchedSongs = importedSongs.filter {
+                $0.title == "Fresh Song" &&
+                    $0.artist == "Fresh Artist" &&
+                    $0.genre == "DTX Import"
+            }
+            #expect(matchedSongs.count == 1)
+            #expect(matchedSongs.first?.duration == "3:30")
+        }
+    }
+
+    @Test("downloadAndImportSong rejects duplicate local song and reports message")
+    func testDownloadAndImportSongDuplicateLocalSong() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let service = ServerSongService()
+            service.setModelContext(context)
+
+            let existingSong = Song(
+                title: "Duplicate Song",
+                artist: "Duplicate Artist",
+                bpm: 120.0,
+                duration: "3:00",
+                genre: "DTX Import"
+            )
+            context.insert(existingSong)
+            try context.save()
+
+            let serverSong = ServerSong(
+                songId: "duplicate-server-song",
+                title: "Duplicate Song",
+                artist: "Duplicate Artist",
+                bpm: 120.0,
+                isDownloaded: false
+            )
+
+            let success = await service.downloadAndImportSong(serverSong)
+
+            #expect(success == false)
+            #expect(service.errorMessage == "Song already exists in database")
+            #expect(service.downloadingSongs.isEmpty)
+
+            let allSongs = try context.fetch(FetchDescriptor<Song>())
+            let duplicates = allSongs.filter {
+                $0.title == "Duplicate Song" && $0.artist == "Duplicate Artist"
+            }
+            #expect(duplicates.count == 1)
+        }
+    }
+
+    @Test("downloadAndImportSong surfaces chart download failures")
+    func testDownloadAndImportSongChartDownloadFailure() async throws {
+        let serverURLKey = "DTXServerURL"
+        let originalURL = UserDefaults.standard.string(forKey: serverURLKey)
+        UserDefaults.standard.set("://invalid-base-url", forKey: serverURLKey)
+        defer {
+            if let originalURL {
+                UserDefaults.standard.set(originalURL, forKey: serverURLKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: serverURLKey)
+            }
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let service = ServerSongService()
+            service.setModelContext(context)
+
+            let serverChart = ServerChart(
+                difficulty: "expert",
+                difficultyLabel: "MASTER",
+                level: 90,
+                filename: "master.dtx",
+                size: 1024
+            )
+            let serverSong = ServerSong(
+                songId: "invalid-download",
+                title: "Invalid Download",
+                artist: "Networkless",
+                bpm: 160.0,
+                charts: [serverChart],
+                isDownloaded: false
+            )
+
+            let success = await service.downloadAndImportSong(serverSong)
+
+            #expect(success == false)
+            #expect(service.downloadingSongs.isEmpty)
+            #expect(service.errorMessage?.contains("Multi-difficulty import failed") == true)
+            #expect(serverSong.isDownloaded == false)
+
+            let allSongs = try context.fetch(FetchDescriptor<Song>())
+            let matchedSongs = allSongs.filter { $0.title == "Invalid Download" && $0.artist == "Networkless" }
+            #expect(matchedSongs.isEmpty)
+        }
+    }
+
+    @Test("downloadAndImportSong imports chart notes and maps unknown difficulty to medium")
+    func testDownloadAndImportSongWithChartSuccess() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongServiceTests.chartSuccess.\(UUID().uuidString)"
+        )
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+        let downloader = ServerSongDownloader(apiClient: apiClient)
+        let service = ServerSongService(downloader: downloader)
+
+        let lock = NSLock()
+        var requestedPaths: [String] = []
+
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            lock.lock()
+            requestedPaths.append(path)
+            lock.unlock()
+
+            if path == "/dtx/download/networked-song/master.dtx" {
+                let dtxContent = """
+                #TITLE: Long Song
+                #ARTIST: Long Artist
+                #BPM: 165.55
+                #DLEVEL: 88
+                #03113: 01000000
+                """
+                let data = dtxContent.data(using: .shiftJIS) ?? Data(dtxContent.utf8)
+                return (200, data)
+            }
+
+            if path == "/dtx/download/networked-song/bgm.ogg" || path == "/dtx/download/networked-song/preview.mp3" {
+                return (404, Data())
+            }
+
+            return (404, Data())
+        }
+
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            service.setModelContext(context)
+
+            let serverChart = ServerChart(
+                difficulty: "insane",
+                difficultyLabel: "MASTER",
+                level: 88,
+                filename: "master.dtx",
+                size: 4096
+            )
+            let serverSong = ServerSong(
+                songId: "networked-song",
+                title: "Networked Song",
+                artist: "Networked Artist",
+                bpm: 100.0,
+                charts: [serverChart],
+                isDownloaded: false
+            )
+            context.insert(serverSong)
+            try context.save()
+
+            let success = await service.downloadAndImportSong(serverSong)
+
+            #expect(success)
+            #expect(service.errorMessage == nil)
+            #expect(service.downloadingSongs.isEmpty)
+            #expect(serverSong.isDownloaded == true)
+
+            let importedSongs = try context.fetch(FetchDescriptor<Song>())
+            let imported = importedSongs.first {
+                $0.title == "Networked Song" && $0.artist == "Networked Artist"
+            }
+            #expect(imported != nil)
+            #expect(imported?.bpm == 165.55)
+            #expect(imported?.duration == "1:04")
+
+            let charts = try context.fetch(FetchDescriptor<Chart>())
+            let importedChart = charts.first { $0.song?.title == "Networked Song" }
+            #expect(importedChart != nil)
+            #expect(importedChart?.difficulty == .medium)
+            #expect(importedChart?.level == 88)
+            #expect(importedChart?.notesCount == 1)
+
+            lock.lock()
+            let capturedPaths = requestedPaths
+            lock.unlock()
+            #expect(capturedPaths.contains("/dtx/download/networked-song/master.dtx"))
+            #expect(capturedPaths.contains("/dtx/download/networked-song/bgm.ogg"))
+            #expect(capturedPaths.contains("/dtx/download/networked-song/preview.mp3"))
         }
     }
 }

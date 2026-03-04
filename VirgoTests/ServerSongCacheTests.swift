@@ -6,6 +6,37 @@ import Foundation
 @Suite("ServerSongCache Tests", .serialized)
 @MainActor
 struct ServerSongCacheTests {
+    private final class MockURLProtocol: URLProtocol {
+        static var requestHandler: ((URLRequest) throws -> (Int, Data))?
+
+        override class func canInit(with request: URLRequest) -> Bool { true }
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+        override func startLoading() {
+            guard let handler = Self.requestHandler else {
+                client?.urlProtocol(self, didFailWithError: URLError(.badURL))
+                return
+            }
+
+            do {
+                let (statusCode, data) = try handler(request)
+                let response = HTTPURLResponse(
+                    url: request.url ?? URL(string: "https://example.test")!,
+                    statusCode: statusCode,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
+            } catch {
+                client?.urlProtocol(self, didFailWithError: error)
+            }
+        }
+
+        override func stopLoading() {}
+    }
+
     @Test("loadServerSongs returns non-stale cache and updates download statuses")
     func testLoadServerSongsUsesCacheAndUpdatesStatus() async throws {
         try await TestSetup.withTestSetup {
@@ -75,6 +106,287 @@ struct ServerSongCacheTests {
             #expect(loadedSongs.count == 1)
             #expect(loadedSongs.first?.songId == "cache-only")
             #expect(serverSong.isDownloaded == false)
+        }
+    }
+
+    @Test("loadServerSongs returns empty list when stale cache refresh fails")
+    func testLoadServerSongsStaleCacheRefreshFailure() async throws {
+        let serverURLKey = "DTXServerURL"
+        let originalURL = UserDefaults.standard.string(forKey: serverURLKey)
+        UserDefaults.standard.set("://invalid-base-url", forKey: serverURLKey)
+        defer {
+            if let originalURL {
+                UserDefaults.standard.set(originalURL, forKey: serverURLKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: serverURLKey)
+            }
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let cache = ServerSongCache()
+
+            let staleSong = ServerSong(
+                songId: "stale-cache",
+                title: "Stale",
+                artist: "Artist",
+                bpm: 120.0,
+                isDownloaded: false
+            )
+            staleSong.lastUpdated = Date().addingTimeInterval(-301)
+            context.insert(staleSong)
+            try context.save()
+
+            let loadedSongs = try await cache.loadServerSongs(modelContext: context)
+
+            #expect(loadedSongs.isEmpty)
+
+            let persistedSongs = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(persistedSongs.count == 1)
+            #expect(persistedSongs.first?.songId == "stale-cache")
+        }
+    }
+
+    @Test("loadServerSongs returns empty list when initial refresh fails")
+    func testLoadServerSongsEmptyCacheRefreshFailure() async throws {
+        let serverURLKey = "DTXServerURL"
+        let originalURL = UserDefaults.standard.string(forKey: serverURLKey)
+        UserDefaults.standard.set("://invalid-base-url", forKey: serverURLKey)
+        defer {
+            if let originalURL {
+                UserDefaults.standard.set(originalURL, forKey: serverURLKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: serverURLKey)
+            }
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let cache = ServerSongCache()
+
+            let loadedSongs = try await cache.loadServerSongs(modelContext: context)
+
+            #expect(loadedSongs.isEmpty)
+            let persistedSongs = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(persistedSongs.isEmpty)
+        }
+    }
+
+    private func makeMultiSongMockRequestHandler(
+        lock: NSLock,
+        requestedPaths: inout [String]
+    ) -> ((URLRequest) throws -> (Int, Data)) {
+        return { request in
+            let path = request.url?.path ?? ""
+            lock.lock()
+            requestedPaths.append(path)
+            lock.unlock()
+
+            if path == "/dtx/list" {
+                let payload = """
+                {
+                  "songs": [
+                    {
+                      "song_id": "multi-song",
+                      "title": "Multi Song",
+                      "artist": null,
+                      "bpm": null,
+                      "charts": [
+                        {
+                          "difficulty": "expert",
+                          "difficulty_label": "MASTER",
+                          "level": 90,
+                          "filename": "master.dtx",
+                          "size": 2048
+                        }
+                      ]
+                    }
+                  ],
+                  "individual_files": [
+                    {"filename": "legacy_ok.dtx", "size": 111},
+                    {"filename": "legacy_fail.dtx", "size": 222}
+                  ]
+                }
+                """
+                return (200, Data(payload.utf8))
+            }
+
+            if path == "/dtx/metadata/legacy_ok.dtx" {
+                let payload = """
+                {
+                  "filename": "legacy_ok.dtx",
+                  "metadata": {
+                    "title": "Legacy Name",
+                    "artist": "Legacy Artist",
+                    "bpm": 140.0,
+                    "level": 42
+                  }
+                }
+                """
+                return (200, Data(payload.utf8))
+            }
+
+            if path == "/dtx/metadata/legacy_fail.dtx" {
+                return (500, Data())
+            }
+
+            return (404, Data())
+        }
+    }
+
+    private func setupMultiSongTestContext(_ context: ModelContext) throws {
+        let localSong = Song(
+            title: "Multi Song",
+            artist: "Unknown Artist",
+            bpm: 120.0,
+            duration: "3:00",
+            genre: "DTX Import",
+            bgmFilePath: "/tmp/bgm.ogg",
+            previewFilePath: "/tmp/preview.mp3"
+        )
+        context.insert(localSong)
+
+        let existingServerSong = ServerSong(
+            songId: "existing-old",
+            title: "Old Song",
+            artist: "Old Artist",
+            bpm: 100.0,
+            isDownloaded: false
+        )
+        context.insert(existingServerSong)
+        try context.save()
+    }
+
+    @Test("refreshServerSongs processes multi-difficulty songs and metadata fallback")
+    func testRefreshServerSongsProcessesServerPayloads() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongCacheTests.refreshPayloads.\(UUID().uuidString)"
+        )
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+        let cache = ServerSongCache(apiClient: apiClient)
+
+        let lock = NSLock()
+        var requestedPaths: [String] = []
+        MockURLProtocol.requestHandler = makeMultiSongMockRequestHandler(lock: lock, requestedPaths: &requestedPaths)
+
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            try setupMultiSongTestContext(context)
+            try await cache.refreshServerSongs(modelContext: context)
+
+            let serverSongs = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(serverSongs.count == 3)
+            #expect(serverSongs.contains { $0.songId == "multi-song" })
+            #expect(serverSongs.contains { $0.songId == "legacy_ok" })
+            #expect(serverSongs.contains { $0.songId == "legacy_fail" })
+            #expect(serverSongs.contains { $0.songId == "existing-old" } == false)
+
+            let multiSong = serverSongs.first { $0.songId == "multi-song" }
+            #expect(multiSong?.artist == "Unknown Artist")
+            #expect(multiSong?.bpm == 120.0)
+            #expect(multiSong?.isDownloaded == true)
+            #expect(multiSong?.bgmDownloaded == true)
+            #expect(multiSong?.previewDownloaded == true)
+            #expect(multiSong?.charts.count == 1)
+            #expect(multiSong?.charts.first?.filename == "master.dtx")
+
+            let fallbackSong = serverSongs.first { $0.songId == "legacy_fail" }
+            #expect(fallbackSong?.title == "legacy_fail")
+            #expect(fallbackSong?.artist == "Unknown Artist")
+            #expect(fallbackSong?.bpm == 120.0)
+
+            lock.lock()
+            let capturedPaths = requestedPaths
+            lock.unlock()
+            #expect(capturedPaths.contains("/dtx/list"))
+            #expect(capturedPaths.contains("/dtx/metadata/legacy_ok.dtx"))
+            #expect(capturedPaths.contains("/dtx/metadata/legacy_fail.dtx"))
+        }
+    }
+
+    @Test("refreshServerSongs forceClear skips legacy file metadata requests")
+    func testRefreshServerSongsForceClearSkipsLegacyFiles() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongCacheTests.forceClear.\(UUID().uuidString)"
+        )
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+        let cache = ServerSongCache(apiClient: apiClient)
+
+        let lock = NSLock()
+        var requestedPaths: [String] = []
+
+        MockURLProtocol.requestHandler = { request in
+            let path = request.url?.path ?? ""
+            lock.lock()
+            requestedPaths.append(path)
+            lock.unlock()
+
+            if path == "/dtx/list" {
+                let payload = """
+                {
+                  "songs": [
+                    {
+                      "song_id": "force-song",
+                      "title": "Force Song",
+                      "artist": "Force Artist",
+                      "bpm": 150.0,
+                      "charts": [
+                        {
+                          "difficulty": "hard",
+                          "difficulty_label": "EXTREME",
+                          "level": 70,
+                          "filename": "hard.dtx",
+                          "size": 3000
+                        }
+                      ]
+                    }
+                  ],
+                  "individual_files": [
+                    {"filename": "legacy_should_not_load.dtx", "size": 999}
+                  ]
+                }
+                """
+                return (200, Data(payload.utf8))
+            }
+
+            return (404, Data())
+        }
+
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+
+            try await cache.refreshServerSongs(modelContext: context, forceClear: true)
+
+            let serverSongs = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(serverSongs.count == 1)
+            #expect(serverSongs.first?.songId == "force-song")
+            #expect(serverSongs.first?.charts.count == 1)
+            #expect(serverSongs.first?.charts.first?.filename == "hard.dtx")
+
+            lock.lock()
+            let capturedPaths = requestedPaths
+            lock.unlock()
+            #expect(capturedPaths == ["/dtx/list"])
         }
     }
 }

@@ -3,7 +3,11 @@ import SwiftData
 
 /// Handles server song loading, caching, and data processing
 class ServerSongCache {
-    private let apiClient = DTXAPIClient()
+    private let apiClient: DTXAPIClient
+
+    init(apiClient: DTXAPIClient = DTXAPIClient()) {
+        self.apiClient = apiClient
+    }
 
     /// Load server songs from cache or refresh from server if needed
     @MainActor

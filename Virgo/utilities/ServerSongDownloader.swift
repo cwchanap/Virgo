@@ -3,8 +3,16 @@ import SwiftData
 
 /// Handles downloading and importing server songs
 class ServerSongDownloader {
-    private let apiClient = DTXAPIClient()
-    private let fileManager = ServerSongFileManager()
+    private let apiClient: DTXAPIClient
+    private let fileManager: ServerSongFileManager
+
+    init(
+        apiClient: DTXAPIClient = DTXAPIClient(),
+        fileManager: ServerSongFileManager = ServerSongFileManager()
+    ) {
+        self.apiClient = apiClient
+        self.fileManager = fileManager
+    }
 
     /// Download and import a multi-difficulty song
     func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
