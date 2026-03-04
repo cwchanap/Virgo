@@ -154,7 +154,9 @@ class ServerSongDownloader {
     private func calculateDuration(from notes: [DTXNote]) -> TimeInterval {
         guard !notes.isEmpty else { return 60.0 }
 
-        let maxMeasure = notes.map(\.measureNumber).max() ?? 0
+        let maxMeasure = notes.reduce(Int.min) { currentMax, note in
+            max(currentMax, note.measureNumber)
+        }
         let estimatedMeasures = maxMeasure + 1
 
         // Estimate duration based on 4/4 time signature and average BPM

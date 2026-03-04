@@ -22,8 +22,10 @@ class AudioPlaybackService: NSObject, ObservableObject {
     // Audio caching for fast replay
     private var audioCache: [String: AVAudioPlayer] = [:]
     private let maxCacheSize = 10
+    private let startPlayback: (AVAudioPlayer) -> Bool
 
-    override init() {
+    init(startPlayback: @escaping (AVAudioPlayer) -> Bool = { $0.play() }) {
+        self.startPlayback = startPlayback
         super.init()
         setupAudioSession()
     }
@@ -191,7 +193,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
         currentTime = 0
         startProgressTimer()
 
-        let playResult = player.play()
+        let playResult = startPlayback(player)
         if !playResult {
             isPlaying = false
             currentlyPlayingSong = nil

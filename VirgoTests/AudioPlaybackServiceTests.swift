@@ -251,6 +251,72 @@ struct AudioPlaybackServiceTests {
         #expect(service.duration > 0)
     }
 
+    @Test("playPreview clears state when audio player play returns false")
+    func testPlayPreviewPlayFailureClearsState() async throws {
+        let service = AudioPlaybackService(startPlayback: { _ in false })
+        let previewPath = try makeTemporaryWAVPath(durationSeconds: 1.0)
+        defer { try? FileManager.default.removeItem(atPath: previewPath) }
+
+        let song = makeSong(title: "Play Failure Song", previewPath: previewPath)
+        service.playPreview(for: song)
+
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        #expect(service.isPlaying == false)
+        #expect(service.currentlyPlayingSong == nil)
+        #expect(service.currentTime == 0)
+    }
+
+    @Test("playPreview evicts oldest cached player after exceeding cache limit")
+    func testPlayPreviewEvictsOldestCachedPlayer() async throws {
+        let service = AudioPlaybackService()
+        var songs: [Song] = []
+        var previewPaths: [String] = []
+
+        for index in 0..<11 {
+            let path = try makeTemporaryWAVPath(durationSeconds: 1.5)
+            previewPaths.append(path)
+            songs.append(makeSong(title: "Cache Song \(index)", previewPath: path))
+        }
+
+        defer {
+            for path in previewPaths {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
+
+        for song in songs {
+            service.playPreview(for: song)
+            try await Task.sleep(nanoseconds: 120_000_000)
+            service.stop()
+        }
+
+        for path in previewPaths {
+            try? FileManager.default.removeItem(atPath: path)
+        }
+
+        // One of the first ten entries should be evicted and fail without source files.
+        var evictedCount = 0
+        for song in songs.prefix(10) {
+            service.stop()
+            service.playPreview(for: song)
+            try await Task.sleep(nanoseconds: 220_000_000)
+
+            let didPlayFromCache = service.isPlaying && service.currentlyPlayingSong == song.title
+            if !didPlayFromCache {
+                evictedCount += 1
+            }
+        }
+        #expect(evictedCount >= 1)
+
+        // The most recently inserted entry should remain cached.
+        service.stop()
+        service.playPreview(for: songs[10])
+        try await Task.sleep(nanoseconds: 120_000_000)
+        #expect(service.isPlaying == true)
+        #expect(service.currentlyPlayingSong == "Cache Song 10")
+    }
+
     @Test("audioPlayerEndInterruption callback does not alter state on macOS")
     func testAudioPlayerEndInterruptionNoStateChangeOnMacOS() async throws {
         let service = AudioPlaybackService()

@@ -5,6 +5,10 @@ import SwiftData
 @Suite("ServerSongStatusManager Tests", .serialized)
 @MainActor
 struct ServerSongStatusManagerTests {
+    private enum SaveHookError: Error {
+        case forced
+    }
+
     private func fetchSong(
         songId: PersistentIdentifier,
         context: ModelContext
@@ -232,4 +236,146 @@ struct ServerSongStatusManagerTests {
             #expect(success)
         }
     }
+
+    @Test("deleteLocalSong removes associated BGM and preview files")
+    func testDeleteLocalSongDeletesAssociatedFiles() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let container = TestContainer.shared.container
+            let manager = ServerSongStatusManager()
+
+            let bgmPath = "/tmp/virgo-test-bgm-\(UUID().uuidString).ogg"
+            let previewPath = "/tmp/virgo-test-preview-\(UUID().uuidString).mp3"
+            FileManager.default.createFile(atPath: bgmPath, contents: Data("bgm".utf8))
+            FileManager.default.createFile(atPath: previewPath, contents: Data("preview".utf8))
+
+            defer {
+                try? FileManager.default.removeItem(atPath: bgmPath)
+                try? FileManager.default.removeItem(atPath: previewPath)
+            }
+
+            let serverSong = ServerSong(
+                songId: "file-delete-song",
+                title: "File Delete Song",
+                artist: "File Artist",
+                bpm: 120.0,
+                isDownloaded: true
+            )
+            context.insert(serverSong)
+
+            let localSong = Song(
+                title: "File Delete Song",
+                artist: "File Artist",
+                bpm: 120.0,
+                duration: "2:00",
+                genre: "DTX Import",
+                bgmFilePath: bgmPath,
+                previewFilePath: previewPath
+            )
+            context.insert(localSong)
+            try context.save()
+
+            let deleteSuccess = await manager.deleteLocalSong(localSong, container: container)
+            #expect(deleteSuccess)
+            #expect(FileManager.default.fileExists(atPath: bgmPath) == false)
+            #expect(FileManager.default.fileExists(atPath: previewPath) == false)
+
+            let verificationContext = ModelContext(container)
+            let updatedServerSong = try fetchServerSong(songId: "file-delete-song", context: verificationContext)
+            #expect(updatedServerSong?.isDownloaded == false)
+        }
+    }
+
+    @Test("deleteDownloadedSong returns false when save fails")
+    func testDeleteDownloadedSongSaveFailureReturnsFalse() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let manager = ServerSongStatusManager(saveContext: { _ in throw SaveHookError.forced })
+
+            let serverSong = ServerSong(
+                songId: "save-failure-song",
+                title: "Save Failure Song",
+                artist: "Artist",
+                bpm: 120.0,
+                isDownloaded: true
+            )
+            context.insert(serverSong)
+
+            let localSong = Song(
+                title: "Save Failure Song",
+                artist: "Artist",
+                bpm: 120.0,
+                duration: "2:00",
+                genre: "DTX Import"
+            )
+            context.insert(localSong)
+            try context.save()
+
+            let success = await manager.deleteDownloadedSong(serverSong, modelContext: context)
+
+            #expect(success == false)
+            #expect(serverSong.isDownloaded == true)
+        }
+    }
+
+    @Test("deleteLocalSong returns false when delete save fails")
+    func testDeleteLocalSongSaveFailureReturnsFalse() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let container = TestContainer.shared.container
+            let manager = ServerSongStatusManager(saveContext: { _ in throw SaveHookError.forced })
+
+            let localSong = Song(
+                title: "Delete Save Failure",
+                artist: "Artist",
+                bpm: 120.0,
+                duration: "2:00",
+                genre: "DTX Import"
+            )
+            context.insert(localSong)
+            try context.save()
+
+            let success = await manager.deleteLocalSong(localSong, container: container)
+
+            #expect(success == false)
+        }
+    }
+
+    @Test("refreshDownloadStatus swallows save failures")
+    func testRefreshDownloadStatusSaveFailureIsHandled() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let manager = ServerSongStatusManager(saveContext: { _ in throw SaveHookError.forced })
+
+            let localSong = Song(
+                title: "Refresh Save Failure",
+                artist: "Artist",
+                bpm: 120.0,
+                duration: "2:00",
+                genre: "DTX Import",
+                bgmFilePath: "/tmp/refresh-failure.ogg",
+                previewFilePath: "/tmp/refresh-failure.mp3"
+            )
+            let serverSong = ServerSong(
+                songId: "refresh-save-failure",
+                title: "Refresh Save Failure",
+                artist: "Artist",
+                bpm: 120.0,
+                isDownloaded: false,
+                bgmDownloaded: false,
+                previewDownloaded: false
+            )
+
+            context.insert(localSong)
+            context.insert(serverSong)
+            try context.save()
+
+            await manager.refreshDownloadStatus(modelContext: context)
+
+            #expect(serverSong.isDownloaded == true)
+            #expect(serverSong.bgmDownloaded == true)
+            #expect(serverSong.previewDownloaded == true)
+        }
+    }
+
 }

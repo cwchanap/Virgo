@@ -7,6 +7,10 @@ import Foundation
 @MainActor
 // swiftlint:disable type_body_length
 struct ServerSongServiceTests {
+    private enum SaveHookError: Error {
+        case forced
+    }
+
     private final class MockURLProtocol: URLProtocol {
         static var requestHandler: ((URLRequest) throws -> (Int, Data))?
 
@@ -347,6 +351,40 @@ struct ServerSongServiceTests {
             #expect(service.downloadingSongs.isEmpty)
             #expect(statusManager.refreshDownloadStatusCalled)
             #expect(downloader.receivedSongIDs == ["download-ok"])
+        }
+    }
+
+    @Test("downloadAndImportSong remains successful when status save throws")
+    func testDownloadAndImportSongSuccessWhenStatusSaveThrows() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let downloader = MockServerSongDownloader()
+            downloader.result = (true, nil)
+            let statusManager = MockServerSongStatusManager()
+            var saveAttempts = 0
+
+            let service = ServerSongService(
+                downloader: downloader,
+                statusManager: statusManager,
+                saveModelContext: { _ in
+                    saveAttempts += 1
+                    throw SaveHookError.forced
+                }
+            )
+            service.setModelContext(context)
+
+            let serverSong = ServerSong(songId: "download-save-throws", title: "Saved", artist: "Artist", bpm: 140.0)
+            context.insert(serverSong)
+            try context.save()
+
+            let success = await service.downloadAndImportSong(serverSong)
+
+            #expect(success)
+            #expect(serverSong.isDownloaded == true)
+            #expect(service.errorMessage == nil)
+            #expect(saveAttempts == 1)
+            #expect(statusManager.refreshDownloadStatusCalled)
+            #expect(downloader.receivedSongIDs == ["download-save-throws"])
         }
     }
 
