@@ -5,7 +5,12 @@ import Foundation
 
 @Suite("ServerSongCache Tests", .serialized)
 @MainActor
+// swiftlint:disable type_body_length
 struct ServerSongCacheTests {
+    private final class RequestedPathsStore {
+        var values: [String] = []
+    }
+
     private final class MockURLProtocol: URLProtocol {
         static var requestHandler: ((URLRequest) throws -> (Int, Data))?
 
@@ -174,12 +179,12 @@ struct ServerSongCacheTests {
 
     private func makeMultiSongMockRequestHandler(
         lock: NSLock,
-        requestedPaths: inout [String]
+        requestedPathsStore: RequestedPathsStore
     ) -> ((URLRequest) throws -> (Int, Data)) {
         return { request in
             let path = request.url?.path ?? ""
             lock.lock()
-            requestedPaths.append(path)
+            requestedPathsStore.values.append(path)
             lock.unlock()
 
             if path == "/dtx/list" {
@@ -271,8 +276,8 @@ struct ServerSongCacheTests {
         let cache = ServerSongCache(apiClient: apiClient)
 
         let lock = NSLock()
-        var requestedPaths: [String] = []
-        MockURLProtocol.requestHandler = makeMultiSongMockRequestHandler(lock: lock, requestedPaths: &requestedPaths)
+        let requestedPathsStore = RequestedPathsStore()
+        MockURLProtocol.requestHandler = makeMultiSongMockRequestHandler(lock: lock, requestedPathsStore: requestedPathsStore)
 
         defer {
             MockURLProtocol.requestHandler = nil
@@ -306,7 +311,7 @@ struct ServerSongCacheTests {
             #expect(fallbackSong?.bpm == 120.0)
 
             lock.lock()
-            let capturedPaths = requestedPaths
+            let capturedPaths = requestedPathsStore.values
             lock.unlock()
             #expect(capturedPaths.contains("/dtx/list"))
             #expect(capturedPaths.contains("/dtx/metadata/legacy_ok.dtx"))

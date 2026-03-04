@@ -20,7 +20,6 @@ struct GameplayControlsView: View {
     let onSkipToEnd: () -> Void
     let onSpeedChange: (Double) -> Void
 
-
     var body: some View {
         let adjustedDuration = cachedTrackDuration
         VStack(spacing: 16) {
