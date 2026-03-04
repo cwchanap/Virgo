@@ -300,4 +300,83 @@ struct DTXAPIClientNetworkingTests {
         #expect(client.isLoading == false)
         #expect(client.errorMessage?.contains("Network error") == true)
     }
+
+    private func expectInvalidURL(operation: String, _ block: () async throws -> Void) async {
+        do {
+            try await block()
+            Issue.record("Expected \(operation) to throw DTXAPIError.invalidURL")
+        } catch let error as DTXAPIError {
+            if case .invalidURL = error {
+                #expect(true)
+            } else {
+                Issue.record("Expected DTXAPIError.invalidURL, got \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test("file and download APIs throw invalidURL when base URL is malformed")
+    func testOperationsThrowInvalidURLForMalformedBaseURL() async {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientNetworkingTests.invalidBaseURL.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        userDefaults.set("http://exa mple.com", forKey: "DTXServerURL")
+        let client = DTXAPIClient(userDefaults: userDefaults)
+
+        await expectInvalidURL(operation: "listDTXFiles") {
+            _ = try await client.listDTXFiles()
+        }
+
+        await expectInvalidURL(operation: "listDTXSongs") {
+            _ = try await client.listDTXSongs()
+        }
+
+        await expectInvalidURL(operation: "getDTXMetadata") {
+            _ = try await client.getDTXMetadata(filename: "song.dtx")
+        }
+
+        await expectInvalidURL(operation: "downloadDTXFile") {
+            _ = try await client.downloadDTXFile(filename: "song.dtx")
+        }
+
+        await expectInvalidURL(operation: "downloadBGMFile") {
+            _ = try await client.downloadBGMFile(songId: "song")
+        }
+
+        await expectInvalidURL(operation: "downloadPreviewFile") {
+            _ = try await client.downloadPreviewFile(songId: "song")
+        }
+
+        await expectInvalidURL(operation: "downloadChartFile") {
+            _ = try await client.downloadChartFile(songId: "song", chartFilename: "master.dtx")
+        }
+    }
+
+    @Test("testConnection returns true when root endpoint responds with 200")
+    func testTestConnectionSuccessWithMockedResponse() async {
+        let (client, userDefaults, suiteName) = makeClient(
+            suiteName: "DTXAPIClientNetworkingTests.testConnectionSuccess.\(UUID().uuidString)"
+        )
+        defer {
+            MockURLProtocol.requestHandler = nil
+            userDefaults.removePersistentDomain(forName: suiteName)
+        }
+
+        MockURLProtocol.requestHandler = { request in
+            #expect(request.url?.absoluteString == "https://example.test/")
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(string: "https://example.test")!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data())
+        }
+
+        let isConnected = await client.testConnection()
+        #expect(isConnected == true)
+    }
 }

@@ -13,11 +13,11 @@ struct AudioPlaybackServiceTests {
         }
     }
 
-    private func makeSilentAudioPlayer() throws -> AVAudioPlayer {
+    private func makeSilentWAVData(durationSeconds: Double = 0.1) -> Data {
         let sampleRate: UInt32 = 44_100
         let channels: UInt16 = 1
         let bitsPerSample: UInt16 = 16
-        let sampleCount: UInt32 = sampleRate / 10 // 0.1s silence
+        let sampleCount = UInt32(max(1.0, durationSeconds * Double(sampleRate)))
 
         let blockAlign = channels * bitsPerSample / 8
         let byteRate = sampleRate * UInt32(blockAlign)
@@ -39,8 +39,18 @@ struct AudioPlaybackServiceTests {
         wavData.append("data".data(using: .ascii)!)
         appendLittleEndian(dataSize, to: &wavData)
         wavData.append(Data(repeating: 0, count: Int(dataSize)))
+        return wavData
+    }
 
-        return try AVAudioPlayer(data: wavData)
+    private func makeSilentAudioPlayer() throws -> AVAudioPlayer {
+        return try AVAudioPlayer(data: makeSilentWAVData(durationSeconds: 0.1))
+    }
+
+    private func makeTemporaryWAVPath(durationSeconds: Double = 2.0) throws -> String {
+        let path = "/tmp/virgo-preview-\(UUID().uuidString).wav"
+        let url = URL(fileURLWithPath: path)
+        try makeSilentWAVData(durationSeconds: durationSeconds).write(to: url)
+        return path
     }
 
     private func makeSong(title: String, previewPath: String? = nil) -> Song {
@@ -183,5 +193,92 @@ struct AudioPlaybackServiceTests {
 
         #expect(service.isPlaying == false)
         #expect(service.currentlyPlayingSong == "Song")
+    }
+
+    @Test("togglePlayback with different song switches and starts new preview")
+    func testTogglePlaybackDifferentSongStartsPlayback() async throws {
+        let service = AudioPlaybackService()
+        let previewPath = try makeTemporaryWAVPath(durationSeconds: 2.0)
+        defer { try? FileManager.default.removeItem(atPath: previewPath) }
+
+        let newSong = makeSong(title: "New Song", previewPath: previewPath)
+        service.currentlyPlayingSong = "Old Song"
+        service.isPlaying = true
+
+        service.togglePlayback(for: newSong)
+        #expect(service.currentlyPlayingSong == "New Song")
+        #expect(service.isPlaying == true)
+
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(service.duration > 0)
+        #expect(service.currentlyPlayingSong == "New Song")
+    }
+
+    @Test("playPreview reuses cached player even after source file is removed")
+    func testPlayPreviewUsesCachedPlayer() async throws {
+        let service = AudioPlaybackService()
+        let previewPath = try makeTemporaryWAVPath(durationSeconds: 2.0)
+        let song = makeSong(title: "Cached Song", previewPath: previewPath)
+
+        defer { try? FileManager.default.removeItem(atPath: previewPath) }
+
+        service.playPreview(for: song)
+        try await Task.sleep(nanoseconds: 250_000_000)
+        #expect(service.duration > 0)
+
+        service.stop()
+        try? FileManager.default.removeItem(atPath: previewPath)
+
+        service.playPreview(for: song)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(service.isPlaying == true)
+        #expect(service.currentlyPlayingSong == "Cached Song")
+    }
+
+    @Test("playPreview updates currentTime via progress timer")
+    func testPlayPreviewUpdatesProgress() async throws {
+        let service = AudioPlaybackService()
+        let previewPath = try makeTemporaryWAVPath(durationSeconds: 2.0)
+        defer { try? FileManager.default.removeItem(atPath: previewPath) }
+
+        let song = makeSong(title: "Progress Song", previewPath: previewPath)
+        service.playPreview(for: song)
+
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        #expect(service.currentTime > 0)
+        #expect(service.duration > 0)
+    }
+
+    @Test("audioPlayerEndInterruption callback does not alter state on macOS")
+    func testAudioPlayerEndInterruptionNoStateChangeOnMacOS() async throws {
+        let service = AudioPlaybackService()
+        let player = try makeSilentAudioPlayer()
+
+        service.isPlaying = true
+        service.currentlyPlayingSong = "Song"
+
+        service.audioPlayerEndInterruption(player, withOptions: 0)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        #expect(service.isPlaying == true)
+        #expect(service.currentlyPlayingSong == "Song")
+    }
+
+    @Test("deinit cleans up cached players")
+    func testServiceDeinitAfterCachingPlayers() async throws {
+        let previewPath = try makeTemporaryWAVPath(durationSeconds: 1.5)
+        defer { try? FileManager.default.removeItem(atPath: previewPath) }
+
+        var service: AudioPlaybackService? = AudioPlaybackService()
+        let song = makeSong(title: "Deinit Song", previewPath: previewPath)
+
+        service?.playPreview(for: song)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        service = nil
+
+        #expect(service == nil)
     }
 }

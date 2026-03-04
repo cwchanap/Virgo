@@ -181,23 +181,6 @@ class ServerSongService: ObservableObject {
         return success
     }
 
-    private func performDeletionBackground(song: Song, songKey: String) async -> Bool {
-        let container = await MainActor.run { self.modelContext?.container }
-        guard let container = container else {
-            await MainActor.run { self.errorMessage = "No model context available" }
-            return false
-        }
-
-        let success = await statusManager.deleteLocalSong(song, container: container)
-        if !success {
-            await MainActor.run {
-                self.errorMessage = "Failed to delete song"
-            }
-        }
-
-        return success
-    }
-
     @MainActor
     private func refreshDownloadStatus() async {
         guard let modelContext = modelContext else { return }
@@ -215,22 +198,5 @@ class ServerSongService: ObservableObject {
     func isDeleting(_ song: Song) -> Bool {
         let songKey = "\(song.title.lowercased())|\(song.artist.lowercased())"
         return deletingSongs.contains(songKey)
-    }
-
-    private func calculateDuration(from notes: [DTXNote]) -> TimeInterval {
-        guard !notes.isEmpty else { return 60.0 }
-
-        let maxMeasure = notes.map(\.measureNumber).max() ?? 0
-        let estimatedMeasures = maxMeasure + 1
-
-        // Estimate duration based on 4/4 time signature and average BPM
-        let measuresPerMinute = 30.0 // Assuming ~120 BPM average
-        return Double(estimatedMeasures) / measuresPerMinute * 60.0
-    }
-
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let minutes = Int(seconds) / 60
-        let remainingSeconds = Int(seconds) % 60
-        return String(format: "%d:%02d", minutes, remainingSeconds)
     }
 }

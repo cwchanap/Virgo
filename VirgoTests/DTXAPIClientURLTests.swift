@@ -183,4 +183,31 @@ struct DTXAPIClientURLTests {
         userDefaults.removeObject(forKey: "DTXServerURL")
         userDefaults.synchronize()
     }
+
+    @Test("setServerURL normalizes a single trailing slash")
+    func testSetServerURLNormalizesSingleTrailingSlash() async throws {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientURLTests.trailingSlash.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let client = DTXAPIClient(userDefaults: userDefaults)
+        client.setServerURL("https://example.test/")
+
+        #expect(client.baseURL == "https://example.test")
+    }
+
+    @Test("testConnection returns false when stored base URL is malformed")
+    func testTestConnectionWithMalformedStoredBaseURL() async {
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "DTXAPIClientURLTests.testConnectionMalformed.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        userDefaults.set("://not-a-valid-url", forKey: "DTXServerURL")
+        let client = DTXAPIClient(userDefaults: userDefaults)
+
+        let result = await client.testConnection()
+        #expect(result == false)
+    }
 }
