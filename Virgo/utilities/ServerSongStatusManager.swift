@@ -35,10 +35,9 @@ class ServerSongStatusManager {
                 modelContext.delete(song)
             }
 
-            try saveContext(modelContext)
-
-            // Update server song status
+            // Update server song status in the same transaction
             serverSong.isDownloaded = false
+            try saveContext(modelContext)
 
             return true
         } catch {
@@ -60,6 +59,9 @@ class ServerSongStatusManager {
                     return true // Already deleted or not found
                 }
 
+                let bgmFilePath = songToDelete.bgmFilePath
+                let previewFilePath = songToDelete.previewFilePath
+
                 try deleteSongFromContext(songToDelete, context: backgroundContext)
 
                 _ = try updateServerSongStatus(
@@ -70,7 +72,7 @@ class ServerSongStatusManager {
                 )
 
                 try saveContext(backgroundContext)
-                deleteAssociatedFiles(for: songToDelete)
+                deleteAssociatedFiles(bgmPath: bgmFilePath, previewPath: previewFilePath)
 
                 return true
             } catch {
@@ -139,12 +141,12 @@ class ServerSongStatusManager {
     }
 
     /// Delete associated BGM and preview files for a song
-    private func deleteAssociatedFiles(for song: Song) {
-        if let bgmPath = song.bgmFilePath {
+    private func deleteAssociatedFiles(bgmPath: String?, previewPath: String?) {
+        if let bgmPath {
             fileManager.deleteBGMFile(at: bgmPath)
         }
 
-        if let previewPath = song.previewFilePath {
+        if let previewPath {
             fileManager.deletePreviewFile(at: previewPath)
         }
     }

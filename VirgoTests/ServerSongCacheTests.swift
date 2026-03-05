@@ -5,7 +5,7 @@ import Foundation
 
 @Suite("ServerSongCache Tests", .serialized)
 @MainActor
-// swiftlint:disable type_body_length
+// swiftlint:disable:next type_body_length
 struct ServerSongCacheTests {
     private enum SaveHookError: Error {
         case forced
