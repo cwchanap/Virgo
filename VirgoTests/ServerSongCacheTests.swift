@@ -158,15 +158,14 @@ struct ServerSongCacheTests {
 
     @Test("loadServerSongs returns empty list when stale cache refresh fails")
     func testLoadServerSongsStaleCacheRefreshFailure() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.staleRefreshFailure.\(UUID().uuidString)"
         )
         userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
-        let apiClient = DTXAPIClient(userDefaults: userDefaults)
         let cache = ServerSongCache(apiClient: apiClient)
 
         defer {
-            userDefaults.removePersistentDomain(forName: suiteName)
+            teardownMockEnvironment(userDefaults: userDefaults, suiteName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
@@ -195,15 +194,14 @@ struct ServerSongCacheTests {
 
     @Test("loadServerSongs returns empty list when initial refresh fails")
     func testLoadServerSongsEmptyCacheRefreshFailure() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.emptyRefreshFailure.\(UUID().uuidString)"
         )
         userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
-        let apiClient = DTXAPIClient(userDefaults: userDefaults)
         let cache = ServerSongCache(apiClient: apiClient)
 
         defer {
-            userDefaults.removePersistentDomain(forName: suiteName)
+            teardownMockEnvironment(userDefaults: userDefaults, suiteName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
@@ -511,14 +509,19 @@ struct ServerSongCacheTests {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
 
-            var didThrow = false
+            var threwExpectedSaveHookError = false
             do {
                 try await cache.refreshServerSongs(modelContext: context, forceClear: true)
+                #expect(Bool(false), "Expected SaveHookError.forced")
+            } catch let error as SaveHookError {
+                if case .forced = error {
+                    threwExpectedSaveHookError = true
+                }
             } catch {
-                didThrow = true
+                #expect(Bool(false), "Expected SaveHookError.forced, got: \(error)")
             }
 
-            #expect(didThrow)
+            #expect(threwExpectedSaveHookError)
             #expect(saveCalls == 1)
         }
     }
@@ -568,14 +571,19 @@ struct ServerSongCacheTests {
             context.insert(ServerSong(songId: "existing-song", title: "Existing", artist: "Artist", bpm: 100.0))
             try context.save()
 
-            var didThrow = false
+            var threwExpectedSaveHookError = false
             do {
                 try await cache.refreshServerSongs(modelContext: context, forceClear: true)
+                #expect(Bool(false), "Expected SaveHookError.forced")
+            } catch let error as SaveHookError {
+                if case .forced = error {
+                    threwExpectedSaveHookError = true
+                }
             } catch {
-                didThrow = true
+                #expect(Bool(false), "Expected SaveHookError.forced, got: \(error)")
             }
 
-            #expect(didThrow)
+            #expect(threwExpectedSaveHookError)
             #expect(saveCalls == 1)
         }
     }

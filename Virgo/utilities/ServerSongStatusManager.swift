@@ -30,6 +30,10 @@ class ServerSongStatusManager {
                     song.genre == "DTX Import" // Only delete downloaded songs, not sample data
             }
 
+            let associatedFilePaths = songsToDelete.map { song in
+                (bgmPath: song.bgmFilePath, previewPath: song.previewFilePath)
+            }
+
             for song in songsToDelete {
                 // Delete all charts and their notes (cascade will handle this)
                 modelContext.delete(song)
@@ -38,6 +42,10 @@ class ServerSongStatusManager {
             // Update server song status in the same transaction
             serverSong.isDownloaded = false
             try saveContext(modelContext)
+
+            for filePaths in associatedFilePaths {
+                deleteAssociatedFiles(bgmPath: filePaths.bgmPath, previewPath: filePaths.previewPath)
+            }
 
             return true
         } catch {
