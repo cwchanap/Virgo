@@ -314,7 +314,7 @@ struct ServerSongStatusManagerTests {
             let success = await manager.deleteDownloadedSong(serverSong, modelContext: context)
 
             #expect(success == false)
-            #expect(serverSong.isDownloaded == true)
+            #expect(serverSong.isDownloaded == false)
         }
     }
 

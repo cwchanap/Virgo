@@ -28,7 +28,9 @@ class AudioPlaybackService: NSObject, ObservableObject {
     init(startPlayback: @escaping (AVAudioPlayer) -> Bool = { $0.play() }) {
         self.startPlayback = startPlayback
         super.init()
-        setupAudioSession()
+        if !TestEnvironment.isRunningTests {
+            setupAudioSession()
+        }
     }
 
     deinit {
@@ -235,13 +237,15 @@ class AudioPlaybackService: NSObject, ObservableObject {
     // MARK: - Audio Caching
 
     private func cacheAudioPlayer(_ player: AVAudioPlayer, for songTitle: String) {
+        let isReplacingExistingEntry = audioCache[songTitle] != nil
+
         if let existingPlayer = audioCache[songTitle], existingPlayer !== player {
             existingPlayer.stop()
         }
         audioCacheOrder.removeAll { $0 == songTitle }
 
         // Manage cache size
-        if audioCache.count >= maxCacheSize {
+        if !isReplacingExistingEntry && audioCache.count >= maxCacheSize {
             // Remove oldest entry (deterministic FIFO)
             if let firstKey = audioCacheOrder.first {
                 audioCache[firstKey]?.stop()
