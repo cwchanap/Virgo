@@ -246,8 +246,12 @@ struct ServerSongStatusManagerTests {
 
             let bgmPath = "/tmp/virgo-test-bgm-\(UUID().uuidString).ogg"
             let previewPath = "/tmp/virgo-test-preview-\(UUID().uuidString).mp3"
-            FileManager.default.createFile(atPath: bgmPath, contents: Data("bgm".utf8))
-            FileManager.default.createFile(atPath: previewPath, contents: Data("preview".utf8))
+            let didCreateBGM = FileManager.default.createFile(atPath: bgmPath, contents: Data("bgm".utf8))
+            let didCreatePreview = FileManager.default.createFile(atPath: previewPath, contents: Data("preview".utf8))
+            #expect(didCreateBGM)
+            #expect(didCreatePreview)
+            #expect(FileManager.default.fileExists(atPath: bgmPath))
+            #expect(FileManager.default.fileExists(atPath: previewPath))
 
             defer {
                 try? FileManager.default.removeItem(atPath: bgmPath)
