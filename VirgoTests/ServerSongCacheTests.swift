@@ -12,7 +12,18 @@ struct ServerSongCacheTests {
     }
 
     private final class RequestedPathsStore {
-        var values: [String] = []
+        private let queue = DispatchQueue(label: "ServerSongCacheTests.requestedPaths")
+        private var values: [String] = []
+
+        func append(_ path: String) {
+            queue.sync {
+                values.append(path)
+            }
+        }
+
+        func snapshot() -> [String] {
+            queue.sync { values }
+        }
     }
 
     private final class MockURLProtocol: URLProtocol {
@@ -120,20 +131,19 @@ struct ServerSongCacheTests {
 
     @Test("loadServerSongs returns empty list when stale cache refresh fails")
     func testLoadServerSongsStaleCacheRefreshFailure() async throws {
-        let serverURLKey = "DTXServerURL"
-        let originalURL = UserDefaults.standard.string(forKey: serverURLKey)
-        UserDefaults.standard.set("://invalid-base-url", forKey: serverURLKey)
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongCacheTests.staleRefreshFailure.\(UUID().uuidString)"
+        )
+        userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
+        let apiClient = DTXAPIClient(userDefaults: userDefaults)
+        let cache = ServerSongCache(apiClient: apiClient)
+
         defer {
-            if let originalURL {
-                UserDefaults.standard.set(originalURL, forKey: serverURLKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: serverURLKey)
-            }
+            userDefaults.removePersistentDomain(forName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            let cache = ServerSongCache()
 
             let staleSong = ServerSong(
                 songId: "stale-cache",
@@ -158,20 +168,19 @@ struct ServerSongCacheTests {
 
     @Test("loadServerSongs returns empty list when initial refresh fails")
     func testLoadServerSongsEmptyCacheRefreshFailure() async throws {
-        let serverURLKey = "DTXServerURL"
-        let originalURL = UserDefaults.standard.string(forKey: serverURLKey)
-        UserDefaults.standard.set("://invalid-base-url", forKey: serverURLKey)
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongCacheTests.emptyRefreshFailure.\(UUID().uuidString)"
+        )
+        userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
+        let apiClient = DTXAPIClient(userDefaults: userDefaults)
+        let cache = ServerSongCache(apiClient: apiClient)
+
         defer {
-            if let originalURL {
-                UserDefaults.standard.set(originalURL, forKey: serverURLKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: serverURLKey)
-            }
+            userDefaults.removePersistentDomain(forName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            let cache = ServerSongCache()
 
             let loadedSongs = try await cache.loadServerSongs(modelContext: context)
 
@@ -194,10 +203,10 @@ struct ServerSongCacheTests {
         let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
         let cache = ServerSongCache(apiClient: apiClient)
 
-        var requestedPaths: [String] = []
+        let requestedPathsStore = RequestedPathsStore()
         MockURLProtocol.requestHandler = { request in
             let path = request.url?.path ?? ""
-            requestedPaths.append(path)
+            requestedPathsStore.append(path)
 
             if path == "/dtx/list" {
                 let payload = """
@@ -242,19 +251,16 @@ struct ServerSongCacheTests {
             #expect(loadedSongs.first?.songId == "fresh-song")
             #expect(loadedSongs.first?.title == "Fresh Song")
             #expect(loadedSongs.first?.charts.count == 1)
-            #expect(requestedPaths == ["/dtx/list", "/dtx/list"])
+            #expect(requestedPathsStore.snapshot() == ["/dtx/list", "/dtx/list"])
         }
     }
 
     private func makeMultiSongMockRequestHandler(
-        lock: NSLock,
         requestedPathsStore: RequestedPathsStore
     ) -> ((URLRequest) throws -> (Int, Data)) {
         return { request in
             let path = request.url?.path ?? ""
-            lock.lock()
-            requestedPathsStore.values.append(path)
-            lock.unlock()
+            requestedPathsStore.append(path)
 
             if path == "/dtx/list" {
                 let payload = """
@@ -344,9 +350,8 @@ struct ServerSongCacheTests {
         let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
         let cache = ServerSongCache(apiClient: apiClient)
 
-        let lock = NSLock()
         let requestedPathsStore = RequestedPathsStore()
-        MockURLProtocol.requestHandler = makeMultiSongMockRequestHandler(lock: lock, requestedPathsStore: requestedPathsStore)
+        MockURLProtocol.requestHandler = makeMultiSongMockRequestHandler(requestedPathsStore: requestedPathsStore)
 
         defer {
             MockURLProtocol.requestHandler = nil
@@ -379,9 +384,7 @@ struct ServerSongCacheTests {
             #expect(fallbackSong?.artist == "Unknown Artist")
             #expect(fallbackSong?.bpm == 120.0)
 
-            lock.lock()
-            let capturedPaths = requestedPathsStore.values
-            lock.unlock()
+            let capturedPaths = requestedPathsStore.snapshot()
             #expect(capturedPaths.contains("/dtx/list"))
             #expect(capturedPaths.contains("/dtx/metadata/legacy_ok.dtx"))
             #expect(capturedPaths.contains("/dtx/metadata/legacy_fail.dtx"))
@@ -401,14 +404,11 @@ struct ServerSongCacheTests {
         let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
         let cache = ServerSongCache(apiClient: apiClient)
 
-        let lock = NSLock()
-        var requestedPaths: [String] = []
+        let requestedPathsStore = RequestedPathsStore()
 
         MockURLProtocol.requestHandler = { request in
             let path = request.url?.path ?? ""
-            lock.lock()
-            requestedPaths.append(path)
-            lock.unlock()
+            requestedPathsStore.append(path)
 
             if path == "/dtx/list" {
                 let payload = """
@@ -457,9 +457,7 @@ struct ServerSongCacheTests {
             #expect(serverSongs.first?.charts.count == 1)
             #expect(serverSongs.first?.charts.first?.filename == "hard.dtx")
 
-            lock.lock()
-            let capturedPaths = requestedPaths
-            lock.unlock()
+            let capturedPaths = requestedPathsStore.snapshot()
             #expect(capturedPaths == ["/dtx/list"])
         }
     }

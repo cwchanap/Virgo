@@ -5,7 +5,7 @@ import Foundation
 
 @Suite("ServerSongService Tests", .serialized)
 @MainActor
-// swiftlint:disable type_body_length
+// swiftlint:disable:next type_body_length
 struct ServerSongServiceTests {
     private enum SaveHookError: Error {
         case forced
@@ -460,20 +460,20 @@ struct ServerSongServiceTests {
 
     @Test("downloadAndImportSong imports song without charts and marks as downloaded")
     func testDownloadAndImportSongSuccessWithoutCharts() async throws {
-        let serverURLKey = "DTXServerURL"
-        let originalURL = UserDefaults.standard.string(forKey: serverURLKey)
-        UserDefaults.standard.set("://invalid-base-url", forKey: serverURLKey)
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongServiceTests.successWithoutCharts.\(UUID().uuidString)"
+        )
+        userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
+        let apiClient = DTXAPIClient(userDefaults: userDefaults)
+        let downloader = ServerSongDownloader(apiClient: apiClient)
+
         defer {
-            if let originalURL {
-                UserDefaults.standard.set(originalURL, forKey: serverURLKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: serverURLKey)
-            }
+            userDefaults.removePersistentDomain(forName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            let service = ServerSongService()
+            let service = ServerSongService(downloader: downloader)
             service.setModelContext(context)
 
             let serverSong = ServerSong(
@@ -546,20 +546,20 @@ struct ServerSongServiceTests {
 
     @Test("downloadAndImportSong surfaces chart download failures")
     func testDownloadAndImportSongChartDownloadFailure() async throws {
-        let serverURLKey = "DTXServerURL"
-        let originalURL = UserDefaults.standard.string(forKey: serverURLKey)
-        UserDefaults.standard.set("://invalid-base-url", forKey: serverURLKey)
+        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongServiceTests.chartDownloadFailure.\(UUID().uuidString)"
+        )
+        userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
+        let apiClient = DTXAPIClient(userDefaults: userDefaults)
+        let downloader = ServerSongDownloader(apiClient: apiClient)
+
         defer {
-            if let originalURL {
-                UserDefaults.standard.set(originalURL, forKey: serverURLKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: serverURLKey)
-            }
+            userDefaults.removePersistentDomain(forName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            let service = ServerSongService()
+            let service = ServerSongService(downloader: downloader)
             service.setModelContext(context)
 
             let serverChart = ServerChart(

@@ -60,19 +60,17 @@ class ServerSongStatusManager {
                     return true // Already deleted or not found
                 }
 
-                deleteAssociatedFiles(for: songToDelete)
                 try deleteSongFromContext(songToDelete, context: backgroundContext)
 
-                let hasUpdates = try updateServerSongStatus(
+                _ = try updateServerSongStatus(
                     songTitle: songTitle,
                     songArtist: songArtist,
                     songId: songId,
                     context: backgroundContext
                 )
 
-                if hasUpdates {
-                    try saveContext(backgroundContext)
-                }
+                try saveContext(backgroundContext)
+                deleteAssociatedFiles(for: songToDelete)
 
                 return true
             } catch {
@@ -151,10 +149,9 @@ class ServerSongStatusManager {
         }
     }
 
-    /// Delete song from context and save
+    /// Delete song from context
     private func deleteSongFromContext(_ song: Song, context: ModelContext) throws {
         context.delete(song)
-        try saveContext(context)
     }
 
     /// Update server song download status after local song deletion

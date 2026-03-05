@@ -332,8 +332,8 @@ struct AudioPlaybackServiceTests {
         #expect(service.currentlyPlayingSong == "Song")
     }
 
-    @Test("deinit cleans up cached players")
-    func testServiceDeinitAfterCachingPlayers() async throws {
+    @Test("deinit after caching players is a no-crash sanity check")
+    func testServiceDeinitAfterCachingPlayersNoCrash() async throws {
         let previewPath = try makeTemporaryWAVPath(durationSeconds: 1.5)
         defer { try? FileManager.default.removeItem(atPath: previewPath) }
 

@@ -21,6 +21,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
 
     // Audio caching for fast replay
     private var audioCache: [String: AVAudioPlayer] = [:]
+    private var audioCacheOrder: [String] = []
     private let maxCacheSize = 10
     private let startPlayback: (AVAudioPlayer) -> Bool
 
@@ -41,6 +42,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
             player.stop()
         }
         audioCache.removeAll()
+        audioCacheOrder.removeAll()
     }
 
     private func setupAudioSession() {
@@ -146,11 +148,16 @@ class AudioPlaybackService: NSObject, ObservableObject {
         currentTime = 0
         startProgressTimer()
 
-        let playResult = cachedPlayer.play()
+        let playResult = startPlayback(cachedPlayer)
         if playResult {
             isPlaying = true
             currentlyPlayingSong = song.title
             Logger.audioPlayback("Started playing cached preview for: \(song.title)")
+        } else {
+            isPlaying = false
+            currentlyPlayingSong = nil
+            stopProgressTimer()
+            Logger.audioPlayback("Failed to start cached audio playback")
         }
 
         return playResult
@@ -228,16 +235,23 @@ class AudioPlaybackService: NSObject, ObservableObject {
     // MARK: - Audio Caching
 
     private func cacheAudioPlayer(_ player: AVAudioPlayer, for songTitle: String) {
+        if let existingPlayer = audioCache[songTitle], existingPlayer !== player {
+            existingPlayer.stop()
+        }
+        audioCacheOrder.removeAll { $0 == songTitle }
+
         // Manage cache size
         if audioCache.count >= maxCacheSize {
-            // Remove oldest entry (simple FIFO)
-            if let firstKey = audioCache.keys.first {
+            // Remove oldest entry (deterministic FIFO)
+            if let firstKey = audioCacheOrder.first {
                 audioCache[firstKey]?.stop()
                 audioCache.removeValue(forKey: firstKey)
+                audioCacheOrder.removeFirst()
             }
         }
 
         audioCache[songTitle] = player
+        audioCacheOrder.append(songTitle)
     }
 }
 
