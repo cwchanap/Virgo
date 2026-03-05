@@ -18,13 +18,13 @@ class ServerSongService: ObservableObject {
     init(
         cache: ServerSongCache = ServerSongCache(),
         downloader: ServerSongDownloader = ServerSongDownloader(),
-        statusManager: ServerSongStatusManager = ServerSongStatusManager(),
+        statusManager: ServerSongStatusManager? = nil,
         saveModelContext: @escaping (ModelContext) throws -> Void = { context in try context.save() }
     ) {
         self.cache = cache
         self.downloader = downloader
-        self.statusManager = statusManager
         self.saveModelContext = saveModelContext
+        self.statusManager = statusManager ?? ServerSongStatusManager(saveContext: saveModelContext)
     }
 
     func setModelContext(_ context: ModelContext) {

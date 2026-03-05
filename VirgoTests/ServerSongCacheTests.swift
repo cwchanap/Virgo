@@ -57,6 +57,33 @@ struct ServerSongCacheTests {
         override func stopLoading() {}
     }
 
+    private typealias MockRequestHandler = (URLRequest) throws -> (Int, Data)
+
+    private func makeTestAPIClient(suiteName: String) -> (
+        userDefaults: UserDefaults,
+        suiteName: String,
+        apiClient: DTXAPIClient
+    ) {
+        let (userDefaults, isolatedSuiteName) = TestUserDefaults.makeIsolated(suiteName: suiteName)
+        userDefaults.set("https://example.test", forKey: "DTXServerURL")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
+
+        return (userDefaults, isolatedSuiteName, apiClient)
+    }
+
+    private func configureMockRequestHandler(_ handler: @escaping MockRequestHandler) {
+        MockURLProtocol.requestHandler = handler
+    }
+
+    private func teardownMockEnvironment(userDefaults: UserDefaults, suiteName: String) {
+        MockURLProtocol.requestHandler = nil
+        userDefaults.removePersistentDomain(forName: suiteName)
+    }
+
     @Test("loadServerSongs returns non-stale cache and updates download statuses")
     func testLoadServerSongsUsesCacheAndUpdatesStatus() async throws {
         try await TestSetup.withTestSetup {
@@ -192,19 +219,13 @@ struct ServerSongCacheTests {
 
     @Test("loadServerSongs refreshes empty cache and returns fetched songs")
     func testLoadServerSongsRefreshesEmptyCacheAndReturnsFetchedSongs() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.loadRefreshSuccess.\(UUID().uuidString)"
         )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
         let cache = ServerSongCache(apiClient: apiClient)
 
         let requestedPathsStore = RequestedPathsStore()
-        MockURLProtocol.requestHandler = { request in
+        configureMockRequestHandler { request in
             let path = request.url?.path ?? ""
             requestedPathsStore.append(path)
 
@@ -238,8 +259,7 @@ struct ServerSongCacheTests {
         }
 
         defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
+            teardownMockEnvironment(userDefaults: userDefaults, suiteName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
@@ -339,23 +359,16 @@ struct ServerSongCacheTests {
 
     @Test("refreshServerSongs processes multi-difficulty songs and metadata fallback")
     func testRefreshServerSongsProcessesServerPayloads() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.refreshPayloads.\(UUID().uuidString)"
         )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
         let cache = ServerSongCache(apiClient: apiClient)
 
         let requestedPathsStore = RequestedPathsStore()
-        MockURLProtocol.requestHandler = makeMultiSongMockRequestHandler(requestedPathsStore: requestedPathsStore)
+        configureMockRequestHandler(makeMultiSongMockRequestHandler(requestedPathsStore: requestedPathsStore))
 
         defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
+            teardownMockEnvironment(userDefaults: userDefaults, suiteName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
@@ -393,20 +406,14 @@ struct ServerSongCacheTests {
 
     @Test("refreshServerSongs forceClear skips legacy file metadata requests")
     func testRefreshServerSongsForceClearSkipsLegacyFiles() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.forceClear.\(UUID().uuidString)"
         )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
         let cache = ServerSongCache(apiClient: apiClient)
 
         let requestedPathsStore = RequestedPathsStore()
 
-        MockURLProtocol.requestHandler = { request in
+        configureMockRequestHandler { request in
             let path = request.url?.path ?? ""
             requestedPathsStore.append(path)
 
@@ -442,8 +449,7 @@ struct ServerSongCacheTests {
         }
 
         defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
+            teardownMockEnvironment(userDefaults: userDefaults, suiteName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
@@ -464,15 +470,9 @@ struct ServerSongCacheTests {
 
     @Test("refreshServerSongs rethrows when insertion save fails")
     func testRefreshServerSongsInsertionSaveFailure() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.insertionSaveFailure.\(UUID().uuidString)"
         )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
 
         var saveCalls = 0
         let cache = ServerSongCache(
@@ -483,7 +483,7 @@ struct ServerSongCacheTests {
             }
         )
 
-        MockURLProtocol.requestHandler = { request in
+        configureMockRequestHandler { request in
             if request.url?.path == "/dtx/list" {
                 let payload = """
                 {
@@ -505,8 +505,7 @@ struct ServerSongCacheTests {
         }
 
         defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
+            teardownMockEnvironment(userDefaults: userDefaults, suiteName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
@@ -526,15 +525,9 @@ struct ServerSongCacheTests {
 
     @Test("refreshServerSongs rethrows when clearExistingServerSongs batch save fails")
     func testRefreshServerSongsClearExistingSaveFailure() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.clearExistingSaveFailure.\(UUID().uuidString)"
         )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
 
         var saveCalls = 0
         let cache = ServerSongCache(
@@ -545,7 +538,7 @@ struct ServerSongCacheTests {
             }
         )
 
-        MockURLProtocol.requestHandler = { request in
+        configureMockRequestHandler { request in
             if request.url?.path == "/dtx/list" {
                 let payload = """
                 {
@@ -567,8 +560,7 @@ struct ServerSongCacheTests {
         }
 
         defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
+            teardownMockEnvironment(userDefaults: userDefaults, suiteName: suiteName)
         }
 
         try await TestSetup.withTestSetup {
@@ -590,18 +582,12 @@ struct ServerSongCacheTests {
 
     @Test("refreshServerSongs applies defaults when metadata fields are null")
     func testRefreshServerSongsMetadataNullFieldDefaults() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
+        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.metadataNullDefaults.\(UUID().uuidString)"
         )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
         let cache = ServerSongCache(apiClient: apiClient)
 
-        MockURLProtocol.requestHandler = { request in
+        configureMockRequestHandler { request in
             let path = request.url?.path ?? ""
             if path == "/dtx/list" {
                 let payload = """
@@ -634,8 +620,7 @@ struct ServerSongCacheTests {
         }
 
         defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
+            teardownMockEnvironment(userDefaults: userDefaults, suiteName: suiteName)
         }
 
         try await TestSetup.withTestSetup {

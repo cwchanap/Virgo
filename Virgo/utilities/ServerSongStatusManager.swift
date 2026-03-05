@@ -41,6 +41,7 @@ class ServerSongStatusManager {
 
             return true
         } catch {
+            modelContext.rollback()
             Logger.debug("Failed to delete song: \(error.localizedDescription)")
             return false
         }
@@ -76,6 +77,7 @@ class ServerSongStatusManager {
 
                 return true
             } catch {
+                backgroundContext.rollback()
                 Logger.debug("Delete error details: \(error)")
                 return false
             }
