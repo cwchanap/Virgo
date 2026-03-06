@@ -41,6 +41,8 @@ class ServerSongStatusManager {
 
             // Update server song status in the same transaction
             serverSong.isDownloaded = false
+            serverSong.bgmDownloaded = false
+            serverSong.previewDownloaded = false
             try saveContext(modelContext)
 
             for filePaths in associatedFilePaths {

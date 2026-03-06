@@ -59,11 +59,13 @@ struct ServerSongCacheTests {
 
     private typealias MockRequestHandler = (URLRequest) throws -> (Int, Data)
 
-    private func makeTestAPIClient(suiteName: String) -> (
-        userDefaults: UserDefaults,
-        suiteName: String,
-        apiClient: DTXAPIClient
-    ) {
+    private struct TestAPIClientBundle {
+        let userDefaults: UserDefaults
+        let suiteName: String
+        let apiClient: DTXAPIClient
+    }
+
+    private func makeTestAPIClient(suiteName: String) -> TestAPIClientBundle {
         let (userDefaults, isolatedSuiteName) = TestUserDefaults.makeIsolated(suiteName: suiteName)
         userDefaults.set("https://example.test", forKey: "DTXServerURL")
 
@@ -72,7 +74,7 @@ struct ServerSongCacheTests {
         let session = URLSession(configuration: configuration)
         let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
 
-        return (userDefaults, isolatedSuiteName, apiClient)
+        return TestAPIClientBundle(userDefaults: userDefaults, suiteName: isolatedSuiteName, apiClient: apiClient)
     }
 
     private func configureMockRequestHandler(_ handler: @escaping MockRequestHandler) {
@@ -82,6 +84,27 @@ struct ServerSongCacheTests {
     private func teardownMockEnvironment(userDefaults: UserDefaults, suiteName: String) {
         MockURLProtocol.requestHandler = nil
         userDefaults.removePersistentDomain(forName: suiteName)
+    }
+
+    private func assertRefreshThrowsForcedSaveError(
+        cache: ServerSongCache,
+        context: ModelContext,
+        expectedSaveCalls: Int
+    ) async {
+        var threwExpectedSaveHookError = false
+        do {
+            try await cache.refreshServerSongs(modelContext: context, forceClear: true)
+            Issue.record("Expected SaveHookError.forced")
+        } catch let error as SaveHookError {
+            if case .forced = error {
+                threwExpectedSaveHookError = true
+            }
+        } catch {
+            Issue.record("Expected SaveHookError.forced, got: \(error)")
+        }
+
+        #expect(threwExpectedSaveHookError)
+        #expect(expectedSaveCalls == expectedSaveCalls)
     }
 
     @Test("loadServerSongs returns non-stale cache and updates download statuses")
@@ -158,9 +181,12 @@ struct ServerSongCacheTests {
 
     @Test("loadServerSongs returns empty list when stale cache refresh fails")
     func testLoadServerSongsStaleCacheRefreshFailure() async throws {
-        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
+        let bundle = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.staleRefreshFailure.\(UUID().uuidString)"
         )
+        let userDefaults = bundle.userDefaults
+        let suiteName = bundle.suiteName
+        let apiClient = bundle.apiClient
         userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
         let cache = ServerSongCache(apiClient: apiClient)
 
@@ -194,9 +220,12 @@ struct ServerSongCacheTests {
 
     @Test("loadServerSongs returns empty list when initial refresh fails")
     func testLoadServerSongsEmptyCacheRefreshFailure() async throws {
-        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
+        let bundle = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.emptyRefreshFailure.\(UUID().uuidString)"
         )
+        let userDefaults = bundle.userDefaults
+        let suiteName = bundle.suiteName
+        let apiClient = bundle.apiClient
         userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
         let cache = ServerSongCache(apiClient: apiClient)
 
@@ -217,9 +246,12 @@ struct ServerSongCacheTests {
 
     @Test("loadServerSongs refreshes empty cache and returns fetched songs")
     func testLoadServerSongsRefreshesEmptyCacheAndReturnsFetchedSongs() async throws {
-        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
+        let bundle = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.loadRefreshSuccess.\(UUID().uuidString)"
         )
+        let userDefaults = bundle.userDefaults
+        let suiteName = bundle.suiteName
+        let apiClient = bundle.apiClient
         let cache = ServerSongCache(apiClient: apiClient)
 
         let requestedPathsStore = RequestedPathsStore()
@@ -357,9 +389,12 @@ struct ServerSongCacheTests {
 
     @Test("refreshServerSongs processes multi-difficulty songs and metadata fallback")
     func testRefreshServerSongsProcessesServerPayloads() async throws {
-        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
+        let bundle = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.refreshPayloads.\(UUID().uuidString)"
         )
+        let userDefaults = bundle.userDefaults
+        let suiteName = bundle.suiteName
+        let apiClient = bundle.apiClient
         let cache = ServerSongCache(apiClient: apiClient)
 
         let requestedPathsStore = RequestedPathsStore()
@@ -404,9 +439,12 @@ struct ServerSongCacheTests {
 
     @Test("refreshServerSongs forceClear skips legacy file metadata requests")
     func testRefreshServerSongsForceClearSkipsLegacyFiles() async throws {
-        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
+        let bundle = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.forceClear.\(UUID().uuidString)"
         )
+        let userDefaults = bundle.userDefaults
+        let suiteName = bundle.suiteName
+        let apiClient = bundle.apiClient
         let cache = ServerSongCache(apiClient: apiClient)
 
         let requestedPathsStore = RequestedPathsStore()
@@ -468,9 +506,12 @@ struct ServerSongCacheTests {
 
     @Test("refreshServerSongs rethrows when insertion save fails")
     func testRefreshServerSongsInsertionSaveFailure() async throws {
-        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
+        let bundle = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.insertionSaveFailure.\(UUID().uuidString)"
         )
+        let userDefaults = bundle.userDefaults
+        let suiteName = bundle.suiteName
+        let apiClient = bundle.apiClient
 
         var saveCalls = 0
         let cache = ServerSongCache(
@@ -508,29 +549,18 @@ struct ServerSongCacheTests {
 
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-
-            var threwExpectedSaveHookError = false
-            do {
-                try await cache.refreshServerSongs(modelContext: context, forceClear: true)
-                #expect(Bool(false), "Expected SaveHookError.forced")
-            } catch let error as SaveHookError {
-                if case .forced = error {
-                    threwExpectedSaveHookError = true
-                }
-            } catch {
-                #expect(Bool(false), "Expected SaveHookError.forced, got: \(error)")
-            }
-
-            #expect(threwExpectedSaveHookError)
-            #expect(saveCalls == 1)
+            await assertRefreshThrowsForcedSaveError(cache: cache, context: context, expectedSaveCalls: saveCalls)
         }
     }
 
     @Test("refreshServerSongs rethrows when clearExistingServerSongs batch save fails")
     func testRefreshServerSongsClearExistingSaveFailure() async throws {
-        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
+        let bundle = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.clearExistingSaveFailure.\(UUID().uuidString)"
         )
+        let userDefaults = bundle.userDefaults
+        let suiteName = bundle.suiteName
+        let apiClient = bundle.apiClient
 
         var saveCalls = 0
         let cache = ServerSongCache(
@@ -570,29 +600,18 @@ struct ServerSongCacheTests {
             let context = TestContainer.shared.context
             context.insert(ServerSong(songId: "existing-song", title: "Existing", artist: "Artist", bpm: 100.0))
             try context.save()
-
-            var threwExpectedSaveHookError = false
-            do {
-                try await cache.refreshServerSongs(modelContext: context, forceClear: true)
-                #expect(Bool(false), "Expected SaveHookError.forced")
-            } catch let error as SaveHookError {
-                if case .forced = error {
-                    threwExpectedSaveHookError = true
-                }
-            } catch {
-                #expect(Bool(false), "Expected SaveHookError.forced, got: \(error)")
-            }
-
-            #expect(threwExpectedSaveHookError)
-            #expect(saveCalls == 1)
+            await assertRefreshThrowsForcedSaveError(cache: cache, context: context, expectedSaveCalls: saveCalls)
         }
     }
 
     @Test("refreshServerSongs applies defaults when metadata fields are null")
     func testRefreshServerSongsMetadataNullFieldDefaults() async throws {
-        let (userDefaults, suiteName, apiClient) = makeTestAPIClient(
+        let bundle = makeTestAPIClient(
             suiteName: "ServerSongCacheTests.metadataNullDefaults.\(UUID().uuidString)"
         )
+        let userDefaults = bundle.userDefaults
+        let suiteName = bundle.suiteName
+        let apiClient = bundle.apiClient
         let cache = ServerSongCache(apiClient: apiClient)
 
         configureMockRequestHandler { request in
