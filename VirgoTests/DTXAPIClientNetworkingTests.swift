@@ -289,9 +289,8 @@ struct DTXAPIClientNetworkingTests {
             _ = try await client.downloadBGMFile(songId: "song-a")
             Issue.record("Expected downloadBGMFile to throw on 500 response")
         } catch let DTXAPIError.networkError(error) {
-            guard case let DTXAPIError.networkError(innerError) = error,
-                  let urlError = innerError as? URLError else {
-                Issue.record("Expected nested DTXAPIError.networkError wrapping URLError.badServerResponse")
+            guard let urlError = error as? URLError else {
+                Issue.record("Expected DTXAPIError.networkError wrapping URLError.badServerResponse")
                 return
             }
             #expect(urlError.code == .badServerResponse)
@@ -307,7 +306,6 @@ struct DTXAPIClientNetworkingTests {
             Issue.record("Expected \(operation) to throw DTXAPIError.invalidURL")
         } catch let error as DTXAPIError {
             if case .invalidURL = error {
-                #expect(true)
             } else {
                 Issue.record("Expected DTXAPIError.invalidURL, got \(error)")
             }
