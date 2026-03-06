@@ -163,6 +163,9 @@ extension DTXAPIClient: DTXNetworking {
 
             await updateLoadingState(isLoading: false, error: nil)
             return data
+        } catch let error as DTXAPIError {
+            await updateLoadingState(isLoading: false, error: error.localizedDescription)
+            throw error
         } catch {
             await updateLoadingState(isLoading: false, error: error.localizedDescription)
             throw DTXAPIError.networkError(error)
