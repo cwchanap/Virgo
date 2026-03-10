@@ -12,6 +12,17 @@ import SwiftData
 @Suite("PracticeSettingsService Tests", .serialized)
 @MainActor
 struct PracticeSettingsServiceTests {
+    private func makeTestChartID(difficulty: Difficulty = .medium) throws -> PersistentIdentifier {
+        let context = TestContainer.shared.context
+        let song = Song(title: "Test", artist: "Test", bpm: 120.0, duration: "3:00", genre: "Test")
+        context.insert(song)
+
+        let chart = Chart(difficulty: difficulty, song: song)
+        context.insert(chart)
+        try context.save()
+
+        return chart.persistentModelID
+    }
 
     // MARK: - Initialization Tests
 
@@ -345,6 +356,95 @@ struct PracticeSettingsServiceTests {
             #expect(service.loadSpeed(for: charts[0].persistentModelID) == 0.5)
             #expect(service.loadSpeed(for: charts[1].persistentModelID) == 0.75)
             #expect(service.loadSpeed(for: charts[2].persistentModelID) == 1.25)
+        }
+    }
+
+    @Test("loadSpeed decodes NSNumber and String payloads from UserDefaults")
+    func testLoadSpeedDecodesNSNumberAndStringValues() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+            let chartID = try makeTestChartID()
+            let seedingService = PracticeSettingsService(userDefaults: userDefaults)
+            seedingService.saveSpeed(1.0, for: chartID)
+
+            guard let key = userDefaults.dictionary(forKey: "PracticeSettingsSpeedMultipliers")?.keys.first else {
+                Issue.record("Expected a persisted speed key to be created")
+                return
+            }
+
+            userDefaults.set([key: NSNumber(value: 0.75)], forKey: "PracticeSettingsSpeedMultipliers")
+            let numberLoaded = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(numberLoaded == 0.75)
+
+            userDefaults.set([key: "1.25"], forKey: "PracticeSettingsSpeedMultipliers")
+            let stringLoaded = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(stringLoaded == 1.25)
+        }
+    }
+
+    @Test("loadSpeed clamps out-of-range values and ignores unsupported payload types")
+    func testLoadSpeedClampsAndIgnoresUnsupportedPersistedValues() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+            let chartID = try makeTestChartID()
+            let seedingService = PracticeSettingsService(userDefaults: userDefaults)
+            seedingService.saveSpeed(1.0, for: chartID)
+
+            guard let key = userDefaults.dictionary(forKey: "PracticeSettingsSpeedMultipliers")?.keys.first else {
+                Issue.record("Expected a persisted speed key to be created")
+                return
+            }
+
+            userDefaults.set([key: -2.0], forKey: "PracticeSettingsSpeedMultipliers")
+            let clampedLow = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(clampedLow == PracticeSettingsService.minSpeed)
+
+            userDefaults.set([key: 3.0], forKey: "PracticeSettingsSpeedMultipliers")
+            let clampedHigh = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(clampedHigh == PracticeSettingsService.maxSpeed)
+
+            userDefaults.set([key: ["unsupported"]], forKey: "PracticeSettingsSpeedMultipliers")
+            let fallbackValue = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(fallbackValue == 1.0)
+        }
+    }
+
+    @Test("saveSpeed clamps persisted values and ignores non-finite input")
+    func testSaveSpeedClampsAndIgnoresNonFiniteValues() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+            let service = PracticeSettingsService(userDefaults: userDefaults)
+            let chartID = try makeTestChartID()
+
+            service.saveSpeed(0.1, for: chartID)
+            let clampedLow = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(clampedLow == PracticeSettingsService.minSpeed)
+
+            service.saveSpeed(3.0, for: chartID)
+            let clampedHigh = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(clampedHigh == PracticeSettingsService.maxSpeed)
+
+            service.saveSpeed(0.75, for: chartID)
+            service.saveSpeed(Double.nan, for: chartID)
+            let preservedValue = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(preservedValue == 0.75)
+        }
+    }
+
+    @Test("clearAllSavedSpeeds clears persisted values and session cache")
+    func testClearAllSavedSpeedsClearsSessionCache() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+            let service = PracticeSettingsService(userDefaults: userDefaults)
+            let chartID = try makeTestChartID()
+
+            service.saveSpeed(0.75, for: chartID)
+            #expect(service.loadSpeed(for: chartID) == 0.75)
+
+            service.clearAllSavedSpeeds()
+
+            #expect(service.loadSpeed(for: chartID) == 1.0)
+            #expect(userDefaults.dictionary(forKey: "PracticeSettingsSpeedMultipliers") == nil)
         }
     }
 }

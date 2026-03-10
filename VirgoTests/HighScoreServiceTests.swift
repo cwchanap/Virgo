@@ -175,4 +175,86 @@ struct HighScoreServiceTests {
             #expect(service.highScore(for: chart.persistentModelID) == 0)
         }
     }
+
+    @Test("highScore reads NSNumber payloads from UserDefaults")
+    func testHighScoreReadsNSNumberPayload() async throws {
+        try await TestSetup.withTestSetup {
+            let (ud, _) = TestUserDefaults.makeIsolated()
+            let chart = try makeTestChart()
+            let service = HighScoreService(userDefaults: ud)
+
+            _ = service.saveIfHighScore(100, for: chart.persistentModelID)
+
+            guard let key = ud.dictionary(forKey: "HighScorePerChart")?.keys.first else {
+                Issue.record("Expected a persisted high score key to be created")
+                return
+            }
+
+            ud.set([key: NSNumber(value: 2400)], forKey: "HighScorePerChart")
+
+            let reloadedService = HighScoreService(userDefaults: ud)
+            #expect(reloadedService.highScore(for: chart.persistentModelID) == 2400)
+        }
+    }
+
+    @Test("highScore ignores malformed payloads while keeping valid NSNumber entries")
+    func testHighScoreIgnoresMalformedPayloads() async throws {
+        try await TestSetup.withTestSetup {
+            let (ud, _) = TestUserDefaults.makeIsolated()
+            let service = HighScoreService(userDefaults: ud)
+            let chartA = try makeTestChart(difficulty: .easy)
+            let chartB = try makeTestChart(difficulty: .hard)
+
+            _ = service.saveIfHighScore(1500, for: chartA.persistentModelID)
+
+            guard let keyA = ud.dictionary(forKey: "HighScorePerChart")?.keys.first else {
+                Issue.record("Expected a persisted high score key for chart A")
+                return
+            }
+
+            _ = service.saveIfHighScore(800, for: chartB.persistentModelID)
+
+            guard let persistedScores = ud.dictionary(forKey: "HighScorePerChart"),
+                  let keyB = persistedScores.keys.first(where: { $0 != keyA }) else {
+                Issue.record("Expected a persisted high score key for chart B")
+                return
+            }
+
+            ud.set(
+                [
+                    keyA: NSNumber(value: 1600),
+                    keyB: "bad-score"
+                ],
+                forKey: "HighScorePerChart"
+            )
+
+            let reloadedService = HighScoreService(userDefaults: ud)
+            #expect(reloadedService.highScore(for: chartA.persistentModelID) == 1600)
+            #expect(reloadedService.highScore(for: chartB.persistentModelID) == 0)
+        }
+    }
+
+    @Test("saveIfHighScore compares against raw persisted NSNumber values")
+    func testSaveIfHighScoreAgainstRawPersistedValue() async throws {
+        try await TestSetup.withTestSetup {
+            let (ud, _) = TestUserDefaults.makeIsolated()
+            let chart = try makeTestChart()
+            let service = HighScoreService(userDefaults: ud)
+
+            _ = service.saveIfHighScore(500, for: chart.persistentModelID)
+
+            guard let key = ud.dictionary(forKey: "HighScorePerChart")?.keys.first else {
+                Issue.record("Expected a persisted high score key to be created")
+                return
+            }
+
+            ud.set([key: NSNumber(value: 900)], forKey: "HighScorePerChart")
+
+            let reloadedService = HighScoreService(userDefaults: ud)
+            let isNewHighScore = reloadedService.saveIfHighScore(1200, for: chart.persistentModelID)
+
+            #expect(isNewHighScore == true)
+            #expect(reloadedService.highScore(for: chart.persistentModelID) == 1200)
+        }
+    }
 }
