@@ -40,6 +40,11 @@ final class PracticeSettingsService: ObservableObject {
     // MARK: - Dependencies
 
     private let userDefaults: UserDefaults
+    private let jsonEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
     private let settingsKey = "PracticeSettingsSpeedMultipliers"
     private var sessionSpeedCache: [PersistentIdentifier: Double] = [:]
 
@@ -127,7 +132,7 @@ final class PracticeSettingsService: ObservableObject {
     private func persistenceKey(for chartID: PersistentIdentifier) -> String {
         // Encode using JSONEncoder for stable, deterministic representation
         do {
-            let data = try JSONEncoder().encode(chartID)
+            let data = try jsonEncoder.encode(chartID)
             if let key = String(data: data, encoding: .utf8) {
                 return key
             }

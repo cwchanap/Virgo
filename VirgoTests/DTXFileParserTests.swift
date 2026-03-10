@@ -278,4 +278,124 @@ struct DTXFileParserTests {
         #expect(!chartData.notes.isEmpty)
         #expect(chartData.notes.first?.toNoteType() == .bass)
     }
+
+    @Test func testParseDTXMetadataFromFileURL() throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("virgo-dtx-\(UUID().uuidString)")
+            .appendingPathExtension("dtx")
+
+        let content = """
+        #TITLE: File Song
+        #ARTIST: File Artist
+        #BPM: 128
+        #DLEVEL: 35
+        #00113: 01000000
+        """
+
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: fileURL)
+
+        #expect(chartData.title == "File Song")
+        #expect(chartData.artist == "File Artist")
+        #expect(chartData.bpm == 128)
+        #expect(chartData.difficultyLevel == 35)
+        #expect(chartData.notes.count == 1)
+    }
+
+    @Test func testParseDTXMetadataMissingFileURLThrows() {
+        let missingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-\(UUID().uuidString)")
+            .appendingPathExtension("dtx")
+
+        do {
+            _ = try DTXFileParser.parseChartMetadata(from: missingURL)
+            Issue.record("Expected parseChartMetadata(from:) to throw fileNotFound")
+        } catch DTXParseError.fileNotFound {
+            // Expected path
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test func testParseDTXMissingRequiredFields() {
+        let testCases: [(content: String, field: String)] = [
+            (
+                """
+                #TITLE: Missing Artist
+                #BPM: 120
+                #DLEVEL: 50
+                """,
+                "ARTIST"
+            ),
+            (
+                """
+                #TITLE: Missing BPM
+                #ARTIST: Test Artist
+                #DLEVEL: 50
+                """,
+                "BPM"
+            ),
+            (
+                """
+                #TITLE: Missing Level
+                #ARTIST: Test Artist
+                #BPM: 120
+                """,
+                "DLEVEL"
+            )
+        ]
+
+        for testCase in testCases {
+            do {
+                _ = try DTXFileParser.parseChartMetadata(from: testCase.content)
+                Issue.record("Expected missing required field error for \(testCase.field)")
+            } catch DTXParseError.missingRequiredField(let field) {
+                #expect(field == testCase.field)
+            } catch {
+                Issue.record("Unexpected error for \(testCase.field): \(error)")
+            }
+        }
+    }
+
+    @Test func testParseNoteLineRejectsMalformedInput() throws {
+        let malformedLines = [
+            "invalid",
+            "#0013: 01",
+            "#00A13: 0101",
+            "#00113: 010",
+            "#00113:"
+        ]
+
+        for line in malformedLines {
+            let notes = try DTXFileParser.parseNoteLine(line)
+            #expect(notes.isEmpty)
+        }
+    }
+
+    @Test func testDTXNoteIntervalConversions() {
+        let testCases: [(positions: Int, expectedInterval: NoteInterval)] = [
+            (1, .full),
+            (2, .half),
+            (4, .quarter),
+            (8, .eighth),
+            (16, .sixteenth),
+            (32, .thirtysecond),
+            (64, .sixtyfourth),
+            (12, .quarter)
+        ]
+
+        for testCase in testCases {
+            let note = DTXNote(
+                measureNumber: 0,
+                laneID: "13",
+                noteID: "01",
+                notePosition: 0,
+                totalPositions: testCase.positions
+            )
+
+            #expect(note.toNoteInterval() == testCase.expectedInterval)
+        }
+    }
 }
