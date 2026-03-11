@@ -52,6 +52,13 @@ enum PersistentIdentifierPersistenceKey {
             return Resolution(canonicalKey: canonicalKey, matchedKey: canonicalKey, value: value)
         }
 
+        for (candidateKey, value) in persistedValues where candidateKey != canonicalKey {
+            if normalizeJSONKey(candidateKey) == canonicalKey {
+                Logger.debug("\(logPrefix): Migrating legacy persistence key to canonical format")
+                return Resolution(canonicalKey: canonicalKey, matchedKey: candidateKey, value: value)
+            }
+        }
+
         let decoder = JSONDecoder()
         for (candidateKey, value) in persistedValues where candidateKey != canonicalKey {
             guard let candidateData = candidateKey.data(using: .utf8),
@@ -65,5 +72,17 @@ enum PersistentIdentifierPersistenceKey {
         }
 
         return nil
+    }
+
+    private static func normalizeJSONKey(_ key: String) -> String? {
+        guard let data = key.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              JSONSerialization.isValidJSONObject(object),
+              let normalizedData = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+              let normalizedKey = String(data: normalizedData, encoding: .utf8) else {
+            return nil
+        }
+
+        return normalizedKey
     }
 }
