@@ -9,7 +9,6 @@
 
 import Foundation
 import SwiftData
-import CryptoKit
 
 /// Service that persists the best score achieved for each chart.
 @MainActor
@@ -22,11 +21,6 @@ final class HighScoreService {
     // MARK: - Dependencies
 
     private let userDefaults: UserDefaults
-    private let jsonEncoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        return encoder
-    }()
 
     // MARK: - Initialization
 
@@ -38,9 +32,7 @@ final class HighScoreService {
 
     /// Returns the saved high score for a chart, or 0 if none has been recorded.
     func highScore(for chartID: PersistentIdentifier) -> Int {
-        let key = persistenceKey(for: chartID)
-        let scores = readPersistedScores()
-        return scores[key] ?? 0
+        resolvedScore(for: chartID)?.score ?? 0
     }
 
     /// Saves the score if it is strictly greater than the previous record.
@@ -51,6 +43,16 @@ final class HighScoreService {
 
         let key = persistenceKey(for: chartID)
         var scores = readPersistedScores()
+        if let resolved = PersistentIdentifierPersistenceKey.resolve(
+            for: chartID,
+            in: scores,
+            logPrefix: "HighScoreService"
+        ), resolved.needsMigration {
+            scores.removeValue(forKey: resolved.matchedKey)
+            scores[resolved.canonicalKey] = resolved.value
+            userDefaults.set(scores, forKey: settingsKey)
+        }
+
         let current = scores[key] ?? 0
         guard score > current else { return false }
 
@@ -75,27 +77,33 @@ final class HighScoreService {
 
     // MARK: - Private
 
+    private func resolvedScore(for chartID: PersistentIdentifier) -> (key: String, score: Int)? {
+        let scores = readPersistedScores()
+        guard let resolved = PersistentIdentifierPersistenceKey.resolve(
+            for: chartID,
+            in: scores,
+            logPrefix: "HighScoreService"
+        ) else {
+            return nil
+        }
+
+        if resolved.needsMigration {
+            var migratedScores = scores
+            migratedScores.removeValue(forKey: resolved.matchedKey)
+            migratedScores[resolved.canonicalKey] = resolved.value
+            userDefaults.set(migratedScores, forKey: settingsKey)
+        }
+
+        return (resolved.canonicalKey, resolved.value)
+    }
+
     /// Creates a stable persistence key from a PersistentIdentifier.
     /// Uses the same JSONEncoder + SHA-256 fallback strategy as PracticeSettingsService.
     private func persistenceKey(for chartID: PersistentIdentifier) -> String {
-        do {
-            let data = try jsonEncoder.encode(chartID)
-            if let key = String(data: data, encoding: .utf8) {
-                return key
-            }
-            Logger.error("HighScoreService: Failed to convert PersistentIdentifier to UTF-8 string")
-        } catch {
-            Logger.error("HighScoreService: Failed to encode PersistentIdentifier: \(error.localizedDescription)")
-        }
-
-        // SHA-256 fallback: PersistentIdentifier.description stability is not guaranteed by Apple API.
-        // Log a warning so key-mismatch issues can be diagnosed post-hoc.
-        Logger.warning("HighScoreService: Using SHA-256 fallback key for chart \(String(describing: chartID).prefix(40))")
-        let stableIdentifier = String(describing: chartID)
-        let inputData = Data(stableIdentifier.utf8)
-        let digest = SHA256.hash(data: inputData)
-        let hashString = digest.compactMap { String(format: "%02x", $0) }.joined()
-        return "chart_\(String(hashString.prefix(32)))"
+        PersistentIdentifierPersistenceKey.canonicalKey(
+            for: chartID,
+            logPrefix: "HighScoreService"
+        )
     }
 
     /// Reads the persisted score dictionary, tolerating NSNumber bridging.
