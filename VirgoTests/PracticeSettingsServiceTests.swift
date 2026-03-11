@@ -24,6 +24,50 @@ struct PracticeSettingsServiceTests {
         return chart.persistentModelID
     }
 
+    private func makeLegacyPersistenceKey(for chartID: PersistentIdentifier) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let canonicalData = try encoder.encode(chartID)
+        guard let canonicalKey = String(data: canonicalData, encoding: .utf8) else {
+            throw NSError(domain: "PracticeSettingsServiceTests", code: 1)
+        }
+
+        return addWhitespaceOutsideStrings(to: canonicalKey)
+    }
+
+    private func addWhitespaceOutsideStrings(to json: String) -> String {
+        var result = ""
+        var inString = false
+        var isEscaping = false
+
+        for character in json {
+            if isEscaping {
+                result.append(character)
+                isEscaping = false
+                continue
+            }
+
+            if character == "\\" {
+                result.append(character)
+                isEscaping = true
+                continue
+            }
+
+            if character == "\"" {
+                result.append(character)
+                inString.toggle()
+                continue
+            }
+
+            result.append(character)
+            if !inString && (character == ":" || character == ",") {
+                result.append(" ")
+            }
+        }
+
+        return result
+    }
+
     // MARK: - Initialization Tests
 
     @Test("Service initializes with default speed of 1.0")
@@ -379,6 +423,26 @@ struct PracticeSettingsServiceTests {
             userDefaults.set([key: "1.25"], forKey: "PracticeSettingsSpeedMultipliers")
             let stringLoaded = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
             #expect(stringLoaded == 1.25)
+        }
+    }
+
+    @Test("loadSpeed reads legacy persistence keys and migrates them to canonical format")
+    func testLoadSpeedMigratesLegacyPersistenceKeys() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+            let chartID = try makeTestChartID()
+            let legacyKey = try makeLegacyPersistenceKey(for: chartID)
+
+            userDefaults.set([legacyKey: 0.8], forKey: "PracticeSettingsSpeedMultipliers")
+
+            let loadedSpeed = PracticeSettingsService(userDefaults: userDefaults).loadSpeed(for: chartID)
+            #expect(loadedSpeed == 0.8)
+
+            let persistedKeys = userDefaults.dictionary(forKey: "PracticeSettingsSpeedMultipliers").map {
+                Array($0.keys)
+            } ?? []
+            #expect(persistedKeys.contains(legacyKey) == false)
+            #expect(persistedKeys.count == 1)
         }
     }
 

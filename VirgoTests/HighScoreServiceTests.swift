@@ -29,6 +29,50 @@ struct HighScoreServiceTests {
         return chart
     }
 
+    private func makeLegacyPersistenceKey(for chartID: PersistentIdentifier) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let canonicalData = try encoder.encode(chartID)
+        guard let canonicalKey = String(data: canonicalData, encoding: .utf8) else {
+            throw NSError(domain: "HighScoreServiceTests", code: 1)
+        }
+
+        return addWhitespaceOutsideStrings(to: canonicalKey)
+    }
+
+    private func addWhitespaceOutsideStrings(to json: String) -> String {
+        var result = ""
+        var inString = false
+        var isEscaping = false
+
+        for character in json {
+            if isEscaping {
+                result.append(character)
+                isEscaping = false
+                continue
+            }
+
+            if character == "\\" {
+                result.append(character)
+                isEscaping = true
+                continue
+            }
+
+            if character == "\"" {
+                result.append(character)
+                inString.toggle()
+                continue
+            }
+
+            result.append(character)
+            if !inString && (character == ":" || character == ",") {
+                result.append(" ")
+            }
+        }
+
+        return result
+    }
+
     // MARK: - Default State
 
     @Test("Default high score is 0 for an unseen chart")
@@ -255,6 +299,26 @@ struct HighScoreServiceTests {
 
             #expect(isNewHighScore == true)
             #expect(reloadedService.highScore(for: chart.persistentModelID) == 1200)
+        }
+    }
+
+    @Test("highScore reads legacy persistence keys and migrates them to canonical format")
+    func testHighScoreMigratesLegacyPersistenceKeys() async throws {
+        try await TestSetup.withTestSetup {
+            let (ud, _) = TestUserDefaults.makeIsolated()
+            let chart = try makeTestChart()
+            let legacyKey = try makeLegacyPersistenceKey(for: chart.persistentModelID)
+
+            ud.set([legacyKey: 2400], forKey: "HighScorePerChart")
+
+            let loadedScore = HighScoreService(userDefaults: ud).highScore(for: chart.persistentModelID)
+            #expect(loadedScore == 2400)
+
+            let persistedKeys = ud.dictionary(forKey: "HighScorePerChart").map {
+                Array($0.keys)
+            } ?? []
+            #expect(persistedKeys.contains(legacyKey) == false)
+            #expect(persistedKeys.count == 1)
         }
     }
 }
