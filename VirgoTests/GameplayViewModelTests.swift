@@ -925,6 +925,47 @@ struct GameplayViewModelTests {
         #expect(viewModel.bgmOffsetSeconds > 0.0)
     }
 
+    @Test("calculateBGMOffset scales by speed multiplier for notes after measure 1")
+    func testCalculateBGMOffsetScalesWithSpeedMultiplier() async throws {
+        // A note in measure 3 should produce a non-zero BGM offset.
+        // At 50% speed the offset should be double the 100% speed offset,
+        // since BGM starts playing later to align with the slower tempo.
+        let chart = Chart(difficulty: .medium)
+        let note = Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 3,
+            measureOffset: 0.0
+        )
+        chart.notes.append(note)
+
+        let metronome = createTestMetronome()
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+
+        let viewModelFull = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        practiceSettings.setSpeed(1.0)
+        await viewModelFull.loadChartData()
+        viewModelFull.setupGameplay(loadPersistedSpeed: false)
+        let offsetAt100 = viewModelFull.bgmOffsetSeconds
+
+        let viewModelHalf = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        practiceSettings.setSpeed(0.5)
+        await viewModelHalf.loadChartData()
+        viewModelHalf.setupGameplay(loadPersistedSpeed: false)
+        let offsetAt50 = viewModelHalf.bgmOffsetSeconds
+
+        #expect(offsetAt100 > 0.0, "BGM offset should be positive when first note is not at beginning")
+        #expect(offsetAt50 > 0.0, "BGM offset at 50% speed should also be positive")
+        // At 50% speed, BGM offset must be 2× the 100% speed offset (within floating-point tolerance)
+        let ratio = offsetAt50 / offsetAt100
+        #expect(abs(ratio - 2.0) < 0.001,
+                "BGM offset at 50% speed should be exactly 2× the offset at 100% speed, got ratio \(ratio)")
+
+        viewModelFull.cleanup()
+        viewModelHalf.cleanup()
+    }
+
     // MARK: - Cleanup Tests
 
     @Test func testCleanup() async throws {
