@@ -939,18 +939,19 @@ struct GameplayViewModelTests {
         )
         chart.notes.append(note)
 
-        let metronome = createTestMetronome()
-        let (userDefaults, _) = TestUserDefaults.makeIsolated()
-        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
-
-        let viewModelFull = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
-        practiceSettings.setSpeed(1.0)
+        // Use isolated metronome and practice settings instances per view model
+        let metronomeFull = createTestMetronome()
+        let practiceSettingsFull = createTestPracticeSettings()
+        practiceSettingsFull.setSpeed(1.0)
+        let viewModelFull = GameplayViewModel(chart: chart, metronome: metronomeFull, practiceSettings: practiceSettingsFull)
         await viewModelFull.loadChartData()
         viewModelFull.setupGameplay(loadPersistedSpeed: false)
         let offsetAt100 = viewModelFull.bgmOffsetSeconds
 
-        let viewModelHalf = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
-        practiceSettings.setSpeed(0.5)
+        let metronomeHalf = createTestMetronome()
+        let practiceSettingsHalf = createTestPracticeSettings()
+        practiceSettingsHalf.setSpeed(0.5)
+        let viewModelHalf = GameplayViewModel(chart: chart, metronome: metronomeHalf, practiceSettings: practiceSettingsHalf)
         await viewModelHalf.loadChartData()
         viewModelHalf.setupGameplay(loadPersistedSpeed: false)
         let offsetAt50 = viewModelHalf.bgmOffsetSeconds

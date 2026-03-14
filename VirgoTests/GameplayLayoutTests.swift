@@ -268,12 +268,15 @@ struct GameplayLayoutTests {
 
     @Test("calculateMeasurePositions wraps to next row when width exceeded")
     func testCalculateMeasurePositionsRowWrapping() {
-        // With 4/4 time, measureWidth is barLineWidth + 5 * uniformSpacing = 2 + 250 = 252
-        // leftMargin is 100; maxRowWidth is 900
-        // Fill enough measures to force row wrapping
-        let positions = GameplayLayout.calculateMeasurePositions(totalMeasures: 20, timeSignature: .fourFour)
+        // Derive how many measures fit in a single row from the layout constants,
+        // then request one more to guarantee wrapping regardless of future constant changes.
+        let measureWidth = GameplayLayout.measureWidth(for: .fourFour)
+        let availableWidth = GameplayLayout.maxRowWidth - GameplayLayout.leftMargin
+        let measuresPerRow = Int(availableWidth / (measureWidth + GameplayLayout.measureSpacing))
+        let totalMeasures = measuresPerRow + 1
+        let positions = GameplayLayout.calculateMeasurePositions(totalMeasures: totalMeasures, timeSignature: .fourFour)
         let maxRow = positions.map { $0.row }.max() ?? 0
-        // With 20 measures, wrapping must have occurred
+        // With more measures than fit in one row, wrapping must have occurred
         #expect(maxRow > 0)
         // All measures in row > 0 should restart at leftMargin
         let secondRowPositions = positions.filter { $0.row > 0 }
