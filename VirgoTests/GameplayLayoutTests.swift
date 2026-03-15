@@ -273,7 +273,9 @@ struct GameplayLayoutTests {
         let measureWidth = GameplayLayout.measureWidth(for: .fourFour)
         let availableWidth = GameplayLayout.maxRowWidth - GameplayLayout.leftMargin
         let measuresPerRow = Int(availableWidth / (measureWidth + GameplayLayout.measureSpacing))
-        let totalMeasures = measuresPerRow + 1
+        // Guard against measuresPerRow == 0 (single measure wider than available width):
+        // in that case 2 measures still forces wrapping because the second always exceeds the row.
+        let totalMeasures = measuresPerRow == 0 ? 2 : measuresPerRow + 1
         let positions = GameplayLayout.calculateMeasurePositions(totalMeasures: totalMeasures, timeSignature: .fourFour)
         let maxRow = positions.map { $0.row }.max() ?? 0
         // With more measures than fit in one row, wrapping must have occurred
