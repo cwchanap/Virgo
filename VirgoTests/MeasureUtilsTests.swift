@@ -64,8 +64,53 @@ struct MeasureUtilsTests {
 
         for testCase in testCases {
             let calculatedIndex = MeasureUtils.measureIndex(from: testCase.timePosition)
-
             #expect(calculatedIndex == testCase.expectedIndex)
+        }
+    }
+
+    @Test func testMeasureIndexExtractionLargeValues() {
+        #expect(MeasureUtils.measureIndex(from: 100.0) == 100)
+        #expect(MeasureUtils.measureIndex(from: 999.99) == 999)
+        #expect(MeasureUtils.measureIndex(from: 1000.0) == 1000)
+    }
+
+    @Test func testTimePositionWithZeroOffset() {
+        // measureNumber 1 with offset 0 = position 0.0 (first measure, start)
+        #expect(MeasureUtils.timePosition(measureNumber: 1, measureOffset: 0.0) == 0.0)
+        // measureNumber 10 with offset 0 = position 9.0
+        #expect(MeasureUtils.timePosition(measureNumber: 10, measureOffset: 0.0) == 9.0)
+    }
+
+    @Test func testTimePositionWithFullOffset() {
+        // measureOffset 1.0 would be the start of the next measure
+        let position = MeasureUtils.timePosition(measureNumber: 3, measureOffset: 1.0)
+        // measure 3 = index 2, index 2 + 1.0 = 3.0
+        #expect(abs(position - 3.0) < 0.001)
+    }
+
+    @Test func testConversionRoundTripLargeValues() {
+        for value in [10, 50, 100, 500] {
+            let oneBased = MeasureUtils.toOneBasedNumber(value)
+            let backToZero = MeasureUtils.toZeroBasedIndex(oneBased)
+            #expect(backToZero == value)
+        }
+    }
+
+    @Test func testMeasureIndexFromTimePositionMatchesConversion() {
+        // measureIndex(from:) and toZeroBasedIndex should be consistent with integer positions
+        for i in 0..<10 {
+            let timePos = Double(i)
+            let indexFromTimePos = MeasureUtils.measureIndex(from: timePos)
+            #expect(indexFromTimePos == i)
+        }
+    }
+
+    @Test func testTimePositionConsistencyWithMeasureIndex() {
+        // timePosition then measureIndex should return the original zero-based index
+        for measureNum in 1...10 {
+            let timePos = MeasureUtils.timePosition(measureNumber: measureNum, measureOffset: 0.0)
+            let measureIdx = MeasureUtils.measureIndex(from: timePos)
+            #expect(measureIdx == MeasureUtils.toZeroBasedIndex(measureNum))
         }
     }
 }
