@@ -275,3 +275,86 @@ struct SwiftDataRelationshipLoaderTests {
         #expect(result.isEmpty)
     }
 }
+
+// MARK: - PersistentIdentifierPersistenceKey.Resolution Tests
+
+@Suite("PersistentIdentifierPersistenceKey Resolution Tests")
+struct PersistentIdentifierPersistenceKeyResolutionTests {
+
+    @Test("Resolution.needsMigration is false when canonicalKey equals matchedKey")
+    func testNeedsMigrationFalseWhenKeysMatch() {
+        let resolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "chart_abc123",
+            matchedKey: "chart_abc123",
+            value: 42
+        )
+        #expect(resolution.needsMigration == false)
+    }
+
+    @Test("Resolution.needsMigration is true when canonicalKey differs from matchedKey")
+    func testNeedsMigrationTrueWhenKeysDiffer() {
+        let resolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "chart_abc123",
+            matchedKey: "old_chart_key",
+            value: 42
+        )
+        #expect(resolution.needsMigration == true)
+    }
+
+    @Test("Resolution stores its value correctly")
+    func testResolutionStoresValue() {
+        let resolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "key",
+            matchedKey: "key",
+            value: "test-value"
+        )
+        #expect(resolution.value == "test-value")
+    }
+
+    @Test("Resolution stores canonicalKey and matchedKey correctly")
+    func testResolutionStoresKeys() {
+        let resolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "canonical",
+            matchedKey: "matched",
+            value: true
+        )
+        #expect(resolution.canonicalKey == "canonical")
+        #expect(resolution.matchedKey == "matched")
+    }
+
+    @Test("Resolution works with various value types")
+    func testResolutionWithVariousValueTypes() {
+        let intResolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "k1", matchedKey: "k1", value: 100
+        )
+        let stringResolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "k2", matchedKey: "k2", value: "score"
+        )
+        let doubleResolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "k3", matchedKey: "k3", value: 3.14
+        )
+        #expect(intResolution.value == 100)
+        #expect(stringResolution.value == "score")
+        #expect(abs(doubleResolution.value - 3.14) < 0.001)
+    }
+
+    @Test("Resolution.needsMigration is true for empty canonicalKey with non-empty matchedKey")
+    func testNeedsMigrationWithEmptyCanonicalKey() {
+        let resolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "",
+            matchedKey: "old_key",
+            value: 0
+        )
+        #expect(resolution.needsMigration == true)
+    }
+
+    @Test("Resolution.needsMigration is false for both empty keys")
+    func testNeedsMigrationWithBothEmptyKeys() {
+        let resolution = PersistentIdentifierPersistenceKey.Resolution(
+            canonicalKey: "",
+            matchedKey: "",
+            value: 0
+        )
+        #expect(resolution.needsMigration == false)
+    }
+}

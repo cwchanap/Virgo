@@ -152,4 +152,157 @@ struct DrumTypeExtensionsAndConstantsTests {
     func testBeamGroupingConstant() {
         #expect(BeamGroupingConstants.maxConsecutiveInterval == 0.3)
     }
+
+    @Test("DrumType description covers all cases")
+    func testDrumTypeDescription() {
+        let expected: [(DrumType, String)] = [
+            (.kick, "kick"),
+            (.snare, "snare"),
+            (.hiHat, "hiHat"),
+            (.hiHatPedal, "hiHatPedal"),
+            (.crash, "crash"),
+            (.ride, "ride"),
+            (.tom1, "tom1"),
+            (.tom2, "tom2"),
+            (.tom3, "tom3"),
+            (.cowbell, "cowbell")
+        ]
+        #expect(expected.count == DrumType.allCases.count)
+        for (drumType, expectedDescription) in expected {
+            #expect(drumType.description == expectedDescription)
+        }
+    }
+
+    @Test("DrumType symbol covers all cases and is non-empty")
+    func testDrumTypeSymbol() {
+        let expected: [(DrumType, String)] = [
+            (.kick, "●"),
+            (.snare, "◆"),
+            (.hiHat, "×"),
+            (.hiHatPedal, "×"),
+            (.crash, "◉"),
+            (.ride, "○"),
+            (.tom1, "◐"),
+            (.tom2, "◑"),
+            (.tom3, "◒"),
+            (.cowbell, "◇")
+        ]
+        #expect(expected.count == DrumType.allCases.count)
+        for (drumType, expectedSymbol) in expected {
+            #expect(drumType.symbol == expectedSymbol)
+            #expect(!drumType.symbol.isEmpty)
+        }
+    }
+
+    @Test("NoteType rawValues match their string representations")
+    func testNoteTypeRawValues() {
+        let expected: [(NoteType, String)] = [
+            (.bass, "Bass"),
+            (.snare, "Snare"),
+            (.highTom, "High Tom"),
+            (.midTom, "Mid Tom"),
+            (.lowTom, "Low Tom"),
+            (.hiHat, "Hi-Hat"),
+            (.hiHatPedal, "Hi-Hat Pedal"),
+            (.openHiHat, "Open Hi-Hat"),
+            (.crash, "Crash"),
+            (.ride, "Ride"),
+            (.china, "China"),
+            (.splash, "Splash"),
+            (.cowbell, "Cowbell")
+        ]
+        #expect(expected.count == NoteType.allCases.count)
+        for (noteType, expectedRaw) in expected {
+            #expect(noteType.rawValue == expectedRaw)
+        }
+    }
+
+    @Test("NoteType can be round-tripped from rawValue")
+    func testNoteTypeRoundTripFromRawValue() {
+        for noteType in NoteType.allCases {
+            let raw = noteType.rawValue
+            #expect(NoteType(rawValue: raw) == noteType)
+        }
+        #expect(NoteType(rawValue: "invalid") == nil)
+    }
+
+    @Test("Difficulty rawValue matches display string")
+    func testDifficultyRawValues() {
+        #expect(Difficulty.easy.rawValue == "Easy")
+        #expect(Difficulty.medium.rawValue == "Medium")
+        #expect(Difficulty.hard.rawValue == "Hard")
+        #expect(Difficulty.expert.rawValue == "Expert")
+    }
+
+    @Test("Difficulty can be round-tripped from rawValue")
+    func testDifficultyRoundTripFromRawValue() {
+        for difficulty in Difficulty.allCases {
+            #expect(Difficulty(rawValue: difficulty.rawValue) == difficulty)
+        }
+        #expect(Difficulty(rawValue: "invalid") == nil)
+    }
+
+    @Test("DrumType storageKey values are unique across all drum types")
+    func testDrumTypeStorageKeysAreUnique() {
+        let keys = DrumType.allCases.map { $0.storageKey }
+        let uniqueKeys = Set(keys)
+        #expect(keys.count == uniqueKeys.count)
+    }
+
+    @Test("DrumType description values are unique across all drum types")
+    func testDrumTypeDescriptionsAreUnique() {
+        let descriptions = DrumType.allCases.map { $0.description }
+        let uniqueDescriptions = Set(descriptions)
+        #expect(descriptions.count == uniqueDescriptions.count)
+    }
+
+    @Test("Difficulty sortOrder values are sequential from 0")
+    func testDifficultySortOrderIsSequential() {
+        let sortedDifficulties = Difficulty.allCases.sorted { $0.sortOrder < $1.sortOrder }
+        for (index, difficulty) in sortedDifficulties.enumerated() {
+            #expect(difficulty.sortOrder == index)
+        }
+    }
+
+    @Test("TimeSignature rawValue matches display string")
+    func testTimeSignatureRawValues() {
+        #expect(TimeSignature.fourFour.rawValue == "4/4")
+        #expect(TimeSignature.threeFour.rawValue == "3/4")
+        #expect(TimeSignature.twoFour.rawValue == "2/4")
+        #expect(TimeSignature.sixEight.rawValue == "6/8")
+        #expect(TimeSignature.fiveFour.rawValue == "5/4")
+        #expect(TimeSignature.sevenEight.rawValue == "7/8")
+        #expect(TimeSignature.nineEight.rawValue == "9/8")
+        #expect(TimeSignature.twelveEight.rawValue == "12/8")
+    }
+
+    @Test("TimeSignature displayName equals rawValue")
+    func testTimeSignatureDisplayNameEqualsRawValue() {
+        for signature in TimeSignature.allCases {
+            #expect(signature.displayName == signature.rawValue)
+        }
+    }
+
+    @Test("NoteInterval all cases reachable via CaseIterable")
+    func testNoteIntervalCaseIterable() {
+        let allCases = NoteInterval.allCases
+        #expect(allCases.count == 7)
+        #expect(allCases.contains(.full))
+        #expect(allCases.contains(.half))
+        #expect(allCases.contains(.quarter))
+        #expect(allCases.contains(.eighth))
+        #expect(allCases.contains(.sixteenth))
+        #expect(allCases.contains(.thirtysecond))
+        #expect(allCases.contains(.sixtyfourth))
+    }
+
+    @Test("NoteInterval flagCount increases monotonically for flagged intervals")
+    func testNoteIntervalFlagCountMonotonicallyIncreases() {
+        let flaggedIntervals: [NoteInterval] = [.eighth, .sixteenth, .thirtysecond, .sixtyfourth]
+        var previousCount = 0
+        for interval in flaggedIntervals {
+            #expect(interval.flagCount > previousCount)
+            previousCount = interval.flagCount
+        }
+    }
 }

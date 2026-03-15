@@ -311,4 +311,132 @@ struct GameplayLayoutTests {
         let expectedY = DrumType.snare.notePosition.absoluteY(for: row)
         #expect(snareY == expectedY)
     }
+
+    @Test("All DrumType note positions map to distinct NotePosition values")
+    func testAllDrumTypeNotePositions() {
+        let expected: [(DrumType, GameplayLayout.NotePosition)] = [
+            (.crash, .aboveLine5),
+            (.hiHat, .line5),
+            (.ride, .spaceBetween4And5),
+            (.cowbell, .line4),
+            (.tom1, .spaceBetween3And4),
+            (.snare, .line3),
+            (.tom2, .spaceBetween2And3),
+            (.tom3, .line2),
+            (.hiHatPedal, .belowLine1),
+            (.kick, .belowLine2)
+        ]
+        #expect(expected.count == DrumType.allCases.count)
+        for (drumType, expectedPosition) in expected {
+            #expect(drumType.notePosition == expectedPosition)
+        }
+    }
+
+    @Test("DrumType note positions form a top-down ordering")
+    func testDrumTypeNotePositionVerticalOrdering() {
+        // From top to bottom: crash > hiHat > ride > cowbell > tom1 > snare > tom2 > tom3 > hiHatPedal > kick
+        let orderedFromTop: [DrumType] = [.crash, .hiHat, .ride, .cowbell, .tom1, .snare, .tom2, .tom3, .hiHatPedal, .kick]
+        let row = 0
+        var previousY = CGFloat.leastNormalMagnitude
+        for drumType in orderedFromTop {
+            let currentY = drumType.yPosition(for: row)
+            #expect(currentY > previousY, "Expected \(drumType) to be below previous drum type (larger Y)")
+            previousY = currentY
+        }
+    }
+
+    @Test("DrumType.yPosition differs by row for the same drum type")
+    func testDrumTypeYPositionChangesAcrossRows() {
+        for drumType in DrumType.allCases {
+            let row0Y = drumType.yPosition(for: 0)
+            let row1Y = drumType.yPosition(for: 1)
+            let rowIncrement = GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
+            #expect(abs((row1Y - row0Y) - rowIncrement) < 0.001)
+        }
+    }
+
+    @Test("NotePosition yOffset ordering: above positions < staff positions < below positions")
+    func testNotePositionYOffsetOrdering() {
+        let abovePositions: [GameplayLayout.NotePosition] = [.aboveLine9, .aboveLine8, .aboveLine7, .aboveLine6, .aboveLine5]
+        let staffPositions: [GameplayLayout.NotePosition] = [.line5, .line4, .line3, .line2, .line1]
+        let belowPositions: [GameplayLayout.NotePosition] = [.belowLine1, .belowLine2, .belowLine3, .belowLine4, .belowLine5, .belowLine6]
+
+        // All above-staff positions should have smaller yOffset than line5
+        let line5Offset = GameplayLayout.NotePosition.line5.yOffset
+        for pos in abovePositions {
+            #expect(pos.yOffset < line5Offset)
+        }
+
+        // All below-staff positions should have larger yOffset than line1
+        let line1Offset = GameplayLayout.NotePosition.line1.yOffset
+        for pos in belowPositions {
+            #expect(pos.yOffset > line1Offset)
+        }
+
+        // Within above-staff positions, higher numbers should be farther above (smaller yOffset)
+        for i in 0..<(abovePositions.count - 1) {
+            #expect(abovePositions[i].yOffset < abovePositions[i + 1].yOffset)
+        }
+
+        // Within below-staff positions, higher numbers should be farther below (larger yOffset)
+        for i in 0..<(belowPositions.count - 1) {
+            #expect(belowPositions[i].yOffset < belowPositions[i + 1].yOffset)
+        }
+    }
+
+    @Test("StaffLinePosition yOffset values match expected multiples of staffLineSpacing")
+    func testStaffLinePositionYOffsets() {
+        let spacing = GameplayLayout.staffLineSpacing
+        #expect(GameplayLayout.StaffLinePosition.line1.yOffset == 0)
+        #expect(GameplayLayout.StaffLinePosition.line2.yOffset == -spacing)
+        #expect(GameplayLayout.StaffLinePosition.line3.yOffset == -2 * spacing)
+        #expect(GameplayLayout.StaffLinePosition.line4.yOffset == -3 * spacing)
+        #expect(GameplayLayout.StaffLinePosition.line5.yOffset == -4 * spacing)
+    }
+
+    @Test("StaffLinePosition rawValues are sequential 0 through 4")
+    func testStaffLinePositionRawValues() {
+        #expect(GameplayLayout.StaffLinePosition.line1.rawValue == 0)
+        #expect(GameplayLayout.StaffLinePosition.line2.rawValue == 1)
+        #expect(GameplayLayout.StaffLinePosition.line3.rawValue == 2)
+        #expect(GameplayLayout.StaffLinePosition.line4.rawValue == 3)
+        #expect(GameplayLayout.StaffLinePosition.line5.rawValue == 4)
+    }
+
+    @Test("GameplayLayout derived constants have expected values")
+    func testGameplayLayoutDerivedConstants() {
+        // staffHeight = (staffLineCount - 1) * staffLineSpacing
+        let expectedStaffHeight = CGFloat(GameplayLayout.staffLineCount - 1) * GameplayLayout.staffLineSpacing
+        #expect(GameplayLayout.staffHeight == expectedStaffHeight)
+
+        // baseStaffY = 150 + staffHeight / 2
+        let expectedBaseStaffY = CGFloat(150) + GameplayLayout.staffHeight / 2
+        #expect(GameplayLayout.baseStaffY == expectedBaseStaffY)
+    }
+
+    @Test("calculateMeasurePositions with 1 measure stays on row 0")
+    func testCalculateMeasurePositionsOneMeasure() {
+        let positions = GameplayLayout.calculateMeasurePositions(totalMeasures: 1, timeSignature: .fourFour)
+        #expect(positions.count == 1)
+        #expect(positions[0].row == 0)
+        #expect(positions[0].measureIndex == 0)
+        #expect(positions[0].xOffset == GameplayLayout.leftMargin)
+    }
+
+    @Test("calculateMeasurePositions xOffset increases monotonically within each row")
+    func testCalculateMeasurePositionsXOffsetMonotonic() {
+        let positions = GameplayLayout.calculateMeasurePositions(totalMeasures: 3, timeSignature: .fourFour)
+        let row0Positions = positions.filter { $0.row == 0 }.sorted { $0.measureIndex < $1.measureIndex }
+        for i in 0..<(row0Positions.count - 1) {
+            #expect(row0Positions[i].xOffset < row0Positions[i + 1].xOffset)
+        }
+    }
+
+    @Test("measureWidth scales proportionally with beatsPerMeasure")
+    func testMeasureWidthScalesWithBeatsPerMeasure() {
+        // 12/8 has 12 beats per measure, 2/4 has 2 beats - 12/8 should be wider
+        let wideWidth = GameplayLayout.measureWidth(for: .twelveEight)
+        let narrowWidth = GameplayLayout.measureWidth(for: .twoFour)
+        #expect(wideWidth > narrowWidth)
+    }
 }
