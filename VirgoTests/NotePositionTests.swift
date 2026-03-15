@@ -56,11 +56,13 @@ struct NotePositionTests {
     }
 
     @Test func testNotePositionKeyMillisecondRoundingEquality() {
-        // Two offsets that differ by less than 1ms should be treated as equal
-        let key1 = NotePositionKey(measureNumber: 1, measureOffset: 0.2504)   // rounds to 250ms
-        let key2 = NotePositionKey(measureNumber: 1, measureOffset: 0.2501)   // rounds to 250ms
-        let key3 = NotePositionKey(measureNumber: 1, measureOffset: 0.2509)   // rounds to 250ms
-        let key4 = NotePositionKey(measureNumber: 1, measureOffset: 0.2510)   // rounds to 251ms
+        // Two offsets that differ by less than 1ms should be treated as equal.
+        // key4 uses 0.2515 (well above the 251ms boundary) to avoid floating-point
+        // truncation ambiguity that 0.2510 * 1000 can exhibit (250.999... → 250).
+        let key1 = NotePositionKey(measureNumber: 1, measureOffset: 0.2504)   // 250ms
+        let key2 = NotePositionKey(measureNumber: 1, measureOffset: 0.2501)   // 250ms
+        let key3 = NotePositionKey(measureNumber: 1, measureOffset: 0.2509)   // 250ms
+        let key4 = NotePositionKey(measureNumber: 1, measureOffset: 0.2515)   // 251ms
 
         #expect(key1 == key2)
         #expect(key1 == key3)
@@ -97,9 +99,13 @@ struct NotePositionTests {
     }
 
     @Test func testNotePositionKeyLargeMeasureNumbers() {
-        let key = NotePositionKey(measureNumber: 1000, measureOffset: 0.999)
+        // Derive the offset from an integer to avoid 0.999 * 1000 truncating to 998
+        // due to floating-point representation (0.999 is not exactly representable).
+        let expectedMilliseconds = 999
+        let offset = Double(expectedMilliseconds) / 1000.0
+        let key = NotePositionKey(measureNumber: 1000, measureOffset: offset)
         #expect(key.measureNumber == 1000)
-        #expect(key.measureOffsetInMilliseconds == 999)
+        #expect(key.measureOffsetInMilliseconds == expectedMilliseconds)
     }
 
     @Test func testNotePositionKeyHashConsistency() {

@@ -14,21 +14,28 @@ import Foundation
 
 struct BeatProgressionTests {
 
+    // Shared helper encapsulating the beat-position calculation used throughout
+    // these tests. Centralising it here means a change to the formula is caught
+    // in one place rather than silently missing some test cases.
+    private func beatProgress(
+        for position: Double,
+        in timeSignature: TimeSignature
+    ) -> (measureIndex: Int, measureOffset: Double, beatPosition: Double) {
+        let measureIndex = Int(position)
+        let measureOffset = position - Double(measureIndex)
+        let beatPosition = measureOffset * Double(timeSignature.beatsPerMeasure)
+        return (measureIndex, measureOffset, beatPosition)
+    }
+
     @Test func testBasicBeatProgression() {
-        let timeSignature = TimeSignature.fourFour
-        let quarterNotePosition = 0.25
+        let progress = beatProgress(for: 0.25, in: .fourFour)
 
-        let currentMeasureIndex = Int(quarterNotePosition)
-        let currentMeasureOffset = quarterNotePosition - Double(currentMeasureIndex)
-        let beatPosition = currentMeasureOffset * Double(timeSignature.beatsPerMeasure)
-
-        #expect(currentMeasureIndex == 0)
-        #expect(abs(currentMeasureOffset - 0.25) < 0.001)
-        #expect(abs(beatPosition - 1.0) < 0.001)
+        #expect(progress.measureIndex == 0)
+        #expect(abs(progress.measureOffset - 0.25) < 0.001)
+        #expect(abs(progress.beatPosition - 1.0) < 0.001)
     }
 
     @Test func testBeatProgressionAcrossMultipleMeasures() {
-        let timeSignature = TimeSignature.fourFour
         // Positions at each quarter note boundary across 3 measures
         let testCases: [(position: Double, expectedMeasure: Int, expectedBeat: Double)] = [
             (0.00, 0, 0.0),   // Start of measure 1
@@ -42,17 +49,13 @@ struct BeatProgressionTests {
         ]
 
         for testCase in testCases {
-            let measureIndex = Int(testCase.position)
-            let measureOffset = testCase.position - Double(measureIndex)
-            let beatPosition = measureOffset * Double(timeSignature.beatsPerMeasure)
-
-            #expect(measureIndex == testCase.expectedMeasure)
-            #expect(abs(beatPosition - testCase.expectedBeat) < 0.001)
+            let progress = beatProgress(for: testCase.position, in: .fourFour)
+            #expect(progress.measureIndex == testCase.expectedMeasure)
+            #expect(abs(progress.beatPosition - testCase.expectedBeat) < 0.001)
         }
     }
 
     @Test func testBeatProgressionIn3_4Time() {
-        let timeSignature = TimeSignature.threeFour
         // 3/4 has 3 beats per measure, so each beat is 1/3 of a measure
         let testCases: [(position: Double, expectedMeasure: Int, expectedBeat: Double)] = [
             (0.000, 0, 0.0),
@@ -63,52 +66,38 @@ struct BeatProgressionTests {
         ]
 
         for testCase in testCases {
-            let measureIndex = Int(testCase.position)
-            let measureOffset = testCase.position - Double(measureIndex)
-            let beatPosition = measureOffset * Double(timeSignature.beatsPerMeasure)
-
-            #expect(measureIndex == testCase.expectedMeasure)
-            #expect(abs(beatPosition - testCase.expectedBeat) < 0.01)
+            let progress = beatProgress(for: testCase.position, in: .threeFour)
+            #expect(progress.measureIndex == testCase.expectedMeasure)
+            #expect(abs(progress.beatPosition - testCase.expectedBeat) < 0.01)
         }
     }
 
     @Test func testBeatProgressionIn6_8Time() {
-        let timeSignature = TimeSignature.sixEight
-        // 6/8 has 6 beats per measure
-        let position = 0.5   // halfway through measure 1
-        let measureIndex = Int(position)
-        let measureOffset = position - Double(measureIndex)
-        let beatPosition = measureOffset * Double(timeSignature.beatsPerMeasure)
-
-        #expect(measureIndex == 0)
-        #expect(abs(beatPosition - 3.0) < 0.001)  // 0.5 * 6 = 3
+        // 6/8 has 6 beats per measure; halfway through = beat 3
+        let progress = beatProgress(for: 0.5, in: .sixEight)
+        #expect(progress.measureIndex == 0)
+        #expect(abs(progress.beatPosition - 3.0) < 0.001)
     }
 
     @Test func testBeatProgressionStartOfEachMeasureIsAlwaysBeatZero() {
         let timeSignatures: [TimeSignature] = [.twoFour, .threeFour, .fourFour, .fiveFour, .sixEight]
-        let measureCount = 5
 
         for signature in timeSignatures {
-            for measureNum in 0..<measureCount {
-                let position = Double(measureNum) + 0.0
-                let measureIndex = Int(position)
-                let measureOffset = position - Double(measureIndex)
-                let beatPosition = measureOffset * Double(signature.beatsPerMeasure)
-
-                #expect(measureIndex == measureNum)
-                #expect(abs(beatPosition - 0.0) < 0.001)
+            for measureNum in 0..<5 {
+                let progress = beatProgress(for: Double(measureNum), in: signature)
+                #expect(progress.measureIndex == measureNum)
+                #expect(abs(progress.beatPosition - 0.0) < 0.001)
             }
         }
     }
 
     @Test func testBeatPositionNeverExceedsBeatsPerMeasure() {
         let timeSignature = TimeSignature.fourFour
-        // Test various positions within a single measure
         let offsets: [Double] = [0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99]
         for offset in offsets {
-            let beatPosition = offset * Double(timeSignature.beatsPerMeasure)
-            #expect(beatPosition >= 0.0)
-            #expect(beatPosition < Double(timeSignature.beatsPerMeasure))
+            let progress = beatProgress(for: offset, in: timeSignature)
+            #expect(progress.beatPosition >= 0.0)
+            #expect(progress.beatPosition < Double(timeSignature.beatsPerMeasure))
         }
     }
 }
