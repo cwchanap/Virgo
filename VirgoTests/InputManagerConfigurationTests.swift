@@ -80,10 +80,10 @@ struct InputManagerConfigurationTests {
     func testConfigureWithPresortedNotes() {
         let manager = InputManager()
         let notes = [
-            Note(interval: .quarter, noteType: .kick, measureNumber: 1, measureOffset: 0.0),
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25),
             Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5),
-            Note(interval: .quarter, noteType: .kick, measureNumber: 2, measureOffset: 0.0)
+            Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 0.0)
         ]
         manager.configure(bpm: 120.0, timeSignature: .fourFour, notes: notes)
         #expect(manager.configuredBPM == 120.0)
