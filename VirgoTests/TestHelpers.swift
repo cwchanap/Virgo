@@ -122,14 +122,17 @@ class TestContainer {
                 if context.hasChanges {
                     try context.save()
                 }
-                
-                // Perform thorough model deletion with explicit ordering
-                try context.delete(model: Note.self)
-                try context.delete(model: Chart.self) 
-                try context.delete(model: Song.self)
-                try context.delete(model: ServerChart.self)
-                try context.delete(model: ServerSong.self)
-                
+
+                // Delete through the context (not batch delete) so that cascade rules
+                // are respected and mandatory relationship constraints are not violated.
+                // Song cascades to Chart which cascades to Note.
+                // ServerSong cascades to ServerChart.
+                let songs = try context.fetch(FetchDescriptor<Song>())
+                songs.forEach { context.delete($0) }
+
+                let serverSongs = try context.fetch(FetchDescriptor<ServerSong>())
+                serverSongs.forEach { context.delete($0) }
+
                 // Force immediate persistence
                 try context.save()
                 
