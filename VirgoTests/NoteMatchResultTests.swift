@@ -42,10 +42,11 @@ struct InputHitTests {
     }
 
     @Test("InputHit timestamps are distinct when created at different times")
-    func testInputHitTimestampDistinctness() async throws {
-        let hit1 = InputHit(drumType: .snare, velocity: 1.0, timestamp: Date())
-        try await Task.sleep(nanoseconds: 1_000_000) // 1ms
-        let hit2 = InputHit(drumType: .snare, velocity: 1.0, timestamp: Date())
+    func testInputHitTimestampDistinctness() {
+        let base = Date()
+        let later = base.addingTimeInterval(0.001) // 1ms later, deterministic
+        let hit1 = InputHit(drumType: .snare, velocity: 1.0, timestamp: base)
+        let hit2 = InputHit(drumType: .snare, velocity: 1.0, timestamp: later)
         #expect(hit2.timestamp > hit1.timestamp)
     }
 

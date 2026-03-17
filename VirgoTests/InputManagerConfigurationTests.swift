@@ -61,17 +61,14 @@ struct InputManagerConfigurationTests {
 
     // MARK: - Note Sorting
 
-    @Test("configure() sorts notes by measure number ascending")
-    func testConfigureSortsNotesByMeasureNumber() {
+    @Test("configure() accepts unsorted notes without crashing")
+    func testConfigureAcceptsUnsortedNotes() {
         let manager = InputManager()
         let notes = [
             Note(interval: .quarter, noteType: .snare, measureNumber: 3, measureOffset: 0.0),
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
             Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 0.0)
         ]
-        // After configure, internal note list is sorted. We verify indirectly by calling
-        // configure with different sorted orders and checking that BPM is stored correctly
-        // (the configure method succeeds without crashing).
         manager.configure(bpm: 120.0, timeSignature: .fourFour, notes: notes)
         #expect(manager.configuredBPM == 120.0)
     }
@@ -208,47 +205,51 @@ struct InputManagerConfigurationTests {
 
     // MARK: - startListening / stopListening Lifecycle
 
-    @Test("startListening with past date does not crash")
+    @Test("startListening with past date leaves BPM unchanged")
     func testStartListeningWithPastDate() {
         let manager = InputManager()
         manager.configure(bpm: 120.0, timeSignature: .fourFour, notes: [])
-        let pastDate = Date(timeIntervalSinceNow: -5.0)
-        manager.startListening(songStartTime: pastDate)
-        // Verify it does not crash; no observable state to check without a delegate
+        manager.startListening(songStartTime: Date(timeIntervalSinceNow: -5.0))
+        #expect(manager.configuredBPM == 120.0)
     }
 
-    @Test("stopListening after startListening does not crash")
+    @Test("stopListening after startListening leaves BPM and mappings intact")
     func testStopListeningAfterStart() {
         let manager = InputManager()
-        manager.configure(bpm: 120.0, timeSignature: .fourFour, notes: [])
+        manager.configure(bpm: 140.0, timeSignature: .fourFour, notes: [])
+        manager.setKeyboardMapping(["f": .snare])
         manager.startListening(songStartTime: Date())
         manager.stopListening()
-        // Should not crash
+        #expect(manager.configuredBPM == 140.0)
+        #expect(manager.getKeyboardMapping()["f"] == .snare)
     }
 
-    @Test("stopListening without prior startListening does not crash")
+    @Test("stopListening without prior startListening leaves mappings intact")
     func testStopListeningWithoutPriorStart() {
         let manager = InputManager()
+        manager.setKeyboardMapping(["j": .hiHat])
         manager.stopListening()
-        // Should not crash
+        #expect(manager.getKeyboardMapping()["j"] == .hiHat)
     }
 
-    @Test("reloadMappingsFromSettings does not crash")
+    @Test("reloadMappingsFromSettings loads non-empty default keyboard and MIDI mappings")
     func testReloadMappingsFromSettings() {
         let manager = InputManager()
         manager.reloadMappingsFromSettings()
-        // Should not crash and mappings should still be valid (loaded from settings)
-        // The mappings should be non-nil (defaults loaded if no persisted values)
+        #expect(!manager.getKeyboardMapping().isEmpty)
+        #expect(!manager.getMIDIMapping().isEmpty)
     }
 
-    @Test("startListening then stopListening then startListening again does not crash")
+    @Test("start-stop-start cycle preserves BPM and keyboard mappings")
     func testStartStopStartCycle() {
         let manager = InputManager()
-        manager.configure(bpm: 120.0, timeSignature: .fourFour, notes: [])
+        manager.configure(bpm: 100.0, timeSignature: .fourFour, notes: [])
+        manager.setKeyboardMapping(["space": .kick])
         manager.startListening(songStartTime: Date())
         manager.stopListening()
         manager.startListening(songStartTime: Date())
         manager.stopListening()
-        // Should not crash
+        #expect(manager.configuredBPM == 100.0)
+        #expect(manager.getKeyboardMapping()["space"] == .kick)
     }
 }
