@@ -8,6 +8,21 @@
 import Testing
 @testable import Virgo
 
+// Mirrors the tiering logic so classification tests call one shared path
+// rather than re-implementing the if-else chain in each test.
+private func classifyTimingAccuracy(errorMs: Double) -> TimingAccuracy {
+    let absError = Swift.abs(errorMs)
+    if absError <= TimingAccuracy.perfect.toleranceMs {
+        return .perfect
+    } else if absError <= TimingAccuracy.great.toleranceMs {
+        return .great
+    } else if absError <= TimingAccuracy.good.toleranceMs {
+        return .good
+    } else {
+        return .miss
+    }
+}
+
 @Suite("TimingAccuracy Tests")
 struct TimingAccuracyTests {
 
@@ -90,17 +105,7 @@ struct TimingAccuracyTests {
         // Errors within ±25ms should be perfect
         let errors: [Double] = [0.0, 10.0, -10.0, 24.9, -24.9, 25.0]
         for error in errors {
-            let abs = Swift.abs(error)
-            let tier: TimingAccuracy
-            if abs <= TimingAccuracy.perfect.toleranceMs {
-                tier = .perfect
-            } else if abs <= TimingAccuracy.great.toleranceMs {
-                tier = .great
-            } else if abs <= TimingAccuracy.good.toleranceMs {
-                tier = .good
-            } else {
-                tier = .miss
-            }
+            let tier = classifyTimingAccuracy(errorMs: error)
             #expect(tier == .perfect, "Expected perfect for error \(error)ms, got \(tier)")
         }
     }
@@ -110,17 +115,7 @@ struct TimingAccuracyTests {
         // Errors in (25ms, 50ms] should be great
         let errors: [Double] = [25.1, 30.0, -30.0, 49.9, 50.0]
         for error in errors {
-            let abs = Swift.abs(error)
-            let tier: TimingAccuracy
-            if abs <= TimingAccuracy.perfect.toleranceMs {
-                tier = .perfect
-            } else if abs <= TimingAccuracy.great.toleranceMs {
-                tier = .great
-            } else if abs <= TimingAccuracy.good.toleranceMs {
-                tier = .good
-            } else {
-                tier = .miss
-            }
+            let tier = classifyTimingAccuracy(errorMs: error)
             #expect(tier == .great, "Expected great for error \(error)ms, got \(tier)")
         }
     }
@@ -130,17 +125,7 @@ struct TimingAccuracyTests {
         // Errors in (50ms, 100ms] should be good
         let errors: [Double] = [50.1, 75.0, -75.0, 99.9, 100.0]
         for error in errors {
-            let abs = Swift.abs(error)
-            let tier: TimingAccuracy
-            if abs <= TimingAccuracy.perfect.toleranceMs {
-                tier = .perfect
-            } else if abs <= TimingAccuracy.great.toleranceMs {
-                tier = .great
-            } else if abs <= TimingAccuracy.good.toleranceMs {
-                tier = .good
-            } else {
-                tier = .miss
-            }
+            let tier = classifyTimingAccuracy(errorMs: error)
             #expect(tier == .good, "Expected good for error \(error)ms, got \(tier)")
         }
     }
@@ -150,17 +135,7 @@ struct TimingAccuracyTests {
         // Errors > 100ms should be miss
         let errors: [Double] = [100.1, 150.0, -150.0, 200.0, 1000.0]
         for error in errors {
-            let abs = Swift.abs(error)
-            let tier: TimingAccuracy
-            if abs <= TimingAccuracy.perfect.toleranceMs {
-                tier = .perfect
-            } else if abs <= TimingAccuracy.great.toleranceMs {
-                tier = .great
-            } else if abs <= TimingAccuracy.good.toleranceMs {
-                tier = .good
-            } else {
-                tier = .miss
-            }
+            let tier = classifyTimingAccuracy(errorMs: error)
             #expect(tier == .miss, "Expected miss for error \(error)ms, got \(tier)")
         }
     }
