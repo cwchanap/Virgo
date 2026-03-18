@@ -15,12 +15,13 @@ class ServerSongDownloader {
     }
 
     /// Download and import a multi-difficulty song
+    @MainActor
     func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
         let backgroundContext = ModelContext(container)
-        
+
         do {
             // Check if song already exists
-            if try await songAlreadyExists(serverSong, in: backgroundContext) {
+            if try songAlreadyExists(serverSong, in: backgroundContext) {
                 return (false, "Song already exists in database")
             }
             
@@ -42,10 +43,11 @@ class ServerSongDownloader {
     // MARK: - Private Helper Methods
     
     /// Check if a song with the same title and artist already exists
-    private func songAlreadyExists(_ serverSong: ServerSong, in context: ModelContext) async throws -> Bool {
+    @MainActor
+    private func songAlreadyExists(_ serverSong: ServerSong, in context: ModelContext) throws -> Bool {
         let existingDescriptor = FetchDescriptor<Song>()
         let existingSongs = try context.fetch(existingDescriptor)
-        
+
         return existingSongs.contains { existingSong in
             existingSong.title.lowercased() == serverSong.title.lowercased() &&
                 existingSong.artist.lowercased() == serverSong.artist.lowercased()
@@ -65,6 +67,7 @@ class ServerSongDownloader {
     }
     
     /// Process all charts for a song
+    @MainActor
     private func processCharts(for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
         for (index, serverChart) in serverSong.charts.enumerated() {
             // Add small delay between downloads to reduce system stress
@@ -77,6 +80,7 @@ class ServerSongDownloader {
     }
     
     /// Process a single chart
+    @MainActor
     private func processChart(
         _ serverChart: ServerChart,
         for song: Song,
@@ -97,7 +101,9 @@ class ServerSongDownloader {
         
         // Update song BPM from the first chart if not already set
         if song.charts.isEmpty {
-            song.bpm = chartData.bpm // Preserve Double precision (e.g., 165.55)
+            if chartData.bpm.isFinite && chartData.bpm > 0 {
+                song.bpm = chartData.bpm
+            }
             song.duration = formatDuration(calculateDuration(from: chartData.notes))
         }
         
