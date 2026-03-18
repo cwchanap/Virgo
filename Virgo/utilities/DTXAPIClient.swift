@@ -237,28 +237,32 @@ extension DTXAPIClient: DTXFileOperations {
 
 extension DTXAPIClient: DTXDownloadOperations {
     func downloadDTXFile(filename: String) async throws -> Data {
-        guard let url = URL(string: "\(baseURL)/dtx/download/\(filename)") else {
+        guard let url = URL(string: "\(baseURL)/dtx/download/\(filename)"),
+              let scheme = url.scheme, scheme == "http" || scheme == "https" else {
             throw DTXAPIError.invalidURL
         }
         return try await downloadData(from: url)
     }
 
     func downloadBGMFile(songId: String) async throws -> Data {
-        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/bgm.ogg") else {
+        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/bgm.ogg"),
+              let scheme = url.scheme, scheme == "http" || scheme == "https" else {
             throw DTXAPIError.invalidURL
         }
         return try await downloadData(from: url)
     }
 
     func downloadPreviewFile(songId: String) async throws -> Data {
-        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/preview.mp3") else {
+        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/preview.mp3"),
+              let scheme = url.scheme, scheme == "http" || scheme == "https" else {
             throw DTXAPIError.invalidURL
         }
         return try await downloadData(from: url)
     }
 
     func downloadChartFile(songId: String, chartFilename: String) async throws -> Data {
-        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/\(chartFilename)") else {
+        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/\(chartFilename)"),
+              let scheme = url.scheme, scheme == "http" || scheme == "https" else {
             throw DTXAPIError.invalidURL
         }
         return try await downloadData(from: url)
