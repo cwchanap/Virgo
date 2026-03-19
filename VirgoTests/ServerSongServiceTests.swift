@@ -69,6 +69,7 @@ struct ServerSongServiceTests {
         var result: (Bool, String?) = (true, nil)
         var receivedSongIDs: [String] = []
 
+        @MainActor
         override func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
             receivedSongIDs.append(serverSong.songId)
             return result

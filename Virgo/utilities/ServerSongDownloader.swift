@@ -120,6 +120,7 @@ class ServerSongDownloader {
     }
     
     /// Download optional BGM and preview files
+    @MainActor
     private func downloadOptionalFiles(for song: Song, serverSong: ServerSong) async {
         // Download BGM file if available
         do {
