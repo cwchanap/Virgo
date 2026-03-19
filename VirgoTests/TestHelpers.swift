@@ -20,15 +20,14 @@ import Combine
 class TestContainer {
     static let shared = TestContainer()
     @TaskLocal static var activeContainer: TestContainer?
-    
-    private let containerCreationQueue = DispatchQueue(label: "TestContainer.creation", attributes: .concurrent)
+
     var privateContainer: ModelContainer?
     var privateContext: ModelContext?
-    
+
     // Revolutionary approach: Per-test isolation containers
     private static var isolatedContainers: [String: TestContainer] = [:]
     private static let isolationQueue = DispatchQueue(label: "TestContainer.isolation", attributes: .concurrent)
-    
+
     static func isolatedContainer(for testId: String = UUID().uuidString) -> TestContainer {
         return isolationQueue.sync {
             if let existing = isolatedContainers[testId] {
@@ -39,127 +38,118 @@ class TestContainer {
             return newContainer
         }
     }
-    
+
     static func cleanupIsolatedContainer(for testId: String) {
         isolationQueue.sync(flags: .barrier) {
             isolatedContainers.removeValue(forKey: testId)
         }
     }
-    
+
     var context: ModelContext {
         if let active = Self.activeContainer, active !== self {
             return active.resolveContext()
         }
         return resolveContext()
     }
-    
+
     var container: ModelContainer {
         if let active = Self.activeContainer, active !== self {
             return active.resolveContainer()
         }
         return resolveContainer()
     }
-    
+
     private init() {
         // Defer initialization to avoid concurrency issues during app startup
     }
-    
+
     private func resolveContainer() -> ModelContainer {
-        return containerCreationQueue.sync {
-            if let container = privateContainer {
-                return container
-            }
-            
-            // Create in-memory container for tests with unique identifier
-            let schema = Schema([
-                Song.self,
-                Chart.self,
-                Note.self,
-                ServerSong.self,
-                ServerChart.self
-            ])
-            
-            let modelConfiguration = ModelConfiguration(
-                schema: schema,
-                isStoredInMemoryOnly: true,
-                allowsSave: true,
-                cloudKitDatabase: .none
-            )
-            
-            do {
-                let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
-                privateContainer = container
-                privateContext = container.mainContext
-                return container
-            } catch {
-                fatalError("Could not create ModelContainer: \(error)")
-            }
+        if let container = privateContainer {
+            return container
+        }
+
+        // Create in-memory container for tests with unique identifier
+        let schema = Schema([
+            Song.self,
+            Chart.self,
+            Note.self,
+            ServerSong.self,
+            ServerChart.self
+        ])
+
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: true,
+            allowsSave: true,
+            cloudKitDatabase: .none
+        )
+
+        do {
+            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            privateContainer = container
+            // Access mainContext here on @MainActor so it is bound to the main queue.
+            privateContext = container.mainContext
+            return container
+        } catch {
+            fatalError("Could not create ModelContainer: \(error)")
         }
     }
-    
+
     private func resolveContext() -> ModelContext {
-        let container = resolveContainer()
+        _ = resolveContainer()
         if let context = privateContext {
             return context
         }
-        let context = container.mainContext
+        let context = resolveContainer().mainContext
         privateContext = context
         return context
     }
-    
+
     func reset() {
         if let active = Self.activeContainer, active !== self {
             active.reset()
             return
         }
-        
-        containerCreationQueue.sync(flags: .barrier) {
-            // Ultra-enhanced cleanup with memory management optimization
-            guard let context = privateContext else { return }
-            
-            do {
-                // Force completion of any pending changes
-                if context.hasChanges {
-                    try context.save()
-                }
 
-                // Delete through the context (not batch delete) so that cascade rules
-                // are respected and mandatory relationship constraints are not violated.
-                // Song cascades to Chart which cascades to Note.
-                // ServerSong cascades to ServerChart.
-                let songs = try context.fetch(FetchDescriptor<Song>())
-                songs.forEach { context.delete($0) }
+        // Run directly on @MainActor — no queue dispatch so that context
+        // (container.mainContext) is always accessed on the main queue.
+        guard let context = privateContext else { return }
 
-                let serverSongs = try context.fetch(FetchDescriptor<ServerSong>())
-                serverSongs.forEach { context.delete($0) }
-
-                // Defensive: remove any orphaned children not caught by cascade
-                // (e.g. Charts/Notes/ServerCharts inserted directly by tests)
-                let charts = try context.fetch(FetchDescriptor<Chart>())
-                charts.forEach { context.delete($0) }
-
-                let notes = try context.fetch(FetchDescriptor<Note>())
-                notes.forEach { context.delete($0) }
-
-                let serverCharts = try context.fetch(FetchDescriptor<ServerChart>())
-                serverCharts.forEach { context.delete($0) }
-
-                // Force immediate persistence
+        do {
+            // Force completion of any pending changes
+            if context.hasChanges {
                 try context.save()
-                
-                // Advanced memory management: Force garbage collection hints
-                autoreleasepool {
-                    // Encourage memory cleanup after heavy SwiftData operations
-                }
-                
-            } catch {
-                Logger.debug("Failed to reset test container: \(error)")
-                // If reset fails, create a new container entirely with memory cleanup
-                autoreleasepool {
-                    privateContainer = nil
-                    privateContext = nil
-                }
             }
+
+            // Delete through the context (not batch delete) so that cascade rules
+            // are respected and mandatory relationship constraints are not violated.
+            // Song cascades to Chart which cascades to Note.
+            // ServerSong cascades to ServerChart.
+            let songs = try context.fetch(FetchDescriptor<Song>())
+            songs.forEach { context.delete($0) }
+
+            let serverSongs = try context.fetch(FetchDescriptor<ServerSong>())
+            serverSongs.forEach { context.delete($0) }
+
+            // Defensive: remove any orphaned children not caught by cascade
+            // (e.g. Charts/Notes/ServerCharts inserted directly by tests)
+            let charts = try context.fetch(FetchDescriptor<Chart>())
+            charts.forEach { context.delete($0) }
+
+            let notes = try context.fetch(FetchDescriptor<Note>())
+            notes.forEach { context.delete($0) }
+
+            let serverCharts = try context.fetch(FetchDescriptor<ServerChart>())
+            serverCharts.forEach { context.delete($0) }
+
+            // Force immediate persistence
+            try context.save()
+
+        } catch {
+            Logger.debug("Failed to reset test container: \(error)")
+            // If reset fails, create a new container entirely
+            privateContainer = nil
+            privateContext = nil
         }
     }
 }
