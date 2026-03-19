@@ -53,10 +53,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: |
-            ./DerivedData/**/Logs/Test/*.xcresult
-            ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
-          if-no-files-found: warn
+          path: ./DerivedData/**/Logs/Test/*.xcresult
+          if-no-files-found: error
           retention-days: 30
 
       - name: Install xcresultparser

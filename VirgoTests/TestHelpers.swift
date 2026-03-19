@@ -133,6 +133,17 @@ class TestContainer {
                 let serverSongs = try context.fetch(FetchDescriptor<ServerSong>())
                 serverSongs.forEach { context.delete($0) }
 
+                // Defensive: remove any orphaned children not caught by cascade
+                // (e.g. Charts/Notes/ServerCharts inserted directly by tests)
+                let charts = try context.fetch(FetchDescriptor<Chart>())
+                charts.forEach { context.delete($0) }
+
+                let notes = try context.fetch(FetchDescriptor<Note>())
+                notes.forEach { context.delete($0) }
+
+                let serverCharts = try context.fetch(FetchDescriptor<ServerChart>())
+                serverCharts.forEach { context.delete($0) }
+
                 // Force immediate persistence
                 try context.save()
                 

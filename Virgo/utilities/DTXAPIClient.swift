@@ -179,11 +179,28 @@ extension DTXAPIClient: DTXNetworking {
     }
 }
 
+// MARK: - Private URL Helpers
+
+private extension DTXAPIClient {
+    /// Builds a URL from baseURL by safely appending each path component.
+    /// Validates the base URL scheme (http/https) once, then uses
+    /// `appendingPathComponent` so reserved characters in each segment are
+    /// percent-encoded rather than passed through raw string interpolation.
+    func makeSafeURL(pathComponents: [String]) -> URL? {
+        guard let base = URL(string: baseURL),
+              let scheme = base.scheme,
+              scheme == "http" || scheme == "https" else {
+            return nil
+        }
+        return pathComponents.reduce(base) { $0.appendingPathComponent($1) }
+    }
+}
+
 // MARK: - File Operations Extension
 
 extension DTXAPIClient: DTXFileOperations {
     func listDTXFiles() async throws -> [DTXServerFile] {
-        guard let url = URL(string: "\(baseURL)/dtx/list") else {
+        guard let url = makeSafeURL(pathComponents: ["dtx", "list"]) else {
             throw DTXAPIError.invalidURL
         }
 
@@ -192,7 +209,7 @@ extension DTXAPIClient: DTXFileOperations {
     }
 
     func listDTXSongs() async throws -> [DTXServerSongData] {
-        guard let url = URL(string: "\(baseURL)/dtx/list") else {
+        guard let url = makeSafeURL(pathComponents: ["dtx", "list"]) else {
             throw DTXAPIError.invalidURL
         }
 
@@ -218,7 +235,7 @@ extension DTXAPIClient: DTXFileOperations {
     }
 
     func getDTXMetadata(filename: String) async throws -> DTXServerMetadata {
-        guard let url = URL(string: "\(baseURL)/dtx/metadata/\(filename)") else {
+        guard let url = makeSafeURL(pathComponents: ["dtx", "metadata", filename]) else {
             throw DTXAPIError.invalidURL
         }
 
@@ -237,32 +254,28 @@ extension DTXAPIClient: DTXFileOperations {
 
 extension DTXAPIClient: DTXDownloadOperations {
     func downloadDTXFile(filename: String) async throws -> Data {
-        guard let url = URL(string: "\(baseURL)/dtx/download/\(filename)"),
-              let scheme = url.scheme, scheme == "http" || scheme == "https" else {
+        guard let url = makeSafeURL(pathComponents: ["dtx", "download", filename]) else {
             throw DTXAPIError.invalidURL
         }
         return try await downloadData(from: url)
     }
 
     func downloadBGMFile(songId: String) async throws -> Data {
-        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/bgm.ogg"),
-              let scheme = url.scheme, scheme == "http" || scheme == "https" else {
+        guard let url = makeSafeURL(pathComponents: ["dtx", "download", songId, "bgm.ogg"]) else {
             throw DTXAPIError.invalidURL
         }
         return try await downloadData(from: url)
     }
 
     func downloadPreviewFile(songId: String) async throws -> Data {
-        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/preview.mp3"),
-              let scheme = url.scheme, scheme == "http" || scheme == "https" else {
+        guard let url = makeSafeURL(pathComponents: ["dtx", "download", songId, "preview.mp3"]) else {
             throw DTXAPIError.invalidURL
         }
         return try await downloadData(from: url)
     }
 
     func downloadChartFile(songId: String, chartFilename: String) async throws -> Data {
-        guard let url = URL(string: "\(baseURL)/dtx/download/\(songId)/\(chartFilename)"),
-              let scheme = url.scheme, scheme == "http" || scheme == "https" else {
+        guard let url = makeSafeURL(pathComponents: ["dtx", "download", songId, chartFilename]) else {
             throw DTXAPIError.invalidURL
         }
         return try await downloadData(from: url)
