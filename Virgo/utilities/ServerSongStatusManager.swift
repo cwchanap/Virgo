@@ -58,6 +58,7 @@ class ServerSongStatusManager {
     }
 
     /// Delete a local song from storage
+    @MainActor
     func deleteLocalSong(_ song: Song, container: ModelContainer) async -> Bool {
         let songTitle = song.title.lowercased()
         let songArtist = song.artist.lowercased()
