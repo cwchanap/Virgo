@@ -64,34 +64,32 @@ class ServerSongStatusManager {
         let songId = song.persistentModelID
         let backgroundContext = ModelContext(container)
 
-        return await Task {
-            do {
-                guard let songToDelete = try findSongInContext(songId: songId, context: backgroundContext) else {
-                    return true // Already deleted or not found
-                }
-
-                let bgmFilePath = songToDelete.bgmFilePath
-                let previewFilePath = songToDelete.previewFilePath
-
-                try deleteSongFromContext(songToDelete, context: backgroundContext)
-
-                _ = try updateServerSongStatus(
-                    songTitle: songTitle,
-                    songArtist: songArtist,
-                    songId: songId,
-                    context: backgroundContext
-                )
-
-                try saveContext(backgroundContext)
-                deleteAssociatedFiles(bgmPath: bgmFilePath, previewPath: previewFilePath)
-
-                return true
-            } catch {
-                backgroundContext.rollback()
-                Logger.debug("Delete error details: \(error)")
-                return false
+        do {
+            guard let songToDelete = try findSongInContext(songId: songId, context: backgroundContext) else {
+                return true // Already deleted or not found
             }
-        }.value
+
+            let bgmFilePath = songToDelete.bgmFilePath
+            let previewFilePath = songToDelete.previewFilePath
+
+            try deleteSongFromContext(songToDelete, context: backgroundContext)
+
+            _ = try updateServerSongStatus(
+                songTitle: songTitle,
+                songArtist: songArtist,
+                songId: songId,
+                context: backgroundContext
+            )
+
+            try saveContext(backgroundContext)
+            deleteAssociatedFiles(bgmPath: bgmFilePath, previewPath: previewFilePath)
+
+            return true
+        } catch {
+            backgroundContext.rollback()
+            Logger.debug("Delete error details: \(error)")
+            return false
+        }
     }
 
     /// Refresh download status for all server songs
