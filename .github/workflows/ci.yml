@@ -33,8 +33,12 @@ jobs:
           echo "Checking Assets.xcassets structure..."
           find ./Virgo/Assets.xcassets -type f | head -10
         
+      - name: Install test formatter and result parser
+        run: brew install xcbeautify xcresultparser
+
       - name: Run unit tests
         run: |
+          set -o pipefail
           xcodebuild test \
             -project Virgo.xcodeproj \
             -scheme Virgo \
@@ -46,20 +50,18 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             -enableCodeCoverage YES \
             -destination-timeout 300 \
-            -derivedDataPath ./DerivedData
-            
+            -derivedDataPath ./DerivedData \
+            -resultBundlePath ./DerivedData/TestResults.xcresult \
+          | xcbeautify
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: ./DerivedData/Logs/Test/*.xcresult
+          path: ./DerivedData/TestResults.xcresult
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Install xcresultparser
-        if: always()
-        run: brew install xcresultparser
 
       - name: Export Coverage Report
         if: always()
@@ -67,36 +69,33 @@ jobs:
           set -e
           COVERAGE_DIR="$GITHUB_WORKSPACE/coverage"
           COVERAGE_REPORT="$COVERAGE_DIR/cobertura.xml"
-          
-          echo "Finding xcresult bundles..."
-          RESULT_BUNDLES=(./DerivedData/Logs/Test/*.xcresult)
-          
-          if [ ! -e "${RESULT_BUNDLES[0]}" ]; then
-            echo "No xcresult bundle found at ./DerivedData/Logs/Test/"
+          RESULT_BUNDLE="./DerivedData/TestResults.xcresult"
+
+          if [ ! -e "$RESULT_BUNDLE" ]; then
+            echo "No xcresult bundle found at $RESULT_BUNDLE"
             mkdir -p "$COVERAGE_DIR"
             echo "No coverage available" > "$COVERAGE_REPORT"
             exit 0
           fi
-          
-          RESULT_BUNDLE="${RESULT_BUNDLES[0]}"
+
           echo "Found xcresult bundle: $RESULT_BUNDLE"
-          
+
           if ! xcrun xccov view --report "$RESULT_BUNDLE" >/dev/null 2>&1; then
             echo "No coverage report available in $RESULT_BUNDLE"
             mkdir -p "$COVERAGE_DIR"
             echo "No coverage available" > "$COVERAGE_REPORT"
             exit 0
           fi
-          
+
           mkdir -p "$COVERAGE_DIR"
           echo "Exporting coverage to Cobertura format..."
           xcresultparser --output-format cobertura --project-root "$GITHUB_WORKSPACE" "$RESULT_BUNDLE" > "$COVERAGE_REPORT" || true
-          
+
           if [ ! -s "$COVERAGE_REPORT" ]; then
             echo "Coverage export failed or produced empty file"
             echo "No coverage available" > "$COVERAGE_REPORT"
           fi
-          
+
           echo "Coverage report created at $COVERAGE_REPORT"
           ls -la "$COVERAGE_DIR"
 
