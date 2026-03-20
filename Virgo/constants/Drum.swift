@@ -226,5 +226,5 @@ extension DrumType {
 
 // MARK: - Beam Grouping Constants
 struct BeamGroupingConstants {
-    static let maxConsecutiveInterval: Double = 0.3
+    static let maxConsecutiveInterval: Double = 0.3 + 1e-9
 }

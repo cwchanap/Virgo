@@ -332,28 +332,28 @@ struct CombineTestUtilities {
             let timeoutTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
 
-                resumeLock.lock()
-                if !didResume {
+                let shouldResume = resumeLock.withLock {
+                    guard !didResume else { return false }
                     didResume = true
-                    resumeLock.unlock()
+                    return true
+                }
+                if shouldResume {
                     cancellable?.cancel()
                     continuation.resume(returning: false)
-                } else {
-                    resumeLock.unlock()
                 }
             }
 
             cancellable = publisher
                 .first(where: condition)
                 .sink { _ in
-                    resumeLock.lock()
-                    if !didResume {
+                    let shouldResume = resumeLock.withLock {
+                        guard !didResume else { return false }
                         didResume = true
-                        resumeLock.unlock()
+                        return true
+                    }
+                    if shouldResume {
                         timeoutTask.cancel()
                         continuation.resume(returning: true)
-                    } else {
-                        resumeLock.unlock()
                     }
                 }
         }

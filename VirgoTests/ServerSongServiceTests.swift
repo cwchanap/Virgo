@@ -683,9 +683,7 @@ struct ServerSongServiceTests {
             #expect(importedChart?.level == 88)
             #expect(importedChart?.notesCount == 1)
 
-            lock.lock()
-            let capturedPaths = requestedPaths
-            lock.unlock()
+            let capturedPaths = lock.withLock { requestedPaths }
             #expect(capturedPaths.contains("/dtx/download/networked-song/master.dtx"))
             #expect(capturedPaths.contains("/dtx/download/networked-song/bgm.ogg"))
             #expect(capturedPaths.contains("/dtx/download/networked-song/preview.mp3"))
