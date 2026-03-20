@@ -38,7 +38,7 @@ struct BeamGroupingHelper {
 
                     // Group notes if they're in the same measure and consecutive (within threshold time units)
                     if measureNumber == lastMeasureNumber &&
-                       timeDifference <= BeamGroupingConstants.maxConsecutiveInterval {
+                       timeDifference <= BeamGroupingConstants.maxConsecutiveInterval + BeamGroupingConstants.comparisonTolerance {
                         currentGroup.append(beat)
                     } else {
                         // Finish current group if it has 2+ notes
