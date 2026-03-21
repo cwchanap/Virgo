@@ -2,13 +2,13 @@ import Foundation
 import SwiftData
 
 /// Manages download and deletion status for server songs
-class ServerSongStatusManager {
+class ServerSongStatusManager: @unchecked Sendable {
     private let fileManager: ServerSongFileManager
-    private let saveContext: (ModelContext) throws -> Void
+    private let saveContext: @Sendable (ModelContext) throws -> Void
 
     init(
         fileManager: ServerSongFileManager = ServerSongFileManager(),
-        saveContext: @escaping (ModelContext) throws -> Void = { context in try context.save() }
+        saveContext: @escaping @Sendable (ModelContext) throws -> Void = { context in try context.save() }
     ) {
         self.fileManager = fileManager
         self.saveContext = saveContext
@@ -63,34 +63,36 @@ class ServerSongStatusManager {
         let songTitle = song.title.lowercased()
         let songArtist = song.artist.lowercased()
         let songId = song.persistentModelID
-        let backgroundContext = ModelContext(container)
 
-        do {
-            guard let songToDelete = try findSongInContext(songId: songId, context: backgroundContext) else {
-                return true // Already deleted or not found
+        return await Task.detached {
+            let backgroundContext = ModelContext(container)
+            do {
+                guard let songToDelete = try self.findSongInContext(songId: songId, context: backgroundContext) else {
+                    return true // Already deleted or not found
+                }
+
+                let bgmFilePath = songToDelete.bgmFilePath
+                let previewFilePath = songToDelete.previewFilePath
+
+                try self.deleteSongFromContext(songToDelete, context: backgroundContext)
+
+                _ = try self.updateServerSongStatus(
+                    songTitle: songTitle,
+                    songArtist: songArtist,
+                    songId: songId,
+                    context: backgroundContext
+                )
+
+                try self.saveContext(backgroundContext)
+                self.deleteAssociatedFiles(bgmPath: bgmFilePath, previewPath: previewFilePath)
+
+                return true
+            } catch {
+                backgroundContext.rollback()
+                Logger.debug("Delete error details: \(error)")
+                return false
             }
-
-            let bgmFilePath = songToDelete.bgmFilePath
-            let previewFilePath = songToDelete.previewFilePath
-
-            try deleteSongFromContext(songToDelete, context: backgroundContext)
-
-            _ = try updateServerSongStatus(
-                songTitle: songTitle,
-                songArtist: songArtist,
-                songId: songId,
-                context: backgroundContext
-            )
-
-            try saveContext(backgroundContext)
-            deleteAssociatedFiles(bgmPath: bgmFilePath, previewPath: previewFilePath)
-
-            return true
-        } catch {
-            backgroundContext.rollback()
-            Logger.debug("Delete error details: \(error)")
-            return false
-        }
+        }.value
     }
 
     /// Refresh download status for all server songs

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Handles BGM and preview file operations for server songs
-class ServerSongFileManager {
+class ServerSongFileManager: @unchecked Sendable {
 
     /// Save BGM file to local storage
     func saveBGMFile(_ data: Data, for songId: String) throws -> String {
