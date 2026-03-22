@@ -7,6 +7,7 @@
 
 import Testing
 import SwiftUI
+import AVFoundation
 @testable import Virgo
 
 private func timingEngineValue<T>(
@@ -16,6 +17,28 @@ private func timingEngineValue<T>(
 ) -> T? {
     let mirror = Mirror(reflecting: timingEngine)
     return mirror.children.first { $0.label == label }?.value as? T
+}
+
+@MainActor
+final class RecordingAudioDriver: AudioDriverProtocol {
+    private(set) var playedTicks: [(volume: Float, isAccented: Bool)] = []
+    private let audioTimeToReturn: AVAudioTime?
+
+    init(audioTimeToReturn: AVAudioTime? = nil) {
+        self.audioTimeToReturn = audioTimeToReturn
+    }
+
+    func playTick(volume: Float, isAccented: Bool, atTime: AVAudioTime?) {
+        playedTicks.append((volume: volume, isAccented: isAccented))
+    }
+
+    func stop() {}
+
+    func resume() {}
+
+    func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
+        audioTimeToReturn
+    }
 }
 
 @Suite("Metronome Engine Tests", .serialized)
@@ -143,6 +166,16 @@ struct MetronomeEngineTests {
         #expect(engine.currentBeat == 1) // Should reset beat
     }
 
+    @Test("MetronomeEngine update applies BPM and time signature together")
+    func testCombinedUpdate() {
+        let engine = MetronomeEngine()
+
+        engine.update(bpm: 180, timeSignature: .threeFour)
+
+        #expect(engine.bpm == 180)
+        #expect(engine.timeSignature == .threeFour)
+    }
+
     @Test("MetronomeEngine start/stop functionality")
     func testStartStop() async {
         // Add controlled delay with serialized execution for better isolation
@@ -187,6 +220,30 @@ struct MetronomeEngineTests {
         // Test with false (interruption ended)
         engine.onInterruption?(false)
         #expect(receivedInterrupted == false)
+    }
+
+    @Test("MetronomeEngine testClick forwards the current volume to the audio driver")
+    func testTestClickUsesAudioDriver() {
+        let driver = RecordingAudioDriver()
+        let engine = MetronomeEngine(audioDriver: driver)
+        engine.updateVolume(0.42)
+
+        engine.testClick()
+
+        #expect(driver.playedTicks.count == 1)
+        #expect(abs(driver.playedTicks[0].volume - 0.42) < 0.0001)
+        #expect(driver.playedTicks[0].isAccented == true)
+    }
+
+    @Test("MetronomeEngine forwards audio-time conversion to the audio driver")
+    func testConvertToAudioEngineTimeUsesAudioDriver() {
+        let expected = AVAudioTime(hostTime: 123_456)
+        let driver = RecordingAudioDriver(audioTimeToReturn: expected)
+        let engine = MetronomeEngine(audioDriver: driver)
+
+        let converted = engine.convertToAudioEngineTime(CFAbsoluteTimeGetCurrent())
+
+        #expect(converted?.hostTime == expected.hostTime)
     }
 }
 
@@ -280,6 +337,18 @@ struct MetronomeTimingEngineTests {
         #expect(timingEngine.timeSignature == .fourFour)
     }
 
+    @Test("MetronomeTimingEngine toggle starts and stops playback")
+    func testTimingEngineToggle() {
+        let timingEngine = MetronomeTimingEngine()
+
+        timingEngine.toggle()
+        #expect(timingEngine.isPlaying == true)
+
+        timingEngine.toggle()
+        #expect(timingEngine.isPlaying == false)
+        #expect(timingEngine.currentBeat == 1)
+    }
+
     @Test("MetronomeTimingEngine BPM updates correctly")
     func testTimingEngineBPMUpdate() {
         let timingEngine = MetronomeTimingEngine()
@@ -322,6 +391,22 @@ struct MetronomeTimingEngineTests {
 
         #expect(callbackTriggeredSuccessfully)
         #expect(receivedBeat >= 1)
+    }
+
+    @Test("MetronomeTimingEngine reports beat progress only while playing")
+    func testGetCurrentBeatProgress() {
+        let timingEngine = MetronomeTimingEngine()
+
+        #expect(timingEngine.getCurrentBeatProgress(timeSignature: .fourFour) == nil)
+
+        timingEngine.startAtTime(startTime: CFAbsoluteTimeGetCurrent() - 1.0, totalBeatsElapsed: 2)
+        let progress = timingEngine.getCurrentBeatProgress(timeSignature: .fourFour)
+
+        #expect(progress != nil)
+        #expect((progress?.totalBeats ?? 0) > 0)
+        #expect((progress?.beatInMeasure ?? -1) >= 0)
+
+        timingEngine.stop()
     }
 
     @Test("MetronomeEngine preserves beat phase when resuming")
