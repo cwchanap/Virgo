@@ -197,6 +197,86 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test("updateSettings ignores a different practice settings instance")
+    func testUpdateSettingsIgnoresDifferentPracticeSettingsInstance() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+        let practiceSettings = createTestPracticeSettings()
+        let otherSettings = createTestPracticeSettings()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let initialBPM = viewModel.effectiveBPM()
+        otherSettings.setSpeed(0.75)
+
+        viewModel.updateSettings(otherSettings)
+
+        #expect(abs(viewModel.effectiveBPM() - initialBPM) < 0.001)
+
+        viewModel.cleanup()
+    }
+
+    @Test("updateVisualElementsFromMetronome updates playback progress and indicators while playing")
+    func testUpdateVisualElementsFromMetronomeUpdatesPlaybackIndicators() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        let didStart = await CombineTestUtilities.performAndWait(
+            action: {
+                metronome.startAtTime(
+                    bpm: viewModel.effectiveBPM(),
+                    timeSignature: .fourFour,
+                    startTime: CFAbsoluteTimeGetCurrent() - 1.0
+                )
+            },
+            publisher: metronome.$isEnabled,
+            condition: { $0 == true },
+            timeout: 0.5
+        )
+        #expect(didStart, "Metronome should start before visual updates are calculated")
+
+        viewModel.updateVisualElementsFromMetronome()
+
+        #expect(viewModel.playbackProgress > 0.0)
+        #expect(viewModel.currentMeasureIndex == viewModel.totalBeatsElapsed / 4)
+        #expect(viewModel.currentBeatPosition >= 0.0)
+        #expect(viewModel.currentBeatPosition < 1.0)
+        #expect(abs(viewModel.currentBeatPosition - (Double(viewModel.totalBeatsElapsed % 4) / 4.0)) < 0.0001)
+        #expect(viewModel.totalBeatsElapsed >= 1)
+        #expect(viewModel.purpleBarPosition != nil)
+
+        metronome.stop()
+        viewModel.cleanup()
+    }
+
+    @Test("updateVisualElementsFromMetronome returns early when track duration was not initialized")
+    func testUpdateVisualElementsFromMetronomeSkipsWhenTrackDurationMissing() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.isPlaying = true
+        viewModel.currentMeasureIndex = 99
+        viewModel.currentBeatPosition = 0.25
+        viewModel.playbackProgress = 0.5
+
+        viewModel.updateVisualElementsFromMetronome()
+
+        #expect(viewModel.currentMeasureIndex == 99)
+        #expect(abs(viewModel.currentBeatPosition - 0.25) < 0.0001)
+        #expect(abs(viewModel.playbackProgress - 0.5) < 0.0001)
+
+        viewModel.cleanup()
+    }
+
     @Test func testRemainingBGMOffsetAccountsForPausedElapsedTime() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()

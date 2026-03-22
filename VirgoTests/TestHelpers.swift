@@ -10,6 +10,9 @@ import SwiftUI
 import SwiftData
 import Foundation
 import Combine
+#if os(macOS)
+import AppKit
+#endif
 @testable import Virgo
 
 // MARK: - Test Infrastructure
@@ -261,11 +264,41 @@ struct TestAssertions {
 
 @MainActor
 struct SwiftUITestUtilities {
-    static func assertViewWithEnvironment<V: View>(_ view: V, file: StaticString = #file, line: UInt = #line) {
-        // Basic SwiftUI view test utility - placeholder implementation
-        // This ensures that views can be instantiated without throwing errors
-        _ = view
-        #expect(true, "SwiftUI view creation test - placeholder implementation")
+    @discardableResult
+    static func assertViewWithEnvironment<V: View>(
+        _ view: V,
+        size: CGSize = CGSize(width: 1024, height: 768),
+        file: StaticString = #file,
+        line: UInt = #line
+    ) -> CGSize {
+        #if os(macOS)
+        let hostingView = NSHostingView(rootView: view)
+        hostingView.frame = CGRect(origin: .zero, size: size)
+
+        let window = NSWindow(
+            contentRect: CGRect(origin: .zero, size: size),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+
+        hostingView.layoutSubtreeIfNeeded()
+        hostingView.displayIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+
+        let renderedSize = hostingView.fittingSize
+        #expect(renderedSize.width >= 0)
+        #expect(renderedSize.height >= 0)
+
+        window.orderOut(nil)
+        window.contentView = nil
+        return renderedSize
+        #else
+        _ = view.body
+        return size
+        #endif
     }
 }
 
