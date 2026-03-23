@@ -263,6 +263,8 @@ struct GameplayViewModelTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
+        #expect(viewModel.track != nil, "loadChartData must succeed for this test to exercise the duration guard")
+        #expect(viewModel.cachedTrackDuration == 0.0, "cachedTrackDuration should be 0 before setupGameplay is called")
         viewModel.isPlaying = true
         viewModel.currentMeasureIndex = 99
         viewModel.currentBeatPosition = 0.25

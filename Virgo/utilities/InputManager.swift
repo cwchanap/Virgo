@@ -91,6 +91,7 @@ class InputManager: ObservableObject {
     // Timing calculation cache
     private var secondsPerBeat: Double = 0.5
     private var secondsPerMeasure: Double = 2.0
+    private var inputTimingMatcher: InputTimingMatcher?
     
     // Test environment detection
     private let isTestEnvironment: Bool
@@ -140,6 +141,7 @@ extension InputManager {
         // Update timing calculations with validated values
         self.secondsPerBeat = 60.0 / bpm
         self.secondsPerMeasure = secondsPerBeat * Double(timeSignature.beatsPerMeasure)
+        self.inputTimingMatcher = InputTimingMatcher(bpm: bpm, timeSignature: timeSignature, notes: self.notes)
     }
     
     func startListening(songStartTime: Date) {
@@ -187,7 +189,9 @@ extension InputManager {
     }
     
     private func calculateNoteMatch(for hit: InputHit, elapsedTime: Double) -> NoteMatchResult {
-        let matcher = InputTimingMatcher(bpm: bpm, timeSignature: timeSignature, notes: notes)
+        guard let matcher = inputTimingMatcher else {
+            preconditionFailure("InputManager.configure must be called before processing input")
+        }
         return matcher.calculateNoteMatch(for: hit, elapsedTime: elapsedTime)
     }
 }

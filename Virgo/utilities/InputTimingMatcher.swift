@@ -12,6 +12,8 @@ struct InputTimingMatcher {
     private let secondsPerMeasure: Double
 
     init(bpm: Double, timeSignature: TimeSignature, notes: [Note]) {
+        precondition(bpm.isFinite && bpm > 0, "BPM must be finite and > 0, got: \(bpm)")
+        precondition(timeSignature.beatsPerMeasure > 0, "beatsPerMeasure must be > 0, got: \(timeSignature.beatsPerMeasure)")
         self.timeSignature = timeSignature
         self.notes = notes
         self.secondsPerBeat = 60.0 / bpm
