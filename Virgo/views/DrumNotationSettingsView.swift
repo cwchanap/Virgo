@@ -453,9 +453,13 @@ struct DrumNotationSettingsView: View {
 
 class DrumNotationSettingsManager: ObservableObject {
     @Published private var notePositions: [DrumType: GameplayLayout.NotePosition] = [:]
-    
-    private let userDefaults = UserDefaults.standard
+
+    private let userDefaults: UserDefaults
     private let settingsKey = "DrumNotationSettings"
+
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
+    }
     
     func loadSettings() {
         var localPositions: [DrumType: GameplayLayout.NotePosition] = [:]

@@ -92,6 +92,34 @@ struct InputTimingMatcherTests {
         #expect(abs((greatResult.timingError ?? 0) - 40.0) < 0.0001)
         #expect(goodResult.timingAccuracy == .good)
         #expect(abs((goodResult.timingError ?? 0) - 80.0) < 0.0001)
+
+        // Lock in inclusive/exclusive boundary behavior around each threshold.
+        // expectedTime = 0.5s (measureNumber=1, measureOffset=0.25, bpm=120, 4/4)
+        // Decimal ms thresholds (25, 50, 100) cannot be represented exactly in binary
+        // floating point, so we use values clearly inside and just past each boundary.
+        let insidePerfect = matcher.calculateNoteMatch(for: hit, elapsedTime: 0.524) // ~24ms
+        #expect(insidePerfect.timingAccuracy == .perfect)
+        #expect(abs((insidePerfect.timingError ?? 0) - 24.0) < 0.2)
+
+        let pastPerfect = matcher.calculateNoteMatch(for: hit, elapsedTime: 0.526) // ~26ms
+        #expect(pastPerfect.timingAccuracy == .great)
+        #expect(abs((pastPerfect.timingError ?? 0) - 26.0) < 0.2)
+
+        let insideGreat = matcher.calculateNoteMatch(for: hit, elapsedTime: 0.549) // ~49ms
+        #expect(insideGreat.timingAccuracy == .great)
+        #expect(abs((insideGreat.timingError ?? 0) - 49.0) < 0.2)
+
+        let pastGreat = matcher.calculateNoteMatch(for: hit, elapsedTime: 0.551) // ~51ms
+        #expect(pastGreat.timingAccuracy == .good)
+        #expect(abs((pastGreat.timingError ?? 0) - 51.0) < 0.2)
+
+        let insideGood = matcher.calculateNoteMatch(for: hit, elapsedTime: 0.599) // ~99ms
+        #expect(insideGood.timingAccuracy == .good)
+        #expect(abs((insideGood.timingError ?? 0) - 99.0) < 0.2)
+
+        let pastGood = matcher.calculateNoteMatch(for: hit, elapsedTime: 0.601) // ~101ms
+        #expect(pastGood.timingAccuracy == .miss)
+        #expect(abs((pastGood.timingError ?? 0) - 101.0) < 0.2)
     }
 
     @Test("calculateNoteMatch preserves negative timing error for early hits in later measures")

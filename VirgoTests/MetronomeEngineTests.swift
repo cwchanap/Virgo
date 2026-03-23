@@ -407,6 +407,7 @@ struct MetronomeTimingEngineTests {
         #expect((progress?.beatInMeasure ?? -1) >= 0)
 
         timingEngine.stop()
+        #expect(timingEngine.getCurrentBeatProgress(timeSignature: .fourFour) == nil)
     }
 
     @Test("MetronomeEngine preserves beat phase when resuming")

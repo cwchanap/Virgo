@@ -22,7 +22,7 @@ struct SwiftUIRenderingCoverageTests {
             let view = NavigationStack {
                 SettingsView()
             }
-            .environmentObject(MetronomeEngine())
+            .environmentObject(MetronomeEngine(audioDriver: RecordingAudioDriver()))
 
             SwiftUITestUtilities.assertViewWithEnvironment(view)
         }
@@ -56,20 +56,10 @@ struct SwiftUIRenderingCoverageTests {
     @Test("DrumNotationSettingsManager persists custom positions and resets defaults")
     func testDrumNotationSettingsManagerPersistence() async throws {
         try await TestSetup.withTestSetup {
-            let userDefaults = UserDefaults.standard
-            let originalValue = userDefaults.object(forKey: drumNotationSettingsKey)
-
-            defer {
-                if let originalValue {
-                    userDefaults.set(originalValue, forKey: drumNotationSettingsKey)
-                } else {
-                    userDefaults.removeObject(forKey: drumNotationSettingsKey)
-                }
-            }
-
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
             userDefaults.removeObject(forKey: drumNotationSettingsKey)
 
-            let manager = DrumNotationSettingsManager()
+            let manager = DrumNotationSettingsManager(userDefaults: userDefaults)
             manager.loadSettings()
 
             for drumType in DrumType.allCases {
@@ -79,7 +69,7 @@ struct SwiftUIRenderingCoverageTests {
             manager.setNotePosition(.belowLine6, for: .snare)
             #expect(manager.getNotePosition(for: .snare) == .belowLine6)
 
-            let reloadedManager = DrumNotationSettingsManager()
+            let reloadedManager = DrumNotationSettingsManager(userDefaults: userDefaults)
             reloadedManager.loadSettings()
             #expect(reloadedManager.getNotePosition(for: .snare) == .belowLine6)
 

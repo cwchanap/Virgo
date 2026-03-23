@@ -289,6 +289,8 @@ struct SwiftUITestUtilities {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
 
         let renderedSize = hostingView.fittingSize
+        // fittingSize returns 0 for scrollable/list views that have no intrinsic content size
+        // (e.g. List, ScrollView), so we only assert non-negative here.
         #expect(renderedSize.width >= 0)
         #expect(renderedSize.height >= 0)
 
@@ -296,8 +298,7 @@ struct SwiftUITestUtilities {
         window.contentView = nil
         return renderedSize
         #else
-        _ = view.body
-        return size
+        fatalError("SwiftUITestUtilities.assertViewWithEnvironment is not supported on this platform")
         #endif
     }
 }
