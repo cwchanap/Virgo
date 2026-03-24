@@ -144,4 +144,25 @@ struct InputTimingMatcherTests {
         #expect(result.timingAccuracy == .good)
         #expect(abs((result.timingError ?? 0) + 80.0) < 0.0001)
     }
+
+    @Test("calculateNoteMatch keeps matched misses inside the wider search window")
+    func testCalculateNoteMatchKeepsMatchedMissesInsideSearchWindow() {
+        let targetKick = makeNote(noteType: .bass, measureNumber: 1, measureOffset: 0.25)
+        let matcher = InputTimingMatcher(
+            bpm: 120.0,
+            timeSignature: .fourFour,
+            notes: [targetKick]
+        )
+        let hit = InputHit(
+            drumType: .kick,
+            velocity: 1.0,
+            timestamp: Date(timeIntervalSinceReferenceDate: 500)
+        )
+
+        let result = matcher.calculateNoteMatch(for: hit, elapsedTime: 0.65)
+
+        #expect(result.matchedNote === targetKick)
+        #expect(result.timingAccuracy == .miss)
+        #expect(abs((result.timingError ?? 0) - 150.0) < 0.2)
+    }
 }
