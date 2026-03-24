@@ -283,6 +283,11 @@ struct SwiftUITestUtilities {
         )
         window.contentView = hostingView
         window.makeKeyAndOrderFront(nil)
+        defer {
+            window.orderOut(nil)
+            window.contentView = nil
+            window.close()
+        }
 
         hostingView.layoutSubtreeIfNeeded()
         hostingView.displayIfNeeded()
@@ -294,8 +299,6 @@ struct SwiftUITestUtilities {
         #expect(renderedSize.width >= 0)
         #expect(renderedSize.height >= 0)
 
-        window.orderOut(nil)
-        window.contentView = nil
         return renderedSize
         #else
         fatalError("SwiftUITestUtilities.assertViewWithEnvironment is not supported on this platform")

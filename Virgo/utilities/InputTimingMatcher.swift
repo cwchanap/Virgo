@@ -6,6 +6,9 @@
 import Foundation
 
 struct InputTimingMatcher {
+    // Wider than the scoring window so near-miss hits can still report timingError.
+    private static let searchWindowSeconds = 0.2
+
     private let timeSignature: TimeSignature
     private let notes: [Note]
     private let secondsPerBeat: Double
@@ -40,11 +43,10 @@ struct InputTimingMatcher {
     }
 
     private func findClosestNote(drumType: DrumType, elapsedTime: Double) -> Note? {
-        let searchWindowSeconds = 0.2
         let candidateNotes = notes.filter { note in
             guard DrumType.from(noteType: note.noteType) == drumType else { return false }
             let noteElapsedTime = calculateExpectedTime(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
-            return abs(elapsedTime - noteElapsedTime) <= searchWindowSeconds
+            return abs(elapsedTime - noteElapsedTime) <= Self.searchWindowSeconds
         }
 
         return candidateNotes.min { note1, note2 in
