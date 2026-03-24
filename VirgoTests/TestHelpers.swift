@@ -275,20 +275,6 @@ struct SwiftUITestUtilities {
         let hostingView = NSHostingView(rootView: view)
         hostingView.frame = CGRect(origin: .zero, size: size)
 
-        let window = NSWindow(
-            contentRect: CGRect(origin: .zero, size: size),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.contentView = hostingView
-        window.makeKeyAndOrderFront(nil)
-        defer {
-            window.orderOut(nil)
-            window.contentView = nil
-            window.close()
-        }
-
         hostingView.layoutSubtreeIfNeeded()
         hostingView.displayIfNeeded()
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
