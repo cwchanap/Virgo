@@ -9,6 +9,9 @@ import Testing
 import SwiftUI
 import Foundation
 import SwiftData
+#if os(macOS)
+import AppKit
+#endif
 @testable import Virgo
 
 @Suite("SwiftUI Rendering Coverage Tests", .serialized)
@@ -25,6 +28,21 @@ struct SwiftUIRenderingCoverageTests {
             .environmentObject(MetronomeEngine(audioDriver: RecordingAudioDriver()))
 
             SwiftUITestUtilities.assertViewWithEnvironment(view)
+        }
+    }
+
+    @Test("Render helper does not create visible windows")
+    func testRenderHelperDoesNotCreateVisibleWindows() async throws {
+        try await TestSetup.withTestSetup {
+            #if os(macOS)
+            let initialVisibleWindowCount = NSApp.windows.filter(\.isVisible).count
+
+            SwiftUITestUtilities.assertViewWithEnvironment(Text("Offscreen Render"))
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+            let finalVisibleWindowCount = NSApp.windows.filter(\.isVisible).count
+            #expect(finalVisibleWindowCount == initialVisibleWindowCount)
+            #endif
         }
     }
 
