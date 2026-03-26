@@ -504,4 +504,71 @@ struct MetronomeTimingEngineTests {
 
         timingEngine.stop()
     }
+
+    @Test("MetronomeTimingEngine clamps playback time and beat progress before a future scheduled start")
+    func testFutureScheduledStartClampsNegativeElapsedTime() {
+        let timingEngine = MetronomeTimingEngine()
+        timingEngine.bpm = 120
+        timingEngine.timeSignature = .fourFour
+
+        let futureStartTime = CFAbsoluteTimeGetCurrent() + 5.0
+        timingEngine.startAtTime(startTime: futureStartTime, totalBeatsElapsed: 6)
+
+        let playbackTime = timingEngine.getCurrentPlaybackTime()
+        let progress = timingEngine.getCurrentBeatProgress(timeSignature: .fourFour)
+
+        #expect(playbackTime != nil)
+        #expect((playbackTime ?? -1) >= 0)
+        #expect(progress != nil)
+        #expect((progress?.totalBeats ?? -1) >= 0)
+        #expect((progress?.beatInMeasure ?? -1) >= 0)
+        #expect((progress?.beatInMeasure ?? 4) < 4)
+
+        timingEngine.stop()
+    }
+
+    @Test("MetronomeTimingEngine stop clears scheduled timing state")
+    func testStopClearsScheduledTimingState() {
+        let timingEngine = MetronomeTimingEngine()
+        timingEngine.bpm = 120
+        timingEngine.startAtTime(startTime: 100.0, totalBeatsElapsed: 3)
+
+        timingEngine.stop()
+
+        let beatOffset = timingEngineValue(timingEngine, label: "beatOffset", as: Int.self)
+        let beatOriginTime = timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self)
+        let storedStartTime = timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+
+        #expect(timingEngine.isPlaying == false)
+        #expect(timingEngine.currentBeat == 1)
+        #expect(beatOffset == 0)
+        #expect(storedStartTime == 0)
+        #expect(beatOriginTime == 0)
+        #expect(timingEngine.getCurrentPlaybackTime() == nil)
+    }
+
+    @Test("MetronomeTimingEngine rebuilds timing origin after stop and reschedule")
+    func testRescheduleAfterStopRebuildsTimingOrigin() {
+        let timingEngine = MetronomeTimingEngine()
+        timingEngine.bpm = 120
+
+        timingEngine.startAtTime(startTime: 100.0, totalBeatsElapsed: 4)
+        timingEngine.stop()
+        timingEngine.startAtTime(startTime: 200.0, totalBeatsElapsed: 1)
+
+        let beatOffset = timingEngineValue(timingEngine, label: "beatOffset", as: Int.self)
+        let beatOriginTime = timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self)
+        let storedStartTime = timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+
+        #expect(timingEngine.currentBeat == 2)
+        #expect(beatOffset == 1)
+        #expect(storedStartTime == 200.0)
+        if let beatOriginTime {
+            #expect(abs(beatOriginTime - 199.5) < 0.0001)
+        } else {
+            #expect(Bool(false), "Expected beatOriginTime to be rebuilt")
+        }
+
+        timingEngine.stop()
+    }
 }
