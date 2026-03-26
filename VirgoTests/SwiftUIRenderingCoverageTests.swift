@@ -177,6 +177,140 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
+    @Test("SessionResultsView renders a verified new high score state")
+    func testSessionResultsViewRenderingForNewRecord() async throws {
+        try await TestSetup.withTestSetup {
+            let view = SessionResultsView(
+                finalScore: 2450,
+                highScore: 2450,
+                isNewRecord: true,
+                scoreEngine: makeScoreEngineForResults(),
+                onPlayAgain: {},
+                onDone: {}
+            )
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 900, height: 900)
+            )
+        }
+    }
+
+    @Test("SessionResultsView renders non-record results without the badge path")
+    func testSessionResultsViewRenderingWithoutRecordBadge() async throws {
+        try await TestSetup.withTestSetup {
+            var scoreEngine = ScoreEngine()
+            scoreEngine.processHit(accuracy: .great, timingError: 12.0)
+            scoreEngine.processHit(accuracy: .miss)
+
+            let view = SessionResultsView(
+                finalScore: 80,
+                highScore: 900,
+                isNewRecord: false,
+                scoreEngine: scoreEngine,
+                onPlayAgain: {},
+                onDone: {}
+            )
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 900, height: 900)
+            )
+        }
+    }
+
+    @Test("ProfileView renders inside a navigation stack")
+    func testProfileViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let view = NavigationStack {
+                ProfileView()
+            }
+
+            SwiftUITestUtilities.assertViewWithEnvironment(view)
+        }
+    }
+
+    @Test("InputSettingsView renders its default mapping state")
+    func testInputSettingsViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                InputSettingsView(),
+                size: CGSize(width: 1440, height: 1400)
+            )
+        }
+    }
+
+    @Test("InputSettingsView renders key capture overlay state")
+    func testInputSettingsViewRenderingWithCaptureOverlay() async throws {
+        try await TestSetup.withTestSetup {
+            var view = InputSettingsView()
+            view.startKeyCapture(for: .snare)
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1440, height: 1400)
+            )
+        }
+    }
+
+    @Test("MetronomeView renders practice tips and settings layout")
+    func testMetronomeViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let view = NavigationStack {
+                MetronomeView()
+            }
+            .environmentObject(MetronomeEngine(audioDriver: RecordingAudioDriver()))
+
+            SwiftUITestUtilities.assertViewWithEnvironment(view)
+        }
+    }
+
+    @Test("GameplayHeaderView renders score and transport controls")
+    func testGameplayHeaderViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = Chart(difficulty: .hard, level: 70)
+            let song = Song(
+                title: "Header Song",
+                artist: "Header Artist",
+                bpm: 160,
+                duration: "2:34",
+                genre: "Render Test",
+                charts: [chart]
+            )
+            chart.song = song
+            let track = DrumTrack(chart: chart)
+
+            let view = GameplayHeaderView(
+                track: track,
+                isPlaying: .constant(true),
+                viewModel: nil,
+                onDismiss: {},
+                onPlayPause: {},
+                onRestart: {}
+            )
+            .background(Color.black)
+
+            SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 1280, height: 120))
+        }
+    }
+
+    @Test("DrumBeatView renders simultaneous beamed notes")
+    func testDrumBeatViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let beat = DrumBeat(
+                id: 42,
+                drums: [.snare, .crash, .ride],
+                timePosition: 1.5,
+                interval: .eighth
+            )
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                DrumBeatView(beat: beat, isActive: true, row: 0, isBeamed: true),
+                size: CGSize(width: 240, height: 180)
+            )
+        }
+    }
+
     private func makeDownloadedSong(title: String) -> Song {
         let notes = [
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
@@ -231,5 +365,14 @@ struct SwiftUIRenderingCoverageTests {
 
         charts.forEach { $0.serverSong = song }
         return song
+    }
+
+    private func makeScoreEngineForResults() -> ScoreEngine {
+        var engine = ScoreEngine()
+        for _ in 0..<15 { engine.processHit(accuracy: .perfect, timingError: -8.0) }
+        for _ in 0..<5 { engine.processHit(accuracy: .great, timingError: 15.0) }
+        for _ in 0..<2 { engine.processHit(accuracy: .good, timingError: 45.0) }
+        for _ in 0..<3 { engine.processHit(accuracy: .miss) }
+        return engine
     }
 }

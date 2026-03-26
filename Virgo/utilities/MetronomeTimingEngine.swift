@@ -286,7 +286,7 @@ class MetronomeTimingEngine: ObservableObject {
     /// Get current playback time - same time reference used for audio scheduling
     func getCurrentPlaybackTime() -> TimeInterval? {
         guard isPlaying else { return nil }
-        return CFAbsoluteTimeGetCurrent() - startTime
+        return max(0, CFAbsoluteTimeGetCurrent() - startTime)
     }
     
     /// Get precise beat progress for visual synchronization
