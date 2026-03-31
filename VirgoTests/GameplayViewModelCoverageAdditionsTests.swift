@@ -226,13 +226,20 @@ struct GameplayViewModelCoverageAdditionsTests {
         await vm.loadChartData()
         vm.setupGameplay(loadPersistedSpeed: false)
 
+        // Baseline: 1× speed → effectiveBPM uses the 120 BPM fallback (chart has no song).
+        let bpmBefore = vm.effectiveBPM()
+        #expect(abs(bpmBefore - 120.0) < 0.001, "Pre-condition: effectiveBPM should be 120 at 1× speed")
+
         settings.setSpeed(0.75)
 
         // Guard in updateSettings checks `practiceSettings === self.practiceSettings`; this passes.
         vm.updateSettings(settings)
 
-        // applySpeedChangeInternal ran, so lastAppliedSpeedMultiplier was updated.
-        #expect(abs(settings.speedMultiplier - 0.75) < 0.001)
+        // applySpeedChangeInternal ran → effectiveBPM now reflects the new multiplier.
+        let bpmAfter = vm.effectiveBPM()
+        #expect(abs(bpmAfter - 90.0) < 0.001,
+                "effectiveBPM should be 90 (120 × 0.75) after updateSettings applied the speed change")
+        #expect(bpmAfter < bpmBefore, "effectiveBPM must decrease after slowing down to 0.75×")
 
         vm.cleanup()
     }
