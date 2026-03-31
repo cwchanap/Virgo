@@ -295,6 +295,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         vm.setupGameplay()
 
         #expect(vm.isPlaying == false)
+        vm.pausedElapsedTime = 5.0
 
         vm.restartPlayback()
 
