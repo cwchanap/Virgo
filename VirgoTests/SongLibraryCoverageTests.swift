@@ -332,12 +332,6 @@ struct SongLibraryCoverageTests {
             texts.append(contentsOf: extractTextLiterals(from: value))
         }
 
-        if let expandedChildren = expandForEachContent(from: value) {
-            for child in expandedChildren {
-                collectTexts(from: child, into: &texts, visited: &visited)
-            }
-        }
-
         for child in mirror.children {
             collectTexts(from: child.value, into: &texts, visited: &visited)
         }
@@ -380,48 +374,8 @@ struct SongLibraryCoverageTests {
             symbols.append(symbol)
         }
 
-        if let expandedChildren = expandForEachContent(from: value) {
-            for child in expandedChildren {
-                collectSymbols(from: child, into: &symbols, visited: &visited)
-            }
-        }
-
         for child in mirror.children {
             collectSymbols(from: child.value, into: &symbols, visited: &visited)
         }
-    }
-
-    private func expandForEachContent(from value: Any) -> [Any]? {
-        let mirror = Mirror(reflecting: value)
-        guard String(describing: mirror.subjectType).starts(with: "ForEach<"),
-              let data = mirror.children.first(where: { $0.label == "data" })?.value,
-              let content = mirror.children.first(where: { $0.label == "content" })?.value else {
-            return nil
-        }
-
-        switch data {
-        case let range as Range<Int>:
-            if let builder = content as? (Int) -> Text {
-                return range.map(builder)
-            }
-            if let builder = content as? (Int) -> DifficultyBadge {
-                return range.map(builder)
-            }
-        case let songs as [Song]:
-            if let builder = content as? (Song) -> SavedSongRow {
-                return songs.map(builder)
-            }
-            if let builder = content as? (Song) -> DownloadedSongRowWithDelete {
-                return songs.map(builder)
-            }
-        case let difficulties as [Difficulty]:
-            if let builder = content as? (Difficulty) -> DifficultyBadge {
-                return difficulties.map(builder)
-            }
-        default:
-            break
-        }
-
-        return nil
     }
 }
