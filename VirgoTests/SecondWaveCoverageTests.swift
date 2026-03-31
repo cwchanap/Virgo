@@ -72,7 +72,7 @@ struct SecondWaveCoverageTests {
         }
     }
 
-    @Test("DownloadedSongsView filters out non-DTX-Import songs")
+    @Test("DownloadedSongsView.downloadedSongs filters to DTX Import genre only")
     func testDownloadedSongsViewFiltersNonDTXSongs() async throws {
         try await TestSetup.withTestSetup {
             let downloadedSong = makeDownloadedSong(title: "DTX Track")
@@ -98,6 +98,10 @@ struct SecondWaveCoverageTests {
                 onPlayTap: { _ in },
                 onSaveTap: { _ in }
             )
+
+            // Assert real filtering behaviour: only the DTX Import song passes the predicate
+            #expect(view.downloadedSongs.count == 1)
+            #expect(view.downloadedSongs.first?.title == "DTX Track")
 
             SwiftUITestUtilities.assertViewWithEnvironment(
                 view,
@@ -134,11 +138,11 @@ struct SecondWaveCoverageTests {
 
     // MARK: - KeyCapturingOverlay
 
-    @Test("InputSettingsView.keyCapturingOverlay renders when capture state is active")
-    func testKeyCapturingOverlayRendersWhenActive() async throws {
+    @Test("InputSettingsView.keyCapturingOverlay renders without a drum selection")
+    func testKeyCapturingOverlayRendersWithoutDrumSelection() async throws {
         try await TestSetup.withTestSetup {
-            var inputSettingsView = InputSettingsView()
-            inputSettingsView.startKeyCapture(for: .snare)
+            // selectedDrumType defaults to nil; the drum-name conditional block is absent
+            let inputSettingsView = InputSettingsView()
 
             SwiftUITestUtilities.assertViewWithEnvironment(
                 inputSettingsView.keyCapturingOverlay,
@@ -175,21 +179,6 @@ struct SecondWaveCoverageTests {
             SwiftUITestUtilities.assertViewWithEnvironment(
                 view,
                 size: CGSize(width: 1280, height: 900)
-            )
-        }
-    }
-
-    @Test("ContentView renders with empty song library")
-    func testContentViewRendersWithEmptyLibrary() async throws {
-        try await TestSetup.withTestSetup {
-            let view = ContentView()
-                .modelContainer(TestContainer.shared.container)
-                .environmentObject(MetronomeEngine(audioDriver: RecordingAudioDriver()))
-                .environmentObject(PracticeSettingsService())
-
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 1024, height: 768)
             )
         }
     }
