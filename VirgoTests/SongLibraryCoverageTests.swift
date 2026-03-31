@@ -110,6 +110,7 @@ struct SongLibraryCoverageTests {
     @Test("ServerSongRow renders partial BGM download warning")
     func testServerSongRowPartialBGMState() async throws {
         try await TestSetup.withTestSetup {
+            // Only BGM is degraded; preview is absent so the preview indicator is not shown.
             let serverSong = SwiftUICoverageFixtures.makeServerSong(
                 title: "Missing BGM",
                 charts: [
@@ -117,7 +118,9 @@ struct SongLibraryCoverageTests {
                 ],
                 isDownloaded: true,
                 hasBGM: true,
-                bgmDownloaded: false
+                bgmDownloaded: false,
+                hasPreview: false,
+                previewDownloaded: false
             )
 
             assertView(
@@ -132,12 +135,15 @@ struct SongLibraryCoverageTests {
     @Test("ServerSongRow renders partial preview download warning")
     func testServerSongRowPartialPreviewState() async throws {
         try await TestSetup.withTestSetup {
+            // Only preview is degraded; BGM is absent so the BGM indicator is not shown.
             let serverSong = SwiftUICoverageFixtures.makeServerSong(
                 title: "Missing Preview",
                 charts: [
                     SwiftUICoverageFixtures.makeServerChart(level: 52, filename: "preview.dtx", size: 4_096)
                 ],
                 isDownloaded: true,
+                hasBGM: false,
+                bgmDownloaded: false,
                 hasPreview: true,
                 previewDownloaded: false
             )
@@ -198,7 +204,7 @@ struct SongLibraryCoverageTests {
         }
     }
 
-    @Test("LibraryView renders only populated downloaded songs")
+    @Test("LibraryView header reflects populated downloaded songs count")
     func testLibraryViewPopulatedState() async throws {
         try await TestSetup.withTestSetup {
             let downloadedSong = SwiftUICoverageFixtures.makeSong(
@@ -213,7 +219,7 @@ struct SongLibraryCoverageTests {
                     SwiftUICoverageFixtures.makeChart(
                         difficulty: .hard,
                         level: 65,
-                        notes: [SwiftUICoverageFixtures.makeNote(measureNumber: 2, noteType: .snare)]
+                        notes: [SwiftUICoverageFixtures.makeNote(noteType: .snare, measureNumber: 2)]
                     )
                 ]
             )
@@ -226,8 +232,8 @@ struct SongLibraryCoverageTests {
             #expect(downloadedSongs.first?.title == "Stored Groove")
             #expect(!downloadedSongs.contains { $0.title == "Streaming Only" })
 
-            // View assertion: header count is reachable via Mirror; song titles inside
-            // ForEach closures are not reachable, so only the count string is checked.
+            // View assertion: the header count is reachable via Mirror; song titles inside
+            // ForEach closures are not, so only the count string is verified here.
             assertView(
                 LibraryView(songs: allSongs, serverSongService: ServerSongService()),
                 containsStrings: ["Downloaded Songs", "1 songs downloaded"],
@@ -326,6 +332,12 @@ struct SongLibraryCoverageTests {
             texts.append(contentsOf: extractTextLiterals(from: value))
         }
 
+        if let expandedChildren = expandForEachContent(from: value) {
+            for child in expandedChildren {
+                collectTexts(from: child, into: &texts, visited: &visited)
+            }
+        }
+
         for child in mirror.children {
             collectTexts(from: child.value, into: &texts, visited: &visited)
         }
@@ -368,8 +380,48 @@ struct SongLibraryCoverageTests {
             symbols.append(symbol)
         }
 
+        if let expandedChildren = expandForEachContent(from: value) {
+            for child in expandedChildren {
+                collectSymbols(from: child, into: &symbols, visited: &visited)
+            }
+        }
+
         for child in mirror.children {
             collectSymbols(from: child.value, into: &symbols, visited: &visited)
         }
+    }
+
+    private func expandForEachContent(from value: Any) -> [Any]? {
+        let mirror = Mirror(reflecting: value)
+        guard String(describing: mirror.subjectType).starts(with: "ForEach<"),
+              let data = mirror.children.first(where: { $0.label == "data" })?.value,
+              let content = mirror.children.first(where: { $0.label == "content" })?.value else {
+            return nil
+        }
+
+        switch data {
+        case let range as Range<Int>:
+            if let builder = content as? (Int) -> Text {
+                return range.map(builder)
+            }
+            if let builder = content as? (Int) -> DifficultyBadge {
+                return range.map(builder)
+            }
+        case let songs as [Song]:
+            if let builder = content as? (Song) -> SavedSongRow {
+                return songs.map(builder)
+            }
+            if let builder = content as? (Song) -> DownloadedSongRowWithDelete {
+                return songs.map(builder)
+            }
+        case let difficulties as [Difficulty]:
+            if let builder = content as? (Difficulty) -> DifficultyBadge {
+                return difficulties.map(builder)
+            }
+        default:
+            break
+        }
+
+        return nil
     }
 }
