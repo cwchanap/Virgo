@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 //
 //  GameplayViewModelCoverageAdditionsTests.swift
 //  VirgoTests
@@ -416,4 +415,3 @@ struct GameplayViewModelCoverageAdditionsTests {
         #expect(vm.pausedElapsedTime >= 1.4, "Should accumulate ~1.5 s from playbackStartTime fallback")
     }
 }
-// swiftlint:enable file_length
