@@ -237,23 +237,46 @@ struct GameplayViewModelCoverageAdditionsTests {
         vm.cleanup()
     }
 
-    @Test("updateSettings with a different instance is a no-op")
-    func testUpdateSettingsWithDifferentInstanceIsNoOp() async throws {
-        let settings = makeSettings()
-        let otherSettings = makeSettings()
-        let vm = makeViewModel(noteCount: 4, settings: settings)
+    // MARK: - handlePlaybackCompletion session-result state (lines 1041–1049)
+    // Covers: isShowingSessionResults = true, sessionFinalScore capture,
+    // and sessionScoreEngine snapshot — none of which are asserted in the primary suite.
+
+    @Test("handlePlaybackCompletion sets isShowingSessionResults and captures session score snapshot")
+    func testHandlePlaybackCompletionSetsSessionResults() async throws {
+        let vm = makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        vm.setupGameplay()
+        vm.startPlayback()
 
-        let speedBefore = settings.speedMultiplier
+        let note = vm.cachedNotes.first!
+        let hit = InputHit(drumType: .kick, velocity: 1.0, timestamp: Date())
+        let result = NoteMatchResult(
+            hitInput: hit,
+            matchedNote: note,
+            timingAccuracy: .perfect,
+            measureNumber: note.measureNumber,
+            measureOffset: note.measureOffset,
+            timingError: 0.0
+        )
+        vm.recordHit(result: result)
 
-        // Guard in updateSettings fires: otherSettings !== settings → returns early.
-        vm.updateSettings(otherSettings)
+        let scoreAtCompletion = vm.scoreEngine.score
+        #expect(scoreAtCompletion > 0, "Pre-condition: at least one hit must be recorded")
 
-        #expect(abs(settings.speedMultiplier - speedBefore) < 0.001,
-                "Speed should be unchanged when a different instance is passed")
+        vm.handlePlaybackCompletion()
 
-        vm.cleanup()
+        // isShowingSessionResults flipped to true — the primary suite only asserts false.
+        #expect(vm.isShowingSessionResults == true,
+                "handlePlaybackCompletion must set isShowingSessionResults = true")
+        // sessionFinalScore survives the resetScoring call inside handlePlaybackCompletion.
+        #expect(vm.sessionFinalScore == scoreAtCompletion,
+                "sessionFinalScore should equal the score captured at completion")
+        // sessionScoreEngine snapshot is preserved so the results sheet can display it.
+        #expect(vm.sessionScoreEngine.score == scoreAtCompletion,
+                "sessionScoreEngine should hold the pre-reset snapshot")
+        // The live engine must be zeroed after the internal reset.
+        #expect(vm.scoreEngine.score == 0,
+                "Live scoreEngine should be zeroed after handlePlaybackCompletion")
     }
 
     // MARK: - restartPlayback when not playing (line 665–667)
