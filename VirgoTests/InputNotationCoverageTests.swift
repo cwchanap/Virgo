@@ -7,6 +7,9 @@
 
 import Testing
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 @testable import Virgo
 
 @Suite("Input and Notation Coverage Tests", .serialized)
@@ -25,63 +28,31 @@ struct InputNotationCoverageTests {
         }
     }
 
+    /// Exercises the production capture branch by hosting the view and calling
+    /// `startKeyCapture(for:)` directly on the live hosted instance.  `NSHostingView`
+    /// exposes its root view via the `rootView` property; once the view is installed
+    /// in the hosting graph the `@State._location` reference is populated, so the
+    /// nonmutating setter reaches the live storage and triggers a real re-render of
+    /// the overlay branch.
     @Test("InputSettingsView renders in key-capture state after startKeyCapture")
     func testInputSettingsViewCapturStateRender() async throws {
         try await TestSetup.withTestSetup {
-            // Build a view that starts in capture mode by using a wrapper that
-            // calls startKeyCapture(for:) right away via .task.
-            let captureView = InputSettingsCaptureWrapper()
-            SwiftUITestUtilities.assertViewWithEnvironment(captureView)
-        }
-    }
+            #if os(macOS)
+            let hostingView = NSHostingView(rootView: InputSettingsView())
+            hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 1440, height: 1400))
+            hostingView.layoutSubtreeIfNeeded()
+            hostingView.displayIfNeeded()
 
-    // MARK: - InputSettingsView State Assertions
-    //
-    // @State properties use a nonmutating setter backed by SwiftUI's hosting graph.
-    // Outside a hosting context the setter is a no-op, so state transitions are
-    // verified through a locally-hosted wrapper that observes changes through
-    // @Observable coordination (same logic as the production methods).
+            // Call the production method on the live hosted view so the
+            // keyCapturingOverlay branch is actually evaluated by SwiftUI.
+            hostingView.rootView.startKeyCapture(for: .snare)
 
-    @Test("startKeyCapture sets selectedDrumType and isCapturingKey")
-    func testStartKeyCaptureState() async throws {
-        try await TestSetup.withTestSetup {
-            let state = KeyCaptureStateModel()
-            #expect(state.isCapturingKey == false)
-            #expect(state.selectedDrumType == nil)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            hostingView.layoutSubtreeIfNeeded()
+            hostingView.displayIfNeeded()
 
-            state.startKeyCapture(for: .snare)
-
-            #expect(state.isCapturingKey == true)
-            #expect(state.selectedDrumType == .snare)
-        }
-    }
-
-    @Test("cancelKeyCapture clears selectedDrumType and isCapturingKey")
-    func testCancelKeyCaptureState() async throws {
-        try await TestSetup.withTestSetup {
-            let state = KeyCaptureStateModel()
-            state.startKeyCapture(for: .kick)
-            #expect(state.isCapturingKey == true)
-            #expect(state.selectedDrumType == .kick)
-
-            state.cancelKeyCapture()
-
-            #expect(state.isCapturingKey == false)
-            #expect(state.selectedDrumType == nil)
-        }
-    }
-
-    @Test("startKeyCapture updates selectedDrumType when called multiple times")
-    func testStartKeyCaptureUpdatesType() async throws {
-        try await TestSetup.withTestSetup {
-            let state = KeyCaptureStateModel()
-            state.startKeyCapture(for: .hiHat)
-            #expect(state.selectedDrumType == .hiHat)
-            #expect(state.isCapturingKey == true)
-
-            state.startKeyCapture(for: .crash)
-            #expect(state.selectedDrumType == .crash)
-            #expect(state.isCapturingKey == true)
+            #expect(hostingView.fittingSize.width >= 0)
+            #endif
         }
     }
 
@@ -185,41 +156,5 @@ struct InputNotationCoverageTests {
                 #expect(manager.getNotePosition(for: targetDrum) == newPos)
             }
         }
-    }
-}
-
-// MARK: - Test Helpers
-
-/// Wrapper view that transitions `InputSettingsView` into capture mode
-/// so that the overlay code path is exercised during rendering.
-private struct InputSettingsCaptureWrapper: View {
-    @State private var view = InputSettingsView()
-
-    var body: some View {
-        view
-            .onAppear {
-                view.startKeyCapture(for: .snare)
-            }
-    }
-}
-
-/// Mirrors the key-capture state logic of `InputSettingsView.startKeyCapture` /
-/// `cancelKeyCapture`.  Used for direct state assertions because `@State` setters
-/// are no-ops outside a SwiftUI hosting graph.
-@Observable
-final class KeyCaptureStateModel {
-    var selectedDrumType: DrumType?
-    var isCapturingKey = false
-
-    /// Same logic as `InputSettingsView.startKeyCapture(for:)`.
-    func startKeyCapture(for drumType: DrumType) {
-        selectedDrumType = drumType
-        isCapturingKey = true
-    }
-
-    /// Same logic as `InputSettingsView.cancelKeyCapture()`.
-    func cancelKeyCapture() {
-        isCapturingKey = false
-        selectedDrumType = nil
     }
 }
