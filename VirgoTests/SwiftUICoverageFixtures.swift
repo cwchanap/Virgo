@@ -2,92 +2,61 @@
 //  SwiftUICoverageFixtures.swift
 //  VirgoTests
 //
-//  Created by Copilot on coverage-app-target-plus-ten task.
+//  Created by Copilot on 31/3/2026.
 //
 
-import SwiftUI
-import SwiftData
+import Foundation
 @testable import Virgo
 
-// MARK: - Coverage Fixtures
-
-/// Shared fixture builders for song library coverage tests.
 @MainActor
 enum SwiftUICoverageFixtures {
-
-    // MARK: ServerChart
-
-    static func makeServerChart(
-        difficulty: String = "hard",
-        difficultyLabel: String = "EXTREME",
-        level: Int,
-        filename: String,
-        size: Int
-    ) -> ServerChart {
-        ServerChart(
-            difficulty: difficulty,
-            difficultyLabel: difficultyLabel,
-            level: level,
-            filename: filename,
-            size: size
-        )
-    }
-
-    // MARK: ServerSong
-
-    static func makeServerSong(
-        title: String = "Fixture Song",
-        charts: [ServerChart] = [],
-        isDownloaded: Bool = false,
-        hasBGM: Bool = true,
-        bgmDownloaded: Bool = false,
-        hasPreview: Bool = true,
-        previewDownloaded: Bool = false
-    ) -> ServerSong {
-        // Do not set serverSong back-references here; passing charts in the init
-        // is sufficient. Setting the inverse after init causes duplication in
-        // SwiftData's in-memory relationship tracking.
-        ServerSong(
-            songId: title.lowercased().replacingOccurrences(of: " ", with: "-"),
-            title: title,
-            artist: "Fixture Artist",
-            bpm: 140.0,
-            charts: charts,
-            isDownloaded: isDownloaded,
-            hasBGM: hasBGM,
-            bgmDownloaded: bgmDownloaded,
-            hasPreview: hasPreview,
-            previewDownloaded: previewDownloaded
-        )
-    }
-
-    // MARK: Note / Chart / Song
-
     static func makeNote(
-        measureNumber: Int = 1,
-        noteType: NoteType = .bass,
         interval: NoteInterval = .quarter,
-        measureOffset: Double = 0.0
+        noteType: NoteType = .bass,
+        measureNumber: Int = 1,
+        measureOffset: Double = 0.0,
+        chart: Chart? = nil
     ) -> Note {
-        Note(interval: interval, noteType: noteType, measureNumber: measureNumber, measureOffset: measureOffset)
+        Note(
+            interval: interval,
+            noteType: noteType,
+            measureNumber: measureNumber,
+            measureOffset: measureOffset,
+            chart: chart
+        )
     }
 
     static func makeChart(
-        difficulty: Difficulty = .hard,
+        difficulty: Difficulty = .medium,
         level: Int? = nil,
-        notes: [Note] = []
+        timeSignature: TimeSignature? = nil,
+        notes: [Note] = [],
+        song: Song? = nil
     ) -> Chart {
-        Chart(difficulty: difficulty, level: level, notes: notes)
+        let chart = Chart(
+            difficulty: difficulty,
+            level: level,
+            timeSignature: timeSignature,
+            notes: notes,
+            song: song
+        )
+        notes.forEach { $0.chart = chart }
+        return chart
     }
 
     static func makeSong(
         title: String = "Fixture Song",
         artist: String = "Fixture Artist",
-        bpm: Double = 128.0,
-        duration: String = "3:00",
+        bpm: Double = 128,
+        duration: String = "2:15",
         genre: String = "DTX Import",
+        timeSignature: TimeSignature = .fourFour,
         charts: [Chart] = [],
-        isSaved: Bool = true
+        isPlaying: Bool = false,
+        playCount: Int = 0,
+        isSaved: Bool = true,
+        bgmFilePath: String? = nil,
+        previewFilePath: String? = nil
     ) -> Song {
         let song = Song(
             title: title,
@@ -95,39 +64,63 @@ enum SwiftUICoverageFixtures {
             bpm: bpm,
             duration: duration,
             genre: genre,
+            timeSignature: timeSignature,
             charts: charts,
-            isSaved: isSaved
+            isPlaying: isPlaying,
+            playCount: playCount,
+            isSaved: isSaved,
+            bgmFilePath: bgmFilePath,
+            previewFilePath: previewFilePath
         )
+        // Only wire the song→chart back-reference here. Note→chart wiring is
+        // already handled inside makeChart, so re-wiring it here would duplicate state.
         charts.forEach { $0.song = song }
         return song
     }
 
-    // MARK: Song (downloaded/local) - legacy helper
-
-    /// Creates a `Song` with the "DTX Import" genre so `LibraryView.downloadedSongs` picks it up.
-    static func makeDownloadedSong(
-        title: String = "Downloaded Song",
-        difficulties: [Difficulty] = [.hard]
-    ) -> Song {
-        let charts = difficulties.enumerated().map { idx, diff -> Chart in
-            let notes = [
-                Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-                Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.5)
-            ]
-            let chart = Chart(difficulty: diff, level: 50 + idx * 10, notes: notes)
-            notes.forEach { $0.chart = chart }
-            return chart
-        }
-        let song = Song(
-            title: title,
-            artist: "Library Artist",
-            bpm: 128.0,
-            duration: "3:00",
-            genre: "DTX Import",
-            charts: charts,
-            isSaved: true
+    static func makeServerChart(
+        difficulty: String = "medium",
+        difficultyLabel: String = "STANDARD",
+        level: Int = 50,
+        filename: String = "test.dtx",
+        size: Int = 1_024,
+        serverSong: ServerSong? = nil
+    ) -> ServerChart {
+        ServerChart(
+            difficulty: difficulty,
+            difficultyLabel: difficultyLabel,
+            level: level,
+            filename: filename,
+            size: size,
+            serverSong: serverSong
         )
-        charts.forEach { $0.song = song }
-        return song
+    }
+
+    static func makeServerSong(
+        songId: String? = nil,
+        title: String = "Fixture Server Song",
+        artist: String = "Fixture Server Artist",
+        bpm: Double = 150,
+        charts: [ServerChart] = [],
+        isDownloaded: Bool = false,
+        hasBGM: Bool = false,
+        bgmDownloaded: Bool = false,
+        hasPreview: Bool = false,
+        previewDownloaded: Bool = false
+    ) -> ServerSong {
+        let resolvedSongId = songId ?? title.lowercased().replacingOccurrences(of: " ", with: "-")
+        let serverSong = ServerSong(
+            songId: resolvedSongId,
+            title: title,
+            artist: artist,
+            bpm: bpm,
+            charts: charts,
+            isDownloaded: isDownloaded,
+            hasBGM: hasBGM,
+            bgmDownloaded: bgmDownloaded,
+            hasPreview: hasPreview,
+            previewDownloaded: previewDownloaded
+        )
+        return serverSong
     }
 }
