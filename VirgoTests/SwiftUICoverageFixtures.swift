@@ -13,20 +13,41 @@ import SwiftData
 
 /// Shared fixture builders for song library coverage tests.
 @MainActor
-enum SongLibraryFixtures {
+enum SwiftUICoverageFixtures {
+
+    // MARK: ServerChart
+
+    static func makeServerChart(
+        difficulty: String = "hard",
+        difficultyLabel: String = "EXTREME",
+        level: Int,
+        filename: String,
+        size: Int
+    ) -> ServerChart {
+        ServerChart(
+            difficulty: difficulty,
+            difficultyLabel: difficultyLabel,
+            level: level,
+            filename: filename,
+            size: size
+        )
+    }
 
     // MARK: ServerSong
 
     static func makeServerSong(
         title: String = "Fixture Song",
+        charts: [ServerChart] = [],
         isDownloaded: Bool = false,
         hasBGM: Bool = true,
         bgmDownloaded: Bool = false,
         hasPreview: Bool = true,
-        previewDownloaded: Bool = false,
-        charts: [ServerChart] = []
+        previewDownloaded: Bool = false
     ) -> ServerSong {
-        let song = ServerSong(
+        // Do not set serverSong back-references here; passing charts in the init
+        // is sufficient. Setting the inverse after init causes duplication in
+        // SwiftData's in-memory relationship tracking.
+        ServerSong(
             songId: title.lowercased().replacingOccurrences(of: " ", with: "-"),
             title: title,
             artist: "Fixture Artist",
@@ -38,69 +59,61 @@ enum SongLibraryFixtures {
             hasPreview: hasPreview,
             previewDownloaded: previewDownloaded
         )
-        // Do not set serverSong back-references here; passing charts in the init
-        // is sufficient. Setting the inverse after init causes duplication in
-        // SwiftData's in-memory relationship tracking.
+    }
+
+    // MARK: Note / Chart / Song
+
+    static func makeNote(
+        measureNumber: Int = 1,
+        noteType: NoteType = .bass,
+        interval: NoteInterval = .quarter,
+        measureOffset: Double = 0.0
+    ) -> Note {
+        Note(interval: interval, noteType: noteType, measureNumber: measureNumber, measureOffset: measureOffset)
+    }
+
+    static func makeChart(
+        difficulty: Difficulty = .hard,
+        level: Int? = nil,
+        notes: [Note] = []
+    ) -> Chart {
+        Chart(difficulty: difficulty, level: level, notes: notes)
+    }
+
+    static func makeSong(
+        title: String = "Fixture Song",
+        artist: String = "Fixture Artist",
+        bpm: Double = 128.0,
+        duration: String = "3:00",
+        genre: String = "DTX Import",
+        charts: [Chart] = [],
+        isSaved: Bool = true
+    ) -> Song {
+        let song = Song(
+            title: title,
+            artist: artist,
+            bpm: bpm,
+            duration: duration,
+            genre: genre,
+            charts: charts,
+            isSaved: isSaved
+        )
+        charts.forEach { $0.song = song }
         return song
     }
 
-    static func makeSingleChartServerSong(
-        title: String = "Single Chart Song",
-        isDownloaded: Bool = false
-    ) -> ServerSong {
-        let chart = ServerChart(
-            difficulty: "hard",
-            difficultyLabel: "EXTREME",
-            level: 70,
-            filename: "extreme.dtx",
-            size: 2048
-        )
-        return makeServerSong(
-            title: title,
-            isDownloaded: isDownloaded,
-            charts: [chart]
-        )
-    }
-
-    static func makeMultiChartServerSong(
-        title: String = "Multi Chart Song",
-        isDownloaded: Bool = false
-    ) -> ServerSong {
-        let charts = [
-            ServerChart(
-                difficulty: "easy",
-                difficultyLabel: "BASIC",
-                level: 25,
-                filename: "basic.dtx",
-                size: 512
-            ),
-            ServerChart(
-                difficulty: "hard",
-                difficultyLabel: "EXTREME",
-                level: 72,
-                filename: "extreme.dtx",
-                size: 2048
-            )
-        ]
-        return makeServerSong(
-            title: title,
-            isDownloaded: isDownloaded,
-            charts: charts
-        )
-    }
-
-    // MARK: Song (downloaded/local)
+    // MARK: Song (downloaded/local) - legacy helper
 
     /// Creates a `Song` with the "DTX Import" genre so `LibraryView.downloadedSongs` picks it up.
     static func makeDownloadedSong(
         title: String = "Downloaded Song",
         difficulties: [Difficulty] = [.hard]
     ) -> Song {
-        let notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.5)
-        ]
         let charts = difficulties.enumerated().map { idx, diff -> Chart in
+            let notes = [
+                Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
+                Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.5)
+            ]
             let chart = Chart(difficulty: diff, level: 50 + idx * 10, notes: notes)
             notes.forEach { $0.chart = chart }
             return chart
