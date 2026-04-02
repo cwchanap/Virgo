@@ -290,6 +290,118 @@ struct SwiftUITestUtilities {
         fatalError("SwiftUITestUtilities.assertViewWithEnvironment is not supported on this platform")
         #endif
     }
+
+    static func assertView<V: View>(
+        _ view: V,
+        containsStrings: [String],
+        excludesStrings: [String] = [],
+        containsSymbols: [String] = [],
+        excludesSymbols: [String] = [],
+        size: CGSize = CGSize(width: 1_280, height: 900)
+    ) {
+        assertViewWithEnvironment(view, size: size)
+
+        let texts = renderedTexts(from: view.body)
+        let symbols = renderedSymbols(from: view.body)
+
+        for string in containsStrings {
+            #expect(texts.contains(string), "Expected rendered texts to include '\(string)', got \(texts)")
+        }
+
+        for string in excludesStrings {
+            #expect(!texts.contains(string), "Expected rendered texts to exclude '\(string)', got \(texts)")
+        }
+
+        for symbol in containsSymbols {
+            #expect(symbols.contains(symbol), "Expected rendered symbols to include '\(symbol)', got \(symbols)")
+        }
+
+        for symbol in excludesSymbols {
+            #expect(!symbols.contains(symbol), "Expected rendered symbols to exclude '\(symbol)', got \(symbols)")
+        }
+    }
+
+    static func renderedTexts(from value: Any) -> [String] {
+        var texts: [String] = []
+        var visited = Set<ObjectIdentifier>()
+        collectTexts(from: value, into: &texts, visited: &visited)
+        return texts
+    }
+
+    static func renderedSymbols(from value: Any) -> [String] {
+        var symbols: [String] = []
+        var visited = Set<ObjectIdentifier>()
+        collectSymbols(from: value, into: &symbols, visited: &visited)
+        return symbols
+    }
+
+    private static func collectTexts(
+        from value: Any,
+        into texts: inout [String],
+        visited: inout Set<ObjectIdentifier>
+    ) {
+        let mirror = Mirror(reflecting: value)
+
+        if shouldSkipCycle(for: value, mirror: mirror, visited: &visited) {
+            return
+        }
+
+        if String(describing: mirror.subjectType) == "Text" {
+            texts.append(contentsOf: extractTextLiterals(from: value))
+        }
+
+        for child in mirror.children {
+            collectTexts(from: child.value, into: &texts, visited: &visited)
+        }
+    }
+
+    private static func collectSymbols(
+        from value: Any,
+        into symbols: inout [String],
+        visited: inout Set<ObjectIdentifier>
+    ) {
+        let mirror = Mirror(reflecting: value)
+
+        if shouldSkipCycle(for: value, mirror: mirror, visited: &visited) {
+            return
+        }
+
+        if let label = mirror.children.first(where: { $0.label == "systemSymbol" }),
+           let symbol = label.value as? String {
+            symbols.append(symbol)
+        }
+
+        for child in mirror.children {
+            collectSymbols(from: child.value, into: &symbols, visited: &visited)
+        }
+    }
+
+    private static func shouldSkipCycle(
+        for value: Any,
+        mirror: Mirror,
+        visited: inout Set<ObjectIdentifier>
+    ) -> Bool {
+        guard mirror.displayStyle == .class else { return false }
+
+        let objectId = ObjectIdentifier(value as AnyObject)
+        return !visited.insert(objectId).inserted
+    }
+
+    private static func extractTextLiterals(from value: Any) -> [String] {
+        var results: [String] = []
+        let description = String(describing: value)
+
+        if let openingQuote = description.firstIndex(of: "\""),
+           let closingQuote = description.lastIndex(of: "\""),
+           openingQuote < closingQuote {
+            let text = String(description[description.index(after: openingQuote)..<closingQuote])
+            if !text.isEmpty {
+                results.append(text)
+            }
+        }
+
+        return results
+    }
 }
 
 // MARK: - Test Helpers

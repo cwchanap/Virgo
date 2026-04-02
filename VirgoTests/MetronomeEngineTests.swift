@@ -22,6 +22,8 @@ private func timingEngineValue<T>(
 @MainActor
 final class RecordingAudioDriver: AudioDriverProtocol {
     private(set) var playedTicks: [(volume: Float, isAccented: Bool)] = []
+    private(set) var resumeCallCount = 0
+    private(set) var stopCallCount = 0
     private let audioTimeToReturn: AVAudioTime?
 
     init(audioTimeToReturn: AVAudioTime? = nil) {
@@ -32,9 +34,13 @@ final class RecordingAudioDriver: AudioDriverProtocol {
         playedTicks.append((volume: volume, isAccented: isAccented))
     }
 
-    func stop() {}
+    func stop() {
+        stopCallCount += 1
+    }
 
-    func resume() {}
+    func resume() {
+        resumeCallCount += 1
+    }
 
     func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
         audioTimeToReturn

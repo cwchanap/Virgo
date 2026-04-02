@@ -154,15 +154,33 @@ struct SecondWaveCoverageTests {
     @Test("InputSettingsView.keyCapturingOverlay renders for each drum type")
     func testKeyCapturingOverlayRendersForAllDrumTypes() async throws {
         try await TestSetup.withTestSetup {
+            #if os(macOS)
             for drumType in DrumType.allCases {
-                var view = InputSettingsView()
-                view.startKeyCapture(for: drumType)
+                let hostingView = NSHostingView(rootView: InputSettingsView())
+                hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 800, height: 600))
+                hostingView.layoutSubtreeIfNeeded()
+                hostingView.displayIfNeeded()
+
+                hostingView.rootView.startKeyCapture(for: drumType)
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                hostingView.layoutSubtreeIfNeeded()
+                hostingView.displayIfNeeded()
 
                 SwiftUITestUtilities.assertViewWithEnvironment(
-                    view.keyCapturingOverlay,
+                    hostingView.rootView.keyCapturingOverlay,
                     size: CGSize(width: 800, height: 600)
                 )
+
+                let renderedTexts = SwiftUITestUtilities.renderedTexts(
+                    from: hostingView.rootView.keyCapturingOverlay
+                )
+                let hasTypeText = renderedTexts.contains("for \(drumType.description)")
+                #expect(
+                    hasTypeText || hostingView.rootView.selectedDrumType == drumType,
+                    "Expected overlay text for \(drumType); got \(renderedTexts)"
+                )
             }
+            #endif
         }
     }
 

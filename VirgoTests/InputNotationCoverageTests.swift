@@ -35,7 +35,7 @@ struct InputNotationCoverageTests {
     /// nonmutating setter reaches the live storage and triggers a real re-render of
     /// the overlay branch.
     @Test("InputSettingsView renders in key-capture state after startKeyCapture")
-    func testInputSettingsViewCapturStateRender() async throws {
+    func testInputSettingsViewCaptureStateRender() async throws {
         try await TestSetup.withTestSetup {
             #if os(macOS)
             let hostingView = NSHostingView(rootView: InputSettingsView())
@@ -51,7 +51,16 @@ struct InputNotationCoverageTests {
             hostingView.layoutSubtreeIfNeeded()
             hostingView.displayIfNeeded()
 
-            #expect(hostingView.fittingSize.width >= 0)
+            let renderedTexts = SwiftUITestUtilities.renderedTexts(from: hostingView.rootView.keyCapturingOverlay)
+            #expect(
+                renderedTexts.contains("Press any key"),
+                "Expected the hosted capture overlay to surface its prompt, got \(renderedTexts)"
+            )
+            let hasSnareText = renderedTexts.contains("for \(DrumType.snare.description)")
+            #expect(
+                hasSnareText || hostingView.rootView.selectedDrumType == .snare,
+                "Expected capture overlay to expose selected drum; got \(renderedTexts)"
+            )
             #endif
         }
     }

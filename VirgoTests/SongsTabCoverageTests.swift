@@ -171,7 +171,7 @@ struct SongsTabCoverageTests {
             // With 2 downloaded songs and 1 server song, the count label is
             // "2 songs available" only when selectedSubTab == 0 is active.
             // Were selectedSubTab == 1 the default, the label would read "1 songs available".
-            let texts = renderedTexts(from: view.body)
+            let texts = SwiftUITestUtilities.renderedTexts(from: view.body)
             #expect(
                 texts.contains("2 songs available"),
                 "Expected '2 songs available' proving the downloaded-tab (selectedSubTab==0) is the default; got \(texts)"
@@ -208,40 +208,5 @@ struct SongsTabCoverageTests {
                 size: CGSize(width: 1280, height: 900)
             )
         }
-    }
-
-    // MARK: - View body text helpers
-
-    private func renderedTexts(from value: Any) -> [String] {
-        var texts: [String] = []
-        var visited = Set<ObjectIdentifier>()
-        collectTexts(from: value, into: &texts, visited: &visited)
-        return texts
-    }
-
-    private func collectTexts(from value: Any, into texts: inout [String], visited: inout Set<ObjectIdentifier>) {
-        let mirror = Mirror(reflecting: value)
-
-        if mirror.displayStyle == .class {
-            let objectId = ObjectIdentifier(value as AnyObject)
-            guard visited.insert(objectId).inserted else { return }
-        }
-
-        if String(describing: mirror.subjectType) == "Text" {
-            texts.append(contentsOf: extractTextLiterals(from: value))
-        }
-
-        for child in mirror.children {
-            collectTexts(from: child.value, into: &texts, visited: &visited)
-        }
-    }
-
-    private func extractTextLiterals(from value: Any) -> [String] {
-        let description = String(describing: value)
-        guard let openingQuote = description.firstIndex(of: "\""),
-              let closingQuote = description.lastIndex(of: "\""),
-              openingQuote < closingQuote else { return [] }
-        let text = String(description[description.index(after: openingQuote)..<closingQuote])
-        return text.isEmpty ? [] : [text]
     }
 }

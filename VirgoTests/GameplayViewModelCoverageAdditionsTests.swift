@@ -21,7 +21,9 @@ struct GameplayViewModelCoverageAdditionsTests {
         return PracticeSettingsService(userDefaults: ud)
     }
 
-    private func makeMetronome() -> MetronomeEngine { MetronomeEngine() }
+    private func makeMetronome(driver: RecordingAudioDriver? = nil) -> MetronomeEngine {
+        MetronomeEngine(audioDriver: driver ?? RecordingAudioDriver())
+    }
 
     private func makeChart(noteCount: Int = 4, measureOffset stride: Double = 0.1) -> Chart {
         let chart = Chart(difficulty: .medium)
@@ -119,6 +121,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = makeViewModel(noteCount: 2)
         await vm.loadChartData()
         vm.setupGameplay()
+        defer { vm.cleanup() }
 
         // Force playing state without starting the metronome so
         // getCurrentPlaybackTime() returns nil and we hit the fallback path.
@@ -142,6 +145,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = makeViewModel(noteCount: 2)
         await vm.loadChartData()
         vm.setupGameplay()
+        defer { vm.cleanup() }
 
         // Force state: metronome not running, so calculateElapsedTime uses the
         // playbackStartTime fallback and returns ~0 seconds.
@@ -152,7 +156,6 @@ struct GameplayViewModelCoverageAdditionsTests {
         vm.updateActiveBeat()
 
         vm.isPlaying = false
-        vm.cleanup()
 
         // cachedDrumBeats has a beat at timePosition 0.0 (measure 1, offset 0).
         // With currentTimePosition ~0.0 and timeTolerance = 0.05 it should match.
@@ -198,6 +201,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = makeViewModel(noteCount: 4)
         await vm.loadChartData()
         vm.setupGameplay()
+        defer { vm.cleanup() }
 
         #expect(vm.isPlaying == false)
 
@@ -253,6 +257,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = makeViewModel(noteCount: 4)
         await vm.loadChartData()
         vm.setupGameplay()
+        defer { vm.cleanup() }
         vm.startPlayback()
 
         let note = vm.cachedNotes.first!
@@ -398,7 +403,8 @@ struct GameplayViewModelCoverageAdditionsTests {
     func testSpeedChangeUpdatesMetronomeWhenEnabledNotPlaying() async throws {
         let settings = makeSettings()
         let chart = makeChart(noteCount: 8)
-        let metronome = makeMetronome()
+        let driver = RecordingAudioDriver()
+        let metronome = makeMetronome(driver: driver)
         let vm = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: settings)
 
         await vm.loadChartData()
@@ -423,6 +429,10 @@ struct GameplayViewModelCoverageAdditionsTests {
 
         #expect(abs(settings.speedMultiplier - 0.75) < 0.001,
                 "Speed should be updated to 0.75 after applySpeedChangeInternal ran")
+        #expect(abs(metronome.bpm - 90.0) < 0.001,
+                "Enabled metronome should be updated to the new effective BPM")
+        #expect(driver.resumeCallCount >= 1,
+                "The injected test driver should observe metronome startup during the enabled-metronome path")
     }
 
     // MARK: - pausePlayback elapsed-time fallback (lines 646–648)
@@ -432,6 +442,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = makeViewModel(noteCount: 4)
         await vm.loadChartData()
         vm.setupGameplay()
+        defer { vm.cleanup() }
 
         // Manually set playing state and a start time, without an active metronome.
         vm.isPlaying = true
