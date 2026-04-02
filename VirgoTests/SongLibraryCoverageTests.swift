@@ -30,7 +30,7 @@ struct SongLibraryCoverageTests {
                 hasPreview: true
             )
 
-            assertView(
+            SwiftUITestUtilities.assertView(
                 ServerSongRow(serverSong: serverSong, isLoading: true, onDownload: {}),
                 containsStrings: ["Loading Groove", "Downloading...", "Chart files", "Background music", "Preview audio"],
                 excludesStrings: ["Download", "Charts", "BGM", "Preview"]
@@ -54,7 +54,7 @@ struct SongLibraryCoverageTests {
                 ]
             )
 
-            assertView(
+            SwiftUITestUtilities.assertView(
                 ServerSongRow(serverSong: serverSong, isLoading: false, onDownload: {}),
                 containsStrings: ["Single Chart", "Level 36", "Download"],
                 excludesStrings: ["Levels 36", "STANDARD (36)", "Downloading..."]
@@ -90,7 +90,7 @@ struct SongLibraryCoverageTests {
                 previewDownloaded: true
             )
 
-            assertView(
+            SwiftUITestUtilities.assertView(
                 ServerSongRow(serverSong: serverSong, isLoading: false, onDownload: {}),
                 containsStrings: [
                     "Downloaded Anthem",
@@ -123,7 +123,7 @@ struct SongLibraryCoverageTests {
                 previewDownloaded: false
             )
 
-            assertView(
+            SwiftUITestUtilities.assertView(
                 ServerSongRow(serverSong: serverSong, isLoading: false, onDownload: {}),
                 containsStrings: ["Missing BGM", "Charts", "BGM"],
                 containsSymbols: ["waveform.badge.exclamationmark"],
@@ -148,7 +148,7 @@ struct SongLibraryCoverageTests {
                 previewDownloaded: false
             )
 
-            assertView(
+            SwiftUITestUtilities.assertView(
                 ServerSongRow(serverSong: serverSong, isLoading: false, onDownload: {}),
                 containsStrings: ["Missing Preview", "Charts", "Preview"],
                 containsSymbols: ["play.circle.badge.exclamationmark"],
@@ -160,7 +160,7 @@ struct SongLibraryCoverageTests {
     @Test("LibraryView renders empty downloaded-song state")
     func testLibraryViewEmptyState() async throws {
         try await TestSetup.withTestSetup {
-            assertView(
+            SwiftUITestUtilities.assertView(
                 LibraryView(songs: [], serverSongService: ServerSongService()),
                 containsStrings: ["Downloaded Songs", "0 songs downloaded", "No Downloaded Songs", "Download songs from the server to see them here"]
             )
@@ -196,7 +196,7 @@ struct SongLibraryCoverageTests {
             // View assertions: LibraryView surfaces only the two DTX songs.
             // Note: song titles inside ForEach closures are not reachable via Mirror
             // reflection, so only the header count string is asserted here.
-            assertView(
+            SwiftUITestUtilities.assertView(
                 LibraryView(songs: allSongs, serverSongService: ServerSongService()),
                 containsStrings: ["Downloaded Songs", "2 songs downloaded"],
                 excludesStrings: ["No Downloaded Songs"]
@@ -234,7 +234,7 @@ struct SongLibraryCoverageTests {
 
             // View assertion: the header count is reachable via Mirror; song titles inside
             // ForEach closures are not, so only the count string is verified here.
-            assertView(
+            SwiftUITestUtilities.assertView(
                 LibraryView(songs: allSongs, serverSongService: ServerSongService()),
                 containsStrings: ["Downloaded Songs", "1 songs downloaded"],
                 excludesStrings: ["No Downloaded Songs"]
@@ -253,7 +253,7 @@ struct SongLibraryCoverageTests {
                 ]
             )
 
-            assertView(
+            SwiftUITestUtilities.assertView(
                 SavedSongRow(song: song, isDeleting: true, onDelete: {}),
                 containsStrings: ["Deleting Song", "Deleting..."],
                 excludesStrings: ["No delete", "Delete"]
@@ -272,110 +272,11 @@ struct SongLibraryCoverageTests {
                 ]
             )
 
-            assertView(
+            SwiftUITestUtilities.assertView(
                 SavedSongRow(song: song, isDeleting: false, onDelete: nil),
                 containsStrings: ["Read Only Song", "No delete"],
                 excludesStrings: ["Deleting...", "Delete"]
             )
-        }
-    }
-
-    private func assertView<V: View>(
-        _ view: V,
-        containsStrings: [String],
-        excludesStrings: [String] = [],
-        containsSymbols: [String] = [],
-        excludesSymbols: [String] = [],
-        size: CGSize = CGSize(width: 1_280, height: 900)
-    ) {
-        SwiftUITestUtilities.assertViewWithEnvironment(view, size: size)
-
-        let texts = renderedTexts(from: view.body)
-        let symbols = renderedSymbols(from: view.body)
-
-        for string in containsStrings {
-            #expect(texts.contains(string), "Expected rendered texts to include '\(string)', got \(texts)")
-        }
-
-        for string in excludesStrings {
-            #expect(!texts.contains(string), "Expected rendered texts to exclude '\(string)', got \(texts)")
-        }
-
-        for symbol in containsSymbols {
-            #expect(symbols.contains(symbol), "Expected rendered symbols to include '\(symbol)', got \(symbols)")
-        }
-
-        for symbol in excludesSymbols {
-            #expect(!symbols.contains(symbol), "Expected rendered symbols to exclude '\(symbol)', got \(symbols)")
-        }
-    }
-
-    private func renderedTexts(from value: Any) -> [String] {
-        var texts: [String] = []
-        var visited = Set<ObjectIdentifier>()
-        collectTexts(from: value, into: &texts, visited: &visited)
-        return texts
-    }
-
-    private func collectTexts(from value: Any, into texts: inout [String], visited: inout Set<ObjectIdentifier>) {
-        let mirror = Mirror(reflecting: value)
-
-        // Cycle detection for class instances: SwiftData @Model objects form circular
-        // back-references (Song ↔ Chart ↔ Note) that would cause infinite recursion.
-        // We allow each class instance to be visited once; revisits are skipped.
-        if mirror.displayStyle == .class {
-            let objectId = ObjectIdentifier(value as AnyObject)
-            guard visited.insert(objectId).inserted else { return }
-        }
-
-        if String(describing: mirror.subjectType) == "Text" {
-            texts.append(contentsOf: extractTextLiterals(from: value))
-        }
-
-        for child in mirror.children {
-            collectTexts(from: child.value, into: &texts, visited: &visited)
-        }
-    }
-
-    private func extractTextLiterals(from value: Any) -> [String] {
-        var results: [String] = []
-        let description = String(describing: value)
-
-        if let openingQuote = description.firstIndex(of: "\""),
-           let closingQuote = description.lastIndex(of: "\""),
-           openingQuote < closingQuote {
-            let text = String(description[description.index(after: openingQuote)..<closingQuote])
-            if !text.isEmpty {
-                results.append(text)
-            }
-        }
-
-        return results
-    }
-
-    private func renderedSymbols(from value: Any) -> [String] {
-        var symbols: [String] = []
-        var visited = Set<ObjectIdentifier>()
-        collectSymbols(from: value, into: &symbols, visited: &visited)
-        return symbols
-    }
-
-    private func collectSymbols(from value: Any, into symbols: inout [String], visited: inout Set<ObjectIdentifier>) {
-        let mirror = Mirror(reflecting: value)
-
-        // Same cycle-detection guard as collectTexts.
-        if mirror.displayStyle == .class {
-            let objectId = ObjectIdentifier(value as AnyObject)
-            guard visited.insert(objectId).inserted else { return }
-        }
-
-        if let label = mirror.children.first(where: { $0.label == "systemSymbol" }),
-           let symbol = label.value as? String {
-            symbols.append(symbol)
-        }
-
-        for child in mirror.children {
-            collectSymbols(from: child.value, into: &symbols, visited: &visited)
         }
     }
 }

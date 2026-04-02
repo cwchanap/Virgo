@@ -10,12 +10,39 @@ import SwiftUI
 import AppKit
 #endif
 
+@MainActor
+final class InputKeyCaptureState: ObservableObject {
+    @Published var selectedDrumType: DrumType?
+    @Published var isCapturingKey = false
+}
+
 struct InputSettingsView: View {
-    @StateObject var settingsManager = InputSettingsManager()
-    @State var selectedDrumType: DrumType?
-    @State var isCapturingKey = false
+    @StateObject var settingsManager: InputSettingsManager
+    private let keyCaptureStateRef: InputKeyCaptureState
+    @StateObject private var keyCaptureState: InputKeyCaptureState
     @State private var showResetAlert = false
     @Environment(\.dismiss) private var dismiss
+
+    init(
+        settingsManager: InputSettingsManager? = nil,
+        keyCaptureState: InputKeyCaptureState? = nil
+    ) {
+        let resolvedSettingsManager = settingsManager ?? InputSettingsManager()
+        let resolvedKeyCaptureState = keyCaptureState ?? InputKeyCaptureState()
+        self._settingsManager = StateObject(wrappedValue: resolvedSettingsManager)
+        self.keyCaptureStateRef = resolvedKeyCaptureState
+        self._keyCaptureState = StateObject(wrappedValue: resolvedKeyCaptureState)
+    }
+
+    var selectedDrumType: DrumType? {
+        get { keyCaptureState.selectedDrumType }
+        nonmutating set { keyCaptureStateRef.selectedDrumType = newValue }
+    }
+
+    var isCapturingKey: Bool {
+        get { keyCaptureState.isCapturingKey }
+        nonmutating set { keyCaptureStateRef.isCapturingKey = newValue }
+    }
     
     var body: some View {
         ScrollView {
