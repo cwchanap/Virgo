@@ -384,6 +384,12 @@ struct SwiftUITestUtilities {
         for child in mirror.children {
             collectTexts(from: child.value, into: &texts, visited: &visited)
         }
+
+        if let view = value as? NSView {
+            for subview in view.subviews {
+                collectTexts(from: subview, into: &texts, visited: &visited)
+            }
+        }
     }
 
     private static func collectSymbols(
@@ -402,6 +408,12 @@ struct SwiftUITestUtilities {
             symbols.append(symbol)
         }
 
+        if let imageView = value as? NSImageView,
+           let image = imageView.image,
+           let imageName = image.name {
+            symbols.append(imageName.rawValue)
+        }
+
         if let nestedHostingView = nestedMountedHostingView(from: value) {
             collectSymbols(from: nestedHostingView, into: &symbols, visited: &visited)
         }
@@ -410,6 +422,12 @@ struct SwiftUITestUtilities {
 
         for child in mirror.children {
             collectSymbols(from: child.value, into: &symbols, visited: &visited)
+        }
+
+        if let view = value as? NSView {
+            for subview in view.subviews {
+                collectSymbols(from: subview, into: &symbols, visited: &visited)
+            }
         }
     }
 
