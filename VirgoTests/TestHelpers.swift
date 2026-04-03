@@ -410,8 +410,8 @@ struct SwiftUITestUtilities {
 
         if let imageView = value as? NSImageView,
            let image = imageView.image,
-           let imageName = image.name {
-            symbols.append(imageName.rawValue)
+           let imageName = image.name() {
+            symbols.append(imageName)
         }
 
         if let nestedHostingView = nestedMountedHostingView(from: value) {
