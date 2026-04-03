@@ -162,19 +162,22 @@ struct SongsTabCoverageTests {
                 searchText: ""
             )
 
-            SwiftUITestUtilities.assertViewWithEnvironment(
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
                 view,
                 size: CGSize(width: 1280, height: 900)
             )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
 
             // Prove the default branch is the downloaded tab (selectedSubTab == 0):
             // With 2 downloaded songs and 1 server song, the count label is
             // "2 songs available" only when selectedSubTab == 0 is active.
             // Were selectedSubTab == 1 the default, the label would read "1 songs available".
-            let texts = SwiftUITestUtilities.renderedTexts(from: view.body)
             #expect(
                 texts.contains("2 songs available"),
-                "Expected '2 songs available' proving the downloaded-tab (selectedSubTab==0) is the default; got \(texts)"
+                """
+                Expected '2 songs available' proving the downloaded-tab \
+                (selectedSubTab == 0) is the default; got \(texts)
+                """
             )
         }
     }
@@ -191,9 +194,44 @@ struct SongsTabCoverageTests {
                 searchText: "Searchable"
             )
 
-            SwiftUITestUtilities.assertViewWithEnvironment(
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
                 view,
                 size: CGSize(width: 1280, height: 900)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
+            let mountedDownloadedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                DownloadedSongsView(
+                    songs: view.songs,
+                    serverSongService: view.serverSongService,
+                    currentlyPlaying: .constant(nil),
+                    expandedSongId: .constant(nil),
+                    selectedChart: .constant(nil),
+                    navigateToGameplay: .constant(false),
+                    audioPlaybackService: view.audioPlaybackService,
+                    onPlayTap: { _ in },
+                    onSaveTap: { _ in }
+                ),
+                size: CGSize(width: 1280, height: 900)
+            )
+            let downloadedIdentifiers = SwiftUITestUtilities.renderedIdentifiers(from: mountedDownloadedView.root)
+
+            #expect(
+                texts.contains("1 songs available"),
+                "Expected the filtered header count to reflect a single result; got \(texts)"
+            )
+            #expect(
+                downloadedIdentifiers.contains(DownloadedSongsView.rowViewID(for: matchingSong)),
+                """
+                Expected filtered results to include the matching downloaded row ID; \
+                got \(downloadedIdentifiers)
+                """
+            )
+            #expect(
+                !downloadedIdentifiers.contains(DownloadedSongsView.rowViewID(for: nonMatchingSong)),
+                """
+                Expected filtered results to exclude the non-matching downloaded row ID; \
+                got \(downloadedIdentifiers)
+                """
             )
         }
     }
@@ -203,9 +241,34 @@ struct SongsTabCoverageTests {
         try await TestSetup.withTestSetup {
             let view = makeSUT(allSongs: [], serverSongs: [], searchText: "")
 
-            SwiftUITestUtilities.assertViewWithEnvironment(
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
                 view,
                 size: CGSize(width: 1280, height: 900)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
+            let mountedDownloadedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                DownloadedSongsView(
+                    songs: view.songs,
+                    serverSongService: view.serverSongService,
+                    currentlyPlaying: .constant(nil),
+                    expandedSongId: .constant(nil),
+                    selectedChart: .constant(nil),
+                    navigateToGameplay: .constant(false),
+                    audioPlaybackService: view.audioPlaybackService,
+                    onPlayTap: { _ in },
+                    onSaveTap: { _ in }
+                ),
+                size: CGSize(width: 1280, height: 900)
+            )
+            let downloadedIdentifiers = SwiftUITestUtilities.renderedIdentifiers(from: mountedDownloadedView.root)
+
+            #expect(
+                texts.contains("0 songs available"),
+                "Expected the header count to reflect an empty downloaded tab; got \(texts)"
+            )
+            #expect(
+                downloadedIdentifiers.contains(DownloadedSongsView.emptyStateViewID),
+                "Expected the empty-state row ID to be rendered; got \(downloadedIdentifiers)"
             )
         }
     }

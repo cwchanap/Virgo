@@ -23,7 +23,6 @@ private func timingEngineValue<T>(
 final class RecordingAudioDriver: AudioDriverProtocol {
     private(set) var playedTicks: [(volume: Float, isAccented: Bool)] = []
     private(set) var resumeCallCount = 0
-    private(set) var stopCallCount = 0
     private let audioTimeToReturn: AVAudioTime?
 
     init(audioTimeToReturn: AVAudioTime? = nil) {
@@ -35,7 +34,6 @@ final class RecordingAudioDriver: AudioDriverProtocol {
     }
 
     func stop() {
-        stopCallCount += 1
     }
 
     func resume() {

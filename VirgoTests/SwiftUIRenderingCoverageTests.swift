@@ -19,6 +19,17 @@ import AppKit
 struct SwiftUIRenderingCoverageTests {
     private let drumNotationSettingsKey = "DrumNotationSettings"
 
+    private struct MountedLifecycleTextView: View {
+        @State private var text = "Initial Text"
+
+        var body: some View {
+            Text(text)
+                .onAppear {
+                    text = "Mounted Text"
+                }
+        }
+    }
+
     @Test("SettingsView renders inside a navigation stack")
     func testSettingsViewRendering() async throws {
         try await TestSetup.withTestSetup {
@@ -43,6 +54,17 @@ struct SwiftUIRenderingCoverageTests {
             let finalVisibleWindowCount = NSApp.windows.filter(\.isVisible).count
             #expect(finalVisibleWindowCount == initialVisibleWindowCount)
             #endif
+        }
+    }
+
+    @Test("assertView inspects the mounted hierarchy after onAppear updates")
+    func testAssertViewUsesMountedHierarchyAfterOnAppear() async throws {
+        try await TestSetup.withTestSetup {
+            SwiftUITestUtilities.assertView(
+                MountedLifecycleTextView(),
+                containsStrings: ["Mounted Text"],
+                excludesStrings: ["Initial Text"]
+            )
         }
     }
 
@@ -243,13 +265,24 @@ struct SwiftUIRenderingCoverageTests {
     @Test("InputSettingsView renders key capture overlay state")
     func testInputSettingsViewRenderingWithCaptureOverlay() async throws {
         try await TestSetup.withTestSetup {
-            var view = InputSettingsView()
-            view.startKeyCapture(for: .snare)
-
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
+            #if os(macOS)
+            let keyCaptureState = InputKeyCaptureState()
+            keyCaptureState.selectedDrumType = .snare
+            keyCaptureState.isCapturingKey = true
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                InputSettingsView(keyCaptureState: keyCaptureState),
                 size: CGSize(width: 1440, height: 1400)
             )
+            let renderedTexts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
+            #expect(
+                renderedTexts.contains("Press any key"),
+                "Expected the mounted overlay prompt to be rendered; got \(renderedTexts)"
+            )
+            #expect(
+                renderedTexts.contains("for \(DrumType.snare.description)"),
+                "Expected the mounted overlay to include the selected drum; got \(renderedTexts)"
+            )
+            #endif
         }
     }
 

@@ -264,15 +264,25 @@ struct TestAssertions {
 
 @MainActor
 struct SwiftUITestUtilities {
+    struct MountedView {
+        #if os(macOS)
+        let hostingView: NSHostingView<AnyView>
+
+        var root: Any {
+            hostingView
+        }
+        #endif
+    }
+
     @discardableResult
     static func assertViewWithEnvironment<V: View>(
         _ view: V,
         size: CGSize = CGSize(width: 1024, height: 768),
         file: StaticString = #file,
         line: UInt = #line
-    ) -> CGSize {
+    ) -> MountedView {
         #if os(macOS)
-        let hostingView = NSHostingView(rootView: view)
+        let hostingView = NSHostingView(rootView: AnyView(view))
         hostingView.frame = CGRect(origin: .zero, size: size)
 
         hostingView.layoutSubtreeIfNeeded()
@@ -285,7 +295,7 @@ struct SwiftUITestUtilities {
         #expect(renderedSize.width >= 0)
         #expect(renderedSize.height >= 0)
 
-        return renderedSize
+        return MountedView(hostingView: hostingView)
         #else
         fatalError("SwiftUITestUtilities.assertViewWithEnvironment is not supported on this platform")
         #endif
@@ -299,10 +309,10 @@ struct SwiftUITestUtilities {
         excludesSymbols: [String] = [],
         size: CGSize = CGSize(width: 1_280, height: 900)
     ) {
-        assertViewWithEnvironment(view, size: size)
+        let mountedView = assertViewWithEnvironment(view, size: size)
 
-        let texts = renderedTexts(from: view.body)
-        let symbols = renderedSymbols(from: view.body)
+        let texts = renderedTexts(from: mountedView.root)
+        let symbols = renderedSymbols(from: mountedView.root)
 
         for string in containsStrings {
             #expect(texts.contains(string), "Expected rendered texts to include '\(string)', got \(texts)")
@@ -325,14 +335,21 @@ struct SwiftUITestUtilities {
         var texts: [String] = []
         var visited = Set<ObjectIdentifier>()
         collectTexts(from: value, into: &texts, visited: &visited)
-        return texts
+        return uniqued(texts)
     }
 
     static func renderedSymbols(from value: Any) -> [String] {
         var symbols: [String] = []
         var visited = Set<ObjectIdentifier>()
         collectSymbols(from: value, into: &symbols, visited: &visited)
-        return symbols
+        return uniqued(symbols)
+    }
+
+    static func renderedIdentifiers(from value: Any) -> [String] {
+        var identifiers: [String] = []
+        var visited = Set<ObjectIdentifier>()
+        collectIdentifiers(from: value, into: &identifiers, visited: &visited)
+        return uniqued(identifiers)
     }
 
     private static func collectTexts(
@@ -346,9 +363,23 @@ struct SwiftUITestUtilities {
             return
         }
 
+        if let textField = value as? NSTextField, !textField.stringValue.isEmpty {
+            texts.append(textField.stringValue)
+        }
+
+        if let button = value as? NSButton, !button.title.isEmpty {
+            texts.append(button.title)
+        }
+
+        if let nestedHostingView = nestedMountedHostingView(from: value) {
+            collectTexts(from: nestedHostingView, into: &texts, visited: &visited)
+        }
+
         if String(describing: mirror.subjectType) == "Text" {
             texts.append(contentsOf: extractTextLiterals(from: value))
         }
+
+        texts.append(contentsOf: extractMountedTextLiterals(from: String(describing: value)))
 
         for child in mirror.children {
             collectTexts(from: child.value, into: &texts, visited: &visited)
@@ -371,8 +402,56 @@ struct SwiftUITestUtilities {
             symbols.append(symbol)
         }
 
+        if let nestedHostingView = nestedMountedHostingView(from: value) {
+            collectSymbols(from: nestedHostingView, into: &symbols, visited: &visited)
+        }
+
+        symbols.append(contentsOf: extractMountedSymbols(from: String(describing: value)))
+
         for child in mirror.children {
             collectSymbols(from: child.value, into: &symbols, visited: &visited)
+        }
+    }
+
+    private static func collectIdentifiers(
+        from value: Any,
+        into identifiers: inout [String],
+        visited: inout Set<ObjectIdentifier>
+    ) {
+        let mirror = Mirror(reflecting: value)
+
+        if shouldSkipCycle(for: value, mirror: mirror, visited: &visited) {
+            return
+        }
+
+        if let view = value as? NSView,
+           let identifier = view.identifier?.rawValue,
+           !identifier.isEmpty {
+            identifiers.append(identifier)
+        }
+
+        if let viewListID = mirror.children.first(where: { $0.label == "viewListID" }) {
+            identifiers.append(
+                contentsOf: extractMountedIdentifiers(from: String(describing: viewListID.value))
+            )
+        }
+
+        // macOS List rows often preserve explicit SwiftUI .id(...) values only in the
+        // internal ViewList debug descriptions, not in NSView.identifier.
+        identifiers.append(contentsOf: extractMountedIdentifiers(from: String(describing: value)))
+
+        if let nestedHostingView = nestedMountedHostingView(from: value) {
+            collectIdentifiers(from: nestedHostingView, into: &identifiers, visited: &visited)
+        }
+
+        if let view = value as? NSView {
+            for subview in view.subviews {
+                collectIdentifiers(from: subview, into: &identifiers, visited: &visited)
+            }
+        }
+
+        for child in mirror.children {
+            collectIdentifiers(from: child.value, into: &identifiers, visited: &visited)
         }
     }
 
@@ -401,6 +480,62 @@ struct SwiftUITestUtilities {
         }
 
         return results
+    }
+
+    private static func extractMountedTextLiterals(from description: String) -> [String] {
+        guard description.contains("(text \"") else { return [] }
+
+        let pattern = #"\(text "((?:[^"\\]|\\.)*)""#
+        return extractMatches(pattern: pattern, from: description)
+    }
+
+    private static func extractMountedSymbols(from description: String) -> [String] {
+        guard description.contains("symbol = ") else { return [] }
+
+        let pattern = #"symbol = ([A-Za-z0-9._-]+)"#
+        return extractMatches(pattern: pattern, from: description)
+    }
+
+    private static func extractMountedIdentifiers(from description: String) -> [String] {
+        let patterns = [
+            #"Explicit\(id: "((?:[^"\\]|\\.)*)""#,
+            #"explicitID: Optional\("((?:[^"\\]|\\.)*)""#,
+            #"#:id ([A-Za-z0-9._:-]+)"#
+        ]
+
+        return patterns.flatMap { extractMatches(pattern: $0, from: description) }
+    }
+
+    private static func extractMatches(pattern: String, from source: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(source.startIndex..., in: source)
+
+        return regex.matches(in: source, range: range).compactMap { match in
+            guard match.numberOfRanges > 1,
+                  let captureRange = Range(match.range(at: 1), in: source) else {
+                return nil
+            }
+            return String(source[captureRange])
+        }
+    }
+
+    private static func uniqued(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        return values.filter { seen.insert($0).inserted }
+    }
+
+    private static func nestedMountedHostingView(from value: Any) -> Any? {
+        let mirror = Mirror(reflecting: value)
+        guard let hostChild = mirror.children.first(where: { $0.label == "host" }) else {
+            return nil
+        }
+
+        let hostMirror = Mirror(reflecting: hostChild.value)
+        if hostMirror.displayStyle == .optional {
+            return hostMirror.children.first?.value
+        }
+
+        return hostChild.value
     }
 }
 

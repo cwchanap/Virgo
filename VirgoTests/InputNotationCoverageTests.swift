@@ -28,37 +28,55 @@ struct InputNotationCoverageTests {
         }
     }
 
-    /// Exercises the production capture branch by hosting the view and calling
-    /// `startKeyCapture(for:)` directly on the live hosted instance.  `NSHostingView`
-    /// exposes its root view via the `rootView` property; once the view is installed
-    /// in the hosting graph the `@State._location` reference is populated, so the
-    /// nonmutating setter reaches the live storage and triggers a real re-render of
-    /// the overlay branch.
+    @Test("InputKeyCaptureViewModel mirrors the injected capture state")
+    func testInputKeyCaptureViewModelMirrorsInjectedState() async throws {
+        try await TestSetup.withTestSetup {
+            let keyCaptureState = InputKeyCaptureState()
+            let viewModel = InputKeyCaptureViewModel(state: keyCaptureState)
+
+            viewModel.startCapture(for: .snare)
+
+            let started = await TestHelpers.waitFor {
+                viewModel.selectedDrumType == .snare &&
+                    viewModel.isCapturingKey &&
+                    keyCaptureState.selectedDrumType == .snare &&
+                    keyCaptureState.isCapturingKey
+            }
+            #expect(started, "Expected startCapture(for:) to update the shared capture state")
+
+            viewModel.cancelCapture()
+
+            let cancelled = await TestHelpers.waitFor {
+                viewModel.selectedDrumType == nil &&
+                    !viewModel.isCapturingKey &&
+                    keyCaptureState.selectedDrumType == nil &&
+                    !keyCaptureState.isCapturingKey
+            }
+            #expect(cancelled, "Expected cancelCapture() to clear the shared capture state")
+        }
+    }
+
+    /// Exercises the key-capture overlay by mutating the injected state on the
+    /// mounted view hierarchy so assertions run against the actual rendered tree.
     @Test("InputSettingsView renders in key-capture state after startKeyCapture")
     func testInputSettingsViewCaptureStateRender() async throws {
         try await TestSetup.withTestSetup {
             #if os(macOS)
-            let hostingView = NSHostingView(rootView: InputSettingsView())
-            hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 1440, height: 1400))
-            hostingView.layoutSubtreeIfNeeded()
-            hostingView.displayIfNeeded()
-
-            // Call the production method on the live hosted view so the
-            // keyCapturingOverlay branch is actually evaluated by SwiftUI.
-            hostingView.rootView.startKeyCapture(for: .snare)
-
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-            hostingView.layoutSubtreeIfNeeded()
-            hostingView.displayIfNeeded()
-
-            let renderedTexts = SwiftUITestUtilities.renderedTexts(from: hostingView.rootView.keyCapturingOverlay)
+            let keyCaptureState = InputKeyCaptureState()
+            keyCaptureState.selectedDrumType = .snare
+            keyCaptureState.isCapturingKey = true
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                InputSettingsView(keyCaptureState: keyCaptureState),
+                size: CGSize(width: 1440, height: 1400)
+            )
+            let renderedTexts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
             #expect(
                 renderedTexts.contains("Press any key"),
                 "Expected the hosted capture overlay to surface its prompt, got \(renderedTexts)"
             )
             let hasSnareText = renderedTexts.contains("for \(DrumType.snare.description)")
             #expect(
-                hasSnareText || hostingView.rootView.selectedDrumType == .snare,
+                hasSnareText,
                 "Expected capture overlay to expose selected drum; got \(renderedTexts)"
             )
             #endif

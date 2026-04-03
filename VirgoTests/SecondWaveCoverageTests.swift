@@ -141,11 +141,11 @@ struct SecondWaveCoverageTests {
     @Test("InputSettingsView.keyCapturingOverlay renders without a drum selection")
     func testKeyCapturingOverlayRendersWithoutDrumSelection() async throws {
         try await TestSetup.withTestSetup {
-            // selectedDrumType defaults to nil; the drum-name conditional block is absent
-            let inputSettingsView = InputSettingsView()
+            let keyCaptureState = InputKeyCaptureState()
+            keyCaptureState.isCapturingKey = true
 
             SwiftUITestUtilities.assertViewWithEnvironment(
-                inputSettingsView.keyCapturingOverlay,
+                InputSettingsView(keyCaptureState: keyCaptureState),
                 size: CGSize(width: 1024, height: 768)
             )
         }
@@ -156,27 +156,17 @@ struct SecondWaveCoverageTests {
         try await TestSetup.withTestSetup {
             #if os(macOS)
             for drumType in DrumType.allCases {
-                let hostingView = NSHostingView(rootView: InputSettingsView())
-                hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 800, height: 600))
-                hostingView.layoutSubtreeIfNeeded()
-                hostingView.displayIfNeeded()
-
-                hostingView.rootView.startKeyCapture(for: drumType)
-                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-                hostingView.layoutSubtreeIfNeeded()
-                hostingView.displayIfNeeded()
-
-                SwiftUITestUtilities.assertViewWithEnvironment(
-                    hostingView.rootView.keyCapturingOverlay,
+                let keyCaptureState = InputKeyCaptureState()
+                keyCaptureState.selectedDrumType = drumType
+                keyCaptureState.isCapturingKey = true
+                let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                    InputSettingsView(keyCaptureState: keyCaptureState),
                     size: CGSize(width: 800, height: 600)
                 )
-
-                let renderedTexts = SwiftUITestUtilities.renderedTexts(
-                    from: hostingView.rootView.keyCapturingOverlay
-                )
+                let renderedTexts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
                 let hasTypeText = renderedTexts.contains("for \(drumType.description)")
                 #expect(
-                    hasTypeText || hostingView.rootView.selectedDrumType == drumType,
+                    hasTypeText,
                     "Expected overlay text for \(drumType); got \(renderedTexts)"
                 )
             }
