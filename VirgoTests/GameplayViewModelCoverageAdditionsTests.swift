@@ -8,53 +8,16 @@
 
 import Testing
 import Foundation
-import Combine
 @testable import Virgo
 
 @MainActor
 struct GameplayViewModelCoverageAdditionsTests {
 
-    // MARK: - Helpers
-
-    private func makeSettings() -> PracticeSettingsService {
-        let (ud, _) = TestUserDefaults.makeIsolated()
-        return PracticeSettingsService(userDefaults: ud)
-    }
-
-    private func makeMetronome(driver: RecordingAudioDriver? = nil) -> MetronomeEngine {
-        MetronomeEngine(audioDriver: driver ?? RecordingAudioDriver())
-    }
-
-    private func makeChart(noteCount: Int = 4, measureOffset stride: Double = 0.1) -> Chart {
-        let chart = Chart(difficulty: .medium)
-        for i in 0..<noteCount {
-            let note = Note(
-                interval: .quarter,
-                noteType: i % 2 == 0 ? .bass : .snare,
-                measureNumber: 1,
-                measureOffset: Double(i) * stride
-            )
-            chart.notes.append(note)
-        }
-        return chart
-    }
-
-    private func makeViewModel(
-        chart: Chart? = nil,
-        noteCount: Int = 4,
-        settings: PracticeSettingsService? = nil
-    ) -> GameplayViewModel {
-        let c = chart ?? makeChart(noteCount: noteCount)
-        let m = makeMetronome()
-        let s = settings ?? makeSettings()
-        return GameplayViewModel(chart: c, metronome: m, practiceSettings: s)
-    }
-
     // MARK: - effectiveBPM nil-track fallback (line 210–213)
 
     @Test("effectiveBPM falls back to 120 BPM when track is nil")
     func testEffectiveBPMNilTrackFallback() async throws {
-        let vm = makeViewModel()
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
         // Do NOT call loadChartData – track stays nil.
         let bpm = vm.effectiveBPM()
         #expect(abs(bpm - 120.0) < 0.001, "Should use 120 BPM fallback when track is nil")
@@ -64,7 +27,7 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("calculateTrackDuration returns 0.0 when track is nil")
     func testCalculateTrackDurationNilTrack() async throws {
-        let vm = makeViewModel()
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
         // track is nil before data is loaded
         let duration = vm.calculateTrackDuration()
         #expect(duration == 0.0)
@@ -74,7 +37,7 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("calculateBGMOffset returns 0.0 when track is nil")
     func testCalculateBGMOffsetNilTrack() async throws {
-        let vm = makeViewModel()
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
         let offset = vm.calculateBGMOffset()
         #expect(offset == 0.0)
     }
@@ -83,7 +46,7 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("calculateTrackDuration uses MM:SS song.duration when available")
     func testCalculateTrackDurationUsesSongDurationMMSS() async throws {
-        let vm = makeViewModel(noteCount: 2)
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
         vm.setupGameplay()
 
@@ -100,7 +63,7 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("calculateTrackDuration ignores '0:00' song.duration and uses note-based calculation")
     func testCalculateTrackDurationIgnoresZeroDurationString() async throws {
-        let vm = makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         vm.setupGameplay()
 
@@ -118,7 +81,7 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("calculateElapsedTime falls back to playbackStartTime when metronome is idle")
     func testCalculateElapsedTimeFallbackToPlaybackStartTime() async throws {
-        let vm = makeViewModel(noteCount: 2)
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
         vm.setupGameplay()
         defer { vm.cleanup() }
@@ -142,7 +105,7 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("updateActiveBeat finds and sets activeBeatId for a beat near timePosition 0")
     func testUpdateActiveBeatFindsMatchingBeat() async throws {
-        let vm = makeViewModel(noteCount: 2)
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
         vm.setupGameplay()
         defer { vm.cleanup() }
@@ -167,7 +130,7 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("wireInputHandler routes onNoteResult hits to recordHit while playing")
     func testWireInputHandlerRoutesHitsWhenPlaying() async throws {
-        let vm = makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         vm.setupGameplay()
 
@@ -198,7 +161,7 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("recordHit is a no-op when isPlaying is false")
     func testRecordHitIgnoredWhenNotPlaying() async throws {
-        let vm = makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         vm.setupGameplay()
         defer { vm.cleanup() }
@@ -225,8 +188,8 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("updateSettings with the ViewModel's own settings instance applies the speed change")
     func testUpdateSettingsWithMatchingInstanceAppliesChange() async throws {
-        let settings = makeSettings()
-        let vm = makeViewModel(noteCount: 8, settings: settings)
+        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8, settings: settings)
         await vm.loadChartData()
         vm.setupGameplay(loadPersistedSpeed: false)
 
@@ -246,214 +209,5 @@ struct GameplayViewModelCoverageAdditionsTests {
         #expect(bpmAfter < bpmBefore, "effectiveBPM must decrease after slowing down to 0.75×")
 
         vm.cleanup()
-    }
-
-    // MARK: - handlePlaybackCompletion session-result state (lines 1041–1049)
-    // Covers: isShowingSessionResults = true, sessionFinalScore capture,
-    // and sessionScoreEngine snapshot — none of which are asserted in the primary suite.
-
-    @Test("handlePlaybackCompletion sets isShowingSessionResults and captures session score snapshot")
-    func testHandlePlaybackCompletionSetsSessionResults() async throws {
-        let vm = makeViewModel(noteCount: 4)
-        await vm.loadChartData()
-        vm.setupGameplay()
-        defer { vm.cleanup() }
-        vm.startPlayback()
-
-        let note = vm.cachedNotes.first!
-        let hit = InputHit(drumType: .kick, velocity: 1.0, timestamp: Date())
-        let result = NoteMatchResult(
-            hitInput: hit,
-            matchedNote: note,
-            timingAccuracy: .perfect,
-            measureNumber: note.measureNumber,
-            measureOffset: note.measureOffset,
-            timingError: 0.0
-        )
-        vm.recordHit(result: result)
-
-        let scoreAtCompletion = vm.scoreEngine.score
-        #expect(scoreAtCompletion > 0, "Pre-condition: at least one hit must be recorded")
-
-        vm.handlePlaybackCompletion()
-
-        // isShowingSessionResults flipped to true — the primary suite only asserts false.
-        #expect(vm.isShowingSessionResults == true,
-                "handlePlaybackCompletion must set isShowingSessionResults = true")
-        // sessionFinalScore survives the resetScoring call inside handlePlaybackCompletion.
-        #expect(vm.sessionFinalScore == scoreAtCompletion,
-                "sessionFinalScore should equal the score captured at completion")
-        // sessionScoreEngine snapshot is preserved so the results sheet can display it.
-        #expect(vm.sessionScoreEngine.score == scoreAtCompletion,
-                "sessionScoreEngine should hold the pre-reset snapshot")
-        // The live engine must be zeroed after the internal reset.
-        #expect(vm.scoreEngine.score == 0,
-                "Live scoreEngine should be zeroed after handlePlaybackCompletion")
-    }
-
-    // MARK: - restartPlayback when not playing (line 665–667)
-
-    @Test("restartPlayback when not playing does not start playback")
-    func testRestartPlaybackWhenNotPlayingDoesNotStartPlayback() async throws {
-        let vm = makeViewModel(noteCount: 4)
-        await vm.loadChartData()
-        vm.setupGameplay()
-
-        #expect(vm.isPlaying == false)
-        vm.pausedElapsedTime = 5.0
-
-        vm.restartPlayback()
-
-        // The `if isPlaying { startPlayback() }` branch should not run.
-        #expect(vm.isPlaying == false, "Should remain stopped after restart from idle state")
-        #expect(vm.pausedElapsedTime == 0.0, "Elapsed time should have been reset")
-
-        vm.cleanup()
-    }
-
-    // MARK: - setupMetronomeSubscription (lines 511–520)
-
-    @Test("setupMetronomeSubscription creates a Combine subscription")
-    func testSetupMetronomeSubscriptionCreatesSubscription() async throws {
-        let vm = makeViewModel()
-
-        #expect(vm.metronomeSubscription == nil, "No subscription before explicit setup call")
-
-        vm.setupMetronomeSubscription()
-
-        #expect(vm.metronomeSubscription != nil, "Subscription should exist after setup")
-
-        vm.cleanup()
-    }
-
-    // MARK: - triggerMilestoneAnimation via recordHit combo buildup (lines 1241–1244)
-
-    @Test("Milestone animation is triggered when combo reaches 10")
-    func testMilestoneAnimationTriggeredAtCombo10() async throws {
-        // 10 distinct notes closely packed in measure 1
-        let chart = Chart(difficulty: .medium)
-        var notes: [Note] = []
-        for i in 0..<10 {
-            let note = Note(
-                interval: .quarter,
-                noteType: .bass,
-                measureNumber: 1,
-                measureOffset: Double(i) * 0.09
-            )
-            chart.notes.append(note)
-            notes.append(note)
-        }
-
-        let vm = makeViewModel(chart: chart)
-        await vm.loadChartData()
-        vm.setupGameplay()
-
-        // Force playing state via playbackStartTime so elapsed time ≈ 0.
-        vm.isPlaying = true
-        vm.playbackStartTime = Date()
-
-        for note in notes {
-            let hit = InputHit(drumType: .kick, velocity: 1.0, timestamp: Date())
-            let result = NoteMatchResult(
-                hitInput: hit,
-                matchedNote: note,
-                timingAccuracy: .perfect,
-                measureNumber: note.measureNumber,
-                measureOffset: note.measureOffset,
-                timingError: 0.0
-            )
-            vm.recordHit(result: result)
-        }
-
-        vm.isPlaying = false
-        vm.cleanup()
-
-        #expect(vm.scoreEngine.combo == 10, "Combo should be 10 after 10 perfect hits")
-        #expect(vm.showMilestoneAnimation == true,
-                "Milestone animation should be active after crossing combo 10")
-    }
-
-    // MARK: - setupBGMPlayer error branch (lines 1379–1382)
-
-    @Test("setupBGMPlayer sets bgmLoadingError when file path is invalid")
-    func testSetupBGMPlayerSetsErrorForInvalidPath() async throws {
-        let vm = makeViewModel(noteCount: 2)
-        await vm.loadChartData()
-
-        // Inject a cachedSong with a non-existent audio file before calling setupBGMPlayer.
-        let song = Song(
-            title: "T",
-            artist: "A",
-            bpm: 120.0,
-            duration: "3:00",
-            genre: "Rock",
-            bgmFilePath: "/nonexistent/path/audio.ogg"
-        )
-        vm.cachedSong = song
-
-        vm.setupBGMPlayer()
-
-        #expect(vm.bgmLoadingError != nil, "bgmLoadingError should be set on AVAudioPlayer failure")
-        #expect(vm.bgmPlayer == nil, "bgmPlayer should remain nil after a failed setup")
-    }
-
-    // MARK: - applySpeedChangeInternal !isPlaying && metronome.isEnabled (lines 359–361)
-
-    @Test("Speed change calls metronome.updateBPM when metronome is enabled but ViewModel is not playing")
-    func testSpeedChangeUpdatesMetronomeWhenEnabledNotPlaying() async throws {
-        let settings = makeSettings()
-        let chart = makeChart(noteCount: 8)
-        let driver = RecordingAudioDriver()
-        let metronome = makeMetronome(driver: driver)
-        let vm = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: settings)
-
-        await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
-
-        // Start the metronome independently (outside ViewModel's isPlaying flag) and
-        // wait for isEnabled to propagate through the Combine pipeline.
-        let started = await CombineTestUtilities.performAndWait(
-            action: { metronome.toggle(bpm: vm.effectiveBPM(), timeSignature: .fourFour) },
-            publisher: metronome.$isEnabled,
-            condition: { $0 == true },
-            timeout: 0.5
-        )
-        #expect(started, "Metronome should start before the speed-change test")
-        #expect(vm.isPlaying == false, "ViewModel must not be playing for this code path")
-
-        // updateSpeed → applySpeedChangeInternal → hits the `!isPlaying && metronome.isEnabled` branch.
-        vm.updateSpeed(0.75)
-
-        metronome.stop()
-        vm.cleanup()
-
-        #expect(abs(settings.speedMultiplier - 0.75) < 0.001,
-                "Speed should be updated to 0.75 after applySpeedChangeInternal ran")
-        #expect(abs(metronome.bpm - 90.0) < 0.001,
-                "Enabled metronome should be updated to the new effective BPM")
-        #expect(driver.resumeCallCount >= 1,
-                "The injected test driver should observe metronome startup during the enabled-metronome path")
-    }
-
-    // MARK: - pausePlayback elapsed-time fallback (lines 646–648)
-
-    @Test("pausePlayback falls back to playbackStartTime when metronome has no playback time")
-    func testPausePlaybackFallsBackToPlaybackStartTime() async throws {
-        let vm = makeViewModel(noteCount: 4)
-        await vm.loadChartData()
-        vm.setupGameplay()
-        defer { vm.cleanup() }
-
-        // Manually set playing state and a start time, without an active metronome.
-        vm.isPlaying = true
-        let startTime = Date().addingTimeInterval(-1.5)
-        vm.playbackStartTime = startTime
-        vm.pausedElapsedTime = 0.0
-
-        vm.pausePlayback()
-
-        // pausePlayback should have used the playbackStartTime fallback and accumulated elapsed time.
-        #expect(vm.isPlaying == false)
-        #expect(vm.pausedElapsedTime >= 1.4, "Should accumulate ~1.5 s from playbackStartTime fallback")
     }
 }

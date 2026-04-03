@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 #if os(macOS)
 import AppKit
 #endif
@@ -16,10 +17,48 @@ final class InputKeyCaptureState: ObservableObject {
     @Published var isCapturingKey = false
 }
 
+@MainActor
+final class InputKeyCaptureViewModel: ObservableObject {
+    @Published var selectedDrumType: DrumType?
+    @Published var isCapturingKey = false
+
+    let state: InputKeyCaptureState
+    private var cancellables = Set<AnyCancellable>()
+
+    init(state: InputKeyCaptureState) {
+        self.state = state
+        selectedDrumType = state.selectedDrumType
+        isCapturingKey = state.isCapturingKey
+
+        state.$selectedDrumType
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.selectedDrumType, on: self)
+            .store(in: &cancellables)
+
+        state.$isCapturingKey
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.isCapturingKey, on: self)
+            .store(in: &cancellables)
+    }
+
+    func startCapture(for drumType: DrumType) {
+        state.selectedDrumType = drumType
+        state.isCapturingKey = true
+    }
+
+    func cancelCapture() {
+        state.isCapturingKey = false
+        state.selectedDrumType = nil
+    }
+
+    func completeCapture() {
+        cancelCapture()
+    }
+}
+
 struct InputSettingsView: View {
     @StateObject var settingsManager: InputSettingsManager
-    private let keyCaptureStateRef: InputKeyCaptureState
-    @StateObject private var keyCaptureState: InputKeyCaptureState
+    @StateObject private var keyCaptureViewModel: InputKeyCaptureViewModel
     @State private var showResetAlert = false
     @Environment(\.dismiss) private var dismiss
 
@@ -30,18 +69,17 @@ struct InputSettingsView: View {
         let resolvedSettingsManager = settingsManager ?? InputSettingsManager()
         let resolvedKeyCaptureState = keyCaptureState ?? InputKeyCaptureState()
         self._settingsManager = StateObject(wrappedValue: resolvedSettingsManager)
-        self.keyCaptureStateRef = resolvedKeyCaptureState
-        self._keyCaptureState = StateObject(wrappedValue: resolvedKeyCaptureState)
+        self._keyCaptureViewModel = StateObject(
+            wrappedValue: InputKeyCaptureViewModel(state: resolvedKeyCaptureState)
+        )
     }
 
     var selectedDrumType: DrumType? {
-        get { keyCaptureState.selectedDrumType }
-        nonmutating set { keyCaptureStateRef.selectedDrumType = newValue }
+        keyCaptureViewModel.selectedDrumType
     }
 
     var isCapturingKey: Bool {
-        get { keyCaptureState.isCapturingKey }
-        nonmutating set { keyCaptureStateRef.isCapturingKey = newValue }
+        keyCaptureViewModel.isCapturingKey
     }
     
     var body: some View {
@@ -170,13 +208,11 @@ struct InputSettingsView: View {
     // MARK: - Key Capture Functions
     
     func startKeyCapture(for drumType: DrumType) {
-        selectedDrumType = drumType
-        isCapturingKey = true
+        keyCaptureViewModel.startCapture(for: drumType)
     }
     
     func cancelKeyCapture() {
-        isCapturingKey = false
-        selectedDrumType = nil
+        keyCaptureViewModel.cancelCapture()
     }
     
     #if os(macOS)
@@ -203,8 +239,7 @@ struct InputSettingsView: View {
         settingsManager.setKeyBinding(keyString, for: drumType)
         
         stopKeyEventMonitoring()
-        isCapturingKey = false
-        selectedDrumType = nil
+        keyCaptureViewModel.completeCapture()
     }
     
     private static let specialKeyCodes: [UInt16: String] = [

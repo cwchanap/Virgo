@@ -16,14 +16,15 @@ echo "${BLUE}🚀 Setting up git hooks for Virgo project...${NC}"
 
 # Get the project root directory
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOOKS_DIR="$PROJECT_ROOT/.git/hooks"
 SOURCE_HOOKS_DIR="$PROJECT_ROOT/scripts/git-hooks"
 
 # Check if we're in a git repository
-if [ ! -d "$PROJECT_ROOT/.git" ]; then
+if ! git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "${RED}❌ Error: Not in a git repository${NC}"
     exit 1
 fi
+
+HOOKS_DIR="$(git -C "$PROJECT_ROOT" rev-parse --git-path hooks)"
 
 # Check if SwiftLint is installed
 echo "${YELLOW}🔍 Checking SwiftLint installation...${NC}"

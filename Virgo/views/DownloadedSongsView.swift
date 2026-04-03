@@ -10,6 +10,12 @@ import SwiftData
 
 // MARK: - Downloaded Songs View
 struct DownloadedSongsView: View {
+    static let emptyStateViewID = "downloaded-empty-state"
+
+    static func rowViewID(for song: Song) -> String {
+        "downloaded-song-row-\(ObjectIdentifier(song))"
+    }
+
     let songs: [Song]
     @ObservedObject var serverSongService: ServerSongService
     @Binding var currentlyPlaying: PersistentIdentifier?
@@ -59,6 +65,7 @@ struct DownloadedSongsView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
+                    .id(Self.rowViewID(for: song))
                 }
             } else {
                 VStack(spacing: 16) {
@@ -78,6 +85,7 @@ struct DownloadedSongsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
                 .listRowBackground(Color.clear)
+                .id(Self.emptyStateViewID)
             }
         }
         .listStyle(PlainListStyle())
