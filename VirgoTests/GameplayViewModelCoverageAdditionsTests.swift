@@ -10,8 +10,21 @@ import Testing
 import Foundation
 @testable import Virgo
 
+@Suite("GameplayViewModelCoverageAdditionsTests", .serialized)
 @MainActor
 struct GameplayViewModelCoverageAdditionsTests {
+
+    @Test("GameplayViewModelCoverageTestSupport.makeViewModel uses an injected high score service")
+    func testMakeViewModelUsesInjectedHighScoreService() async throws {
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let highScoreService = HighScoreService(userDefaults: userDefaults)
+
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(
+            highScoreService: highScoreService
+        )
+
+        #expect(vm.highScoreService === highScoreService)
+    }
 
     // MARK: - effectiveBPM nil-track fallback (line 210–213)
 

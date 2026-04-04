@@ -24,7 +24,8 @@ if ! git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
     exit 1
 fi
 
-HOOKS_DIR="$(git -C "$PROJECT_ROOT" rev-parse --git-path hooks)"
+HOOKS_DIR_GIT_PATH="$(git -C "$PROJECT_ROOT" rev-parse --git-path hooks)"
+HOOKS_DIR="$(cd "$PROJECT_ROOT" && cd "$(dirname "$HOOKS_DIR_GIT_PATH")" && pwd -P)/$(basename "$HOOKS_DIR_GIT_PATH")"
 
 # Check if SwiftLint is installed
 echo "${YELLOW}🔍 Checking SwiftLint installation...${NC}"
