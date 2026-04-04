@@ -60,6 +60,7 @@ struct GameplayViewModelCoverageAdditionsTests {
     @Test("calculateTrackDuration uses MM:SS song.duration when available")
     func testCalculateTrackDurationUsesSongDurationMMSS() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        defer { vm.cleanup() }
         await vm.loadChartData()
         vm.setupGameplay()
 
@@ -70,13 +71,12 @@ struct GameplayViewModelCoverageAdditionsTests {
         let duration = vm.calculateTrackDuration()
         #expect(abs(duration - 150.0) < 0.001,
                 "Should return 150 s (2×60+30) from song.duration at 1× speed")
-
-        vm.cleanup()
     }
 
     @Test("calculateTrackDuration ignores '0:00' song.duration and uses note-based calculation")
     func testCalculateTrackDurationIgnoresZeroDurationString() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        defer { vm.cleanup() }
         await vm.loadChartData()
         vm.setupGameplay()
 
@@ -84,10 +84,9 @@ struct GameplayViewModelCoverageAdditionsTests {
         vm.cachedSong = song
 
         let duration = vm.calculateTrackDuration()
-        // "0:00" should be ignored; duration is derived from note positions instead.
-        #expect(duration > 0.0, "Should compute duration from notes when song.duration is '0:00'")
-
-        vm.cleanup()
+        // 4 notes at measure 1 (offsets 0.0–0.3) → 1 measure × 2.0 s/measure at 120 BPM 4/4 = 2.0 s
+        #expect(abs(duration - 2.0) < 0.001,
+                "Should compute 2.0 s from note positions when song.duration is '0:00'")
     }
 
     // MARK: - calculateElapsedTime fallback to playbackStartTime (lines 1008–1010)
