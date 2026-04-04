@@ -56,6 +56,24 @@ struct InputNotationCoverageTests {
         }
     }
 
+    @Test("InputKeyCaptureViewModel deallocates after references are released")
+    func testInputKeyCaptureViewModelDeallocatesAfterRelease() async throws {
+        try await TestSetup.withTestSetup {
+            let keyCaptureState = InputKeyCaptureState()
+            weak var weakViewModel: InputKeyCaptureViewModel?
+
+            var viewModel: InputKeyCaptureViewModel? = InputKeyCaptureViewModel(state: keyCaptureState)
+            weakViewModel = viewModel
+
+            #expect(weakViewModel != nil)
+
+            viewModel = nil
+            await Task.yield()
+
+            #expect(weakViewModel == nil, "View model should release its Combine subscriptions on deinit")
+        }
+    }
+
     /// Exercises the key-capture overlay by mutating the injected state on the
     /// mounted view hierarchy so assertions run against the actual rendered tree.
     @Test("InputSettingsView renders in key-capture state after startKeyCapture")

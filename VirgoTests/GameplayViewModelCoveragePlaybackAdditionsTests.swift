@@ -7,6 +7,7 @@ import Testing
 import Foundation
 @testable import Virgo
 
+@Suite("GameplayViewModelPlaybackCoverageTests", .serialized)
 @MainActor
 struct GameplayViewModelPlaybackCoverageTests {
     // MARK: - handlePlaybackCompletion session-result state (lines 1041–1049)

@@ -31,13 +31,15 @@ final class InputKeyCaptureViewModel: ObservableObject {
         isCapturingKey = state.isCapturingKey
 
         state.$selectedDrumType
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.selectedDrumType, on: self)
+            .sink { [weak self] selectedDrumType in
+                self?.selectedDrumType = selectedDrumType
+            }
             .store(in: &cancellables)
 
         state.$isCapturingKey
-            .receive(on: DispatchQueue.main)
-            .assign(to: \.isCapturingKey, on: self)
+            .sink { [weak self] isCapturingKey in
+                self?.isCapturingKey = isCapturingKey
+            }
             .store(in: &cancellables)
     }
 

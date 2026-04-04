@@ -267,10 +267,11 @@ struct SwiftUITestUtilities {
     struct MountedView {
         #if os(macOS)
         let hostingView: NSHostingView<AnyView>
-
         var root: Any {
             hostingView
         }
+        #else
+        let root: Any
         #endif
     }
 
@@ -297,7 +298,7 @@ struct SwiftUITestUtilities {
 
         return MountedView(hostingView: hostingView)
         #else
-        fatalError("SwiftUITestUtilities.assertViewWithEnvironment is not supported on this platform")
+        return MountedView(root: AnyView(view))
         #endif
     }
 
@@ -363,6 +364,7 @@ struct SwiftUITestUtilities {
             return
         }
 
+        #if os(macOS)
         if let textField = value as? NSTextField, !textField.stringValue.isEmpty {
             texts.append(textField.stringValue)
         }
@@ -370,6 +372,7 @@ struct SwiftUITestUtilities {
         if let button = value as? NSButton, !button.title.isEmpty {
             texts.append(button.title)
         }
+        #endif
 
         if let nestedHostingView = nestedMountedHostingView(from: value) {
             collectTexts(from: nestedHostingView, into: &texts, visited: &visited)
@@ -385,11 +388,13 @@ struct SwiftUITestUtilities {
             collectTexts(from: child.value, into: &texts, visited: &visited)
         }
 
+        #if os(macOS)
         if let view = value as? NSView {
             for subview in view.subviews {
                 collectTexts(from: subview, into: &texts, visited: &visited)
             }
         }
+        #endif
     }
 
     private static func collectSymbols(
@@ -408,11 +413,13 @@ struct SwiftUITestUtilities {
             symbols.append(symbol)
         }
 
+        #if os(macOS)
         if let imageView = value as? NSImageView,
            let image = imageView.image,
            let imageName = image.name() {
             symbols.append(imageName)
         }
+        #endif
 
         if let nestedHostingView = nestedMountedHostingView(from: value) {
             collectSymbols(from: nestedHostingView, into: &symbols, visited: &visited)
@@ -424,11 +431,13 @@ struct SwiftUITestUtilities {
             collectSymbols(from: child.value, into: &symbols, visited: &visited)
         }
 
+        #if os(macOS)
         if let view = value as? NSView {
             for subview in view.subviews {
                 collectSymbols(from: subview, into: &symbols, visited: &visited)
             }
         }
+        #endif
     }
 
     private static func collectIdentifiers(
@@ -442,11 +451,13 @@ struct SwiftUITestUtilities {
             return
         }
 
+        #if os(macOS)
         if let view = value as? NSView,
            let identifier = view.identifier?.rawValue,
            !identifier.isEmpty {
             identifiers.append(identifier)
         }
+        #endif
 
         if let viewListID = mirror.children.first(where: { $0.label == "viewListID" }) {
             identifiers.append(
@@ -462,11 +473,13 @@ struct SwiftUITestUtilities {
             collectIdentifiers(from: nestedHostingView, into: &identifiers, visited: &visited)
         }
 
+        #if os(macOS)
         if let view = value as? NSView {
             for subview in view.subviews {
                 collectIdentifiers(from: subview, into: &identifiers, visited: &visited)
             }
         }
+        #endif
 
         for child in mirror.children {
             collectIdentifiers(from: child.value, into: &identifiers, visited: &visited)

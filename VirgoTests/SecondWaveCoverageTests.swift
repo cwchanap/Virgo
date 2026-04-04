@@ -72,6 +72,30 @@ struct SecondWaveCoverageTests {
         }
     }
 
+    @Test("DownloadedSongsView.rowViewID stays stable across SwiftData reloads")
+    func testDownloadedSongsViewRowViewIDStableAcrossReloads() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let song = makeDownloadedSong(title: "Stable Row ID")
+            context.insert(song)
+            try context.save()
+
+            let originalRowViewID = DownloadedSongsView.rowViewID(for: song)
+
+            let verificationContext = ModelContext(TestContainer.shared.container)
+            let reloadedSong = try #require(
+                verificationContext.fetch(FetchDescriptor<Song>()).first
+            )
+
+            #expect(song.persistentModelID == reloadedSong.persistentModelID)
+            #expect(ObjectIdentifier(song) != ObjectIdentifier(reloadedSong))
+            #expect(
+                DownloadedSongsView.rowViewID(for: reloadedSong) == originalRowViewID,
+                "Row view IDs should stay stable for the same SwiftData model across reloads"
+            )
+        }
+    }
+
     @Test("DownloadedSongsView.downloadedSongs filters to DTX Import genre only")
     func testDownloadedSongsViewFiltersNonDTXSongs() async throws {
         try await TestSetup.withTestSetup {

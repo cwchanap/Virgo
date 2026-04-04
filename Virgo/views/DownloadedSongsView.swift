@@ -13,7 +13,11 @@ struct DownloadedSongsView: View {
     static let emptyStateViewID = "downloaded-empty-state"
 
     static func rowViewID(for song: Song) -> String {
-        "downloaded-song-row-\(ObjectIdentifier(song))"
+        let stableSongID = PersistentIdentifierPersistenceKey.canonicalKey(
+            for: song.persistentModelID,
+            logPrefix: "DownloadedSongsView"
+        )
+        return "downloaded-song-row-\(stableSongID)"
     }
 
     let songs: [Song]
@@ -62,10 +66,10 @@ struct DownloadedSongsView: View {
                             }
                         }
                     )
+                    .accessibilityIdentifier(Self.rowViewID(for: song))
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
-                    .id(Self.rowViewID(for: song))
                 }
             } else {
                 VStack(spacing: 16) {
@@ -111,21 +115,18 @@ struct DownloadedSongRowWithDelete: View {
     @State private var chartCount: Int = 0
     @State private var measureCount: Int = 0
     @State private var charts: [Chart] = []
+    @State private var availableDifficulties: [Difficulty] = []
 
     var body: some View {
         VStack(spacing: 0) {
             mainSongRow
             expandedContent
         }
-        .task {
-            // Load relationship data asynchronously to prevent SwiftData concurrency issues
-            await loadSongRelationshipData()
-        }
-        .onChange(of: song.id) { _, _ in
-            // Reload if song changes
-            Task {
-                await loadSongRelationshipData()
-            }
+        .loadSongRelationships(for: song) { data in
+            charts = data.charts
+            chartCount = data.chartCount
+            measureCount = data.measureCount
+            availableDifficulties = data.availableDifficulties
         }
     }
     
@@ -204,7 +205,7 @@ struct DownloadedSongRowWithDelete: View {
     
     private var difficultyBadges: some View {
         HStack(spacing: 2) {
-            ForEach(song.availableDifficulties, id: \.self) { difficulty in
+            ForEach(availableDifficulties, id: \.self) { difficulty in
                 DifficultyBadge(difficulty: difficulty, size: .small)
             }
         }
@@ -273,27 +274,5 @@ struct DownloadedSongRowWithDelete: View {
     private func handleChartSelect(_ chart: Chart) {
         selectedChart = chart
         navigateToGameplay = true
-    }
-
-    @MainActor
-    private func loadSongRelationshipData() async {
-        await Task {
-            // Access SwiftData relationships in a safe background context
-            let songCharts = song.charts.filter { !$0.isDeleted }
-            let songMeasureCount = calculateMeasureCount(from: songCharts)
-
-            await MainActor.run {
-                self.charts = songCharts
-                self.chartCount = songCharts.count
-                self.measureCount = songMeasureCount
-            }
-        }.value
-    }
-
-    private func calculateMeasureCount(from charts: [Chart]) -> Int {
-        let allNotes = charts.flatMap { chart in
-            chart.notes.filter { !$0.isDeleted }
-        }
-        return allNotes.map(\.measureNumber).max() ?? 1
     }
 }

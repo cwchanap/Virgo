@@ -13,6 +13,11 @@ enum GameplayViewModelCoverageTestSupport {
         return PracticeSettingsService(userDefaults: userDefaults)
     }
 
+    static func makeHighScoreService() -> HighScoreService {
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        return HighScoreService(userDefaults: userDefaults)
+    }
+
     static func makeMetronome(driver: RecordingAudioDriver? = nil) -> MetronomeEngine {
         MetronomeEngine(audioDriver: driver ?? RecordingAudioDriver())
     }
@@ -34,15 +39,18 @@ enum GameplayViewModelCoverageTestSupport {
     static func makeViewModel(
         chart: Chart? = nil,
         noteCount: Int = 4,
-        settings: PracticeSettingsService? = nil
+        settings: PracticeSettingsService? = nil,
+        highScoreService: HighScoreService? = nil
     ) -> GameplayViewModel {
         let resolvedChart = chart ?? makeChart(noteCount: noteCount)
         let metronome = makeMetronome()
         let resolvedSettings = settings ?? makeSettings()
+        let resolvedHighScoreService = highScoreService ?? makeHighScoreService()
         return GameplayViewModel(
             chart: resolvedChart,
             metronome: metronome,
-            practiceSettings: resolvedSettings
+            practiceSettings: resolvedSettings,
+            highScoreService: resolvedHighScoreService
         )
     }
 }

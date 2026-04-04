@@ -199,24 +199,11 @@ struct SongsTabCoverageTests {
                 size: CGSize(width: 1280, height: 900)
             )
             let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
-            let downloadedView = DownloadedSongsView(
-                songs: view.songs,
-                serverSongService: view.serverSongService,
-                currentlyPlaying: .constant(nil),
-                expandedSongId: .constant(nil),
-                selectedChart: .constant(nil),
-                navigateToGameplay: .constant(false),
-                audioPlaybackService: view.audioPlaybackService,
-                onPlayTap: { _ in },
-                onSaveTap: { _ in }
-            )
 
             #expect(
                 texts.contains("1 songs available"),
                 "Expected the filtered header count to reflect a single result; got \(texts)"
             )
-            #expect(downloadedView.downloadedSongs.count == 1)
-            #expect(downloadedView.downloadedSongs.first?.title == "Searchable Song")
             #expect(view.songs.count == 1)
             #expect(view.songs.first?.title == "Searchable Song")
         }
