@@ -144,13 +144,17 @@ struct GameplayViewModelCoverageAdditionsTests {
     @Test("wireInputHandler routes onNoteResult hits to recordHit while playing")
     func testWireInputHandlerRoutesHitsWhenPlaying() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        defer { vm.cleanup() }
         await vm.loadChartData()
         vm.setupGameplay()
 
         vm.wireInputHandler()
         vm.startPlayback()
 
-        let note = vm.cachedNotes.first!
+        guard let note = vm.cachedNotes.first else {
+            Issue.record("expected at least one cachedNote in testWireInputHandlerRoutesHitsWhenPlaying")
+            return
+        }
         let hit = InputHit(drumType: .kick, velocity: 0.8, timestamp: Date())
         let result = NoteMatchResult(
             hitInput: hit,
@@ -163,8 +167,6 @@ struct GameplayViewModelCoverageAdditionsTests {
 
         let scoreBefore = vm.scoreEngine.score
         vm.inputHandler.onNoteResult?(result)
-
-        vm.cleanup()
 
         #expect(vm.scoreEngine.score > scoreBefore,
                 "Score should increase when a hit is delivered via the wired handler")
@@ -181,7 +183,10 @@ struct GameplayViewModelCoverageAdditionsTests {
 
         #expect(vm.isPlaying == false)
 
-        let note = vm.cachedNotes.first!
+        guard let note = vm.cachedNotes.first else {
+            Issue.record("expected at least one cachedNote in testRecordHitIgnoredWhenNotPlaying")
+            return
+        }
         let hit = InputHit(drumType: .kick, velocity: 0.8, timestamp: Date())
         let result = NoteMatchResult(
             hitInput: hit,
@@ -203,24 +208,20 @@ struct GameplayViewModelCoverageAdditionsTests {
     func testUpdateSettingsWithMatchingInstanceAppliesChange() async throws {
         let settings = GameplayViewModelCoverageTestSupport.makeSettings()
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8, settings: settings)
+        defer { vm.cleanup() }
         await vm.loadChartData()
         vm.setupGameplay(loadPersistedSpeed: false)
 
-        // Baseline: 1× speed → effectiveBPM uses the 120 BPM fallback (chart has no song).
         let bpmBefore = vm.effectiveBPM()
         #expect(abs(bpmBefore - 120.0) < 0.001, "Pre-condition: effectiveBPM should be 120 at 1× speed")
 
         settings.setSpeed(0.75)
 
-        // Guard in updateSettings checks `practiceSettings === self.practiceSettings`; this passes.
         vm.updateSettings(settings)
 
-        // applySpeedChangeInternal ran → effectiveBPM now reflects the new multiplier.
         let bpmAfter = vm.effectiveBPM()
         #expect(abs(bpmAfter - 90.0) < 0.001,
                 "effectiveBPM should be 90 (120 × 0.75) after updateSettings applied the speed change")
         #expect(bpmAfter < bpmBefore, "effectiveBPM must decrease after slowing down to 0.75×")
-
-        vm.cleanup()
     }
 }
