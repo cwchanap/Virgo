@@ -83,14 +83,17 @@ All services are `@MainActor`:
 - `HighScoreService`: Per-chart best-score persistence via `UserDefaults` with `CryptoKit` SHA-256 keying
 
 ### Server Song Management
-Refactored into focused utilities under `utilities/`:
+`ServerSongService` is the public facade (coordinator) over four focused utilities under `utilities/`:
 - `ServerSongDownloader`: Downloads DTX files from FastAPI backend
 - `ServerSongFileManager`: Local file system operations for downloaded songs
 - `ServerSongCache`: In-memory caching for server song metadata
 - `ServerSongStatusManager`: Tracks download/delete state and syncs with SwiftData
+- `DTXAPIClient`: HTTP client for the FastAPI backend (list/download endpoints)
 
 ### Input System
-- `InputManager`: Real-time MIDI and keyboard input with timing accuracy scoring (Perfect/Great/Good/Miss)
+- `InputManager`: Real-time MIDI and keyboard input; delegates hit events to `InputTimingMatcher`
+- `InputTimingMatcher`: Pure value-type struct that maps raw hit timestamps to note positions and returns a `NoteMatchResult` (Perfect/Great/Good/Miss + timing error)
+- `ScoreEngine`: Pure value-type scoring engine; owns combo multiplier tiers, per-hit scoring, and produces immutable `SessionResult` snapshots — no I/O or SwiftUI dependencies
 - `InputSettingsManager`: Configurable key/MIDI mappings persisted in `UserDefaults`
 
 ## Key Technical Patterns
@@ -123,8 +126,7 @@ Virgo/
 │   ├── VirgoApp.swift           # App entry point; creates ModelContainer and MetronomeEngine
 │   ├── components/              # Reusable UI components (song rows, difficulty badges, metronome)
 │   ├── views/                   # Feature views (ContentView, GameplayView, SongsTabView, etc.)
-│   │   ├── subviews/            # View decompositions
-│   │   └── helpers/             # (deprecated path - logic moved to ViewModel)
+│   │   └── subviews/            # View decompositions
 │   ├── viewmodels/
 │   │   └── GameplayViewModel.swift  # All gameplay state and logic
 │   ├── models/                  # SwiftData models (DrumTrack.swift, DrumType+Extensions.swift)
@@ -145,13 +147,3 @@ Virgo/
 - Shift-JIS encoding support for Japanese DTX files
 - CORS-enabled; Cloudflare Workers deployment supported
 
-## Memory Archive
-
-### SwiftUI Performance - @Published and Massive View Re-renders
-- **Critical**: `@Published` on `@EnvironmentObject` triggers re-evaluation of ALL dependent views, even those not using the changed property
-- **Case**: `MetronomeEngine.$currentBeat` as `@EnvironmentObject` in `GameplayView` caused complete UI unresponsiveness (scrolling >5s delay) because every beat tick forced re-render of hundreds of notation subviews
-- **Fix**: Use `GameplayViewModel` (`@Observable`) as the intermediary; it subscribes to metronome beats and batches visual state updates
-
-### SwiftData Concurrency
-- Accessing SwiftData relationships during UI rendering causes threading crashes
-- Always use async caching pattern: load in `.task`, cache in `@State`, render from cache
