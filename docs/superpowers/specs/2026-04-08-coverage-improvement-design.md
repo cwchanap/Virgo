@@ -126,6 +126,22 @@ This fallback is intentionally limited to avoid turning the work into an open-en
 - Prefer direct render-state coverage and pure helper tests over interaction-heavy tests
 - Avoid sleeps; use existing deterministic helpers and precomputed state
 
+## Coverage Measurement and Checkpoints
+
+Use the app-target coverage report from:
+
+```bash
+xcrun xccov view --report <result-bundle>.xcresult
+```
+
+The implementation should make coverage decisions at explicit checkpoints:
+
+1. After the **gameplay render coverage pass**
+2. After the **app shell and startup coverage pass**
+3. Only if coverage is still below **90.03%**, execute the fallback sweep
+
+The fallback sweep is not the default path; it is triggered only if the first two passes are insufficient.
+
 ## Risks and Mitigations
 
 ### Risk: gameplay render tests become timing-sensitive
