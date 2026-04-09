@@ -22,7 +22,8 @@ struct GameplayRenderCoverageTests {
 
     /// Mounts `GameplayView(chart:metronome:)` without an initial view model.
     /// `layoutSubtreeIfNeeded()` evaluates the body with `viewModel == nil`,
-    /// which exercises the loading-state branch in `sheetMusicView`.
+    /// which exercises the loading-state branch in `sheetMusicView` and also
+    /// the `controlsView` placeholder (`Color.black.frame(height: 100)`) branch.
     @Test("GameplayView mounts in loading state when no viewModel is provided")
     func testGameplayView_noInitialViewModel_rendersLoadingState() async throws {
         try await TestSetup.withTestSetup {
@@ -45,7 +46,8 @@ struct GameplayRenderCoverageTests {
     // MARK: - Populated render path
 
     /// Injects a fully-prepared view model via the new `initialViewModel` seam.
-    /// The view renders the populated notation branch from the very first layout pass.
+    /// The view renders the populated notation branch from the very first layout pass,
+    /// and also exercises the `controlsView` full `GameplayControlsView` branch.
     @Test("GameplayView mounts in populated state when a prepared viewModel is injected")
     func testGameplayView_withPreparedViewModel_rendersPopulatedState() async throws {
         try await TestSetup.withTestSetup {
@@ -76,44 +78,6 @@ struct GameplayRenderCoverageTests {
         try await TestSetup.withTestSetup {
             let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel(staticStaffLinesPresent: false)
             #expect(vm.staticStaffLinesView == nil, "Fixture must clear staticStaffLinesView")
-
-            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
-                .environmentObject(vm.practiceSettings)
-
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 1280, height: 900)
-            )
-        }
-    }
-
-    // MARK: - controlsView branches
-
-    /// Mounts `GameplayView` without a viewModel, causing `controlsView` to show the
-    /// placeholder `Color.black.frame(height: 100)` branch.
-    @Test("GameplayView controlsView shows placeholder when viewModel is nil")
-    func testGameplayView_controlsPlaceholder_rendersWhenNoViewModel() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = GameplayViewModelCoverageTestSupport.makeChart()
-            let metronome = GameplayViewModelCoverageTestSupport.makeMetronome()
-            let settings = GameplayViewModelCoverageTestSupport.makeSettings()
-
-            let view = GameplayView(chart: chart, metronome: metronome)
-                .environmentObject(settings)
-
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 1280, height: 900)
-            )
-        }
-    }
-
-    /// Mounts `GameplayView` with a populated viewModel, causing `controlsView` to render
-    /// the full `GameplayControlsView` branch.
-    @Test("GameplayView controlsView shows loaded controls when viewModel is populated")
-    func testGameplayView_controlsLoaded_rendersWhenViewModelPresent() async throws {
-        try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
 
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
                 .environmentObject(vm.practiceSettings)
