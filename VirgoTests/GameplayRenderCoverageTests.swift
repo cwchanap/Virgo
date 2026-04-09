@@ -52,6 +52,7 @@ struct GameplayRenderCoverageTests {
     func testGameplayView_withPreparedViewModel_rendersPopulatedState() async throws {
         try await TestSetup.withTestSetup {
             let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
 
             // Verify the view model was fully prepared before mounting.
             #expect(vm.isDataLoaded, "makePreparedViewModel must call loadChartData()")
@@ -77,6 +78,7 @@ struct GameplayRenderCoverageTests {
     func testGameplayView_dynamicStaffLinesFallback() async throws {
         try await TestSetup.withTestSetup {
             let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel(staticStaffLinesPresent: false)
+            defer { vm.cleanup() }
             #expect(vm.staticStaffLinesView == nil, "Fixture must clear staticStaffLinesView")
 
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
@@ -86,6 +88,8 @@ struct GameplayRenderCoverageTests {
                 view,
                 size: CGSize(width: 1280, height: 900)
             )
+            #expect(vm.staticStaffLinesView == nil,
+                    "Injected view model must preserve a nil staticStaffLinesView during mount")
         }
     }
 
@@ -206,9 +210,8 @@ struct GameplayRenderCoverageTests {
             let positions = GameplayLayout.calculateMeasurePositions(
                 totalMeasures: 4, timeSignature: .fourFour
             )
-            let rowsPresent = Set(positions.map { $0.row })
-            #expect(rowsPresent.contains(0) && rowsPresent.contains(1),
-                    "Fixture must span two rows for the row-mismatch branch")
+            #expect(positions[2].row == 0, "Measure 2 must remain on row 0 for the row-mismatch fixture")
+            #expect(positions[3].row == 1, "Measure 3 must remain on row 1 for the row-mismatch fixture")
 
             // timePosition 2.0 → measureIndex 2 (row 0); 3.0 → measureIndex 3 (row 1).
             let beatRow0 = DrumBeat(id: 0, drums: [.kick],  timePosition: 2.0, interval: .eighth)
