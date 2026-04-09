@@ -39,7 +39,11 @@ struct VirgoApp: App {
     }()
 
     init() {
-        VirgoAppLaunchBehavior.applyLaunchBehavior(arguments: ProcessInfo.processInfo.arguments)
+        #if canImport(UIKit)
+        if VirgoAppLaunchBehavior.shouldDisableAnimations(arguments: ProcessInfo.processInfo.arguments) {
+            UIView.setAnimationsEnabled(false)
+        }
+        #endif
     }
 
     var body: some Scene {
