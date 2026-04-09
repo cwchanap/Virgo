@@ -22,11 +22,11 @@ enum GameplayViewModelCoverageTestSupport {
         MetronomeEngine(audioDriver: driver ?? RecordingAudioDriver())
     }
 
-    static func makeChart(noteCount: Int = 4, measureOffset stride: Double = 0.1) -> Chart {
+    static func makeChart(noteCount: Int = 4, interval: NoteInterval = .quarter, measureOffset stride: Double = 0.1) -> Chart {
         let chart = Chart(difficulty: .medium)
         for i in 0..<noteCount {
             let note = Note(
-                interval: .quarter,
+                interval: interval,
                 noteType: i.isMultiple(of: 2) ? .bass : .snare,
                 measureNumber: 1,
                 measureOffset: Double(i) * stride
@@ -52,5 +52,27 @@ enum GameplayViewModelCoverageTestSupport {
             practiceSettings: resolvedSettings,
             highScoreService: resolvedHighScoreService
         )
+    }
+
+    /// Builds a fully-prepared view model suitable for deterministic render-path tests.
+    ///
+    /// Creates an eighth-note chart (measureOffset stride 0.25), then drives the
+    /// normal view-model lifecycle (`loadChartData` → `setupGameplay`) so that all
+    /// pre-computed layout caches are populated.  Pass `staticStaffLinesPresent: false`
+    /// to cover the dynamic staff-lines fallback branch.
+    static func makePreparedViewModel(staticStaffLinesPresent: Bool = true) async -> GameplayViewModel {
+        let chart = makeChart(noteCount: 4, interval: .eighth, measureOffset: 0.25)
+        let vm = GameplayViewModel(
+            chart: chart,
+            metronome: makeMetronome(),
+            practiceSettings: makeSettings(),
+            highScoreService: makeHighScoreService()
+        )
+        await vm.loadChartData()
+        vm.setupGameplay()
+        if !staticStaffLinesPresent {
+            vm.staticStaffLinesView = nil
+        }
+        return vm
     }
 }
