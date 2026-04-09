@@ -18,12 +18,4 @@ enum VirgoAppLaunchBehavior {
         arguments.contains(LaunchArguments.uiTesting)
     }
 
-    /// Applies animation suppression when appropriate. Call once in `VirgoApp.init()`.
-    static func applyLaunchBehavior(arguments: [String]) {
-        #if canImport(UIKit)
-        if shouldDisableAnimations(arguments: arguments) {
-            UIView.setAnimationsEnabled(false)
-        }
-        #endif
-    }
 }
