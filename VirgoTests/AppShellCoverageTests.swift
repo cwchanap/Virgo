@@ -13,7 +13,8 @@ struct AppShellCoverageTests {
 
     // MARK: - ContentStartupPolicy.startupAction
 
-    @Test func testStartupActionClearAndSeed() {
+    @Test("startupAction returns clearAndSeed when uiTesting+resetState with no missing fixtures")
+    func testStartupActionClearAndSeed() {
         let action = ContentStartupPolicy.startupAction(
             arguments: [LaunchArguments.uiTesting, LaunchArguments.resetState],
             missingFixtureTitles: []
@@ -21,7 +22,8 @@ struct AppShellCoverageTests {
         #expect(action == .clearAndSeed)
     }
 
-    @Test func testStartupActionClearOnly() {
+    @Test("startupAction returns clearOnly when uiTesting+resetState+skipSeed")
+    func testStartupActionClearOnly() {
         let action = ContentStartupPolicy.startupAction(
             arguments: [LaunchArguments.uiTesting, LaunchArguments.resetState, LaunchArguments.skipSeed],
             missingFixtureTitles: []
@@ -29,7 +31,8 @@ struct AppShellCoverageTests {
         #expect(action == .clearOnly)
     }
 
-    @Test func testStartupActionSeedIfNeeded() {
+    @Test("startupAction returns seedIfNeeded when uiTesting and missing fixtures present")
+    func testStartupActionSeedIfNeeded() {
         let action = ContentStartupPolicy.startupAction(
             arguments: [LaunchArguments.uiTesting],
             missingFixtureTitles: ["Thunder Beat"]
@@ -37,7 +40,8 @@ struct AppShellCoverageTests {
         #expect(action == .seedIfNeeded)
     }
 
-    @Test func testStartupActionNoActionWhenNotUITesting() {
+    @Test("startupAction returns noAction when not in UI testing mode")
+    func testStartupActionNoActionWhenNotUITesting() {
         let action = ContentStartupPolicy.startupAction(
             arguments: [],
             missingFixtureTitles: ["Thunder Beat"]
@@ -45,7 +49,8 @@ struct AppShellCoverageTests {
         #expect(action == .noAction)
     }
 
-    @Test func testStartupActionNoActionWhenSkipSeedAndNoReset() {
+    @Test("startupAction returns noAction when skipSeed set without resetState")
+    func testStartupActionNoActionWhenSkipSeedAndNoReset() {
         let action = ContentStartupPolicy.startupAction(
             arguments: [LaunchArguments.uiTesting, LaunchArguments.skipSeed],
             missingFixtureTitles: ["Thunder Beat"]
@@ -53,7 +58,8 @@ struct AppShellCoverageTests {
         #expect(action == .noAction)
     }
 
-    @Test func testStartupActionNoActionWhenNoMissingFixtures() {
+    @Test("startupAction returns noAction when uiTesting but no missing fixtures")
+    func testStartupActionNoActionWhenNoMissingFixtures() {
         let action = ContentStartupPolicy.startupAction(
             arguments: [LaunchArguments.uiTesting],
             missingFixtureTitles: []
@@ -63,7 +69,8 @@ struct AppShellCoverageTests {
 
     // MARK: - ContentStartupPolicy.shouldUsePreviewPlayer
 
-    @Test func testShouldUsePreviewPlayerTrueForDTXImportWithPreview() {
+    @Test("shouldUsePreviewPlayer returns true for DTX Import genre with preview file")
+    func testShouldUsePreviewPlayerTrueForDTXImportWithPreview() {
         let song = Song(
             title: "Test Song",
             artist: "Artist",
@@ -76,7 +83,8 @@ struct AppShellCoverageTests {
         #expect(ContentStartupPolicy.shouldUsePreviewPlayer(for: song) == true)
     }
 
-    @Test func testShouldUsePreviewPlayerFalseForNonDTXImport() {
+    @Test("shouldUsePreviewPlayer returns false for non-DTX Import genre")
+    func testShouldUsePreviewPlayerFalseForNonDTXImport() {
         let song = Song(
             title: "Rock Song",
             artist: "Artist",
@@ -88,7 +96,8 @@ struct AppShellCoverageTests {
         #expect(ContentStartupPolicy.shouldUsePreviewPlayer(for: song) == false)
     }
 
-    @Test func testShouldUsePreviewPlayerFalseForDTXImportWithoutPreview() {
+    @Test("shouldUsePreviewPlayer returns false for DTX Import genre without preview file")
+    func testShouldUsePreviewPlayerFalseForDTXImportWithoutPreview() {
         let song = Song(
             title: "Test Song",
             artist: "Artist",
@@ -102,14 +111,16 @@ struct AppShellCoverageTests {
 
     // MARK: - VirgoAppLaunchBehavior.shouldDisableAnimations
 
-    @Test func testShouldDisableAnimationsTrueForUITesting() {
+    @Test("shouldDisableAnimations returns true when uiTesting argument present")
+    func testShouldDisableAnimationsTrueForUITesting() {
         let result = VirgoAppLaunchBehavior.shouldDisableAnimations(
             arguments: [LaunchArguments.uiTesting]
         )
         #expect(result == true)
     }
 
-    @Test func testShouldDisableAnimationsFalseForEmptyArguments() {
+    @Test("shouldDisableAnimations returns false when arguments are empty")
+    func testShouldDisableAnimationsFalseForEmptyArguments() {
         let result = VirgoAppLaunchBehavior.shouldDisableAnimations(arguments: [])
         #expect(result == false)
     }

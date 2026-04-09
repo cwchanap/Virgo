@@ -6,9 +6,6 @@
 //
 
 import Foundation
-#if canImport(UIKit)
-import UIKit
-#endif
 
 /// Pure helpers for VirgoApp startup decisions.
 enum VirgoAppLaunchBehavior {
