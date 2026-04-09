@@ -7,8 +7,7 @@ import Testing
 import Foundation
 @testable import Virgo
 
-@Suite("App Shell Coverage Tests", .serialized)
-@MainActor
+@Suite("App Shell Coverage Tests")
 struct AppShellCoverageTests {
 
     // MARK: - ContentStartupPolicy.startupAction
