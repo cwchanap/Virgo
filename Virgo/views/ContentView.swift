@@ -24,20 +24,6 @@ struct ContentView: View {
 
     @State private var databaseService: DatabaseMaintenanceService?
 
-    /// Detects if the app is running in UI testing mode.
-    /// Uses the LaunchArguments.uiTesting launch argument to distinguish from unit tests.
-    private var isUITesting: Bool {
-        ProcessInfo.processInfo.arguments.contains(LaunchArguments.uiTesting)
-    }
-
-    private var shouldResetState: Bool {
-        ProcessInfo.processInfo.arguments.contains(LaunchArguments.resetState)
-    }
-
-    private var shouldSkipSeed: Bool {
-        ProcessInfo.processInfo.arguments.contains(LaunchArguments.skipSeed)
-    }
-
     var body: some View {
         TabView(selection: $selectedTab) {
             // Songs Tab with Sub-tabs
@@ -52,8 +38,7 @@ struct ContentView: View {
                 navigateToGameplay: $navigateToGameplay,
                 audioPlaybackService: audioPlaybackService,
                 onPlayTap: { song in
-                    // Use AudioPlaybackService for downloaded songs with preview files
-                    if song.genre == "DTX Import" && song.previewFilePath != nil {
+                    if ContentStartupPolicy.shouldUsePreviewPlayer(for: song) {
                         audioPlaybackService.togglePlayback(for: song)
                     } else {
                         playbackService.togglePlayback(for: song)
@@ -118,16 +103,21 @@ struct ContentView: View {
         }
         .tint(.purple)
         .onAppear {
-            if isUITesting && shouldResetState {
+            let args = ProcessInfo.processInfo.arguments
+            let fixtureTitles = Set(Song.sampleData.map { $0.title })
+            let existingTitles = Set(allSongs.map { $0.title })
+            let missingFixtures = fixtureTitles.subtracting(existingTitles)
+
+            switch ContentStartupPolicy.startupAction(arguments: args, missingFixtureTitles: missingFixtures) {
+            case .clearAndSeed:
                 clearPersistedTestState()
-                // When resetting state in UI testing mode, unconditionally seed fresh data
-                // to avoid stale data issues from @Query not refreshing synchronously
-                // Skip seeding if -SkipSeed flag is present (for empty-state tests)
-                if !shouldSkipSeed {
-                    seedUITestData()
-                }
-            } else if isUITesting && !shouldSkipSeed {
-                seedUITestDataIfNeeded()
+                seedUITestData()
+            case .clearOnly:
+                clearPersistedTestState()
+            case .seedIfNeeded:
+                seedUITestData(missingFixtures: missingFixtures)
+            case .noAction:
+                break
             }
             if databaseService == nil {
                 databaseService = DatabaseMaintenanceService(modelContext: modelContext)
@@ -159,20 +149,6 @@ struct ContentView: View {
         }
     }
 
-    private func seedUITestDataIfNeeded() {
-        // Check for specific fixture songs rather than just isEmpty
-        // This ensures UI tests always have the expected data even if
-        // the simulator/device has songs from previous runs
-        let fixtureTitles = Set(Song.sampleData.map { $0.title })
-        let existingTitles = Set(allSongs.map { $0.title })
-        let missingFixtures = fixtureTitles.subtracting(existingTitles)
-
-        guard !missingFixtures.isEmpty else { return }
-
-        seedUITestData(missingFixtures: missingFixtures)
-    }
-
-    /// Unconditionally seeds all UI test data. Used after reset to ensure fresh data.
     private func seedUITestData(missingFixtures: Set<String>? = nil) {
         let fixturesToSeed = missingFixtures ?? Set(Song.sampleData.map { $0.title })
         let sampleSongs = Song.sampleData.filter { fixturesToSeed.contains($0.title) }
