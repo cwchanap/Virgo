@@ -48,7 +48,6 @@ struct GameplayRenderCoverageTests {
     func testGameplayView_withPreparedViewModel_rendersPopulatedState() async throws {
         try await TestSetup.withTestSetup {
             let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
-            let settings = GameplayViewModelCoverageTestSupport.makeSettings()
 
             // Verify the view model was fully prepared before mounting.
             #expect(vm.isDataLoaded, "makePreparedViewModel must call loadChartData()")
@@ -56,7 +55,7 @@ struct GameplayRenderCoverageTests {
             #expect(vm.staticStaffLinesView != nil, "makePreparedViewModel must build staticStaffLinesView via setupGameplay()")
 
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
-                .environmentObject(settings)
+                .environmentObject(vm.practiceSettings)
 
             // Mounting with a non-nil viewModel exercises the populated notation branch.
             SwiftUITestUtilities.assertViewWithEnvironment(
