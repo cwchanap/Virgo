@@ -62,12 +62,7 @@ enum GameplayViewModelCoverageTestSupport {
     /// to cover the dynamic staff-lines fallback branch.
     static func makePreparedViewModel(staticStaffLinesPresent: Bool = true) async -> GameplayViewModel {
         let chart = makeChart(noteCount: 4, interval: .eighth, measureOffset: 0.25)
-        let vm = GameplayViewModel(
-            chart: chart,
-            metronome: makeMetronome(),
-            practiceSettings: makeSettings(),
-            highScoreService: makeHighScoreService()
-        )
+        let vm = makeViewModel(chart: chart)
         await vm.loadChartData()
         vm.setupGameplay()
         if !staticStaffLinesPresent {
