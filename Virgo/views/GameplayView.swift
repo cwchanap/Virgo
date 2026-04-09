@@ -24,10 +24,11 @@ struct GameplayView: View {
     /// Cached fallback track to avoid constructing a new DrumTrack on every render
     @State private var cachedFallbackTrack: DrumTrack
 
-    init(chart: Chart, metronome: MetronomeEngine) {
+    init(chart: Chart, metronome: MetronomeEngine, initialViewModel: GameplayViewModel? = nil) {
         self.chart = chart
         self.metronome = metronome
         self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
+        self._viewModel = State(initialValue: initialViewModel)
     }
 
     /// Creates a binding for isPlaying when viewModel exists, or returns a constant false binding
