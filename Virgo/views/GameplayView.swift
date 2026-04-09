@@ -17,6 +17,7 @@ struct GameplayView: View {
 
     let chart: Chart
     let metronome: MetronomeEngine
+    private let usesInjectedViewModel: Bool
 
     // MARK: - ViewModel
     /// Consolidated state management - initialized lazily with environment dependencies
@@ -27,6 +28,7 @@ struct GameplayView: View {
     init(chart: Chart, metronome: MetronomeEngine, initialViewModel: GameplayViewModel? = nil) {
         self.chart = chart
         self.metronome = metronome
+        self.usesInjectedViewModel = initialViewModel != nil
         self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
         self._viewModel = State(initialValue: initialViewModel)
     }
@@ -70,6 +72,9 @@ struct GameplayView: View {
         .background(Color.black)
         .foregroundColor(.white)
         .task {
+            if usesInjectedViewModel {
+                return
+            }
             // Reset speed to default before creating ViewModel to prevent stale speed from previous chart
             practiceSettings.resetSpeed()
             // Initialize viewModel with environment dependencies
