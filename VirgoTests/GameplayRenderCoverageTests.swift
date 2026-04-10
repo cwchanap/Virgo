@@ -18,6 +18,16 @@ import Foundation
 @MainActor
 struct GameplayRenderCoverageTests {
 
+    // MARK: - Fixtures
+
+    /// Returns a standard pair of eighth-note beats used across beam-related tests.
+    private static func makeEighthNotePair() -> [DrumBeat] {
+        [
+            DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .eighth),
+            DrumBeat(id: 1, drums: [.snare], timePosition: 0.25, interval: .eighth)
+        ]
+    }
+
     // MARK: - Loading-state render path
 
     /// Mounts `GameplayView(chart:metronome:)` without an initial view model.
@@ -122,10 +132,7 @@ struct GameplayRenderCoverageTests {
     @Test("BeamGroupView renders its BeamView children for an eighth-note group")
     func testBeamGroupView_renders() async throws {
         try await TestSetup.withTestSetup {
-            let beats = [
-                DrumBeat(id: 0, drums: [.kick],  timePosition: 0.0,  interval: .eighth),
-                DrumBeat(id: 1, drums: [.snare], timePosition: 0.25, interval: .eighth)
-            ]
+            let beats = Self.makeEighthNotePair()
             let beamGroup = BeamGroup(id: "bg1", beats: beats)
             let positions = GameplayLayout.calculateMeasurePositions(
                 totalMeasures: 1, timeSignature: .fourFour
@@ -151,10 +158,7 @@ struct GameplayRenderCoverageTests {
     @Test("BeamView renders a beam line when two beats share the same row")
     func testBeamView_sameRow_renders() async throws {
         try await TestSetup.withTestSetup {
-            let beats = [
-                DrumBeat(id: 0, drums: [.kick],  timePosition: 0.0,  interval: .eighth),
-                DrumBeat(id: 1, drums: [.snare], timePosition: 0.25, interval: .eighth)
-            ]
+            let beats = Self.makeEighthNotePair()
             let positions = GameplayLayout.calculateMeasurePositions(
                 totalMeasures: 1, timeSignature: .fourFour
             )
@@ -179,10 +183,7 @@ struct GameplayRenderCoverageTests {
     @Test("BeamView renders EmptyView when fewer than two beats pass the beamLevel filter")
     func testBeamView_fewerThanTwoBeats_doesNotRender() async throws {
         try await TestSetup.withTestSetup {
-            let beats = [
-                DrumBeat(id: 0, drums: [.kick],  timePosition: 0.0,  interval: .eighth),
-                DrumBeat(id: 1, drums: [.snare], timePosition: 0.25, interval: .eighth)
-            ]
+            let beats = Self.makeEighthNotePair()
             let positions = GameplayLayout.calculateMeasurePositions(
                 totalMeasures: 1, timeSignature: .fourFour
             )
@@ -214,7 +215,7 @@ struct GameplayRenderCoverageTests {
             #expect(positions[3].row == 1, "Measure 3 must remain on row 1 for the row-mismatch fixture")
 
             // timePosition 2.0 → measureIndex 2 (row 0); 3.0 → measureIndex 3 (row 1).
-            let beatRow0 = DrumBeat(id: 0, drums: [.kick],  timePosition: 2.0, interval: .eighth)
+            let beatRow0 = DrumBeat(id: 0, drums: [.kick], timePosition: 2.0, interval: .eighth)
             let beatRow1 = DrumBeat(id: 1, drums: [.snare], timePosition: 3.0, interval: .eighth)
 
             let view = BeamView(
