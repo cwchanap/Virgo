@@ -162,6 +162,7 @@ struct GameplayRenderCoverageTests {
             let positions = GameplayLayout.calculateMeasurePositions(
                 totalMeasures: 1, timeSignature: .fourFour
             )
+            #expect(!positions.isEmpty, "calculateMeasurePositions must return at least one position for 1 measure")
             #expect(positions[0].row == 0, "Single-measure fixture must be in row 0")
 
             let view = BeamView(
@@ -181,7 +182,7 @@ struct GameplayRenderCoverageTests {
     /// `beamLevel = 1` with eighth notes (flagCount = 1): `1 > 1` is false for every beat,
     /// so `beamedBeats` is empty → the `count < 2` guard fires → `EmptyView()` branch.
     @Test("BeamView renders EmptyView when fewer than two beats pass the beamLevel filter")
-    func testBeamView_fewerThanTwoBeats_doesNotRender() async throws {
+    func testBeamView_fewerThanTwoBeats_mountsSuccessfully() async throws {
         try await TestSetup.withTestSetup {
             let beats = Self.makeEighthNotePair()
             let positions = GameplayLayout.calculateMeasurePositions(
@@ -205,12 +206,13 @@ struct GameplayRenderCoverageTests {
     /// Measures 2 and 3 are in different rows when `totalMeasures == 4`.
     /// `firstMeasurePos.row != lastMeasurePos.row` → the row-mismatch `EmptyView()` branch.
     @Test("BeamView renders EmptyView when beats span different rows")
-    func testBeamView_rowMismatch_doesNotRender() async throws {
+    func testBeamView_rowMismatch_mountsSuccessfully() async throws {
         try await TestSetup.withTestSetup {
             // 4 four-four measures: measures 0-2 row 0, measure 3 row 1.
             let positions = GameplayLayout.calculateMeasurePositions(
                 totalMeasures: 4, timeSignature: .fourFour
             )
+            #expect(positions.count >= 4, "calculateMeasurePositions must return at least 4 positions for 4 measures")
             #expect(positions[2].row == 0, "Measure 2 must remain on row 0 for the row-mismatch fixture")
             #expect(positions[3].row == 1, "Measure 3 must remain on row 1 for the row-mismatch fixture")
 
