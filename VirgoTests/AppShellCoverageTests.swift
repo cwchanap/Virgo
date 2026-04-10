@@ -123,4 +123,12 @@ struct AppShellCoverageTests {
         let result = VirgoAppLaunchBehavior.shouldDisableAnimations(arguments: [])
         #expect(result == false)
     }
+
+    @Test("shouldDisableAnimations returns false when arguments lack uiTesting flag")
+    func testShouldDisableAnimationsFalseForOtherArguments() {
+        let result = VirgoAppLaunchBehavior.shouldDisableAnimations(
+            arguments: [LaunchArguments.resetState]
+        )
+        #expect(result == false)
+    }
 }
