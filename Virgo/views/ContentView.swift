@@ -104,9 +104,14 @@ struct ContentView: View {
         .tint(.purple)
         .onAppear {
             let args = ProcessInfo.processInfo.arguments
-            let fixtureTitles = Set(Song.sampleData.map { $0.title })
-            let existingTitles = Set(allSongs.map { $0.title })
-            let missingFixtures = fixtureTitles.subtracting(existingTitles)
+            let missingFixtures: Set<String>
+            if args.contains(LaunchArguments.uiTesting) {
+                let fixtureTitles = Set(Song.sampleData.map { $0.title })
+                let existingTitles = Set(allSongs.map { $0.title })
+                missingFixtures = fixtureTitles.subtracting(existingTitles)
+            } else {
+                missingFixtures = []
+            }
 
             switch ContentStartupPolicy.startupAction(arguments: args, missingFixtureTitles: missingFixtures) {
             case .clearAndSeed:
