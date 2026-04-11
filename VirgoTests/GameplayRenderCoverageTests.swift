@@ -24,7 +24,7 @@ struct GameplayRenderCoverageTests {
     private static func makeEighthNotePair() -> [DrumBeat] {
         [
             DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .eighth),
-            DrumBeat(id: 1, drums: [.snare], timePosition: 0.25, interval: .eighth)
+            DrumBeat(id: 1, drums: [.snare], timePosition: 0.125, interval: .eighth)
         ]
     }
 

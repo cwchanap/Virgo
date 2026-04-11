@@ -56,12 +56,12 @@ enum GameplayViewModelCoverageTestSupport {
 
     /// Builds a fully-prepared view model suitable for deterministic render-path tests.
     ///
-    /// Creates an eighth-note chart (measureOffset stride 0.25), then drives the
+    /// Creates an eighth-note chart (measureOffset stride 0.125), then drives the
     /// normal view-model lifecycle (`loadChartData` → `setupGameplay`) so that all
     /// pre-computed layout caches are populated.  Pass `staticStaffLinesPresent: false`
     /// to cover the dynamic staff-lines fallback branch.
     static func makePreparedViewModel(staticStaffLinesPresent: Bool = true) async -> GameplayViewModel {
-        let chart = makeChart(noteCount: 4, interval: .eighth, measureOffset: 0.25)
+        let chart = makeChart(noteCount: 4, interval: .eighth, measureOffset: 0.125)
         let vm = makeViewModel(chart: chart)
         await vm.loadChartData()
         vm.setupGameplay()
