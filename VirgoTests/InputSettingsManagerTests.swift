@@ -7,10 +7,12 @@ import Foundation
 struct InputSettingsManagerTests {
     private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
     private let midiMappingsKey = "InputSettingsMidiMappings"
+    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
 
     private func clearPersistedMappings() {
         UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
         UserDefaults.standard.removeObject(forKey: midiMappingsKey)
+        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
     }
 
     @Test("Initialization seeds defaults when persisted values are missing")
@@ -196,5 +198,36 @@ struct InputSettingsManagerTests {
         #expect(DrumType.fromString("tom3") == .tom3)
         #expect(DrumType.fromString("cowbell") == .cowbell)
         #expect(DrumType.fromString("unknown") == nil)
+    }
+
+    @Test("Selected MIDI source persists across manager instances")
+    func testSelectedMIDISourcePersistence() {
+        clearPersistedMappings()
+        defer { clearPersistedMappings() }
+
+        let manager = InputSettingsManager()
+        manager.setSelectedMIDISource(id: "device-123", displayName: "USB MIDI Device")
+
+        #expect(manager.getSelectedMIDISource()?.id == "device-123")
+        #expect(manager.getSelectedMIDISource()?.displayName == "USB MIDI Device")
+
+        let reloadedManager = InputSettingsManager()
+        #expect(reloadedManager.getSelectedMIDISource()?.id == "device-123")
+        #expect(reloadedManager.getSelectedMIDISource()?.displayName == "USB MIDI Device")
+    }
+
+    @Test("resetToDefaults clears selected MIDI source")
+    func testResetToDefaultsClearsSelectedMIDISource() {
+        clearPersistedMappings()
+        defer { clearPersistedMappings() }
+
+        let manager = InputSettingsManager()
+        manager.setSelectedMIDISource(id: "device-456", displayName: "Another Device")
+
+        #expect(manager.getSelectedMIDISource() != nil)
+
+        manager.resetToDefaults()
+
+        #expect(manager.getSelectedMIDISource() == nil)
     }
 }

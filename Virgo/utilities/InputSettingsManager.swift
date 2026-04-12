@@ -8,13 +8,20 @@
 import Foundation
 import Combine
 
+struct SelectedMIDISource: Codable, Equatable {
+    let id: String
+    let displayName: String
+}
+
 class InputSettingsManager: ObservableObject {
     @Published private var keyboardMappings: [String: DrumType] = [:]
     @Published private var midiMappings: [UInt8: DrumType] = [:]
+    @Published private var selectedMIDISource: SelectedMIDISource?
     
     private let userDefaults = UserDefaults.standard
     private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
     private let midiMappingsKey = "InputSettingsMidiMappings"
+    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
     
     // Default mappings
     private let defaultKeyboardMappings: [String: DrumType] = [
@@ -51,16 +58,19 @@ class InputSettingsManager: ObservableObject {
     func loadSettings() {
         loadKeyboardMappings()
         loadMidiMappings()
+        loadSelectedMIDISource()
     }
     
     func saveSettings() {
         saveKeyboardMappings()
         saveMidiMappings()
+        saveSelectedMIDISource()
     }
     
     func resetToDefaults() {
         keyboardMappings = defaultKeyboardMappings
         midiMappings = defaultMidiMappings
+        selectedMIDISource = nil
         saveSettings()
     }
     
@@ -118,6 +128,22 @@ class InputSettingsManager: ObservableObject {
         return midiMappings
     }
     
+    // MARK: - Selected MIDI Source Methods
+    
+    func getSelectedMIDISource() -> SelectedMIDISource? {
+        return selectedMIDISource
+    }
+    
+    func setSelectedMIDISource(id: String, displayName: String) {
+        selectedMIDISource = SelectedMIDISource(id: id, displayName: displayName)
+        saveSelectedMIDISource()
+    }
+    
+    func clearSelectedMIDISource() {
+        selectedMIDISource = nil
+        userDefaults.removeObject(forKey: selectedMIDISourceKey)
+    }
+    
     // MARK: - Private Persistence Methods
     
     private func loadKeyboardMappings() {
@@ -157,6 +183,22 @@ class InputSettingsManager: ObservableObject {
         let encodable = midiMappings.mapValues { $0.description }
         if let data = try? JSONEncoder().encode(encodable) {
             userDefaults.set(data, forKey: midiMappingsKey)
+        }
+    }
+    
+    private func loadSelectedMIDISource() {
+        if let data = userDefaults.data(forKey: selectedMIDISourceKey),
+           let decoded = try? JSONDecoder().decode(SelectedMIDISource.self, from: data) {
+            selectedMIDISource = decoded
+        } else {
+            selectedMIDISource = nil
+        }
+    }
+    
+    private func saveSelectedMIDISource() {
+        if let selectedMIDISource = selectedMIDISource,
+           let data = try? JSONEncoder().encode(selectedMIDISource) {
+            userDefaults.set(data, forKey: selectedMIDISourceKey)
         }
     }
 }
