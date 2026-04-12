@@ -199,6 +199,8 @@ class InputSettingsManager: ObservableObject {
         if let selectedMIDISource = selectedMIDISource,
            let data = try? JSONEncoder().encode(selectedMIDISource) {
             userDefaults.set(data, forKey: selectedMIDISourceKey)
+        } else {
+            userDefaults.removeObject(forKey: selectedMIDISourceKey)
         }
     }
 }

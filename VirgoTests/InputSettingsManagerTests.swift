@@ -216,7 +216,7 @@ struct InputSettingsManagerTests {
         #expect(reloadedManager.getSelectedMIDISource()?.displayName == "USB MIDI Device")
     }
 
-    @Test("resetToDefaults clears selected MIDI source")
+    @Test("resetToDefaults clears selected MIDI source and persists removal")
     func testResetToDefaultsClearsSelectedMIDISource() {
         clearPersistedMappings()
         defer { clearPersistedMappings() }
@@ -229,5 +229,9 @@ struct InputSettingsManagerTests {
         manager.resetToDefaults()
 
         #expect(manager.getSelectedMIDISource() == nil)
+
+        // Verify that a fresh manager instance loads nil (cross-instance persistence)
+        let reloadedManager = InputSettingsManager()
+        #expect(reloadedManager.getSelectedMIDISource() == nil)
     }
 }
