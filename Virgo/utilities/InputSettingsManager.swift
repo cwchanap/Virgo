@@ -141,7 +141,7 @@ class InputSettingsManager: ObservableObject {
     
     func clearSelectedMIDISource() {
         selectedMIDISource = nil
-        userDefaults.removeObject(forKey: selectedMIDISourceKey)
+        saveSelectedMIDISource()
     }
     
     // MARK: - Private Persistence Methods

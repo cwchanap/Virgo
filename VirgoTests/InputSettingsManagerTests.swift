@@ -166,23 +166,29 @@ struct InputSettingsManagerTests {
         let manager = InputSettingsManager()
         manager.setKeyBinding("x", for: .kick)
         manager.setMidiMapping(99, for: .ride)
+        manager.setSelectedMIDISource(id: "device-123", displayName: "Test Device")
         manager.saveSettings()
 
         let keyboardData = UserDefaults.standard.data(forKey: keyboardMappingsKey)
         let midiData = UserDefaults.standard.data(forKey: midiMappingsKey)
+        let sourceData = UserDefaults.standard.data(forKey: selectedMIDISourceKey)
 
         #expect(keyboardData != nil)
         #expect(midiData != nil)
+        #expect(sourceData != nil)
 
-        guard let keyboardData, let midiData else {
+        guard let keyboardData, let midiData, let sourceData else {
             return
         }
 
         let keyboardPayload = try JSONDecoder().decode([String: String].self, from: keyboardData)
         let midiPayload = try JSONDecoder().decode([UInt8: String].self, from: midiData)
+        let sourcePayload = try JSONDecoder().decode(SelectedMIDISource.self, from: sourceData)
 
         #expect(keyboardPayload["x"] == "kick")
         #expect(midiPayload[99] == "ride")
+        #expect(sourcePayload.id == "device-123")
+        #expect(sourcePayload.displayName == "Test Device")
     }
 
     @Test("DrumType.fromString converts known values and rejects unknown values")
@@ -231,6 +237,22 @@ struct InputSettingsManagerTests {
         #expect(manager.getSelectedMIDISource() == nil)
 
         // Verify that a fresh manager instance loads nil (cross-instance persistence)
+        let reloadedManager = InputSettingsManager()
+        #expect(reloadedManager.getSelectedMIDISource() == nil)
+    }
+
+    @Test("clearSelectedMIDISource persists removal across manager instances")
+    func testClearSelectedMIDISourcePersistence() {
+        clearPersistedMappings()
+        defer { clearPersistedMappings() }
+
+        let manager = InputSettingsManager()
+        manager.setSelectedMIDISource(id: "device-789", displayName: "Test Device")
+        #expect(manager.getSelectedMIDISource() != nil)
+
+        manager.clearSelectedMIDISource()
+        #expect(manager.getSelectedMIDISource() == nil)
+
         let reloadedManager = InputSettingsManager()
         #expect(reloadedManager.getSelectedMIDISource() == nil)
     }
