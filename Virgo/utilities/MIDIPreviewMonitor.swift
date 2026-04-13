@@ -27,7 +27,11 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
         guard status == noErr else { return }
 
         var port: MIDIPortRef = 0
-        status = MIDIInputPortCreateWithBlock(client, "VirgoMIDIPreviewInput" as CFString, &port) { packetList, srcConnRefCon in
+        status = MIDIInputPortCreateWithBlock(
+            client,
+            "VirgoMIDIPreviewInput" as CFString,
+            &port
+        ) { packetList, srcConnRefCon in
             guard let srcConnRefCon else { return }
 
             let context = srcConnRefCon.assumingMemoryBound(to: SourceConnectionContext.self).pointee
