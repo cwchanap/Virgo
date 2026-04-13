@@ -4,31 +4,27 @@ import AVFoundation
 
 @Suite
 struct MIDIHostTimeConverterTests {
-    @Test
+    @Test("Convert host time to elapsed seconds correctly")
     func elapsedSecondsConvertsHostTimeIntoPositiveElapsedDuration() {
-        let converter = MIDIHostTimeConverter()
-        
         // Use AVAudioTime to generate realistic host times with known intervals
         let startHostTime = AVAudioTime.hostTime(forSeconds: 1.0)
         let endHostTime = AVAudioTime.hostTime(forSeconds: 1.125)
         
-        let elapsed = converter.elapsedSeconds(from: startHostTime, to: endHostTime)
+        let elapsed = MIDIHostTimeConverter.elapsedSeconds(from: startHostTime, to: endHostTime)
         
         // Validate that the elapsed time matches the expected 0.125 second difference
         #expect(abs(elapsed - 0.125) < 0.001)
     }
     
-    @Test
+    @Test("Handle multiple time points correctly")
     func elapsedSecondsHandlesMultipleTimePoints() {
-        let converter = MIDIHostTimeConverter()
-        
         // Use AVAudioTime to generate realistic host times with known intervals
         let startHostTime = AVAudioTime.hostTime(forSeconds: 0.0)
         let midHostTime = AVAudioTime.hostTime(forSeconds: 0.25)
         let endHostTime = AVAudioTime.hostTime(forSeconds: 0.5)
         
-        let elapsedToMid = converter.elapsedSeconds(from: startHostTime, to: midHostTime)
-        let elapsedToEnd = converter.elapsedSeconds(from: startHostTime, to: endHostTime)
+        let elapsedToMid = MIDIHostTimeConverter.elapsedSeconds(from: startHostTime, to: midHostTime)
+        let elapsedToEnd = MIDIHostTimeConverter.elapsedSeconds(from: startHostTime, to: endHostTime)
         
         // Validate exact elapsed times with small tolerance for timing precision
         #expect(abs(elapsedToMid - 0.25) < 0.001)
@@ -36,15 +32,13 @@ struct MIDIHostTimeConverterTests {
         #expect(elapsedToEnd > elapsedToMid)
     }
 
-    @Test
+    @Test("Return negative when end time precedes start time")
     func elapsedSecondsReturnsNegativeWhenEndPrecedesStart() {
-        let converter = MIDIHostTimeConverter()
-
         let earlierHostTime = AVAudioTime.hostTime(forSeconds: 1.0)
         let laterHostTime = AVAudioTime.hostTime(forSeconds: 1.125)
 
         // When the end time precedes the start time the result must be negative.
-        let elapsed = converter.elapsedSeconds(from: laterHostTime, to: earlierHostTime)
+        let elapsed = MIDIHostTimeConverter.elapsedSeconds(from: laterHostTime, to: earlierHostTime)
         #expect(elapsed < 0)
     }
 }

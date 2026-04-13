@@ -12,6 +12,7 @@ DerivedData*/
 *.xcuserdata/
 TestResults/
 build-for-testing*.log
+test-output.log
 ui-test-*/
 ui-test-*.log
 ui-test-build-output-*.log

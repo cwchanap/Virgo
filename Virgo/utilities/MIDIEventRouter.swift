@@ -16,8 +16,10 @@ struct MIDINoteEvent: Equatable {
 
 final class MIDIEventRouter {
     /// Decode MIDI note-on events from packet bytes.
-    /// Expects one MIDI message per packet. Filters for note-on status (0x9n) with velocity > 0.
-    func decodeEvents(from packets: [MIDIPacketBytes], sourceID: String) -> [MIDINoteEvent] {
+    /// 
+    /// **Task 2 Limitation**: Expects one MIDI message per packet. Multi-message packets are not supported.
+    /// Filters for note-on status (0x9n) with velocity > 0.
+    static func decodeEvents(from packets: [MIDIPacketBytes], sourceID: String) -> [MIDINoteEvent] {
         packets.compactMap { packet in
             guard packet.bytes.count >= 3 else { return nil }
             let status = packet.bytes[0]
@@ -29,7 +31,7 @@ final class MIDIEventRouter {
                 channel: status & 0x0F,
                 note: packet.bytes[1],
                 velocity: velocity,
-                hostTime: packet.timestamp
+                hostTime: packet.timestamp  // Convert packet timestamp to host time
             )
         }
     }
