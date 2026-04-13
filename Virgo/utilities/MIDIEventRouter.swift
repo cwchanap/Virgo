@@ -15,6 +15,8 @@ struct MIDINoteEvent: Equatable {
 }
 
 final class MIDIEventRouter {
+    /// Decode MIDI note-on events from packet bytes.
+    /// Expects one MIDI message per packet. Filters for note-on status (0x9n) with velocity > 0.
     func decodeEvents(from packets: [MIDIPacketBytes], sourceID: String) -> [MIDINoteEvent] {
         packets.compactMap { packet in
             guard packet.bytes.count >= 3 else { return nil }
@@ -32,7 +34,7 @@ final class MIDIEventRouter {
         }
     }
     
-    func convertPacketList(_ packetList: UnsafePointer<MIDIPacketList>) -> [MIDIPacketBytes] {
+    static func convertPacketList(_ packetList: UnsafePointer<MIDIPacketList>) -> [MIDIPacketBytes] {
         var result: [MIDIPacketBytes] = []
         
         // Get the first packet by accessing the immutable packet field
@@ -43,7 +45,7 @@ final class MIDIEventRouter {
         var currentPacket = firstPacketPtr
         
         for _ in 0..<packetList.pointee.numPackets {
-            let byteCount = Int(currentPacket.pointee.length)
+            let byteCount = min(Int(currentPacket.pointee.length), 256)
             
             // Extract bytes from the data field safely
             var bytes: [UInt8] = []
