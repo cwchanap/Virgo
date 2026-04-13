@@ -36,38 +36,46 @@ final class MIDIEventRouter {
     
     static func convertPacketList(_ packetList: UnsafePointer<MIDIPacketList>) -> [MIDIPacketBytes] {
         var result: [MIDIPacketBytes] = []
-        
-        // Get the first packet by accessing the immutable packet field
-        let firstPacketPtr = UnsafeRawPointer(packetList)
-            .advanced(by: MemoryLayout<UInt32>.size)
-            .assumingMemoryBound(to: MIDIPacket.self)
-        
-        var currentPacket = firstPacketPtr
-        
-        for _ in 0..<packetList.pointee.numPackets {
-            let byteCount = min(Int(currentPacket.pointee.length), 256)
-            
-            // Extract bytes from the data field safely
-            var bytes: [UInt8] = []
-            bytes.reserveCapacity(byteCount)
-            withUnsafeBytes(of: currentPacket.pointee.data) { buffer in
-                if let baseAddress = buffer.baseAddress {
-                    let dataPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
-                    bytes = Array(UnsafeBufferPointer(start: dataPtr, count: byteCount))
+        let numPackets = packetList.pointee.numPackets
+        guard numPackets > 0 else { return result }
+        result.reserveCapacity(Int(numPackets))
+
+        // Locate the first packet by taking the address of the .packet field directly,
+        // rather than using manual MemoryLayout byte-offset arithmetic.
+        // UnsafeMutablePointer(mutating:) is required to form an inout reference;
+        // the packet list itself is not mutated.
+        let mutableList = UnsafeMutablePointer(mutating: packetList)
+        withUnsafeMutablePointer(to: &mutableList.pointee.packet) { firstPacketPtr in
+            var currentPacket: UnsafePointer<MIDIPacket> = UnsafePointer(firstPacketPtr)
+
+            for _ in 0..<numPackets {
+                let byteCount = min(Int(currentPacket.pointee.length), 256)
+
+                var bytes: [UInt8] = []
+                bytes.reserveCapacity(byteCount)
+                withUnsafeBytes(of: currentPacket.pointee.data) { buffer in
+                    if let baseAddress = buffer.baseAddress {
+                        bytes = Array(UnsafeBufferPointer(
+                            start: baseAddress.assumingMemoryBound(to: UInt8.self),
+                            count: byteCount
+                        ))
+                    }
                 }
+
+                result.append(MIDIPacketBytes(timestamp: currentPacket.pointee.timeStamp, bytes: bytes))
+
+                // UnsafeMutablePointer(mutating:) cast is only to satisfy the C API signature
+                // and does not imply mutation — MIDIPacketNext only reads the packet's length.
+                currentPacket = UnsafePointer(MIDIPacketNext(UnsafeMutablePointer(mutating: currentPacket)))
             }
-            
-            result.append(MIDIPacketBytes(timestamp: currentPacket.pointee.timeStamp, bytes: bytes))
-            
-            // Advance to the next packet
-            let mutablePtr = UnsafeMutablePointer(mutating: currentPacket)
-            currentPacket = UnsafePointer(MIDIPacketNext(mutablePtr))
         }
-        
+
         return result
     }
 }
 
+/// Resolves a CoreMIDI endpoint unique-ID to a stable string identifier
+/// suitable for use as a dictionary key or `MIDINoteEvent.sourceID`.
 protocol MIDISourceIDResolving {
     func stableSourceID(for uniqueID: Int32) -> String
 }
