@@ -14,12 +14,12 @@ struct MIDINoteEvent: Equatable {
     let hostTime: UInt64
 }
 
-final class MIDIEventRouter {
+struct MIDIEventRouter {
     /// Decode MIDI note-on events from packet bytes.
     /// 
     /// **Task 2 Limitation**: Expects one MIDI message per packet. Multi-message packets are not supported.
     /// Filters for note-on status (0x9n) with velocity > 0.
-    static func decodeEvents(from packets: [MIDIPacketBytes], sourceID: String) -> [MIDINoteEvent] {
+    func decodeEvents(from packets: [MIDIPacketBytes], sourceID: String) -> [MIDINoteEvent] {
         packets.compactMap { packet in
             guard packet.bytes.count >= 3 else { return nil }
             let status = packet.bytes[0]
@@ -31,12 +31,12 @@ final class MIDIEventRouter {
                 channel: status & 0x0F,
                 note: packet.bytes[1],
                 velocity: velocity,
-                hostTime: packet.timestamp  // Convert packet timestamp to host time
+                hostTime: packet.timestamp  // MIDITimeStamp is already a host-time value
             )
         }
     }
     
-    static func convertPacketList(_ packetList: UnsafePointer<MIDIPacketList>) -> [MIDIPacketBytes] {
+    func convertPacketList(_ packetList: UnsafePointer<MIDIPacketList>) -> [MIDIPacketBytes] {
         var result: [MIDIPacketBytes] = []
         let numPackets = packetList.pointee.numPackets
         guard numPackets > 0 else { return result }
@@ -51,6 +51,7 @@ final class MIDIEventRouter {
             var currentPacket: UnsafePointer<MIDIPacket> = UnsafePointer(firstPacketPtr)
 
             for _ in 0..<numPackets {
+                // Clamp to 256 bytes to match CoreMIDI's fixed MIDIPacket.data buffer size
                 let byteCount = min(Int(currentPacket.pointee.length), 256)
 
                 var bytes: [UInt8] = []
@@ -78,6 +79,9 @@ final class MIDIEventRouter {
 
 /// Resolves a CoreMIDI endpoint unique-ID to a stable string identifier
 /// suitable for use as a dictionary key or `MIDINoteEvent.sourceID`.
+///
+/// This protocol is used by later tasks (Task 5+) to map MIDI source unique IDs
+/// to stable human-readable identifiers across multiple input events.
 protocol MIDISourceIDResolving {
     func stableSourceID(for uniqueID: Int32) -> String
 }

@@ -4,6 +4,8 @@ import CoreMIDI
 
 @Suite
 struct MIDIEventRouterTests {
+    let router = MIDIEventRouter()
+    
     @Test("Decode all note-on events from every packet")
     func decodeEventsEmitsEveryNoteOnEventFromEveryPacket() {
         // Create multiple packets with note-on events
@@ -22,7 +24,7 @@ struct MIDIEventRouterTests {
             )
         ]
         
-        let events = MIDIEventRouter.decodeEvents(from: packets, sourceID: "test-source")
+        let events = router.decodeEvents(from: packets, sourceID: "test-source")
         
         #expect(events.count == 3)
         #expect(events[0].sourceID == "test-source")
@@ -74,7 +76,7 @@ struct MIDIEventRouterTests {
             )
         ]
         
-        let events = MIDIEventRouter.decodeEvents(from: packets, sourceID: "test-source")
+        let events = router.decodeEvents(from: packets, sourceID: "test-source")
         
         #expect(events.count == 2)
         #expect(events[0].note == 0x3C)
@@ -98,7 +100,7 @@ struct MIDIEventRouterTests {
         packetList.packet = packet
         
         let result = withUnsafePointer(to: packetList) { ptr in
-            MIDIEventRouter.convertPacketList(ptr)
+            router.convertPacketList(ptr)
         }
         
         #expect(result.count == 1)
@@ -112,7 +114,7 @@ struct MIDIEventRouterTests {
         packetList.numPackets = 0
         
         let result = withUnsafePointer(to: packetList) { ptr in
-            MIDIEventRouter.convertPacketList(ptr)
+            router.convertPacketList(ptr)
         }
         
         #expect(result.isEmpty)
@@ -140,7 +142,7 @@ struct MIDIEventRouterTests {
         var bytes2: [UInt8] = [0x91, 0x48, 0x64]  // Note-on, channel 1, note 72, velocity 100
         _ = MIDIPacketListAdd(packetListPtr, bufferSize, currentPacket, 2000, 3, &bytes2)
 
-        let result = MIDIEventRouter.convertPacketList(UnsafePointer(packetListPtr))
+        let result = MIDIEventRouter().convertPacketList(UnsafePointer(packetListPtr))
 
         #expect(result.count == 2)
         #expect(result[0].timestamp == 1000)
