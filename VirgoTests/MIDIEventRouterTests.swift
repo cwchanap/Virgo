@@ -6,8 +6,6 @@ import CoreMIDI
 struct MIDIEventRouterTests {
     @Test("Decode all note-on events from every packet")
     func decodeEventsEmitsEveryNoteOnEventFromEveryPacket() {
-        let router = MIDIEventRouter()
-        
         // Create multiple packets with note-on events
         let packets = [
             MIDIPacketBytes(
@@ -24,7 +22,7 @@ struct MIDIEventRouterTests {
             ),
         ]
         
-        let events = router.decodeEvents(from: packets, sourceID: "test-source")
+        let events = MIDIEventRouter.decodeEvents(from: packets, sourceID: "test-source")
         
         #expect(events.count == 3)
         #expect(events[0].sourceID == "test-source")
@@ -48,8 +46,6 @@ struct MIDIEventRouterTests {
     
     @Test("Ignore note-off, zero velocity, and short packets")
     func decodeEventsIgnoresNoteOffZeroVelocityAndShortPackets() {
-        let router = MIDIEventRouter()
-        
         let packets = [
             // Valid note-on
             MIDIPacketBytes(
@@ -78,7 +74,7 @@ struct MIDIEventRouterTests {
             ),
         ]
         
-        let events = router.decodeEvents(from: packets, sourceID: "test-source")
+        let events = MIDIEventRouter.decodeEvents(from: packets, sourceID: "test-source")
         
         #expect(events.count == 2)
         #expect(events[0].note == 0x3C)
