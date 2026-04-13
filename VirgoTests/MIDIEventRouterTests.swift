@@ -19,7 +19,7 @@ struct MIDIEventRouterTests {
             MIDIPacketBytes(
                 timestamp: 3000,
                 bytes: [0x9F, 0x24, 0x50]  // Note-on, channel 15, note 36, velocity 80
-            ),
+            )
         ]
         
         let events = MIDIEventRouter.decodeEvents(from: packets, sourceID: "test-source")
@@ -71,7 +71,7 @@ struct MIDIEventRouterTests {
             MIDIPacketBytes(
                 timestamp: 5000,
                 bytes: [0x91, 0x24, 0x60]
-            ),
+            )
         ]
         
         let events = MIDIEventRouter.decodeEvents(from: packets, sourceID: "test-source")
