@@ -124,38 +124,28 @@ struct MIDIEventRouterTests {
     
     @Test("Convert multi-packet list with MIDIPacketNext")
     func convertPacketListHandlesMultiplePackets() {
-        // Build a two-packet list using MIDIPacketList construction
-        // First packet: timestamp 1000, note-on on channel 0
-        var packet1 = MIDIPacket()
-        packet1.timeStamp = 1000
-        packet1.length = 3
-        packet1.data.0 = 0x90  // Note-on, channel 0
-        packet1.data.1 = 0x3C  // Note 60
-        packet1.data.2 = 0x7F  // Velocity 127
-        
-        var packetList = MIDIPacketList()
-        packetList.numPackets = 1
-        packetList.packet = packet1
-        
-        // Advance to next packet slot and add second packet
-        let nextPacketPtr = UnsafeMutablePointer(mutating: UnsafePointer(MIDIPacketNext(
-            withUnsafeMutablePointer(to: &packetList.packet) { $0 }
-        )))
-        
-        var packet2 = MIDIPacket()
-        packet2.timeStamp = 2000
-        packet2.length = 3
-        packet2.data.0 = 0x91  // Note-on, channel 1
-        packet2.data.1 = 0x48  // Note 72
-        packet2.data.2 = 0x64  // Velocity 100
-        
-        nextPacketPtr.pointee = packet2
-        packetList.numPackets = 2
-        
-        let result = withUnsafePointer(to: packetList) { ptr in
-            MIDIEventRouter.convertPacketList(ptr)
-        }
-        
+        // Allocate a heap buffer large enough for a two-packet MIDIPacketList.
+        // MIDIPacketList embeds one MIDIPacket; each additional packet needs one more slot.
+        let bufferSize = MemoryLayout<MIDIPacketList>.size + MemoryLayout<MIDIPacket>.size
+        let buffer = UnsafeMutableRawPointer.allocate(
+            byteCount: bufferSize,
+            alignment: MemoryLayout<MIDIPacketList>.alignment
+        )
+        defer { buffer.deallocate() }
+
+        let packetListPtr = buffer.bindMemory(to: MIDIPacketList.self, capacity: 1)
+
+        // Use CoreMIDI's safe packet-list API to populate the buffer.
+        var currentPacket = MIDIPacketListInit(packetListPtr)
+
+        var bytes1: [UInt8] = [0x90, 0x3C, 0x7F]  // Note-on, channel 0, note 60, velocity 127
+        currentPacket = MIDIPacketListAdd(packetListPtr, bufferSize, currentPacket, 1000, 3, &bytes1)
+
+        var bytes2: [UInt8] = [0x91, 0x48, 0x64]  // Note-on, channel 1, note 72, velocity 100
+        _ = MIDIPacketListAdd(packetListPtr, bufferSize, currentPacket, 2000, 3, &bytes2)
+
+        let result = MIDIEventRouter.convertPacketList(UnsafePointer(packetListPtr))
+
         #expect(result.count == 2)
         #expect(result[0].timestamp == 1000)
         #expect(result[0].bytes == [0x90, 0x3C, 0x7F])
