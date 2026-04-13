@@ -8,15 +8,14 @@ struct MIDIHostTimeConverterTests {
     func elapsedSecondsConvertsHostTimeIntoPositiveElapsedDuration() {
         let converter = MIDIHostTimeConverter()
         
-        // Use arbitrary host times - the converter should compute the elapsed seconds
-        let startHostTime: UInt64 = 1_000_000
-        let eventHostTime: UInt64 = 2_000_000
+        // Use AVAudioTime to generate realistic host times with known intervals
+        let startHostTime = AVAudioTime.hostTime(forSeconds: 1.0)
+        let endHostTime = AVAudioTime.hostTime(forSeconds: 1.125)
         
-        let elapsed = converter.elapsedSeconds(from: startHostTime, to: eventHostTime)
+        let elapsed = converter.elapsedSeconds(from: startHostTime, to: endHostTime)
         
-        // The result should be positive and represent the time difference
-        #expect(elapsed > 0)
-        #expect(elapsed > 0.0)
+        // Validate that the elapsed time matches the expected 0.125 second difference
+        #expect(abs(elapsed - 0.125) < 0.001)
     }
     
     @Test
