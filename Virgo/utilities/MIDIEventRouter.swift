@@ -32,15 +32,34 @@ final class MIDIEventRouter {
         }
     }
     
-    func convertPacketList(_ packetList: UnsafeMutablePointer<MIDIPacketList>) -> [MIDIPacketBytes] {
+    func convertPacketList(_ packetList: UnsafePointer<MIDIPacketList>) -> [MIDIPacketBytes] {
         var result: [MIDIPacketBytes] = []
-        var packet: UnsafeMutablePointer<MIDIPacket> = UnsafeMutablePointer(&packetList.pointee.packet)
+        
+        // Get the first packet by accessing the immutable packet field
+        let firstPacketPtr = UnsafeRawPointer(packetList)
+            .advanced(by: MemoryLayout<UInt32>.size)
+            .assumingMemoryBound(to: MIDIPacket.self)
+        
+        var currentPacket = firstPacketPtr
         
         for _ in 0..<packetList.pointee.numPackets {
-            let byteCount = Int(packet.pointee.length)
-            let bytes = [UInt8](UnsafeBufferPointer(start: &packet.pointee.data.0, count: byteCount))
-            result.append(MIDIPacketBytes(timestamp: packet.pointee.timeStamp, bytes: bytes))
-            packet = UnsafeMutablePointer(MIDIPacketNext(packet))
+            let byteCount = Int(currentPacket.pointee.length)
+            
+            // Extract bytes from the data field safely
+            var bytes: [UInt8] = []
+            bytes.reserveCapacity(byteCount)
+            withUnsafeBytes(of: currentPacket.pointee.data) { buffer in
+                if let baseAddress = buffer.baseAddress {
+                    let dataPtr = baseAddress.assumingMemoryBound(to: UInt8.self)
+                    bytes = Array(UnsafeBufferPointer(start: dataPtr, count: byteCount))
+                }
+            }
+            
+            result.append(MIDIPacketBytes(timestamp: currentPacket.pointee.timeStamp, bytes: bytes))
+            
+            // Advance to the next packet
+            let mutablePtr = UnsafeMutablePointer(mutating: currentPacket)
+            currentPacket = UnsafePointer(MIDIPacketNext(mutablePtr))
         }
         
         return result

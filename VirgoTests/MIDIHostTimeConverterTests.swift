@@ -22,16 +22,17 @@ struct MIDIHostTimeConverterTests {
     func elapsedSecondsHandlesMultipleTimePoints() {
         let converter = MIDIHostTimeConverter()
         
-        let startHostTime: UInt64 = 100_000
-        let midHostTime: UInt64 = 150_000
-        let endHostTime: UInt64 = 300_000
+        // Use AVAudioTime to generate realistic host times with known intervals
+        let startHostTime = AVAudioTime.hostTime(forSeconds: 0.0)
+        let midHostTime = AVAudioTime.hostTime(forSeconds: 0.25)
+        let endHostTime = AVAudioTime.hostTime(forSeconds: 0.5)
         
         let elapsedToMid = converter.elapsedSeconds(from: startHostTime, to: midHostTime)
         let elapsedToEnd = converter.elapsedSeconds(from: startHostTime, to: endHostTime)
         
-        // Elapsed time should increase with later timestamps
+        // Validate exact elapsed times with small tolerance for timing precision
+        #expect(abs(elapsedToMid - 0.25) < 0.001)
+        #expect(abs(elapsedToEnd - 0.5) < 0.001)
         #expect(elapsedToEnd > elapsedToMid)
-        #expect(elapsedToEnd > 0)
-        #expect(elapsedToMid > 0)
     }
 }

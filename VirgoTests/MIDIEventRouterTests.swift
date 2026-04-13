@@ -1,4 +1,5 @@
 import Testing
+import CoreMIDI
 @testable import Virgo
 
 @Suite
@@ -84,5 +85,44 @@ struct MIDIEventRouterTests {
         #expect(events[0].hostTime == 1000)
         #expect(events[1].note == 0x24)
         #expect(events[1].hostTime == 5000)
+    }
+    
+    @Test
+    func convertPacketListExtractsPacketsFromMIDIPacketList() {
+        let router = MIDIEventRouter()
+        
+        // Create a single-packet MIDIPacketList with a note-on event
+        var packet = MIDIPacket()
+        packet.timeStamp = 12345
+        packet.length = 3
+        packet.data.0 = 0x90
+        packet.data.1 = 0x3C
+        packet.data.2 = 0x7F
+        
+        var packetList = MIDIPacketList()
+        packetList.numPackets = 1
+        packetList.packet = packet
+        
+        let result = withUnsafePointer(to: packetList) { ptr in
+            router.convertPacketList(ptr)
+        }
+        
+        #expect(result.count == 1)
+        #expect(result[0].timestamp == 12345)
+        #expect(result[0].bytes == [0x90, 0x3C, 0x7F])
+    }
+    
+    @Test
+    func convertPacketListHandlesEmptyPacketList() {
+        let router = MIDIEventRouter()
+        
+        var packetList = MIDIPacketList()
+        packetList.numPackets = 0
+        
+        let result = withUnsafePointer(to: packetList) { ptr in
+            router.convertPacketList(ptr)
+        }
+        
+        #expect(result.isEmpty)
     }
 }
