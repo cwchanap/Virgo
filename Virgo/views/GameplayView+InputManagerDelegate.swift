@@ -13,6 +13,7 @@ class GameplayInputHandler: InputManagerDelegate {
 
     /// Called on every note match result (hit or miss). Set by GameplayViewModel to forward results for scoring.
     var onNoteResult: ((NoteMatchResult) -> Void)?
+    var onSelectedSourceDisconnect: (() -> Void)?
 
     func inputManager(_ manager: InputManager, didReceiveHit hit: InputHit) {
         let logMessage = "Input hit received: \(hit.drumType.description) at \(hit.timestamp)"
@@ -39,5 +40,9 @@ class GameplayInputHandler: InputManagerDelegate {
         }
 
         onNoteResult?(result)
+    }
+
+    func inputManagerSelectedMIDISourceDisconnected(_ manager: InputManager) {
+        onSelectedSourceDisconnect?()
     }
 }
