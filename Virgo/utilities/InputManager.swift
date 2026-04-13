@@ -58,6 +58,11 @@ enum TimingAccuracy: Sendable {
 protocol InputManagerDelegate: AnyObject {
     func inputManager(_ manager: InputManager, didReceiveHit hit: InputHit)
     func inputManager(_ manager: InputManager, didMatchNote result: NoteMatchResult)
+    func inputManagerSelectedMIDISourceDisconnected(_ manager: InputManager)
+}
+
+extension InputManagerDelegate {
+    func inputManagerSelectedMIDISourceDisconnected(_ manager: InputManager) {}
 }
 
 class InputManager: ObservableObject {
@@ -65,22 +70,43 @@ class InputManager: ObservableObject {
     
     // Song timing reference
     private var songStartTime: Date?
+    private var songStartHostTime: UInt64?
     private var bpm: Double = 120.0
     private var timeSignature: TimeSignature = .fourFour
     private var notes: [Note] = []
 
     var configuredBPM: Double { bpm }
+    var hasSelectedMIDISourcePreference: Bool { settingsManager.getSelectedMIDISource() != nil }
+    var requiresMIDISourceForGameplay = false
+    var isSelectedMIDISourceAvailable: Bool {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                deviceRegistry.isSelectedSourceAvailable
+            }
+        }
+        return selectedMIDISourceAvailableSnapshot
+    }
     
     // Input mapping configuration
     private var keyboardMapping: [String: DrumType] = [:]
     private var midiMapping: [UInt8: DrumType] = [:]
+    private var midiMappingSnapshot: [UInt8: DrumType] = [:]
+    private var selectedSourceIDSnapshot: String?
+    private var selectedMIDISourceAvailableSnapshot = false
     
     // Settings manager for persistent configuration
-    private let settingsManager = InputSettingsManager()
+    private let settingsManager: InputSettingsManager
+    private let deviceRegistry: MIDIDeviceRegistry
+    private let eventRouter: MIDIEventRouter
+    private let hostTimeConverter: MIDIHostTimeConverter
+    private let diagnosticsStore: MIDIDiagnosticsStore
+    private let learnSession: MIDILearnSession
+    private let sourceIDResolver: MIDISourceIDResolving
     
     // MIDI setup
     private var midiClient: MIDIClientRef = 0
     private var midiInputPort: MIDIPortRef = 0
+    private var midiSourceContexts: [MIDIEndpointRef: UnsafeMutablePointer<MIDISourceConnectionContext>] = [:]
     
     // Keyboard event monitors for proper cleanup
     #if os(macOS)
@@ -95,10 +121,31 @@ class InputManager: ObservableObject {
     
     // Test environment detection
     private let isTestEnvironment: Bool
+
+    private struct MIDISourceConnectionContext {
+        let sourceID: String
+    }
     
-    init() {
+    init(
+        settingsManager: InputSettingsManager? = nil,
+        deviceRegistry: MIDIDeviceRegistry? = nil,
+        eventRouter: MIDIEventRouter = MIDIEventRouter(),
+        hostTimeConverter: MIDIHostTimeConverter = MIDIHostTimeConverter(),
+        diagnosticsStore: MIDIDiagnosticsStore? = nil,
+        learnSession: MIDILearnSession? = nil,
+        sourceIDResolver: MIDISourceIDResolving = CoreMIDISourceIDResolver()
+    ) {
+        let settingsManager = settingsManager ?? InputSettingsManager()
+
+        self.settingsManager = settingsManager
+        self.deviceRegistry = deviceRegistry ?? Self.makeDefaultDeviceRegistry(settingsManager: settingsManager)
+        self.eventRouter = eventRouter
+        self.hostTimeConverter = hostTimeConverter
+        self.diagnosticsStore = diagnosticsStore ?? Self.makeDefaultDiagnosticsStore()
+        self.learnSession = learnSession ?? Self.makeDefaultLearnSession(settingsManager: settingsManager)
+        self.sourceIDResolver = sourceIDResolver
         self.isTestEnvironment = TestEnvironment.isRunningTests
-        setupMappingsFromSettings()
+        reloadMappingsFromSettings()
 
         // Only set up MIDI if not in test environment
         if !isTestEnvironment {
@@ -116,6 +163,36 @@ class InputManager: ObservableObject {
         
         // Clean up MIDI resources
         teardownMIDI()
+    }
+
+    private static func makeDefaultDeviceRegistry(settingsManager: InputSettingsManager) -> MIDIDeviceRegistry {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                MIDIDeviceRegistry(settingsManager: settingsManager)
+            }
+        }
+
+        preconditionFailure("InputManager must be created on the main thread when using default MIDI dependencies")
+    }
+
+    private static func makeDefaultDiagnosticsStore() -> MIDIDiagnosticsStore {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                MIDIDiagnosticsStore()
+            }
+        }
+
+        preconditionFailure("InputManager must be created on the main thread when using default MIDI dependencies")
+    }
+
+    private static func makeDefaultLearnSession(settingsManager: InputSettingsManager) -> MIDILearnSession {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                MIDILearnSession(settingsManager: settingsManager)
+            }
+        }
+
+        preconditionFailure("InputManager must be created on the main thread when using default MIDI dependencies")
     }
 }
 
@@ -146,12 +223,15 @@ extension InputManager {
     
     func startListening(songStartTime: Date) {
         self.songStartTime = songStartTime
+        self.songStartHostTime = mach_absolute_time()
+        reloadMappingsFromSettings()
         startKeyboardListening()
         // MIDI is already listening from setup
     }
     
     func stopListening() {
         self.songStartTime = nil
+        self.songStartHostTime = nil
         stopKeyboardListening()
         // MIDI continues to listen but won't process hits without songStartTime
     }
@@ -165,12 +245,95 @@ extension InputManager {
     /// Reload mappings from settings (call this when settings are updated)
     func reloadMappingsFromSettings() {
         setupMappingsFromSettings()
+        midiMappingSnapshot = midiMapping
+        selectedSourceIDSnapshot = settingsManager.getSelectedMIDISource()?.id
+        refreshMIDISourceAvailabilitySnapshot()
+    }
+
+    func startMIDIMonitoring() {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                deviceRegistry.onSelectedSourceUnavailable = { [weak self] sourceID in
+                    self?.handleSelectedSourceDisconnect(sourceID: sourceID)
+                }
+                deviceRegistry.startMonitoring()
+                selectedMIDISourceAvailableSnapshot = deviceRegistry.isSelectedSourceAvailable
+            }
+        } else {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.deviceRegistry.onSelectedSourceUnavailable = { [weak self] sourceID in
+                    self?.handleSelectedSourceDisconnect(sourceID: sourceID)
+                }
+                self.deviceRegistry.startMonitoring()
+                self.selectedMIDISourceAvailableSnapshot = self.deviceRegistry.isSelectedSourceAvailable
+            }
+        }
+    }
+
+    private func refreshMIDISourceAvailabilitySnapshot() {
+        if Thread.isMainThread {
+            MainActor.assumeIsolated {
+                deviceRegistry.refreshSources()
+                selectedMIDISourceAvailableSnapshot = deviceRegistry.isSelectedSourceAvailable
+            }
+        } else {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.deviceRegistry.refreshSources()
+                self.selectedMIDISourceAvailableSnapshot = self.deviceRegistry.isSelectedSourceAvailable
+            }
+        }
     }
 }
 
 // MARK: - Input Processing
 
 extension InputManager {
+    @discardableResult
+    func handleMIDINoteEvent(_ event: MIDINoteEvent) -> NoteMatchResult? {
+        consumeLearnSessionIfNeeded(event)
+
+        guard event.sourceID == selectedSourceIDSnapshot else {
+            publishMIDIDiagnostics(event: event, mappedDrumType: nil)
+            return nil
+        }
+
+        guard let drumType = midiMappingSnapshot[event.note] else {
+            publishMIDIDiagnostics(event: event, mappedDrumType: nil)
+            return nil
+        }
+
+        let elapsedTime = gameplayElapsedTime(for: event)
+        guard let elapsedTime else {
+            publishMIDIDiagnostics(event: event, mappedDrumType: drumType)
+            return nil
+        }
+
+        let hitTimestamp = songStartTime?.addingTimeInterval(elapsedTime) ?? Date()
+        let velocity = min(1.0, max(0.0, Double(event.velocity) / 127.0))
+        let hit = InputHit(drumType: drumType, velocity: velocity, timestamp: hitTimestamp)
+        let result = calculateNoteMatch(for: hit, elapsedTime: elapsedTime)
+
+        publishMIDIDiagnostics(event: event, mappedDrumType: drumType)
+        notifyDelegate(hit: hit, result: result)
+        return result
+    }
+
+    func handleSelectedSourceDisconnect(sourceID: String) {
+        guard sourceID == selectedSourceIDSnapshot else { return }
+
+        selectedMIDISourceAvailableSnapshot = false
+
+        if Thread.isMainThread {
+            delegate?.inputManagerSelectedMIDISourceDisconnected(self)
+        } else {
+            DispatchQueue.main.async {
+                self.delegate?.inputManagerSelectedMIDISourceDisconnected(self)
+            }
+        }
+    }
+
     private func processInput(_ drumType: DrumType, velocity: Double = 1.0) {
         guard let songStartTime = songStartTime else { return }
         
@@ -193,6 +356,57 @@ extension InputManager {
             preconditionFailure("InputManager.configure must be called before processing input")
         }
         return matcher.calculateNoteMatch(for: hit, elapsedTime: elapsedTime)
+    }
+
+    private func gameplayElapsedTime(for event: MIDINoteEvent) -> Double? {
+        if let songStartHostTime {
+            let hostElapsed = hostTimeConverter.elapsedSeconds(from: songStartHostTime, to: event.hostTime)
+            if hostElapsed >= 0 {
+                return hostElapsed
+            }
+        }
+
+        if let songStartTime {
+            return max(0, Date().timeIntervalSince(songStartTime))
+        }
+
+        return nil
+    }
+
+    private func consumeLearnSessionIfNeeded(_ event: MIDINoteEvent) {
+        if Thread.isMainThread {
+            let consumed = MainActor.assumeIsolated {
+                learnSession.consume(event, selectedSourceID: selectedSourceIDSnapshot)
+            }
+            if consumed {
+                reloadMappingsFromSettings()
+            }
+        } else {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.learnSession.consume(event, selectedSourceID: self.selectedSourceIDSnapshot) {
+                    self.reloadMappingsFromSettings()
+                }
+            }
+        }
+    }
+
+    private func publishMIDIDiagnostics(event: MIDINoteEvent, mappedDrumType: DrumType?) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.diagnosticsStore.record(
+                event: event,
+                mappedDrumType: mappedDrumType,
+                sourceDisplayName: self.deviceRegistry.displayName(for: event.sourceID)
+            )
+        }
+    }
+
+    private func notifyDelegate(hit: InputHit, result: NoteMatchResult) {
+        DispatchQueue.main.async {
+            self.delegate?.inputManager(self, didReceiveHit: hit)
+            self.delegate?.inputManager(self, didMatchNote: result)
+        }
     }
 }
 
@@ -296,8 +510,8 @@ extension InputManager {
         var status: OSStatus
         
         // Create MIDI client
-        status = MIDIClientCreateWithBlock("VirgoInputManager" as CFString, &midiClient) { _ in
-            // MIDI system notification handler
+        status = MIDIClientCreateWithBlock("VirgoInputManager" as CFString, &midiClient) { [weak self] _ in
+            self?.refreshMIDISourceConnections()
         }
         
         guard status == noErr else {
@@ -306,8 +520,11 @@ extension InputManager {
         }
         
         // Create input port
-        status = MIDIInputPortCreateWithBlock(midiClient, "VirgoInput" as CFString, &midiInputPort) { [weak self] packetList, _ in
-            self?.handleMIDIPacketList(packetList)
+        status = MIDIInputPortCreateWithBlock(midiClient, "VirgoInput" as CFString, &midiInputPort) { [weak self] packetList, srcConnRefCon in
+            guard let srcConnRefCon else { return }
+
+            let context = srcConnRefCon.assumingMemoryBound(to: MIDISourceConnectionContext.self).pointee
+            self?.handleMIDIPacketList(packetList, sourceID: context.sourceID)
         }
         
         if status != noErr {
@@ -315,8 +532,8 @@ extension InputManager {
             return
         }
         
-        // Connect to all available MIDI sources
-        connectToAllMIDISources()
+        refreshMIDISourceConnections()
+        startMIDIMonitoring()
     }
     
     private func connectToAllMIDISources() {
@@ -324,52 +541,65 @@ extension InputManager {
         
         for i in 0..<sourceCount {
             let source = MIDIGetSource(i)
-            let status = MIDIPortConnectSource(midiInputPort, source, nil)
-            
-            if status == noErr {
-                print("Connected to MIDI source \(i)")
+            guard source != 0,
+                  let uniqueID = CoreMIDISourceMetadata.uniqueID(for: source) else { continue }
+
+            let contextPointer = UnsafeMutablePointer<MIDISourceConnectionContext>.allocate(capacity: 1)
+            contextPointer.initialize(
+                to: MIDISourceConnectionContext(sourceID: sourceIDResolver.stableSourceID(for: uniqueID))
+            )
+
+            let status = MIDIPortConnectSource(midiInputPort, source, contextPointer)
+            guard status == noErr else {
+                contextPointer.deinitialize(count: 1)
+                contextPointer.deallocate()
+                continue
             }
+
+            midiSourceContexts[source] = contextPointer
         }
     }
     
     private func teardownMIDI() {
+        disconnectMIDISources()
+
         if midiInputPort != 0 {
             MIDIPortDispose(midiInputPort)
+            midiInputPort = 0
         }
         if midiClient != 0 {
             MIDIClientDispose(midiClient)
+            midiClient = 0
         }
     }
     
-    private func handleMIDIPacketList(_ packetList: UnsafePointer<MIDIPacketList>) {
-        let numPackets = Int(packetList.pointee.numPackets)
-        guard numPackets > 0 else { return }
-        
-        // Process just the first packet for simplicity and safety
-        let firstPacket = packetList.pointee.packet
-        handleMIDIPacket(firstPacket)
+    private func refreshMIDISourceConnections() {
+        disconnectMIDISources()
+
+        guard midiInputPort != 0 else { return }
+        connectToAllMIDISources()
     }
     
-    private func handleMIDIPacket(_ packet: MIDIPacket) {
-        let dataLength = Int(packet.length)
-        guard dataLength >= 3 else { return }
-        
-        // Extract MIDI data safely
-        let data: [UInt8] = withUnsafeBytes(of: packet.data) { bytes in
-            return Array(bytes.prefix(dataLength))
+    private func disconnectMIDISources() {
+        for (source, contextPointer) in midiSourceContexts {
+            if midiInputPort != 0 {
+                MIDIPortDisconnectSource(midiInputPort, source)
+            }
+
+            contextPointer.deinitialize(count: 1)
+            contextPointer.deallocate()
         }
-        
-        let status = data[0]
-        let note = data[1] 
-        let velocity = data[2]
-        
-        // Check for note on message (0x90-0x9F) with non-zero velocity
-        let isNoteOn = (status & 0xF0) == 0x90 && velocity > 0
-        
-        guard isNoteOn, let drumType = midiMapping[note] else { return }
-        
-        let normalizedVelocity = Double(velocity) / 127.0
-        processInput(drumType, velocity: normalizedVelocity)
+
+        midiSourceContexts.removeAll()
+    }
+
+    private func handleMIDIPacketList(_ packetList: UnsafePointer<MIDIPacketList>, sourceID: String) {
+        let packets = eventRouter.convertPacketList(packetList)
+        let events = eventRouter.decodeEvents(from: packets, sourceID: sourceID)
+
+        for event in events {
+            _ = handleMIDINoteEvent(event)
+        }
     }
 }
 
@@ -382,6 +612,7 @@ extension InputManager {
     
     func setMIDIMapping(_ mapping: [UInt8: DrumType]) {
         midiMapping = mapping
+        midiMappingSnapshot = mapping
     }
     
     func getKeyboardMapping() -> [String: DrumType] {

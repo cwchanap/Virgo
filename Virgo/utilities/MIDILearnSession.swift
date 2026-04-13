@@ -56,7 +56,9 @@ final class MIDILearnSession: ObservableObject {
 
         if let previousDrum = settingsManager.getMidiMappings()[event.note],
            previousDrum != targetDrumType {
-            lastConflictMessage = "Replaced \(previousDrum.learnDisplayName) with \(targetDrumType.learnDisplayName) for note \(event.note)"
+            lastConflictMessage =
+                "Replaced \(previousDrum.learnDisplayName) " +
+                "with \(targetDrumType.learnDisplayName) for note \(event.note)"
         }
 
         settingsManager.setMidiMapping(event.note, for: targetDrumType)

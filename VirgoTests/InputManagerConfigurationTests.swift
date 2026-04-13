@@ -13,6 +13,32 @@ import Foundation
 @Suite("InputManager Configuration Tests", .serialized)
 @MainActor
 struct InputManagerConfigurationTests {
+    private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
+    private let midiMappingsKey = "InputSettingsMidiMappings"
+    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
+
+    private func clearPersistedSettings() {
+        UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
+        UserDefaults.standard.removeObject(forKey: midiMappingsKey)
+        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
+    }
+
+    final class StubMIDISourceProvider: MIDISourceProviding {
+        var sources: [MIDISourceDescriptor]
+
+        init(_ sources: [MIDISourceDescriptor]) {
+            self.sources = sources
+        }
+
+        func currentSources() -> [MIDISourceDescriptor] {
+            sources
+        }
+    }
+
+    final class StubMIDISourceChangeListener: MIDISourceChangeListening {
+        func start(_ onChange: @escaping () -> Void) {}
+        func stop() {}
+    }
 
     // MARK: - configuredBPM
 
@@ -238,6 +264,40 @@ struct InputManagerConfigurationTests {
         manager.reloadMappingsFromSettings()
         #expect(!manager.getKeyboardMapping().isEmpty)
         #expect(!manager.getMIDIMapping().isEmpty)
+    }
+
+    @Test("reloadMappingsFromSettings refreshes selected-source preference and availability")
+    func testReloadMappingsFromSettingsRefreshesSelectedSourceState() {
+        clearPersistedSettings()
+        defer { clearPersistedSettings() }
+
+        let settingsManager = InputSettingsManager()
+        settingsManager.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
+
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settingsManager,
+            sourceProvider: StubMIDISourceProvider([
+                MIDISourceDescriptor(id: "source-2", displayName: "TD-17", isConnected: true)
+            ]),
+            sourceChangeListener: StubMIDISourceChangeListener()
+        )
+        let manager = InputManager(
+            settingsManager: settingsManager,
+            deviceRegistry: registry,
+            diagnosticsStore: MIDIDiagnosticsStore(),
+            learnSession: MIDILearnSession(settingsManager: settingsManager)
+        )
+
+        manager.reloadMappingsFromSettings()
+
+        #expect(manager.hasSelectedMIDISourcePreference == true)
+        #expect(manager.isSelectedMIDISourceAvailable == true)
+    }
+
+    @Test("requiresMIDISourceForGameplay defaults to false")
+    func testRequiresMIDISourceForGameplayDefaultsToFalse() {
+        let manager = InputManager()
+        #expect(manager.requiresMIDISourceForGameplay == false)
     }
 
     @Test("start-stop-start cycle preserves BPM and keyboard mappings")
