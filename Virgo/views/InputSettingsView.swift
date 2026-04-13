@@ -60,17 +60,39 @@ final class InputKeyCaptureViewModel: ObservableObject {
 
 struct InputSettingsView: View {
     @StateObject var settingsManager: InputSettingsManager
+    @StateObject var midiDeviceRegistry: MIDIDeviceRegistry
+    @StateObject var midiDiagnosticsStore: MIDIDiagnosticsStore
+    @StateObject var midiLearnSession: MIDILearnSession
+    @StateObject var midiPreviewMonitor: MIDIPreviewMonitor
     @StateObject private var keyCaptureViewModel: InputKeyCaptureViewModel
     @State private var showResetAlert = false
     @Environment(\.dismiss) private var dismiss
-
+    
+    @MainActor
     init(
         settingsManager: InputSettingsManager? = nil,
-        keyCaptureState: InputKeyCaptureState? = nil
+        keyCaptureState: InputKeyCaptureState? = nil,
+        midiDeviceRegistry: MIDIDeviceRegistry? = nil,
+        midiDiagnosticsStore: MIDIDiagnosticsStore? = nil,
+        midiLearnSession: MIDILearnSession? = nil,
+        midiPreviewMonitor: MIDIPreviewMonitor? = nil
     ) {
         let resolvedSettingsManager = settingsManager ?? InputSettingsManager()
         let resolvedKeyCaptureState = keyCaptureState ?? InputKeyCaptureState()
+        let resolvedMIDIDiagnosticsStore = midiDiagnosticsStore ?? MIDIDiagnosticsStore()
+        let resolvedMIDIDeviceRegistry =
+            midiDeviceRegistry ?? MIDIDeviceRegistry(settingsManager: resolvedSettingsManager)
+        let resolvedMIDILearnSession =
+            midiLearnSession ?? MIDILearnSession(settingsManager: resolvedSettingsManager)
+        let resolvedMIDIPreviewMonitor = midiPreviewMonitor ?? MIDIPreviewMonitor(
+            diagnosticsStore: resolvedMIDIDiagnosticsStore,
+            settingsManager: resolvedSettingsManager
+        )
         self._settingsManager = StateObject(wrappedValue: resolvedSettingsManager)
+        self._midiDeviceRegistry = StateObject(wrappedValue: resolvedMIDIDeviceRegistry)
+        self._midiDiagnosticsStore = StateObject(wrappedValue: resolvedMIDIDiagnosticsStore)
+        self._midiLearnSession = StateObject(wrappedValue: resolvedMIDILearnSession)
+        self._midiPreviewMonitor = StateObject(wrappedValue: resolvedMIDIPreviewMonitor)
         self._keyCaptureViewModel = StateObject(
             wrappedValue: InputKeyCaptureViewModel(state: resolvedKeyCaptureState)
         )
@@ -115,16 +137,19 @@ struct InputSettingsView: View {
                 .padding(.top, 10)
                 #endif
                 
-                // Keyboard and MIDI Mapping Sections (side by side)
+                #if os(iOS)
+                VStack(spacing: 20) {
+                    keyboardMappingSection
+                    midiMappingSection
+                }
+                #else
                 HStack(alignment: .top, spacing: 20) {
-                    // Keyboard Mapping Section (left column)
                     keyboardMappingSection
                         .frame(maxWidth: .infinity)
-                    
-                    // MIDI Mapping Section (right column)
                     midiMappingSection
                         .frame(maxWidth: .infinity)
                 }
+                #endif
                 
                 // Reset Section
                 resetSection
@@ -146,6 +171,24 @@ struct InputSettingsView: View {
         #endif
         .onAppear {
             settingsManager.loadSettings()
+            midiDeviceRegistry.refreshSources()
+            midiPreviewMonitor.onEvent = { event in
+                _ = midiLearnSession.consume(
+                    event,
+                    selectedSourceID: midiDeviceRegistry.selectedSourceID
+                )
+            }
+
+            if !TestEnvironment.isRunningTests {
+                midiDeviceRegistry.startMonitoring()
+                midiPreviewMonitor.start()
+            }
+        }
+        .onDisappear {
+            if !TestEnvironment.isRunningTests {
+                midiPreviewMonitor.stop()
+                midiDeviceRegistry.stopMonitoring()
+            }
         }
         .overlay {
             if isCapturingKey {
@@ -195,6 +238,8 @@ struct InputSettingsView: View {
                     Button("Cancel", role: .cancel) { }
                     Button("Reset", role: .destructive) {
                         settingsManager.resetToDefaults()
+                        midiLearnSession.cancelCapture()
+                        midiDeviceRegistry.refreshSources()
                     }
                 } message: {
                     Text("This will reset all keyboard and MIDI mappings to their default values. " +
@@ -215,6 +260,26 @@ struct InputSettingsView: View {
     
     func cancelKeyCapture() {
         keyCaptureViewModel.cancelCapture()
+    }
+
+    var selectedSourceBinding: Binding<String?> {
+        Binding(
+            get: { midiDeviceRegistry.selectedSourceID },
+            set: { newValue in
+                guard let newValue else {
+                    settingsManager.clearSelectedMIDISource()
+                    midiLearnSession.cancelCapture()
+                    midiDeviceRegistry.refreshSources()
+                    return
+                }
+
+                guard let source = midiDeviceRegistry.sources.first(where: { $0.id == newValue }) else {
+                    return
+                }
+
+                midiDeviceRegistry.selectSource(source)
+            }
+        )
     }
     
     #if os(macOS)
