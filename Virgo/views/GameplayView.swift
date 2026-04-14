@@ -129,6 +129,14 @@ struct GameplayView: View {
                 )
             }
         }
+        .alert("MIDI Device Required", isPresented: Binding(
+            get: { viewModel?.isShowingMIDIDeviceAlert ?? false },
+            set: { viewModel?.isShowingMIDIDeviceAlert = $0 }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(viewModel?.midiDeviceAlertMessage ?? "")
+        }
     }
 }
 

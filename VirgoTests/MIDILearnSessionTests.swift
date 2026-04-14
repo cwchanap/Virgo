@@ -74,8 +74,23 @@ struct MIDILearnSessionTests {
         let learnSession = MIDILearnSession(settingsManager: settings)
 
         learnSession.beginCapture(for: .kick, timeoutSeconds: 0.01)
-        try await Task.sleep(for: .milliseconds(50))
+        let didTimeout = try await Task.detached { () throws -> Bool in
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(1))
 
+            while clock.now < deadline {
+                let isCapturing = await MainActor.run { learnSession.isCapturing }
+                if !isCapturing {
+                    return true
+                }
+
+                try await Task.sleep(for: .milliseconds(10))
+            }
+
+            return false
+        }.value
+
+        #expect(didTimeout)
         #expect(learnSession.isCapturing == false)
         #expect(learnSession.targetDrumType == nil)
     }
@@ -99,5 +114,23 @@ struct MIDILearnSessionTests {
         #expect(settings.getMidiMapping(for: .kick) == nil)
         #expect(settings.getMidiMapping(for: .snare) == 38)
         #expect(learnSession.lastConflictMessage == "Replaced Kick with Snare for note 38")
+    }
+
+    @Test("a stale timeout cannot cancel a newer capture")
+    func learnSessionIgnoresStaleTimeoutsAfterStartingANewCapture() async throws {
+        clearPersistedSettings()
+        defer { clearPersistedSettings() }
+
+        let settings = InputSettingsManager()
+        let learnSession = MIDILearnSession(settingsManager: settings)
+
+        learnSession.beginCapture(for: .kick, timeoutSeconds: 0.01)
+        learnSession.beginCapture(for: .snare, timeoutSeconds: 1)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(learnSession.isCapturing == true)
+        #expect(learnSession.targetDrumType == .snare)
+
+        learnSession.cancelCapture()
     }
 }
