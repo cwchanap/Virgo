@@ -119,6 +119,10 @@ final class GameplayViewModel {
     var inputManager = InputManager()
     /// Input handler delegate
     var inputHandler = GameplayInputHandler()
+    /// Whether to show the selected MIDI device alert
+    var isShowingMIDIDeviceAlert = false
+    /// User-facing message for MIDI source gating / disconnects
+    var midiDeviceAlertMessage = ""
 
     // MARK: - Scoring State
     /// All combo and scoring state
@@ -465,6 +469,14 @@ final class GameplayViewModel {
             return
         }
 
+        if !TestEnvironment.isRunningTests {
+            #if os(iOS)
+            inputManager.requiresMIDISourceForGameplay = true
+            #else
+            inputManager.requiresMIDISourceForGameplay = false
+            #endif
+        }
+
         // Load saved speed for this chart unless caller explicitly requested preconfigured speed
         if loadPersistedSpeed {
             practiceSettings.loadAndApplySpeed(for: chart.persistentModelID)
@@ -546,6 +558,18 @@ final class GameplayViewModel {
     func startPlayback() {
         Logger.audioPlayback("🎮 startPlayback() called")
 
+        if inputManager.requiresMIDISourceForGameplay && !inputManager.hasSelectedMIDISourcePreference {
+            midiDeviceAlertMessage = "Select your MIDI device before starting."
+            isShowingMIDIDeviceAlert = true
+            return
+        }
+
+        if inputManager.requiresMIDISourceForGameplay && !inputManager.isSelectedMIDISourceAvailable {
+            midiDeviceAlertMessage = "Reconnect or select your MIDI device before starting."
+            isShowingMIDIDeviceAlert = true
+            return
+        }
+
         // Guard: Ensure track is ready before starting playback
         guard let track = track else {
             Logger.error("No track available for playback")
@@ -558,6 +582,8 @@ final class GameplayViewModel {
         }
 
         playbackTimer?.invalidate()
+        isShowingMIDIDeviceAlert = false
+        midiDeviceAlertMessage = ""
 
         // Check if we're resuming from a pause or starting fresh
         // Use pausedElapsedTime as primary indicator for resume (works for both BGM and metronome-only sessions)
@@ -628,6 +654,20 @@ final class GameplayViewModel {
         // Set playback state AFTER all operations succeed
         // This ensures UI state accurately reflects whether playback actually started
         isPlaying = true
+    }
+
+    func handleSelectedMIDISourceDisconnect() {
+        guard inputManager.requiresMIDISourceForGameplay else { return }
+
+        if isPlaying {
+            pausePlayback()
+            midiDeviceAlertMessage =
+                "Your selected MIDI device disconnected. Reconnect it, then resume when ready."
+        } else {
+            midiDeviceAlertMessage = "Reconnect or reselect your MIDI device before starting."
+        }
+
+        isShowingMIDIDeviceAlert = true
     }
 
     func pausePlayback() {
@@ -1320,6 +1360,9 @@ final class GameplayViewModel {
     func wireInputHandler() {
         inputHandler.onNoteResult = { [weak self] result in
             self?.recordHit(result: result)
+        }
+        inputHandler.onSelectedSourceDisconnect = { [weak self] in
+            self?.handleSelectedMIDISourceDisconnect()
         }
     }
 

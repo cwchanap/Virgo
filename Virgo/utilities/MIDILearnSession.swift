@@ -9,6 +9,7 @@ final class MIDILearnSession: ObservableObject {
 
     private let settingsManager: InputSettingsManager
     private var timeoutTask: Task<Void, Never>?
+    private var activeCaptureID = UUID()
 
     init(settingsManager: InputSettingsManager) {
         self.settingsManager = settingsManager
@@ -20,21 +21,21 @@ final class MIDILearnSession: ObservableObject {
 
     func beginCapture(for drumType: DrumType, timeoutSeconds: Double = 10) {
         timeoutTask?.cancel()
+        let captureID = UUID()
+        activeCaptureID = captureID
         targetDrumType = drumType
         isCapturing = true
         lastConflictMessage = nil
 
-        timeoutTask = Task { [weak self] in
+        timeoutTask = Task.detached { [weak self] in
             do {
                 try await Task.sleep(for: .seconds(timeoutSeconds))
             } catch {
                 return
             }
 
-            await MainActor.run {
-                guard let self, self.isCapturing else { return }
-                self.cancelCapture()
-            }
+            guard let self else { return }
+            await self.timeoutCaptureIfNeeded(captureID: captureID)
         }
     }
 
@@ -64,6 +65,11 @@ final class MIDILearnSession: ObservableObject {
         settingsManager.setMidiMapping(event.note, for: targetDrumType)
         cancelCapture()
         return true
+    }
+
+    private func timeoutCaptureIfNeeded(captureID: UUID) {
+        guard isCapturing, activeCaptureID == captureID else { return }
+        cancelCapture()
     }
 }
 
