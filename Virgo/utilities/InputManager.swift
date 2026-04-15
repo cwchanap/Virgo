@@ -100,6 +100,7 @@ class InputManager: ObservableObject {
     private var midiMappingSnapshot: [UInt8: DrumType] = [:]
     private var selectedSourceIDSnapshot: String?
     private var selectedMIDISourceAvailableSnapshot = false
+    private var learnSessionIsCapturingSnapshot = false
     
     // Settings manager for persistent configuration
     private let settingsManager: InputSettingsManager
@@ -336,11 +337,22 @@ extension InputManager {
     /// Reload mappings from settings (call this when settings are updated)
     func reloadMappingsFromSettings() {
         let snapshot = currentInputSettingsSnapshot()
+        let isCapturing: Bool
+        if Thread.isMainThread {
+            isCapturing = MainActor.assumeIsolated {
+                learnSession.isCapturing
+            }
+        } else {
+            isCapturing = DispatchQueue.main.sync {
+                learnSession.isCapturing
+            }
+        }
         updateRuntimeState {
             keyboardMapping = snapshot.keyboardMapping
             midiMapping = snapshot.midiMapping
             midiMappingSnapshot = snapshot.midiMapping
             selectedSourceIDSnapshot = snapshot.selectedSourceID
+            learnSessionIsCapturingSnapshot = isCapturing
         }
         refreshMIDISourceAvailabilitySnapshot()
     }
@@ -481,6 +493,9 @@ extension InputManager {
     }
 
     private func consumeLearnSessionIfNeeded(_ event: MIDINoteEvent) {
+        let isCapturing = withRuntimeState { learnSessionIsCapturingSnapshot }
+        guard isCapturing else { return }
+
         let selectedSourceID = currentSelectedSourceID()
         if Thread.isMainThread {
             let consumed = MainActor.assumeIsolated {
@@ -647,6 +662,9 @@ extension InputManager {
         
         if status != noErr {
             print("Failed to create MIDI input port: \(status)")
+            MIDIClientDispose(midiClient)
+            midiClient = 0
+            midiInputPort = 0
             return
         }
         

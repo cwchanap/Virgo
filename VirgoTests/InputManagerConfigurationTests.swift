@@ -13,16 +13,6 @@ import Foundation
 @Suite("InputManager Configuration Tests", .serialized)
 @MainActor
 struct InputManagerConfigurationTests {
-    private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
-    private let midiMappingsKey = "InputSettingsMidiMappings"
-    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
-
-    private func clearPersistedSettings() {
-        UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
-        UserDefaults.standard.removeObject(forKey: midiMappingsKey)
-        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
-    }
-
     final class StubMIDISourceProvider: MIDISourceProviding {
         var sources: [MIDISourceDescriptor]
 
@@ -268,10 +258,11 @@ struct InputManagerConfigurationTests {
 
     @Test("reloadMappingsFromSettings refreshes selected-source preference and availability")
     func testReloadMappingsFromSettingsRefreshesSelectedSourceState() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let suiteName = "InputManagerConfigurationTests.SelectedSource.\(UUID().uuidString)"
+        let testDefaults = UserDefaults(suiteName: suiteName)!
+        defer { UserDefaults.standard.removeSuite(named: suiteName) }
 
-        let settingsManager = InputSettingsManager()
+        let settingsManager = InputSettingsManager(userDefaults: testDefaults)
         settingsManager.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
         let registry = MIDIDeviceRegistry(
