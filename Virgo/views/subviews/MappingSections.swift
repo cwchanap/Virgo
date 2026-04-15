@@ -158,7 +158,7 @@ extension InputSettingsView {
                     .foregroundColor(.white)
 
                 HStack(spacing: 12) {
-                    Text("Channel \(lastEvent.channel)")
+                    Text("Channel \(Int(lastEvent.channel) + 1)")
                     Text("Note \(lastEvent.note)")
                     Text("Velocity \(lastEvent.velocity)")
                 }
@@ -240,14 +240,21 @@ extension InputSettingsView {
                 HStack(spacing: 8) {
                     if settingsManager.getMidiMapping(for: drumType) == nil {
                         Button("Learn") {
+                            guard midiLearnSession.canBeginCapture else { return }
                             midiLearnSession.beginCapture(for: drumType)
                         }
+                        .disabled(!midiLearnSession.canBeginCapture)
                     } else {
                         Button("Replace") {
+                            guard midiLearnSession.canBeginCapture else { return }
                             midiLearnSession.beginCapture(for: drumType)
                         }
+                        .disabled(!midiLearnSession.canBeginCapture)
 
                         Button("Clear") {
+                            if midiLearnSession.isCapturing && midiLearnSession.targetDrumType == drumType {
+                                midiLearnSession.cancelCapture()
+                            }
                             settingsManager.removeMidiMapping(for: drumType)
                         }
                     }

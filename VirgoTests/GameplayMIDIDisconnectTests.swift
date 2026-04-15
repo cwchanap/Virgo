@@ -5,16 +5,6 @@ import Foundation
 @Suite("Gameplay MIDI Disconnect Tests", .serialized)
 @MainActor
 struct GameplayMIDIDisconnectTests {
-    private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
-    private let midiMappingsKey = "InputSettingsMidiMappings"
-    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
-
-    private func clearPersistedSettings() {
-        UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
-        UserDefaults.standard.removeObject(forKey: midiMappingsKey)
-        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
-    }
-
     private func createTestPracticeSettings() -> PracticeSettingsService {
         let (userDefaults, _) = TestUserDefaults.makeIsolated()
         return PracticeSettingsService(userDefaults: userDefaults)
@@ -58,13 +48,12 @@ struct GameplayMIDIDisconnectTests {
     }
 
     private func makeInputManagerForTest(
+        settingsManager: InputSettingsManager,
         selectedSourceID: String?,
         midiMapping: [UInt8: DrumType],
         requiresMIDISourceForGameplay: Bool,
         selectedSourceAvailable: Bool
     ) -> InputManager {
-        let settingsManager = InputSettingsManager()
-
         if let selectedSourceID {
             settingsManager.setSelectedMIDISource(id: selectedSourceID, displayName: "TD-17")
         }
@@ -100,8 +89,10 @@ struct GameplayMIDIDisconnectTests {
 
     @Test("startPlayback refuses MIDI gameplay when a selected source is unavailable")
     func testStartPlaybackRequiresAvailableMIDISource() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testStartPlaybackRequiresAvailableMIDISource"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let chart = createTestChart()
         let metronome = createTestMetronome()
@@ -113,6 +104,7 @@ struct GameplayMIDIDisconnectTests {
         defer { viewModel.cleanup() }
 
         viewModel.inputManager = makeInputManagerForTest(
+            settingsManager: settingsManager,
             selectedSourceID: "coremidi:2",
             midiMapping: [38: .snare],
             requiresMIDISourceForGameplay: true,
@@ -130,8 +122,10 @@ struct GameplayMIDIDisconnectTests {
 
     @Test("startPlayback prompts for source selection when no MIDI source is selected")
     func testStartPlaybackPromptsForSourceSelection() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testStartPlaybackPromptsForSourceSelection"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let chart = createTestChart()
         let metronome = createTestMetronome()
@@ -143,6 +137,7 @@ struct GameplayMIDIDisconnectTests {
         defer { viewModel.cleanup() }
 
         viewModel.inputManager = makeInputManagerForTest(
+            settingsManager: settingsManager,
             selectedSourceID: nil,
             midiMapping: [:],
             requiresMIDISourceForGameplay: true,
@@ -160,8 +155,10 @@ struct GameplayMIDIDisconnectTests {
 
     @Test("selected source disconnect auto-pauses active gameplay")
     func testSelectedSourceDisconnectAutoPausesGameplay() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testSelectedSourceDisconnectAutoPausesGameplay"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let chart = createTestChart()
         let metronome = createTestMetronome()
@@ -173,6 +170,7 @@ struct GameplayMIDIDisconnectTests {
         defer { viewModel.cleanup() }
 
         viewModel.inputManager = makeInputManagerForTest(
+            settingsManager: settingsManager,
             selectedSourceID: "coremidi:2",
             midiMapping: [38: .snare],
             requiresMIDISourceForGameplay: true,
@@ -190,8 +188,10 @@ struct GameplayMIDIDisconnectTests {
 
     @Test("wireInputHandler routes selected-source disconnects through the input manager delegate")
     func testWireInputHandlerRoutesSelectedSourceDisconnects() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testWireInputHandlerRoutesSelectedSourceDisconnects"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let chart = createTestChart()
         let metronome = createTestMetronome()
@@ -203,6 +203,7 @@ struct GameplayMIDIDisconnectTests {
         defer { viewModel.cleanup() }
 
         viewModel.inputManager = makeInputManagerForTest(
+            settingsManager: settingsManager,
             selectedSourceID: "coremidi:2",
             midiMapping: [38: .snare],
             requiresMIDISourceForGameplay: true,
@@ -222,8 +223,10 @@ struct GameplayMIDIDisconnectTests {
 
     @Test("selected-source disconnects are ignored when MIDI is not required for gameplay")
     func testSelectedSourceDisconnectIgnoredWhenMIDINotRequired() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testSelectedSourceDisconnectIgnoredWhenMIDINotRequired"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let chart = createTestChart()
         let metronome = createTestMetronome()
@@ -235,6 +238,7 @@ struct GameplayMIDIDisconnectTests {
         defer { viewModel.cleanup() }
 
         viewModel.inputManager = makeInputManagerForTest(
+            settingsManager: settingsManager,
             selectedSourceID: "coremidi:2",
             midiMapping: [38: .snare],
             requiresMIDISourceForGameplay: false,

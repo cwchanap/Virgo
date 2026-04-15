@@ -16,23 +16,65 @@ struct MIDINoteEvent: Equatable {
 
 struct MIDIEventRouter {
     /// Decode MIDI note-on events from packet bytes.
-    /// 
-    /// **Task 2 Limitation**: Expects one MIDI message per packet. Multi-message packets are not supported.
     /// Filters for note-on status (0x9n) with velocity > 0.
     func decodeEvents(from packets: [MIDIPacketBytes], sourceID: String) -> [MIDINoteEvent] {
-        packets.compactMap { packet in
-            guard packet.bytes.count >= 3 else { return nil }
-            let status = packet.bytes[0]
-            let velocity = packet.bytes[2]
-            guard (status & 0xF0) == 0x90, velocity > 0 else { return nil }
+        var events: [MIDINoteEvent] = []
 
-            return MIDINoteEvent(
-                sourceID: sourceID,
-                channel: status & 0x0F,
-                note: packet.bytes[1],
-                velocity: velocity,
-                hostTime: packet.timestamp  // MIDITimeStamp is already a host-time value
-            )
+        for packet in packets {
+            var runningStatus: UInt8?
+            var dataBytes: [UInt8] = []
+            dataBytes.reserveCapacity(2)
+
+            for byte in packet.bytes {
+                if byte >= 0xF8 {
+                    continue
+                }
+
+                if byte & 0x80 != 0 {
+                    runningStatus = byte < 0xF0 ? byte : nil
+                    dataBytes.removeAll(keepingCapacity: true)
+                    continue
+                }
+
+                guard let status = runningStatus,
+                      let expectedDataByteCount = Self.expectedDataByteCount(for: status) else {
+                    continue
+                }
+
+                dataBytes.append(byte)
+                guard dataBytes.count == expectedDataByteCount else { continue }
+
+                if expectedDataByteCount == 2 {
+                    let note = dataBytes[0]
+                    let velocity = dataBytes[1]
+                    if (status & 0xF0) == 0x90, velocity > 0 {
+                        events.append(
+                            MIDINoteEvent(
+                                sourceID: sourceID,
+                                channel: status & 0x0F,
+                                note: note,
+                                velocity: velocity,
+                                hostTime: packet.timestamp  // MIDITimeStamp is already a host-time value
+                            )
+                        )
+                    }
+                }
+
+                dataBytes.removeAll(keepingCapacity: true)
+            }
+        }
+
+        return events
+    }
+
+    private static func expectedDataByteCount(for status: UInt8) -> Int? {
+        switch status & 0xF0 {
+        case 0x80, 0x90, 0xA0, 0xB0, 0xE0:
+            return 2
+        case 0xC0, 0xD0:
+            return 1
+        default:
+            return nil
         }
     }
     

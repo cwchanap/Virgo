@@ -6,16 +6,6 @@ import CoreMIDI
 @Suite("MIDIPreviewMonitor Tests", .serialized)
 @MainActor
 struct MIDIPreviewMonitorTests {
-    private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
-    private let midiMappingsKey = "InputSettingsMidiMappings"
-    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
-
-    private func clearPersistedSettings() {
-        UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
-        UserDefaults.standard.removeObject(forKey: midiMappingsKey)
-        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
-    }
-
     final class StubMIDISourceIDResolver: MIDISourceIDResolving {
         var idsByUniqueID: [Int32: String]
 
@@ -82,10 +72,11 @@ struct MIDIPreviewMonitorTests {
 
     @Test("preview monitor forwards idle events into diagnostics")
     func previewMonitorForwardsIdleEventsIntoDiagnostics() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.previewMonitorForwardsIdleEventsIntoDiagnostics"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         settings.setSelectedMIDISource(id: "coremidi:2", displayName: "TD-17")
         settings.setMidiMapping(40, for: .snare)
 
@@ -110,10 +101,11 @@ struct MIDIPreviewMonitorTests {
 
     @Test("start and stop delegate live preview listening through the injected listener")
     func startAndStopDelegateLivePreviewListening() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.startAndStopDelegateLivePreviewListening"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         settings.setMidiMapping(38, for: .snare)
 
         let diagnostics = MIDIDiagnosticsStore()
@@ -140,10 +132,11 @@ struct MIDIPreviewMonitorTests {
 
     @Test("preview monitor forwards decoded events through the optional callback")
     func previewMonitorForwardsDecodedEventsThroughTheOptionalCallback() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.previewMonitorForwardsDecodedEventsThroughTheOptionalCallback"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         settings.setMidiMapping(36, for: .kick)
 
         let diagnostics = MIDIDiagnosticsStore()

@@ -84,6 +84,38 @@ struct MIDIEventRouterTests {
         #expect(events[1].note == 0x24)
         #expect(events[1].hostTime == 5000)
     }
+
+    @Test("Decode multiple note-on triplets from a single packet")
+    func decodeEventsEmitsEveryCompleteTripletWithinOnePacket() {
+        let packets = [
+            MIDIPacketBytes(
+                timestamp: 4000,
+                bytes: [0x99, 38, 127, 0x99, 42, 100]
+            )
+        ]
+
+        let events = router.decodeEvents(from: packets, sourceID: "test-source")
+
+        #expect(events.count == 2)
+        #expect(events[0] == MIDINoteEvent(sourceID: "test-source", channel: 9, note: 38, velocity: 127, hostTime: 4000))
+        #expect(events[1] == MIDINoteEvent(sourceID: "test-source", channel: 9, note: 42, velocity: 100, hostTime: 4000))
+    }
+
+    @Test("Decode note-on events that use running status")
+    func decodeEventsHandlesRunningStatusPackets() {
+        let packets = [
+            MIDIPacketBytes(
+                timestamp: 5000,
+                bytes: [0x99, 38, 127, 42, 100]
+            )
+        ]
+
+        let events = router.decodeEvents(from: packets, sourceID: "test-source")
+
+        #expect(events.count == 2)
+        #expect(events[0] == MIDINoteEvent(sourceID: "test-source", channel: 9, note: 38, velocity: 127, hostTime: 5000))
+        #expect(events[1] == MIDINoteEvent(sourceID: "test-source", channel: 9, note: 42, velocity: 100, hostTime: 5000))
+    }
     
     @Test("Convert single packet list to MIDIPacketBytes")
     func convertPacketListExtractsPacketsFromMIDIPacketList() {

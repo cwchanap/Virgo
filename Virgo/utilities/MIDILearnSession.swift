@@ -11,6 +11,10 @@ final class MIDILearnSession: ObservableObject {
     private var timeoutTask: Task<Void, Never>?
     private var activeCaptureID = UUID()
 
+    var canBeginCapture: Bool {
+        settingsManager.getSelectedMIDISource() != nil
+    }
+
     init(settingsManager: InputSettingsManager) {
         self.settingsManager = settingsManager
     }
@@ -21,6 +25,13 @@ final class MIDILearnSession: ObservableObject {
 
     func beginCapture(for drumType: DrumType, timeoutSeconds: Double = 10) {
         timeoutTask?.cancel()
+        guard canBeginCapture else {
+            timeoutTask = nil
+            targetDrumType = nil
+            isCapturing = false
+            return
+        }
+
         let captureID = UUID()
         activeCaptureID = captureID
         targetDrumType = drumType
