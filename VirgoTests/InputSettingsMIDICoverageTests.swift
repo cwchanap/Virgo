@@ -20,7 +20,10 @@ struct InputSettingsMIDICoverageTests {
     @Test("InputSettingsView renders source picker and diagnostics panel")
     func testInputSettingsViewRendersMIDISourceAndDiagnostics() async throws {
         try await TestSetup.withTestSetup {
-            let settings = InputSettingsManager()
+            let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+                suiteName: "InputSettingsMIDICoverageTests.testInputSettingsViewRendersMIDISourceAndDiagnostics"
+            )
+            defer { userDefaults.removePersistentDomain(forName: suiteName) }
             let registry = MIDIDeviceRegistry(
                 settingsManager: settings,
                 sourceProvider: StubMIDISourceProvider([
@@ -48,6 +51,7 @@ struct InputSettingsMIDICoverageTests {
             #expect(texts.contains("Gameplay MIDI Source"))
             #expect(texts.contains("TD-17"))
             #expect(texts.contains("Last MIDI Event"))
+            #expect(texts.contains("Channel 10"))
             #expect(texts.contains("Learn"))
         }
     }
@@ -55,7 +59,10 @@ struct InputSettingsMIDICoverageTests {
     @Test("InputSettingsView renders replace action and learn feedback")
     func testInputSettingsViewRendersReplaceAndLearnFeedback() async throws {
         try await TestSetup.withTestSetup {
-            let settings = InputSettingsManager()
+            let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+                suiteName: "InputSettingsMIDICoverageTests.testInputSettingsViewRendersReplaceAndLearnFeedback"
+            )
+            defer { userDefaults.removePersistentDomain(forName: suiteName) }
             settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
             settings.setMidiMapping(38, for: .kick)
 

@@ -18,7 +18,7 @@ class InputSettingsManager: ObservableObject {
     @Published private var midiMappings: [UInt8: DrumType] = [:]
     @Published private var selectedMIDISource: SelectedMIDISource?
     
-    private let userDefaults = UserDefaults.standard
+    private let userDefaults: UserDefaults
     private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
     private let midiMappingsKey = "InputSettingsMidiMappings"
     private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
@@ -49,7 +49,8 @@ class InputSettingsManager: ObservableObject {
         56: .cowbell      // Cowbell
     ]
     
-    init() {
+    init(userDefaults: UserDefaults = .standard) {
+        self.userDefaults = userDefaults
         loadSettings()
     }
     

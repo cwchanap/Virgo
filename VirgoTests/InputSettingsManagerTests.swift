@@ -5,22 +5,18 @@ import Foundation
 @Suite("InputSettingsManager Tests", .serialized)
 @MainActor
 struct InputSettingsManagerTests {
-    private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
-    private let midiMappingsKey = "InputSettingsMidiMappings"
-    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
-
-    private func clearPersistedMappings() {
-        UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
-        UserDefaults.standard.removeObject(forKey: midiMappingsKey)
-        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
+    private func makeUserDefaults(
+        _ name: String
+    ) -> (UserDefaults, String) {
+        TestUserDefaults.makeIsolated(suiteName: "InputSettingsManagerTests.\(name)")
     }
 
     @Test("Initialization seeds defaults when persisted values are missing")
     func testInitializationSeedsDefaults() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testInitializationSeedsDefaults")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
 
         let keyboard = manager.getKeyboardMappings()
         #expect(keyboard.count == 9)
@@ -34,14 +30,14 @@ struct InputSettingsManagerTests {
         #expect(midi[44] == .hiHatPedal)
         #expect(midi[56] == .cowbell)
 
-        #expect(UserDefaults.standard.data(forKey: keyboardMappingsKey) != nil)
-        #expect(UserDefaults.standard.data(forKey: midiMappingsKey) != nil)
+        #expect(userDefaults.data(forKey: "InputSettingsKeyboardMappings") != nil)
+        #expect(userDefaults.data(forKey: "InputSettingsMidiMappings") != nil)
     }
 
     @Test("Initialization loads persisted keyboard and MIDI mappings")
     func testInitializationLoadsPersistedMappings() throws {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testInitializationLoadsPersistedMappings")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let encodedKeyboard = try JSONEncoder().encode([
             "q": "snare",
@@ -55,10 +51,10 @@ struct InputSettingsManagerTests {
         ]
         let encodedMidi = try JSONEncoder().encode(persistedMidi)
 
-        UserDefaults.standard.set(encodedKeyboard, forKey: keyboardMappingsKey)
-        UserDefaults.standard.set(encodedMidi, forKey: midiMappingsKey)
+        userDefaults.set(encodedKeyboard, forKey: "InputSettingsKeyboardMappings")
+        userDefaults.set(encodedMidi, forKey: "InputSettingsMidiMappings")
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
 
         let keyboard = manager.getKeyboardMappings()
         #expect(keyboard.count == 2)
@@ -75,13 +71,13 @@ struct InputSettingsManagerTests {
 
     @Test("Invalid persisted payload falls back to defaults")
     func testInvalidPersistedDataFallsBackToDefaults() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testInvalidPersistedDataFallsBackToDefaults")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        UserDefaults.standard.set(Data("not-json".utf8), forKey: keyboardMappingsKey)
-        UserDefaults.standard.set(Data("still-not-json".utf8), forKey: midiMappingsKey)
+        userDefaults.set(Data("not-json".utf8), forKey: "InputSettingsKeyboardMappings")
+        userDefaults.set(Data("still-not-json".utf8), forKey: "InputSettingsMidiMappings")
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
 
         #expect(manager.getKeyboardMappings()["space"] == .kick)
         #expect(manager.getMidiMappings()[36] == .kick)
@@ -89,10 +85,10 @@ struct InputSettingsManagerTests {
 
     @Test("setKeyBinding enforces unique key and unique drum mapping")
     func testSetKeyBindingConflictResolution() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testSetKeyBindingConflictResolution")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
 
         manager.setKeyBinding("x", for: .kick)
         #expect(manager.getKeyBinding(for: .kick) == "x")
@@ -105,26 +101,26 @@ struct InputSettingsManagerTests {
 
     @Test("removeKeyBinding persists removal across manager instances")
     func testRemoveKeyBindingPersistence() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testRemoveKeyBindingPersistence")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
         manager.setKeyBinding("z", for: .ride)
         #expect(manager.getKeyBinding(for: .ride) == "z")
 
         manager.removeKeyBinding(for: .ride)
         #expect(manager.getKeyBinding(for: .ride) == nil)
 
-        let reloadedManager = InputSettingsManager()
+        let reloadedManager = InputSettingsManager(userDefaults: userDefaults)
         #expect(reloadedManager.getKeyBinding(for: .ride) == nil)
     }
 
     @Test("setMidiMapping and removeMidiMapping enforce uniqueness and persist")
     func testMidiMappingLifecycle() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testMidiMappingLifecycle")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
 
         manager.setMidiMapping(60, for: .snare)
         #expect(manager.getMidiMapping(for: .snare) == 60)
@@ -137,16 +133,16 @@ struct InputSettingsManagerTests {
         manager.removeMidiMapping(for: .kick)
         #expect(manager.getMidiMapping(for: .kick) == nil)
 
-        let reloadedManager = InputSettingsManager()
+        let reloadedManager = InputSettingsManager(userDefaults: userDefaults)
         #expect(reloadedManager.getMidiMapping(for: .kick) == nil)
     }
 
     @Test("resetToDefaults restores default keyboard and MIDI values")
     func testResetToDefaults() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testResetToDefaults")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
         manager.setKeyBinding("x", for: .kick)
         manager.setMidiMapping(10, for: .snare)
 
@@ -160,18 +156,18 @@ struct InputSettingsManagerTests {
 
     @Test("saveSettings writes current state to UserDefaults")
     func testSaveSettingsWritesPersistedData() throws {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testSaveSettingsWritesPersistedData")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
         manager.setKeyBinding("x", for: .kick)
         manager.setMidiMapping(99, for: .ride)
         manager.setSelectedMIDISource(id: "device-123", displayName: "Test Device")
         manager.saveSettings()
 
-        let keyboardData = UserDefaults.standard.data(forKey: keyboardMappingsKey)
-        let midiData = UserDefaults.standard.data(forKey: midiMappingsKey)
-        let sourceData = UserDefaults.standard.data(forKey: selectedMIDISourceKey)
+        let keyboardData = userDefaults.data(forKey: "InputSettingsKeyboardMappings")
+        let midiData = userDefaults.data(forKey: "InputSettingsMidiMappings")
+        let sourceData = userDefaults.data(forKey: "InputSettingsSelectedMIDISource")
 
         #expect(keyboardData != nil)
         #expect(midiData != nil)
@@ -208,26 +204,26 @@ struct InputSettingsManagerTests {
 
     @Test("Selected MIDI source persists across manager instances")
     func testSelectedMIDISourcePersistence() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testSelectedMIDISourcePersistence")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
         manager.setSelectedMIDISource(id: "device-123", displayName: "USB MIDI Device")
 
         #expect(manager.getSelectedMIDISource()?.id == "device-123")
         #expect(manager.getSelectedMIDISource()?.displayName == "USB MIDI Device")
 
-        let reloadedManager = InputSettingsManager()
+        let reloadedManager = InputSettingsManager(userDefaults: userDefaults)
         #expect(reloadedManager.getSelectedMIDISource()?.id == "device-123")
         #expect(reloadedManager.getSelectedMIDISource()?.displayName == "USB MIDI Device")
     }
 
     @Test("resetToDefaults clears selected MIDI source and persists removal")
     func testResetToDefaultsClearsSelectedMIDISource() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testResetToDefaultsClearsSelectedMIDISource")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
         manager.setSelectedMIDISource(id: "device-456", displayName: "Another Device")
 
         #expect(manager.getSelectedMIDISource() != nil)
@@ -237,23 +233,40 @@ struct InputSettingsManagerTests {
         #expect(manager.getSelectedMIDISource() == nil)
 
         // Verify that a fresh manager instance loads nil (cross-instance persistence)
-        let reloadedManager = InputSettingsManager()
+        let reloadedManager = InputSettingsManager(userDefaults: userDefaults)
         #expect(reloadedManager.getSelectedMIDISource() == nil)
     }
 
     @Test("clearSelectedMIDISource persists removal across manager instances")
     func testClearSelectedMIDISourcePersistence() {
-        clearPersistedMappings()
-        defer { clearPersistedMappings() }
+        let (userDefaults, suiteName) = makeUserDefaults("testClearSelectedMIDISourcePersistence")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let manager = InputSettingsManager()
+        let manager = InputSettingsManager(userDefaults: userDefaults)
         manager.setSelectedMIDISource(id: "device-789", displayName: "Test Device")
         #expect(manager.getSelectedMIDISource() != nil)
 
         manager.clearSelectedMIDISource()
         #expect(manager.getSelectedMIDISource() == nil)
 
-        let reloadedManager = InputSettingsManager()
+        let reloadedManager = InputSettingsManager(userDefaults: userDefaults)
         #expect(reloadedManager.getSelectedMIDISource() == nil)
+    }
+
+    @Test("Injected user defaults keep settings isolated between stores")
+    func testInjectedUserDefaultsIsolation() {
+        let (firstDefaults, firstSuiteName) = makeUserDefaults("testInjectedUserDefaultsIsolation.first")
+        defer { firstDefaults.removePersistentDomain(forName: firstSuiteName) }
+        let (secondDefaults, secondSuiteName) = makeUserDefaults("testInjectedUserDefaultsIsolation.second")
+        defer { secondDefaults.removePersistentDomain(forName: secondSuiteName) }
+
+        let firstManager = InputSettingsManager(userDefaults: firstDefaults)
+        let secondManager = InputSettingsManager(userDefaults: secondDefaults)
+
+        firstManager.setMidiMapping(60, for: .snare)
+        firstManager.setSelectedMIDISource(id: "device-1", displayName: "First Device")
+
+        #expect(secondManager.getMidiMapping(for: .snare) == 38)
+        #expect(secondManager.getSelectedMIDISource() == nil)
     }
 }

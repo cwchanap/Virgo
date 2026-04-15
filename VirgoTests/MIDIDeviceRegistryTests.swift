@@ -5,16 +5,6 @@ import Foundation
 @Suite("MIDIDeviceRegistry Tests", .serialized)
 @MainActor
 struct MIDIDeviceRegistryTests {
-    private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
-    private let midiMappingsKey = "InputSettingsMidiMappings"
-    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
-
-    private func clearPersistedSettings() {
-        UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
-        UserDefaults.standard.removeObject(forKey: midiMappingsKey)
-        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
-    }
-
     final class StubMIDISourceProvider: MIDISourceProviding {
         var sources: [MIDISourceDescriptor]
 
@@ -45,10 +35,11 @@ struct MIDIDeviceRegistryTests {
 
     @Test("refreshSources keeps persisted selection when the source still exists")
     func refreshSourcesKeepsPersistedSelection() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.refreshSourcesKeepsPersistedSelection"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
         let registry = MIDIDeviceRegistry(
@@ -67,10 +58,11 @@ struct MIDIDeviceRegistryTests {
 
     @Test("refreshSources preserves preferred selection when the source disappears")
     func refreshSourcesPreservesPreferredSelectionWhenSourceIsMissing() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.refreshSourcesPreservesPreferredSelectionWhenSourceIsMissing"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
         let registry = MIDIDeviceRegistry(
@@ -89,15 +81,16 @@ struct MIDIDeviceRegistryTests {
     }
 
     @Test("source-change notifications trigger a refresh")
-    func startMonitoringRefreshesOnSourceChange() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+    func startMonitoringRefreshesOnSourceChange() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.startMonitoringRefreshesOnSourceChange"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let listener = StubMIDISourceChangeListener()
         let provider = StubMIDISourceProvider([
             .init(id: "coremidi:1", displayName: "SPD-SX", isConnected: true)
         ])
-        let settings = InputSettingsManager()
 
         let registry = MIDIDeviceRegistry(
             settingsManager: settings,
@@ -111,17 +104,17 @@ struct MIDIDeviceRegistryTests {
         ]
 
         listener.fire()
-        try await Task.sleep(for: .milliseconds(10))
 
         #expect(registry.sources.first?.id == "coremidi:2")
     }
 
     @Test("selectSource persists the chosen source")
     func selectSourcePersistsTheChosenSource() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.selectSourcePersistsTheChosenSource"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         let source = MIDISourceDescriptor(id: "coremidi:2", displayName: "TD-17", isConnected: true)
         let registry = MIDIDeviceRegistry(
             settingsManager: settings,
@@ -138,11 +131,12 @@ struct MIDIDeviceRegistryTests {
     }
 
     @Test("selected-source-unavailable callback fires after a disconnect")
-    func selectedSourceUnavailableCallbackFiresWhenAvailableSourceDisappears() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+    func selectedSourceUnavailableCallbackFiresWhenAvailableSourceDisappears() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.selectedSourceUnavailableCallbackFiresWhenAvailableSourceDisappears"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         settings.setSelectedMIDISource(id: "coremidi:2", displayName: "TD-17")
 
         let listener = StubMIDISourceChangeListener()
@@ -164,7 +158,6 @@ struct MIDIDeviceRegistryTests {
         provider.sources = []
 
         listener.fire()
-        try await Task.sleep(for: .milliseconds(10))
 
         #expect(unavailableSourceID == "coremidi:2")
         #expect(registry.isSelectedSourceAvailable == false)

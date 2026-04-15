@@ -717,6 +717,15 @@ enum TestUserDefaults {
     }
 }
 
+enum TestInputSettingsManager {
+    static func makeIsolated(
+        suiteName: String = UUID().uuidString
+    ) -> (InputSettingsManager, UserDefaults, String) {
+        let (userDefaults, fullSuiteName) = TestUserDefaults.makeIsolated(suiteName: suiteName)
+        return (InputSettingsManager(userDefaults: userDefaults), userDefaults, fullSuiteName)
+    }
+}
+
 @MainActor
 class AsyncTestingUtilities {
     

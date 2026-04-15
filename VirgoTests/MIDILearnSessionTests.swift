@@ -5,23 +5,15 @@ import Foundation
 @Suite("MIDILearnSession Tests", .serialized)
 @MainActor
 struct MIDILearnSessionTests {
-    private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
-    private let midiMappingsKey = "InputSettingsMidiMappings"
-    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
-
-    private func clearPersistedSettings() {
-        UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
-        UserDefaults.standard.removeObject(forKey: midiMappingsKey)
-        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
-    }
-
     @Test("learn session captures the first valid note from the selected source")
     func learnSessionCapturesTheFirstValidNoteFromTheSelectedSource() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnSessionCapturesTheFirstValidNoteFromTheSelectedSource"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         let learnSession = MIDILearnSession(settingsManager: settings)
+        settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
         learnSession.beginCapture(for: .snare)
 
@@ -38,11 +30,13 @@ struct MIDILearnSessionTests {
 
     @Test("learn session ignores events from the wrong source and zero velocity note-ons")
     func learnSessionRejectsWrongSourceAndZeroVelocityNoteOns() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnSessionRejectsWrongSourceAndZeroVelocityNoteOns"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         settings.setMidiMapping(99, for: .kick)
+        settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
         let learnSession = MIDILearnSession(settingsManager: settings)
 
         learnSession.beginCapture(for: .kick)
@@ -67,11 +61,13 @@ struct MIDILearnSessionTests {
 
     @Test("learn session times out and clears capture state")
     func learnSessionTimesOutAndClearsCaptureState() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnSessionTimesOutAndClearsCaptureState"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         let learnSession = MIDILearnSession(settingsManager: settings)
+        settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
         learnSession.beginCapture(for: .kick, timeoutSeconds: 0.01)
         let didTimeout = try await Task.detached { () throws -> Bool in
@@ -97,11 +93,13 @@ struct MIDILearnSessionTests {
 
     @Test("learn session records replacement feedback when an incoming note was already mapped")
     func learnSessionRecordsReplacementFeedback() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnSessionRecordsReplacementFeedback"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         settings.setMidiMapping(38, for: .kick)
+        settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
         let learnSession = MIDILearnSession(settingsManager: settings)
 
         learnSession.beginCapture(for: .snare)
@@ -118,11 +116,13 @@ struct MIDILearnSessionTests {
 
     @Test("a stale timeout cannot cancel a newer capture")
     func learnSessionIgnoresStaleTimeoutsAfterStartingANewCapture() async throws {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnSessionIgnoresStaleTimeoutsAfterStartingANewCapture"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settings = InputSettingsManager()
         let learnSession = MIDILearnSession(settingsManager: settings)
+        settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
         learnSession.beginCapture(for: .kick, timeoutSeconds: 0.01)
         learnSession.beginCapture(for: .snare, timeoutSeconds: 1)
@@ -132,5 +132,20 @@ struct MIDILearnSessionTests {
         #expect(learnSession.targetDrumType == .snare)
 
         learnSession.cancelCapture()
+    }
+
+    @Test("learn session does not start capture without a selected MIDI source")
+    func learnSessionRequiresSelectedMIDISourceBeforeCaptureBegins() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnSessionRequiresSelectedMIDISourceBeforeCaptureBegins"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let learnSession = MIDILearnSession(settingsManager: settings)
+
+        learnSession.beginCapture(for: .snare)
+
+        #expect(learnSession.isCapturing == false)
+        #expect(learnSession.targetDrumType == nil)
     }
 }

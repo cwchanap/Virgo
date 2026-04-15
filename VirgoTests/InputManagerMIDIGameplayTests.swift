@@ -5,16 +5,6 @@ import Foundation
 @Suite("InputManager MIDI Gameplay Tests", .serialized)
 @MainActor
 struct InputManagerMIDIGameplayTests {
-    private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
-    private let midiMappingsKey = "InputSettingsMidiMappings"
-    private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
-
-    private func clearPersistedSettings() {
-        UserDefaults.standard.removeObject(forKey: keyboardMappingsKey)
-        UserDefaults.standard.removeObject(forKey: midiMappingsKey)
-        UserDefaults.standard.removeObject(forKey: selectedMIDISourceKey)
-    }
-
     final class StubMIDISourceProvider: MIDISourceProviding {
         var sources: [MIDISourceDescriptor]
 
@@ -51,11 +41,11 @@ struct InputManagerMIDIGameplayTests {
     }
 
     private func makeInputManagerForTest(
+        settingsManager: InputSettingsManager,
         selectedSourceID: String,
         midiMapping: [UInt8: DrumType],
         availableSourceIDs: [String]? = nil
     ) -> InputManager {
-        let settingsManager = InputSettingsManager()
         settingsManager.setSelectedMIDISource(id: selectedSourceID, displayName: "TD-17")
 
         for (note, drumType) in midiMapping {
@@ -89,10 +79,13 @@ struct InputManagerMIDIGameplayTests {
 
     @Test("selected-source MIDI event routes into note matching")
     func selectedSourceMIDIRoutesIntoTimingMatcher() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.selectedSourceMIDIRoutesIntoTimingMatcher"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
             selectedSourceID: "source-2",
             midiMapping: [38: .snare]
         )
@@ -115,11 +108,14 @@ struct InputManagerMIDIGameplayTests {
 
     @Test("disconnecting the selected source notifies the delegate")
     func disconnectingTheSelectedSourceNotifiesTheDelegate() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.disconnectingTheSelectedSourceNotifiesTheDelegate"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let delegate = RecordingInputManagerDelegate()
         let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
             selectedSourceID: "source-2",
             midiMapping: [38: .snare]
         )
@@ -132,10 +128,13 @@ struct InputManagerMIDIGameplayTests {
 
     @Test("MIDI events from non-selected sources are ignored")
     func midiEventsFromNonSelectedSourcesAreIgnored() {
-        clearPersistedSettings()
-        defer { clearPersistedSettings() }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.midiEventsFromNonSelectedSourcesAreIgnored"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
             selectedSourceID: "source-2",
             midiMapping: [38: .snare],
             availableSourceIDs: ["source-1", "source-2"]

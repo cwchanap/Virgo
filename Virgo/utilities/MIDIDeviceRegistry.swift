@@ -182,8 +182,9 @@ final class MIDIDeviceRegistry: ObservableObject {
             return liveSource.displayName
         }
 
-        if settingsManager.getSelectedMIDISource()?.id == sourceID {
-            return settingsManager.getSelectedMIDISource()?.displayName ?? "Unknown MIDI Source"
+        let selectedSource = settingsManager.getSelectedMIDISource()
+        if selectedSource?.id == sourceID {
+            return selectedSource?.displayName ?? "Unknown MIDI Source"
         }
 
         return "Unknown MIDI Source"
