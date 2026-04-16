@@ -22,10 +22,12 @@ struct MIDIPreviewMonitorTests {
         private var onPackets: ((UnsafePointer<MIDIPacketList>, Int32, String) -> Void)?
         private(set) var startCallCount = 0
         private(set) var stopCallCount = 0
+        var startResult = true
 
-        func start(_ onPackets: @escaping (UnsafePointer<MIDIPacketList>, Int32, String) -> Void) {
+        func start(_ onPackets: @escaping (UnsafePointer<MIDIPacketList>, Int32, String) -> Void) -> Bool {
             startCallCount += 1
             self.onPackets = onPackets
+            return startResult
         }
 
         func stop() {
@@ -128,6 +130,28 @@ struct MIDIPreviewMonitorTests {
         #expect(diagnostics.lastEvent?.sourceDisplayName == "TD-17")
         #expect(diagnostics.lastEvent?.note == 38)
         #expect(diagnostics.lastEvent?.mappedDrumType == .snare)
+    }
+
+    @Test("start reports injected listener startup failure")
+    func startReportsInjectedListenerStartupFailure() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.startReportsInjectedListenerStartupFailure"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let diagnostics = MIDIDiagnosticsStore()
+        let listener = StubMIDIPreviewPacketListener()
+        listener.startResult = false
+        let monitor = MIDIPreviewMonitor(
+            diagnosticsStore: diagnostics,
+            settingsManager: settings,
+            packetListener: listener
+        )
+
+        let didStart = monitor.start()
+
+        #expect(didStart == false)
+        #expect(listener.startCallCount == 1)
     }
 
     @Test("preview monitor forwards decoded events through the optional callback")

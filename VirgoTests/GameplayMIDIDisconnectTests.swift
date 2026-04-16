@@ -43,7 +43,7 @@ struct GameplayMIDIDisconnectTests {
     }
 
     final class StubMIDISourceChangeListener: MIDISourceChangeListening {
-        func start(_ onChange: @escaping () -> Void) {}
+        func start(_ onChange: @escaping () -> Void) -> Bool { true }
         func stop() {}
     }
 

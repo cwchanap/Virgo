@@ -8,6 +8,21 @@
 import Foundation
 import Combine
 
+protocol InputSettingsCoding {
+    func encode<T: Encodable>(_ value: T) throws -> Data
+    func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T
+}
+
+struct JSONInputSettingsCoding: InputSettingsCoding {
+    func encode<T: Encodable>(_ value: T) throws -> Data {
+        try JSONEncoder().encode(value)
+    }
+
+    func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        try JSONDecoder().decode(type, from: data)
+    }
+}
+
 struct SelectedMIDISource: Codable, Equatable {
     let id: String
     let displayName: String
@@ -19,6 +34,7 @@ class InputSettingsManager: ObservableObject {
     @Published private var selectedMIDISource: SelectedMIDISource?
     
     private let userDefaults: UserDefaults
+    private let coding: InputSettingsCoding
     private let keyboardMappingsKey = "InputSettingsKeyboardMappings"
     private let midiMappingsKey = "InputSettingsMidiMappings"
     private let selectedMIDISourceKey = "InputSettingsSelectedMIDISource"
@@ -49,8 +65,9 @@ class InputSettingsManager: ObservableObject {
         56: .cowbell      // Cowbell
     ]
     
-    init(userDefaults: UserDefaults = .standard) {
+    init(userDefaults: UserDefaults = .standard, coding: InputSettingsCoding = JSONInputSettingsCoding()) {
         self.userDefaults = userDefaults
+        self.coding = coding
         loadSettings()
     }
     
@@ -148,61 +165,118 @@ class InputSettingsManager: ObservableObject {
     // MARK: - Private Persistence Methods
     
     private func loadKeyboardMappings() {
-        if let data = userDefaults.data(forKey: keyboardMappingsKey),
-           let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-            // Convert string representations back to DrumType
-            keyboardMappings = decoded.compactMapValues { DrumType.fromString($0) }
-        } else {
-            // Use default mappings if no saved mappings exist
+        guard let data = userDefaults.data(forKey: keyboardMappingsKey) else {
+            keyboardMappings = defaultKeyboardMappings
+            saveKeyboardMappings()
+            return
+        }
+
+        do {
+            let decoded = try coding.decode([String: String].self, from: data)
+            keyboardMappings = decodeDrumTypeMappings(
+                decoded,
+                keyDescription: { $0 },
+                settingName: "keyboard"
+            )
+        } catch {
+            Logger.error("Failed to decode keyboard input settings for key \(keyboardMappingsKey): \(error.localizedDescription)")
             keyboardMappings = defaultKeyboardMappings
             saveKeyboardMappings()
         }
     }
     
     private func saveKeyboardMappings() {
-        // Convert DrumType to string representations for JSON encoding
         let encodable = keyboardMappings.mapValues { $0.description }
-        if let data = try? JSONEncoder().encode(encodable) {
+        do {
+            let data = try coding.encode(encodable)
             userDefaults.set(data, forKey: keyboardMappingsKey)
+        } catch {
+            Logger.error("Failed to encode keyboard input settings for key \(keyboardMappingsKey): \(error.localizedDescription)")
         }
     }
     
     private func loadMidiMappings() {
-        if let data = userDefaults.data(forKey: midiMappingsKey),
-           let decoded = try? JSONDecoder().decode([UInt8: String].self, from: data) {
-            // Convert string representations back to DrumType
-            midiMappings = decoded.compactMapValues { DrumType.fromString($0) }
-        } else {
-            // Use default mappings if no saved mappings exist
+        guard let data = userDefaults.data(forKey: midiMappingsKey) else {
+            midiMappings = defaultMidiMappings
+            saveMidiMappings()
+            return
+        }
+
+        do {
+            let decoded = try coding.decode([UInt8: String].self, from: data)
+            midiMappings = decodeDrumTypeMappings(
+                decoded,
+                keyDescription: { String($0) },
+                settingName: "MIDI"
+            )
+        } catch {
+            Logger.error("Failed to decode MIDI input settings for key \(midiMappingsKey): \(error.localizedDescription)")
             midiMappings = defaultMidiMappings
             saveMidiMappings()
         }
     }
     
     private func saveMidiMappings() {
-        // Convert DrumType to string representations for JSON encoding
         let encodable = midiMappings.mapValues { $0.description }
-        if let data = try? JSONEncoder().encode(encodable) {
+        do {
+            let data = try coding.encode(encodable)
             userDefaults.set(data, forKey: midiMappingsKey)
+        } catch {
+            Logger.error("Failed to encode MIDI input settings for key \(midiMappingsKey): \(error.localizedDescription)")
         }
     }
     
     private func loadSelectedMIDISource() {
-        if let data = userDefaults.data(forKey: selectedMIDISourceKey),
-           let decoded = try? JSONDecoder().decode(SelectedMIDISource.self, from: data) {
-            selectedMIDISource = decoded
-        } else {
+        guard let data = userDefaults.data(forKey: selectedMIDISourceKey) else {
+            selectedMIDISource = nil
+            return
+        }
+
+        do {
+            selectedMIDISource = try coding.decode(SelectedMIDISource.self, from: data)
+        } catch {
+            Logger.error(
+                "Failed to decode selected MIDI source for key \(selectedMIDISourceKey): \(error.localizedDescription)"
+            )
             selectedMIDISource = nil
         }
     }
     
     private func saveSelectedMIDISource() {
-        if let selectedMIDISource = selectedMIDISource,
-           let data = try? JSONEncoder().encode(selectedMIDISource) {
-            userDefaults.set(data, forKey: selectedMIDISourceKey)
-        } else {
+        guard let selectedMIDISource else {
             userDefaults.removeObject(forKey: selectedMIDISourceKey)
+            return
         }
+
+        do {
+            let data = try coding.encode(selectedMIDISource)
+            userDefaults.set(data, forKey: selectedMIDISourceKey)
+        } catch {
+            Logger.error(
+                "Failed to encode selected MIDI source for key \(selectedMIDISourceKey): \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func decodeDrumTypeMappings<Key>(
+        _ encodedMappings: [Key: String],
+        keyDescription: (Key) -> String,
+        settingName: String
+    ) -> [Key: DrumType] where Key: Hashable {
+        var decodedMappings: [Key: DrumType] = [:]
+        decodedMappings.reserveCapacity(encodedMappings.count)
+
+        for (key, value) in encodedMappings {
+            guard let drumType = DrumType.fromString(value) else {
+                Logger.warning(
+                    "Ignoring unrecognized \(settingName) drum type '\(value)' for key \(keyDescription(key))"
+                )
+                continue
+            }
+            decodedMappings[key] = drumType
+        }
+
+        return decodedMappings
     }
 }
 
