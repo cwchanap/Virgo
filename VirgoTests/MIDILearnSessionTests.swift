@@ -148,4 +148,25 @@ struct MIDILearnSessionTests {
         #expect(learnSession.isCapturing == false)
         #expect(learnSession.targetDrumType == nil)
     }
+
+    @Test("learn session does not start capture when the selected MIDI source is offline")
+    func learnSessionRequiresAvailableSelectedMIDISourceBeforeCaptureBegins() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnSessionRequiresAvailableSelectedMIDISourceBeforeCaptureBegins"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
+        let learnSession = MIDILearnSession(
+            settingsManager: settings,
+            isSelectedSourceAvailable: { false }
+        )
+
+        #expect(learnSession.canBeginCapture == false)
+
+        learnSession.beginCapture(for: .snare)
+
+        #expect(learnSession.isCapturing == false)
+        #expect(learnSession.targetDrumType == nil)
+    }
 }

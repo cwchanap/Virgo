@@ -153,6 +153,51 @@ struct GameplayMIDIDisconnectTests {
         #expect(viewModel.midiDeviceAlertMessage.contains("Select"))
     }
 
+    @Test("startPlayback reloads a newly persisted selected source before gating MIDI gameplay")
+    func testStartPlaybackReloadsPersistedSelectedSourceBeforeGatingGameplay() async throws {
+        let (staleSettingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testStartPlaybackReloadsPersistedSelectedSourceBeforeGatingGameplay"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: createTestPracticeSettings()
+        )
+        defer { viewModel.cleanup() }
+
+        let registry = MIDIDeviceRegistry(
+            settingsManager: staleSettingsManager,
+            sourceProvider: StubMIDISourceProvider([
+                MIDISourceDescriptor(id: "coremidi:2", displayName: "TD-17", isConnected: true)
+            ]),
+            sourceChangeListener: StubMIDISourceChangeListener()
+        )
+        let manager = InputManager(
+            settingsManager: staleSettingsManager,
+            deviceRegistry: registry,
+            diagnosticsStore: MIDIDiagnosticsStore(),
+            learnSession: MIDILearnSession(settingsManager: staleSettingsManager)
+        )
+        manager.requiresMIDISourceForGameplay = true
+
+        let settingsViewManager = InputSettingsManager(userDefaults: userDefaults)
+        settingsViewManager.setSelectedMIDISource(id: "coremidi:2", displayName: "TD-17")
+
+        viewModel.inputManager = manager
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        viewModel.startPlayback()
+
+        #expect(viewModel.isShowingMIDIDeviceAlert == false)
+        #expect(viewModel.midiDeviceAlertMessage.isEmpty)
+        #expect(viewModel.isPlaying == true)
+    }
+
     @Test("selected source disconnect auto-pauses active gameplay")
     func testSelectedSourceDisconnectAutoPausesGameplay() async throws {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(

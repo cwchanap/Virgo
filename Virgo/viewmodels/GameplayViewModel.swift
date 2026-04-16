@@ -558,6 +558,8 @@ final class GameplayViewModel {
     func startPlayback() {
         Logger.audioPlayback("🎮 startPlayback() called")
 
+        inputManager.reloadMappingsFromSettings()
+
         if inputManager.requiresMIDISourceForGameplay && !inputManager.hasSelectedMIDISourcePreference {
             midiDeviceAlertMessage = "Select your MIDI device before starting."
             isShowingMIDIDeviceAlert = true

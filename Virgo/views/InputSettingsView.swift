@@ -83,7 +83,10 @@ struct InputSettingsView: View {
         let resolvedMIDIDeviceRegistry =
             midiDeviceRegistry ?? MIDIDeviceRegistry(settingsManager: resolvedSettingsManager)
         let resolvedMIDILearnSession =
-            midiLearnSession ?? MIDILearnSession(settingsManager: resolvedSettingsManager)
+            midiLearnSession ?? MIDILearnSession(
+                settingsManager: resolvedSettingsManager,
+                isSelectedSourceAvailable: { resolvedMIDIDeviceRegistry.isSelectedSourceAvailable }
+            )
         let resolvedMIDIPreviewMonitor = midiPreviewMonitor ?? MIDIPreviewMonitor(
             diagnosticsStore: resolvedMIDIDiagnosticsStore,
             settingsManager: resolvedSettingsManager

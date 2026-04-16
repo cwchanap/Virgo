@@ -8,15 +8,23 @@ final class MIDILearnSession: ObservableObject {
     @Published private(set) var lastConflictMessage: String?
 
     private let settingsManager: InputSettingsManager
+    private let isSelectedSourceAvailable: @MainActor () -> Bool
     private var timeoutTask: Task<Void, Never>?
     private var activeCaptureID = UUID()
 
     var canBeginCapture: Bool {
-        settingsManager.getSelectedMIDISource() != nil
+        guard settingsManager.getSelectedMIDISource() != nil else {
+            return false
+        }
+        return isSelectedSourceAvailable()
     }
 
-    init(settingsManager: InputSettingsManager) {
+    init(
+        settingsManager: InputSettingsManager,
+        isSelectedSourceAvailable: @escaping @MainActor () -> Bool = { true }
+    ) {
         self.settingsManager = settingsManager
+        self.isSelectedSourceAvailable = isSelectedSourceAvailable
     }
 
     deinit {

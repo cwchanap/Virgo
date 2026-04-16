@@ -351,6 +351,8 @@ extension InputManager {
             return
         }
 
+        settingsManager.loadSettings()
+
         let snapshot = (
             keyboardMapping: settingsManager.getKeyboardMappings(),
             midiMapping: settingsManager.getMidiMappings(),
