@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import AVFoundation
 @testable import Virgo
 
 @Suite("InputManager MIDI Gameplay Tests", .serialized)
@@ -58,6 +59,37 @@ struct InputManagerMIDIGameplayTests {
                 displayName: $0 == selectedSourceID ? "TD-17" : "Other Device",
                 isConnected: true
             )
+        }
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settingsManager,
+            sourceProvider: StubMIDISourceProvider(sources),
+            sourceChangeListener: StubMIDISourceChangeListener()
+        )
+        let diagnosticsStore = MIDIDiagnosticsStore()
+        let learnSession = MIDILearnSession(settingsManager: settingsManager)
+        let manager = InputManager(
+            settingsManager: settingsManager,
+            deviceRegistry: registry,
+            diagnosticsStore: diagnosticsStore,
+            learnSession: learnSession
+        )
+
+        manager.reloadMappingsFromSettings()
+        return manager
+    }
+
+    /// Make an InputManager with NO selected MIDI source (simulates macOS first-run)
+    private func makeInputManagerWithoutSelectedSource(
+        settingsManager: InputSettingsManager,
+        midiMapping: [UInt8: DrumType],
+        availableSourceIDs: [String]
+    ) -> InputManager {
+        for (note, drumType) in midiMapping {
+            settingsManager.setMidiMapping(note, for: drumType)
+        }
+
+        let sources = availableSourceIDs.map {
+            MIDISourceDescriptor(id: $0, displayName: "Device \($0)", isConnected: true)
         }
         let registry = MIDIDeviceRegistry(
             settingsManager: settingsManager,
@@ -153,5 +185,201 @@ struct InputManagerMIDIGameplayTests {
         )
 
         #expect(result == nil)
+    }
+
+    // MARK: - P2: MIDI events accepted when no source is selected
+
+    @Test("MIDI events from any source are accepted when no source is selected")
+    func midiEventsAcceptedWithoutSelectedSource() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.midiEventsAcceptedWithoutSelectedSource"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        // No source selected — simulates macOS first-run before user opens Settings
+        let manager = makeInputManagerWithoutSelectedSource(
+            settingsManager: settingsManager,
+            midiMapping: [38: .snare],
+            availableSourceIDs: ["midi-kit-1"]
+        )
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+        manager.startListening(songStartTime: Date())
+
+        // Event from a connected device that is NOT explicitly selected
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "midi-kit-1", channel: 9, note: 38, velocity: 120, hostTime: 10)
+        )
+
+        #expect(result?.matchedNote != nil)
+        #expect(result?.timingAccuracy == .perfect)
+    }
+
+    // MARK: - P1: elapsedOffset preserves resume timing for MIDI
+
+    @Test("MIDI elapsed time includes elapsedOffset after resume")
+    func midiElapsedTimeIncludesOffsetAfterResume() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.midiElapsedTimeIncludesOffsetAfterResume"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+
+        // At 120 BPM in 4/4, each measure = 2.0 seconds
+        // Note at measure 2, offset 0.0 → expected time = 2.0 seconds
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 0.0)
+            ]
+        )
+
+        // Simulate resume: elapsedOffset = 2.0 seconds (paused at the start of measure 2)
+        let elapsedOffset = 2.0
+        manager.startListening(
+            songStartTime: Date().addingTimeInterval(-elapsedOffset),
+            elapsedOffset: elapsedOffset
+        )
+
+        // Send a MIDI event right at the resume point.
+        // The hostTime is close to now (just captured by startListening), so hostElapsed ≈ 0.
+        // With elapsedOffset = 2.0, the effective elapsed time ≈ 2.0 seconds.
+        // That should match the note at measure 2 (expectedTime = 2.0s).
+        let nowHostTime = mach_absolute_time()
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: nowHostTime)
+        )
+
+        #expect(result?.matchedNote != nil)
+        // With offset=2.0 and hostElapsed≈0, total elapsed ≈ 2.0s
+        // Expected note time = 2.0s → timing accuracy should be perfect (within 25ms)
+        #expect(result?.timingAccuracy == .perfect)
+    }
+
+    @Test("MIDI elapsed time includes elapsedOffset after speed change")
+    func midiElapsedTimeIncludesOffsetAfterSpeedChange() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.midiElapsedTimeIncludesOffsetAfterSpeedChange"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+
+        // After speed change at 120 BPM, effectiveBPM stays 120 for simplicity.
+        // Note at measure 3, offset 0.0 → expected time = 4.0 seconds (3 measures × 2.0s/measure, 0-indexed)
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 3, measureOffset: 0.0)
+            ]
+        )
+
+        // Simulate a speed change that recomputed elapsedOffset = 4.0
+        let elapsedOffset = 4.0
+        manager.startListening(
+            songStartTime: Date().addingTimeInterval(-elapsedOffset),
+            elapsedOffset: elapsedOffset
+        )
+
+        // MIDI event right at the speed-change point
+        let nowHostTime = mach_absolute_time()
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: nowHostTime)
+        )
+
+        #expect(result?.matchedNote != nil)
+        #expect(result?.timingAccuracy == .perfect)
+    }
+
+    @Test("MIDI elapsed time without offset starts from zero")
+    func midiElapsedTimeWithoutOffsetStartsFromZero() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.midiElapsedTimeWithoutOffsetStartsFromZero"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+
+        // Note at measure 1, offset 0.0 → expected time = 0.0 seconds
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+
+        // Fresh start, no offset
+        manager.startListening(songStartTime: Date())
+
+        // MIDI event immediately after start
+        let nowHostTime = mach_absolute_time()
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: nowHostTime)
+        )
+
+        #expect(result?.matchedNote != nil)
+        #expect(result?.timingAccuracy == .perfect)
+    }
+
+    @Test("stopListening resets elapsedOffset to zero")
+    func stopListeningResetsElapsedOffset() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.stopListeningResetsElapsedOffset"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+
+        // Start with an offset
+        manager.startListening(
+            songStartTime: Date().addingTimeInterval(-2.0),
+            elapsedOffset: 2.0
+        )
+
+        // Stop and restart without offset
+        manager.stopListening()
+        manager.startListening(songStartTime: Date())
+
+        // Event at measure 1 (expectedTime = 0.0s) should match with no offset
+        let nowHostTime = mach_absolute_time()
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: nowHostTime)
+        )
+
+        #expect(result?.matchedNote != nil)
+        #expect(result?.timingAccuracy == .perfect)
     }
 }

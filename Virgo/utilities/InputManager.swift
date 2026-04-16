@@ -126,6 +126,7 @@ class InputManager: ObservableObject {
     private var secondsPerBeat: Double = 0.5
     private var secondsPerMeasure: Double = 2.0
     private var inputTimingMatcher: InputTimingMatcher?
+    private var hostTimeElapsedOffset: Double = 0.0
     
     // Test environment detection
     private let isTestEnvironment: Bool
@@ -141,6 +142,7 @@ class InputManager: ObservableObject {
     private struct MIDINoteHandlingContext {
         let songStartTime: Date?
         let songStartHostTime: UInt64?
+        let hostTimeElapsedOffset: Double
         let selectedSourceID: String?
         let midiMapping: [UInt8: DrumType]
         let inputTimingMatcher: InputTimingMatcher?
@@ -256,6 +258,7 @@ class InputManager: ObservableObject {
             MIDINoteHandlingContext(
                 songStartTime: songStartTime,
                 songStartHostTime: songStartHostTime,
+                hostTimeElapsedOffset: hostTimeElapsedOffset,
                 selectedSourceID: selectedSourceIDSnapshot,
                 midiMapping: midiMappingSnapshot,
                 inputTimingMatcher: inputTimingMatcher
@@ -314,11 +317,12 @@ extension InputManager {
         }
     }
     
-    func startListening(songStartTime: Date) {
+    func startListening(songStartTime: Date, elapsedOffset: Double = 0.0) {
         let songStartHostTime = mach_absolute_time()
         updateRuntimeState {
             self.songStartTime = songStartTime
             self.songStartHostTime = songStartHostTime
+            self.hostTimeElapsedOffset = elapsedOffset
         }
         reloadMappingsFromSettings()
         startKeyboardListening()
@@ -329,6 +333,7 @@ extension InputManager {
         updateRuntimeState {
             self.songStartTime = nil
             self.songStartHostTime = nil
+            self.hostTimeElapsedOffset = 0.0
         }
         stopKeyboardListening()
         // MIDI continues to listen but won't process hits without songStartTime
@@ -402,7 +407,7 @@ extension InputManager {
         consumeLearnSessionIfNeeded(event)
         let context = currentMIDINoteHandlingContext()
 
-        guard event.sourceID == context.selectedSourceID else {
+        guard context.selectedSourceID == nil || event.sourceID == context.selectedSourceID else {
             publishMIDIDiagnostics(event: event, mappedDrumType: nil)
             return nil
         }
@@ -481,7 +486,7 @@ extension InputManager {
         if let songStartHostTime = context.songStartHostTime {
             let hostElapsed = hostTimeConverter.elapsedSeconds(from: songStartHostTime, to: event.hostTime)
             if hostElapsed >= 0 {
-                return hostElapsed
+                return hostElapsed + context.hostTimeElapsedOffset
             }
         }
 
