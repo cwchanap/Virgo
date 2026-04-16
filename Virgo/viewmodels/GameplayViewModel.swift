@@ -344,7 +344,7 @@ final class GameplayViewModel {
                 let adjustedElapsed = elapsedSinceStart * speedRatio
                 let newStartTime = Date().addingTimeInterval(-adjustedElapsed)
                 self.playbackStartTime = newStartTime
-                inputManager.startListening(songStartTime: newStartTime)
+                inputManager.startListening(songStartTime: newStartTime, elapsedOffset: adjustedElapsed)
             }
 
             let speedPercent = Int(currentSpeed * 100)
@@ -646,7 +646,7 @@ final class GameplayViewModel {
         playbackStartTime = adjustedSongStartTime
 
         if let startTime = playbackStartTime {
-            inputManager.startListening(songStartTime: startTime)
+            inputManager.startListening(songStartTime: startTime, elapsedOffset: pausedElapsedTime)
         }
 
         startBGMPlayback(track: track)
