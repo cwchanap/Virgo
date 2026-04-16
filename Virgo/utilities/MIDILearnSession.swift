@@ -38,7 +38,7 @@ final class MIDILearnSession: ObservableObject {
         isCapturing = true
         lastConflictMessage = nil
 
-        timeoutTask = Task.detached { [weak self] in
+        timeoutTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: .seconds(timeoutSeconds))
             } catch {
@@ -46,7 +46,7 @@ final class MIDILearnSession: ObservableObject {
             }
 
             guard let self else { return }
-            await self.timeoutCaptureIfNeeded(captureID: captureID)
+            self.timeoutCaptureIfNeeded(captureID: captureID)
         }
     }
 

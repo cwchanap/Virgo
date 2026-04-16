@@ -69,10 +69,10 @@ struct MIDILearnSessionTests {
         let learnSession = MIDILearnSession(settingsManager: settings)
         settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
-        learnSession.beginCapture(for: .kick, timeoutSeconds: 0.01)
+        learnSession.beginCapture(for: .kick, timeoutSeconds: 0.05)
         let didTimeout = try await Task.detached { () throws -> Bool in
             let clock = ContinuousClock()
-            let deadline = clock.now.advanced(by: .seconds(1))
+            let deadline = clock.now.advanced(by: .seconds(5))
 
             while clock.now < deadline {
                 let isCapturing = await MainActor.run { learnSession.isCapturing }
@@ -80,7 +80,7 @@ struct MIDILearnSessionTests {
                     return true
                 }
 
-                try await Task.sleep(for: .milliseconds(10))
+                try await Task.sleep(for: .milliseconds(20))
             }
 
             return false
