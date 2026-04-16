@@ -19,7 +19,7 @@ struct InputManagerMIDIGameplayTests {
     }
 
     final class StubMIDISourceChangeListener: MIDISourceChangeListening {
-        func start(_ onChange: @escaping () -> Void) {}
+        func start(_ onChange: @escaping () -> Void) -> Bool { true }
         func stop() {}
     }
 
@@ -158,6 +158,27 @@ struct InputManagerMIDIGameplayTests {
         #expect(delegate.didReceiveSelectedSourceDisconnect == true)
     }
 
+    @Test("disconnecting a non-selected source does not notify the delegate")
+    func disconnectingANonSelectedSourceDoesNotNotifyTheDelegate() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.disconnectingANonSelectedSourceDoesNotNotifyTheDelegate"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let delegate = RecordingInputManagerDelegate()
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-2",
+            midiMapping: [38: .snare],
+            availableSourceIDs: ["source-1", "source-2"]
+        )
+        manager.delegate = delegate
+
+        manager.handleSelectedSourceDisconnect(sourceID: "source-1")
+
+        #expect(delegate.didReceiveSelectedSourceDisconnect == false)
+    }
+
     @Test("MIDI events from non-selected sources are ignored")
     func midiEventsFromNonSelectedSourcesAreIgnored() {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
@@ -218,6 +239,68 @@ struct InputManagerMIDIGameplayTests {
 
         #expect(result?.matchedNote != nil)
         #expect(result?.timingAccuracy == .perfect)
+    }
+
+    @Test("MIDI events before startListening are dropped without crashing")
+    func midiEventsBeforeStartListeningAreDroppedGracefully() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.midiEventsBeforeStartListeningAreDroppedGracefully"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: mach_absolute_time())
+        )
+
+        #expect(result == nil)
+    }
+
+    @Test("InputManager routes a matching MIDI event into an active learn session")
+    func inputManagerRoutesAMatchingMIDIEventIntoAnActiveLearnSession() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.inputManagerRoutesAMatchingMIDIEventIntoAnActiveLearnSession"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        settingsManager.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
+
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settingsManager,
+            sourceProvider: StubMIDISourceProvider([
+                .init(id: "source-2", displayName: "TD-17", isConnected: true)
+            ]),
+            sourceChangeListener: StubMIDISourceChangeListener()
+        )
+        let learnSession = MIDILearnSession(settingsManager: settingsManager)
+        let manager = InputManager(
+            settingsManager: settingsManager,
+            deviceRegistry: registry,
+            diagnosticsStore: MIDIDiagnosticsStore(),
+            learnSession: learnSession
+        )
+        manager.reloadMappingsFromSettings()
+
+        learnSession.beginCapture(for: .snare)
+
+        _ = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-2", channel: 9, note: 40, velocity: 110, hostTime: mach_absolute_time())
+        )
+
+        #expect(settingsManager.getMidiMapping(for: .snare) == 40)
+        #expect(learnSession.isCapturing == false)
     }
 
     // MARK: - P1: elapsedOffset preserves resume timing for MIDI

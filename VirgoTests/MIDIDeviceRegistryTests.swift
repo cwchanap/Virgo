@@ -19,9 +19,11 @@ struct MIDIDeviceRegistryTests {
 
     final class StubMIDISourceChangeListener: MIDISourceChangeListening {
         private var onChange: (() -> Void)?
+        var startResult = true
 
-        func start(_ onChange: @escaping () -> Void) {
+        func start(_ onChange: @escaping () -> Void) -> Bool {
             self.onChange = onChange
+            return startResult
         }
 
         func stop() {
@@ -105,6 +107,29 @@ struct MIDIDeviceRegistryTests {
 
         listener.fire()
 
+        #expect(registry.sources.first?.id == "coremidi:2")
+    }
+
+    @Test("startMonitoring reports listener startup failure")
+    func startMonitoringReportsListenerStartupFailure() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.startMonitoringReportsListenerStartupFailure"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let listener = StubMIDISourceChangeListener()
+        listener.startResult = false
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settings,
+            sourceProvider: StubMIDISourceProvider([
+                .init(id: "coremidi:2", displayName: "TD-17", isConnected: true)
+            ]),
+            sourceChangeListener: listener
+        )
+
+        let didStart = registry.startMonitoring()
+
+        #expect(didStart == false)
         #expect(registry.sources.first?.id == "coremidi:2")
     }
 

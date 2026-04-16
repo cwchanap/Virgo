@@ -13,7 +13,8 @@ protocol MIDISourceProviding {
 }
 
 protocol MIDISourceChangeListening: AnyObject {
-    func start(_ onChange: @escaping () -> Void)
+    @discardableResult
+    func start(_ onChange: @escaping () -> Void) -> Bool
     func stop()
 }
 
@@ -82,37 +83,56 @@ struct CoreMIDISourceProvider: MIDISourceProviding {
 }
 
 final class CoreMIDISourceChangeListener: MIDISourceChangeListening {
+    private let stateQueue = DispatchQueue(label: "Virgo.CoreMIDISourceChangeListener.state")
     private var midiClient: MIDIClientRef = 0
     private var onChange: (() -> Void)?
 
-    func start(_ onChange: @escaping () -> Void) {
+    @discardableResult
+    func start(_ onChange: @escaping () -> Void) -> Bool {
         stop()
 
-        self.onChange = onChange
+        stateQueue.sync {
+            self.onChange = onChange
+        }
 
         var client: MIDIClientRef = 0
         let status = MIDIClientCreateWithBlock("VirgoMIDIDeviceRegistry" as CFString, &client) { [weak self] _ in
-            self?.onChange?()
+            self?.notifyChange()
         }
 
         guard status == noErr else {
-            self.onChange = nil
-            return
+            Logger.error("Failed to create CoreMIDI source-change client (status: \(status))")
+            stateQueue.sync {
+                self.onChange = nil
+            }
+            return false
         }
 
-        midiClient = client
+        stateQueue.sync {
+            midiClient = client
+        }
+        return true
     }
 
     func stop() {
-        onChange = nil
+        let client = stateQueue.sync { () -> MIDIClientRef in
+            onChange = nil
+            let client = midiClient
+            midiClient = 0
+            return client
+        }
 
-        guard midiClient != 0 else { return }
-        MIDIClientDispose(midiClient)
-        midiClient = 0
+        guard client != 0 else { return }
+        MIDIClientDispose(client)
     }
 
     deinit {
         stop()
+    }
+
+    private func notifyChange() {
+        let callback = stateQueue.sync { onChange }
+        callback?()
     }
 }
 
@@ -139,11 +159,16 @@ final class MIDIDeviceRegistry: ObservableObject {
         self.selectedSourceID = settingsManager.getSelectedMIDISource()?.id
     }
 
-    func startMonitoring() {
+    @discardableResult
+    func startMonitoring() -> Bool {
         refreshSources()
-        sourceChangeListener.start { [weak self] in
+        let didStart = sourceChangeListener.start { [weak self] in
             self?.refreshSourcesOnMainActor()
         }
+        if !didStart {
+            Logger.error("Failed to start MIDI source monitoring")
+        }
+        return didStart
     }
 
     func stopMonitoring() {

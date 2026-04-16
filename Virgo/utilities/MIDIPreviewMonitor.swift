@@ -3,7 +3,8 @@ import Combine
 import CoreMIDI
 
 protocol MIDIPreviewPacketListening: AnyObject {
-    func start(_ onPackets: @escaping (UnsafePointer<MIDIPacketList>, Int32, String) -> Void)
+    @discardableResult
+    func start(_ onPackets: @escaping (UnsafePointer<MIDIPacketList>, Int32, String) -> Void) -> Bool
     func stop()
 }
 
@@ -26,7 +27,8 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
     private var activeCallbackCount = 0
     private var callbacksPaused = false
 
-    func start(_ onPackets: @escaping (UnsafePointer<MIDIPacketList>, Int32, String) -> Void) {
+    @discardableResult
+    func start(_ onPackets: @escaping (UnsafePointer<MIDIPacketList>, Int32, String) -> Void) -> Bool {
         connectionQueue.sync {
             startLocked(onPackets)
         }
@@ -42,7 +44,7 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
         stop()
     }
 
-    private func startLocked(_ onPackets: @escaping (UnsafePointer<MIDIPacketList>, Int32, String) -> Void) {
+    private func startLocked(_ onPackets: @escaping (UnsafePointer<MIDIPacketList>, Int32, String) -> Void) -> Bool {
         stopLocked()
 
         var client: MIDIClientRef = 0
@@ -51,7 +53,10 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
                 self?.refreshConnectionsLocked()
             }
         }
-        guard status == noErr else { return }
+        guard status == noErr else {
+            Logger.error("Failed to create MIDIPreviewMonitor MIDI client (status: \(status))")
+            return false
+        }
 
         var port: MIDIPortRef = 0
         status = MIDIInputPortCreateWithBlock(
@@ -65,13 +70,15 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
         }
 
         guard status == noErr else {
+            Logger.error("Failed to create MIDIPreviewMonitor input port (status: \(status))")
             MIDIClientDispose(client)
-            return
+            return false
         }
 
         midiClient = client
         inputPort = port
         refreshConnectionsLocked()
+        return true
     }
 
     private func stopLocked() {
@@ -86,6 +93,8 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
             MIDIClientDispose(midiClient)
             midiClient = 0
         }
+
+        releaseConnectionContexts()
     }
 
     private func connectToAllSources() {
@@ -94,6 +103,7 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
         for index in 0..<sourceCount {
             let source = MIDIGetSource(index)
             guard source != 0, let uniqueID = CoreMIDISourceMetadata.uniqueID(for: source) else { continue }
+            guard connectionContexts[source] == nil else { continue }
 
             let context = Unmanaged.passRetained(
                 SourceConnectionContext(
@@ -102,8 +112,12 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
                 )
             )
 
+            let sourceName = CoreMIDISourceMetadata.displayName(for: source) ?? "Unknown MIDI Source"
             let status = MIDIPortConnectSource(inputPort, source, context.toOpaque())
             guard status == noErr else {
+                Logger.error(
+                    "Failed to connect MIDIPreviewMonitor to source \(sourceName) (status: \(status))"
+                )
                 context.release()
                 continue
             }
@@ -117,26 +131,38 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
 
         let retainedContexts = connectionContexts
         connectionContexts.removeAll()
+        var contextsToRelease: [Unmanaged<SourceConnectionContext>] = []
 
-        for (source, _) in retainedContexts {
-            if inputPort != 0 {
-                MIDIPortDisconnectSource(inputPort, source)
+        for (source, context) in retainedContexts {
+            guard inputPort != 0 else {
+                contextsToRelease.append(context)
+                continue
+            }
+
+            let status = MIDIPortDisconnectSource(inputPort, source)
+            if status == noErr {
+                contextsToRelease.append(context)
+            } else {
+                Logger.error(
+                    "Failed to disconnect MIDIPreviewMonitor from source \(context.takeUnretainedValue().displayName) (status: \(status))"
+                )
+                connectionContexts[source] = context
             }
         }
 
         waitForCallbacksToDrain()
 
-        for (_, context) in retainedContexts {
+        for context in contextsToRelease {
             context.release()
         }
     }
 
     private func refreshConnectionsLocked() {
+        defer { resumeCallbacks() }
         disconnectAllSources()
 
         guard inputPort != 0 else { return }
         connectToAllSources()
-        resumeCallbacks()
     }
 
     private func beginCallback(refCon: UnsafeMutableRawPointer?) -> SourceConnectionContext? {
@@ -181,6 +207,15 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
         }
         callbackDrain.unlock()
     }
+
+    private func releaseConnectionContexts() {
+        let retainedContexts = connectionContexts
+        connectionContexts.removeAll()
+
+        for (_, context) in retainedContexts {
+            context.release()
+        }
+    }
 }
 
 final class MIDIPreviewMonitor: ObservableObject {
@@ -210,14 +245,19 @@ final class MIDIPreviewMonitor: ObservableObject {
         stop()
     }
 
-    func start() {
-        packetListener.start { [weak self] packetList, sourceUniqueID, sourceDisplayName in
+    @discardableResult
+    func start() -> Bool {
+        let didStart = packetListener.start { [weak self] packetList, sourceUniqueID, sourceDisplayName in
             self?.handle(
                 packetList: packetList,
                 sourceUniqueID: sourceUniqueID,
                 sourceDisplayName: sourceDisplayName
             )
         }
+        if !didStart {
+            Logger.error("Failed to start MIDI preview packet listener")
+        }
+        return didStart
     }
 
     func stop() {

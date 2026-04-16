@@ -5,6 +5,23 @@ import Foundation
 @Suite("InputSettingsManager Tests", .serialized)
 @MainActor
 struct InputSettingsManagerTests {
+    private enum TestCodingError: Error {
+        case encodeFailure
+    }
+
+    private struct FailingSelectedSourceCoder: InputSettingsCoding {
+        func encode<T>(_ value: T) throws -> Data where T: Encodable {
+            if value is SelectedMIDISource {
+                throw TestCodingError.encodeFailure
+            }
+            return try JSONEncoder().encode(value)
+        }
+
+        func decode<T>(_ type: T.Type, from data: Data) throws -> T where T: Decodable {
+            try JSONDecoder().decode(type, from: data)
+        }
+    }
+
     private func makeUserDefaults(
         _ name: String
     ) -> (UserDefaults, String) {
@@ -212,6 +229,26 @@ struct InputSettingsManagerTests {
 
         #expect(manager.getSelectedMIDISource()?.id == "device-123")
         #expect(manager.getSelectedMIDISource()?.displayName == "USB MIDI Device")
+
+        let reloadedManager = InputSettingsManager(userDefaults: userDefaults)
+        #expect(reloadedManager.getSelectedMIDISource()?.id == "device-123")
+        #expect(reloadedManager.getSelectedMIDISource()?.displayName == "USB MIDI Device")
+    }
+
+    @Test("failed selected-source encoding does not delete the previously persisted value")
+    func failedSelectedSourceEncodingDoesNotDeletePersistedValue() {
+        let (userDefaults, suiteName) = makeUserDefaults("failedSelectedSourceEncodingDoesNotDeletePersistedValue")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let persistedValue = SelectedMIDISource(id: "device-123", displayName: "USB MIDI Device")
+        userDefaults.set(try! JSONEncoder().encode(persistedValue), forKey: "InputSettingsSelectedMIDISource")
+
+        let manager = InputSettingsManager(
+            userDefaults: userDefaults,
+            coding: FailingSelectedSourceCoder()
+        )
+
+        manager.setSelectedMIDISource(id: "device-456", displayName: "New Device")
 
         let reloadedManager = InputSettingsManager(userDefaults: userDefaults)
         #expect(reloadedManager.getSelectedMIDISource()?.id == "device-123")

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 import CoreMIDI
 #if os(macOS)
 import AppKit
@@ -110,6 +111,7 @@ class InputManager: ObservableObject {
     private let diagnosticsStore: MIDIDiagnosticsStore
     private let learnSession: MIDILearnSession
     private let sourceIDResolver: MIDISourceIDResolving
+    private var learnSessionCaptureCancellable: AnyCancellable?
     
     // MIDI setup
     private var midiClient: MIDIClientRef = 0
@@ -173,6 +175,7 @@ class InputManager: ObservableObject {
         self.learnSession = learnSession ?? Self.makeDefaultLearnSession(settingsManager: settingsManager)
         self.sourceIDResolver = sourceIDResolver
         self.isTestEnvironment = TestEnvironment.isRunningTests
+        bindLearnSessionCaptureState()
         reloadMappingsFromSettings()
 
         // Only set up MIDI if not in test environment
@@ -231,25 +234,25 @@ class InputManager: ObservableObject {
         runtimeStateQueue.sync(execute: body)
     }
 
-    private func currentInputSettingsSnapshot() -> (
-        keyboardMapping: [String: DrumType],
-        midiMapping: [UInt8: DrumType],
-        selectedSourceID: String?
-    ) {
+    private func bindLearnSessionCaptureState() {
         if Thread.isMainThread {
-            return (
-                keyboardMapping: settingsManager.getKeyboardMappings(),
-                midiMapping: settingsManager.getMidiMappings(),
-                selectedSourceID: settingsManager.getSelectedMIDISource()?.id
-            )
+            MainActor.assumeIsolated {
+                bindLearnSessionCaptureStateOnMainActor()
+            }
+        } else {
+            Task { @MainActor [weak self] in
+                self?.bindLearnSessionCaptureStateOnMainActor()
+            }
         }
+    }
 
-        return DispatchQueue.main.sync {
-            (
-                keyboardMapping: settingsManager.getKeyboardMappings(),
-                midiMapping: settingsManager.getMidiMappings(),
-                selectedSourceID: settingsManager.getSelectedMIDISource()?.id
-            )
+    @MainActor
+    private func bindLearnSessionCaptureStateOnMainActor() {
+        learnSessionCaptureCancellable = learnSession.$isCapturing.sink { [weak self] isCapturing in
+            guard let self else { return }
+            self.updateRuntimeState {
+                self.learnSessionIsCapturingSnapshot = isCapturing
+            }
         }
     }
 
@@ -341,17 +344,20 @@ extension InputManager {
     
     /// Reload mappings from settings (call this when settings are updated)
     func reloadMappingsFromSettings() {
-        let snapshot = currentInputSettingsSnapshot()
-        let isCapturing: Bool
-        if Thread.isMainThread {
-            isCapturing = MainActor.assumeIsolated {
-                learnSession.isCapturing
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.reloadMappingsFromSettings()
             }
-        } else {
-            isCapturing = DispatchQueue.main.sync {
-                learnSession.isCapturing
-            }
+            return
         }
+
+        let snapshot = (
+            keyboardMapping: settingsManager.getKeyboardMappings(),
+            midiMapping: settingsManager.getMidiMappings(),
+            selectedSourceID: settingsManager.getSelectedMIDISource()?.id
+        )
+        let isCapturing = withRuntimeState { learnSessionIsCapturingSnapshot }
+
         updateRuntimeState {
             keyboardMapping = snapshot.keyboardMapping
             midiMapping = snapshot.midiMapping
@@ -444,7 +450,8 @@ extension InputManager {
         if Thread.isMainThread {
             delegate?.inputManagerSelectedMIDISourceDisconnected(self)
         } else {
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
                 self.delegate?.inputManagerSelectedMIDISourceDisconnected(self)
             }
         }
@@ -462,7 +469,8 @@ extension InputManager {
         let result = calculateNoteMatch(for: hit, elapsedTime: elapsedTime, matcher: context.inputTimingMatcher)
         
         // Notify delegate on main thread
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             self.delegate?.inputManager(self, didReceiveHit: hit)
             self.delegate?.inputManager(self, didMatchNote: result)
         }
@@ -488,6 +496,9 @@ extension InputManager {
             if hostElapsed >= 0 {
                 return hostElapsed + context.hostTimeElapsedOffset
             }
+            Logger.warning(
+                "Received MIDI event with host time earlier than playback start; falling back to wall-clock timing"
+            )
         }
 
         if let songStartTime = context.songStartTime {
@@ -531,7 +542,8 @@ extension InputManager {
     }
 
     private func notifyDelegate(hit: InputHit, result: NoteMatchResult) {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
             self.delegate?.inputManager(self, didReceiveHit: hit)
             self.delegate?.inputManager(self, didMatchNote: result)
         }
@@ -653,7 +665,7 @@ extension InputManager {
         }
         
         guard status == noErr else {
-            print("Failed to create MIDI client: \(status)")
+            Logger.error("Failed to create MIDI client for InputManager (status: \(status))")
             return
         }
         
@@ -666,7 +678,7 @@ extension InputManager {
         }
         
         if status != noErr {
-            print("Failed to create MIDI input port: \(status)")
+            Logger.error("Failed to create MIDI input port for InputManager (status: \(status))")
             MIDIClientDispose(midiClient)
             midiClient = 0
             midiInputPort = 0
@@ -690,6 +702,9 @@ extension InputManager {
 
             let status = MIDIPortConnectSource(midiInputPort, source, context.toOpaque())
             guard status == noErr else {
+                Logger.error(
+                    "Failed to connect InputManager MIDI input port to source \(sourceIDResolver.stableSourceID(for: uniqueID)) (status: \(status))"
+                )
                 context.release()
                 continue
             }
@@ -715,6 +730,8 @@ extension InputManager {
             MIDIClientDispose(midiClient)
             midiClient = 0
         }
+
+        releaseMIDISourceContexts()
     }
     
     private func refreshMIDISourceConnections() {
@@ -724,11 +741,11 @@ extension InputManager {
     }
 
     private func refreshMIDISourceConnectionsLocked() {
+        defer { resumeMIDICallbacks() }
         disconnectMIDISources()
 
         guard midiInputPort != 0 else { return }
         connectToAllMIDISources()
-        resumeMIDICallbacks()
     }
     
     private func disconnectMIDISources() {
@@ -736,16 +753,26 @@ extension InputManager {
 
         let retainedContexts = midiSourceContexts
         midiSourceContexts.removeAll()
+        var contextsToRelease: [Unmanaged<MIDISourceConnectionContext>] = []
 
-        for (source, _) in retainedContexts {
-            if midiInputPort != 0 {
-                MIDIPortDisconnectSource(midiInputPort, source)
+        for (source, context) in retainedContexts {
+            guard midiInputPort != 0 else {
+                contextsToRelease.append(context)
+                continue
+            }
+
+            let status = MIDIPortDisconnectSource(midiInputPort, source)
+            if status == noErr {
+                contextsToRelease.append(context)
+            } else {
+                Logger.error("Failed to disconnect InputManager MIDI source \(context.takeUnretainedValue().sourceID) (status: \(status))")
+                midiSourceContexts[source] = context
             }
         }
 
         waitForMIDICallbacksToDrain()
 
-        for (_, context) in retainedContexts {
+        for context in contextsToRelease {
             context.release()
         }
     }
@@ -827,5 +854,14 @@ private extension InputManager {
             midiCallbackDrain.wait()
         }
         midiCallbackDrain.unlock()
+    }
+
+    func releaseMIDISourceContexts() {
+        let retainedContexts = midiSourceContexts
+        midiSourceContexts.removeAll()
+
+        for (_, context) in retainedContexts {
+            context.release()
+        }
     }
 }
