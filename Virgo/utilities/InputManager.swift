@@ -160,11 +160,10 @@ class InputManager: ObservableObject {
     
     /// Creates an `InputManager`.
     ///
-    /// When you use the default MIDI dependencies, instantiate `InputManager` on the main thread.
-    /// The factory helpers `makeDefaultDeviceRegistry`, `makeDefaultDiagnosticsStore`, and
-    /// `makeDefaultLearnSession` must be invoked on the main thread and call
-    /// `preconditionFailure` otherwise. If you need to create `InputManager` off the main thread,
-    /// provide custom `deviceRegistry`, `diagnosticsStore`, and `learnSession` instances.
+    /// Always instantiate `InputManager` on the main thread. Several internal initialization
+    /// steps (settings reload, learn-session binding, MIDI source discovery) are dispatched
+    /// asynchronously to the main actor and will not be complete when `init` returns on a
+    /// non-main thread. All current call sites create `InputManager` on `@MainActor`.
     init(
         settingsManager: InputSettingsManager? = nil,
         deviceRegistry: MIDIDeviceRegistry? = nil,

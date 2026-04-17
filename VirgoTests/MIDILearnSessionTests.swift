@@ -169,4 +169,32 @@ struct MIDILearnSessionTests {
         #expect(learnSession.isCapturing == false)
         #expect(learnSession.targetDrumType == nil)
     }
+
+    @Test("cancelCapture prevents consume from accepting events, matching source-picker-change behavior")
+    func learnSessionCancelCapturePreventsConsume() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnSessionCancelCapturePreventsConsume"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        settings.setSelectedMIDISource(id: "source-A", displayName: "Device A")
+        let learnSession = MIDILearnSession(settingsManager: settings)
+
+        learnSession.beginCapture(for: .snare)
+        #expect(learnSession.isCapturing == true)
+
+        // Simulate source-picker change: caller cancels before the new source sends events
+        learnSession.cancelCapture()
+        #expect(learnSession.isCapturing == false)
+
+        // Even if an event from the correct (new) source arrives, it should be rejected
+        let accepted = learnSession.consume(
+            MIDINoteEvent(sourceID: "source-B", channel: 9, note: 40, velocity: 100, hostTime: 10),
+            selectedSourceID: "source-B"
+        )
+        #expect(accepted == false,
+                "consume should reject events after cancelCapture")
+        #expect(!learnSession.isCapturing,
+                "Session should remain non-capturing after rejected event")
+    }
 }

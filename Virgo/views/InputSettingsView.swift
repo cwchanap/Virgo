@@ -269,9 +269,13 @@ struct InputSettingsView: View {
         Binding(
             get: { midiDeviceRegistry.selectedSourceID },
             set: { newValue in
+                // Cancel any active learn capture when the source changes.
+                // The capture was initiated against the previous source; allowing
+                // it to complete against a different device would produce misleading mappings.
+                midiLearnSession.cancelCapture()
+
                 guard let newValue else {
                     settingsManager.clearSelectedMIDISource()
-                    midiLearnSession.cancelCapture()
                     midiDeviceRegistry.refreshSources()
                     return
                 }
