@@ -198,6 +198,54 @@ struct GameplayMIDIDisconnectTests {
         #expect(viewModel.isPlaying == true)
     }
 
+    @Test("resume playback reloads persisted keyboard and MIDI mappings before resuming")
+    func testResumePlaybackReloadsPersistedMappingsBeforeResuming() async throws {
+        let (staleSettingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testResumePlaybackReloadsPersistedMappingsBeforeResuming"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        staleSettingsManager.setKeyBinding("x", for: .snare)
+
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: createTestPracticeSettings()
+        )
+        defer { viewModel.cleanup() }
+
+        viewModel.inputManager = makeInputManagerForTest(
+            settingsManager: staleSettingsManager,
+            selectedSourceID: "coremidi:2",
+            midiMapping: [38: .snare],
+            requiresMIDISourceForGameplay: true,
+            selectedSourceAvailable: true
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        #expect(viewModel.inputManager.getKeyboardMapping()["x"] == .snare)
+        #expect(viewModel.inputManager.getMIDIMapping()[38] == .snare)
+
+        viewModel.startPlayback()
+        viewModel.pausePlayback()
+        viewModel.pausedElapsedTime = 0.5
+
+        let settingsViewManager = InputSettingsManager(userDefaults: userDefaults)
+        settingsViewManager.setKeyBinding("k", for: .snare)
+        settingsViewManager.setMidiMapping(60, for: .snare)
+
+        viewModel.startPlayback()
+
+        #expect(viewModel.isPlaying == true)
+        #expect(viewModel.inputManager.getKeyboardMapping()["k"] == .snare)
+        #expect(viewModel.inputManager.getKeyboardMapping()["x"] == nil)
+        #expect(viewModel.inputManager.getMIDIMapping()[60] == .snare)
+        #expect(viewModel.inputManager.getMIDIMapping()[38] == nil)
+    }
+
     @Test("selected source disconnect auto-pauses active gameplay")
     func testSelectedSourceDisconnectAutoPausesGameplay() async throws {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
