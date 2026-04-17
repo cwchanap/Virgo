@@ -257,6 +257,61 @@ struct InputManagerMIDIGameplayTests {
         #expect(rejectedResult == nil)
     }
 
+    @Test("startListening refreshes the selected source without clobbering runtime MIDI overrides")
+    func startListeningRefreshesSelectedSourceWithoutClobberingRuntimeMIDIMapping() {
+        let (staleSettingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.startListeningRefreshesSelectedSourceWithoutClobberingRuntimeMIDIMapping"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let registry = MIDIDeviceRegistry(
+            settingsManager: staleSettingsManager,
+            sourceProvider: StubMIDISourceProvider([
+                .init(id: "source-2", displayName: "TD-17", isConnected: true)
+            ]),
+            sourceChangeListener: StubMIDISourceChangeListener()
+        )
+        let manager = InputManager(
+            settingsManager: staleSettingsManager,
+            deviceRegistry: registry,
+            diagnosticsStore: MIDIDiagnosticsStore(),
+            learnSession: MIDILearnSession(settingsManager: staleSettingsManager)
+        )
+
+        manager.setMIDIMapping([60: .snare])
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+
+        let settingsViewManager = InputSettingsManager(userDefaults: userDefaults)
+        settingsViewManager.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
+        settingsViewManager.setMidiMapping(38, for: .snare)
+
+        manager.startListening(songStartTime: Date())
+
+        let acceptedResult = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-2", channel: 9, note: 60, velocity: 120, hostTime: mach_absolute_time())
+        )
+        let persistedMappingResult = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-2", channel: 9, note: 38, velocity: 120, hostTime: mach_absolute_time())
+        )
+        let rejectedSourceResult = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 60, velocity: 120, hostTime: mach_absolute_time())
+        )
+
+        #expect(manager.hasSelectedMIDISourcePreference == true)
+        #expect(manager.isSelectedMIDISourceAvailable == true)
+        #expect(manager.getMIDIMapping().count == 1)
+        #expect(manager.getMIDIMapping()[60] == .snare)
+        #expect(acceptedResult?.matchedNote != nil)
+        #expect(persistedMappingResult == nil)
+        #expect(rejectedSourceResult == nil)
+    }
+
     // MARK: - P2: MIDI events accepted when no source is selected
 
     @Test("MIDI events from any source are accepted when no source is selected")

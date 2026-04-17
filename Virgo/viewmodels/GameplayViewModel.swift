@@ -123,6 +123,9 @@ final class GameplayViewModel {
     var isShowingMIDIDeviceAlert = false
     /// User-facing message for MIDI source gating / disconnects
     var midiDeviceAlertMessage = ""
+    private var shouldGateGameplayOnSelectedMIDISource: Bool {
+        inputManager.requiresMIDISourceForGameplay || inputManager.hasSelectedMIDISourcePreference
+    }
 
     // MARK: - Scoring State
     /// All combo and scoring state
@@ -558,15 +561,21 @@ final class GameplayViewModel {
     func startPlayback() {
         Logger.audioPlayback("🎮 startPlayback() called")
 
-        inputManager.reloadMappingsFromSettings()
+        let isResuming = pausedElapsedTime > 0.0
 
-        if inputManager.requiresMIDISourceForGameplay && !inputManager.hasSelectedMIDISourcePreference {
+        if isResuming {
+            inputManager.refreshSelectedMIDISourceStateFromSettings()
+        } else {
+            inputManager.refreshGameplayConfigurationFromSettingsIfNeeded()
+        }
+
+        if shouldGateGameplayOnSelectedMIDISource && !inputManager.hasSelectedMIDISourcePreference {
             midiDeviceAlertMessage = "Select your MIDI device before starting."
             isShowingMIDIDeviceAlert = true
             return
         }
 
-        if inputManager.requiresMIDISourceForGameplay && !inputManager.isSelectedMIDISourceAvailable {
+        if shouldGateGameplayOnSelectedMIDISource && !inputManager.isSelectedMIDISourceAvailable {
             midiDeviceAlertMessage = "Reconnect or select your MIDI device before starting."
             isShowingMIDIDeviceAlert = true
             return
@@ -589,8 +598,6 @@ final class GameplayViewModel {
 
         // Check if we're resuming from a pause or starting fresh
         // Use pausedElapsedTime as primary indicator for resume (works for both BGM and metronome-only sessions)
-        let isResuming = pausedElapsedTime > 0.0
-
         if isResuming {
             // When resuming, calculate and restore state based on elapsed time
             // For BGM sessions, use BGM position as source of truth
@@ -659,7 +666,7 @@ final class GameplayViewModel {
     }
 
     func handleSelectedMIDISourceDisconnect() {
-        guard inputManager.requiresMIDISourceForGameplay else { return }
+        guard shouldGateGameplayOnSelectedMIDISource else { return }
 
         if isPlaying {
             pausePlayback()
