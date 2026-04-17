@@ -258,11 +258,11 @@ struct InputManagerConfigurationTests {
 
     @Test("reloadMappingsFromSettings refreshes selected-source preference and availability")
     func testReloadMappingsFromSettingsRefreshesSelectedSourceState() {
-        let suiteName = "InputManagerConfigurationTests.SelectedSource.\(UUID().uuidString)"
-        let testDefaults = UserDefaults(suiteName: suiteName)!
-        defer { UserDefaults.standard.removeSuite(named: suiteName) }
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerConfigurationTests.SelectedSource.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let settingsManager = InputSettingsManager(userDefaults: testDefaults)
         settingsManager.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
         let registry = MIDIDeviceRegistry(
