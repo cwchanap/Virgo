@@ -156,6 +156,13 @@ class InputManager: ObservableObject {
         let inputTimingMatcher: InputTimingMatcher?
     }
     
+    /// Creates an `InputManager`.
+    ///
+    /// When you use the default MIDI dependencies, instantiate `InputManager` on the main thread.
+    /// The factory helpers `makeDefaultDeviceRegistry`, `makeDefaultDiagnosticsStore`, and
+    /// `makeDefaultLearnSession` must be invoked on the main thread and call
+    /// `preconditionFailure` otherwise. If you need to create `InputManager` off the main thread,
+    /// provide custom `deviceRegistry`, `diagnosticsStore`, and `learnSession` instances.
     init(
         settingsManager: InputSettingsManager? = nil,
         deviceRegistry: MIDIDeviceRegistry? = nil,
