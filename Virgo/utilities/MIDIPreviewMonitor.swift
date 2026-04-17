@@ -275,13 +275,12 @@ final class MIDIPreviewMonitor: ObservableObject {
         guard !events.isEmpty else { return }
 
         if Thread.isMainThread {
-            publish(events: events, mappings: settingsManager.getMidiMappings(), sourceDisplayName: sourceDisplayName)
+            publish(events: events, sourceDisplayName: sourceDisplayName)
         } else {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.publish(
                     events: events,
-                    mappings: self.settingsManager.getMidiMappings(),
                     sourceDisplayName: sourceDisplayName
                 )
             }
@@ -290,36 +289,31 @@ final class MIDIPreviewMonitor: ObservableObject {
 
     private func publish(
         events: [MIDINoteEvent],
-        mappings: [UInt8: DrumType],
         sourceDisplayName: String
     ) {
         for event in events {
-            publish(
-                event: event,
-                mappedDrumType: mappings[event.note],
-                sourceDisplayName: sourceDisplayName
-            )
+            publish(event: event, sourceDisplayName: sourceDisplayName)
         }
     }
 
-    private func publish(event: MIDINoteEvent, mappedDrumType: DrumType?, sourceDisplayName: String) {
+    private func publish(event: MIDINoteEvent, sourceDisplayName: String) {
         if Thread.isMainThread {
             MainActor.assumeIsolated {
+                onEvent?(event)
                 diagnosticsStore.record(
                     event: event,
-                    mappedDrumType: mappedDrumType,
+                    mappedDrumType: settingsManager.getMidiMappings()[event.note],
                     sourceDisplayName: sourceDisplayName
                 )
-                onEvent?(event)
             }
         } else {
             Task { @MainActor in
+                self.onEvent?(event)
                 diagnosticsStore.record(
                     event: event,
-                    mappedDrumType: mappedDrumType,
+                    mappedDrumType: self.settingsManager.getMidiMappings()[event.note],
                     sourceDisplayName: sourceDisplayName
                 )
-                onEvent?(event)
             }
         }
     }

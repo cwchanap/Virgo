@@ -185,4 +185,37 @@ struct MIDIPreviewMonitorTests {
         #expect(receivedEvent?.velocity == 96)
         #expect(diagnostics.lastEvent?.mappedDrumType == .kick)
     }
+
+    @Test("preview monitor records learned mapping changes on the first hit")
+    func previewMonitorRecordsLearnedMappingChangesOnTheFirstHit() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.previewMonitorRecordsLearnedMappingChangesOnTheFirstHit"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        settings.setSelectedMIDISource(id: "coremidi:2", displayName: "TD-17")
+        settings.setMidiMapping(38, for: .snare)
+
+        let diagnostics = MIDIDiagnosticsStore()
+        let learnSession = MIDILearnSession(settingsManager: settings)
+        let monitor = MIDIPreviewMonitor(
+            diagnosticsStore: diagnostics,
+            settingsManager: settings
+        )
+
+        learnSession.beginCapture(for: .ride, timeoutSeconds: 1)
+        monitor.onEvent = { event in
+            _ = learnSession.consume(event, selectedSourceID: settings.getSelectedMIDISource()?.id)
+        }
+
+        monitor.handle(
+            packets: [.init(timestamp: 50, bytes: [0x90, 38, 110])],
+            sourceID: "coremidi:2",
+            sourceDisplayName: "TD-17"
+        )
+
+        #expect(settings.getMidiMappings()[38] == .ride)
+        #expect(diagnostics.lastEvent?.note == 38)
+        #expect(diagnostics.lastEvent?.mappedDrumType == .ride)
+    }
 }
