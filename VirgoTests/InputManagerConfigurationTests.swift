@@ -8,6 +8,7 @@
 
 import Testing
 import Foundation
+import CoreMIDI
 @testable import Virgo
 
 @Suite("InputManager Configuration Tests", .serialized)
@@ -322,6 +323,18 @@ struct InputManagerConfigurationTests {
         #expect(manager.getMIDIMapping()[60] == .snare)
         #expect(manager.hasSelectedMIDISourcePreference == true)
         #expect(manager.isSelectedMIDISourceAvailable == true)
+    }
+
+    @Test("shouldConnectMIDISource skips endpoints whose retained contexts are still tracked")
+    func testShouldConnectMIDISourceSkipsTrackedEndpoints() {
+        let trackedSource: MIDIEndpointRef = 17
+
+        #expect(
+            InputManager.shouldConnectMIDISource(trackedSource, existingConnectedSources: []) == true
+        )
+        #expect(
+            InputManager.shouldConnectMIDISource(trackedSource, existingConnectedSources: [trackedSource]) == false
+        )
     }
 
     @Test("requiresMIDISourceForGameplay defaults to false")

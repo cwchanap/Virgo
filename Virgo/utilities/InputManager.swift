@@ -750,26 +750,36 @@ extension InputManager {
     
     private func connectToAllMIDISources() {
         let sourceCount = MIDIGetNumberOfSources()
+        var connectedSources = Set(midiSourceContexts.keys)
         
         for i in 0..<sourceCount {
             let source = MIDIGetSource(i)
             guard source != 0,
                   let uniqueID = CoreMIDISourceMetadata.uniqueID(for: source) else { continue }
 
+            let sourceID = sourceIDResolver.stableSourceID(for: uniqueID)
+            guard Self.shouldConnectMIDISource(source, existingConnectedSources: connectedSources) else {
+                Logger.warning(
+                    "Skipping InputManager MIDI reconnect for source \(sourceID) because an existing connection context is still retained"
+                )
+                continue
+            }
+
             let context = Unmanaged.passRetained(
-                MIDISourceConnectionContext(sourceID: sourceIDResolver.stableSourceID(for: uniqueID))
+                MIDISourceConnectionContext(sourceID: sourceID)
             )
 
             let status = MIDIPortConnectSource(midiInputPort, source, context.toOpaque())
             guard status == noErr else {
                 Logger.error(
-                    "Failed to connect InputManager MIDI input port to source \(sourceIDResolver.stableSourceID(for: uniqueID)) (status: \(status))"
+                    "Failed to connect InputManager MIDI input port to source \(sourceID) (status: \(status))"
                 )
                 context.release()
                 continue
             }
 
             midiSourceContexts[source] = context
+            connectedSources.insert(source)
         }
     }
     
@@ -798,6 +808,13 @@ extension InputManager {
         midiConnectionQueue.sync {
             refreshMIDISourceConnectionsLocked()
         }
+    }
+
+    static func shouldConnectMIDISource(
+        _ source: MIDIEndpointRef,
+        existingConnectedSources: Set<MIDIEndpointRef>
+    ) -> Bool {
+        !existingConnectedSources.contains(source)
     }
 
     private func refreshMIDISourceConnectionsLocked() {

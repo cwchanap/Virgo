@@ -563,11 +563,7 @@ final class GameplayViewModel {
 
         let isResuming = pausedElapsedTime > 0.0
 
-        if isResuming {
-            inputManager.refreshSelectedMIDISourceStateFromSettings()
-        } else {
-            inputManager.refreshGameplayConfigurationFromSettingsIfNeeded()
-        }
+        inputManager.refreshGameplayConfigurationFromSettingsIfNeeded()
 
         if shouldGateGameplayOnSelectedMIDISource && !inputManager.hasSelectedMIDISourcePreference {
             midiDeviceAlertMessage = "Select your MIDI device before starting."
