@@ -19,12 +19,12 @@ struct MIDIEventRouter {
     /// Filters for note-on status (0x9n) with velocity > 0.
     func decodeEvents(from packets: [MIDIPacketBytes], sourceID: String) -> [MIDINoteEvent] {
         var events: [MIDINoteEvent] = []
+        var runningStatus: UInt8?
+        var dataBytes: [UInt8] = []
+        var currentMessageTimestamp: UInt64?
+        dataBytes.reserveCapacity(2)
 
         for packet in packets {
-            var runningStatus: UInt8?
-            var dataBytes: [UInt8] = []
-            dataBytes.reserveCapacity(2)
-
             for byte in packet.bytes {
                 if byte >= 0xF8 {
                     continue
@@ -33,12 +33,17 @@ struct MIDIEventRouter {
                 if byte & 0x80 != 0 {
                     runningStatus = byte < 0xF0 ? byte : nil
                     dataBytes.removeAll(keepingCapacity: true)
+                    currentMessageTimestamp = byte < 0xF0 ? packet.timestamp : nil
                     continue
                 }
 
                 guard let status = runningStatus,
                       let expectedDataByteCount = Self.expectedDataByteCount(for: status) else {
                     continue
+                }
+
+                if dataBytes.isEmpty, currentMessageTimestamp == nil {
+                    currentMessageTimestamp = packet.timestamp
                 }
 
                 dataBytes.append(byte)
@@ -54,13 +59,14 @@ struct MIDIEventRouter {
                                 channel: status & 0x0F,
                                 note: note,
                                 velocity: velocity,
-                                hostTime: packet.timestamp  // MIDITimeStamp is already a host-time value
+                                hostTime: currentMessageTimestamp ?? packet.timestamp
                             )
                         )
                     }
                 }
 
                 dataBytes.removeAll(keepingCapacity: true)
+                currentMessageTimestamp = nil
             }
         }
 
