@@ -285,22 +285,65 @@ struct InputManagerConfigurationTests {
         #expect(manager.isSelectedMIDISourceAvailable == true)
     }
 
+    @Test("fresh-session configuration refresh preserves runtime mapping overrides")
+    func testRefreshGameplayConfigurationPreservesRuntimeOverrides() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerConfigurationTests.RuntimeOverrides.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settingsManager,
+            sourceProvider: StubMIDISourceProvider([
+                MIDISourceDescriptor(id: "source-2", displayName: "TD-17", isConnected: true)
+            ]),
+            sourceChangeListener: StubMIDISourceChangeListener()
+        )
+        let manager = InputManager(
+            settingsManager: settingsManager,
+            deviceRegistry: registry,
+            diagnosticsStore: MIDIDiagnosticsStore(),
+            learnSession: MIDILearnSession(settingsManager: settingsManager)
+        )
+
+        manager.setKeyboardMapping(["x": .kick])
+        manager.setMIDIMapping([60: .snare])
+
+        let settingsViewManager = InputSettingsManager(userDefaults: userDefaults)
+        settingsViewManager.setKeyBinding("z", for: .ride)
+        settingsViewManager.setMidiMapping(38, for: .snare)
+        settingsViewManager.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
+
+        manager.refreshGameplayConfigurationFromSettingsIfNeeded()
+
+        #expect(manager.getKeyboardMapping().count == 1)
+        #expect(manager.getKeyboardMapping()["x"] == .kick)
+        #expect(manager.getMIDIMapping().count == 1)
+        #expect(manager.getMIDIMapping()[60] == .snare)
+        #expect(manager.hasSelectedMIDISourcePreference == true)
+        #expect(manager.isSelectedMIDISourceAvailable == true)
+    }
+
     @Test("requiresMIDISourceForGameplay defaults to false")
     func testRequiresMIDISourceForGameplayDefaultsToFalse() {
         let manager = InputManager()
         #expect(manager.requiresMIDISourceForGameplay == false)
     }
 
-    @Test("start-stop-start cycle preserves BPM and keyboard mappings")
+    @Test("start-stop-start cycle preserves BPM and runtime keyboard/MIDI mappings")
     func testStartStopStartCycle() {
         let manager = InputManager()
         manager.configure(bpm: 100.0, timeSignature: .fourFour, notes: [])
-        manager.setKeyboardMapping(["space": .kick])
+        manager.setKeyboardMapping(["x": .kick])
+        manager.setMIDIMapping([60: .snare])
         manager.startListening(songStartTime: Date())
         manager.stopListening()
         manager.startListening(songStartTime: Date())
         manager.stopListening()
         #expect(manager.configuredBPM == 100.0)
-        #expect(manager.getKeyboardMapping()["space"] == .kick)
+        #expect(manager.getKeyboardMapping().count == 1)
+        #expect(manager.getKeyboardMapping()["x"] == .kick)
+        #expect(manager.getMIDIMapping().count == 1)
+        #expect(manager.getMIDIMapping()[60] == .snare)
     }
 }

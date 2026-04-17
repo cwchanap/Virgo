@@ -99,6 +99,8 @@ class InputManager: ObservableObject {
     private var keyboardMapping: [String: DrumType] = [:]
     private var midiMapping: [UInt8: DrumType] = [:]
     private var midiMappingSnapshot: [UInt8: DrumType] = [:]
+    private var keyboardMappingHasRuntimeOverride = false
+    private var midiMappingHasRuntimeOverride = false
     private var selectedSourceIDSnapshot: String?
     private var selectedMIDISourceAvailableSnapshot = false
     private var learnSessionIsCapturingSnapshot = false
@@ -334,7 +336,7 @@ extension InputManager {
             self.songStartHostTime = songStartHostTime
             self.hostTimeElapsedOffset = elapsedOffset
         }
-        reloadMappingsFromSettings()
+        refreshSelectedMIDISourceStateFromSettings()
         startKeyboardListening()
         // MIDI is already listening from setup
     }
@@ -347,6 +349,53 @@ extension InputManager {
         }
         stopKeyboardListening()
         // MIDI continues to listen but won't process hits without songStartTime
+    }
+
+    func refreshGameplayConfigurationFromSettingsIfNeeded() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.refreshGameplayConfigurationFromSettingsIfNeeded()
+            }
+            return
+        }
+
+        settingsManager.loadSettings()
+
+        let snapshot = (
+            keyboardMapping: settingsManager.getKeyboardMappings(),
+            midiMapping: settingsManager.getMidiMappings(),
+            selectedSourceID: settingsManager.getSelectedMIDISource()?.id
+        )
+
+        updateRuntimeState {
+            if !keyboardMappingHasRuntimeOverride {
+                keyboardMapping = snapshot.keyboardMapping
+            }
+            if !midiMappingHasRuntimeOverride {
+                midiMapping = snapshot.midiMapping
+                midiMappingSnapshot = snapshot.midiMapping
+            }
+            selectedSourceIDSnapshot = snapshot.selectedSourceID
+        }
+        refreshMIDISourceAvailabilitySnapshot()
+    }
+
+    func refreshSelectedMIDISourceStateFromSettings() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.refreshSelectedMIDISourceStateFromSettings()
+            }
+            return
+        }
+
+        settingsManager.loadSettings()
+
+        let selectedSourceID = settingsManager.getSelectedMIDISource()?.id
+
+        updateRuntimeState {
+            selectedSourceIDSnapshot = selectedSourceID
+        }
+        refreshMIDISourceAvailabilitySnapshot()
     }
     
     /// Reload mappings from settings (call this when settings are updated)
@@ -371,6 +420,8 @@ extension InputManager {
             keyboardMapping = snapshot.keyboardMapping
             midiMapping = snapshot.midiMapping
             midiMappingSnapshot = snapshot.midiMapping
+            keyboardMappingHasRuntimeOverride = false
+            midiMappingHasRuntimeOverride = false
             selectedSourceIDSnapshot = snapshot.selectedSourceID
             learnSessionIsCapturingSnapshot = isCapturing
         }
@@ -802,6 +853,7 @@ extension InputManager {
     func setKeyboardMapping(_ mapping: [String: DrumType]) {
         updateRuntimeState {
             keyboardMapping = mapping
+            keyboardMappingHasRuntimeOverride = true
         }
     }
     
@@ -809,6 +861,7 @@ extension InputManager {
         updateRuntimeState {
             midiMapping = mapping
             midiMappingSnapshot = mapping
+            midiMappingHasRuntimeOverride = true
         }
     }
     

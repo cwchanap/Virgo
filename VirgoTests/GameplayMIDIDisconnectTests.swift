@@ -27,7 +27,7 @@ struct GameplayMIDIDisconnectTests {
     }
 
     private func createTestMetronome() -> MetronomeEngine {
-        MetronomeEngine()
+        MetronomeEngine(audioDriver: RecordingAudioDriver())
     }
 
     final class StubMIDISourceProvider: MIDISourceProviding {
@@ -231,6 +231,39 @@ struct GameplayMIDIDisconnectTests {
         #expect(viewModel.isShowingMIDIDeviceAlert == true)
     }
 
+    @Test("macOS selected-source start gating still applies when a source was explicitly chosen")
+    func testMacOSSelectedSourceStillGatesWhenPreferenceExists() async throws {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testMacOSSelectedSourceStillGatesWhenPreferenceExists"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: createTestPracticeSettings()
+        )
+        defer { viewModel.cleanup() }
+
+        viewModel.inputManager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "coremidi:2",
+            midiMapping: [38: .snare],
+            requiresMIDISourceForGameplay: false,
+            selectedSourceAvailable: false
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        viewModel.startPlayback()
+
+        #expect(viewModel.isPlaying == false)
+        #expect(viewModel.isShowingMIDIDeviceAlert == true)
+        #expect(viewModel.midiDeviceAlertMessage.contains("Reconnect"))
+    }
+
     @Test("wireInputHandler routes selected-source disconnects through the input manager delegate")
     func testWireInputHandlerRoutesSelectedSourceDisconnects() async throws {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
@@ -266,10 +299,10 @@ struct GameplayMIDIDisconnectTests {
         #expect(viewModel.isShowingMIDIDeviceAlert == true)
     }
 
-    @Test("selected-source disconnects are ignored when MIDI is not required for gameplay")
-    func testSelectedSourceDisconnectIgnoredWhenMIDINotRequired() async throws {
+    @Test("selected-source disconnects still pause gameplay when a macOS source was explicitly chosen")
+    func testSelectedSourceDisconnectPausesGameplayWhenSelectionExistsOnMacOS() async throws {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
-            suiteName: "GameplayMIDIDisconnectTests.testSelectedSourceDisconnectIgnoredWhenMIDINotRequired"
+            suiteName: "GameplayMIDIDisconnectTests.testSelectedSourceDisconnectPausesGameplayWhenSelectionExistsOnMacOS"
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
@@ -296,6 +329,38 @@ struct GameplayMIDIDisconnectTests {
         viewModel.startPlayback()
 
         viewModel.inputManager.handleSelectedSourceDisconnect(sourceID: "coremidi:2")
+
+        #expect(viewModel.isPlaying == false)
+        #expect(viewModel.isShowingMIDIDeviceAlert == true)
+    }
+
+    @Test("keyboard-first macOS playback remains ungated when no MIDI source is selected")
+    func testKeyboardFirstMacOSPlaybackRemainsUngatedWithoutSelectedSource() async throws {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "GameplayMIDIDisconnectTests.testKeyboardFirstMacOSPlaybackRemainsUngatedWithoutSelectedSource"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: createTestPracticeSettings()
+        )
+        defer { viewModel.cleanup() }
+
+        viewModel.inputManager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: nil,
+            midiMapping: [:],
+            requiresMIDISourceForGameplay: false,
+            selectedSourceAvailable: false
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        viewModel.startPlayback()
 
         #expect(viewModel.isPlaying == true)
         #expect(viewModel.isShowingMIDIDeviceAlert == false)
