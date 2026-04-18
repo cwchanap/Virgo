@@ -357,9 +357,11 @@ final class GameplayViewModel {
                         timeIntervalSinceReferenceDate: scheduledStart - pausedElapsedTime
                     )
                     self.playbackStartTime = adjustedSongStartTime
+                    let scheduledStartDelay = max(0, scheduledStart - CFAbsoluteTimeGetCurrent())
                     inputManager.startListening(
                         songStartTime: adjustedSongStartTime,
-                        elapsedOffset: pausedElapsedTime
+                        elapsedOffset: pausedElapsedTime,
+                        scheduledStartDelay: scheduledStartDelay
                     )
                 } else if let playbackStartTime = playbackStartTime {
                     // Fallback: no scheduled start time (shouldn't happen during speed change)
@@ -681,9 +683,15 @@ final class GameplayViewModel {
                 timeIntervalSinceReferenceDate: scheduledStartTime - pausedElapsedTime
             )
             playbackStartTime = adjustedSongStartTime
+            // Compute how far in the future the audio is scheduled relative to now.
+            // This delay is fed to InputManager so the host-time zero-point is
+            // projected forward to the scheduled start rather than anchored at the
+            // moment startListening() runs.
+            let scheduledStartDelay = max(0, scheduledStartTime - CFAbsoluteTimeGetCurrent())
             inputManager.startListening(
                 songStartTime: adjustedSongStartTime,
-                elapsedOffset: pausedElapsedTime
+                elapsedOffset: pausedElapsedTime,
+                scheduledStartDelay: scheduledStartDelay
             )
         } else {
             // Fallback: no scheduled start time available (shouldn't happen)
