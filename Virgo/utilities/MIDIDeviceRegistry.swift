@@ -147,6 +147,7 @@ final class MIDIDeviceRegistry: ObservableObject {
     private let settingsManager: InputSettingsManager
     private let sourceProvider: MIDISourceProviding
     private let sourceChangeListener: MIDISourceChangeListening
+    private var isRefreshScheduled = false
 
     init(
         settingsManager: InputSettingsManager,
@@ -177,6 +178,7 @@ final class MIDIDeviceRegistry: ObservableObject {
 
     func refreshSources() {
         let wasAvailable = isSelectedSourceAvailable
+        let oldSelectedID = selectedSourceID
 
         sources = sourceProvider.currentSources()
         selectedSourceID = settingsManager.getSelectedMIDISource()?.id
@@ -186,7 +188,7 @@ final class MIDIDeviceRegistry: ObservableObject {
                 $0.id == selectedSourceID && $0.isConnected
             }
 
-            if wasAvailable && !isSelectedSourceAvailable {
+            if oldSelectedID == selectedSourceID && wasAvailable && !isSelectedSourceAvailable {
                 onSelectedSourceUnavailable?(selectedSourceID)
             }
         } else {
@@ -207,9 +209,9 @@ final class MIDIDeviceRegistry: ObservableObject {
             return liveSource.displayName
         }
 
-        let selectedSource = settingsManager.getSelectedMIDISource()
-        if selectedSource?.id == sourceID {
-            return selectedSource?.displayName ?? "Unknown MIDI Source"
+        if let selectedSource = settingsManager.getSelectedMIDISource(),
+           selectedSource.id == sourceID {
+            return selectedSource.displayName
         }
 
         return "Unknown MIDI Source"
@@ -221,7 +223,10 @@ final class MIDIDeviceRegistry: ObservableObject {
                 refreshSources()
             }
         } else {
+            guard !isRefreshScheduled else { return }
+            isRefreshScheduled = true
             Task { @MainActor in
+                isRefreshScheduled = false
                 refreshSources()
             }
         }
