@@ -328,8 +328,19 @@ extension InputManager {
         }
     }
     
-    func startListening(songStartTime: Date, elapsedOffset: Double = 0.0) {
-        let songStartHostTime = mach_absolute_time()
+    /// - Parameter scheduledStartDelay: Seconds between *now* and the moment
+    ///   the metronome/BGM are scheduled to start producing audio.  When audio
+    ///   is scheduled in the future (e.g. 50 ms ahead for buffer priming), the
+    ///   host-time zero-point must be projected forward so that a hit arriving
+    ///   exactly at audio-start registers as zero elapsed time.
+    func startListening(songStartTime: Date, elapsedOffset: Double = 0.0, scheduledStartDelay: Double = 0.0) {
+        let rawHostTime = mach_absolute_time()
+        let songStartHostTime: UInt64
+        if scheduledStartDelay > 0 {
+            songStartHostTime = hostTimeConverter.hostTimeByAdding(seconds: scheduledStartDelay, to: rawHostTime)
+        } else {
+            songStartHostTime = rawHostTime
+        }
         updateRuntimeState {
             self.songStartTime = songStartTime
             self.songStartHostTime = songStartHostTime
