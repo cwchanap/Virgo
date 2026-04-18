@@ -187,4 +187,42 @@ struct MIDIDeviceRegistryTests {
         #expect(unavailableSourceID == "coremidi:2")
         #expect(registry.isSelectedSourceAvailable == false)
     }
+
+    @Test("selected-source-unavailable callback does not fire when selectedSourceID changes mid-refresh")
+    func selectedSourceUnavailableCallbackDoesNotFireWhenSourceChanges() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.selectedSourceUnavailableCallbackDoesNotFireWhenSourceChanges"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        // Set up: source A is selected and available
+        settings.setSelectedMIDISource(id: "source-A", displayName: "Device A")
+
+        let provider = StubMIDISourceProvider([
+            .init(id: "source-A", displayName: "Device A", isConnected: true)
+        ])
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settings,
+            sourceProvider: provider
+        )
+        registry.refreshSources()
+
+        var unavailableSourceID: String?
+        registry.onSelectedSourceUnavailable = { sourceID in
+            unavailableSourceID = sourceID
+        }
+
+        // Simulate: user selects source B via selectSource (updates both in-memory and settingsManager)
+        let sourceB = MIDISourceDescriptor(id: "source-B", displayName: "Device B", isConnected: false)
+        registry.selectSource(sourceB)
+
+        // Now refreshSources: wasAvailable=true (from source A being available),
+        // but selectedSourceID is now source-B (which is unavailable).
+        // The callback should NOT fire because oldSelectedID ("source-A") != new selectedSourceID ("source-B").
+        registry.refreshSources()
+
+        #expect(unavailableSourceID == nil)
+        #expect(registry.selectedSourceID == "source-B")
+        #expect(registry.isSelectedSourceAvailable == false)
+    }
 }
