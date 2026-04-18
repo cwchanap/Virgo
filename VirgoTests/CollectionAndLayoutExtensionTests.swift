@@ -207,7 +207,7 @@ struct BeamGroupingHelperThresholdTests {
         let beats = [
             DrumBeat(id: 1, drums: [.snare], timePosition: 2.0, interval: .eighth),
             DrumBeat(id: 2, drums: [.hiHat], timePosition: 2.125, interval: .eighth),
-            DrumBeat(id: 3, drums: [.kick],  timePosition: 2.25,  interval: .eighth)
+            DrumBeat(id: 3, drums: [.kick], timePosition: 2.25, interval: .eighth)
         ]
         let groups = BeamGroupingHelper.calculateBeamGroups(from: beats)
         #expect(groups.count == 1)
