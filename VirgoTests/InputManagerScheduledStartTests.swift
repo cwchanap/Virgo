@@ -48,21 +48,31 @@ struct InputManagerScheduledStartTests {
         availableSourceIDs: [String]? = nil
     ) -> InputManager {
         settingsManager.setSelectedMIDISource(id: selectedSourceID, displayName: "TD-17")
-        settingsManager.setMIDIMapping(midiMapping)
+        for (note, drumType) in midiMapping {
+            settingsManager.setMidiMapping(note, for: drumType)
+        }
 
-        let sourceProvider = StubMIDISourceProvider(
-            [MIDISourceDescriptor(id: selectedSourceID, displayName: "TD-17", manufacturer: "Roland")]
+        let sources = (availableSourceIDs ?? [selectedSourceID]).map {
+            MIDISourceDescriptor(
+                id: $0,
+                displayName: $0 == selectedSourceID ? "TD-17" : "Other Device",
+                isConnected: true
+            )
+        }
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settingsManager,
+            sourceProvider: StubMIDISourceProvider(sources),
+            sourceChangeListener: StubMIDISourceChangeListener()
         )
-        let sourceListener = StubMIDISourceChangeListener()
-        var sources = availableSourceIDs ?? [selectedSourceID]
         let manager = InputManager(
             settingsManager: settingsManager,
-            sourceProvider: sourceProvider,
-            sourceChangeListener: sourceListener,
-            availableSourceIDs: sources
+            deviceRegistry: registry,
+            diagnosticsStore: MIDIDiagnosticsStore(),
+            learnSession: MIDILearnSession(settingsManager: settingsManager)
         )
         let delegate = RecordingInputManagerDelegate()
         manager.delegate = delegate
+        manager.reloadMappingsFromSettings()
 
         return manager
     }
@@ -89,14 +99,15 @@ struct InputManagerScheduledStartTests {
         )
 
         let setupDelay = 0.05
+        let capturedHostTime = mach_absolute_time()
         manager.startListening(
             songStartTime: Date().addingTimeInterval(setupDelay),
-            scheduledStartDelay: setupDelay
+            scheduledStartDelay: setupDelay,
+            capturedHostTime: capturedHostTime
         )
 
-        let nowHostTime = mach_absolute_time()
         let converter = MIDIHostTimeConverter()
-        let scheduledHostTime = converter.hostTimeByAdding(seconds: setupDelay, to: nowHostTime)
+        let scheduledHostTime = converter.hostTimeByAdding(seconds: setupDelay, to: capturedHostTime)
 
         let result = manager.handleMIDINoteEvent(
             MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: scheduledHostTime)
@@ -131,14 +142,15 @@ struct InputManagerScheduledStartTests {
         )
 
         let setupDelay = 0.05
+        let capturedHostTime = mach_absolute_time()
         manager.startListening(
             songStartTime: Date().addingTimeInterval(setupDelay),
-            scheduledStartDelay: setupDelay
+            scheduledStartDelay: setupDelay,
+            capturedHostTime: capturedHostTime
         )
 
-        let nowHostTime = mach_absolute_time()
         let result = manager.handleMIDINoteEvent(
-            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: nowHostTime)
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: capturedHostTime)
         )
 
         #expect(result != nil, "MIDI event before scheduled start should fall back to wall-clock")
