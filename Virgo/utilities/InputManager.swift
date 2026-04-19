@@ -333,8 +333,13 @@ extension InputManager {
     ///   is scheduled in the future (e.g. 50 ms ahead for buffer priming), the
     ///   host-time zero-point must be projected forward so that a hit arriving
     ///   exactly at audio-start registers as zero elapsed time.
-    func startListening(songStartTime: Date, elapsedOffset: Double = 0.0, scheduledStartDelay: Double = 0.0) {
-        let rawHostTime = mach_absolute_time()
+    func startListening(
+        songStartTime: Date,
+        elapsedOffset: Double = 0.0,
+        scheduledStartDelay: Double = 0.0,
+        capturedHostTime: UInt64? = nil
+    ) {
+        let rawHostTime = capturedHostTime ?? mach_absolute_time()
         let songStartHostTime: UInt64
         if scheduledStartDelay > 0 {
             songStartHostTime = hostTimeConverter.hostTimeByAdding(seconds: scheduledStartDelay, to: rawHostTime)
