@@ -245,7 +245,8 @@ struct InputSettingsView: View {
                         midiDeviceRegistry.refreshSources()
                     }
                 } message: {
-                    Text("This will reset all keyboard and MIDI mappings to their default values. " +
+                    Text("This will reset all keyboard and MIDI mappings to their default values " +
+                         "and clear the selected MIDI device. " +
                          "This action cannot be undone.")
                 }
             }
