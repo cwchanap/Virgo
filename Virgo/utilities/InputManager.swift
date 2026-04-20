@@ -540,7 +540,11 @@ extension InputManager {
         let hit = InputHit(drumType: drumType, velocity: velocity, timestamp: now)
         
         // Calculate timing relative to song start
+        // Skip hits that arrive before audio has started (e.g. during the
+        // 50 ms scheduled-start window).  MIDI's host-time path applies the
+        // same guard via `hostElapsed >= 0`; this brings keyboard in line.
         let elapsedTime = now.timeIntervalSince(songStartTime)
+        guard elapsedTime >= 0 else { return }
         let result = calculateNoteMatch(for: hit, elapsedTime: elapsedTime, matcher: context.inputTimingMatcher)
         
         // Notify delegate on main thread

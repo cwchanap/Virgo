@@ -13,8 +13,10 @@ struct MIDIHostTimeConverter {
         var info = mach_timebase_info()
         mach_timebase_info(&info)
         // Convert seconds → nanoseconds → Mach ticks
+        // mach_timebase_info defines: nanoseconds = ticks * numer / denom
+        // Inverse: ticks = nanoseconds * denom / numer
         let nanosToAdd = seconds * 1_000_000_000.0
-        let ticksToAdd = UInt64(nanosToAdd * Double(info.numer) / Double(info.denom))
+        let ticksToAdd = UInt64(nanosToAdd * Double(info.denom) / Double(info.numer))
         return hostTime + ticksToAdd
     }
 }
