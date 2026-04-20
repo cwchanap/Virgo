@@ -128,7 +128,7 @@ final class GameplayViewModel {
     /// User-facing message for MIDI source gating / disconnects
     var midiDeviceAlertMessage = ""
     private var shouldGateGameplayOnSelectedMIDISource: Bool {
-        inputManager.requiresMIDISourceForGameplay || inputManager.hasSelectedMIDISourcePreference
+        inputManager.requiresMIDISourceForGameplay
     }
 
     // MARK: - Scoring State

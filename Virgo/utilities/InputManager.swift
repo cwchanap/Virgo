@@ -727,13 +727,17 @@ extension InputManager {
 
 extension InputManager {
     private func setupMIDI() {
+        var didSucceed = false
         midiConnectionQueue.sync {
-            setupMIDILocked()
+            didSucceed = setupMIDILocked()
         }
-        startMIDIMonitoring()
+        if didSucceed {
+            startMIDIMonitoring()
+        }
     }
 
-    private func setupMIDILocked() {
+    @discardableResult
+    private func setupMIDILocked() -> Bool {
         var status: OSStatus
         
         // Create MIDI client
@@ -745,7 +749,7 @@ extension InputManager {
         
         guard status == noErr else {
             Logger.error("Failed to create MIDI client for InputManager (status: \(status))")
-            return
+            return false
         }
         
         // Create input port
@@ -761,10 +765,11 @@ extension InputManager {
             MIDIClientDispose(midiClient)
             midiClient = 0
             midiInputPort = 0
-            return
+            return false
         }
         
         refreshMIDISourceConnectionsLocked()
+        return true
     }
     
     private func connectToAllMIDISources() {
