@@ -279,10 +279,10 @@ struct GameplayMIDIDisconnectTests {
         #expect(viewModel.isShowingMIDIDeviceAlert == true)
     }
 
-    @Test("macOS selected-source start gating still applies when a source was explicitly chosen")
-    func testMacOSSelectedSourceStillGatesWhenPreferenceExists() async throws {
+    @Test("macOS playback proceeds ungated when a source preference exists but device is unavailable")
+    func testMacOSPlaybackUngatedWhenPreferenceExistsButDeviceUnavailable() async throws {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
-            suiteName: "GameplayMIDIDisconnectTests.testMacOSSelectedSourceStillGatesWhenPreferenceExists"
+            suiteName: "GameplayMIDIDisconnectTests.testMacOSPlaybackUngatedWhenPreferenceExistsButDeviceUnavailable"
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
@@ -307,9 +307,8 @@ struct GameplayMIDIDisconnectTests {
 
         viewModel.startPlayback()
 
-        #expect(viewModel.isPlaying == false)
-        #expect(viewModel.isShowingMIDIDeviceAlert == true)
-        #expect(viewModel.midiDeviceAlertMessage.contains("Reconnect"))
+        #expect(viewModel.isPlaying == true)
+        #expect(viewModel.isShowingMIDIDeviceAlert == false)
     }
 
     @Test("wireInputHandler routes selected-source disconnects through the input manager delegate")
@@ -347,10 +346,10 @@ struct GameplayMIDIDisconnectTests {
         #expect(viewModel.isShowingMIDIDeviceAlert == true)
     }
 
-    @Test("selected-source disconnects still pause gameplay when a macOS source was explicitly chosen")
-    func testSelectedSourceDisconnectPausesGameplayWhenSelectionExistsOnMacOS() async throws {
+    @Test("selected-source disconnect is ignored on macOS when keyboard input is available")
+    func testSelectedSourceDisconnectIgnoredOnMacOSWhenKeyboardAvailable() async throws {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
-            suiteName: "GameplayMIDIDisconnectTests.testSelectedSourceDisconnectPausesGameplayWhenSelectionExistsOnMacOS"
+            suiteName: "GameplayMIDIDisconnectTests.testSelectedSourceDisconnectIgnoredOnMacOSWhenKeyboardAvailable"
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
@@ -378,8 +377,8 @@ struct GameplayMIDIDisconnectTests {
 
         viewModel.inputManager.handleSelectedSourceDisconnect(sourceID: "coremidi:2")
 
-        #expect(viewModel.isPlaying == false)
-        #expect(viewModel.isShowingMIDIDeviceAlert == true)
+        #expect(viewModel.isPlaying == true)
+        #expect(viewModel.isShowingMIDIDeviceAlert == false)
     }
 
     @Test("keyboard-first macOS playback remains ungated when no MIDI source is selected")
