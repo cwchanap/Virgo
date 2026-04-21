@@ -359,6 +359,7 @@ struct GameplayViewModelTests {
         viewModel.pausedElapsedTime = 2.0
 
         viewModel.updateSpeed(0.5)
+        try await Task.sleep(nanoseconds: 50_000_000)
 
         #expect(
             abs(viewModel.pausedElapsedTime - 4.0) < 0.001,
@@ -367,6 +368,10 @@ struct GameplayViewModelTests {
         #expect(
             abs(metronome.bpm - viewModel.effectiveBPM()) < 0.001,
             "Metronome BPM should still be updated in fallback path"
+        )
+        #expect(
+            metronome.isEnabled == true,
+            "Fallback speed change should reschedule the metronome instead of only updating BPM"
         )
 
         viewModel.cleanup()
@@ -1742,6 +1747,10 @@ struct GameplayViewModelTests {
         viewModel.pausePlayback()
         // After pause and reset (via restartPlayback), scheduled time should be nil
         viewModel.restartPlayback()
+        #expect(
+            viewModel.lastScheduledPlaybackStartTime == nil,
+            "restartPlayback should clear lastScheduledPlaybackStartTime via resetPlaybackState"
+        )
         // restartPlayback calls resetPlaybackState which clears lastScheduledPlaybackStartTime,
         // but then startPlayback sets it again if isPlaying. Since restartPlayback only calls
         // startPlayback when isPlaying==true, verify the reset happened.

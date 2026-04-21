@@ -164,7 +164,9 @@ final class MIDIDeviceRegistry: ObservableObject {
     func startMonitoring() -> Bool {
         refreshSources()
         let didStart = sourceChangeListener.start { [weak self] in
-            self?.refreshSourcesOnMainActor()
+            Task { @MainActor [weak self] in
+                self?.refreshSourcesOnMainActor()
+            }
         }
         if !didStart {
             Logger.error("Failed to start MIDI source monitoring")

@@ -339,10 +339,18 @@ final class GameplayViewModel {
                     let speedRatio = previousSpeed / currentSpeed
                     pausedElapsedTime *= speedRatio
                 }
-                metronome.updateBPM(effectiveBPMValue)
+                let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
+                totalBeatsElapsed = beatOffset
+                metronome.stop()
                 // Reschedule BGM to align with new rate when metronome time is unavailable
                 let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
                 lastScheduledPlaybackStartTime = scheduledStartTime
+                metronome.startAtTime(
+                    bpm: effectiveBPMValue,
+                    timeSignature: track?.timeSignature ?? .fourFour,
+                    startTime: scheduledStartTime,
+                    totalBeatsElapsed: beatOffset
+                )
                 rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
                 Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
             }
@@ -368,9 +376,12 @@ final class GameplayViewModel {
                     let elapsedSinceStart = Date().timeIntervalSince(playbackStartTime)
                     let speedRatio = previousSpeed / currentSpeed
                     let adjustedElapsed = elapsedSinceStart * speedRatio
-                    let newStartTime = Date().addingTimeInterval(-adjustedElapsed)
-                    self.playbackStartTime = newStartTime
-                    inputManager.startListening(songStartTime: newStartTime, elapsedOffset: adjustedElapsed)
+                    let adjustedSongStartTime = Date()
+                    self.playbackStartTime = adjustedSongStartTime
+                    inputManager.startListening(
+                        songStartTime: adjustedSongStartTime,
+                        elapsedOffset: adjustedElapsed
+                    )
                 }
             }
 
@@ -695,7 +706,7 @@ final class GameplayViewModel {
             )
         } else {
             // Fallback: no scheduled start time available (shouldn't happen)
-            let adjustedSongStartTime = Date().addingTimeInterval(-pausedElapsedTime)
+            let adjustedSongStartTime = Date()
             playbackStartTime = adjustedSongStartTime
             inputManager.startListening(
                 songStartTime: adjustedSongStartTime,

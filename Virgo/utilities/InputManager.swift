@@ -503,6 +503,10 @@ extension InputManager {
             publishMIDIDiagnostics(event: event, mappedDrumType: drumType)
             return nil
         }
+        guard elapsedTime >= 0 else {
+            publishMIDIDiagnostics(event: event, mappedDrumType: drumType)
+            return nil
+        }
 
         let hitTimestamp = context.songStartTime?.addingTimeInterval(elapsedTime) ?? Date()
         let velocity = min(1.0, max(0.0, Double(event.velocity) / 127.0))
@@ -578,10 +582,17 @@ extension InputManager {
             Logger.warning(
                 "Received MIDI event with host time earlier than playback start; falling back to wall-clock timing"
             )
+            if let songStartTime = context.songStartTime {
+                let wallClockElapsed = Date().timeIntervalSince(songStartTime)
+                if wallClockElapsed >= 0 {
+                    return wallClockElapsed
+                }
+            }
+            return hostElapsed
         }
 
         if let songStartTime = context.songStartTime {
-            return max(0, Date().timeIntervalSince(songStartTime))
+            return Date().timeIntervalSince(songStartTime)
         }
 
         return nil

@@ -83,7 +83,7 @@ struct MIDIDeviceRegistryTests {
     }
 
     @Test("source-change notifications trigger a refresh")
-    func startMonitoringRefreshesOnSourceChange() {
+    func startMonitoringRefreshesOnSourceChange() async throws {
         let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
             suiteName: "MIDIDeviceRegistryTests.startMonitoringRefreshesOnSourceChange"
         )
@@ -106,6 +106,7 @@ struct MIDIDeviceRegistryTests {
         ]
 
         listener.fire()
+        try await Task.sleep(nanoseconds: 50_000_000)
 
         #expect(registry.sources.first?.id == "coremidi:2")
     }
@@ -156,7 +157,7 @@ struct MIDIDeviceRegistryTests {
     }
 
     @Test("selected-source-unavailable callback fires after a disconnect")
-    func selectedSourceUnavailableCallbackFiresWhenAvailableSourceDisappears() {
+    func selectedSourceUnavailableCallbackFiresWhenAvailableSourceDisappears() async throws {
         let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
             suiteName: "MIDIDeviceRegistryTests.selectedSourceUnavailableCallbackFiresWhenAvailableSourceDisappears"
         )
@@ -183,6 +184,7 @@ struct MIDIDeviceRegistryTests {
         provider.sources = []
 
         listener.fire()
+        try await Task.sleep(nanoseconds: 50_000_000)
 
         #expect(unavailableSourceID == "coremidi:2")
         #expect(registry.isSelectedSourceAvailable == false)

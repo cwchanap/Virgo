@@ -120,10 +120,10 @@ struct InputManagerScheduledStartTests {
         }
     }
 
-    @Test("MIDI event before scheduled start falls back to wall-clock")
-    func midiEventBeforeScheduledStartTimeFallsBack() {
+    @Test("MIDI event before scheduled start is ignored")
+    func midiEventBeforeScheduledStartTimeIsIgnored() {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
-            suiteName: "InputManagerScheduledStartTests.midiEventBeforeScheduledStartTimeFallsBack"
+            suiteName: "InputManagerScheduledStartTests.midiEventBeforeScheduledStartTimeIsIgnored"
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
@@ -153,6 +153,6 @@ struct InputManagerScheduledStartTests {
             MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: capturedHostTime)
         )
 
-        #expect(result != nil, "MIDI event before scheduled start should fall back to wall-clock")
+        #expect(result == nil, "MIDI event before scheduled start should be ignored")
     }
 }
