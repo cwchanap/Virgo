@@ -1695,10 +1695,13 @@ struct GameplayViewModelTests {
         let scheduledTime = try #require(viewModel.lastScheduledPlaybackStartTime,
                                           "lastScheduledPlaybackStartTime should be set after startPlayback")
         let now = CFAbsoluteTimeGetCurrent()
-        // For a fresh metronome-only start, the scheduled time should be ~now (no 0.05s delay)
-        let scheduledDrift = abs(scheduledTime - now)
-        #expect(scheduledDrift < 0.1,
-                "Fresh metronome-only scheduled time should be close to now (drift: \(scheduledDrift)s)")
+        // For a fresh metronome-only start, the scheduled time should be ~0.05s in the future
+        // (consistent with BGM cases, allowing inputManager.startListening to be called before audio starts)
+        let timeUntilScheduled = scheduledTime - now
+        #expect(timeUntilScheduled > 0.03,
+                "Fresh metronome-only scheduled time should be in the future (delay: \(timeUntilScheduled)s)")
+        #expect(timeUntilScheduled <= 0.1,
+                "Fresh metronome-only scheduled time should be ~0.05s in the future (delay: \(timeUntilScheduled)s)")
 
         // playbackStartTime should be derived from the scheduled time, not wall-clock Date()
         let playbackStart = try #require(viewModel.playbackStartTime)
