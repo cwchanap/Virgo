@@ -507,7 +507,8 @@ final class GameplayViewModel {
             return
         }
 
-        if !TestEnvironment.isRunningTests {
+        let isUITesting = ProcessInfo.processInfo.arguments.contains(LaunchArguments.uiTesting)
+        if !TestEnvironment.isRunningTests && !isUITesting {
             #if os(iOS)
             inputManager.requiresMIDISourceForGameplay = true
             #else
