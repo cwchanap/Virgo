@@ -131,7 +131,7 @@ struct InputManagerMIDIGameplayTests {
         manager.startListening(songStartTime: Date())
 
         let result = manager.handleMIDINoteEvent(
-            MIDINoteEvent(sourceID: "source-2", channel: 9, note: 38, velocity: 120, hostTime: 10)
+            MIDINoteEvent(sourceID: "source-2", channel: 9, note: 38, velocity: 120, hostTime: mach_absolute_time())
         )
 
         #expect(result?.matchedNote != nil)
@@ -338,7 +338,7 @@ struct InputManagerMIDIGameplayTests {
 
         // Event from a connected device that is NOT explicitly selected
         let result = manager.handleMIDINoteEvent(
-            MIDINoteEvent(sourceID: "midi-kit-1", channel: 9, note: 38, velocity: 120, hostTime: 10)
+            MIDINoteEvent(sourceID: "midi-kit-1", channel: 9, note: 38, velocity: 120, hostTime: mach_absolute_time())
         )
 
         #expect(result?.matchedNote != nil)

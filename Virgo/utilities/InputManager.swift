@@ -580,15 +580,14 @@ extension InputManager {
                 return hostElapsed + context.hostTimeElapsedOffset
             }
             Logger.warning(
-                "Received MIDI event with host time earlier than playback start; falling back to wall-clock timing"
+                "Received MIDI event with host time earlier than playback start; rejecting hit"
             )
-            if let songStartTime = context.songStartTime {
-                let wallClockElapsed = Date().timeIntervalSince(songStartTime)
-                if wallClockElapsed >= 0 {
-                    return wallClockElapsed
-                }
-            }
-            return hostElapsed
+            // When hostElapsed is negative the hit arrived before audio actually started
+            // (e.g. during the scheduled-start window after resume or speed change).
+            // Do NOT fall back to wall-clock timing — songStartTime is backdated on
+            // resume, so wall-clock would compute a large positive value and score the
+            // hit against a note that hasn't been reached yet.
+            return nil
         }
 
         if let songStartTime = context.songStartTime {

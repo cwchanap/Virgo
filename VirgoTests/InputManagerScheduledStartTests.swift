@@ -155,4 +155,48 @@ struct InputManagerScheduledStartTests {
 
         #expect(result == nil, "MIDI event before scheduled start should be ignored")
     }
+
+    @Test("MIDI event before scheduled start is rejected even when songStartTime is backdated (resume)")
+    func preStartMIDIRejectedWithBackdatedStartTime() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerScheduledStartTests.preStartMIDIRejectedWithBackdatedStartTime"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+
+        // Note at measure 5 (expectedTime ≈ 8.0s at 120 BPM 4/4) — well past the
+        // backdated start time, so a wall-clock fallback would incorrectly match it.
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 5, measureOffset: 0.0)
+            ]
+        )
+
+        // Simulate resume: songStartTime is backdated by 8.0s, with a 50ms scheduled delay.
+        // If wall-clock fallback were active, Date() - backdatedStart ≈ 8.0s would match the note.
+        let elapsedOffset = 8.0
+        let scheduledDelay = 0.05
+        let capturedHostTime = mach_absolute_time()
+        manager.startListening(
+            songStartTime: Date().addingTimeInterval(scheduledDelay - elapsedOffset),
+            elapsedOffset: elapsedOffset,
+            scheduledStartDelay: scheduledDelay,
+            capturedHostTime: capturedHostTime
+        )
+
+        // MIDI event arrives NOW (before the 50ms scheduled start).
+        // hostElapsed is negative, so the hit must be rejected.
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: capturedHostTime)
+        )
+
+        #expect(result == nil, "MIDI event before scheduled start must be rejected even with backdated songStartTime")
+    }
 }
