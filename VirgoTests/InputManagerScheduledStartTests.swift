@@ -199,4 +199,113 @@ struct InputManagerScheduledStartTests {
 
         #expect(result == nil, "MIDI event before scheduled start must be rejected even with backdated songStartTime")
     }
+
+    // MARK: - P2: Keyboard input rejected during scheduled-start window with backdated start time
+
+    @Test("Keyboard hit before scheduled start is rejected when songStartTime is backdated (resume)")
+    func preStartKeyboardHitRejectedWithBackdatedStartTime() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerScheduledStartTests.preStartKeyboardHitRejectedWithBackdatedStartTime"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [:]
+        )
+
+        // Note at measure 5 (expectedTime ≈ 8.0s at 120 BPM 4/4) — well past the
+        // backdated start time, so a wall-clock fallback would incorrectly match it.
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 5, measureOffset: 0.0)
+            ]
+        )
+
+        // Simulate resume: songStartTime is backdated by 8.0s, with a 50ms scheduled delay.
+        // The effective audio start time is songStartTime + elapsedOffset (8.0s after songStartTime).
+        //
+        // Without the fix (using only wall-clock elapsedTime >= 0 check):
+        //   elapsedTime = now - backdatedStart = ~8.0s (positive, passes guard, WRONGLY matches note)
+        //
+        // With the fix (using effectiveAudioStartTime = songStartTime + elapsedOffset):
+        //   effectiveAudioStartTime = backdatedStart + 8.0s = ~now + 0.05s
+        //   now.timeIntervalSince(effectiveAudioStartTime) = -0.05s (negative, rejected correctly)
+        let elapsedOffset = 8.0
+        let scheduledDelay = 0.05
+        let backdatedStartTime = Date().addingTimeInterval(scheduledDelay - elapsedOffset)
+        manager.startListening(
+            songStartTime: backdatedStartTime,
+            elapsedOffset: elapsedOffset,
+            scheduledStartDelay: scheduledDelay
+        )
+
+        let delegate = RecordingInputManagerDelegate()
+        manager.delegate = delegate
+        let hitCountBefore = delegate.receivedHits.count
+
+        // Process a keyboard hit NOW, before the scheduled start time has been reached.
+        // With the fix, this should be rejected because effectiveAudioStartTime is in the future.
+        manager.processInput(.snare, velocity: 1.0)
+
+        // The hit should be rejected (no delegate callback) because it arrived before audio started.
+        // Without the fix, the hit would be incorrectly processed because elapsedTime ≈ 8.0s >= 0.
+        #expect(delegate.receivedHits.count == hitCountBefore,
+                "Keyboard hit before scheduled start should be rejected when songStartTime is backdated")
+    }
+
+    @Test("Keyboard hit at/after scheduled start is accepted (fresh start)")
+    func keyboardHitAtScheduledStartAcceptedFreshStart() async throws {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerScheduledStartTests.keyboardHitAtScheduledStartAcceptedFreshStart"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [:]
+        )
+
+        // Note at measure 1, beat 1 (expectedTime = 0.0s, immediately at start)
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+
+        // Fresh start: songStartTime is 50ms in the future, no elapsedOffset
+        let scheduledDelay = 0.05
+        let futureStartTime = Date().addingTimeInterval(scheduledDelay)
+        manager.startListening(
+            songStartTime: futureStartTime,
+            elapsedOffset: 0.0,
+            scheduledStartDelay: scheduledDelay
+        )
+
+        let delegate = RecordingInputManagerDelegate()
+        manager.delegate = delegate
+
+        // Wait for the scheduled start time to pass
+        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
+        // Process a keyboard hit AFTER the scheduled start time.
+        // This should be accepted because effectiveAudioStartTime has been reached.
+        manager.processInput(.snare, velocity: 1.0)
+
+        // processInput dispatches delegate callbacks asynchronously on the main queue.
+        // Yield to allow the async blocks to fire before checking delegate state.
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // The hit should be processed and delegate callback should fire
+        #expect(delegate.receivedHits.count == 1,
+                "Keyboard hit after scheduled start should be accepted")
+        #expect(delegate.receivedResults.count == 1,
+                "Keyboard hit should produce a match result")
+    }
 }

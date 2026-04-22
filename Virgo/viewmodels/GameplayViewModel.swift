@@ -970,11 +970,15 @@ final class GameplayViewModel {
             return commonStartTime
         } else {
             Logger.audioPlayback("🎮 Starting metronome-only playback")
-            // Fresh metronome start uses immediate timing (no setupTime delay).
-            // Capture the CFAbsoluteTime that MetronomeTimingEngine will use as startTime
-            // so the input timeline is aligned with it.
-            let startTime = CFAbsoluteTimeGetCurrent()
-            metronome.start(bpm: effectiveBPM, timeSignature: track.timeSignature)
+            // Fresh metronome start uses scheduled timing (setupTime delay) to match BGM cases,
+            // ensuring inputManager.startListening is called before audio actually begins.
+            let setupTime: TimeInterval = 0.05
+            let startTime = CFAbsoluteTimeGetCurrent() + setupTime
+            metronome.startAtTime(
+                bpm: effectiveBPM,
+                timeSignature: track.timeSignature,
+                startTime: startTime
+            )
             return startTime
         }
     }

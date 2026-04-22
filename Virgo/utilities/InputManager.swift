@@ -154,6 +154,7 @@ class InputManager: ObservableObject {
 
     private struct KeyboardInputContext {
         let songStartTime: Date?
+        let elapsedOffset: Double
         let keyboardMapping: [String: DrumType]
         let inputTimingMatcher: InputTimingMatcher?
     }
@@ -281,6 +282,7 @@ class InputManager: ObservableObject {
         withRuntimeState {
             KeyboardInputContext(
                 songStartTime: songStartTime,
+                elapsedOffset: hostTimeElapsedOffset,
                 keyboardMapping: keyboardMapping,
                 inputTimingMatcher: inputTimingMatcher
             )
@@ -536,19 +538,22 @@ extension InputManager {
         }
     }
 
-    private func processInput(_ drumType: DrumType, velocity: Double = 1.0) {
+    func processInput(_ drumType: DrumType, velocity: Double = 1.0) {
         let context = currentKeyboardInputContext()
         guard let songStartTime = context.songStartTime else { return }
-        
+
         let now = Date()
         let hit = InputHit(drumType: drumType, velocity: velocity, timestamp: now)
-        
+
         // Calculate timing relative to song start
         // Skip hits that arrive before audio has started (e.g. during the
         // 50 ms scheduled-start window).  MIDI's host-time path applies the
         // same guard via `hostElapsed >= 0`; this brings keyboard in line.
+        // When resuming or speed-changing, songStartTime is backdated by elapsedOffset,
+        // so we must check against the effective audio start time (songStartTime + elapsedOffset).
+        let effectiveAudioStartTime = songStartTime.addingTimeInterval(context.elapsedOffset)
+        guard now.timeIntervalSince(effectiveAudioStartTime) >= 0 else { return }
         let elapsedTime = now.timeIntervalSince(songStartTime)
-        guard elapsedTime >= 0 else { return }
         let result = calculateNoteMatch(for: hit, elapsedTime: elapsedTime, matcher: context.inputTimingMatcher)
         
         // Notify delegate on main thread
