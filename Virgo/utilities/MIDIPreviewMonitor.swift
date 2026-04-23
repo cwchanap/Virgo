@@ -225,6 +225,10 @@ final class MIDIPreviewMonitor: ObservableObject {
     private let sourceIDResolver: MIDISourceIDResolving
     private let packetListener: MIDIPreviewPacketListening
 
+    /// Guards against already-enqueued main-queue blocks firing after `stop()`.
+    /// Checked on the main thread inside dispatched blocks.
+    private var isActive = false
+
     var onEvent: ((MIDINoteEvent) -> Void)?
 
     init(
@@ -247,6 +251,7 @@ final class MIDIPreviewMonitor: ObservableObject {
 
     @discardableResult
     func start() -> Bool {
+        isActive = true
         let didStart = packetListener.start { [weak self] packetList, sourceUniqueID, sourceDisplayName in
             self?.handle(
                 packetList: packetList,
@@ -255,12 +260,14 @@ final class MIDIPreviewMonitor: ObservableObject {
             )
         }
         if !didStart {
+            isActive = false
             Logger.error("Failed to start MIDI preview packet listener")
         }
         return didStart
     }
 
     func stop() {
+        isActive = false
         packetListener.stop()
     }
 
@@ -277,8 +284,9 @@ final class MIDIPreviewMonitor: ObservableObject {
         if Thread.isMainThread {
             publish(events: events, sourceDisplayName: sourceDisplayName)
         } else {
+            guard isActive else { return }
             DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
+                guard let self, self.isActive else { return }
                 self.publish(
                     events: events,
                     sourceDisplayName: sourceDisplayName

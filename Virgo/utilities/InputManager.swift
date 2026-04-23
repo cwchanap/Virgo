@@ -194,14 +194,14 @@ class InputManager: ObservableObject {
     }
 
     deinit {
-        guard !isTestEnvironment else { return }
-        
-        // Clean up keyboard event monitors
+        // Always clean up keyboard monitors if they were installed (even in test
+        // environments, where startListening() may have been called).
         #if os(macOS)
         stopKeyboardListening()
         #endif
-        
-        // Clean up MIDI resources
+
+        // Only tear down CoreMIDI resources in non-test environments.
+        guard !isTestEnvironment else { return }
         teardownMIDI()
     }
 
@@ -354,6 +354,12 @@ extension InputManager {
             self.hostTimeElapsedOffset = elapsedOffset
         }
         refreshSelectedMIDISourceStateFromSettings()
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.startKeyboardListening()
+            }
+            return
+        }
         startKeyboardListening()
         // MIDI is already listening from setup
     }
@@ -363,6 +369,12 @@ extension InputManager {
             self.songStartTime = nil
             self.songStartHostTime = nil
             self.hostTimeElapsedOffset = 0.0
+        }
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.stopKeyboardListening()
+            }
+            return
         }
         stopKeyboardListening()
         // MIDI continues to listen but won't process hits without songStartTime
