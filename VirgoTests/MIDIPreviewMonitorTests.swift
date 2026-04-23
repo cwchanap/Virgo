@@ -218,4 +218,212 @@ struct MIDIPreviewMonitorTests {
         #expect(diagnostics.lastEvent?.note == 38)
         #expect(diagnostics.lastEvent?.mappedDrumType == .ride)
     }
+
+    @Test("stop prevents already-enqueued main-queue publishes from firing")
+    func stopPreventsEnqueuedPublishes() async throws {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.stopPreventsEnqueuedPublishes"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let diagnostics = MIDIDiagnosticsStore()
+        let monitor = MIDIPreviewMonitor(
+            diagnosticsStore: diagnostics,
+            settingsManager: settings
+        )
+
+        var eventCount = 0
+        monitor.onEvent = { _ in
+            eventCount += 1
+        }
+
+        monitor.start()
+
+        // Simulate a packet arriving on a background thread, which enqueues
+        // a DispatchQueue.main.async block.
+        let semaphore = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            monitor.handle(
+                packets: [.init(timestamp: 10, bytes: [0x99, 40, 120])],
+                sourceID: "coremidi:1",
+                sourceDisplayName: "Test Source"
+            )
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        // stop() sets isActive = false before the enqueued block runs.
+        monitor.stop()
+
+        // Yield to let any pending main-queue blocks execute.
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(eventCount == 0, "Event should NOT have been delivered after stop()")
+        #expect(diagnostics.lastEvent == nil, "Diagnostics should NOT have been recorded after stop()")
+    }
+
+    @Test("handle on main thread after stop still publishes (synchronous, no race)")
+    func handleOnMainThreadAfterStopStillPublishes() {
+        // Main-thread handle() calls are synchronous and not susceptible to
+        // the async-dispatch race that isActive guards against. They publish
+        // regardless of the active state — the caller explicitly invoked it.
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.handleOnMainThreadAfterStopStillPublishes"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let diagnostics = MIDIDiagnosticsStore()
+        let monitor = MIDIPreviewMonitor(
+            diagnosticsStore: diagnostics,
+            settingsManager: settings
+        )
+
+        var eventCount = 0
+        monitor.onEvent = { _ in
+            eventCount += 1
+        }
+
+        monitor.start()
+        monitor.stop()
+
+        // Calling handle() directly on main thread publishes — no race condition.
+        monitor.handle(
+            packets: [.init(timestamp: 10, bytes: [0x99, 40, 120])],
+            sourceID: "coremidi:1",
+            sourceDisplayName: "Test Source"
+        )
+
+        #expect(eventCount == 1, "Main-thread handle() should still publish after stop()")
+        #expect(diagnostics.lastEvent?.note == 40)
+    }
+
+    @Test("background-thread handle after stop is blocked by isActive guard")
+    func backgroundThreadHandleAfterStopIsBlocked() async throws {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.backgroundThreadHandleAfterStopIsBlocked"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let diagnostics = MIDIDiagnosticsStore()
+        let monitor = MIDIPreviewMonitor(
+            diagnosticsStore: diagnostics,
+            settingsManager: settings
+        )
+
+        var eventCount = 0
+        monitor.onEvent = { _ in
+            eventCount += 1
+        }
+
+        // Stop without ever starting — isActive is false.
+        monitor.stop()
+
+        let semaphore = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            monitor.handle(
+                packets: [.init(timestamp: 10, bytes: [0x99, 40, 120])],
+                sourceID: "coremidi:1",
+                sourceDisplayName: "Test Source"
+            )
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        // Yield to let any pending main-queue blocks execute.
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(eventCount == 0, "Background-thread handle should be blocked when not active")
+    }
+
+    @Test("start resets isActive to allow background events through again")
+    func startResetsIsActive() async throws {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.startResetsIsActive"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let diagnostics = MIDIDiagnosticsStore()
+        let monitor = MIDIPreviewMonitor(
+            diagnosticsStore: diagnostics,
+            settingsManager: settings
+        )
+
+        var eventCount = 0
+        monitor.onEvent = { _ in
+            eventCount += 1
+        }
+
+        monitor.start()
+        monitor.stop()
+
+        // After stop, background-thread events should be blocked.
+        let semaphore1 = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            monitor.handle(
+                packets: [.init(timestamp: 10, bytes: [0x99, 40, 120])],
+                sourceID: "coremidi:1",
+                sourceDisplayName: "Test Source"
+            )
+            semaphore1.signal()
+        }
+        semaphore1.wait()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(eventCount == 0)
+
+        // After restart, background-thread events should flow again.
+        monitor.start()
+        let semaphore2 = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            monitor.handle(
+                packets: [.init(timestamp: 20, bytes: [0x99, 36, 80])],
+                sourceID: "coremidi:1",
+                sourceDisplayName: "Test Source"
+            )
+            semaphore2.signal()
+        }
+        semaphore2.wait()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(eventCount == 1)
+        #expect(diagnostics.lastEvent?.note == 36)
+    }
+
+    @Test("failed start does not set isActive")
+    func failedStartDoesNotSetIsActive() async throws {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.failedStartDoesNotSetIsActive"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let diagnostics = MIDIDiagnosticsStore()
+        let listener = StubMIDIPreviewPacketListener()
+        listener.startResult = false
+        let monitor = MIDIPreviewMonitor(
+            diagnosticsStore: diagnostics,
+            settingsManager: settings,
+            packetListener: listener
+        )
+
+        let didStart = monitor.start()
+        #expect(didStart == false)
+
+        // Even though start() was called, it failed, so isActive should be false.
+        var eventCount = 0
+        monitor.onEvent = { _ in
+            eventCount += 1
+        }
+
+        // Test from background thread since isActive only guards that path.
+        let semaphore = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            monitor.handle(
+                packets: [.init(timestamp: 10, bytes: [0x99, 40, 120])],
+                sourceID: "coremidi:1",
+                sourceDisplayName: "Test Source"
+            )
+            semaphore.signal()
+        }
+        semaphore.wait()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(eventCount == 0, "Background events should not flow after failed start")
+    }
 }
