@@ -182,13 +182,15 @@ struct InputSettingsView: View {
                 )
             }
 
-            if !TestEnvironment.isRunningTests {
+            let isUITesting = ProcessInfo.processInfo.arguments.contains(LaunchArguments.uiTesting)
+            if !TestEnvironment.isRunningTests && !isUITesting {
                 midiDeviceRegistry.startMonitoring()
                 midiPreviewMonitor.start()
             }
         }
         .onDisappear {
-            if !TestEnvironment.isRunningTests {
+            let isUITesting = ProcessInfo.processInfo.arguments.contains(LaunchArguments.uiTesting)
+            if !TestEnvironment.isRunningTests && !isUITesting {
                 midiPreviewMonitor.stop()
                 midiDeviceRegistry.stopMonitoring()
             }
