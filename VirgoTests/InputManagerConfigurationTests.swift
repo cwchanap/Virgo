@@ -432,4 +432,111 @@ struct InputManagerConfigurationTests {
         #expect(manager.getMIDIMapping().count == 1)
         #expect(manager.getMIDIMapping()[60] == .snare)
     }
+
+    // MARK: - findStaleConnectedEndpoints (Bug #1: stable-ID dedup)
+
+    @Test("findStaleConnectedEndpoints returns empty when no stable ID collisions")
+    func testFindStaleEndpointsNoCollisions() {
+        let connected: [MIDIEndpointRef: String] = [
+            1: "coremidi:100",
+            2: "coremidi:200"
+        ]
+        let newEndpoints: [MIDIEndpointRef: String] = [
+            3: "coremidi:300"
+        ]
+        let stale = InputManager.findStaleConnectedEndpoints(
+            connectedSourceIDs: connected,
+            newEndpointSourceIDs: newEndpoints
+        )
+        #expect(stale.isEmpty)
+    }
+
+    @Test("findStaleConnectedEndpoints detects stale endpoint with same stable ID as new endpoint")
+    func testFindStaleEndpointsDetectsDuplicate() {
+        let connected: [MIDIEndpointRef: String] = [
+            1: "coremidi:100",
+            2: "coremidi:200"
+        ]
+        // Endpoint 3 has the same stable ID as connected endpoint 1
+        let newEndpoints: [MIDIEndpointRef: String] = [
+            3: "coremidi:100"
+        ]
+        let stale = InputManager.findStaleConnectedEndpoints(
+            connectedSourceIDs: connected,
+            newEndpointSourceIDs: newEndpoints
+        )
+        #expect(stale == [1])
+    }
+
+    @Test("findStaleConnectedEndpoints handles multiple collisions")
+    func testFindStaleEndpointsMultipleCollisions() {
+        let connected: [MIDIEndpointRef: String] = [
+            1: "coremidi:100",
+            2: "coremidi:200",
+            3: "coremidi:300"
+        ]
+        // Endpoints 4 and 5 collide with 1 and 3 respectively
+        let newEndpoints: [MIDIEndpointRef: String] = [
+            4: "coremidi:100",
+            5: "coremidi:300"
+        ]
+        let stale = InputManager.findStaleConnectedEndpoints(
+            connectedSourceIDs: connected,
+            newEndpointSourceIDs: newEndpoints
+        )
+        #expect(stale == [1, 3])
+    }
+
+    @Test("findStaleConnectedEndpoints returns empty for empty inputs")
+    func testFindStaleEndpointsEmpty() {
+        #expect(
+            InputManager.findStaleConnectedEndpoints(
+                connectedSourceIDs: [:],
+                newEndpointSourceIDs: [MIDIEndpointRef(5): "coremidi:100"]
+            ).isEmpty
+        )
+        #expect(
+            InputManager.findStaleConnectedEndpoints(
+                connectedSourceIDs: [MIDIEndpointRef(5): "coremidi:100"],
+                newEndpointSourceIDs: [:]
+            ).isEmpty
+        )
+        #expect(
+            InputManager.findStaleConnectedEndpoints(
+                connectedSourceIDs: [:],
+                newEndpointSourceIDs: [:]
+            ).isEmpty
+        )
+    }
+
+    // MARK: - Connection availability gate (Bug #2)
+
+    @Test("isSelectedMIDISourceAvailable falls back to registry when MIDI not initialized")
+    func testAvailabilityFallsBackToRegistryWithoutMIDI() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerConfigurationTests.AvailabilityGate.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        settingsManager.setSelectedMIDISource(id: "source-1", displayName: "TD-17")
+
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settingsManager,
+            sourceProvider: StubMIDISourceProvider([
+                MIDISourceDescriptor(id: "source-1", displayName: "TD-17", isConnected: true)
+            ]),
+            sourceChangeListener: StubMIDISourceChangeListener()
+        )
+        let manager = InputManager(
+            settingsManager: settingsManager,
+            deviceRegistry: registry,
+            diagnosticsStore: MIDIDiagnosticsStore(),
+            learnSession: MIDILearnSession(settingsManager: settingsManager)
+        )
+
+        manager.reloadMappingsFromSettings()
+
+        // MIDI subsystem not initialized in test — should fall back to registry
+        #expect(manager.isSelectedMIDISourceAvailable == true)
+    }
 }
