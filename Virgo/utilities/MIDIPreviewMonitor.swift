@@ -284,7 +284,8 @@ final class MIDIPreviewMonitor: ObservableObject {
         if Thread.isMainThread {
             publish(events: events, sourceDisplayName: sourceDisplayName)
         } else {
-            guard isActive else { return }
+            // Always dispatch to main thread; the real isActive guard runs
+            // on the main thread where all writes occur, avoiding a data race.
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.isActive else { return }
                 self.publish(

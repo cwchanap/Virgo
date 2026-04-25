@@ -70,8 +70,6 @@ struct InputManagerScheduledStartTests {
             diagnosticsStore: MIDIDiagnosticsStore(),
             learnSession: MIDILearnSession(settingsManager: settingsManager)
         )
-        let delegate = RecordingInputManagerDelegate()
-        manager.delegate = delegate
         manager.reloadMappingsFromSettings()
 
         return manager
@@ -298,9 +296,12 @@ struct InputManagerScheduledStartTests {
         // This should be accepted because effectiveAudioStartTime has been reached.
         manager.processInput(.snare, velocity: 1.0)
 
-        // processInput dispatches delegate callbacks asynchronously on the main queue.
-        // Yield to allow the async blocks to fire before checking delegate state.
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Poll for delegate callback instead of relying on a fixed sleep,
+        // since processInput dispatches to main queue asynchronously.
+        let deadline = ContinuousClock.now + .milliseconds(200)
+        while delegate.receivedHits.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(nanoseconds: 5_000_000) // 5ms polls
+        }
 
         // The hit should be processed and delegate callback should fire
         #expect(delegate.receivedHits.count == 1,

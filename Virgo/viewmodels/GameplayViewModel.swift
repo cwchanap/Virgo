@@ -744,7 +744,10 @@ final class GameplayViewModel {
         if let metronomeTime = metronome.getCurrentPlaybackTime() {
             pausedElapsedTime += metronomeTime
         } else if let startTime = playbackStartTime {
-            pausedElapsedTime += Date().timeIntervalSince(startTime)
+            // playbackStartTime is backdated by pausedElapsedTime, so the raw
+            // interval already represents total elapsed song time. Use assignment
+            // (not +=) to avoid double-counting the pause offset.
+            pausedElapsedTime = Date().timeIntervalSince(startTime)
         }
 
         metronome.stop()
@@ -1124,7 +1127,9 @@ final class GameplayViewModel {
         if let metronomeTime = metronome.getCurrentPlaybackTime() {
             return pausedElapsedTime + metronomeTime
         } else if isPlaying, let startTime = playbackStartTime {
-            return pausedElapsedTime + Date().timeIntervalSince(startTime)
+            // playbackStartTime is backdated by pausedElapsedTime (e.g. scheduledStart - pausedElapsedTime),
+            // so the raw interval already includes the pause offset. Do NOT add pausedElapsedTime again.
+            return Date().timeIntervalSince(startTime)
         }
         return nil
     }
