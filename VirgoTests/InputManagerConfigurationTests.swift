@@ -337,6 +337,79 @@ struct InputManagerConfigurationTests {
         )
     }
 
+    // MARK: - computeMIDISourceDiff
+
+    @Test("computeMIDISourceDiff: no changes when current matches connected")
+    func testDiffNoChanges() {
+        let endpoints: Set<MIDIEndpointRef> = [1, 2, 3]
+        let diff = InputManager.computeMIDISourceDiff(
+            currentEndpoints: endpoints,
+            connectedEndpoints: endpoints
+        )
+        #expect(diff.toConnect.isEmpty)
+        #expect(diff.toDisconnect.isEmpty)
+        #expect(diff.hasChanges == false)
+    }
+
+    @Test("computeMIDISourceDiff: new source detected")
+    func testDiffNewSource() {
+        let diff = InputManager.computeMIDISourceDiff(
+            currentEndpoints: [1, 2, 3],
+            connectedEndpoints: [1, 2]
+        )
+        #expect(diff.toConnect == [3])
+        #expect(diff.toDisconnect.isEmpty)
+        #expect(diff.hasChanges == true)
+    }
+
+    @Test("computeMIDISourceDiff: removed source detected")
+    func testDiffRemovedSource() {
+        let diff = InputManager.computeMIDISourceDiff(
+            currentEndpoints: [1, 2],
+            connectedEndpoints: [1, 2, 3]
+        )
+        #expect(diff.toConnect.isEmpty)
+        #expect(diff.toDisconnect == [3])
+        #expect(diff.hasChanges == true)
+    }
+
+    @Test("computeMIDISourceDiff: mixed additions and removals")
+    func testDiffMixed() {
+        let diff = InputManager.computeMIDISourceDiff(
+            currentEndpoints: [1, 4],
+            connectedEndpoints: [1, 2, 3]
+        )
+        #expect(diff.toConnect == [4])
+        #expect(diff.toDisconnect == [2, 3])
+        #expect(diff.hasChanges == true)
+    }
+
+    @Test("computeMIDISourceDiff: existing source preserved when unrelated source added")
+    func testDiffExistingSourcePreserved() {
+        // Simulates the core P2 scenario: the active device (endpoint 1) must not
+        // appear in either toConnect or toDisconnect when a new device (endpoint 2)
+        // appears.
+        let diff = InputManager.computeMIDISourceDiff(
+            currentEndpoints: [1, 2],
+            connectedEndpoints: [1]
+        )
+        #expect(diff.toConnect == [2])
+        #expect(diff.toDisconnect.isEmpty)
+        #expect(!diff.toConnect.contains(1),
+                "Existing active source should not be reconnected")
+        #expect(!diff.toDisconnect.contains(1),
+                "Existing active source should not be disconnected")
+    }
+
+    @Test("computeMIDISourceDiff: empty current and connected yields no changes")
+    func testDiffEmpty() {
+        let diff = InputManager.computeMIDISourceDiff(
+            currentEndpoints: [],
+            connectedEndpoints: []
+        )
+        #expect(diff.hasChanges == false)
+    }
+
     @Test("requiresMIDISourceForGameplay defaults to false")
     func testRequiresMIDISourceForGameplayDefaultsToFalse() {
         let manager = InputManager()

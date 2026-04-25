@@ -592,6 +592,17 @@ extension InputManager {
         context: MIDINoteHandlingContext
     ) -> Double? {
         if let songStartHostTime = context.songStartHostTime {
+            // Some MIDI drivers emit packets with timeStamp == 0, meaning the
+            // device did not provide a host timestamp.  Treat hostTime == 0 as
+            // "unknown host time" and fall back to wall-clock timing with the
+            // same effective-audio-start guard used by the keyboard path.
+            if event.hostTime == 0 {
+                return wallClockElapsedTime(
+                    songStartTime: context.songStartTime,
+                    elapsedOffset: context.hostTimeElapsedOffset
+                )
+            }
+
             let hostElapsed = hostTimeConverter.elapsedSeconds(from: songStartHostTime, to: event.hostTime)
             if hostElapsed >= 0 {
                 return hostElapsed + context.hostTimeElapsedOffset
@@ -612,6 +623,20 @@ extension InputManager {
         }
 
         return nil
+    }
+
+    /// Wall-clock elapsed time with effective-audio-start guard.
+    ///
+    /// When resuming or changing speed, `songStartTime` is backdated by
+    /// `elapsedOffset`, so `Date() - songStartTime` alone would be positive
+    /// even before audio actually starts.  The guard compares against the
+    /// effective audio start (`songStartTime + elapsedOffset`) to reject
+    /// pre-start hits.
+    private func wallClockElapsedTime(songStartTime: Date?, elapsedOffset: Double) -> Double? {
+        guard let songStartTime else { return nil }
+        let effectiveAudioStartTime = songStartTime.addingTimeInterval(elapsedOffset)
+        guard Date().timeIntervalSince(effectiveAudioStartTime) >= 0 else { return nil }
+        return Date().timeIntervalSince(songStartTime)
     }
 
     private func consumeLearnSessionIfNeeded(_ event: MIDINoteEvent) {
@@ -799,41 +824,6 @@ extension InputManager {
         return true
     }
     
-    private func connectToAllMIDISources() {
-        let sourceCount = MIDIGetNumberOfSources()
-        var connectedSources = Set(midiSourceContexts.keys)
-        
-        for i in 0..<sourceCount {
-            let source = MIDIGetSource(i)
-            guard source != 0,
-                  let uniqueID = CoreMIDISourceMetadata.uniqueID(for: source) else { continue }
-
-            let sourceID = sourceIDResolver.stableSourceID(for: uniqueID)
-            guard Self.shouldConnectMIDISource(source, existingConnectedSources: connectedSources) else {
-                Logger.warning(
-                    "Skipping InputManager MIDI reconnect for source \(sourceID) because an existing connection context is still retained"
-                )
-                continue
-            }
-
-            let context = Unmanaged.passRetained(
-                MIDISourceConnectionContext(sourceID: sourceID)
-            )
-
-            let status = MIDIPortConnectSource(midiInputPort, source, context.toOpaque())
-            guard status == noErr else {
-                Logger.error(
-                    "Failed to connect InputManager MIDI input port to source \(sourceID) (status: \(status))"
-                )
-                context.release()
-                continue
-            }
-
-            midiSourceContexts[source] = context
-            connectedSources.insert(source)
-        }
-    }
-    
     private func teardownMIDI() {
         midiConnectionQueue.sync {
             teardownMIDILocked()
@@ -868,12 +858,95 @@ extension InputManager {
         !existingConnectedSources.contains(source)
     }
 
-    private func refreshMIDISourceConnectionsLocked() {
-        defer { resumeMIDICallbacks() }
-        disconnectMIDISources()
+    /// Computes the diff between current system endpoints and already-connected
+    /// endpoints.  Extracted as a pure static function so the decision logic can
+    /// be unit-tested without CoreMIDI.
+    struct MIDISourceDiff {
+        let toConnect: Set<MIDIEndpointRef>
+        let toDisconnect: Set<MIDIEndpointRef>
+        var hasChanges: Bool { !toConnect.isEmpty || !toDisconnect.isEmpty }
+    }
 
+    static func computeMIDISourceDiff(
+        currentEndpoints: Set<MIDIEndpointRef>,
+        connectedEndpoints: Set<MIDIEndpointRef>
+    ) -> MIDISourceDiff {
+        MIDISourceDiff(
+            toConnect: currentEndpoints.subtracting(connectedEndpoints),
+            toDisconnect: connectedEndpoints.subtracting(currentEndpoints)
+        )
+    }
+
+    private func refreshMIDISourceConnectionsLocked() {
         guard midiInputPort != 0 else { return }
-        connectToAllMIDISources()
+
+        // Snapshot the current set of MIDI endpoints present on the system.
+        let currentEndpoints = Set((0..<MIDIGetNumberOfSources()).map { MIDIGetSource($0) }.filter { $0 != 0 })
+        let connectedEndpoints = Set(midiSourceContexts.keys)
+
+        let diff = Self.computeMIDISourceDiff(
+            currentEndpoints: currentEndpoints,
+            connectedEndpoints: connectedEndpoints
+        )
+
+        // Early exit: nothing changed.
+        guard diff.hasChanges else { return }
+
+        // Connect new sources — no pausing needed for additions.
+        connectNewMIDISources(diff.toConnect)
+
+        // Disconnect removed sources only.
+        if !diff.toDisconnect.isEmpty {
+            disconnectSpecificMIDISources(diff.toDisconnect)
+        }
+    }
+
+    private func connectNewMIDISources(_ newEndpoints: Set<MIDIEndpointRef>) {
+        for source in newEndpoints {
+            guard let uniqueID = CoreMIDISourceMetadata.uniqueID(for: source) else { continue }
+            let sourceID = sourceIDResolver.stableSourceID(for: uniqueID)
+
+            let context = Unmanaged.passRetained(
+                MIDISourceConnectionContext(sourceID: sourceID)
+            )
+
+            let status = MIDIPortConnectSource(midiInputPort, source, context.toOpaque())
+            guard status == noErr else {
+                Logger.error(
+                    "Failed to connect InputManager MIDI input port to source \(sourceID) (status: \(status))"
+                )
+                context.release()
+                continue
+            }
+
+            midiSourceContexts[source] = context
+        }
+    }
+
+    private func disconnectSpecificMIDISources(_ sources: Set<MIDIEndpointRef>) {
+        pauseMIDICallbacks()
+
+        var contextsToRelease: [Unmanaged<MIDISourceConnectionContext>] = []
+
+        for source in sources {
+            guard let context = midiSourceContexts.removeValue(forKey: source) else { continue }
+
+            let status = MIDIPortDisconnectSource(midiInputPort, source)
+            if status == noErr {
+                contextsToRelease.append(context)
+            } else {
+                Logger.error("Failed to disconnect InputManager MIDI source (status: \(status))")
+                midiSourceContexts[source] = context
+            }
+        }
+
+        waitForMIDICallbacksToDrain()
+
+        for context in contextsToRelease {
+            context.release()
+        }
+
+        resumeMIDICallbacks()
     }
     
     private func disconnectMIDISources() {

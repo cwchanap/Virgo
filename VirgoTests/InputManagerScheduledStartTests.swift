@@ -308,4 +308,126 @@ struct InputManagerScheduledStartTests {
         #expect(delegate.receivedResults.count == 1,
                 "Keyboard hit should produce a match result")
     }
+
+    // MARK: - Zero-timestamp MIDI packets
+
+    @Test("MIDI event with hostTime == 0 is accepted during active playback")
+    func zeroHostTimeAcceptedAfterStart() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerScheduledStartTests.zeroHostTimeAcceptedAfterStart"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+
+        // Start listening NOW — no scheduled delay, no offset.
+        // Audio has already begun, so a zero-timestamp packet should be accepted.
+        manager.startListening(songStartTime: Date())
+
+        // Simulate a MIDI device that emits packets with timeStamp == 0
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: 0)
+        )
+
+        #expect(result?.matchedNote != nil,
+                "MIDI event with hostTime == 0 should match a note during active playback")
+        #expect(result?.timingAccuracy == .perfect)
+    }
+
+    @Test("MIDI event with hostTime == 0 is rejected before effective audio start (resume)")
+    func zeroHostTimeRejectedBeforeEffectiveStart() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerScheduledStartTests.zeroHostTimeRejectedBeforeEffectiveStart"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+
+        // Note at measure 5 (expectedTime ≈ 8.0s at 120 BPM 4/4) — well past the
+        // backdated start time, so a wall-clock fallback without the guard would
+        // incorrectly match it.
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 5, measureOffset: 0.0)
+            ]
+        )
+
+        // Simulate resume: songStartTime is backdated by 8.0s, with a 50ms scheduled delay.
+        // The effective audio start time is songStartTime + elapsedOffset, which is ~50ms in the future.
+        // A zero-host-time event that falls back to wall-clock should still be rejected
+        // because the effective audio start has not been reached yet.
+        let elapsedOffset = 8.0
+        let scheduledDelay = 0.05
+        manager.startListening(
+            songStartTime: Date().addingTimeInterval(scheduledDelay - elapsedOffset),
+            elapsedOffset: elapsedOffset,
+            scheduledStartDelay: scheduledDelay
+        )
+
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: 0)
+        )
+
+        #expect(result == nil,
+                "MIDI event with hostTime == 0 must be rejected before effective audio start")
+    }
+
+    @Test("MIDI event with hostTime == 0 is accepted after effective audio start (resume)")
+    func zeroHostTimeAcceptedAfterEffectiveStart() async throws {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerScheduledStartTests.zeroHostTimeAcceptedAfterEffectiveStart"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-1",
+            midiMapping: [38: .snare]
+        )
+
+        // Note at measure 2 (expectedTime = 2.0s at 120 BPM 4/4)
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 0.0)
+            ]
+        )
+
+        // Simulate resume at measure 2 (elapsedOffset = 2.0s), no scheduled delay.
+        // effectiveAudioStartTime = songStartTime + elapsedOffset ≈ now (already past).
+        let elapsedOffset = 2.0
+        manager.startListening(
+            songStartTime: Date().addingTimeInterval(-elapsedOffset),
+            elapsedOffset: elapsedOffset
+        )
+
+        // Wait a small moment to ensure effective audio start has passed
+        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: 0)
+        )
+
+        #expect(result?.matchedNote != nil,
+                "MIDI event with hostTime == 0 should be accepted after effective audio start")
+    }
 }
