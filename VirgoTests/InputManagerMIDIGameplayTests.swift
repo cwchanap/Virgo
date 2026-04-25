@@ -529,10 +529,10 @@ struct InputManagerMIDIGameplayTests {
         #expect(result?.timingAccuracy == .perfect)
     }
 
-    @Test("stopListening resets elapsedOffset to zero")
-    func stopListeningResetsElapsedOffset() {
+    @Test("restarting without elapsedOffset matches notes from time zero")
+    func restartingWithoutOffsetMatchesFromZero() {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
-            suiteName: "InputManagerMIDIGameplayTests.stopListeningResetsElapsedOffset"
+            suiteName: "InputManagerMIDIGameplayTests.restartingWithoutOffsetMatchesFromZero"
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 

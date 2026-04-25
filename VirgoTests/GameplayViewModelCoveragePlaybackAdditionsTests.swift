@@ -199,4 +199,55 @@ struct GameplayViewModelPlaybackCoverageTests {
         #expect(vm.isPlaying == false)
         #expect(vm.pausedElapsedTime >= 1.4, "Should accumulate ~1.5 s from playbackStartTime fallback")
     }
+
+    // MARK: - pausePlayback fallback avoids double-counting pausedElapsedTime
+
+    @Test("pausePlayback fallback does not double-count pausedElapsedTime in backdated startTime")
+    func testPausePlaybackFallbackNoDoubleCount() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Simulate resume state: pausedElapsedTime = 3.0 s
+        // playbackStartTime is backdated by pausedElapsedTime (mirrors applySpeedChangeInternal/startPlayback logic)
+        let pausedOffset = 3.0
+        vm.isPlaying = true
+        vm.pausedElapsedTime = pausedOffset
+        // Simulate 1.0 s of new playback since resume (backdated start = now - pausedOffset - 1.0)
+        let startTime = Date().addingTimeInterval(-(pausedOffset + 1.0))
+        vm.playbackStartTime = startTime
+
+        vm.pausePlayback()
+
+        // Total elapsed should be ~4.0 s (3.0 offset + 1.0 new), NOT ~7.0 s (double-counted)
+        #expect(vm.pausedElapsedTime >= 3.9 && vm.pausedElapsedTime <= 4.2,
+                "Total elapsed should be ~4.0s (pausedOffset + new playback), not double-counted")
+    }
+
+    // MARK: - calculateElapsedTime fallback avoids double-counting pausedElapsedTime
+
+    @Test("calculateElapsedTime fallback does not double-count pausedElapsedTime in backdated startTime")
+    func testCalculateElapsedTimeFallbackNoDoubleCount() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Simulate resume state: pausedElapsedTime = 3.0 s
+        // playbackStartTime is backdated by pausedElapsedTime
+        let pausedOffset = 3.0
+        vm.isPlaying = true
+        vm.pausedElapsedTime = pausedOffset
+        vm.playbackStartTime = Date().addingTimeInterval(-(pausedOffset + 0.5))
+
+        let elapsed = vm.calculateElapsedTime()
+
+        // Total elapsed should be ~3.5 s (3.0 offset + 0.5 new), NOT ~6.5 s (double-counted)
+        #expect(elapsed != nil, "Fallback path should return a non-nil elapsed time")
+        if let t = elapsed {
+            #expect(t >= 3.4 && t <= 3.7,
+                    "Total elapsed should be ~3.5s (pausedOffset + new playback), not double-counted")
+        }
+    }
 }
