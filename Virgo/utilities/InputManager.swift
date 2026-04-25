@@ -3,6 +3,7 @@
 //  Virgo
 //
 //  Created by Claude Code on 9/8/2025.
+//  swiftlint:disable file_length
 //
 
 import Foundation
@@ -464,7 +465,11 @@ extension InputManager {
                     self?.handleSelectedSourceDisconnect(sourceID: sourceID)
                 }
                 deviceRegistry.startMonitoring()
-                updateSelectedMIDISourceAvailabilitySnapshot(deviceRegistry.isSelectedSourceAvailable)
+                let registryAvailable = deviceRegistry.isSelectedSourceAvailable
+                let effectiveAvailable = applyConnectionAvailabilityGate(
+                    registryAvailable: registryAvailable
+                )
+                updateSelectedMIDISourceAvailabilitySnapshot(effectiveAvailable)
             }
         } else {
             Task { @MainActor [weak self] in
@@ -473,7 +478,11 @@ extension InputManager {
                     self?.handleSelectedSourceDisconnect(sourceID: sourceID)
                 }
                 self.deviceRegistry.startMonitoring()
-                self.updateSelectedMIDISourceAvailabilitySnapshot(self.deviceRegistry.isSelectedSourceAvailable)
+                let registryAvailable = self.deviceRegistry.isSelectedSourceAvailable
+                let effectiveAvailable = self.applyConnectionAvailabilityGate(
+                    registryAvailable: registryAvailable
+                )
+                self.updateSelectedMIDISourceAvailabilitySnapshot(effectiveAvailable)
             }
         }
     }
@@ -482,14 +491,51 @@ extension InputManager {
         if Thread.isMainThread {
             MainActor.assumeIsolated {
                 deviceRegistry.refreshSources()
-                updateSelectedMIDISourceAvailabilitySnapshot(deviceRegistry.isSelectedSourceAvailable)
+                let registryAvailable = deviceRegistry.isSelectedSourceAvailable
+                let effectiveAvailable = applyConnectionAvailabilityGate(
+                    registryAvailable: registryAvailable
+                )
+                updateSelectedMIDISourceAvailabilitySnapshot(effectiveAvailable)
             }
         } else {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.deviceRegistry.refreshSources()
-                self.updateSelectedMIDISourceAvailabilitySnapshot(self.deviceRegistry.isSelectedSourceAvailable)
+                let registryAvailable = self.deviceRegistry.isSelectedSourceAvailable
+                let effectiveAvailable = self.applyConnectionAvailabilityGate(
+                    registryAvailable: registryAvailable
+                )
+                self.updateSelectedMIDISourceAvailabilitySnapshot(effectiveAvailable)
             }
+        }
+    }
+
+    /// Combines registry availability with InputManager's actual connection state.
+    ///
+    /// A source is only truly "available" for gameplay if:
+    /// 1. The registry sees it in CoreMIDI discovery (registryAvailable), AND
+    /// 2. InputManager has successfully connected its input port to receive events.
+    ///
+    /// When MIDI is not yet initialized (e.g. in test environments), the
+    /// connection gate is skipped to avoid falsely marking sources as unavailable.
+    private func applyConnectionAvailabilityGate(registryAvailable: Bool) -> Bool {
+        guard registryAvailable else { return false }
+        guard let connected = connectedSourceIDsIfInitialized else {
+            // MIDI not initialized — rely solely on registry availability.
+            return registryAvailable
+        }
+        let selectedID = settingsManager.getSelectedMIDISource()?.id
+        return selectedID.map { connected.contains($0) } ?? false
+    }
+
+    /// Returns the set of stable source IDs that InputManager has successfully
+    /// connected its MIDI input port to.  Returns `nil` when the MIDI subsystem
+    /// has not been initialized (e.g. in test environments), allowing callers to
+    /// skip the connection gate.
+    private var connectedSourceIDsIfInitialized: Set<String>? {
+        midiConnectionQueue.sync {
+            guard midiInputPort != 0 else { return nil }
+            return Set(midiSourceContexts.values.map { $0.takeUnretainedValue().sourceID })
         }
     }
 }
@@ -877,6 +923,29 @@ extension InputManager {
         )
     }
 
+    /// Identifies already-connected endpoints whose stable source ID collides
+    /// with a new endpoint about to be connected.  This happens when CoreMIDI
+    /// re-enumerates a physical device under a new `MIDIEndpointRef` while the
+    /// old ref is still visible.  Both endpoints share the same unique ID /
+    /// stable source ID, so the stale one must be replaced to avoid duplicate
+    /// MIDI event delivery.
+    ///
+    /// Pure static function for testability — callers resolve stable IDs via
+    /// CoreMIDI before calling.
+    static func findStaleConnectedEndpoints(
+        connectedSourceIDs: [MIDIEndpointRef: String],
+        newEndpointSourceIDs: [MIDIEndpointRef: String]
+    ) -> Set<MIDIEndpointRef> {
+        let newStableIDs = Set(newEndpointSourceIDs.values)
+        var stale = Set<MIDIEndpointRef>()
+        for (endpoint, sourceID) in connectedSourceIDs {
+            if newStableIDs.contains(sourceID) {
+                stale.insert(endpoint)
+            }
+        }
+        return stale
+    }
+
     private func refreshMIDISourceConnectionsLocked() {
         guard midiInputPort != 0 else { return }
 
@@ -889,8 +958,23 @@ extension InputManager {
             connectedEndpoints: connectedEndpoints
         )
 
-        // Early exit: nothing changed.
-        guard diff.hasChanges else { return }
+        // Detect stale endpoints: already-connected refs whose stable source ID
+        // matches a new endpoint that's about to be connected (device re-enumeration).
+        let newEndpointSourceIDs = resolveEndpointSourceIDs(diff.toConnect)
+        let connectedSourceIDMap = buildConnectedSourceIDMap()
+        let staleEndpoints = Self.findStaleConnectedEndpoints(
+            connectedSourceIDs: connectedSourceIDMap,
+            newEndpointSourceIDs: newEndpointSourceIDs
+        )
+
+        let hasStaleOrChanges = diff.hasChanges || !staleEndpoints.isEmpty
+        guard hasStaleOrChanges else { return }
+
+        // Disconnect stale endpoints first to prevent duplicate delivery.
+        // Must happen before connecting new endpoints with the same stable ID.
+        if !staleEndpoints.isEmpty {
+            disconnectSpecificMIDISources(staleEndpoints)
+        }
 
         // Connect new sources — no pausing needed for additions.
         connectNewMIDISources(diff.toConnect)
@@ -899,6 +983,25 @@ extension InputManager {
         if !diff.toDisconnect.isEmpty {
             disconnectSpecificMIDISources(diff.toDisconnect)
         }
+    }
+
+    private func resolveEndpointSourceIDs(
+        _ endpoints: Set<MIDIEndpointRef>
+    ) -> [MIDIEndpointRef: String] {
+        var result: [MIDIEndpointRef: String] = [:]
+        for endpoint in endpoints {
+            guard let uniqueID = CoreMIDISourceMetadata.uniqueID(for: endpoint) else { continue }
+            result[endpoint] = sourceIDResolver.stableSourceID(for: uniqueID)
+        }
+        return result
+    }
+
+    private func buildConnectedSourceIDMap() -> [MIDIEndpointRef: String] {
+        var result: [MIDIEndpointRef: String] = [:]
+        for (endpoint, context) in midiSourceContexts {
+            result[endpoint] = context.takeUnretainedValue().sourceID
+        }
+        return result
     }
 
     private func connectNewMIDISources(_ newEndpoints: Set<MIDIEndpointRef>) {
