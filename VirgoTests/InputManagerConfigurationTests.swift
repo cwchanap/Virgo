@@ -542,8 +542,6 @@ struct InputManagerConfigurationTests {
 
 }
 
-}
-
 @Suite("InputManager Oscillation Prevention Tests", .serialized)
 @MainActor
 struct InputManagerOscillationPreventionTests {

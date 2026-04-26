@@ -290,6 +290,28 @@ struct InputSettingsManagerTests {
         #expect(reloadedManager.getSelectedMIDISource() == nil)
     }
 
+    @Test("Corrupt selected MIDI source payload is removed from UserDefaults on load")
+    func testCorruptSelectedMIDISourceSelfHeals() {
+        let (userDefaults, suiteName) = makeUserDefaults("testCorruptSelectedMIDISourceSelfHeals")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        // Plant corrupt data that will fail to decode
+        userDefaults.set(Data("not-json".utf8), forKey: "InputSettingsSelectedMIDISource")
+        #expect(userDefaults.data(forKey: "InputSettingsSelectedMIDISource") != nil)
+
+        let manager = InputSettingsManager(userDefaults: userDefaults)
+
+        // In-memory state should be nil
+        #expect(manager.getSelectedMIDISource() == nil)
+
+        // Corrupt payload should be removed from UserDefaults (self-heal)
+        #expect(userDefaults.data(forKey: "InputSettingsSelectedMIDISource") == nil)
+
+        // A fresh manager should load without errors (no corrupt data to re-fail on)
+        let reloadedManager = InputSettingsManager(userDefaults: userDefaults)
+        #expect(reloadedManager.getSelectedMIDISource() == nil)
+    }
+
     @Test("Injected user defaults keep settings isolated between stores")
     func testInjectedUserDefaultsIsolation() {
         let (firstDefaults, firstSuiteName) = makeUserDefaults("testInjectedUserDefaultsIsolation.first")
