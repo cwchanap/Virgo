@@ -239,6 +239,7 @@ class InputSettingsManager: ObservableObject {
                 "Failed to decode selected MIDI source for key \(selectedMIDISourceKey): \(error.localizedDescription)"
             )
             selectedMIDISource = nil
+            userDefaults.removeObject(forKey: selectedMIDISourceKey)
         }
     }
     

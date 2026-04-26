@@ -28,6 +28,7 @@ struct InputManagerGatedSnapshotTests {
 
     final class StubMIDISourceChangeListener: MIDISourceChangeListening {
         func start(_ onChange: @escaping () -> Void) -> Bool { true }
+        func stop() {}
     }
 
     @Test("isSelectedMIDISourceAvailable reads gated snapshot on main thread, not raw registry")
