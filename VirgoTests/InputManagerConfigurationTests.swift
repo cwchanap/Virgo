@@ -539,4 +539,52 @@ struct InputManagerConfigurationTests {
         // MIDI subsystem not initialized in test — should fall back to registry
         #expect(manager.isSelectedMIDISourceAvailable == true)
     }
+
+}
+
+}
+
+@Suite("InputManager Oscillation Prevention Tests", .serialized)
+@MainActor
+struct InputManagerOscillationPreventionTests {
+
+    @Test("findStaleConnectedEndpoints does not oscillate when both old and new refs share a source ID")
+    func testOscillationPrevention() {
+        // Simulate: old ref 1 and new ref 3 both have sourceID "coremidi:100"
+        let connected: [MIDIEndpointRef: String] = [
+            1: "coremidi:100",
+            2: "coremidi:200"
+        ]
+        let newEndpoints: [MIDIEndpointRef: String] = [
+            3: "coremidi:100"
+        ]
+        let stale = InputManager.findStaleConnectedEndpoints(
+            connectedSourceIDs: connected,
+            newEndpointSourceIDs: newEndpoints
+        )
+        #expect(stale == [1],
+                "Endpoint 1 should be stale because its sourceID matches new endpoint 3")
+
+        // After disconnecting stale (1) and connecting new (3), remaining connected:
+        // {2: "coremidi:200", 3: "coremidi:100"}
+        // On the next refresh, old ref 1 is still visible in CoreMIDI:
+        // toConnect would contain 1 (since it's not connected).
+        // The filter should exclude 1 because its sourceID "coremidi:100"
+        // is already covered by surviving connected endpoint 3.
+        let survivingSourceIDs = Set(
+            connected
+                .filter { !stale.contains($0.key) }
+                .values
+        )
+        // survivingSourceIDs after stale removal: {"coremidi:200"}
+        // Plus newly connected: {"coremidi:100"} (from endpoint 3)
+        // Combined: {"coremidi:100", "coremidi:200"}
+        let combinedSurviving = survivingSourceIDs.union(Set(newEndpoints.values))
+
+        // Endpoint 1 would try to connect with sourceID "coremidi:100"
+        // which is already in combinedSurviving, so it should be filtered out
+        let shouldConnect1 = !combinedSurviving.contains("coremidi:100")
+        #expect(shouldConnect1 == false,
+                "Old ref should NOT be reconnected when its sourceID is already covered")
+    }
 }

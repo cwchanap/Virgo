@@ -88,12 +88,7 @@ class InputManager: ObservableObject {
     var hasSelectedMIDISourcePreference: Bool { settingsManager.getSelectedMIDISource() != nil }
     var requiresMIDISourceForGameplay = false
     var isSelectedMIDISourceAvailable: Bool {
-        if Thread.isMainThread {
-            return MainActor.assumeIsolated {
-                deviceRegistry.isSelectedSourceAvailable
-            }
-        }
-        return withRuntimeState { selectedMIDISourceAvailableSnapshot }
+        withRuntimeState { selectedMIDISourceAvailableSnapshot }
     }
     
     // Input mapping configuration
@@ -976,8 +971,23 @@ extension InputManager {
             disconnectSpecificMIDISources(staleEndpoints)
         }
 
+        // Filter toConnect: exclude endpoints whose sourceID is already covered
+        // by a remaining (non-stale) connected endpoint.  Without this filter,
+        // re-enumeration can oscillate — the previously-stale ref reappears in
+        // toConnect on the next refresh and the just-connected replacement is
+        // marked stale, causing the algorithm to flip between the two.
+        let survivingSourceIDs = Set(
+            connectedSourceIDMap
+                .filter { !staleEndpoints.contains($0.key) }
+                .values
+        )
+        let endpointsToConnect = diff.toConnect.filter { endpoint in
+            guard let sourceID = newEndpointSourceIDs[endpoint] else { return true }
+            return !survivingSourceIDs.contains(sourceID)
+        }
+
         // Connect new sources — no pausing needed for additions.
-        connectNewMIDISources(diff.toConnect)
+        connectNewMIDISources(endpointsToConnect)
 
         // Disconnect removed sources only.
         if !diff.toDisconnect.isEmpty {
