@@ -747,7 +747,14 @@ final class GameplayViewModel {
             // playbackStartTime is backdated by pausedElapsedTime, so the raw
             // interval already represents total elapsed song time. Use assignment
             // (not +=) to avoid double-counting the pause offset.
-            pausedElapsedTime = Date().timeIntervalSince(startTime)
+            //
+            // When audio was scheduled in the future (e.g. the 50 ms priming
+            // window) and the user pauses before it actually starts,
+            // Date() - startTime is negative.  Clamp to the existing offset so
+            // the next resume either re-uses the pre-start value (0 for fresh
+            // starts) or the previously-accumulated pause offset.
+            let elapsed = Date().timeIntervalSince(startTime)
+            pausedElapsedTime = max(pausedElapsedTime, elapsed)
         }
 
         metronome.stop()

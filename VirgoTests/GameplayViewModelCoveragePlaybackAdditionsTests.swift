@@ -250,4 +250,46 @@ struct GameplayViewModelPlaybackCoverageTests {
                     "Total elapsed should be ~3.5s (pausedOffset + new playback), not double-counted")
         }
     }
+
+    // MARK: - pausePlayback during scheduled-start window (Bug #3 fix)
+
+    @Test("pausePlayback during scheduled-start window does not record negative elapsed time")
+    func testPauseDuringScheduledStartWindowClampsToZero() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Simulate fresh start with playbackStartTime in the future
+        // (scheduled 50ms ahead for buffer priming, as in startPlayback())
+        vm.isPlaying = true
+        vm.pausedElapsedTime = 0.0
+        vm.playbackStartTime = Date().addingTimeInterval(0.05)
+
+        vm.pausePlayback()
+
+        #expect(vm.isPlaying == false)
+        #expect(vm.pausedElapsedTime >= 0.0,
+                "Paused elapsed time must not be negative when pausing during scheduled-start window")
+    }
+
+    @Test("pausePlayback during scheduled-start window preserves existing pause offset on resume")
+    func testPauseDuringScheduledStartWindowPreservesExistingOffset() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Simulate resume: pausedElapsedTime = 3.0, playbackStartTime backdated
+        // User pauses again before audio starts (playbackStartTime is in the future
+        // relative to "now" because scheduled start hasn't fired yet).
+        vm.isPlaying = true
+        vm.pausedElapsedTime = 3.0
+        vm.playbackStartTime = Date().addingTimeInterval(0.05)
+
+        vm.pausePlayback()
+
+        #expect(vm.pausedElapsedTime >= 3.0,
+                "Should preserve the existing pause offset, not replace with a negative value")
+    }
 }
