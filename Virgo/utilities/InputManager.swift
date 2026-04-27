@@ -73,7 +73,9 @@ class InputManager: ObservableObject {
     private let midiConnectionQueue = DispatchQueue(label: "Virgo.InputManager.midi-connections")
     private let midiCallbackDrain = NSCondition()
     private var activeMIDICallbackCount = 0
-    private var midiCallbacksPaused = false
+    /// Source IDs currently being disconnected — only callbacks from these sources are rejected,
+    /// allowing hits from unaffected MIDI devices to continue during partial refreshes.
+    private var disconnectingSourceIDs: Set<String> = []
     
     // Song timing reference
     private var songStartTime: Date?
@@ -1037,7 +1039,15 @@ extension InputManager {
     }
 
     private func disconnectSpecificMIDISources(_ sources: Set<MIDIEndpointRef>) {
-        pauseMIDICallbacks()
+        // Collect source IDs before removing contexts so we know which callbacks to reject.
+        var sourceIDsToPause: Set<String> = []
+        for source in sources {
+            if let context = midiSourceContexts[source] {
+                sourceIDsToPause.insert(context.takeUnretainedValue().sourceID)
+            }
+        }
+
+        pauseMIDICallbacksForSources(sourceIDsToPause)
 
         var contextsToRelease: [Unmanaged<MIDISourceConnectionContext>] = []
 
@@ -1059,13 +1069,14 @@ extension InputManager {
             context.release()
         }
 
-        resumeMIDICallbacks()
+        resumeMIDICallbacksForSources(sourceIDsToPause)
     }
     
     private func disconnectMIDISources() {
-        pauseMIDICallbacks()
-
         let retainedContexts = midiSourceContexts
+        let allSourceIDs = Set(retainedContexts.values.map { $0.takeUnretainedValue().sourceID })
+        pauseMIDICallbacksForSources(allSourceIDs)
+
         midiSourceContexts.removeAll()
         var contextsToRelease: [Unmanaged<MIDISourceConnectionContext>] = []
 
@@ -1089,6 +1100,8 @@ extension InputManager {
         for context in contextsToRelease {
             context.release()
         }
+
+        resumeMIDICallbacksForSources(allSourceIDs)
     }
 
     private func handleMIDIPacketList(_ packetList: UnsafePointer<MIDIPacketList>, sourceID: String) {
@@ -1132,15 +1145,17 @@ private extension InputManager {
     func beginMIDISourceCallback(refCon: UnsafeMutableRawPointer?) -> String? {
         guard let refCon else { return nil }
 
+        let sourceID = Unmanaged<MIDISourceConnectionContext>.fromOpaque(refCon).takeUnretainedValue().sourceID
+
         midiCallbackDrain.lock()
-        guard !midiCallbacksPaused else {
+        guard !disconnectingSourceIDs.contains(sourceID) else {
             midiCallbackDrain.unlock()
             return nil
         }
         activeMIDICallbackCount += 1
         midiCallbackDrain.unlock()
 
-        return Unmanaged<MIDISourceConnectionContext>.fromOpaque(refCon).takeUnretainedValue().sourceID
+        return sourceID
     }
 
     func endMIDISourceCallback() {
@@ -1152,15 +1167,15 @@ private extension InputManager {
         midiCallbackDrain.unlock()
     }
 
-    func pauseMIDICallbacks() {
+    func pauseMIDICallbacksForSources(_ sourceIDs: Set<String>) {
         midiCallbackDrain.lock()
-        midiCallbacksPaused = true
+        disconnectingSourceIDs.formUnion(sourceIDs)
         midiCallbackDrain.unlock()
     }
 
-    func resumeMIDICallbacks() {
+    func resumeMIDICallbacksForSources(_ sourceIDs: Set<String>) {
         midiCallbackDrain.lock()
-        midiCallbacksPaused = false
+        disconnectingSourceIDs.subtract(sourceIDs)
         midiCallbackDrain.unlock()
     }
 
