@@ -117,6 +117,11 @@ class InputManager: ObservableObject {
     private var midiClient: MIDIClientRef = 0
     private var midiInputPort: MIDIPortRef = 0
     private var midiSourceContexts: [MIDIEndpointRef: Unmanaged<MIDISourceConnectionContext>] = [:]
+    /// Tracks whether CoreMIDI setup was attempted but failed in production.
+    /// Distinguishes "not initialized" (test environment) from "initialization failed"
+    /// so the availability gate doesn't falsely report sources as available.
+    /// Accessed only on `midiConnectionQueue`.
+    private var midiSetupFailed = false
     
     // Keyboard event monitors for proper cleanup
     #if os(macOS)
@@ -407,6 +412,17 @@ extension InputManager {
         refreshMIDISourceAvailabilitySnapshot()
     }
 
+    /// Simulates a CoreMIDI setup failure for testing.
+    /// Sets the internal `midiSetupFailed` flag so the availability gate
+    /// correctly rejects sources even when the registry reports them as available.
+    /// Only intended for unit tests — in production this state is reached
+    /// when `MIDIClientCreateWithBlock` or `MIDIInputPortCreateWithBlock` fails.
+    func simulateMIDISetupFailureForTesting() {
+        midiConnectionQueue.sync {
+            midiSetupFailed = true
+        }
+    }
+
     func refreshSelectedMIDISourceStateFromSettings() {
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in
@@ -518,7 +534,7 @@ extension InputManager {
     private func applyConnectionAvailabilityGate(registryAvailable: Bool) -> Bool {
         guard registryAvailable else { return false }
         guard let connected = connectedSourceIDsIfInitialized else {
-            // MIDI not initialized — rely solely on registry availability.
+            // MIDI not initialized (test environment) — rely solely on registry availability.
             return registryAvailable
         }
         let selectedID = settingsManager.getSelectedMIDISource()?.id
@@ -528,10 +544,18 @@ extension InputManager {
     /// Returns the set of stable source IDs that InputManager has successfully
     /// connected its MIDI input port to.  Returns `nil` when the MIDI subsystem
     /// has not been initialized (e.g. in test environments), allowing callers to
-    /// skip the connection gate.
+    /// skip the connection gate.  Returns an empty set when initialization was
+    /// attempted but failed, so the gate correctly rejects all sources.
     private var connectedSourceIDsIfInitialized: Set<String>? {
         midiConnectionQueue.sync {
-            guard midiInputPort != 0 else { return nil }
+            guard midiInputPort != 0 else {
+                if midiSetupFailed {
+                    // Setup was attempted but failed — return empty set so the gate
+                    // properly rejects all sources (vs nil which bypasses the gate).
+                    return []
+                }
+                return nil
+            }
             return Set(midiSourceContexts.values.map { $0.takeUnretainedValue().sourceID })
         }
     }
@@ -844,6 +868,7 @@ extension InputManager {
         
         guard status == noErr else {
             Logger.error("Failed to create MIDI client for InputManager (status: \(status))")
+            midiSetupFailed = true
             return false
         }
         
@@ -860,6 +885,7 @@ extension InputManager {
             MIDIClientDispose(midiClient)
             midiClient = 0
             midiInputPort = 0
+            midiSetupFailed = true
             return false
         }
         

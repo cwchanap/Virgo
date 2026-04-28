@@ -83,6 +83,10 @@ final class GameplayViewModel {
     /// Used to synchronize input timing with actual audio playback so hits are
     /// judged relative to what the player hears, not when startPlayback() was called.
     private(set) var lastScheduledPlaybackStartTime: CFAbsoluteTime?
+    /// Host clock (`mach_absolute_time()`) captured at the same instant as
+    /// `lastScheduledPlaybackStartTime` so the input manager can project its
+    /// zero-point forward without drift from intervening main-thread work.
+    private var lastScheduledPlaybackHostTime: UInt64?
 
     // MARK: - Cached Layout Data
     /// Pre-computed drum beats from notes
@@ -313,80 +317,11 @@ final class GameplayViewModel {
 
         // If playing, update metronome and BGM rate immediately
         if isPlaying {
-            if let bgmPlayer = bgmPlayer {
-                bgmPlayer.enableRate = true
-                bgmPlayer.rate = clampedBGMRate(for: currentSpeed)
-            }
-
-            if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0, currentSpeed > 0 {
-                pausedElapsedTime += metronomeTime
-                let speedRatio = previousSpeed / currentSpeed
-                pausedElapsedTime *= speedRatio
-                let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
-                totalBeatsElapsed = beatOffset
-                metronome.stop()
-                let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
-                lastScheduledPlaybackStartTime = scheduledStartTime
-                metronome.startAtTime(
-                    bpm: effectiveBPMValue,
-                    timeSignature: track?.timeSignature ?? .fourFour,
-                    startTime: scheduledStartTime,
-                    totalBeatsElapsed: beatOffset
-                )
-                rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
-            } else {
-                if previousSpeed > 0, currentSpeed > 0 {
-                    let speedRatio = previousSpeed / currentSpeed
-                    pausedElapsedTime *= speedRatio
-                }
-                let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
-                totalBeatsElapsed = beatOffset
-                metronome.stop()
-                // Reschedule BGM to align with new rate when metronome time is unavailable
-                let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
-                lastScheduledPlaybackStartTime = scheduledStartTime
-                metronome.startAtTime(
-                    bpm: effectiveBPMValue,
-                    timeSignature: track?.timeSignature ?? .fourFour,
-                    startTime: scheduledStartTime,
-                    totalBeatsElapsed: beatOffset
-                )
-                rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
-                Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
-            }
-
-            if previousSpeed > 0, currentSpeed > 0 {
-                // Align input timeline with the scheduled metronome start time.
-                // Convert the CFAbsoluteTime to a Date, adjusted for elapsed offset
-                // so that the input manager's elapsed time calculation matches the
-                // metronome's actual playback position.
-                if let scheduledStart = lastScheduledPlaybackStartTime {
-                    let adjustedSongStartTime = Date(
-                        timeIntervalSinceReferenceDate: scheduledStart - pausedElapsedTime
-                    )
-                    self.playbackStartTime = adjustedSongStartTime
-                    let scheduledStartDelay = max(0, scheduledStart - CFAbsoluteTimeGetCurrent())
-                    inputManager.startListening(
-                        songStartTime: adjustedSongStartTime,
-                        elapsedOffset: pausedElapsedTime,
-                        scheduledStartDelay: scheduledStartDelay
-                    )
-                } else if let playbackStartTime = playbackStartTime {
-                    // Fallback: no scheduled start time (shouldn't happen during speed change)
-                    let elapsedSinceStart = Date().timeIntervalSince(playbackStartTime)
-                    let speedRatio = previousSpeed / currentSpeed
-                    let adjustedElapsed = elapsedSinceStart * speedRatio
-                    let adjustedSongStartTime = Date()
-                    self.playbackStartTime = adjustedSongStartTime
-                    inputManager.startListening(
-                        songStartTime: adjustedSongStartTime,
-                        elapsedOffset: adjustedElapsed
-                    )
-                }
-            }
-
-            let speedPercent = Int(currentSpeed * 100)
-            Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
+            applySpeedChangeWhilePlaying(
+                previousSpeed: previousSpeed,
+                currentSpeed: currentSpeed,
+                effectiveBPMValue: effectiveBPMValue
+            )
         } else if pausedElapsedTime > 0, previousSpeed > 0, currentSpeed > 0 {
             let speedRatio = previousSpeed / currentSpeed
             pausedElapsedTime *= speedRatio
@@ -459,6 +394,85 @@ final class GameplayViewModel {
             Logger.error("BGM play(atTime:) failed during speed change reschedule (scheduled: \(scheduledTime))")
         }
         return success
+    }
+
+    private func applySpeedChangeWhilePlaying(
+        previousSpeed: Double,
+        currentSpeed: Double,
+        effectiveBPMValue: Double
+    ) {
+        if let bgmPlayer = bgmPlayer {
+            bgmPlayer.enableRate = true
+            bgmPlayer.rate = clampedBGMRate(for: currentSpeed)
+        }
+
+        if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0, currentSpeed > 0 {
+            pausedElapsedTime += metronomeTime
+            let speedRatio = previousSpeed / currentSpeed
+            pausedElapsedTime *= speedRatio
+            let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
+            totalBeatsElapsed = beatOffset
+            metronome.stop()
+            let capturedHostTime = mach_absolute_time()
+            lastScheduledPlaybackHostTime = capturedHostTime
+            let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
+            lastScheduledPlaybackStartTime = scheduledStartTime
+            metronome.startAtTime(
+                bpm: effectiveBPMValue,
+                timeSignature: track?.timeSignature ?? .fourFour,
+                startTime: scheduledStartTime,
+                totalBeatsElapsed: beatOffset
+            )
+            rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
+        } else {
+            if previousSpeed > 0, currentSpeed > 0 {
+                let speedRatio = previousSpeed / currentSpeed
+                pausedElapsedTime *= speedRatio
+            }
+            let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
+            totalBeatsElapsed = beatOffset
+            metronome.stop()
+            let capturedHostTime = mach_absolute_time()
+            lastScheduledPlaybackHostTime = capturedHostTime
+            let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
+            lastScheduledPlaybackStartTime = scheduledStartTime
+            metronome.startAtTime(
+                bpm: effectiveBPMValue,
+                timeSignature: track?.timeSignature ?? .fourFour,
+                startTime: scheduledStartTime,
+                totalBeatsElapsed: beatOffset
+            )
+            rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
+            Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
+        }
+
+        if previousSpeed > 0, currentSpeed > 0 {
+            if let scheduledStart = lastScheduledPlaybackStartTime {
+                let adjustedSongStartTime = Date(
+                    timeIntervalSinceReferenceDate: scheduledStart - pausedElapsedTime
+                )
+                self.playbackStartTime = adjustedSongStartTime
+                inputManager.startListening(
+                    songStartTime: adjustedSongStartTime,
+                    elapsedOffset: pausedElapsedTime,
+                    scheduledStartDelay: 0.05,
+                    capturedHostTime: lastScheduledPlaybackHostTime
+                )
+            } else if let playbackStartTime = playbackStartTime {
+                let elapsedSinceStart = Date().timeIntervalSince(playbackStartTime)
+                let speedRatio = previousSpeed / currentSpeed
+                let adjustedElapsed = elapsedSinceStart * speedRatio
+                let adjustedSongStartTime = Date()
+                self.playbackStartTime = adjustedSongStartTime
+                inputManager.startListening(
+                    songStartTime: adjustedSongStartTime,
+                    elapsedOffset: adjustedElapsed
+                )
+            }
+        }
+
+        let speedPercent = Int(currentSpeed * 100)
+        Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
     }
 
     // MARK: - Unique ID Generation
@@ -695,15 +709,14 @@ final class GameplayViewModel {
                 timeIntervalSinceReferenceDate: scheduledStartTime - pausedElapsedTime
             )
             playbackStartTime = adjustedSongStartTime
-            // Compute how far in the future the audio is scheduled relative to now.
-            // This delay is fed to InputManager so the host-time zero-point is
-            // projected forward to the scheduled start rather than anchored at the
-            // moment startListening() runs.
-            let scheduledStartDelay = max(0, scheduledStartTime - CFAbsoluteTimeGetCurrent())
+            // Use the host time captured at the scheduling instant and the fixed setup
+            // delay (0.05s) so the input zero-point aligns exactly with audio start,
+            // with no drift from main-thread work between scheduling and this call.
             inputManager.startListening(
                 songStartTime: adjustedSongStartTime,
                 elapsedOffset: pausedElapsedTime,
-                scheduledStartDelay: scheduledStartDelay
+                scheduledStartDelay: 0.05,
+                capturedHostTime: lastScheduledPlaybackHostTime
             )
         } else {
             // Fallback: no scheduled start time available (shouldn't happen)
@@ -861,6 +874,7 @@ final class GameplayViewModel {
         playbackProgress = 0.0
         purpleBarPosition = nil
         lastScheduledPlaybackStartTime = nil
+        lastScheduledPlaybackHostTime = nil
         resetScoring()
     }
 
@@ -908,6 +922,8 @@ final class GameplayViewModel {
     private func resumeBGMFromPosition(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) -> CFAbsoluteTime {
         Logger.audioPlayback("🎮 Resuming BGM at \(bgmPlayer.currentTime)s")
         let setupTime: TimeInterval = 0.05
+        let capturedHostTime = mach_absolute_time()
+        lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
         metronome.startAtTime(
             bpm: effectiveBPM,
@@ -927,6 +943,8 @@ final class GameplayViewModel {
         Logger.audioPlayback("🎮 Resuming during BGM offset period")
         bgmPlayer.currentTime = 0
         let setupTime: TimeInterval = 0.05
+        let capturedHostTime = mach_absolute_time()
+        lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
 
         metronome.startAtTime(
@@ -950,6 +968,8 @@ final class GameplayViewModel {
         Logger.audioPlayback("🎮 Starting fresh BGM playback")
         bgmPlayer.currentTime = 0
         let setupTime: TimeInterval = 0.05
+        let capturedHostTime = mach_absolute_time()
+        lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
         metronome.startAtTime(
             bpm: effectiveBPM,
@@ -970,6 +990,8 @@ final class GameplayViewModel {
         if pausedElapsedTime > 0.0 {
             Logger.audioPlayback("🎮 Resuming metronome-only playback with beat offset")
             let setupTime: TimeInterval = 0.05
+            let capturedHostTime = mach_absolute_time()
+            lastScheduledPlaybackHostTime = capturedHostTime
             let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
             metronome.startAtTime(
                 bpm: effectiveBPM,
@@ -983,6 +1005,8 @@ final class GameplayViewModel {
             // Fresh metronome start uses scheduled timing (setupTime delay) to match BGM cases,
             // ensuring inputManager.startListening is called before audio actually begins.
             let setupTime: TimeInterval = 0.05
+            let capturedHostTime = mach_absolute_time()
+            lastScheduledPlaybackHostTime = capturedHostTime
             let startTime = CFAbsoluteTimeGetCurrent() + setupTime
             metronome.startAtTime(
                 bpm: effectiveBPM,
