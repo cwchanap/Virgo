@@ -64,4 +64,43 @@ struct InputManagerGatedSnapshotTests {
         #expect(manager.isSelectedMIDISourceAvailable == true,
                 "Main-thread getter should read the gated snapshot, not bypass it")
     }
+
+    @Test("isSelectedMIDISourceAvailable returns false when MIDI setup failed, even if registry reports source available")
+    func testAvailabilityRejectsWhenSetupFailed() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerConfigurationTests.SetupFailedRejects.\(UUID().uuidString)"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        settingsManager.setSelectedMIDISource(id: "source-1", displayName: "TD-17")
+
+        // Registry reports source as available (discovery-only)
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settingsManager,
+            sourceProvider: StubMIDISourceProvider([
+                MIDISourceDescriptor(id: "source-1", displayName: "TD-17", isConnected: true)
+            ]),
+            sourceChangeListener: StubMIDISourceChangeListener()
+        )
+        let manager = InputManager(
+            settingsManager: settingsManager,
+            deviceRegistry: registry,
+            diagnosticsStore: MIDIDiagnosticsStore(),
+            learnSession: MIDILearnSession(settingsManager: settingsManager)
+        )
+
+        manager.reloadMappingsFromSettings()
+
+        // Before failure simulation, the test-environment fallback allows the source.
+        #expect(manager.isSelectedMIDISourceAvailable == true,
+                "Pre-failure: test environment should fall back to registry availability")
+
+        // Simulate CoreMIDI setup failure (e.g. MIDIClientCreateWithBlock returned an error).
+        manager.simulateMIDISetupFailureForTesting()
+        manager.reloadMappingsFromSettings()
+
+        // After failure, the gate must reject even though registry still sees the source.
+        #expect(manager.isSelectedMIDISourceAvailable == false,
+                "Post-failure: gate must reject because InputManager has no working MIDI port")
+    }
 }
