@@ -252,7 +252,8 @@ struct MIDIPreviewMonitorTests {
         }
         semaphore.wait()
 
-        // stop() sets isActive = false before the enqueued block runs.
+        // stop() sets isActive = false and advances sessionGeneration
+        // before the enqueued block runs.
         monitor.stop()
 
         // Yield to let any pending main-queue blocks execute.
@@ -297,7 +298,7 @@ struct MIDIPreviewMonitorTests {
         #expect(diagnostics.lastEvent?.note == 40)
     }
 
-    @Test("background-thread handle after stop is blocked by isActive guard")
+    @Test("background-thread handle after stop is blocked by session generation guard")
     func backgroundThreadHandleAfterStopIsBlocked() async throws {
         let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
             suiteName: "MIDIPreviewMonitorTests.backgroundThreadHandleAfterStopIsBlocked"
@@ -335,10 +336,10 @@ struct MIDIPreviewMonitorTests {
         #expect(eventCount == 0, "Background-thread handle should be blocked when not active")
     }
 
-    @Test("start resets isActive to allow background events through again")
-    func startResetsIsActive() async throws {
+    @Test("start resets session generation to allow background events through again")
+    func startResetsSessionGeneration() async throws {
         let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
-            suiteName: "MIDIPreviewMonitorTests.startResetsIsActive"
+            suiteName: "MIDIPreviewMonitorTests.startResetsSessionGeneration"
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
@@ -387,10 +388,10 @@ struct MIDIPreviewMonitorTests {
         #expect(diagnostics.lastEvent?.note == 36)
     }
 
-    @Test("failed start does not set isActive")
-    func failedStartDoesNotSetIsActive() async throws {
+    @Test("failed start resets session generation to 0")
+    func failedStartResetsSessionGeneration() async throws {
         let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
-            suiteName: "MIDIPreviewMonitorTests.failedStartDoesNotSetIsActive"
+            suiteName: "MIDIPreviewMonitorTests.failedStartResetsSessionGeneration"
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
@@ -406,7 +407,7 @@ struct MIDIPreviewMonitorTests {
         let didStart = monitor.start()
         #expect(didStart == false)
 
-        // Even though start() was called, it failed, so isActive should be false.
+        // Even though start() was called, it failed, so isActive is false.
         var eventCount = 0
         monitor.onEvent = { _ in
             eventCount += 1
@@ -425,5 +426,57 @@ struct MIDIPreviewMonitorTests {
         semaphore.wait()
         try await Task.sleep(nanoseconds: 50_000_000)
         #expect(eventCount == 0, "Background events should not flow after failed start")
+    }
+
+    @Test("stale enqueued block from previous session is rejected after stop-then-start")
+    func staleEnqueuedBlockRejectedAfterStopStart() async throws {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIPreviewMonitorTests.staleEnqueuedBlockRejectedAfterStopStart"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let diagnostics = MIDIDiagnosticsStore()
+        let monitor = MIDIPreviewMonitor(
+            diagnosticsStore: diagnostics,
+            settingsManager: settings
+        )
+
+        var receivedNotes: [UInt8] = []
+        monitor.onEvent = { event in
+            receivedNotes.append(event.note)
+        }
+
+        monitor.start()
+
+        // Enqueue a stale event from session 1 on a background thread.
+        let semaphore = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            monitor.handle(
+                packets: [.init(timestamp: 10, bytes: [0x99, 40, 120])],
+                sourceID: "coremidi:1",
+                sourceDisplayName: "Stale Source"
+            )
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        // Stop session 1, then start session 2. The stale block from session 1
+        // is still on the main queue but captured generation 1; session 2 is now
+        // generation 2.
+        monitor.stop()
+        monitor.start()
+
+        // Send a fresh event in session 2 from the main thread (synchronous).
+        monitor.handle(
+            packets: [.init(timestamp: 20, bytes: [0x99, 36, 80])],
+            sourceID: "coremidi:1",
+            sourceDisplayName: "Fresh Source"
+        )
+
+        // Yield to let the stale main-queue block execute (and be rejected).
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(receivedNotes == [36], "Only the fresh session-2 event should arrive; stale session-1 event (note 40) must be rejected")
+        #expect(diagnostics.lastEvent?.note == 36)
     }
 }

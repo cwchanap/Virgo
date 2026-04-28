@@ -225,8 +225,13 @@ final class MIDIPreviewMonitor: ObservableObject {
     private let sourceIDResolver: MIDISourceIDResolving
     private let packetListener: MIDIPreviewPacketListening
 
-    /// Guards against already-enqueued main-queue blocks firing after `stop()`.
-    /// Checked on the main thread inside dispatched blocks.
+    /// Monotonically increasing session generation counter. Each `start()`
+    /// increments it so that already-enqueued main-queue blocks from a
+    /// previous session are rejected even after a new session begins.
+    private var sessionGeneration = 0
+
+    /// Whether the monitor is currently active. Checked on the main thread
+    /// inside dispatched blocks alongside `sessionGeneration`.
     private var isActive = false
 
     var onEvent: ((MIDINoteEvent) -> Void)?
@@ -251,6 +256,7 @@ final class MIDIPreviewMonitor: ObservableObject {
 
     @discardableResult
     func start() -> Bool {
+        sessionGeneration += 1
         isActive = true
         let didStart = packetListener.start { [weak self] packetList, sourceUniqueID, sourceDisplayName in
             self?.handle(
@@ -284,10 +290,11 @@ final class MIDIPreviewMonitor: ObservableObject {
         if Thread.isMainThread {
             publish(events: events, sourceDisplayName: sourceDisplayName)
         } else {
-            // Always dispatch to main thread; the real isActive guard runs
-            // on the main thread where all writes occur, avoiding a data race.
+            let capturedGeneration = sessionGeneration
+            // Always dispatch to main thread; the session generation guard
+            // runs on the main thread where all writes occur, avoiding a data race.
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.isActive else { return }
+                guard let self, self.isActive, self.sessionGeneration == capturedGeneration else { return }
                 self.publish(
                     events: events,
                     sourceDisplayName: sourceDisplayName
