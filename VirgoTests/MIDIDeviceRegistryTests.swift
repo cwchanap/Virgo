@@ -111,6 +111,27 @@ struct MIDIDeviceRegistryTests {
         #expect(registry.sources.first?.id == "coremidi:2")
     }
 
+    @Test("refreshSources collapses duplicate stable source IDs before publishing sources")
+    func refreshSourcesCollapsesDuplicateStableSourceIDs() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.refreshSourcesCollapsesDuplicateStableSourceIDs"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settings,
+            sourceProvider: StubMIDISourceProvider([
+                .init(id: "coremidi:2", displayName: "TD-17", isConnected: true),
+                .init(id: "coremidi:2", displayName: "TD-17 Reconnected", isConnected: true),
+                .init(id: "coremidi:3", displayName: "SPD-SX", isConnected: true)
+            ])
+        )
+
+        registry.refreshSources()
+
+        #expect(registry.sources.map(\.id) == ["coremidi:2", "coremidi:3"])
+    }
+
     @Test("startMonitoring reports listener startup failure")
     func startMonitoringReportsListenerStartupFailure() {
         let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(

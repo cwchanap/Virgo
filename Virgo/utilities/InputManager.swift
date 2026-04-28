@@ -72,7 +72,7 @@ class InputManager: ObservableObject {
     private let runtimeStateQueue = DispatchQueue(label: "Virgo.InputManager.runtime")
     private let midiConnectionQueue = DispatchQueue(label: "Virgo.InputManager.midi-connections")
     private let midiCallbackDrain = NSCondition()
-    private var activeMIDICallbackCount = 0
+    private var activeMIDICallbackCountsBySourceID: [String: Int] = [:]
     /// Source IDs currently being disconnected — only callbacks from these sources are rejected,
     /// allowing hits from unaffected MIDI devices to continue during partial refreshes.
     private var disconnectingSourceIDs: Set<String> = []
@@ -851,7 +851,7 @@ extension InputManager {
         status = MIDIInputPortCreateWithBlock(midiClient, "VirgoInput" as CFString, &midiInputPort) { [weak self] packetList, srcConnRefCon in
             guard let self,
                   let sourceID = self.beginMIDISourceCallback(refCon: srcConnRefCon) else { return }
-            defer { self.endMIDISourceCallback() }
+            defer { self.endMIDISourceCallback(sourceID: sourceID) }
             self.handleMIDIPacketList(packetList, sourceID: sourceID)
         }
         
@@ -941,6 +941,20 @@ extension InputManager {
             }
         }
         return stale
+    }
+
+    static func shouldWaitForMIDICallbacksToDrain(
+        activeCallbacksBySourceID: [String: Int],
+        pausedSourceIDs: Set<String>
+    ) -> Bool {
+        guard !pausedSourceIDs.isEmpty else { return false }
+
+        for sourceID in pausedSourceIDs {
+            if let activeCount = activeCallbacksBySourceID[sourceID], activeCount > 0 {
+                return true
+            }
+        }
+        return false
     }
 
     private func refreshMIDISourceConnectionsLocked() {
@@ -1063,7 +1077,7 @@ extension InputManager {
             }
         }
 
-        waitForMIDICallbacksToDrain()
+        waitForMIDICallbacksToDrain(pausedSourceIDs: sourceIDsToPause)
 
         for context in contextsToRelease {
             context.release()
@@ -1095,7 +1109,7 @@ extension InputManager {
             }
         }
 
-        waitForMIDICallbacksToDrain()
+        waitForMIDICallbacksToDrain(pausedSourceIDs: allSourceIDs)
 
         for context in contextsToRelease {
             context.release()
@@ -1152,18 +1166,21 @@ private extension InputManager {
             midiCallbackDrain.unlock()
             return nil
         }
-        activeMIDICallbackCount += 1
+        activeMIDICallbackCountsBySourceID[sourceID, default: 0] += 1
         midiCallbackDrain.unlock()
 
         return sourceID
     }
 
-    func endMIDISourceCallback() {
+    func endMIDISourceCallback(sourceID: String) {
         midiCallbackDrain.lock()
-        activeMIDICallbackCount -= 1
-        if activeMIDICallbackCount == 0 {
-            midiCallbackDrain.broadcast()
+        let nextCount = (activeMIDICallbackCountsBySourceID[sourceID] ?? 0) - 1
+        if nextCount > 0 {
+            activeMIDICallbackCountsBySourceID[sourceID] = nextCount
+        } else {
+            activeMIDICallbackCountsBySourceID.removeValue(forKey: sourceID)
         }
+        midiCallbackDrain.broadcast()
         midiCallbackDrain.unlock()
     }
 
@@ -1179,9 +1196,12 @@ private extension InputManager {
         midiCallbackDrain.unlock()
     }
 
-    func waitForMIDICallbacksToDrain() {
+    func waitForMIDICallbacksToDrain(pausedSourceIDs: Set<String>) {
         midiCallbackDrain.lock()
-        while activeMIDICallbackCount > 0 {
+        while Self.shouldWaitForMIDICallbacksToDrain(
+            activeCallbacksBySourceID: activeMIDICallbackCountsBySourceID,
+            pausedSourceIDs: pausedSourceIDs
+        ) {
             midiCallbackDrain.wait()
         }
         midiCallbackDrain.unlock()

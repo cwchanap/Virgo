@@ -182,7 +182,7 @@ final class MIDIDeviceRegistry: ObservableObject {
         let wasAvailable = isSelectedSourceAvailable
         let oldSelectedID = selectedSourceID
 
-        sources = sourceProvider.currentSources()
+        sources = Self.collapseDuplicateSources(sourceProvider.currentSources())
         selectedSourceID = settingsManager.getSelectedMIDISource()?.id
 
         if let selectedSourceID {
@@ -232,5 +232,25 @@ final class MIDIDeviceRegistry: ObservableObject {
                 refreshSources()
             }
         }
+    }
+
+    private static func collapseDuplicateSources(_ sources: [MIDISourceDescriptor]) -> [MIDISourceDescriptor] {
+        var orderedIDs: [String] = []
+        var dedupedSources: [String: MIDISourceDescriptor] = [:]
+        orderedIDs.reserveCapacity(sources.count)
+
+        for source in sources {
+            if let existing = dedupedSources[source.id] {
+                if !existing.isConnected && source.isConnected {
+                    dedupedSources[source.id] = source
+                }
+                continue
+            }
+
+            orderedIDs.append(source.id)
+            dedupedSources[source.id] = source
+        }
+
+        return orderedIDs.compactMap { dedupedSources[$0] }
     }
 }

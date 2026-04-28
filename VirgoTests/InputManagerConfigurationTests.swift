@@ -509,6 +509,35 @@ struct InputManagerConfigurationTests {
         )
     }
 
+    // MARK: - MIDI callback drain scoping
+
+    @Test("shouldWaitForMIDICallbacksToDrain only waits for paused source IDs")
+    func testShouldWaitForMIDICallbacksToDrainOnlyWaitsForPausedSources() {
+        let activeCallbacksBySourceID = [
+            "coremidi:selected": 1,
+            "coremidi:unaffected": 3
+        ]
+
+        #expect(
+            InputManager.shouldWaitForMIDICallbacksToDrain(
+                activeCallbacksBySourceID: activeCallbacksBySourceID,
+                pausedSourceIDs: ["coremidi:selected"]
+            ) == true
+        )
+        #expect(
+            InputManager.shouldWaitForMIDICallbacksToDrain(
+                activeCallbacksBySourceID: activeCallbacksBySourceID,
+                pausedSourceIDs: ["coremidi:other"]
+            ) == false
+        )
+        #expect(
+            InputManager.shouldWaitForMIDICallbacksToDrain(
+                activeCallbacksBySourceID: activeCallbacksBySourceID,
+                pausedSourceIDs: []
+            ) == false
+        )
+    }
+
     // MARK: - Connection availability gate (Bug #2)
 
     @Test("isSelectedMIDISourceAvailable falls back to registry when MIDI not initialized")
