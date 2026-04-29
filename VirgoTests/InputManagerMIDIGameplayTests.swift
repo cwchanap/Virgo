@@ -569,4 +569,69 @@ struct InputManagerMIDIGameplayTests {
         #expect(result?.matchedNote != nil)
         #expect(result?.timingAccuracy == .perfect)
     }
+
+    // MARK: - Stale source bypass
+
+    @Test("MIDI events from alternate sources are accepted when selected source is unavailable")
+    func midiEventsAcceptedFromAlternateSourceWhenSelectedIsUnavailable() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.midiEventsAcceptedFromAlternateSourceWhenSelectedIsUnavailable"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        // User has previously selected source-2, but only source-1 is currently connected.
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-2",
+            midiMapping: [38: .snare],
+            availableSourceIDs: ["source-1"]
+        )
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+        manager.startListening(songStartTime: Date())
+
+        // Selected source (source-2) is unavailable, so events from source-1 should be accepted.
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 120, hostTime: mach_absolute_time())
+        )
+
+        #expect(result?.matchedNote != nil)
+        #expect(result?.timingAccuracy == .perfect)
+    }
+
+    @Test("MIDI events from non-selected sources are still rejected when selected source IS available")
+    func midiEventsFromNonSelectedSourcesStillRejectedWhenSelectedIsAvailable() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.midiEventsFromNonSelectedSourcesStillRejectedWhenSelectedIsAvailable"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        // Both source-1 and source-2 are available; source-2 is selected.
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-2",
+            midiMapping: [38: .snare],
+            availableSourceIDs: ["source-1", "source-2"]
+        )
+        manager.configure(
+            bpm: 120,
+            timeSignature: .fourFour,
+            notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+            ]
+        )
+        manager.startListening(songStartTime: Date())
+
+        // Selected source IS available, so events from source-1 should still be rejected.
+        let result = manager.handleMIDINoteEvent(
+            MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 120, hostTime: 10)
+        )
+
+        #expect(result == nil)
+    }
 }

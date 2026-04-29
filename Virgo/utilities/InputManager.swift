@@ -151,6 +151,7 @@ class InputManager: ObservableObject {
         let songStartHostTime: UInt64?
         let hostTimeElapsedOffset: Double
         let selectedSourceID: String?
+        let selectedSourceAvailable: Bool
         let midiMapping: [UInt8: DrumType]
         let inputTimingMatcher: InputTimingMatcher?
     }
@@ -275,6 +276,7 @@ class InputManager: ObservableObject {
                 songStartHostTime: songStartHostTime,
                 hostTimeElapsedOffset: hostTimeElapsedOffset,
                 selectedSourceID: selectedSourceIDSnapshot,
+                selectedSourceAvailable: selectedMIDISourceAvailableSnapshot,
                 midiMapping: midiMappingSnapshot,
                 inputTimingMatcher: inputTimingMatcher
             )
@@ -569,7 +571,9 @@ extension InputManager {
         consumeLearnSessionIfNeeded(event)
         let context = currentMIDINoteHandlingContext()
 
-        guard context.selectedSourceID == nil || event.sourceID == context.selectedSourceID else {
+        guard context.selectedSourceID == nil ||
+              event.sourceID == context.selectedSourceID ||
+              !context.selectedSourceAvailable else {
             publishMIDIDiagnostics(event: event, mappedDrumType: nil)
             return nil
         }
