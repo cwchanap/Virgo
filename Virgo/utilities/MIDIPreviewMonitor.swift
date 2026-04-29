@@ -99,11 +99,16 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
 
     private func connectToAllSources() {
         let sourceCount = MIDIGetNumberOfSources()
+        var connectedUniqueIDs = Set<Int32>()
 
         for index in 0..<sourceCount {
             let source = MIDIGetSource(index)
             guard source != 0, let uniqueID = CoreMIDISourceMetadata.uniqueID(for: source) else { continue }
-            guard connectionContexts[source] == nil else { continue }
+            guard connectionContexts[source] == nil else {
+                connectedUniqueIDs.insert(uniqueID)
+                continue
+            }
+            guard !connectedUniqueIDs.contains(uniqueID) else { continue }
 
             let context = Unmanaged.passRetained(
                 SourceConnectionContext(
@@ -122,6 +127,7 @@ final class CoreMIDIPreviewPacketListener: MIDIPreviewPacketListening {
                 continue
             }
 
+            connectedUniqueIDs.insert(uniqueID)
             connectionContexts[source] = context
         }
     }
