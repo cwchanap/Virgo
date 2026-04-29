@@ -152,6 +152,7 @@ class InputManager: ObservableObject {
         let hostTimeElapsedOffset: Double
         let selectedSourceID: String?
         let selectedSourceAvailable: Bool
+        let requiresMIDISourceForGameplay: Bool
         let midiMapping: [UInt8: DrumType]
         let inputTimingMatcher: InputTimingMatcher?
     }
@@ -277,6 +278,7 @@ class InputManager: ObservableObject {
                 hostTimeElapsedOffset: hostTimeElapsedOffset,
                 selectedSourceID: selectedSourceIDSnapshot,
                 selectedSourceAvailable: selectedMIDISourceAvailableSnapshot,
+                requiresMIDISourceForGameplay: requiresMIDISourceForGameplay,
                 midiMapping: midiMappingSnapshot,
                 inputTimingMatcher: inputTimingMatcher
             )
@@ -479,6 +481,9 @@ extension InputManager {
                 deviceRegistry.onSelectedSourceUnavailable = { [weak self] sourceID in
                     self?.handleSelectedSourceDisconnect(sourceID: sourceID)
                 }
+                deviceRegistry.onSelectedSourceReconnected = { [weak self] sourceID in
+                    self?.handleSelectedSourceReconnect(sourceID: sourceID)
+                }
                 deviceRegistry.startMonitoring()
                 let registryAvailable = deviceRegistry.isSelectedSourceAvailable
                 let effectiveAvailable = applyConnectionAvailabilityGate(
@@ -491,6 +496,9 @@ extension InputManager {
                 guard let self else { return }
                 self.deviceRegistry.onSelectedSourceUnavailable = { [weak self] sourceID in
                     self?.handleSelectedSourceDisconnect(sourceID: sourceID)
+                }
+                self.deviceRegistry.onSelectedSourceReconnected = { [weak self] sourceID in
+                    self?.handleSelectedSourceReconnect(sourceID: sourceID)
                 }
                 self.deviceRegistry.startMonitoring()
                 let registryAvailable = self.deviceRegistry.isSelectedSourceAvailable
@@ -571,9 +579,16 @@ extension InputManager {
         consumeLearnSessionIfNeeded(event)
         let context = currentMIDINoteHandlingContext()
 
+        // Source gate:
+        //  - No selected source → accept from any device
+        //  - Event from selected source → always accept
+        //  - Selected source unavailable AND gated mode OFF → accept from any device (fallback)
+        //  - Selected source unavailable AND gated mode ON → reject non-selected events.
+        //    The delegate will pause playback; accepting hits from wrong devices
+        //    during the async dispatch window would break the "selected device required" invariant.
         guard context.selectedSourceID == nil ||
               event.sourceID == context.selectedSourceID ||
-              !context.selectedSourceAvailable else {
+              (!context.selectedSourceAvailable && !context.requiresMIDISourceForGameplay) else {
             publishMIDIDiagnostics(event: event, mappedDrumType: nil)
             return nil
         }
@@ -619,6 +634,21 @@ extension InputManager {
                 self.delegate?.inputManagerSelectedMIDISourceDisconnected(self)
             }
         }
+    }
+
+    func handleSelectedSourceReconnect(sourceID: String) {
+        let didUpdate = withRuntimeState {
+            guard sourceID == selectedSourceIDSnapshot,
+                  !selectedMIDISourceAvailableSnapshot else { return false }
+            selectedMIDISourceAvailableSnapshot = true
+            return true
+        }
+        guard didUpdate else { return }
+
+        // Re-check the connection gate — the registry says available, but we
+        // must also verify InputManager has actually connected its input port
+        // to the re-enumerated endpoint.
+        refreshMIDISourceAvailabilitySnapshot()
     }
 
     func processInput(_ drumType: DrumType, velocity: Double = 1.0) {
@@ -1189,9 +1219,15 @@ private extension InputManager {
     func beginMIDISourceCallback(refCon: UnsafeMutableRawPointer?) -> String? {
         guard let refCon else { return nil }
 
-        let sourceID = Unmanaged<MIDISourceConnectionContext>.fromOpaque(refCon).takeUnretainedValue().sourceID
-
+        // Dereference refCon INSIDE the lock to prevent use-after-free.
+        // disconnectSpecificMIDISources only releases contexts after
+        // waitForMIDICallbacksToDrain returns, which requires the count to
+        // reach zero while holding this lock.  By reading the context under
+        // the same lock, we guarantee the context is still alive — the release
+        // cannot happen until every in-flight callback has decremented the
+        // count and released this lock.
         midiCallbackDrain.lock()
+        let sourceID = Unmanaged<MIDISourceConnectionContext>.fromOpaque(refCon).takeUnretainedValue().sourceID
         guard !disconnectingSourceIDs.contains(sourceID) else {
             midiCallbackDrain.unlock()
             return nil

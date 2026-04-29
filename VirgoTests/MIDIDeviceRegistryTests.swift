@@ -248,4 +248,91 @@ struct MIDIDeviceRegistryTests {
         #expect(registry.selectedSourceID == "source-B")
         #expect(registry.isSelectedSourceAvailable == false)
     }
+
+    @Test("selected-source-reconnected callback fires when source comes back after disconnect")
+    func selectedSourceReconnectedCallbackFiresWhenSourceComesBack() async throws {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.selectedSourceReconnectedCallbackFiresWhenSourceComesBack"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        settings.setSelectedMIDISource(id: "coremidi:2", displayName: "TD-17")
+
+        let listener = StubMIDISourceChangeListener()
+        let provider = StubMIDISourceProvider([
+            .init(id: "coremidi:2", displayName: "TD-17", isConnected: true)
+        ])
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settings,
+            sourceProvider: provider,
+            sourceChangeListener: listener
+        )
+
+        var reconnectedSourceID: String?
+        registry.onSelectedSourceReconnected = { sourceID in
+            reconnectedSourceID = sourceID
+        }
+
+        registry.startMonitoring()
+        // Simulate disconnect: source disappears
+        provider.sources = []
+        listener.fire()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(registry.isSelectedSourceAvailable == false)
+        #expect(reconnectedSourceID == nil, "Reconnect should not fire on disconnect")
+
+        // Simulate reconnect: source reappears
+        provider.sources = [
+            .init(id: "coremidi:2", displayName: "TD-17", isConnected: true)
+        ]
+        listener.fire()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(reconnectedSourceID == "coremidi:2")
+        #expect(registry.isSelectedSourceAvailable == true)
+    }
+
+    @Test("selected-source-reconnected callback does not fire when a different source appears")
+    func selectedSourceReconnectedCallbackDoesNotFireForDifferentSource() async throws {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDIDeviceRegistryTests.selectedSourceReconnectedCallbackDoesNotFireForDifferentSource"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        settings.setSelectedMIDISource(id: "coremidi:2", displayName: "TD-17")
+
+        let listener = StubMIDISourceChangeListener()
+        let provider = StubMIDISourceProvider([
+            .init(id: "coremidi:2", displayName: "TD-17", isConnected: true)
+        ])
+        let registry = MIDIDeviceRegistry(
+            settingsManager: settings,
+            sourceProvider: provider,
+            sourceChangeListener: listener
+        )
+
+        var reconnectedSourceID: String?
+        registry.onSelectedSourceReconnected = { sourceID in
+            reconnectedSourceID = sourceID
+        }
+
+        registry.startMonitoring()
+        // Disconnect selected source
+        provider.sources = []
+        listener.fire()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(registry.isSelectedSourceAvailable == false)
+
+        // A DIFFERENT source appears (not the selected one)
+        provider.sources = [
+            .init(id: "coremidi:99", displayName: "Other Device", isConnected: true)
+        ]
+        listener.fire()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        #expect(reconnectedSourceID == nil, "Reconnect should not fire for a different source")
+        #expect(registry.isSelectedSourceAvailable == false)
+    }
 }
