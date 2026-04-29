@@ -143,11 +143,17 @@ final class MIDIDeviceRegistry: ObservableObject {
     @Published private(set) var isSelectedSourceAvailable = false
 
     var onSelectedSourceUnavailable: ((String) -> Void)?
+    var onSelectedSourceReconnected: ((String) -> Void)?
 
     private let settingsManager: InputSettingsManager
     private let sourceProvider: MIDISourceProviding
     private let sourceChangeListener: MIDISourceChangeListening
     private var isRefreshScheduled = false
+    /// Tracks whether we've ever reported the selected source as unavailable
+    /// via `onSelectedSourceUnavailable`.  Prevents the reconnect callback
+    /// from firing on the initial `refreshSources()` when the source is
+    /// discovered as available for the first time.
+    private var hasReportedSelectedSourceUnavailable = false
 
     init(
         settingsManager: InputSettingsManager,
@@ -190,8 +196,14 @@ final class MIDIDeviceRegistry: ObservableObject {
                 $0.id == selectedSourceID && $0.isConnected
             }
 
-            if oldSelectedID == selectedSourceID && wasAvailable && !isSelectedSourceAvailable {
-                onSelectedSourceUnavailable?(selectedSourceID)
+            if oldSelectedID == selectedSourceID {
+                if wasAvailable && !isSelectedSourceAvailable {
+                    hasReportedSelectedSourceUnavailable = true
+                    onSelectedSourceUnavailable?(selectedSourceID)
+                } else if !wasAvailable && isSelectedSourceAvailable && hasReportedSelectedSourceUnavailable {
+                    hasReportedSelectedSourceUnavailable = false
+                    onSelectedSourceReconnected?(selectedSourceID)
+                }
             }
         } else {
             isSelectedSourceAvailable = false
