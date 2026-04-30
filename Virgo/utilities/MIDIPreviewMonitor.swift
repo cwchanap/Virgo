@@ -231,6 +231,14 @@ final class MIDIPreviewMonitor: ObservableObject {
     private let sourceIDResolver: MIDISourceIDResolving
     private let packetListener: MIDIPreviewPacketListening
 
+    /// Lock protecting cross-thread access to `sessionGeneration` and
+    /// `isActive`.  Writes occur on the main thread (via `start()` / `stop()`);
+    /// reads occur on CoreMIDI background threads (in `handle`).  The
+    /// dispatched block that runs on the main thread does NOT acquire this lock
+    /// because main-thread serialization already guarantees mutual exclusion
+    /// with the writers.
+    private let stateLock = NSLock()
+
     /// Monotonically increasing session generation counter. Each `start()`
     /// increments it so that already-enqueued main-queue blocks from a
     /// previous session are rejected even after a new session begins.
@@ -262,8 +270,10 @@ final class MIDIPreviewMonitor: ObservableObject {
 
     @discardableResult
     func start() -> Bool {
+        stateLock.lock()
         sessionGeneration += 1
         isActive = true
+        stateLock.unlock()
         let didStart = packetListener.start { [weak self] packetList, sourceUniqueID, sourceDisplayName in
             self?.handle(
                 packetList: packetList,
@@ -272,14 +282,18 @@ final class MIDIPreviewMonitor: ObservableObject {
             )
         }
         if !didStart {
+            stateLock.lock()
             isActive = false
+            stateLock.unlock()
             Logger.error("Failed to start MIDI preview packet listener")
         }
         return didStart
     }
 
     func stop() {
+        stateLock.lock()
         isActive = false
+        stateLock.unlock()
         packetListener.stop()
     }
 
@@ -296,9 +310,12 @@ final class MIDIPreviewMonitor: ObservableObject {
         if Thread.isMainThread {
             publish(events: events, sourceDisplayName: sourceDisplayName)
         } else {
+            stateLock.lock()
             let capturedGeneration = sessionGeneration
+            stateLock.unlock()
             // Always dispatch to main thread; the session generation guard
-            // runs on the main thread where all writes occur, avoiding a data race.
+            // runs on the main thread where all writes occur, so the
+            // comparison itself is safe by main-thread serialization.
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.isActive, self.sessionGeneration == capturedGeneration else { return }
                 self.publish(

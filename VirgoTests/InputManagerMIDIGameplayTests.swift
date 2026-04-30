@@ -766,4 +766,33 @@ struct InputManagerMIDIGameplayTests {
         #expect(manager.isSelectedMIDISourceAvailable == false,
                 "Reconnect of a non-selected source should not affect availability")
     }
+
+    @Test("handleSelectedSourceReconnect does not eagerly set available when connection gate rejects")
+    func handleSelectedSourceReconnectDoesNotEagerlySetAvailable() {
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "InputManagerMIDIGameplayTests.handleSelectedSourceReconnectDoesNotEagerlySetAvailable"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let manager = makeInputManagerForTest(
+            settingsManager: settingsManager,
+            selectedSourceID: "source-2",
+            midiMapping: [38: .snare],
+            availableSourceIDs: ["source-2"]
+        )
+
+        // Simulate disconnect
+        manager.handleSelectedSourceDisconnect(sourceID: "source-2")
+        #expect(manager.isSelectedMIDISourceAvailable == false)
+
+        // Simulate MIDI setup failure so the connection gate rejects the source
+        // even though the registry reports it as available.
+        manager.simulateMIDISetupFailureForTesting()
+
+        // Reconnect should NOT eagerly set available — the connection gate
+        // rejects because InputManager has no working MIDI port.
+        manager.handleSelectedSourceReconnect(sourceID: "source-2")
+        #expect(manager.isSelectedMIDISourceAvailable == false,
+                "Availability must stay false when connection gate rejects, even after reconnect signal")
+    }
 }
