@@ -637,17 +637,16 @@ extension InputManager {
     }
 
     func handleSelectedSourceReconnect(sourceID: String) {
-        let didUpdate = withRuntimeState {
+        let shouldRefresh = withRuntimeState {
             guard sourceID == selectedSourceIDSnapshot,
                   !selectedMIDISourceAvailableSnapshot else { return false }
-            selectedMIDISourceAvailableSnapshot = true
             return true
         }
-        guard didUpdate else { return }
+        guard shouldRefresh else { return }
 
-        // Re-check the connection gate — the registry says available, but we
-        // must also verify InputManager has actually connected its input port
-        // to the re-enumerated endpoint.
+        // Let refreshMIDISourceAvailabilitySnapshot() determine the correct
+        // state based on actual connection state rather than eagerly assuming
+        // available — the reconnection may fail if MIDIPortConnectSource errors.
         refreshMIDISourceAvailabilitySnapshot()
     }
 
