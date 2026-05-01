@@ -280,16 +280,37 @@ struct GameplayViewModelPlaybackCoverageTests {
         vm.setupGameplay()
         defer { vm.cleanup() }
 
-        // Simulate resume: pausedElapsedTime = 3.0, playbackStartTime backdated
-        // User pauses again before audio starts (playbackStartTime is in the future
-        // relative to "now" because scheduled start hasn't fired yet).
+        // Simulate resume path: playbackStartTime is backdated the same way
+        // startPlayback() does on resume (scheduledStartTime - pausedElapsedTime).
+        // With pausedElapsedTime = 3.0 and a scheduled start 0.05 s in the future,
+        // the backdated start = (now + 0.05) - 3.0 = now - 2.95.
         vm.isPlaying = true
         vm.pausedElapsedTime = 3.0
-        vm.playbackStartTime = Date().addingTimeInterval(0.05)
+        vm.playbackStartTime = Date().addingTimeInterval(0.05 - 3.0)
 
         vm.pausePlayback()
 
         #expect(vm.pausedElapsedTime >= 3.0,
                 "Should preserve the existing pause offset, not replace with a negative value")
+    }
+
+    // MARK: - calculateElapsedTime clamps negative values before scheduled start
+
+    @Test("calculateElapsedTime returns zero instead of negative before scheduled start")
+    func testCalculateElapsedTimeClampsNegativeBeforeScheduledStart() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Fresh start: playbackStartTime is 0.05 s in the future (buffer priming).
+        vm.isPlaying = true
+        vm.pausedElapsedTime = 0.0
+        vm.playbackStartTime = Date().addingTimeInterval(0.05)
+
+        let elapsed = vm.calculateElapsedTime()
+
+        #expect(elapsed == 0.0,
+                "calculateElapsedTime should clamp to zero before scheduled start, got \(elapsed ?? -1)")
     }
 }

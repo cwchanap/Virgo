@@ -1160,7 +1160,8 @@ final class GameplayViewModel {
         } else if isPlaying, let startTime = playbackStartTime {
             // playbackStartTime is backdated by pausedElapsedTime (e.g. scheduledStart - pausedElapsedTime),
             // so the raw interval already includes the pause offset. Do NOT add pausedElapsedTime again.
-            return Date().timeIntervalSince(startTime)
+            // Clamp to zero: before a scheduled start, the interval can be slightly negative.
+            return max(0, Date().timeIntervalSince(startTime))
         }
         return nil
     }
