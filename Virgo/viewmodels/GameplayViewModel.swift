@@ -111,6 +111,8 @@ final class GameplayViewModel {
     private(set) var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:]
     /// Maps legacy DrumBeat IDs to all rendered note heads at the same musical time.
     private(set) var cachedNotationNoteHeadIDsByBeatID: [UInt64: [UInt64]] = [:]
+    /// Preserves the legacy grouping key that produced each DrumBeat ID.
+    private var cachedDrumBeatIDByNotePositionKey: [NotePositionKey: UInt64] = [:]
 
     // MARK: - Visual State
     /// Currently active beat ID for highlighting
@@ -1218,6 +1220,7 @@ final class GameplayViewModel {
     func computeDrumBeats() {
         if cachedNotes.isEmpty {
             cachedDrumBeats = []
+            cachedDrumBeatIDByNotePositionKey = [:]
             nextBeatId = 0  // Reset counter for consistency
             return
         }
@@ -1226,15 +1229,18 @@ final class GameplayViewModel {
             NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
         }
 
+        cachedDrumBeatIDByNotePositionKey = [:]
         cachedDrumBeats = groupedNotes.map { (positionKey, notes) in
+            let beatID = generateBeatId()
             let timePosition = MeasureUtils.timePosition(
                 measureNumber: positionKey.measureNumber,
                 measureOffset: positionKey.measureOffset
             )
             let drumTypes = notes.compactMap { DrumType.from(noteType: $0.noteType) }
             let interval = notes.first?.interval ?? .quarter
+            cachedDrumBeatIDByNotePositionKey[positionKey] = beatID
             return DrumBeat(
-                id: generateBeatId(),
+                id: beatID,
                 drums: drumTypes,
                 timePosition: timePosition,
                 interval: interval
@@ -1308,16 +1314,23 @@ final class GameplayViewModel {
                 (beatID, (x: Double(position.x), y: Double(position.y)))
             }
         )
-        cachedNotationNoteHeadIDsByBeatID = Dictionary(
-            uniqueKeysWithValues: cachedDrumBeats.map { beat in
-                let noteHeadIDs = cachedNotationLayout.noteHeads
-                    .filter {
-                        abs($0.timePosition - beat.timePosition) <= BeamGroupingConstants.comparisonTolerance
-                    }
-                    .map(\.id)
-                return (beat.id, noteHeadIDs)
+        let notePositionKeyBySourceNoteID = Dictionary(
+            uniqueKeysWithValues: cachedNotes.map { note in
+                (
+                    ObjectIdentifier(note),
+                    NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
+                )
             }
         )
+        var noteHeadIDsByBeatID = Dictionary(uniqueKeysWithValues: cachedDrumBeats.map { ($0.id, [UInt64]()) })
+        for noteHead in cachedNotationLayout.noteHeads {
+            guard let positionKey = notePositionKeyBySourceNoteID[noteHead.sourceNoteID],
+                  let beatID = cachedDrumBeatIDByNotePositionKey[positionKey] else {
+                continue
+            }
+            noteHeadIDsByBeatID[beatID, default: []].append(noteHead.id)
+        }
+        cachedNotationNoteHeadIDsByBeatID = noteHeadIDsByBeatID
     }
 
     func cacheBeatPositions() {
