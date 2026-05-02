@@ -11,30 +11,36 @@ extension GameplayView {
     @ViewBuilder
     func sheetMusicView(geometry: GeometryProxy) -> some View {
         if let viewModel = viewModel {
-            let totalHeight = GameplayLayout.totalHeight(for: viewModel.cachedMeasurePositions)
+            let usesNotationLayout = usesNotationLayout(viewModel: viewModel)
+            let measurePositions = sheetMeasurePositions(viewModel: viewModel)
+            let contentWidth = sheetContentWidth(viewModel: viewModel)
+            let contentHeight = sheetContentHeight(viewModel: viewModel)
 
             ScrollView([.horizontal, .vertical], showsIndicators: false) {
                 ZStack(alignment: .topLeading) {
                     // Use cached static staff lines view - created only once
-                    if let staticView = viewModel.staticStaffLinesView {
+                    if !usesNotationLayout, let staticView = viewModel.staticStaffLinesView {
                         staticView
                     } else {
                         // Fallback: render dynamic staff lines when static view is not available
-                        staffLinesView(measurePositions: viewModel.cachedMeasurePositions)
+                        staffLinesView(measurePositions: measurePositions, width: contentWidth)
                     }
 
                     // Dynamic content
                     ZStack(alignment: .topLeading) {
-                        barLinesView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
+                        barLinesView(measurePositions: measurePositions, viewModel: viewModel)
 
-                        clefsAndTimeSignaturesView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
+                        clefsAndTimeSignaturesView(measurePositions: measurePositions, viewModel: viewModel)
 
-                        drumNotationView(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
+                        drumNotationView(measurePositions: measurePositions, viewModel: viewModel)
 
-                        timeBasedBeatProgressionBars(measurePositions: viewModel.cachedMeasurePositions, viewModel: viewModel)
+                        timeBasedBeatProgressionBars(
+                            measurePositions: viewModel.cachedMeasurePositions,
+                            viewModel: viewModel
+                        )
                     }
                 }
-                .frame(width: GameplayLayout.maxRowWidth, height: totalHeight)
+                .frame(width: contentWidth, height: contentHeight)
             }
             .background(Color.gray.opacity(0.1))
         } else {
@@ -43,7 +49,10 @@ extension GameplayView {
         }
     }
 
-    func staffLinesView(measurePositions: [GameplayLayout.MeasurePosition]) -> some View {
+    func staffLinesView(
+        measurePositions: [GameplayLayout.MeasurePosition],
+        width: CGFloat = GameplayLayout.maxRowWidth
+    ) -> some View {
         let rows = Set(measurePositions.map { $0.row })
 
         return ZStack {
@@ -51,10 +60,10 @@ extension GameplayView {
                 ZStack {
                     ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
                         Rectangle()
-                            .frame(width: GameplayLayout.maxRowWidth, height: 1) // Full width to cover clef area
+                            .frame(width: width, height: 1) // Full width to cover clef area
                             .foregroundColor(.gray.opacity(0.5))
                             .position(
-                                x: GameplayLayout.maxRowWidth / 2, // Center in full width
+                                x: width / 2, // Center in full width
                                 y: GameplayLayout.StaffLinePosition(rawValue: lineIndex)?.absoluteY(for: row) ?? 0
                             )
                     }
@@ -64,7 +73,10 @@ extension GameplayView {
         }
     }
 
-    func clefsAndTimeSignaturesView(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
+    func clefsAndTimeSignaturesView(
+        measurePositions: [GameplayLayout.MeasurePosition],
+        viewModel: GameplayViewModel
+    ) -> some View {
         let rows = Set(measurePositions.map { $0.row })
 
         return ZStack {
@@ -94,9 +106,10 @@ extension GameplayView {
 
     func barLinesView(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
         let notationMeasureBars = viewModel.cachedNotationLayout.measureBars
+        let usesNotationLayout = usesNotationLayout(viewModel: viewModel)
 
         ZStack {
-            if !notationMeasureBars.isEmpty {
+            if usesNotationLayout {
                 ForEach(notationMeasureBars) { measureBar in
                     NotationMeasureBarView(measureBar: measureBar)
                 }
@@ -104,7 +117,7 @@ extension GameplayView {
                 // Regular bar lines
                 ForEach(measurePositions, id: \.measureIndex) { position in
                     // Use the same Y positioning as staff lines - center of the staff for this row
-                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.row) // Middle staff line
+                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.row)
 
                     Rectangle()
                         .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
@@ -117,9 +130,11 @@ extension GameplayView {
 
                 // Double bar line at the very end
                 if let lastPosition = measurePositions.last {
-                    let measureWidth = GameplayLayout.measureWidth(for: viewModel.track?.timeSignature ?? TimeSignature.fourFour)
+                    let measureWidth = GameplayLayout.measureWidth(
+                        for: viewModel.track?.timeSignature ?? TimeSignature.fourFour
+                    )
                     let endX = lastPosition.xOffset + measureWidth
-                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row) // Middle staff line
+                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row)
 
                     HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
                         Rectangle()
@@ -138,7 +153,10 @@ extension GameplayView {
         }
     }
 
-    func drumNotationView(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
+    func drumNotationView(
+        measurePositions: [GameplayLayout.MeasurePosition],
+        viewModel: GameplayViewModel
+    ) -> some View {
         let notationLayout = viewModel.cachedNotationLayout
         let activeNotationNoteHeadIDs = viewModel.activeNotationNoteHeadIDs
 
@@ -204,7 +222,10 @@ extension GameplayView {
         }
     }
 
-    func timeBasedBeatProgressionBars(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
+    func timeBasedBeatProgressionBars(
+        measurePositions: [GameplayLayout.MeasurePosition],
+        viewModel: GameplayViewModel
+    ) -> some View {
         Group {
             // PERFORMANCE FIX: Use pre-cached purple bar position instead of expensive calculation
             if let position = viewModel.purpleBarPosition {
@@ -215,5 +236,57 @@ extension GameplayView {
                     .position(x: position.x, y: position.y)
             }
         }
+    }
+
+    func usesNotationLayout(viewModel: GameplayViewModel) -> Bool {
+        !viewModel.cachedNotationLayout.noteHeads.isEmpty
+    }
+
+    func sheetMeasurePositions(viewModel: GameplayViewModel) -> [GameplayLayout.MeasurePosition] {
+        guard usesNotationLayout(viewModel: viewModel) else {
+            return viewModel.cachedMeasurePositions
+        }
+
+        return measurePositions(from: viewModel.cachedNotationLayout)
+    }
+
+    func sheetContentHeight(viewModel: GameplayViewModel) -> CGFloat {
+        guard usesNotationLayout(viewModel: viewModel) else {
+            return GameplayLayout.totalHeight(for: viewModel.cachedMeasurePositions)
+        }
+
+        return viewModel.cachedNotationLayout.totalHeight
+    }
+
+    func sheetContentWidth(viewModel: GameplayViewModel) -> CGFloat {
+        guard usesNotationLayout(viewModel: viewModel) else {
+            return GameplayLayout.maxRowWidth
+        }
+
+        return notationContentWidth(for: viewModel.cachedNotationLayout)
+    }
+
+    func measurePositions(from notationLayout: NotationLayout) -> [GameplayLayout.MeasurePosition] {
+        notationLayout.measures.map { measure in
+            GameplayLayout.MeasurePosition(
+                row: measure.row,
+                xOffset: measure.xOffset,
+                measureIndex: measure.measureIndex
+            )
+        }
+    }
+
+    func notationContentWidth(for notationLayout: NotationLayout) -> CGFloat {
+        let primitiveMaxX = [
+            notationLayout.noteHeads.map(\.position.x),
+            notationLayout.measureBars.map(\.x),
+            notationLayout.beams.flatMap { [$0.start.x, $0.end.x] },
+            notationLayout.ledgerLines.flatMap { [$0.start.x, $0.end.x] },
+            notationLayout.stems.flatMap { [$0.start.x, $0.end.x] }
+        ]
+        .flatMap { $0 }
+        .max() ?? GameplayLayout.maxRowWidth
+
+        return max(GameplayLayout.maxRowWidth, primitiveMaxX + GameplayLayout.uniformSpacing)
     }
 }
