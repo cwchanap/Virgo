@@ -106,7 +106,8 @@ struct NotationLayoutEngineTests {
         let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
 
         #expect(layout.measures.first?.width == GameplayLayout.measureWidth(for: .fourFour))
-        #expect(uniqueX.count == 1)
+        #expect(uniqueX.count == 2)
+        #expect((uniqueX.last ?? 0) - (uniqueX.first ?? 0) >= 16)
     }
 
     @Test("near identical offsets across quantization boundary share visual column")
@@ -121,11 +122,12 @@ struct NotationLayoutEngineTests {
         let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
 
         #expect(layout.measures.first?.width == GameplayLayout.measureWidth(for: .fourFour))
-        #expect(uniqueX.count == 1)
+        #expect(uniqueX.count == 2)
+        #expect((uniqueX.last ?? 0) - (uniqueX.first ?? 0) >= 16)
     }
 
-    @Test("simultaneous quarter notes share columns without expanding measure")
-    func simultaneousQuarterNotesShareColumnsWithoutExpandingMeasure() {
+    @Test("simultaneous quarter notes split voices without expanding measure")
+    func simultaneousQuarterNotesSplitVoicesWithoutExpandingMeasure() {
         let notes = (0..<4).flatMap { index in
             [
                 Note(
@@ -148,8 +150,81 @@ struct NotationLayoutEngineTests {
         let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
 
         #expect(layout.noteHeads.count == 8)
-        #expect(uniqueX.count == 4)
+        #expect(uniqueX.count == 8)
         #expect((layout.measures.first?.width ?? 0) <= GameplayLayout.measureWidth(for: .fourFour))
-        #expect(abs((uniqueX[1] - uniqueX[0]) - GameplayLayout.uniformSpacing) < 0.001)
+        #expect(abs((uniqueX[2] - uniqueX[0]) - GameplayLayout.uniformSpacing) < 0.001)
+    }
+
+    @Test("above staff crash emits ledger line")
+    func aboveStaffCrashEmitsLedgerLine() {
+        let note = Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.ledgerLines.count >= 1)
+        #expect(layout.ledgerLines.allSatisfy { $0.end.x > $0.start.x })
+    }
+
+    @Test("below staff kick emits ledger lines")
+    func belowStaffKickEmitsLedgerLines() {
+        let note = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.ledgerLines.count >= 1)
+        #expect(layout.ledgerLines.allSatisfy { $0.end.x > $0.start.x })
+    }
+
+    @Test("kick and snare at same time get separate voices")
+    func kickAndSnareAtSameTimeGetSeparateVoices() throws {
+        let notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let kick = try #require(layout.noteHeads.first { $0.drumType == .kick })
+        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
+
+        #expect(kick.voice == .lower)
+        #expect(snare.voice == .upper)
+        #expect(abs(snare.position.x - kick.position.x) >= 16)
+        #expect(kick.position.x < snare.position.x)
+    }
+
+    @Test("same voice simultaneous notes do not split")
+    func sameVoiceSimultaneousNotesDoNotSplit() throws {
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.5),
+            Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0.5)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
+        let crash = try #require(layout.noteHeads.first { $0.drumType == .crash })
+
+        #expect(snare.voice == .upper)
+        #expect(crash.voice == .upper)
+        #expect(abs(snare.position.x - crash.position.x) < 0.001)
+    }
+
+    @Test("near identical cross voice offsets split by quantized column")
+    func nearIdenticalCrossVoiceOffsetsSplitByQuantizedColumn() throws {
+        let notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.24999999999999997)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let kick = try #require(layout.noteHeads.first { $0.drumType == .kick })
+        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
+
+        #expect(kick.position.x < snare.position.x)
+        #expect(abs(snare.position.x - kick.position.x) >= 16)
     }
 }
