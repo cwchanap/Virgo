@@ -71,6 +71,44 @@ struct NotationLayoutEngineTests {
         #expect(abs((sortedX[1] - sortedX[0]) - GameplayLayout.uniformSpacing) < 0.001)
     }
 
+    @Test("sparse quarter notes preserve legacy measure width and first column")
+    func sparseQuarterNotesPreserveLegacyMeasureWidthAndFirstColumn() {
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 4.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let measure = layout.measures.first
+        let firstX = layout.noteHeads.map(\.position.x).min() ?? 0
+        let expectedFirstX = (measure?.xOffset ?? 0)
+            + GameplayLayout.barLineWidth
+            + GameplayLayout.uniformSpacing
+
+        #expect(measure?.width == GameplayLayout.measureWidth(for: .fourFour))
+        #expect(abs(firstX - expectedFirstX) < 0.001)
+    }
+
+    @Test("near identical simultaneous offsets do not expand simple measure")
+    func nearIdenticalSimultaneousOffsetsDoNotExpandSimpleMeasure() {
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0004)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
+
+        #expect(layout.measures.first?.width == GameplayLayout.measureWidth(for: .fourFour))
+        #expect(uniqueX.count == 1)
+    }
+
     @Test("simultaneous quarter notes share columns without expanding measure")
     func simultaneousQuarterNotesShareColumnsWithoutExpandingMeasure() {
         let notes = (0..<4).flatMap { index in

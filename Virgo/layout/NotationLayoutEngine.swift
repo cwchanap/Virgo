@@ -2,6 +2,8 @@ import CoreGraphics
 import Foundation
 
 struct NotationLayoutEngine {
+    private static let columnResolution = 1000.0
+
     func layout(input: NotationLayoutInput) -> NotationLayout {
         let normalizedNotes = input.notes.sorted {
             MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
@@ -66,13 +68,11 @@ struct NotationLayoutEngine {
         input: NotationLayoutInput
     ) -> CGFloat {
         let measureNumber = MeasureUtils.toOneBasedNumber(measureIndex)
-        let offsets = Set(notes
-            .filter { $0.measureNumber == measureNumber }
-            .map(\.measureOffset))
-            .sorted()
+        let offsets = columnOffsets(for: measureNumber, notes: notes)
+        let legacyWidth = GameplayLayout.measureWidth(for: input.timeSignature)
 
         guard offsets.count > 1 else {
-            return GameplayLayout.measureWidth(for: input.timeSignature)
+            return legacyWidth
         }
 
         let smallestGap = zip(offsets.dropFirst(), offsets)
@@ -85,10 +85,11 @@ struct NotationLayoutEngine {
             input.style.minimumQuarterBeatGap,
             minimumBeatGap
         )
-        return GameplayLayout.barLineWidth
-            + input.style.measurePadding
+        let adaptiveWidth = GameplayLayout.barLineWidth
+            + GameplayLayout.uniformSpacing
             + CGFloat(input.timeSignature.beatsPerMeasure) * beatGap
-            + input.style.measurePadding
+
+        return max(legacyWidth, adaptiveWidth)
     }
 
     private func buildNoteHeads(
@@ -104,8 +105,9 @@ struct NotationLayoutEngine {
             let measureIndex = MeasureUtils.toZeroBasedIndex(note.measureNumber)
             guard let measure = measuresByIndex[measureIndex] else { return nil }
             let beatGap = beatGap(for: measure, input: input)
-            let x = measure.xOffset + GameplayLayout.barLineWidth + input.style.measurePadding
-                + CGFloat(note.measureOffset * Double(input.timeSignature.beatsPerMeasure)) * beatGap
+            let beatPosition = quantizedOffset(for: note.measureOffset) * Double(input.timeSignature.beatsPerMeasure)
+            let x = measure.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
+                + CGFloat(beatPosition) * beatGap
             let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
                 + drumType.notePosition.yOffset
             let id = nextID
@@ -131,8 +133,19 @@ struct NotationLayoutEngine {
     }
 
     private func beatGap(for measure: RenderedMeasure, input: NotationLayoutInput) -> CGFloat {
-        let drawableWidth = measure.width - GameplayLayout.barLineWidth - input.style.measurePadding * 2
+        let drawableWidth = measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing
         return drawableWidth / CGFloat(input.timeSignature.beatsPerMeasure)
+    }
+
+    private func columnOffsets(for measureNumber: Int, notes: [Note]) -> [Double] {
+        Set(notes
+            .filter { $0.measureNumber == measureNumber }
+            .map { quantizedOffset(for: $0.measureOffset) })
+            .sorted()
+    }
+
+    private func quantizedOffset(for measureOffset: Double) -> Double {
+        Double(Int(measureOffset * Self.columnResolution)) / Self.columnResolution
     }
 
     private func staffStep(for position: GameplayLayout.NotePosition) -> Int {
