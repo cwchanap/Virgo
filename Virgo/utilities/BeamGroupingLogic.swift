@@ -7,6 +7,8 @@
 
 import Foundation
 
+// Legacy notation renderer retained for compatibility tests while gameplay uses NotationLayoutEngine.
+
 // MARK: - Beam Grouping Helper
 struct BeamGroupingHelper {
     static func calculateBeamGroups(from beats: [DrumBeat]) -> [BeamGroup] {
