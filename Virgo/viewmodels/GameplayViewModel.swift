@@ -1201,7 +1201,10 @@ final class GameplayViewModel {
             return nil
         }
 
-        guard let measurePos = measurePositionMap[measureIndex] ?? measurePositionMap[0] else { return nil }
+        let clampedIndex = measurePositionMap[measureIndex] != nil
+            ? measureIndex
+            : (measurePositionMap.keys.max() ?? 0)
+        guard let measurePos = measurePositionMap[clampedIndex] else { return nil }
         let indicatorX = GameplayLayout.preciseNoteXPosition(
             measurePosition: measurePos,
             beatPosition: beatWithinMeasure,
