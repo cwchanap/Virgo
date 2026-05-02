@@ -406,4 +406,73 @@ extension NotationLayoutEngineTests {
         #expect(layout.stems.count == 2)
         #expect(layout.beams.isEmpty)
     }
+
+    @Test("non-beamable note between eighths breaks beam run")
+    func nonBeamableNoteBetweenEighthsBreaksBeamRun() {
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.125),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.25)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 3)
+        #expect(layout.beams.isEmpty)
+    }
+
+    @Test("higher beam level does not span intervening lower duration note")
+    func higherBeamLevelDoesNotSpanInterveningLowerDurationNote() {
+        let notes = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.1875)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let levelZeroBeams = layout.beams.filter { $0.level == 0 }
+        let levelOneBeams = layout.beams.filter { $0.level == 1 }
+
+        #expect(levelZeroBeams.count == 1)
+        #expect(levelZeroBeams.first?.noteHeadIDs.count == 3)
+        #expect(levelOneBeams.isEmpty)
+    }
+
+    @Test("same time same voice duplicate eighths do not create zero length beam")
+    func sameTimeSameVoiceDuplicateEighthsDoNotCreateZeroLengthBeam() {
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .highTom, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 2)
+        #expect(layout.beams.isEmpty)
+    }
+
+    @Test("down stem beams align to down stem x coordinates")
+    func downStemBeamsAlignToDownStemXCoordinates() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = [
+            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
+        )
+        let sortedHeads = layout.noteHeads.sorted { $0.timePosition < $1.timePosition }
+        let firstHead = try #require(sortedHeads.first)
+        let lastHead = try #require(sortedHeads.last)
+        let beam = try #require(layout.beams.first)
+
+        #expect(layout.beams.count == 1)
+        #expect(beam.direction == .down)
+        #expect(abs(beam.start.x - (firstHead.position.x - style.stemXInset)) < 0.001)
+        #expect(abs(beam.end.x - (lastHead.position.x - style.stemXInset)) < 0.001)
+        #expect(beam.start.y > firstHead.position.y)
+    }
 }
