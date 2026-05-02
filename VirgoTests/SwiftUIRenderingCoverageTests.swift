@@ -158,6 +158,45 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
+    @Test("Gameplay sheet sizing uses notation width only when note heads are active")
+    func testGameplaySheetSizingUsesNotationWidthOnlyWhenActive() async throws {
+        try await TestSetup.withTestSetup {
+            let emptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+                chart: Chart(difficulty: .medium),
+                noteCount: 0
+            )
+            await emptyViewModel.loadChartData()
+            emptyViewModel.setupGameplay()
+
+            let gameplayView = GameplayView(chart: emptyViewModel.chart, metronome: emptyViewModel.metronome)
+            #expect(!gameplayView.usesNotationLayout(viewModel: emptyViewModel))
+            #expect(emptyViewModel.cachedNotationLayout.measureBars.count >= 1)
+            #expect(gameplayView.sheetContentWidth(viewModel: emptyViewModel) == GameplayLayout.maxRowWidth)
+
+            let denseChart = Chart(difficulty: .medium)
+            for index in 0..<32 {
+                denseChart.notes.append(
+                    Note(
+                        interval: .sixteenth,
+                        noteType: .snare,
+                        measureNumber: 1,
+                        measureOffset: Double(index) / 32.0
+                    )
+                )
+            }
+            let denseViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: denseChart)
+            await denseViewModel.loadChartData()
+            denseViewModel.setupGameplay()
+
+            #expect(gameplayView.usesNotationLayout(viewModel: denseViewModel))
+            #expect(gameplayView.sheetContentWidth(viewModel: denseViewModel) > GameplayLayout.maxRowWidth)
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: denseViewModel)
+                    == denseViewModel.cachedNotationLayout.totalHeight
+            )
+        }
+    }
+
     @Test("LibraryView renders empty and populated downloaded-song states")
     func testLibraryViewRenderingStates() async throws {
         try await TestSetup.withTestSetup {
