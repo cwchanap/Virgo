@@ -16,6 +16,13 @@ struct NotationLayoutEngine {
         let collisionColumn: VoiceCollisionColumn
     }
 
+    private struct BeamGroupKey: Hashable {
+        let measureIndex: Int
+        let row: Int
+        let voice: NotationVoice
+        let stemDirection: StemDirection
+    }
+
     func layout(input: NotationLayoutInput) -> NotationLayout {
         let normalizedNotes = input.notes.sorted {
             MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
@@ -24,6 +31,8 @@ struct NotationLayoutEngine {
         let totalMeasures = max(1, (normalizedNotes.map(\.measureNumber).max() ?? 1))
         let measures = buildMeasures(totalMeasures: totalMeasures, notes: normalizedNotes, input: input)
         let noteHeads = buildNoteHeads(notes: normalizedNotes, measures: measures, input: input)
+        let stems = buildStems(noteHeads: noteHeads, style: input.style)
+        let beams = buildBeams(noteHeads: noteHeads, style: input.style)
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
         let beatLookup = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
@@ -36,8 +45,8 @@ struct NotationLayoutEngine {
         return NotationLayout(
             measures: measures,
             noteHeads: noteHeads,
-            stems: [],
-            beams: [],
+            stems: stems,
+            beams: beams,
             ledgerLines: ledgerLines,
             measureBars: measureBars,
             beatLookup: beatLookup,
@@ -161,6 +170,7 @@ struct NotationLayoutEngine {
                 + drumType.notePosition.yOffset
             let id = nextID
             let voice = NotationVoice.voice(for: drumType)
+            let direction = stemDirection(for: drumType, voice: voice)
             nextID += 1
 
             drafts.append(
@@ -178,7 +188,7 @@ struct NotationLayoutEngine {
                         row: measure.row,
                         position: CGPoint(x: x, y: y),
                         staffStep: staffStep(for: drumType.notePosition),
-                        stemDirection: .up,
+                        stemDirection: direction,
                         interval: note.interval
                     ),
                     collisionColumn: VoiceCollisionColumn(
@@ -252,6 +262,181 @@ struct NotationLayoutEngine {
 
     private func staffStep(for position: GameplayLayout.NotePosition) -> Int {
         Int((position.yOffset / (GameplayLayout.staffLineSpacing / 2)).rounded())
+    }
+}
+
+private extension NotationLayoutEngine {
+    private func stemDirection(for drumType: DrumType, voice: NotationVoice) -> StemDirection {
+        guard voice == .upper else { return .down }
+
+        switch drumType.notePosition {
+        case .aboveLine9, .aboveLine8, .aboveLine7, .aboveLine6, .aboveLine5, .line5:
+            return .down
+        case .spaceBetween4And5,
+             .line4,
+             .spaceBetween3And4,
+             .line3,
+             .spaceBetween2And3,
+             .line2,
+             .spaceBetween1And2,
+             .line1,
+             .spaceBetweenLine1AndBelow,
+             .belowLine1,
+             .belowLine2,
+             .belowLine3,
+             .belowLine4,
+             .belowLine5,
+             .belowLine6:
+            return .up
+        }
+    }
+
+    private func buildStems(
+        noteHeads: [RenderedNoteHead],
+        style: NotationLayoutStyle
+    ) -> [RenderedStem] {
+        noteHeads
+            .filter { $0.interval.needsStem }
+            .map { noteHead in
+                let start = stemStart(for: noteHead, style: style)
+                let endY = switch noteHead.stemDirection {
+                case .up:
+                    start.y - style.stemLength
+                case .down:
+                    start.y + style.stemLength
+                }
+
+                return RenderedStem(
+                    id: "stem_\(noteHead.id)",
+                    noteHeadIDs: [noteHead.id],
+                    direction: noteHead.stemDirection,
+                    start: start,
+                    end: CGPoint(x: start.x, y: endY)
+                )
+            }
+    }
+
+    private func buildBeams(
+        noteHeads: [RenderedNoteHead],
+        style: NotationLayoutStyle
+    ) -> [RenderedBeam] {
+        let beamableHeads = noteHeads.filter { $0.interval.needsFlag }
+        let groupedHeads = Dictionary(grouping: beamableHeads) {
+            BeamGroupKey(
+                measureIndex: $0.measureIndex,
+                row: $0.row,
+                voice: $0.voice,
+                stemDirection: $0.stemDirection
+            )
+        }
+
+        return groupedHeads.values
+            .flatMap { heads in
+                beamRuns(from: heads).flatMap { run in
+                    beams(for: run, style: style)
+                }
+            }
+            .sorted {
+                if $0.start.y != $1.start.y {
+                    return $0.start.y < $1.start.y
+                }
+                if $0.start.x != $1.start.x {
+                    return $0.start.x < $1.start.x
+                }
+                return $0.level < $1.level
+            }
+    }
+
+    private func beamRuns(from noteHeads: [RenderedNoteHead]) -> [[RenderedNoteHead]] {
+        let sortedHeads = noteHeads.sorted {
+            if abs($0.timePosition - $1.timePosition) > BeamGroupingConstants.comparisonTolerance {
+                return $0.timePosition < $1.timePosition
+            }
+            return $0.id < $1.id
+        }
+        var runs: [[RenderedNoteHead]] = []
+        var currentRun: [RenderedNoteHead] = []
+
+        for noteHead in sortedHeads {
+            if let previousHead = currentRun.last {
+                let timeDifference = abs(noteHead.timePosition - previousHead.timePosition)
+                if timeDifference <= BeamGroupingConstants.maxConsecutiveInterval
+                    + BeamGroupingConstants.comparisonTolerance {
+                    currentRun.append(noteHead)
+                } else {
+                    if currentRun.count >= 2 {
+                        runs.append(currentRun)
+                    }
+                    currentRun = [noteHead]
+                }
+            } else {
+                currentRun = [noteHead]
+            }
+        }
+
+        if currentRun.count >= 2 {
+            runs.append(currentRun)
+        }
+
+        return runs
+    }
+
+    private func beams(
+        for noteHeads: [RenderedNoteHead],
+        style: NotationLayoutStyle
+    ) -> [RenderedBeam] {
+        let maxFlagCount = noteHeads.map(\.interval.flagCount).max() ?? 0
+
+        return (0..<maxFlagCount).compactMap { level in
+            let levelHeads = noteHeads.filter { $0.interval.flagCount > level }
+            guard let firstHead = levelHeads.first, let lastHead = levelHeads.last, levelHeads.count >= 2 else {
+                return nil
+            }
+
+            let start = beamPoint(for: firstHead, level: level, style: style)
+            let end = beamPoint(for: lastHead, level: level, style: style)
+
+            return RenderedBeam(
+                id: "beam_\(firstHead.measureIndex)_\(firstHead.row)_\(firstHead.voice.rawValue)_"
+                    + "\(firstHead.stemDirection.rawValue)_\(level)_\(firstHead.id)_\(lastHead.id)",
+                noteHeadIDs: levelHeads.map(\.id),
+                direction: firstHead.stemDirection,
+                level: level,
+                start: start,
+                end: end,
+                thickness: style.beamThickness
+            )
+        }
+    }
+
+    private func stemStart(
+        for noteHead: RenderedNoteHead,
+        style: NotationLayoutStyle
+    ) -> CGPoint {
+        let xOffset = switch noteHead.stemDirection {
+        case .up:
+            style.stemXInset
+        case .down:
+            -style.stemXInset
+        }
+
+        return CGPoint(x: noteHead.position.x + xOffset, y: noteHead.position.y)
+    }
+
+    private func beamPoint(
+        for noteHead: RenderedNoteHead,
+        level: Int,
+        style: NotationLayoutStyle
+    ) -> CGPoint {
+        let start = stemStart(for: noteHead, style: style)
+        let yOffset = switch noteHead.stemDirection {
+        case .up:
+            -style.stemLength - CGFloat(level) * style.beamLevelSpacing
+        case .down:
+            style.stemLength + CGFloat(level) * style.beamLevelSpacing
+        }
+
+        return CGPoint(x: start.x, y: noteHead.position.y + yOffset)
     }
 
     private func buildLedgerLines(
