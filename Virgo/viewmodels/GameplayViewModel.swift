@@ -1082,7 +1082,7 @@ final class GameplayViewModel {
             playbackProgress = min(elapsedTime / cachedTrackDuration, 1.0)
 
             let playheadTimePosition = Double(measureIndex) + beatPosition
-            updatePurpleBarPosition()
+            updatePurpleBarPosition(elapsedTime: elapsedTime)
             updateActiveBeat(forTimePosition: playheadTimePosition)
             scanForMissedNotes(upToTimePosition: playheadTimePosition)
 
@@ -1167,24 +1167,36 @@ final class GameplayViewModel {
         activeNotationNoteHeadIDs = []
     }
 
-    func updatePurpleBarPosition() {
-        purpleBarPosition = calculatePurpleBarPosition()
+    func updatePurpleBarPosition(elapsedTime: Double? = nil) {
+        purpleBarPosition = calculatePurpleBarPosition(elapsedTime: elapsedTime)
     }
 
-    func calculatePurpleBarPosition() -> (x: Double, y: Double)? {
+    func calculatePurpleBarPosition(elapsedTime providedElapsedTime: Double? = nil) -> (x: Double, y: Double)? {
         guard let track = track, isPlaying else { return nil }
-        guard let beatProgress = metronome.getCurrentBeatProgress() else { return nil }
+        let elapsedTime: Double
+        if let providedElapsedTime {
+            elapsedTime = providedElapsedTime
+        } else {
+            guard let calculatedElapsedTime = calculateElapsedTime() else { return nil }
+            elapsedTime = calculatedElapsedTime
+        }
 
+        let secondsPerBeat = 60.0 / effectiveBPM()
+        let totalBeatsElapsed = elapsedTime / secondsPerBeat
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
-        let discreteTotalBeats = Int(beatProgress.totalBeats)
+        let discreteTotalBeats = Int(totalBeatsElapsed)
         let measureIndex = discreteTotalBeats / beatsPerMeasure
         let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure)
 
+        let isNotationLayoutActive = !cachedNotationLayout.noteHeads.isEmpty
         if let notationPosition = calculateNotationPurpleBarPosition(
             measureIndex: measureIndex,
             beatWithinMeasure: beatWithinMeasure
         ) {
             return notationPosition
+        }
+        if isNotationLayoutActive {
+            return nil
         }
 
         guard let measurePos = measurePositionMap[measureIndex] ?? measurePositionMap[0] else { return nil }
