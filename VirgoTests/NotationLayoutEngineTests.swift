@@ -109,6 +109,21 @@ struct NotationLayoutEngineTests {
         #expect(uniqueX.count == 1)
     }
 
+    @Test("near identical offsets across quantization boundary share visual column")
+    func nearIdenticalOffsetsAcrossQuantizationBoundaryShareVisualColumn() {
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25),
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.24999999999999997)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
+
+        #expect(layout.measures.first?.width == GameplayLayout.measureWidth(for: .fourFour))
+        #expect(uniqueX.count == 1)
+    }
+
     @Test("simultaneous quarter notes share columns without expanding measure")
     func simultaneousQuarterNotesShareColumnsWithoutExpandingMeasure() {
         let notes = (0..<4).flatMap { index in
