@@ -29,28 +29,6 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
-      <Testables>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "24829CF92E1217CC00F99FD7"
-               BuildableName = "VirgoTests.xctest"
-               BlueprintName = "VirgoTests"
-               ReferencedContainer = "container:Virgo.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "24829D032E1217CC00F99FD7"
-               BuildableName = "VirgoUITests.xctest"
-               BlueprintName = "VirgoUITests"
-               ReferencedContainer = "container:Virgo.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
       <CodeCoverageTargets>
          <BuildableReference
             BuildableIdentifier = "primary"
@@ -60,6 +38,28 @@
             ReferencedContainer = "container:Virgo.xcodeproj">
          </BuildableReference>
       </CodeCoverageTargets>
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "24829CF72E1217CC00F99FD7"
+               BuildableName = "VirgoTests.xctest"
+               BlueprintName = "VirgoTests"
+               ReferencedContainer = "container:Virgo.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "24829D012E1217CC00F99FD7"
+               BuildableName = "VirgoUITests.xctest"
+               BlueprintName = "VirgoUITests"
+               ReferencedContainer = "container:Virgo.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
