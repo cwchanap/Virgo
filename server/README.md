@@ -15,15 +15,15 @@ FastAPI backend server for serving DTX drum chart files, designed for deployment
 1. Install dependencies:
 ```bash
 cd server
-pip install -r requirements.txt
+uv sync
 ```
 
 2. Run the server:
 ```bash
-python main.py
+uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
-The server will start on `http://localhost:8000`
+The server will start on `http://127.0.0.1:8001`
 
 ## API Endpoints
 
