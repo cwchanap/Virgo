@@ -36,6 +36,10 @@ struct NotationLayoutEngine {
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
         let beatLookup = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
+        let noteHeadIDsByTimePosition = Dictionary(
+            grouping: noteHeads,
+            by: { NotationLayout.timePositionKey($0.timePosition) }
+        ).mapValues { Set($0.map(\.id)) }
         let totalHeight = GameplayLayout.totalHeight(
             for: measures.map {
                 GameplayLayout.MeasurePosition(row: $0.row, xOffset: $0.xOffset, measureIndex: $0.measureIndex)
@@ -50,6 +54,7 @@ struct NotationLayoutEngine {
             ledgerLines: ledgerLines,
             measureBars: measureBars,
             beatLookup: beatLookup,
+            noteHeadIDsByTimePosition: noteHeadIDsByTimePosition,
             totalHeight: totalHeight
         )
     }
