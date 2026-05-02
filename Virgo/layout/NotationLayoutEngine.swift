@@ -320,8 +320,7 @@ private extension NotationLayoutEngine {
         noteHeads: [RenderedNoteHead],
         style: NotationLayoutStyle
     ) -> [RenderedBeam] {
-        let beamableHeads = noteHeads.filter { $0.interval.needsFlag }
-        let groupedHeads = Dictionary(grouping: beamableHeads) {
+        let groupedHeads = Dictionary(grouping: noteHeads) {
             BeamGroupKey(
                 measureIndex: $0.measureIndex,
                 row: $0.row,
@@ -344,7 +343,7 @@ private extension NotationLayoutEngine {
                     return $0.start.x < $1.start.x
                 }
                 return $0.level < $1.level
-            }
+        }
     }
 
     private func beamRuns(from noteHeads: [RenderedNoteHead]) -> [[RenderedNoteHead]] {
@@ -358,6 +357,14 @@ private extension NotationLayoutEngine {
         var currentRun: [RenderedNoteHead] = []
 
         for noteHead in sortedHeads {
+            guard noteHead.interval.needsFlag else {
+                if currentRun.count >= 2 {
+                    runs.append(currentRun)
+                }
+                currentRun = []
+                continue
+            }
+
             if let previousHead = currentRun.last {
                 let timeDifference = abs(noteHead.timePosition - previousHead.timePosition)
                 if timeDifference <= BeamGroupingConstants.maxConsecutiveInterval
@@ -387,26 +394,65 @@ private extension NotationLayoutEngine {
     ) -> [RenderedBeam] {
         let maxFlagCount = noteHeads.map(\.interval.flagCount).max() ?? 0
 
-        return (0..<maxFlagCount).compactMap { level in
-            let levelHeads = noteHeads.filter { $0.interval.flagCount > level }
-            guard let firstHead = levelHeads.first, let lastHead = levelHeads.last, levelHeads.count >= 2 else {
-                return nil
+        return (0..<maxFlagCount).flatMap { level in
+            beamSegments(for: noteHeads, level: level).compactMap { levelHeads in
+                guard let firstHead = levelHeads.first, let lastHead = levelHeads.last, levelHeads.count >= 2 else {
+                    return nil
+                }
+
+                let start = beamPoint(for: firstHead, level: level, style: style)
+                let end = beamPoint(for: lastHead, level: level, style: style)
+                guard hasPositiveBeamSpan(from: firstHead, to: lastHead, start: start, end: end) else {
+                    return nil
+                }
+
+                return RenderedBeam(
+                    id: "beam_\(firstHead.measureIndex)_\(firstHead.row)_\(firstHead.voice.rawValue)_"
+                        + "\(firstHead.stemDirection.rawValue)_\(level)_\(firstHead.id)_\(lastHead.id)",
+                    noteHeadIDs: levelHeads.map(\.id),
+                    direction: firstHead.stemDirection,
+                    level: level,
+                    start: start,
+                    end: end,
+                    thickness: style.beamThickness
+                )
             }
-
-            let start = beamPoint(for: firstHead, level: level, style: style)
-            let end = beamPoint(for: lastHead, level: level, style: style)
-
-            return RenderedBeam(
-                id: "beam_\(firstHead.measureIndex)_\(firstHead.row)_\(firstHead.voice.rawValue)_"
-                    + "\(firstHead.stemDirection.rawValue)_\(level)_\(firstHead.id)_\(lastHead.id)",
-                noteHeadIDs: levelHeads.map(\.id),
-                direction: firstHead.stemDirection,
-                level: level,
-                start: start,
-                end: end,
-                thickness: style.beamThickness
-            )
         }
+    }
+
+    private func beamSegments(
+        for noteHeads: [RenderedNoteHead],
+        level: Int
+    ) -> [[RenderedNoteHead]] {
+        var segments: [[RenderedNoteHead]] = []
+        var currentSegment: [RenderedNoteHead] = []
+
+        for noteHead in noteHeads {
+            if noteHead.interval.flagCount > level {
+                currentSegment.append(noteHead)
+            } else {
+                if currentSegment.count >= 2 {
+                    segments.append(currentSegment)
+                }
+                currentSegment = []
+            }
+        }
+
+        if currentSegment.count >= 2 {
+            segments.append(currentSegment)
+        }
+
+        return segments
+    }
+
+    private func hasPositiveBeamSpan(
+        from firstHead: RenderedNoteHead,
+        to lastHead: RenderedNoteHead,
+        start: CGPoint,
+        end: CGPoint
+    ) -> Bool {
+        abs(lastHead.timePosition - firstHead.timePosition) > BeamGroupingConstants.comparisonTolerance
+            && abs(end.x - start.x) > BeamGroupingConstants.comparisonTolerance
     }
 
     private func stemStart(
