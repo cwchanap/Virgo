@@ -91,7 +91,12 @@ struct NotationLayoutEngine {
         let smallestGap = zip(offsets.dropFirst(), offsets)
             .map { pair in pair.0 - pair.1 }
             .min() ?? 0.25
-        let minimumBeatGap = input.style.minimumNoteColumnGap / CGFloat(
+        let requiredColumnGap = minimumColumnGap(
+            measureNumber: measureNumber,
+            notes: notes,
+            style: input.style
+        )
+        let minimumBeatGap = requiredColumnGap / CGFloat(
             max(smallestGap * Double(input.timeSignature.beatsPerMeasure), 0.001)
         )
         let beatGap = max(
@@ -103,6 +108,36 @@ struct NotationLayoutEngine {
             + CGFloat(input.timeSignature.beatsPerMeasure) * beatGap
 
         return max(legacyWidth, adaptiveWidth)
+    }
+
+    private func minimumColumnGap(
+        measureNumber: Int,
+        notes: [Note],
+        style: NotationLayoutStyle
+    ) -> CGFloat {
+        guard containsCrossVoiceCollision(measureNumber: measureNumber, notes: notes) else {
+            return style.minimumNoteColumnGap
+        }
+
+        return style.minimumNoteColumnGap + 2 * style.voiceCollisionOffset
+    }
+
+    private func containsCrossVoiceCollision(measureNumber: Int, notes: [Note]) -> Bool {
+        Dictionary(
+            grouping: notes.filter { $0.measureNumber == measureNumber },
+            by: { quantizedColumn(for: $0.measureOffset) }
+        )
+        .values
+        .contains { columnNotes in
+            let voices = Set(columnNotes.compactMap { note -> NotationVoice? in
+                guard let drumType = DrumType.from(noteType: note.noteType) else {
+                    return nil
+                }
+                return NotationVoice.voice(for: drumType)
+            })
+
+            return voices.count > 1
+        }
     }
 
     private func buildNoteHeads(

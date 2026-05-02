@@ -110,8 +110,8 @@ struct NotationLayoutEngineTests {
         #expect((uniqueX.last ?? 0) - (uniqueX.first ?? 0) >= 16)
     }
 
-    @Test("near identical offsets across quantization boundary share visual column")
-    func nearIdenticalOffsetsAcrossQuantizationBoundaryShareVisualColumn() {
+    @Test("near identical cross voice offsets split heads without expanding measure")
+    func nearIdenticalCrossVoiceOffsetsSplitHeadsWithoutExpandingMeasure() {
         let notes = [
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25),
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.24999999999999997)
@@ -124,6 +124,34 @@ struct NotationLayoutEngineTests {
         #expect(layout.measures.first?.width == GameplayLayout.measureWidth(for: .fourFour))
         #expect(uniqueX.count == 2)
         #expect((uniqueX.last ?? 0) - (uniqueX.first ?? 0) >= 16)
+    }
+
+    @Test("dense adjacent cross voice columns preserve readable final gap")
+    func denseAdjacentCrossVoiceColumnsPreserveReadableFinalGap() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = [
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 1.0 / 16.0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
+        )
+        let firstColumnRightmostX = try #require(
+            layout.noteHeads
+                .filter { $0.timePosition == 0.0 }
+                .map(\.position.x)
+                .max()
+        )
+        let secondColumnLeftmostX = try #require(
+            layout.noteHeads
+                .filter { $0.timePosition == 0.0625 }
+                .map(\.position.x)
+                .min()
+        )
+
+        #expect(secondColumnLeftmostX - firstColumnRightmostX >= style.minimumNoteColumnGap)
     }
 
     @Test("simultaneous quarter notes split voices without expanding measure")
