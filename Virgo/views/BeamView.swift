@@ -7,6 +7,8 @@
 
 import SwiftUI
 
+// Legacy notation renderer retained for compatibility tests while gameplay uses NotationLayoutEngine.
+
 // MARK: - Beam Group Models
 struct BeamGroup: Identifiable {
     let id: String

@@ -7,6 +7,8 @@
 
 import SwiftUI
 
+// Legacy notation renderer retained for compatibility tests while gameplay uses NotationLayoutEngine.
+
 // MARK: - Supporting Models
 struct DrumBeat {
     let id: UInt64
