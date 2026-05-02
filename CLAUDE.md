@@ -75,12 +75,13 @@ Five primary models in `models/DrumTrack.swift`:
 - `GameplayView+InputManagerDelegate.swift` and `GameplayView+Preview.swift` are extensions of `GameplayView`
 
 ### Services Layer
-All services are `@MainActor`:
+All services are `@MainActor` and live in `services/`:
 - `PlaybackService`: Simple song playback state for the library list
-- `AudioPlaybackService`: Song preview playback (cached `AVAudioPlayer` instances, FIFO cache of 10)
 - `PracticeSettingsService`: Speed control (0.25x–1.5x), per-chart persistence via `UserDefaults` with `CryptoKit` SHA-256 keying
 - `DatabaseMaintenanceService`: SwiftData relationship maintenance and cleanup
 - `HighScoreService`: Per-chart best-score persistence via `UserDefaults` with `CryptoKit` SHA-256 keying
+
+`AudioPlaybackService` (song preview playback, FIFO cache of 10 `AVAudioPlayer` instances) lives in `utilities/` despite being a service.
 
 ### Server Song Management
 `ServerSongService` is the public facade (coordinator) over four focused utilities under `utilities/`:
@@ -92,9 +93,17 @@ All services are `@MainActor`:
 
 ### Input System
 - `InputManager`: Real-time MIDI and keyboard input; delegates hit events to `InputTimingMatcher`
-- `InputTimingMatcher`: Pure value-type struct that maps raw hit timestamps to note positions and returns a `NoteMatchResult` (Perfect/Great/Good/Miss + timing error)
+- `InputTimingMatcher`: Pure value-type struct that maps raw hit timestamps to note positions and returns a `NoteMatchResult` (Perfect/Great/Good/Miss + timing error). Accuracy windows: Perfect ±25ms, Great ±50ms, Good ±100ms.
 - `ScoreEngine`: Pure value-type scoring engine; owns combo multiplier tiers, per-hit scoring, and produces immutable `SessionResult` snapshots — no I/O or SwiftUI dependencies
 - `InputSettingsManager`: Configurable key/MIDI mappings persisted in `UserDefaults`
+
+### MIDI Subsystem
+- `MIDIDeviceRegistry`: Discovers and tracks connected CoreMIDI sources; implements `MIDISourceProviding` and `MIDISourceChangeListening` protocols
+- `MIDIEventRouter`: Stateless struct that decodes raw `MIDIPacketBytes` into `MIDINoteEvent` values; handles running status and filters clock/sysex bytes
+- `MIDILearnSession`: `@MainActor ObservableObject` that manages the MIDI learn capture flow (10s timeout, conflict detection)
+- `MIDIHostTimeConverter`: Converts CoreMIDI host timestamps (`mach_absolute_time`) to `Date` for timing comparison
+- `MIDIPreviewMonitor`: Passes incoming MIDI events to `MIDIDiagnosticsStore` for the diagnostics UI
+- `MIDIDiagnosticsStore`: `@MainActor ObservableObject` holding the last decoded `MIDIDiagnosticSnapshot` for display in settings
 
 ## Key Technical Patterns
 
@@ -113,7 +122,10 @@ Accessing `song.charts` or `chart.notes` during UI rendering causes crashes. Use
 Frequently-updating `@Published` properties on `@EnvironmentObject` or `@ObservedObject` force re-evaluation of every dependent view. `MetronomeEngine.$currentBeat` must NOT be observed directly in `GameplayView` (which contains hundreds of notation subviews). Instead, `GameplayViewModel` subscribes via Combine and batches visual updates.
 
 ### Test Environment Detection
-`TestEnvironment.isRunningTests` (checks `XCTestCase` class existence) is used by audio components to skip AVFoundation initialization. `LaunchArguments` defines shared constants (`-UITesting`, `-ResetState`, `-SkipSeed`) for UI test launch configuration.
+`TestEnvironment.isRunningTests` (checks `XCTestCase` class existence) is used by audio components to skip AVFoundation initialization. `LaunchArguments` defines shared constants (`-UITesting`, `-ResetState`, `-SkipSeed`) for UI test launch configuration. `ContentStartupPolicy` encodes the pure startup-action decision logic as a testable enum.
+
+### Test Framework
+All unit tests use **Swift Testing** (`import Testing`, `#expect`, `#require`, `@Suite`), not XCTest. `TestContainer` in `TestHelpers.swift` provides isolated in-memory `ModelContainer`/`ModelContext` instances per test to prevent SwiftData state leakage.
 
 ### Audio/Metronome Synchronization
 BGM (`AVAudioPlayer`) and metronome are synchronized using a common `CFAbsoluteTime` start point, converted to `AVAudioTime` for sample-accurate scheduling. Speed changes reschedule both engines with a shared `startTime` to prevent drift.
@@ -130,8 +142,8 @@ Virgo/
 │   ├── viewmodels/
 │   │   └── GameplayViewModel.swift  # All gameplay state and logic
 │   ├── models/                  # SwiftData models (DrumTrack.swift, DrumType+Extensions.swift)
-│   ├── services/                # Business logic services
-│   ├── utilities/               # Shared utilities (audio engines, parsers, input, logging)
+│   ├── services/                # Business logic services (PlaybackService, HighScoreService, etc.)
+│   ├── utilities/               # Shared utilities: audio engines, DTX parser, input, MIDI, logging, AudioPlaybackService
 │   ├── constants/               # Drum type definitions
 │   ├── layout/                  # Musical notation layout calculations
 │   └── Assets.xcassets/
@@ -142,8 +154,14 @@ Virgo/
 ```
 
 ## FastAPI Backend Server
+
+```bash
+# Start local server (from repo root)
+cd server && uvicorn main:app --host 127.0.0.1 --port 8001 --reload
+```
+
 - Local dev: `http://127.0.0.1:8001` (configurable via UserDefaults)
-- Endpoints: list, download, and parse DTX files
-- Shift-JIS encoding support for Japanese DTX files
+- Endpoints: list, download, and parse DTX files from `server/dtx_files/`
+- Parses `SET.def` files with multi-encoding fallback (UTF-16 → Shift-JIS → UTF-8)
 - CORS-enabled; Cloudflare Workers deployment supported
 
