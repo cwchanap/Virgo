@@ -117,6 +117,10 @@ final class GameplayViewModel {
     // MARK: - Visual State
     /// Currently active beat ID for highlighting
     var activeBeatId: UInt64?
+    var activeNotationNoteHeadIDs: Set<UInt64> {
+        guard let activeBeatId else { return [] }
+        return Set(cachedNotationNoteHeadIDsByBeatID[activeBeatId] ?? [])
+    }
     /// Current purple bar position (x, y)
     var purpleBarPosition: (x: Double, y: Double)?
     /// Cached static staff lines view (uses AnyView for type erasure)

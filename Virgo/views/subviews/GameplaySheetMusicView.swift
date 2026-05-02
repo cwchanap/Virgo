@@ -93,78 +93,112 @@ extension GameplayView {
     }
 
     func barLinesView(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
-        ZStack {
-            // Regular bar lines
-            ForEach(measurePositions, id: \.measureIndex) { position in
-                // Use the same Y positioning as staff lines - center of the staff for this row
-                let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.row) // Middle staff line
+        let notationMeasureBars = viewModel.cachedNotationLayout.measureBars
 
-                Rectangle()
-                    .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
-                    .foregroundColor(.white.opacity(0.8))
+        ZStack {
+            if !notationMeasureBars.isEmpty {
+                ForEach(notationMeasureBars) { measureBar in
+                    NotationMeasureBarView(measureBar: measureBar)
+                }
+            } else {
+                // Regular bar lines
+                ForEach(measurePositions, id: \.measureIndex) { position in
+                    // Use the same Y positioning as staff lines - center of the staff for this row
+                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.row) // Middle staff line
+
+                    Rectangle()
+                        .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
+                        .foregroundColor(.white.opacity(0.8))
+                        .position(
+                            x: position.xOffset,
+                            y: centerY
+                        )
+                }
+
+                // Double bar line at the very end
+                if let lastPosition = measurePositions.last {
+                    let measureWidth = GameplayLayout.measureWidth(for: viewModel.track?.timeSignature ?? TimeSignature.fourFour)
+                    let endX = lastPosition.xOffset + measureWidth
+                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row) // Middle staff line
+
+                    HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
+                        Rectangle()
+                            .frame(width: GameplayLayout.doubleBarLineWidths.thin, height: GameplayLayout.staffHeight)
+                            .foregroundColor(.white)
+                        Rectangle()
+                            .frame(width: GameplayLayout.doubleBarLineWidths.thick, height: GameplayLayout.staffHeight)
+                            .foregroundColor(.white)
+                    }
                     .position(
-                        x: position.xOffset,
+                        x: endX,
                         y: centerY
                     )
-            }
-
-            // Double bar line at the very end
-            if let lastPosition = measurePositions.last {
-                let measureWidth = GameplayLayout.measureWidth(for: viewModel.track?.timeSignature ?? TimeSignature.fourFour)
-                let endX = lastPosition.xOffset + measureWidth
-                let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row) // Middle staff line
-
-                HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
-                    Rectangle()
-                        .frame(width: GameplayLayout.doubleBarLineWidths.thin, height: GameplayLayout.staffHeight)
-                        .foregroundColor(.white)
-                    Rectangle()
-                        .frame(width: GameplayLayout.doubleBarLineWidths.thick, height: GameplayLayout.staffHeight)
-                        .foregroundColor(.white)
                 }
-                .position(
-                    x: endX,
-                    y: centerY
-                )
             }
         }
     }
 
     func drumNotationView(measurePositions: [GameplayLayout.MeasurePosition], viewModel: GameplayViewModel) -> some View {
+        let notationLayout = viewModel.cachedNotationLayout
+        let activeNotationNoteHeadIDs = viewModel.activeNotationNoteHeadIDs
+
         return ZStack {
-            // Render beams first (behind notes)
-            ForEach(viewModel.cachedBeamGroups, id: \.id) { beamGroup in
-                BeamGroupView(
-                    beamGroup: beamGroup,
-                    measurePositions: measurePositions,
-                    timeSignature: viewModel.track?.timeSignature ?? TimeSignature.fourFour,
-                    isActive: false // Keep disabled for performance
-                )
-            }
+            if !notationLayout.noteHeads.isEmpty {
+                ForEach(notationLayout.ledgerLines) { ledgerLine in
+                    NotationLedgerLineView(ledgerLine: ledgerLine)
+                }
 
-            // Then render individual notes
-            ForEach(viewModel.cachedDrumBeats, id: \.id) { beat in
+                ForEach(notationLayout.beams) { beam in
+                    let isActive = beam.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
+                    NotationBeamView(beam: beam, isActive: isActive)
+                }
 
-                // PERFORMANCE FIX: Use pre-cached active beat ID instead of calculating for every beat
-                let isCurrentlyActive = viewModel.activeBeatId == beat.id
+                ForEach(notationLayout.stems) { stem in
+                    let isActive = stem.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
+                    NotationStemView(stem: stem, isActive: isActive)
+                }
 
-                // PERFORMANCE FIX: Use pre-cached positions to avoid expensive per-frame calculations
-                if let cachedPosition = viewModel.cachedBeatPositions[beat.id] {
-                    // Use cached lookup map for O(1) beam group check
-                    let isBeamed = viewModel.beatToBeamGroupMap[beat.id] != nil
-                    let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
-                    let row = viewModel.measurePositionMap[measureIndex]?.row ?? 0
-
-                    DrumBeatView(
-                        beat: beat,
-                        isActive: isCurrentlyActive,
-                        row: row,
-                        isBeamed: isBeamed
+                ForEach(notationLayout.noteHeads) { noteHead in
+                    NotationNoteHeadView(
+                        noteHead: noteHead,
+                        isActive: activeNotationNoteHeadIDs.contains(noteHead.id)
                     )
-                    .position(
-                        x: cachedPosition.x,
-                        y: cachedPosition.y
+                }
+            } else {
+                // Render beams first (behind notes)
+                ForEach(viewModel.cachedBeamGroups, id: \.id) { beamGroup in
+                    BeamGroupView(
+                        beamGroup: beamGroup,
+                        measurePositions: measurePositions,
+                        timeSignature: viewModel.track?.timeSignature ?? TimeSignature.fourFour,
+                        isActive: false // Keep disabled for performance
                     )
+                }
+
+                // Then render individual notes
+                ForEach(viewModel.cachedDrumBeats, id: \.id) { beat in
+
+                    // PERFORMANCE FIX: Use pre-cached active beat ID instead of calculating for every beat
+                    let isCurrentlyActive = viewModel.activeBeatId == beat.id
+
+                    // PERFORMANCE FIX: Use pre-cached positions to avoid expensive per-frame calculations
+                    if let cachedPosition = viewModel.cachedBeatPositions[beat.id] {
+                        // Use cached lookup map for O(1) beam group check
+                        let isBeamed = viewModel.beatToBeamGroupMap[beat.id] != nil
+                        let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
+                        let row = viewModel.measurePositionMap[measureIndex]?.row ?? 0
+
+                        DrumBeatView(
+                            beat: beat,
+                            isActive: isCurrentlyActive,
+                            row: row,
+                            isBeamed: isBeamed
+                        )
+                        .position(
+                            x: cachedPosition.x,
+                            y: cachedPosition.y
+                        )
+                    }
                 }
             }
         }
