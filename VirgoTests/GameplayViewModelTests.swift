@@ -1578,6 +1578,49 @@ struct GameplayViewModelTests {
         #expect(abs(position.x - Double(legacyX)) > 0.001)
     }
 
+    @Test func testPurpleBarPositionUsesResumedElapsedTime() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+        viewModel.pausedElapsedTime = 2.0
+
+        let position = try #require(
+            viewModel.calculatePurpleBarPosition(elapsedTime: viewModel.pausedElapsedTime)
+        )
+        let expectedPosition = try #require(
+            viewModel.calculateNotationPurpleBarPosition(measureIndex: 1, beatWithinMeasure: 0.0)
+        )
+
+        #expect(abs(position.x - expectedPosition.x) < 0.001)
+        #expect(abs(position.y - expectedPosition.y) < 0.001)
+    }
+
+    @Test func testNotationPurpleBarPositionDoesNotFallbackToLegacyWhenMeasureMissing() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        #expect(viewModel.calculateNotationPurpleBarPosition(measureIndex: 1, beatWithinMeasure: 0.0) == nil)
+        #expect(viewModel.calculatePurpleBarPosition(elapsedTime: 2.0) == nil)
+    }
+
     // MARK: - Input Manager Tests
 
     @Test func testInputManagerConfiguration() async throws {
