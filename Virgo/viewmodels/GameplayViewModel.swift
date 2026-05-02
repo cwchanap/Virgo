@@ -111,6 +111,8 @@ final class GameplayViewModel {
     private(set) var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:]
     /// Maps legacy DrumBeat IDs to all rendered note heads at the same musical time.
     private(set) var cachedNotationNoteHeadIDsByBeatID: [UInt64: [UInt64]] = [:]
+    /// Duration-based measure count shared with the legacy sheet layout.
+    private var cachedLayoutMeasureCount = 1
     /// Preserves the legacy grouping key that produced each DrumBeat ID.
     private var cachedDrumBeatIDByNotePositionKey: [NotePositionKey: UInt64] = [:]
 
@@ -1331,6 +1333,7 @@ final class GameplayViewModel {
         let trackDurationInSeconds = calculateTrackDurationInSeconds(secondsPerMeasure: secondsPerMeasure)
         let totalMeasuresForDuration = Int(ceil(trackDurationInSeconds / secondsPerMeasure))
         let measuresCount = max(1, totalMeasuresForDuration)
+        cachedLayoutMeasureCount = measuresCount
 
         cachedMeasurePositions = GameplayLayout.calculateMeasurePositions(
             totalMeasures: measuresCount,
@@ -1376,7 +1379,11 @@ final class GameplayViewModel {
             return
         }
 
-        let input = NotationLayoutInput(notes: cachedNotes, timeSignature: track.timeSignature)
+        let input = NotationLayoutInput(
+            notes: cachedNotes,
+            timeSignature: track.timeSignature,
+            minimumMeasureCount: cachedLayoutMeasureCount
+        )
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
         cachedNotationNoteHeadPositions = Dictionary(
             uniqueKeysWithValues: cachedNotationLayout.beatLookup.map { beatID, position in

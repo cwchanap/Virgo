@@ -28,7 +28,7 @@ struct NotationLayoutEngine {
             MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
             < MeasureUtils.timePosition(measureNumber: $1.measureNumber, measureOffset: $1.measureOffset)
         }
-        let totalMeasures = max(1, (normalizedNotes.map(\.measureNumber).max() ?? 1))
+        let totalMeasures = max(input.minimumMeasureCount, (normalizedNotes.map(\.measureNumber).max() ?? 1), 1)
         let measures = buildMeasures(totalMeasures: totalMeasures, notes: normalizedNotes, input: input)
         let noteHeads = buildNoteHeads(notes: normalizedNotes, measures: measures, input: input)
         let stems = buildStems(noteHeads: noteHeads, style: input.style)
