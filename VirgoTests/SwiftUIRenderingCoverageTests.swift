@@ -132,6 +132,32 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
+    @Test("Notation primitive note head renders the expected drum symbol")
+    func testNotationPrimitiveViewsRenderExpectedSymbols() async throws {
+        try await TestSetup.withTestSetup {
+            let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+            let noteHead = RenderedNoteHead(
+                id: 42,
+                sourceNoteID: ObjectIdentifier(note),
+                drumType: .snare,
+                voice: .upper,
+                timePosition: 0,
+                measureIndex: 0,
+                row: 0,
+                position: CGPoint(x: 40, y: 40),
+                staffStep: -4,
+                stemDirection: .up,
+                interval: .quarter
+            )
+
+            SwiftUITestUtilities.assertView(
+                NotationNoteHeadView(noteHead: noteHead, isActive: false),
+                containsStrings: [DrumType.snare.symbol],
+                size: CGSize(width: 120, height: 120)
+            )
+        }
+    }
+
     @Test("LibraryView renders empty and populated downloaded-song states")
     func testLibraryViewRenderingStates() async throws {
         try await TestSetup.withTestSetup {
