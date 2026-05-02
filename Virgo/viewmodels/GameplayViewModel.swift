@@ -107,8 +107,10 @@ final class GameplayViewModel {
     private(set) var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
     /// Pre-computed notation layout for future gameplay rendering migration
     private(set) var cachedNotationLayout = NotationLayout.empty
-    /// Fast lookup map from notation beat ID to rendered position
-    private(set) var cachedNotationBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
+    /// Fast lookup map from rendered note-head ID to rendered position
+    private(set) var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:]
+    /// Maps legacy DrumBeat IDs to all rendered note heads at the same musical time.
+    private(set) var cachedNotationNoteHeadIDsByBeatID: [UInt64: [UInt64]] = [:]
 
     // MARK: - Visual State
     /// Currently active beat ID for highlighting
@@ -1294,15 +1296,26 @@ final class GameplayViewModel {
     func cacheNotationLayout() {
         guard let track = track else {
             cachedNotationLayout = .empty
-            cachedNotationBeatPositions = [:]
+            cachedNotationNoteHeadPositions = [:]
+            cachedNotationNoteHeadIDsByBeatID = [:]
             return
         }
 
         let input = NotationLayoutInput(notes: cachedNotes, timeSignature: track.timeSignature)
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
-        cachedNotationBeatPositions = Dictionary(
+        cachedNotationNoteHeadPositions = Dictionary(
             uniqueKeysWithValues: cachedNotationLayout.beatLookup.map { beatID, position in
                 (beatID, (x: Double(position.x), y: Double(position.y)))
+            }
+        )
+        cachedNotationNoteHeadIDsByBeatID = Dictionary(
+            uniqueKeysWithValues: cachedDrumBeats.map { beat in
+                let noteHeadIDs = cachedNotationLayout.noteHeads
+                    .filter {
+                        abs($0.timePosition - beat.timePosition) <= BeamGroupingConstants.comparisonTolerance
+                    }
+                    .map(\.id)
+                return (beat.id, noteHeadIDs)
             }
         )
     }
