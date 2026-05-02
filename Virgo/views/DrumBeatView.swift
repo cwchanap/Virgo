@@ -273,6 +273,7 @@ private struct DrumSymbolView: View {
 // MARK: - Flag View
 struct FlagView: View {
     let flagIndex: Int
+    var stemDirection: StemDirection = .up
 
     var body: some View {
         Path { path in
@@ -287,5 +288,6 @@ struct FlagView: View {
         }
         .fill(Color.white)
         .frame(width: GameplayLayout.flagWidth, height: GameplayLayout.flagHeight)
+        .rotationEffect(stemDirection == .down ? .degrees(180) : .zero)
     }
 }

@@ -168,6 +168,13 @@ extension GameplayView {
                     NotationBeamView(beam: beam, isActive: isActive)
                 }
 
+                ForEach(notationLayout.flags) { flag in
+                    NotationFlagView(
+                        flag: flag,
+                        isActive: activeNotationNoteHeadIDs.contains(flag.noteHeadID)
+                    )
+                }
+
                 ForEach(notationLayout.stems) { stem in
                     let isActive = stem.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
                     NotationStemView(stem: stem, isActive: isActive)

@@ -487,4 +487,170 @@ extension NotationLayoutEngineTests {
         #expect(abs(beam.end.x - (lastHead.position.x - style.stemXInset)) < 0.001)
         #expect(beam.start.y > firstHead.position.y)
     }
+
+    // MARK: - Flag Rendering Tests
+
+    @Test("isolated eighth note produces one flag")
+    func isolatedEighthNoteProducesOneFlag() throws {
+        let note = Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.flags.count == 1)
+        let flag = try #require(layout.flags.first)
+        #expect(flag.flagIndex == 0)
+        #expect(flag.stemDirection == .up)
+        #expect(flag.noteHeadID == layout.noteHeads.first?.id)
+    }
+
+    @Test("isolated sixteenth note produces two flags")
+    func isolatedSixteenthNoteProducesTwoFlags() throws {
+        let note = Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.flags.count == 2)
+        let indices = Set(layout.flags.map(\.flagIndex))
+        #expect(indices == [0, 1])
+    }
+
+    @Test("beamed eighth notes produce no flags")
+    func beamedEighthNotesProduceNoFlags() {
+        let notes = (0..<2).map { index in
+            Note(
+                interval: .eighth,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 8.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.beams.count == 1)
+        #expect(layout.flags.isEmpty)
+    }
+
+    @Test("quarter notes produce no flags")
+    func quarterNotesProduceNoFlags() {
+        let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.flags.isEmpty)
+    }
+
+    @Test("mixed beamed and isolated notes produce flags only for isolated")
+    func mixedBeamedAndIsolatedNotesProduceFlagsOnlyForIsolated() throws {
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.5)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        // First two eighths are beamed, last one is isolated
+        #expect(layout.beams.count == 1)
+        #expect(layout.flags.count == 1)
+        let isolatedHead = try #require(layout.noteHeads.first { $0.timePosition == 0.5 })
+        let flag = try #require(layout.flags.first)
+        #expect(flag.noteHeadID == isolatedHead.id)
+    }
+
+    @Test("down stem crash flag has down direction")
+    func downStemCrashFlagHasDownDirection() throws {
+        let note = Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        let flag = try #require(layout.flags.first)
+        #expect(flag.stemDirection == .down)
+    }
+
+    // MARK: - Barline Deduplication Tests
+
+    @Test("adjacent measures on same row share single barline")
+    func adjacentMeasuresOnSameRowShareSingleBarline() throws {
+        let notes = (0..<8).map { index in
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index % 4) / 4.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 3)
+        )
+
+        let sameRowMeasures = layout.measures.filter { $0.row == 0 }
+        guard sameRowMeasures.count >= 2 else {
+            Issue.record("Expected at least 2 measures on row 0")
+            return
+        }
+
+        // Internal boundaries should have exactly one barline, not two
+        let row0Bars = layout.measureBars.filter { $0.row == 0 }
+        let barXPositions = Set(row0Bars.map(\.x))
+
+        // For N measures on a row, we expect: 1 start bar + N end bars = N+1 bars
+        // (start bar for first measure + end bar for each measure)
+        // NOT 2*N bars (start + end for each)
+        let expectedBarCount = sameRowMeasures.count + 1
+        #expect(row0Bars.count == expectedBarCount)
+
+        // No duplicate x positions
+        #expect(barXPositions.count == row0Bars.count)
+    }
+
+    @Test("final measure barline is marked isFinal")
+    func finalMeasureBarlineIsMarkedFinal() {
+        let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, minimumMeasureCount: 2)
+        )
+
+        let finalBars = layout.measureBars.filter(\.isFinal)
+        #expect(finalBars.count == 1)
+        #expect(finalBars.first?.isFinal == true)
+    }
+
+    @Test("measure wrapping to new row gets separate start barline")
+    func measureWrappingToNewRowGetsSeparateStartBarline() {
+        // Create enough notes/measures to force a row wrap
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 4.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 20)
+        )
+
+        let rows = Set(layout.measures.map(\.row))
+        guard rows.count >= 2 else {
+            Issue.record("Expected measures to wrap to multiple rows")
+            return
+        }
+
+        // Each row should have a start barline
+        for row in rows {
+            let rowMeasures = layout.measures.filter { $0.row == row }
+            let rowBars = layout.measureBars.filter { $0.row == row }
+            let hasStartBar = rowBars.contains { bar in
+                abs(bar.x - (rowMeasures.first?.xOffset ?? -1)) < 0.001
+            }
+            #expect(hasStartBar)
+        }
+    }
 }

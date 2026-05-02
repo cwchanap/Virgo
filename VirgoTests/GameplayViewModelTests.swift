@@ -259,6 +259,7 @@ struct GameplayViewModelTests {
         #expect(NotationLayout.empty.noteHeads.isEmpty)
         #expect(NotationLayout.empty.stems.isEmpty)
         #expect(NotationLayout.empty.beams.isEmpty)
+        #expect(NotationLayout.empty.flags.isEmpty)
         #expect(NotationLayout.empty.ledgerLines.isEmpty)
         #expect(NotationLayout.empty.measureBars.isEmpty)
         #expect(NotationLayout.empty.beatLookup.isEmpty)

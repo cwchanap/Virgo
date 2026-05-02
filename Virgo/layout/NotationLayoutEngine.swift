@@ -33,6 +33,7 @@ struct NotationLayoutEngine {
         let noteHeads = buildNoteHeads(notes: normalizedNotes, measures: measures, input: input)
         let stems = buildStems(noteHeads: noteHeads, style: input.style)
         let beams = buildBeams(noteHeads: noteHeads, style: input.style)
+        let flags = buildFlags(noteHeads: noteHeads, beams: beams, style: input.style)
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
         let beatLookup = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
@@ -51,6 +52,7 @@ struct NotationLayoutEngine {
             noteHeads: noteHeads,
             stems: stems,
             beams: beams,
+            flags: flags,
             ledgerLines: ledgerLines,
             measureBars: measureBars,
             beatLookup: beatLookup,
@@ -450,6 +452,40 @@ private extension NotationLayoutEngine {
         return segments
     }
 
+    private func buildFlags(
+        noteHeads: [RenderedNoteHead],
+        beams: [RenderedBeam],
+        style: NotationLayoutStyle
+    ) -> [RenderedFlag] {
+        let beamedNoteHeadIDs = Set(beams.filter { $0.level == 0 }.flatMap(\.noteHeadIDs))
+
+        return noteHeads
+            .filter { $0.interval.needsFlag && !beamedNoteHeadIDs.contains($0.id) }
+            .flatMap { noteHead -> [RenderedFlag] in
+                let stemBottom = stemStart(for: noteHead, style: style)
+                let flagOrigin = CGPoint(
+                    x: stemBottom.x + GameplayLayout.flagXOffset,
+                    y: noteHead.stemDirection == .up
+                        ? stemBottom.y - style.stemLength
+                        : stemBottom.y + style.stemLength
+                )
+
+                return (0..<noteHead.interval.flagCount).map { flagIndex in
+                    let yOffset = noteHead.stemDirection == .up
+                        ? CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
+                        : -CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
+
+                    return RenderedFlag(
+                        id: "flag_\(noteHead.id)_\(flagIndex)",
+                        noteHeadID: noteHead.id,
+                        stemDirection: noteHead.stemDirection,
+                        flagIndex: flagIndex,
+                        origin: CGPoint(x: flagOrigin.x, y: flagOrigin.y + yOffset)
+                    )
+                }
+            }
+    }
+
     private func hasPositiveBeamSpan(
         from firstHead: RenderedNoteHead,
         to lastHead: RenderedNoteHead,
@@ -521,21 +557,31 @@ private extension NotationLayoutEngine {
     }
 
     private func buildMeasureBars(measures: [RenderedMeasure]) -> [RenderedMeasureBar] {
-        measures.flatMap { measure in
-            [
-                RenderedMeasureBar(
+        var bars: [RenderedMeasureBar] = []
+
+        for (index, measure) in measures.enumerated() {
+            let isFirstInRow = index == 0 || measures[index - 1].row != measure.row
+            let isLastOverall = measure.measureIndex == measures.last?.measureIndex
+
+            // Start barline: only at row beginnings
+            if isFirstInRow {
+                bars.append(RenderedMeasureBar(
                     id: "bar_\(measure.measureIndex)",
                     row: measure.row,
                     x: measure.xOffset,
                     isFinal: false
-                ),
-                RenderedMeasureBar(
-                    id: "bar_\(measure.measureIndex)_end",
-                    row: measure.row,
-                    x: measure.xOffset + measure.width,
-                    isFinal: measure.measureIndex == measures.last?.measureIndex
-                )
-            ]
+                ))
+            }
+
+            // End barline: single barline at every measure end
+            bars.append(RenderedMeasureBar(
+                id: "bar_\(measure.measureIndex)_end",
+                row: measure.row,
+                x: measure.xOffset + measure.width,
+                isFinal: isLastOverall
+            ))
         }
+
+        return bars
     }
 }

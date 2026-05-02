@@ -58,6 +58,17 @@ struct NotationLedgerLineView: View {
     }
 }
 
+struct NotationFlagView: View {
+    let flag: RenderedFlag
+    let isActive: Bool
+
+    var body: some View {
+        FlagView(flagIndex: flag.flagIndex, stemDirection: flag.stemDirection)
+            .foregroundColor(isActive ? .yellow : .white)
+            .position(flag.origin)
+    }
+}
+
 struct NotationMeasureBarView: View {
     let measureBar: RenderedMeasureBar
 
