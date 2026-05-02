@@ -78,6 +78,7 @@ struct NotationLayout {
     var noteHeads: [RenderedNoteHead]
     var stems: [RenderedStem]
     var beams: [RenderedBeam]
+    var flags: [RenderedFlag]
     var ledgerLines: [RenderedLedgerLine]
     var measureBars: [RenderedMeasureBar]
     var beatLookup: [UInt64: CGPoint]
@@ -93,6 +94,7 @@ struct NotationLayout {
         noteHeads: [],
         stems: [],
         beams: [],
+        flags: [],
         ledgerLines: [],
         measureBars: [],
         beatLookup: [:],
@@ -146,6 +148,14 @@ struct RenderedLedgerLine: Identifiable, Hashable {
     let row: Int
     let start: CGPoint
     let end: CGPoint
+}
+
+struct RenderedFlag: Identifiable, Hashable {
+    let id: String
+    let noteHeadID: UInt64
+    let stemDirection: StemDirection
+    let flagIndex: Int
+    let origin: CGPoint
 }
 
 struct RenderedMeasureBar: Identifiable, Hashable {
