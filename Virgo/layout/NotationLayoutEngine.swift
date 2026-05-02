@@ -66,9 +66,9 @@ struct NotationLayoutEngine {
         input: NotationLayoutInput
     ) -> CGFloat {
         let measureNumber = MeasureUtils.toOneBasedNumber(measureIndex)
-        let offsets = notes
+        let offsets = Set(notes
             .filter { $0.measureNumber == measureNumber }
-            .map(\.measureOffset)
+            .map(\.measureOffset))
             .sorted()
 
         guard offsets.count > 1 else {
@@ -78,9 +78,12 @@ struct NotationLayoutEngine {
         let smallestGap = zip(offsets.dropFirst(), offsets)
             .map { pair in pair.0 - pair.1 }
             .min() ?? 0.25
+        let minimumBeatGap = input.style.minimumNoteColumnGap / CGFloat(
+            max(smallestGap * Double(input.timeSignature.beatsPerMeasure), 0.001)
+        )
         let beatGap = max(
             input.style.minimumQuarterBeatGap,
-            input.style.minimumNoteColumnGap / CGFloat(max(smallestGap * Double(input.timeSignature.beatsPerMeasure), 0.001))
+            minimumBeatGap
         )
         return GameplayLayout.barLineWidth
             + input.style.measurePadding

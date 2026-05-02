@@ -70,4 +70,33 @@ struct NotationLayoutEngineTests {
         #expect(sortedX.count == 4)
         #expect(abs((sortedX[1] - sortedX[0]) - GameplayLayout.uniformSpacing) < 0.001)
     }
+
+    @Test("simultaneous quarter notes share columns without expanding measure")
+    func simultaneousQuarterNotesShareColumnsWithoutExpandingMeasure() {
+        let notes = (0..<4).flatMap { index in
+            [
+                Note(
+                    interval: .quarter,
+                    noteType: .snare,
+                    measureNumber: 1,
+                    measureOffset: Double(index) / 4.0
+                ),
+                Note(
+                    interval: .quarter,
+                    noteType: .bass,
+                    measureNumber: 1,
+                    measureOffset: Double(index) / 4.0
+                )
+            ]
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
+
+        #expect(layout.noteHeads.count == 8)
+        #expect(uniqueX.count == 4)
+        #expect((layout.measures.first?.width ?? 0) <= GameplayLayout.measureWidth(for: .fourFour))
+        #expect(abs((uniqueX[1] - uniqueX[0]) - GameplayLayout.uniformSpacing) < 0.001)
+    }
 }
