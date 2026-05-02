@@ -159,6 +159,89 @@ struct GameplayViewModelTests {
         #expect(viewModel.cachedNotationNoteHeadIDsByBeatID[beat.id]?.count == 2)
     }
 
+    @Test func testNotationActiveLookupFindsAllNoteheadsAtCurrentTime() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        viewModel.updateActiveNotation(forTimePosition: 0)
+
+        #expect(viewModel.activeNotationNoteHeadIDs.count == 2)
+    }
+
+    @Test func testNotationActiveLookupUsesExactMicrosecondTimePositions() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0004)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        viewModel.updateActiveNotation(forTimePosition: 0)
+        let firstPositionIDs = viewModel.activeNotationNoteHeadIDs
+        viewModel.updateActiveNotation(forTimePosition: 0.0004)
+        let secondPositionIDs = viewModel.activeNotationNoteHeadIDs
+
+        #expect(firstPositionIDs.count == 1)
+        #expect(secondPositionIDs.count == 1)
+        #expect(firstPositionIDs.isDisjoint(with: secondPositionIDs))
+    }
+
+    @Test func testUpdateActiveBeatUsesBeatBridgeForNearIdenticalNotationHeadIDs() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0004)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        let beat = try #require(viewModel.cachedDrumBeats.first)
+        viewModel.isPlaying = true
+
+        viewModel.updateActiveBeat(forTimePosition: 0)
+
+        #expect(viewModel.activeBeatId == beat.id)
+        #expect(viewModel.activeNotationNoteHeadIDs.count == 2)
+    }
+
+    @Test func testPausePlaybackClearsActiveNotationNoteheads() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.updateActiveNotation(forTimePosition: 0)
+        viewModel.isPlaying = true
+
+        viewModel.pausePlayback()
+
+        #expect(viewModel.activeNotationNoteHeadIDs.isEmpty)
+    }
+
     @Test func testNotationLayoutCachesClearWithoutTrack() async throws {
         let chart = Chart(difficulty: .easy)
         let metronome = createTestMetronome()
@@ -179,6 +262,7 @@ struct GameplayViewModelTests {
         #expect(NotationLayout.empty.ledgerLines.isEmpty)
         #expect(NotationLayout.empty.measureBars.isEmpty)
         #expect(NotationLayout.empty.beatLookup.isEmpty)
+        #expect(NotationLayout.empty.noteHeadIDsByTimePosition.isEmpty)
         #expect(NotationLayout.empty.totalHeight == 0)
     }
 
@@ -1461,6 +1545,37 @@ struct GameplayViewModelTests {
         let position = viewModel.calculatePurpleBarPosition()
 
         #expect(position == nil)
+    }
+
+    @Test func testNotationPurpleBarPositionUsesRenderedMeasureWidth() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.01)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let measure = try #require(viewModel.cachedNotationLayout.measures.first)
+        let position = try #require(
+            viewModel.calculateNotationPurpleBarPosition(measureIndex: 0, beatWithinMeasure: 1.0)
+        )
+        let beatGap = (measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing) / 4
+        let expectedX = measure.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing + beatGap
+        let legacyPosition = try #require(viewModel.measurePositionMap[0])
+        let legacyX = GameplayLayout.preciseNoteXPosition(
+            measurePosition: legacyPosition,
+            beatPosition: 1.0,
+            timeSignature: .fourFour
+        )
+
+        #expect(abs(position.x - Double(expectedX)) < 0.001)
+        #expect(abs(position.x - Double(legacyX)) > 0.001)
     }
 
     // MARK: - Input Manager Tests

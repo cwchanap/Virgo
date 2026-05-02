@@ -116,11 +116,15 @@ final class GameplayViewModel {
 
     // MARK: - Visual State
     /// Currently active beat ID for highlighting
-    var activeBeatId: UInt64?
-    var activeNotationNoteHeadIDs: Set<UInt64> {
-        guard let activeBeatId else { return [] }
-        return Set(cachedNotationNoteHeadIDsByBeatID[activeBeatId] ?? [])
+    var activeBeatId: UInt64? {
+        didSet {
+            if activeBeatId == nil {
+                activeNotationNoteHeadIDs = []
+            }
+        }
     }
+    /// Rendered notation note heads currently highlighted by the playhead.
+    private(set) var activeNotationNoteHeadIDs: Set<UInt64> = []
     /// Current purple bar position (x, y)
     var purpleBarPosition: (x: Double, y: Double)?
     /// Cached static staff lines view (uses AnyView for type erasure)
@@ -787,6 +791,7 @@ final class GameplayViewModel {
         playbackStartTime = nil
         bgmPlayer?.pause()
         purpleBarPosition = nil
+        clearActiveBeat()
         Logger.audioPlayback("Paused playback for track: \(track?.title ?? "Unknown")")
     }
 
@@ -885,6 +890,7 @@ final class GameplayViewModel {
         lastDiscreteBeat = -1
         playbackProgress = 0.0
         purpleBarPosition = nil
+        clearActiveBeat()
         lastScheduledPlaybackStartTime = nil
         lastScheduledPlaybackHostTime = nil
         resetScoring()
@@ -1075,10 +1081,9 @@ final class GameplayViewModel {
             totalBeatsElapsed = discreteTotalBeats
             playbackProgress = min(elapsedTime / cachedTrackDuration, 1.0)
 
-            updatePurpleBarPosition()
-            updateActiveBeat()
-
             let playheadTimePosition = Double(measureIndex) + beatPosition
+            updatePurpleBarPosition()
+            updateActiveBeat(forTimePosition: playheadTimePosition)
             scanForMissedNotes(upToTimePosition: playheadTimePosition)
 
             // Schedule delayed completion to preserve late-tolerance window for final notes.
@@ -1109,34 +1114,57 @@ final class GameplayViewModel {
         }
     }
 
-    func updateActiveBeat() {
+    func updateActiveBeat(forTimePosition providedTimePosition: Double? = nil) {
         guard let track = track, isPlaying else {
-            activeBeatId = nil
+            clearActiveBeat()
             return
         }
 
-        guard let elapsedTime = calculateElapsedTime() else {
-            activeBeatId = nil
-            return
+        let currentTimePosition: Double
+
+        if let providedTimePosition {
+            currentTimePosition = providedTimePosition
+        } else {
+            guard let elapsedTime = calculateElapsedTime() else {
+                clearActiveBeat()
+                return
+            }
+            // Use effective BPM for visual sync (speed-adjusted)
+            let secondsPerBeat = 60.0 / effectiveBPM()
+            let totalBeatsElapsed = elapsedTime / secondsPerBeat
+            let beatsPerMeasure = track.timeSignature.beatsPerMeasure
+            let discreteTotalBeats = Int(totalBeatsElapsed)
+            let measureIndex = discreteTotalBeats / beatsPerMeasure
+            let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure)
+            currentTimePosition = Double(measureIndex) + (beatWithinMeasure / Double(beatsPerMeasure))
         }
-
-        // Use effective BPM for visual sync (speed-adjusted)
-        let secondsPerBeat = 60.0 / effectiveBPM()
-        let totalBeatsElapsed = elapsedTime / secondsPerBeat
-        let beatsPerMeasure = track.timeSignature.beatsPerMeasure
-
-        let discreteTotalBeats = Int(totalBeatsElapsed)
-        let measureIndex = discreteTotalBeats / beatsPerMeasure
-        let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure)
-
-        let currentTimePosition = Double(measureIndex) + (beatWithinMeasure / Double(beatsPerMeasure))
         let timeTolerance = 0.05
 
         for beat in cachedDrumBeats where abs(beat.timePosition - currentTimePosition) < timeTolerance {
             activeBeatId = beat.id
+            updateActiveNotation(forBeatID: beat.id, fallbackTimePosition: currentTimePosition)
             return
         }
+        clearActiveBeat()
+    }
+
+    func updateActiveNotation(forTimePosition timePosition: Double) {
+        let key = NotationLayout.timePositionKey(timePosition)
+        activeNotationNoteHeadIDs = cachedNotationLayout.noteHeadIDsByTimePosition[key] ?? []
+    }
+
+    private func updateActiveNotation(forBeatID beatID: UInt64, fallbackTimePosition: Double) {
+        let noteHeadIDs = Set(cachedNotationNoteHeadIDsByBeatID[beatID] ?? [])
+        if noteHeadIDs.isEmpty {
+            updateActiveNotation(forTimePosition: fallbackTimePosition)
+        } else {
+            activeNotationNoteHeadIDs = noteHeadIDs
+        }
+    }
+
+    private func clearActiveBeat() {
         activeBeatId = nil
+        activeNotationNoteHeadIDs = []
     }
 
     func updatePurpleBarPosition() {
@@ -1152,16 +1180,40 @@ final class GameplayViewModel {
         let measureIndex = discreteTotalBeats / beatsPerMeasure
         let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure)
 
-        guard let measurePos = measurePositionMap[measureIndex] ?? measurePositionMap[0] else {
-            return nil
+        if let notationPosition = calculateNotationPurpleBarPosition(
+            measureIndex: measureIndex,
+            beatWithinMeasure: beatWithinMeasure
+        ) {
+            return notationPosition
         }
 
+        guard let measurePos = measurePositionMap[measureIndex] ?? measurePositionMap[0] else { return nil }
         let indicatorX = GameplayLayout.preciseNoteXPosition(
             measurePosition: measurePos,
             beatPosition: beatWithinMeasure,
             timeSignature: track.timeSignature
         )
         let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
+
+        return (x: Double(indicatorX), y: Double(staffCenterY))
+    }
+
+    func calculateNotationPurpleBarPosition(
+        measureIndex: Int,
+        beatWithinMeasure: Double
+    ) -> (x: Double, y: Double)? {
+        guard let track = track, !cachedNotationLayout.noteHeads.isEmpty else { return nil }
+        guard let measure = cachedNotationLayout.measures.first(where: { $0.measureIndex == measureIndex }) else {
+            return nil
+        }
+
+        let drawableWidth = measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing
+        let beatGap = drawableWidth / CGFloat(track.timeSignature.beatsPerMeasure)
+        let indicatorX = measure.xOffset
+            + GameplayLayout.barLineWidth
+            + GameplayLayout.uniformSpacing
+            + CGFloat(beatWithinMeasure) * beatGap
+        let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
 
         return (x: Double(indicatorX), y: Double(staffCenterY))
     }
@@ -1308,6 +1360,7 @@ final class GameplayViewModel {
             cachedNotationLayout = .empty
             cachedNotationNoteHeadPositions = [:]
             cachedNotationNoteHeadIDsByBeatID = [:]
+            activeNotationNoteHeadIDs = []
             return
         }
 

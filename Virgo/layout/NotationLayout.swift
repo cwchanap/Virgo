@@ -78,7 +78,12 @@ struct NotationLayout {
     var ledgerLines: [RenderedLedgerLine]
     var measureBars: [RenderedMeasureBar]
     var beatLookup: [UInt64: CGPoint]
+    var noteHeadIDsByTimePosition: [Int: Set<UInt64>]
     var totalHeight: CGFloat
+
+    static func timePositionKey(_ timePosition: Double) -> Int {
+        Int((timePosition * 1_000_000).rounded())
+    }
 
     static let empty = NotationLayout(
         measures: [],
@@ -88,6 +93,7 @@ struct NotationLayout {
         ledgerLines: [],
         measureBars: [],
         beatLookup: [:],
+        noteHeadIDsByTimePosition: [:],
         totalHeight: 0
     )
 }

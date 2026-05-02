@@ -34,10 +34,7 @@ extension GameplayView {
 
                         drumNotationView(measurePositions: measurePositions, viewModel: viewModel)
 
-                        timeBasedBeatProgressionBars(
-                            measurePositions: viewModel.cachedMeasurePositions,
-                            viewModel: viewModel
-                        )
+                        timeBasedBeatProgressionBars(viewModel: viewModel)
                     }
                 }
                 .frame(width: contentWidth, height: contentHeight)
@@ -222,10 +219,7 @@ extension GameplayView {
         }
     }
 
-    func timeBasedBeatProgressionBars(
-        measurePositions: [GameplayLayout.MeasurePosition],
-        viewModel: GameplayViewModel
-    ) -> some View {
+    func timeBasedBeatProgressionBars(viewModel: GameplayViewModel) -> some View {
         Group {
             // PERFORMANCE FIX: Use pre-cached purple bar position instead of expensive calculation
             if let position = viewModel.purpleBarPosition {
