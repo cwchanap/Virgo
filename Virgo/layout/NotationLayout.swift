@@ -4,15 +4,18 @@ import Foundation
 struct NotationLayoutInput {
     let notes: [Note]
     let timeSignature: TimeSignature
+    let minimumMeasureCount: Int
     let style: NotationLayoutStyle
 
     init(
         notes: [Note],
         timeSignature: TimeSignature,
+        minimumMeasureCount: Int = 1,
         style: NotationLayoutStyle = .gameplayDefault
     ) {
         self.notes = notes
         self.timeSignature = timeSignature
+        self.minimumMeasureCount = minimumMeasureCount
         self.style = style
     }
 }

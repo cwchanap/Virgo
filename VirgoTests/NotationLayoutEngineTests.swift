@@ -24,11 +24,23 @@ struct NotationLayoutEngineTests {
     @Test("layout input accepts notes and time signature")
     func layoutInputAcceptsNotesAndTimeSignature() {
         let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
-        let input = NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        let input = NotationLayoutInput(notes: [note], timeSignature: .fourFour, minimumMeasureCount: 3)
 
         #expect(input.notes.count == 1)
         #expect(input.timeSignature.beatsPerMeasure == 4)
+        #expect(input.minimumMeasureCount == 3)
         #expect(input.style.minimumNoteColumnGap == 28)
+    }
+
+    @Test("minimum measure count preserves trailing empty measures")
+    func minimumMeasureCountPreservesTrailingEmptyMeasures() {
+        let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, minimumMeasureCount: 4)
+        )
+
+        #expect(layout.measures.map(\.measureIndex) == [0, 1, 2, 3])
+        #expect(layout.measureBars.contains { $0.id == "bar_3_end" && $0.isFinal })
     }
 
     @Test("sixteenth notes expand measure width for readable spacing")

@@ -105,7 +105,7 @@ extension GameplayView {
         let notationMeasureBars = viewModel.cachedNotationLayout.measureBars
         let usesNotationLayout = usesNotationLayout(viewModel: viewModel)
 
-        ZStack {
+        return ZStack {
             if usesNotationLayout {
                 ForEach(notationMeasureBars) { measureBar in
                     NotationMeasureBarView(measureBar: measureBar)
