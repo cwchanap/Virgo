@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 struct NotationLayoutEngine {
-    private static let columnResolution = 1000.0
+    private static let columnResolution = 960.0
 
     func layout(input: NotationLayoutInput) -> NotationLayout {
         let normalizedNotes = input.notes.sorted {
@@ -145,7 +145,7 @@ struct NotationLayoutEngine {
     }
 
     private func quantizedOffset(for measureOffset: Double) -> Double {
-        Double(Int(measureOffset * Self.columnResolution)) / Self.columnResolution
+        (measureOffset * Self.columnResolution).rounded() / Self.columnResolution
     }
 
     private func staffStep(for position: GameplayLayout.NotePosition) -> Int {
