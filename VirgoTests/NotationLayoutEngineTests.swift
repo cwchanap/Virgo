@@ -256,3 +256,154 @@ struct NotationLayoutEngineTests {
         #expect(abs(snare.position.x - kick.position.x) >= 16)
     }
 }
+
+extension NotationLayoutEngineTests {
+    @Test("high crash stem points down")
+    func highCrashStemPointsDown() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let note = Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, style: style)
+        )
+        let crash = try #require(layout.noteHeads.first { $0.drumType == .crash })
+        let stem = try #require(layout.stems.first)
+
+        #expect(crash.stemDirection == .down)
+        #expect(stem.direction == .down)
+        #expect(abs(stem.start.x - (crash.position.x - style.stemXInset)) < 0.001)
+        #expect(stem.end.y > stem.start.y)
+    }
+
+    @Test("snare stem points up")
+    func snareStemPointsUp() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, style: style)
+        )
+        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
+        let stem = try #require(layout.stems.first)
+
+        #expect(snare.stemDirection == .up)
+        #expect(stem.direction == .up)
+        #expect(abs(stem.start.x - (snare.position.x + style.stemXInset)) < 0.001)
+        #expect(stem.end.y < stem.start.y)
+    }
+
+    @Test("quarter notes create stems but no beams")
+    func quarterNotesCreateStemsButNoBeams() {
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 4.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 4)
+        #expect(layout.beams.isEmpty)
+    }
+
+    @Test("full and half notes do not create stems")
+    func fullAndHalfNotesDoNotCreateStems() {
+        let notes = [
+            Note(interval: .full, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .half, noteType: .snare, measureNumber: 1, measureOffset: 0.5)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.isEmpty)
+        #expect(layout.beams.isEmpty)
+    }
+
+    @Test("consecutive sixteenths create two beam levels")
+    func consecutiveSixteenthsCreateTwoBeamLevels() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .sixteenth,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 16.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
+        )
+        let sortedHeads = layout.noteHeads.sorted { $0.timePosition < $1.timePosition }
+        let firstHead = try #require(sortedHeads.first)
+        let lastHead = try #require(sortedHeads.last)
+
+        #expect(layout.beams.count == 2)
+        #expect(Set(layout.beams.map(\.level)) == [0, 1])
+        #expect(layout.beams.allSatisfy { $0.noteHeadIDs.count == 4 })
+        #expect(layout.beams.allSatisfy { $0.direction == .up })
+        #expect(layout.beams.allSatisfy { abs($0.start.x - (firstHead.position.x + style.stemXInset)) < 0.001 })
+        #expect(layout.beams.allSatisfy { abs($0.end.x - (lastHead.position.x + style.stemXInset)) < 0.001 })
+    }
+
+    @Test("consecutive eighths create one beam level")
+    func consecutiveEighthsCreateOneBeamLevel() throws {
+        let notes = (0..<2).map { index in
+            Note(
+                interval: .eighth,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 8.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let beam = try #require(layout.beams.first)
+
+        #expect(layout.beams.count == 1)
+        #expect(beam.level == 0)
+        #expect(beam.noteHeadIDs.count == 2)
+    }
+
+    @Test("beams do not cross measure boundaries")
+    func beamsDoNotCrossMeasureBoundaries() {
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.875),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 2, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 2)
+        #expect(layout.beams.isEmpty)
+    }
+
+    @Test("isolated eighth does not create beam")
+    func isolatedEighthDoesNotCreateBeam() {
+        let note = Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 1)
+        #expect(layout.beams.isEmpty)
+    }
+
+    @Test("cross voice notes do not beam together")
+    func crossVoiceNotesDoNotBeamTogether() {
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 2)
+        #expect(layout.beams.isEmpty)
+    }
+}
