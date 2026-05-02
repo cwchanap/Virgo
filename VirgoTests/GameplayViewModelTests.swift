@@ -150,10 +150,25 @@ struct GameplayViewModelTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay(loadPersistedSpeed: false)
 
+        let beat = try #require(viewModel.cachedDrumBeats.first)
+
+        #expect(viewModel.cachedDrumBeats.count == 1)
         #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)
         #expect(!viewModel.cachedNotationLayout.stems.isEmpty)
-        #expect(!viewModel.cachedNotationBeatPositions.isEmpty)
-        #expect(viewModel.cachedNotationBeatPositions.count == viewModel.cachedNotationLayout.beatLookup.count)
+        #expect(viewModel.cachedNotationNoteHeadPositions.count == viewModel.cachedNotationLayout.noteHeads.count)
+        #expect(viewModel.cachedNotationNoteHeadIDsByBeatID[beat.id]?.count == 2)
+    }
+
+    @Test func testNotationLayoutCachesClearWithoutTrack() async throws {
+        let chart = Chart(difficulty: .easy)
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        viewModel.computeCachedLayoutData()
+
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
+        #expect(viewModel.cachedNotationNoteHeadIDsByBeatID.isEmpty)
     }
 
     @Test func testEmptyNotationLayoutHasNoRenderedContent() {
