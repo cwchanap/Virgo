@@ -135,6 +135,38 @@ struct GameplayViewModelTests {
         #expect(viewModel.cachedTrackDuration > 0)
     }
 
+    @Test func testSetupGameplayCachesNotationLayout() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)
+        #expect(!viewModel.cachedNotationLayout.stems.isEmpty)
+        #expect(!viewModel.cachedNotationBeatPositions.isEmpty)
+        #expect(viewModel.cachedNotationBeatPositions.count == viewModel.cachedNotationLayout.beatLookup.count)
+    }
+
+    @Test func testEmptyNotationLayoutHasNoRenderedContent() {
+        #expect(NotationLayout.empty.measures.isEmpty)
+        #expect(NotationLayout.empty.noteHeads.isEmpty)
+        #expect(NotationLayout.empty.stems.isEmpty)
+        #expect(NotationLayout.empty.beams.isEmpty)
+        #expect(NotationLayout.empty.ledgerLines.isEmpty)
+        #expect(NotationLayout.empty.measureBars.isEmpty)
+        #expect(NotationLayout.empty.beatLookup.isEmpty)
+        #expect(NotationLayout.empty.totalHeight == 0)
+    }
+
     @Test func testSetupGameplayWithoutLoadingData() async throws {
         let chart = createTestChart()
         let metronome = createTestMetronome()

@@ -105,6 +105,10 @@ final class GameplayViewModel {
     private(set) var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
     /// Pre-cached beat positions for performance
     private(set) var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
+    /// Pre-computed notation layout for future gameplay rendering migration
+    private(set) var cachedNotationLayout = NotationLayout.empty
+    /// Fast lookup map from notation beat ID to rendered position
+    private(set) var cachedNotationBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
 
     // MARK: - Visual State
     /// Currently active beat ID for highlighting
@@ -1240,7 +1244,10 @@ final class GameplayViewModel {
     }
 
     func computeCachedLayoutData() {
-        guard let track = track else { return }
+        guard let track = track else {
+            cacheNotationLayout()
+            return
+        }
 
         let secondsPerBeat = 60.0 / track.bpm
         let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
@@ -1280,7 +1287,24 @@ final class GameplayViewModel {
             measurePositionMap[0] = measure0
         }
 
+        cacheNotationLayout()
         cacheBeatPositions()
+    }
+
+    func cacheNotationLayout() {
+        guard let track = track else {
+            cachedNotationLayout = .empty
+            cachedNotationBeatPositions = [:]
+            return
+        }
+
+        let input = NotationLayoutInput(notes: cachedNotes, timeSignature: track.timeSignature)
+        cachedNotationLayout = NotationLayoutEngine().layout(input: input)
+        cachedNotationBeatPositions = Dictionary(
+            uniqueKeysWithValues: cachedNotationLayout.beatLookup.map { beatID, position in
+                (beatID, (x: Double(position.x), y: Double(position.y)))
+            }
+        )
     }
 
     func cacheBeatPositions() {

@@ -79,6 +79,17 @@ struct NotationLayout {
     var measureBars: [RenderedMeasureBar]
     var beatLookup: [UInt64: CGPoint]
     var totalHeight: CGFloat
+
+    static let empty = NotationLayout(
+        measures: [],
+        noteHeads: [],
+        stems: [],
+        beams: [],
+        ledgerLines: [],
+        measureBars: [],
+        beatLookup: [:],
+        totalHeight: 0
+    )
 }
 
 struct RenderedMeasure: Identifiable, Hashable {
