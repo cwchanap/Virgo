@@ -141,7 +141,7 @@ struct GameplayViewModelTests {
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
         )
         chart.notes.append(
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0004)
         )
         let metronome = createTestMetronome()
 
