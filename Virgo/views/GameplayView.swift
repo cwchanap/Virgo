@@ -143,10 +143,12 @@ struct GameplayView: View {
 // MARK: - Stable Staff Lines Background View
 struct StaffLinesBackgroundView: View {
     let measurePositions: [GameplayLayout.MeasurePosition]
+    let width: CGFloat
     private let rows: [Int]
 
-    init(measurePositions: [GameplayLayout.MeasurePosition]) {
+    init(measurePositions: [GameplayLayout.MeasurePosition], width: CGFloat = GameplayLayout.maxRowWidth) {
         self.measurePositions = measurePositions
+        self.width = width
         self.rows = Array(Set(measurePositions.map { $0.row })).sorted()
     }
 
@@ -156,10 +158,10 @@ struct StaffLinesBackgroundView: View {
                 ZStack {
                     ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
                         Rectangle()
-                            .frame(width: GameplayLayout.maxRowWidth, height: 1)
+                            .frame(width: width, height: 1)
                             .foregroundColor(.gray.opacity(0.5))
                             .position(
-                                x: GameplayLayout.maxRowWidth / 2,
+                                x: width / 2,
                                 y: GameplayLayout.StaffLinePosition(rawValue: lineIndex)?.absoluteY(for: row) ?? 0
                             )
                     }

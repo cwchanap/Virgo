@@ -89,6 +89,25 @@ struct NotationLayout {
         Int((timePosition * 1_000_000).rounded())
     }
 
+    /// Minimum content width needed to contain all rendered primitives.
+    var contentWidth: CGFloat {
+        let primitiveMaxX = [
+            noteHeads.map(\.position.x),
+            measureBars.map(\.x),
+            beams.flatMap { [$0.start.x, $0.end.x] },
+            ledgerLines.flatMap { [$0.start.x, $0.end.x] },
+            stems.flatMap { [$0.start.x, $0.end.x] }
+        ]
+        .flatMap { $0 }
+        .max()
+
+        guard let maxX = primitiveMaxX else {
+            return GameplayLayout.maxRowWidth
+        }
+
+        return max(GameplayLayout.maxRowWidth, maxX + GameplayLayout.uniformSpacing)
+    }
+
     static let empty = NotationLayout(
         measures: [],
         noteHeads: [],

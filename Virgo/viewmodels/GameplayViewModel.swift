@@ -131,6 +131,8 @@ final class GameplayViewModel {
     var purpleBarPosition: (x: Double, y: Double)?
     /// Cached static staff lines view (uses AnyView for type erasure)
     var staticStaffLinesView: AnyView?
+    /// Cached notation-path staff lines view (width matches notation content width)
+    var notationStaffLinesView: AnyView?
 
     // MARK: - BGM State
     /// Audio player for background music
@@ -1408,6 +1410,7 @@ final class GameplayViewModel {
             cachedNotationLayout = .empty
             cachedNotationNoteHeadPositions = [:]
             cachedNotationNoteHeadIDsByBeatID = [:]
+            notationStaffLinesView = nil
             activeNotationNoteHeadIDs = []
             return
         }
@@ -1418,6 +1421,29 @@ final class GameplayViewModel {
             minimumMeasureCount: cachedLayoutMeasureCount
         )
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
+
+        if !cachedNotationLayout.noteHeads.isEmpty {
+            let notationMeasurePositions = cachedNotationLayout.measures.map { measure in
+                GameplayLayout.MeasurePosition(
+                    row: measure.row,
+                    xOffset: measure.xOffset,
+                    measureIndex: measure.measureIndex
+                )
+            }
+            let contentWidth = cachedNotationLayout.contentWidth
+            notationStaffLinesView = AnyView(
+                StaffLinesBackgroundView(measurePositions: notationMeasurePositions, width: contentWidth)
+            )
+        } else {
+            notationStaffLinesView = nil
+        }
+
+        if cachedNotes.count != cachedNotationLayout.noteHeads.count, !cachedNotes.isEmpty {
+            Logger.warning(
+                "Layout engine dropped notes: \(cachedNotes.count) input → \(cachedNotationLayout.noteHeads.count) noteHeads"
+            )
+        }
+
         cachedNotationNoteHeadPositions = Dictionary(
             uniqueKeysWithValues: cachedNotationLayout.beatLookup.map { beatID, position in
                 (beatID, (x: Double(position.x), y: Double(position.y)))
@@ -1432,12 +1458,19 @@ final class GameplayViewModel {
             }
         )
         var noteHeadIDsByBeatID = Dictionary(uniqueKeysWithValues: cachedDrumBeats.map { ($0.id, [UInt64]()) })
+        var desyncCount = 0
         for noteHead in cachedNotationLayout.noteHeads {
             guard let positionKey = notePositionKeyBySourceNoteID[noteHead.sourceNoteID],
                   let beatID = cachedDrumBeatIDByNotePositionKey[positionKey] else {
+                desyncCount += 1
                 continue
             }
             noteHeadIDsByBeatID[beatID, default: []].append(noteHead.id)
+        }
+        if desyncCount > 0 {
+            Logger.warning(
+                "NoteHead-to-beatID mapping failed for \(desyncCount)/\(cachedNotationLayout.noteHeads.count) noteHeads"
+            )
         }
         cachedNotationNoteHeadIDsByBeatID = noteHeadIDsByBeatID
     }

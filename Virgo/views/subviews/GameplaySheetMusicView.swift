@@ -19,7 +19,13 @@ extension GameplayView {
             ScrollView([.horizontal, .vertical], showsIndicators: false) {
                 ZStack(alignment: .topLeading) {
                     // Use cached static staff lines view - created only once
-                    if !usesNotationLayout, let staticView = viewModel.staticStaffLinesView {
+                    if usesNotationLayout {
+                        if let cachedNotationView = viewModel.notationStaffLinesView {
+                            cachedNotationView
+                        } else {
+                            staffLinesView(measurePositions: measurePositions, width: contentWidth)
+                        }
+                    } else if let staticView = viewModel.staticStaffLinesView {
                         staticView
                     } else {
                         // Fallback: render dynamic staff lines when static view is not available
@@ -278,16 +284,6 @@ extension GameplayView {
     }
 
     func notationContentWidth(for notationLayout: NotationLayout) -> CGFloat {
-        let primitiveMaxX = [
-            notationLayout.noteHeads.map(\.position.x),
-            notationLayout.measureBars.map(\.x),
-            notationLayout.beams.flatMap { [$0.start.x, $0.end.x] },
-            notationLayout.ledgerLines.flatMap { [$0.start.x, $0.end.x] },
-            notationLayout.stems.flatMap { [$0.start.x, $0.end.x] }
-        ]
-        .flatMap { $0 }
-        .max() ?? GameplayLayout.maxRowWidth
-
-        return max(GameplayLayout.maxRowWidth, primitiveMaxX + GameplayLayout.uniformSpacing)
+        notationLayout.contentWidth
     }
 }
