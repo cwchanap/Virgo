@@ -622,6 +622,49 @@ extension NotationLayoutEngineTests {
         #expect(finalBars.first?.isFinal == true)
     }
 
+    @Test("internal barline aligns with next same-row measure's xOffset")
+    func internalBarlineAlignsWithNextSameRowMeasureXOffset() throws {
+        let notes = (0..<8).map { index in
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index % 4) / 4.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 3)
+        )
+
+        let sameRowMeasures = layout.measures.filter { $0.row == 0 }
+        let sameRowBars = layout.measureBars.filter { $0.row == 0 }
+        guard sameRowMeasures.count >= 2 else {
+            Issue.record("Expected at least 2 measures on row 0")
+            return
+        }
+
+        // For each pair of consecutive same-row measures, the end barline of the
+        // earlier measure must sit exactly at the later measure's xOffset — not
+        // at the earlier measure's right edge, which would leave a measureSpacing
+        // gap between the drawn bar and the next measure.
+        for index in 0..<(sameRowMeasures.count - 1) {
+            let current = sameRowMeasures[index]
+            let next = sameRowMeasures[index + 1]
+            let endBar = try #require(
+                sameRowBars.first { $0.id == "bar_\(current.measureIndex)_end" }
+            )
+
+            #expect(abs(endBar.x - next.xOffset) < 0.001)
+        }
+
+        // The last measure's end barline should remain at its right edge
+        let lastMeasure = sameRowMeasures[sameRowMeasures.count - 1]
+        let lastEndBar = try #require(
+            sameRowBars.first { $0.id == "bar_\(lastMeasure.measureIndex)_end" }
+        )
+        #expect(abs(lastEndBar.x - (lastMeasure.xOffset + lastMeasure.width)) < 0.001)
+    }
+
     @Test("measure wrapping to new row gets separate start barline")
     func measureWrappingToNewRowGetsSeparateStartBarline() {
         // Create enough notes/measures to force a row wrap
