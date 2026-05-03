@@ -2752,6 +2752,56 @@ struct GameplayViewModelTests {
         let sixteenthBeat = viewModel.cachedDrumBeats.first { $0.timePosition == 0.0625 }
         #expect(viewModel.activeBeatId == sixteenthBeat?.id)
     }
+
+    @Test("beat at playhead is preferred over future look-ahead candidate")
+    func beatAtPlayheadPreferredOverFutureLookAhead() async throws {
+        // Regression test: when two beats are within the 0.05 look-ahead window,
+        // the beat at the playhead must be selected, not the future one.
+        // Place an eighth at offset 0.25 (timePosition 0.25) and a thirty-second
+        // at offset 0.28125 (timePosition 0.28125).  The 0.03125 gap is < 0.05.
+        // At playhead 0.25, the eighth should win — not the thirty-second.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.25)
+        )
+        chart.notes.append(
+            Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.28125)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        viewModel.updateActiveBeat(forTimePosition: 0.25)
+        let eighthBeat = viewModel.cachedDrumBeats.first { $0.timePosition == 0.25 }
+        let thirtysecondBeat = viewModel.cachedDrumBeats.first { $0.timePosition == 0.28125 }
+        #expect(viewModel.activeBeatId == eighthBeat?.id)
+        #expect(viewModel.activeBeatId != thirtysecondBeat?.id)
+    }
+
+    @Test("future beat within look-ahead is selected when no beat at playhead")
+    func futureBeatWithinLookAheadSelectedWhenNoBeatAtPlayhead() async throws {
+        // Ensures look-ahead still works when no beat is at/before the playhead.
+        // Place a thirty-second at offset 0.28125 (timePosition 0.28125).
+        // At playhead 0.25, there is no beat at/before 0.25, but 0.28125 is
+        // within the 0.05 look-ahead window, so it should be selected.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.28125)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        viewModel.updateActiveBeat(forTimePosition: 0.25)
+        let futureBeat = viewModel.cachedDrumBeats.first { $0.timePosition == 0.28125 }
+        #expect(viewModel.activeBeatId == futureBeat?.id)
+    }
 }
 
 @MainActor
