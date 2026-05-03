@@ -573,11 +573,22 @@ private extension NotationLayoutEngine {
                 ))
             }
 
-            // End barline: single barline at every measure end
+            // End barline: align with next same-row measure's start so the shared
+            // boundary sits at the following measure's xOffset rather than leaving
+            // a measureSpacing-wide gap between the drawn bar and the next measure.
+            let nextOnSameRow = measures.count > index + 1
+                && measures[index + 1].row == measure.row
+            let endX: CGFloat
+            if nextOnSameRow {
+                endX = measures[index + 1].xOffset
+            } else {
+                endX = measure.xOffset + measure.width
+            }
+
             bars.append(RenderedMeasureBar(
                 id: "bar_\(measure.measureIndex)_end",
                 row: measure.row,
-                x: measure.xOffset + measure.width,
+                x: endX,
                 isFinal: isLastOverall
             ))
         }
