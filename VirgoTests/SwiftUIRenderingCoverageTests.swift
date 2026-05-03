@@ -158,6 +158,66 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
+    @Test("Notation flag view renders in both active and inactive states")
+    func testNotationFlagViewRendersInActiveAndInactiveStates() async throws {
+        try await TestSetup.withTestSetup {
+            let flag = RenderedFlag(
+                id: "flag-1",
+                noteHeadID: 42,
+                stemDirection: .up,
+                flagIndex: 0,
+                origin: CGPoint(x: 50, y: 50)
+            )
+
+            // Smoke test: both states should mount and render without errors
+            let inactiveView = NotationFlagView(flag: flag, isActive: false)
+            SwiftUITestUtilities.assertViewWithEnvironment(inactiveView, size: CGSize(width: 120, height: 120))
+
+            let activeView = NotationFlagView(flag: flag, isActive: true)
+            SwiftUITestUtilities.assertViewWithEnvironment(activeView, size: CGSize(width: 120, height: 120))
+        }
+    }
+
+    @Test("Notation stem view renders in both active and inactive states")
+    func testNotationStemViewRendersInBothStates() async throws {
+        try await TestSetup.withTestSetup {
+            let stem = RenderedStem(
+                id: "stem-1",
+                noteHeadIDs: [42],
+                direction: .up,
+                start: CGPoint(x: 50, y: 20),
+                end: CGPoint(x: 50, y: 80)
+            )
+
+            let inactiveView = NotationStemView(stem: stem, isActive: false)
+            SwiftUITestUtilities.assertViewWithEnvironment(inactiveView, size: CGSize(width: 120, height: 120))
+
+            let activeView = NotationStemView(stem: stem, isActive: true)
+            SwiftUITestUtilities.assertViewWithEnvironment(activeView, size: CGSize(width: 120, height: 120))
+        }
+    }
+
+    @Test("Notation beam view renders in both active and inactive states")
+    func testNotationBeamViewRendersInBothStates() async throws {
+        try await TestSetup.withTestSetup {
+            let beam = RenderedBeam(
+                id: "beam-1",
+                noteHeadIDs: [42, 43],
+                direction: .up,
+                level: 0,
+                start: CGPoint(x: 20, y: 30),
+                end: CGPoint(x: 80, y: 30),
+                thickness: 3.0
+            )
+
+            let inactiveView = NotationBeamView(beam: beam, isActive: false)
+            SwiftUITestUtilities.assertViewWithEnvironment(inactiveView, size: CGSize(width: 120, height: 120))
+
+            let activeView = NotationBeamView(beam: beam, isActive: true)
+            SwiftUITestUtilities.assertViewWithEnvironment(activeView, size: CGSize(width: 120, height: 120))
+        }
+    }
+
     @Test("Gameplay sheet sizing uses notation width only when note heads are active")
     func testGameplaySheetSizingUsesNotationWidthOnlyWhenActive() async throws {
         try await TestSetup.withTestSetup {

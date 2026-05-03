@@ -286,7 +286,7 @@ struct FlagView: View {
                           control2: CGPoint(x: GameplayLayout.flagCurveEndControl2X, y: GameplayLayout.flagCurveEndControl2Y))
             path.closeSubpath()
         }
-        .fill(Color.white)
+        .fill(.foreground)
         .frame(width: GameplayLayout.flagWidth, height: GameplayLayout.flagHeight)
         .rotationEffect(stemDirection == .down ? .degrees(180) : .zero)
     }
