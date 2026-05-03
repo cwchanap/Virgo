@@ -776,4 +776,25 @@ extension NotationLayoutEngineTests {
         #expect(layout.beams.count == 2)
         #expect(layout.flags.isEmpty)
     }
+
+    // MARK: - Content Width
+
+    @Test("contentWidth is at least maxRowWidth for any layout")
+    func contentWidthAtLeastMaxRowWidth() {
+        let layout = NotationLayout.empty
+        #expect(layout.contentWidth == GameplayLayout.maxRowWidth)
+    }
+
+    @Test("contentWidth expands for notes beyond default row width")
+    func contentWidthExpandsForDenseNotes() throws {
+        let notes = (0..<8).map { i in
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: Double(i) * 0.125)
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let lastNoteHead = try #require(layout.noteHeads.max(by: { $0.position.x < $1.position.x }))
+        #expect(layout.contentWidth > lastNoteHead.position.x)
+        #expect(layout.contentWidth >= GameplayLayout.maxRowWidth)
+    }
 }

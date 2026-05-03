@@ -252,6 +252,35 @@ struct GameplayViewModelTests {
         #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadIDsByBeatID.isEmpty)
+        #expect(viewModel.notationStaffLinesView == nil)
+    }
+
+    @Test func testNotationStaffLinesViewCachedWhenLayoutHasNotes() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(viewModel.notationStaffLinesView != nil,
+               "notationStaffLinesView should be cached when layout has noteHeads")
+    }
+
+    @Test func testNotationStaffLinesViewNilWhenNoNotes() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(viewModel.notationStaffLinesView == nil,
+               "notationStaffLinesView should be nil when layout has no noteHeads")
     }
 
     @Test func testEmptyNotationLayoutHasNoRenderedContent() {

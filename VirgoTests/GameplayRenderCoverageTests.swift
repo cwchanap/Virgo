@@ -125,6 +125,21 @@ struct GameplayRenderCoverageTests {
         }
     }
 
+    @Test("StaffLinesBackgroundView accepts custom width parameter")
+    func testStaffLinesBackgroundView_customWidth() async throws {
+        try await TestSetup.withTestSetup {
+            let positions = GameplayLayout.calculateMeasurePositions(
+                totalMeasures: 1, timeSignature: .fourFour
+            )
+            let customWidth: CGFloat = 500
+            let view = StaffLinesBackgroundView(measurePositions: positions, width: customWidth)
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
     // MARK: - BeamGroupView
 
     /// Renders a `BeamGroupView` whose `beats` are eighth notes in the same measure.
