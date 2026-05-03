@@ -1149,16 +1149,43 @@ final class GameplayViewModel {
             currentTimePosition = Double(measureIdx) + measureOffset
         }
 
-        // Binary search for the last beat at or near the current position.
-        // The metronome only fires at quarter-note intervals, so sub-beat notes
-        // (eighths, sixteenths) are never exactly at the playhead.  Using a
-        // small look-ahead plus a wider look-behind catches those notes.
+        // Two-step search: prefer beats at/before the playhead, then fall back to
+        // a small look-ahead.  The metronome only fires at quarter-note intervals,
+        // so sub-beat notes (eighths, sixteenths) are never exactly at the playhead.
+        // Using look-ahead catches those, but we must not let a future note steal
+        // the active-beat slot from a note the playhead is currently on.
         let lookAhead = 0.05
         let maxLookBehind = 1.0 / Double(track.timeSignature.beatsPerMeasure)
 
+        // Step 1: find the last beat at or before the playhead.
         var left = 0
         var right = cachedDrumBeats.count - 1
         var result = -1
+
+        while left <= right {
+            let mid = (left + right) / 2
+            if cachedDrumBeats[mid].timePosition <= currentTimePosition {
+                result = mid
+                left = mid + 1
+            } else {
+                right = mid - 1
+            }
+        }
+
+        if result >= 0 {
+            let beat = cachedDrumBeats[result]
+            if currentTimePosition - beat.timePosition <= maxLookBehind {
+                activeBeatId = beat.id
+                updateActiveNotation(forBeatID: beat.id, fallbackTimePosition: currentTimePosition)
+                return
+            }
+        }
+
+        // Step 2: no beat at/before playhead — try a small look-ahead for
+        // sub-beat notes that the playhead is about to reach.
+        left = 0
+        right = cachedDrumBeats.count - 1
+        result = -1
 
         while left <= right {
             let mid = (left + right) / 2
