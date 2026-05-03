@@ -1083,7 +1083,13 @@ final class GameplayViewModel {
             totalBeatsElapsed = discreteTotalBeats
             playbackProgress = min(elapsedTime / cachedTrackDuration, 1.0)
 
-            let playheadTimePosition = Double(measureIndex) + beatPosition
+            // Use continuous timePosition so off-beat notes (eighths, sixteenths)
+            // can be matched by updateActiveBeat's binary-search + look-behind logic.
+            let continuousMeasureFraction = totalBeatsElapsedFloat / Double(beatsPerMeasure)
+            let continuousMeasureIdx = Int(continuousMeasureFraction)
+            let continuousOffset = continuousMeasureFraction - Double(continuousMeasureIdx)
+            let playheadTimePosition = Double(continuousMeasureIdx) + continuousOffset
+
             updatePurpleBarPosition(elapsedTime: elapsedTime)
             updateActiveBeat(forTimePosition: playheadTimePosition)
             scanForMissedNotes(upToTimePosition: playheadTimePosition)
@@ -1133,20 +1139,44 @@ final class GameplayViewModel {
             }
             // Use effective BPM for visual sync (speed-adjusted)
             let secondsPerBeat = 60.0 / effectiveBPM()
-            let totalBeatsElapsed = elapsedTime / secondsPerBeat
-            let beatsPerMeasure = track.timeSignature.beatsPerMeasure
-            let discreteTotalBeats = Int(totalBeatsElapsed)
-            let measureIndex = discreteTotalBeats / beatsPerMeasure
-            let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure)
-            currentTimePosition = Double(measureIndex) + (beatWithinMeasure / Double(beatsPerMeasure))
+            let totalBeats = elapsedTime / secondsPerBeat
+            let beatsPerMeasure = Double(track.timeSignature.beatsPerMeasure)
+            let continuousMeasureFraction = totalBeats / beatsPerMeasure
+            let measureIdx = Int(continuousMeasureFraction)
+            let measureOffset = continuousMeasureFraction - Double(measureIdx)
+            currentTimePosition = Double(measureIdx) + measureOffset
         }
-        let timeTolerance = 0.05
 
-        for beat in cachedDrumBeats where abs(beat.timePosition - currentTimePosition) < timeTolerance {
-            activeBeatId = beat.id
-            updateActiveNotation(forBeatID: beat.id, fallbackTimePosition: currentTimePosition)
-            return
+        // Binary search for the last beat at or near the current position.
+        // The metronome only fires at quarter-note intervals, so sub-beat notes
+        // (eighths, sixteenths) are never exactly at the playhead.  Using a
+        // small look-ahead plus a wider look-behind catches those notes.
+        let lookAhead = 0.05
+        let maxLookBehind = 1.0 / Double(track.timeSignature.beatsPerMeasure)
+
+        var left = 0
+        var right = cachedDrumBeats.count - 1
+        var result = -1
+
+        while left <= right {
+            let mid = (left + right) / 2
+            if cachedDrumBeats[mid].timePosition <= currentTimePosition + lookAhead {
+                result = mid
+                left = mid + 1
+            } else {
+                right = mid - 1
+            }
         }
+
+        if result >= 0 {
+            let beat = cachedDrumBeats[result]
+            if currentTimePosition - beat.timePosition <= maxLookBehind {
+                activeBeatId = beat.id
+                updateActiveNotation(forBeatID: beat.id, fallbackTimePosition: currentTimePosition)
+                return
+            }
+        }
+
         clearActiveBeat()
     }
 

@@ -696,4 +696,84 @@ extension NotationLayoutEngineTests {
             #expect(hasStartBar)
         }
     }
+
+    // MARK: - Mixed-Duration Beam Flag Tests
+
+    @Test("sixteenth in mixed sixteenth-eighth beam run produces one flag for uncovered level")
+    func sixteenthInMixedBeamRunProducesFlagForUncoveredLevel() throws {
+        // sixteenth (flagCount=2) + eighth (flagCount=1) in the same beam run.
+        // Level-0 beam covers both notes; level-1 has only the sixteenth
+        // (< 2 notes, so no beam emitted).  The sixteenth needs a flag at
+        // index 1 to represent the uncovered second level.
+        let notes = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        // One level-0 beam spanning both notes
+        let levelZeroBeams = layout.beams.filter { $0.level == 0 }
+        #expect(levelZeroBeams.count == 1)
+        #expect(levelZeroBeams.first?.noteHeadIDs.count == 2)
+
+        // No level-1 beam (only one sixteenth qualifies, < 2 minimum)
+        let levelOneBeams = layout.beams.filter { $0.level == 1 }
+        #expect(levelOneBeams.isEmpty)
+
+        // The sixteenth should have one flag (for the uncovered level 1)
+        // The eighth should have no flags (fully covered by level-0 beam)
+        let sixteenthHead = try #require(layout.noteHeads.first { $0.interval == .sixteenth })
+        let eighthHead = try #require(layout.noteHeads.first { $0.interval == .eighth })
+        let sixteenthFlags = layout.flags.filter { $0.noteHeadID == sixteenthHead.id }
+        let eighthFlags = layout.flags.filter { $0.noteHeadID == eighthHead.id }
+
+        #expect(sixteenthFlags.count == 1)
+        #expect(sixteenthFlags.first?.flagIndex == 1)
+        #expect(eighthFlags.isEmpty)
+    }
+
+    @Test("thirty-second in mixed beam run produces flags for all uncovered levels")
+    func thirtySecondInMixedBeamRunProducesFlagsForAllUncoveredLevels() throws {
+        // thirty-second (flagCount=3) + eighth (flagCount=1).
+        // Level-0 beam covers both; levels 1-2 have only the thirty-second.
+        // Two flags should be emitted for the thirty-second (indices 1 and 2).
+        let notes = [
+            Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.03125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let thirtySecondHead = try #require(layout.noteHeads.first { $0.interval == .thirtysecond })
+        let eighthHead = try #require(layout.noteHeads.first { $0.interval == .eighth })
+        let thirtySecondFlags = layout.flags.filter { $0.noteHeadID == thirtySecondHead.id }
+        let eighthFlags = layout.flags.filter { $0.noteHeadID == eighthHead.id }
+
+        #expect(thirtySecondFlags.count == 2)
+        let flagIndices = Set(thirtySecondFlags.map(\.flagIndex))
+        #expect(flagIndices == [1, 2])
+        #expect(eighthFlags.isEmpty)
+    }
+
+    @Test("uniform sixteenths in beam run produce no flags")
+    func uniformSixteenthsInBeamRunProduceNoFlags() {
+        // All sixteenths: both level-0 and level-1 beams are emitted, so no flags.
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .sixteenth,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 16.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.beams.count == 2)
+        #expect(layout.flags.isEmpty)
+    }
 }

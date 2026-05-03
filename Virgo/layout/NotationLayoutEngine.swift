@@ -457,11 +457,26 @@ private extension NotationLayoutEngine {
         beams: [RenderedBeam],
         style: NotationLayoutStyle
     ) -> [RenderedFlag] {
-        let beamedNoteHeadIDs = Set(beams.filter { $0.level == 0 }.flatMap(\.noteHeadIDs))
+        // Count how many beam levels each notehead is covered by.
+        // A notehead in a level-0 beam has 1 covered level, level-0 and level-1
+        // beams means 2 covered levels, etc.  Flags should only be emitted for
+        // levels NOT already represented by beams.
+        var coveredLevelsByNoteHead: [UInt64: Int] = [:]
+        for beam in beams {
+            for noteHeadID in beam.noteHeadIDs {
+                let current = coveredLevelsByNoteHead[noteHeadID] ?? 0
+                coveredLevelsByNoteHead[noteHeadID] = max(current, beam.level + 1)
+            }
+        }
 
         return noteHeads
-            .filter { $0.interval.needsFlag && !beamedNoteHeadIDs.contains($0.id) }
+            .filter { $0.interval.needsFlag }
             .flatMap { noteHead -> [RenderedFlag] in
+                let coveredLevels = coveredLevelsByNoteHead[noteHead.id] ?? 0
+                let totalFlags = noteHead.interval.flagCount
+                // Emit flags only for levels not already represented by beams
+                guard coveredLevels < totalFlags else { return [] }
+
                 let stemBottom = stemStart(for: noteHead, style: style)
                 let flagOrigin = CGPoint(
                     x: stemBottom.x + GameplayLayout.flagXOffset,
@@ -470,7 +485,7 @@ private extension NotationLayoutEngine {
                         : stemBottom.y + style.stemLength
                 )
 
-                return (0..<noteHead.interval.flagCount).map { flagIndex in
+                return (coveredLevels..<totalFlags).map { flagIndex in
                     let yOffset = noteHead.stemDirection == .up
                         ? CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
                         : -CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
