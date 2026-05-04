@@ -62,10 +62,27 @@ struct NotationFlagView: View {
     let flag: RenderedFlag
     let isActive: Bool
 
+    /// Computes the corrected center so the flag path origin (0,0) lands on the
+    /// stem-tip attachment point stored in `flag.origin`.
+    /// `.position()` centres the flagWidth × flagHeight frame, so we shift by
+    /// half the frame to align the top-left corner with the stem tip.
+    /// For stem-down the view is rotated 180°, which mirrors the attachment to
+    /// the opposite corner, so the correction direction flips.
+    private var adjustedCenter: CGPoint {
+        let halfW = GameplayLayout.flagWidth / 2
+        let halfH = GameplayLayout.flagHeight / 2
+        switch flag.stemDirection {
+        case .up:
+            return CGPoint(x: flag.origin.x + halfW, y: flag.origin.y + halfH)
+        case .down:
+            return CGPoint(x: flag.origin.x - halfW, y: flag.origin.y - halfH)
+        }
+    }
+
     var body: some View {
         FlagView(flagIndex: flag.flagIndex, stemDirection: flag.stemDirection)
             .foregroundColor(isActive ? .yellow : .white)
-            .position(flag.origin)
+            .position(adjustedCenter)
     }
 }
 

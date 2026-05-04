@@ -2802,6 +2802,33 @@ struct GameplayViewModelTests {
         let futureBeat = viewModel.cachedDrumBeats.first { $0.timePosition == 0.28125 }
         #expect(viewModel.activeBeatId == futureBeat?.id)
     }
+
+    @Test("continuous visual tick updates active beat at sub-beat positions between quarter boundaries")
+    func continuousVisualTickUpdatesActiveBeatBetweenQuarters() async throws {
+        // Regression: before the continuous tick was added, updateActiveBeat was
+        // only called inside the discreteTotalBeats gate, so sub-beat notes were
+        // never highlighted at the correct moment.  Now updateContinuousVisualsTick
+        // calls updateActiveBeat on every tick regardless of the beat gate.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0625)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        // At timePosition 0.0625 (sub-beat, between quarter boundaries),
+        // the sixteenth at 0.0625 should be active — not just the one at 0.0.
+        viewModel.updateActiveBeat(forTimePosition: 0.0625)
+        let subBeatNote = viewModel.cachedDrumBeats.first { abs($0.timePosition - 0.0625) < 0.001 }
+        #expect(viewModel.activeBeatId == subBeatNote?.id)
+    }
 }
 
 @MainActor
