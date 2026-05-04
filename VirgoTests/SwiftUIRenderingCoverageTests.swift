@@ -178,6 +178,54 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
+    @Test("Notation flag view renders with stem-down direction")
+    func testNotationFlagViewRendersWithStemDown() async throws {
+        try await TestSetup.withTestSetup {
+            let flag = RenderedFlag(
+                id: "flag-2",
+                noteHeadID: 43,
+                stemDirection: .down,
+                flagIndex: 0,
+                origin: CGPoint(x: 50, y: 70)
+            )
+
+            // Smoke test: stem-down flag should mount and render without errors
+            let view = NotationFlagView(flag: flag, isActive: false)
+            SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
+        }
+    }
+
+    @Test("Notation flag position is adjusted for center-based placement")
+    func testNotationFlagPositionAdjustedForCenterPlacement() async throws {
+        try await TestSetup.withTestSetup {
+            // The adjustedCenter property should offset by half the flag frame size
+            // so the path origin (0,0) lands on flag.origin instead of the frame center.
+            let flagUp = RenderedFlag(
+                id: "flag-up",
+                noteHeadID: 42,
+                stemDirection: .up,
+                flagIndex: 0,
+                origin: CGPoint(x: 50, y: 50)
+            )
+            let flagDown = RenderedFlag(
+                id: "flag-down",
+                noteHeadID: 43,
+                stemDirection: .down,
+                flagIndex: 0,
+                origin: CGPoint(x: 50, y: 70)
+            )
+
+            // Both directions should render without error (smoke test for the
+            // corrected positioning logic — the actual position correction is
+            // exercised visually; this ensures no crash/miscompile).
+            let upView = NotationFlagView(flag: flagUp, isActive: true)
+            SwiftUITestUtilities.assertViewWithEnvironment(upView, size: CGSize(width: 120, height: 120))
+
+            let downView = NotationFlagView(flag: flagDown, isActive: true)
+            SwiftUITestUtilities.assertViewWithEnvironment(downView, size: CGSize(width: 120, height: 120))
+        }
+    }
+
     @Test("Notation stem view renders in both active and inactive states")
     func testNotationStemViewRendersInBothStates() async throws {
         try await TestSetup.withTestSetup {

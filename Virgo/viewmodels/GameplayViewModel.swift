@@ -719,6 +719,10 @@ final class GameplayViewModel {
         // This ensures UI state accurately reflects whether playback actually started
         isPlaying = true
 
+        // Start continuous visual tick (~30 Hz) so sub-beat notes (eighths,
+        // sixteenths) are highlighted between quarter-note metronome callbacks.
+        startVisualTickTimer()
+
         // Synchronize input timeline with the actual scheduled playback start time.
         // The metronome/BGM are scheduled 0.05s in the future (setupTime). The input
         // manager must use the same zero-point so hits are judged relative to what the
@@ -1054,6 +1058,25 @@ final class GameplayViewModel {
 
     // MARK: - Visual Updates
 
+    /// Starts a ~30 Hz timer that continuously updates active-note highlighting
+    /// and purple-bar position between quarter-note metronome callbacks.
+    /// This ensures sub-beat notes (eighths, sixteenths) become active at the
+    /// correct moment rather than only when the next quarter-note boundary fires.
+    /// Skipped in test environments to avoid interfering with the test runner's
+    /// main run loop (matches the pattern used by audio components).
+    private func startVisualTickTimer() {
+        guard !TestEnvironment.isRunningTests else { return }
+        playbackTimer?.invalidate()
+        playbackTimer = Timer.scheduledTimer(
+            withTimeInterval: 1.0 / 30.0,
+            repeats: true
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateContinuousVisualsTick()
+            }
+        }
+    }
+
     func updateVisualElementsFromMetronome() {
         guard let track = track, isPlaying else { return }
 
@@ -1066,15 +1089,42 @@ final class GameplayViewModel {
         guard let metronomeTime = metronome.getCurrentPlaybackTime() else { return }
         let elapsedTime = pausedElapsedTime + metronomeTime
 
+        updateContinuousVisuals(elapsedTime: elapsedTime, track: track)
+    }
+
+    /// Called by the continuous visual tick timer (~30 Hz) so that sub-beat notes
+    /// (eighths, sixteenths) are highlighted even though the metronome only fires
+    /// at quarter-note boundaries.
+    private func updateContinuousVisualsTick() {
+        guard let track = track, isPlaying else { return }
+        guard cachedTrackDuration > 0 else { return }
+        guard let metronomeTime = metronome.getCurrentPlaybackTime() else { return }
+        let elapsedTime = pausedElapsedTime + metronomeTime
+        updateContinuousVisuals(elapsedTime: elapsedTime, track: track)
+    }
+
+    /// Shared logic for both the metronome callback and the continuous tick timer.
+    private func updateContinuousVisuals(elapsedTime: Double, track: DrumTrack) {
         // Use effective BPM for visual sync (speed-adjusted)
         let secondsPerBeat = 60.0 / effectiveBPM()
         let totalBeatsElapsedFloat = elapsedTime / secondsPerBeat
         let discreteTotalBeats = Int(totalBeatsElapsedFloat)
 
+        // Continuous playhead position — always computed so sub-beat notes
+        // (eighths, sixteenths) can be matched regardless of when the metronome fires.
+        let beatsPerMeasure = track.timeSignature.beatsPerMeasure
+        let continuousMeasureFraction = totalBeatsElapsedFloat / Double(beatsPerMeasure)
+        let continuousMeasureIdx = Int(continuousMeasureFraction)
+        let continuousOffset = continuousMeasureFraction - Double(continuousMeasureIdx)
+        let playheadTimePosition = Double(continuousMeasureIdx) + continuousOffset
+
+        // Active-note update runs on EVERY tick (not gated by discrete beat)
+        // so that off-beat notes become active at the right moment.
+        updateActiveBeat(forTimePosition: playheadTimePosition)
+
         if discreteTotalBeats != lastDiscreteBeat {
             lastDiscreteBeat = discreteTotalBeats
 
-            let beatsPerMeasure = track.timeSignature.beatsPerMeasure
             let measureIndex = discreteTotalBeats / beatsPerMeasure
             let beatWithinMeasure = discreteTotalBeats % beatsPerMeasure
             let beatPosition = Double(beatWithinMeasure) / Double(beatsPerMeasure)
@@ -1085,15 +1135,7 @@ final class GameplayViewModel {
             totalBeatsElapsed = discreteTotalBeats
             playbackProgress = min(elapsedTime / cachedTrackDuration, 1.0)
 
-            // Use continuous timePosition so off-beat notes (eighths, sixteenths)
-            // can be matched by updateActiveBeat's binary-search + look-behind logic.
-            let continuousMeasureFraction = totalBeatsElapsedFloat / Double(beatsPerMeasure)
-            let continuousMeasureIdx = Int(continuousMeasureFraction)
-            let continuousOffset = continuousMeasureFraction - Double(continuousMeasureIdx)
-            let playheadTimePosition = Double(continuousMeasureIdx) + continuousOffset
-
             updatePurpleBarPosition(elapsedTime: elapsedTime)
-            updateActiveBeat(forTimePosition: playheadTimePosition)
             scanForMissedNotes(upToTimePosition: playheadTimePosition)
 
             // Schedule delayed completion to preserve late-tolerance window for final notes.
