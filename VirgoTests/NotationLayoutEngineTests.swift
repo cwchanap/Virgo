@@ -13,6 +13,21 @@ struct NotationLayoutEngineTests {
         #expect(style.noteHeadWidth == GameplayLayout.beatColumnWidth)
     }
 
+    @Test("notation layout style omits unused measure padding API")
+    func notationLayoutStyleOmitsUnusedMeasurePaddingAPI() {
+        let labels = Set(Mirror(reflecting: NotationLayoutStyle.gameplayDefault).children.compactMap(\.label))
+
+        #expect(!labels.contains("measurePadding"))
+    }
+
+    @Test("notation layout exposes note head positions by note head ID")
+    func notationLayoutExposesNoteHeadPositionsByNoteHeadID() {
+        let labels = Set(Mirror(reflecting: NotationLayout.empty).children.compactMap(\.label))
+
+        #expect(labels.contains("noteHeadPositionsByID"))
+        #expect(!labels.contains("beatLookup"))
+    }
+
     @Test("drum types map to gameplay voices")
     func drumTypesMapToGameplayVoices() {
         #expect(NotationVoice.voice(for: .kick) == .lower)

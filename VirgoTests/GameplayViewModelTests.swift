@@ -291,7 +291,7 @@ struct GameplayViewModelTests {
         #expect(NotationLayout.empty.flags.isEmpty)
         #expect(NotationLayout.empty.ledgerLines.isEmpty)
         #expect(NotationLayout.empty.measureBars.isEmpty)
-        #expect(NotationLayout.empty.beatLookup.isEmpty)
+        #expect(NotationLayout.empty.noteHeadPositionsByID.isEmpty)
         #expect(NotationLayout.empty.noteHeadIDsByTimePosition.isEmpty)
         #expect(NotationLayout.empty.totalHeight == 0)
     }
