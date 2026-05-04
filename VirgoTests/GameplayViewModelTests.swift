@@ -1656,6 +1656,36 @@ struct GameplayViewModelTests {
         #expect(viewModel.calculatePurpleBarPosition(elapsedTime: 2.0) != nil)
     }
 
+    @Test func testPurpleBarUsesFractionalBeatForSubBeatPosition() async throws {
+        // At BPM 120, 4/4 time: secondsPerBeat = 0.5
+        // elapsedTime = 0.125s → totalBeatsElapsed = 0.25
+        // This is a 16th note (offset 0.0625 in 4/4). The purple bar should be at
+        // beatWithinMeasure = 0.25 (quarter of a beat), NOT at beat 0.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        let position = try #require(
+            viewModel.calculatePurpleBarPosition(elapsedTime: 0.125)
+        )
+        let measure = try #require(viewModel.cachedNotationLayout.measures.first)
+        let beatGap = (measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing) / 4
+        // beatWithinMeasure should be 0.25, so x = base + 0.25 * beatGap
+        let expectedX = measure.xOffset
+            + GameplayLayout.barLineWidth
+            + GameplayLayout.uniformSpacing
+            + 0.25 * beatGap
+
+        #expect(abs(position.x - Double(expectedX)) < 0.5)
+    }
+
     // MARK: - Input Manager Tests
 
     @Test func testInputManagerConfiguration() async throws {

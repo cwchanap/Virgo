@@ -1287,9 +1287,9 @@ final class GameplayViewModel {
         let secondsPerBeat = 60.0 / effectiveBPM()
         let totalBeatsElapsed = elapsedTime / secondsPerBeat
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
-        let discreteTotalBeats = Int(totalBeatsElapsed)
-        let measureIndex = discreteTotalBeats / beatsPerMeasure
-        let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure)
+        let continuousMeasureFraction = totalBeatsElapsed / Double(beatsPerMeasure)
+        let measureIndex = Int(continuousMeasureFraction)
+        let beatWithinMeasure = totalBeatsElapsed - Double(measureIndex * beatsPerMeasure)
 
         let isNotationLayoutActive = !cachedNotationLayout.noteHeads.isEmpty
         // Clamp measureIndex to valid range for notation layout lookup

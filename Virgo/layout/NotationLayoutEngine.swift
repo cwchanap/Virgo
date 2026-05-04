@@ -167,10 +167,15 @@ struct NotationLayoutEngine {
 
         for note in notes {
             guard let drumType = DrumType.from(noteType: note.noteType) else { continue }
-            let measureIndex = MeasureUtils.toZeroBasedIndex(note.measureNumber)
-            guard let measure = measuresByIndex[measureIndex] else { continue }
+            let timePos = MeasureUtils.timePosition(
+                measureNumber: note.measureNumber,
+                measureOffset: note.measureOffset
+            )
+            let normalizedMeasureIndex = MeasureUtils.measureIndex(from: timePos)
+            let normalizedOffset = timePos - Double(normalizedMeasureIndex)
+            guard let measure = measuresByIndex[normalizedMeasureIndex] else { continue }
             let beatGap = beatGap(for: measure, input: input)
-            let beatPosition = quantizedOffset(for: note.measureOffset) * Double(input.timeSignature.beatsPerMeasure)
+            let beatPosition = quantizedOffset(for: normalizedOffset) * Double(input.timeSignature.beatsPerMeasure)
             let x = measure.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
                 + CGFloat(beatPosition) * beatGap
             let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
@@ -187,11 +192,8 @@ struct NotationLayoutEngine {
                         sourceNoteID: ObjectIdentifier(note),
                         drumType: drumType,
                         voice: voice,
-                        timePosition: MeasureUtils.timePosition(
-                            measureNumber: note.measureNumber,
-                            measureOffset: note.measureOffset
-                        ),
-                        measureIndex: measureIndex,
+                        timePosition: timePos,
+                        measureIndex: normalizedMeasureIndex,
                         row: measure.row,
                         position: CGPoint(x: x, y: y),
                         staffStep: staffStep(for: drumType.notePosition),
@@ -199,8 +201,8 @@ struct NotationLayoutEngine {
                         interval: note.interval
                     ),
                     collisionColumn: VoiceCollisionColumn(
-                        measureIndex: measureIndex,
-                        quantizedColumn: quantizedColumn(for: note.measureOffset)
+                        measureIndex: normalizedMeasureIndex,
+                        quantizedColumn: quantizedColumn(for: normalizedOffset)
                     )
                 )
             )
