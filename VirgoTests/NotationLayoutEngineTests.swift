@@ -855,4 +855,41 @@ extension NotationLayoutEngineTests {
         // split when voice collision is detected
         #expect(abs(snare.timePosition - kick.timePosition) < 0.001)
     }
+
+    @Test("offset-1 note in last measure is not dropped when minimumMeasureCount is tight")
+    func offsetOneNoteInLastMeasureNotDroppedWithTightMeasureCount() throws {
+        // A note at measureNumber: 2, measureOffset: 1.0 normalizes to measure index 2
+        // (start of measure 3). Without normalization, totalMeasures would be just 2
+        // (from raw measureNumber max), and the note would be dropped. With normalization,
+        // totalMeasures must be 3 to accommodate the overflow.
+        let note = Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 1.0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, minimumMeasureCount: 1)
+        )
+        let head = try #require(layout.noteHeads.first, "Note must not be dropped — measure count must account for normalized position")
+
+        #expect(head.measureIndex == 2)
+        #expect(head.timePosition == 2.0)
+        #expect(layout.measures.count >= 3, "At least 3 measures needed for the normalized position")
+    }
+
+    @Test("column offsets for measure use normalized positions not raw measureNumber")
+    func columnOffsetsUseNormalizedPositions() throws {
+        // A note at (measureNumber:1, offset:1.0) normalizes to measure index 1 offset 0.0.
+        // It should contribute to measure 1's column offsets and width, not measure 0's.
+        let notes = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 0.0625)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 3)
+        )
+
+        // Both notes should render in measure index 1
+        let measure1Heads = layout.noteHeads.filter { $0.measureIndex == 1 }
+        #expect(measure1Heads.count == 2, "Both notes should render in normalized measure index 1")
+        // The heads should be at different x positions (different offsets)
+        let uniqueX = Set(measure1Heads.map { $0.position.x })
+        #expect(uniqueX.count == 2, "Two different offsets should produce two distinct x positions")
+    }
 }

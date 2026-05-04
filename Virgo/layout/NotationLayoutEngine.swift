@@ -24,13 +24,20 @@ struct NotationLayoutEngine {
     }
 
     func layout(input: NotationLayoutInput) -> NotationLayout {
-        let normalizedNotes = input.notes.sorted {
+        let sortedNotes = input.notes.sorted {
             MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
             < MeasureUtils.timePosition(measureNumber: $1.measureNumber, measureOffset: $1.measureOffset)
         }
-        let totalMeasures = max(input.minimumMeasureCount, (normalizedNotes.map(\.measureNumber).max() ?? 1), 1)
-        let measures = buildMeasures(totalMeasures: totalMeasures, notes: normalizedNotes, input: input)
-        let noteHeads = buildNoteHeads(notes: normalizedNotes, measures: measures, input: input)
+        // Derive total measures from normalized positions so notes with
+        // measureOffset >= 1.0 (which roll into the next measure) are allocated correctly.
+        let maxNormalizedMeasureIndex = sortedNotes.map { note in
+            MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
+                measureNumber: note.measureNumber, measureOffset: note.measureOffset
+            ))
+        }.max() ?? 0
+        let totalMeasures = max(input.minimumMeasureCount, maxNormalizedMeasureIndex + 1, 1)
+        let measures = buildMeasures(totalMeasures: totalMeasures, notes: sortedNotes, input: input)
+        let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, input: input)
         let stems = buildStems(noteHeads: noteHeads, style: input.style)
         let beams = buildBeams(noteHeads: noteHeads, style: input.style)
         let flags = buildFlags(noteHeads: noteHeads, beams: beams, style: input.style)
@@ -96,8 +103,7 @@ struct NotationLayoutEngine {
         notes: [Note],
         input: NotationLayoutInput
     ) -> CGFloat {
-        let measureNumber = MeasureUtils.toOneBasedNumber(measureIndex)
-        let offsets = columnOffsets(for: measureNumber, notes: notes)
+        let offsets = columnOffsets(forMeasureIndex: measureIndex, notes: notes)
         let legacyWidth = GameplayLayout.measureWidth(for: input.timeSignature)
 
         guard offsets.count > 1 else {
@@ -108,7 +114,7 @@ struct NotationLayoutEngine {
             .map { pair in pair.0 - pair.1 }
             .min() ?? 0.25
         let requiredColumnGap = minimumColumnGap(
-            measureNumber: measureNumber,
+            measureIndex: measureIndex,
             notes: notes,
             style: input.style
         )
@@ -127,21 +133,21 @@ struct NotationLayoutEngine {
     }
 
     private func minimumColumnGap(
-        measureNumber: Int,
+        measureIndex: Int,
         notes: [Note],
         style: NotationLayoutStyle
     ) -> CGFloat {
-        guard containsCrossVoiceCollision(measureNumber: measureNumber, notes: notes) else {
+        guard containsCrossVoiceCollision(measureIndex: measureIndex, notes: notes) else {
             return style.minimumNoteColumnGap
         }
 
         return style.minimumNoteColumnGap + 2 * style.voiceCollisionOffset
     }
 
-    private func containsCrossVoiceCollision(measureNumber: Int, notes: [Note]) -> Bool {
+    private func containsCrossVoiceCollision(measureIndex: Int, notes: [Note]) -> Bool {
         Dictionary(
-            grouping: notes.filter { $0.measureNumber == measureNumber },
-            by: { quantizedColumn(for: $0.measureOffset) }
+            grouping: notes.filter { normalizedMeasureIndex(for: $0) == measureIndex },
+            by: { quantizedColumn(for: normalizedOffset(for: $0)) }
         )
         .values
         .contains { columnNotes in
@@ -254,15 +260,30 @@ struct NotationLayoutEngine {
         return drawableWidth / CGFloat(input.timeSignature.beatsPerMeasure)
     }
 
-    private func columnOffsets(for measureNumber: Int, notes: [Note]) -> [Double] {
+    private func columnOffsets(forMeasureIndex measureIndex: Int, notes: [Note]) -> [Double] {
         Set(notes
-            .filter { $0.measureNumber == measureNumber }
-            .map { quantizedOffset(for: $0.measureOffset) })
+            .filter { normalizedMeasureIndex(for: $0) == measureIndex }
+            .map { quantizedOffset(for: normalizedOffset(for: $0)) })
             .sorted()
     }
 
     private func quantizedOffset(for measureOffset: Double) -> Double {
         (measureOffset * Self.columnResolution).rounded() / Self.columnResolution
+    }
+
+    /// Zero-based measure index after normalizing measureOffset >= 1.0 into the next measure.
+    private func normalizedMeasureIndex(for note: Note) -> Int {
+        MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
+            measureNumber: note.measureNumber, measureOffset: note.measureOffset
+        ))
+    }
+
+    /// Offset within the normalized measure (always in [0, 1)).
+    private func normalizedOffset(for note: Note) -> Double {
+        let timePos = MeasureUtils.timePosition(
+            measureNumber: note.measureNumber, measureOffset: note.measureOffset
+        )
+        return timePos - Double(MeasureUtils.measureIndex(from: timePos))
     }
 
     private func quantizedColumn(for measureOffset: Double) -> Int {
