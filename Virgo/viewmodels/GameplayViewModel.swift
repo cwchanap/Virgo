@@ -1122,6 +1122,10 @@ final class GameplayViewModel {
         // so that off-beat notes become active at the right moment.
         updateActiveBeat(forTimePosition: playheadTimePosition)
 
+        // Purple-bar update runs on EVERY tick for smooth 30 Hz playhead movement,
+        // even between quarter-note boundaries.
+        updatePurpleBarPosition(elapsedTime: elapsedTime)
+
         if discreteTotalBeats != lastDiscreteBeat {
             lastDiscreteBeat = discreteTotalBeats
 
@@ -1135,7 +1139,6 @@ final class GameplayViewModel {
             totalBeatsElapsed = discreteTotalBeats
             playbackProgress = min(elapsedTime / cachedTrackDuration, 1.0)
 
-            updatePurpleBarPosition(elapsedTime: elapsedTime)
             scanForMissedNotes(upToTimePosition: playheadTimePosition)
 
             // Schedule delayed completion to preserve late-tolerance window for final notes.

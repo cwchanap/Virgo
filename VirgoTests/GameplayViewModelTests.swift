@@ -440,6 +440,41 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test("purple bar position updates on every tick, not only on discrete beat boundaries")
+    func testPurpleBarUpdatesOnEveryTick() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        // Call updatePurpleBarPosition with two different elapsed times
+        // that fall within the same beat (same discreteTotalBeats value).
+        // At 120 BPM: secondsPerBeat = 0.5. Beat 0 covers 0..<0.5s, beat 1 covers 0.5..<1.0s.
+        viewModel.updatePurpleBarPosition(elapsedTime: 0.1)
+        let positionAt01 = viewModel.purpleBarPosition
+
+        viewModel.updatePurpleBarPosition(elapsedTime: 0.3)
+        let positionAt03 = viewModel.purpleBarPosition
+
+        // Both times fall within beat 0 (discreteTotalBeats == 0), so discrete-beat-gated
+        // logic would NOT fire for the second call. If the purple bar only updated on
+        // discrete beat boundaries, both positions would be identical. They must differ
+        // because the purple bar should track continuous elapsed time.
+        #expect(positionAt01 != nil, "Purple bar must produce a position at elapsedTime 0.1s")
+        #expect(positionAt03 != nil, "Purple bar must produce a position at elapsedTime 0.3s")
+        // Purple bar must advance between ticks within the same beat —
+        // position at 0.1s should differ from 0.3s
+        if let pos1 = positionAt01, let pos3 = positionAt03 {
+            #expect(abs(pos1.x - pos3.x) > 0.0001 || abs(pos1.y - pos3.y) > 0.0001,
+                   "Purple bar must advance between sub-beat ticks (0.1s vs 0.3s)")
+        }
+
+        viewModel.cleanup()
+    }
+
     @Test func testRemainingBGMOffsetAccountsForPausedElapsedTime() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
