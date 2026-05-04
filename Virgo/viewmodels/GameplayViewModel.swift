@@ -1520,8 +1520,8 @@ final class GameplayViewModel {
         }
 
         cachedNotationNoteHeadPositions = Dictionary(
-            uniqueKeysWithValues: cachedNotationLayout.beatLookup.map { beatID, position in
-                (beatID, (x: Double(position.x), y: Double(position.y)))
+            uniqueKeysWithValues: cachedNotationLayout.noteHeadPositionsByID.map { noteHeadID, position in
+                (noteHeadID, (x: Double(position.x), y: Double(position.y)))
             }
         )
         let notePositionKeyBySourceNoteID = Dictionary(

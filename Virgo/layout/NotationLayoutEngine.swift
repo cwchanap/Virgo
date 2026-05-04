@@ -36,7 +36,7 @@ struct NotationLayoutEngine {
         let flags = buildFlags(noteHeads: noteHeads, beams: beams, style: input.style)
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
-        let beatLookup = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
+        let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
         let noteHeadIDsByTimePosition = Dictionary(
             grouping: noteHeads,
             by: { NotationLayout.timePositionKey($0.timePosition) }
@@ -55,7 +55,7 @@ struct NotationLayoutEngine {
             flags: flags,
             ledgerLines: ledgerLines,
             measureBars: measureBars,
-            beatLookup: beatLookup,
+            noteHeadPositionsByID: noteHeadPositionsByID,
             noteHeadIDsByTimePosition: noteHeadIDsByTimePosition,
             totalHeight: totalHeight
         )

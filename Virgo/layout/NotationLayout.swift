@@ -23,7 +23,6 @@ struct NotationLayoutInput {
 struct NotationLayoutStyle: Equatable {
     let minimumNoteColumnGap: CGFloat
     let minimumQuarterBeatGap: CGFloat
-    let measurePadding: CGFloat
     let rowWidth: CGFloat
     let staffLineSpacing: CGFloat
     let noteHeadWidth: CGFloat
@@ -39,7 +38,6 @@ struct NotationLayoutStyle: Equatable {
     static let gameplayDefault = NotationLayoutStyle(
         minimumNoteColumnGap: 28,
         minimumQuarterBeatGap: GameplayLayout.uniformSpacing,
-        measurePadding: 16,
         rowWidth: GameplayLayout.maxRowWidth,
         staffLineSpacing: GameplayLayout.staffLineSpacing,
         noteHeadWidth: GameplayLayout.beatColumnWidth,
@@ -81,7 +79,7 @@ struct NotationLayout {
     var flags: [RenderedFlag]
     var ledgerLines: [RenderedLedgerLine]
     var measureBars: [RenderedMeasureBar]
-    var beatLookup: [UInt64: CGPoint]
+    var noteHeadPositionsByID: [UInt64: CGPoint]
     var noteHeadIDsByTimePosition: [Int: Set<UInt64>]
     var totalHeight: CGFloat
 
@@ -116,7 +114,7 @@ struct NotationLayout {
         flags: [],
         ledgerLines: [],
         measureBars: [],
-        beatLookup: [:],
+        noteHeadPositionsByID: [:],
         noteHeadIDsByTimePosition: [:],
         totalHeight: 0
     )
