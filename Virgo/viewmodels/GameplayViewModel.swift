@@ -1292,8 +1292,12 @@ final class GameplayViewModel {
         let beatWithinMeasure = Double(discreteTotalBeats % beatsPerMeasure)
 
         let isNotationLayoutActive = !cachedNotationLayout.noteHeads.isEmpty
+        // Clamp measureIndex to valid range for notation layout lookup
+        let clampedMeasureIndex = isNotationLayoutActive && measureIndex >= cachedNotationLayout.measures.count
+            ? cachedNotationLayout.measures.count - 1
+            : measureIndex
         if let notationPosition = calculateNotationPurpleBarPosition(
-            measureIndex: measureIndex,
+            measureIndex: clampedMeasureIndex,
             beatWithinMeasure: beatWithinMeasure
         ) {
             return notationPosition
@@ -1372,6 +1376,8 @@ final class GameplayViewModel {
         isPlaying = false
         metronome.stop()
         inputManager.stopListening()
+        playbackTimer?.invalidate()
+        playbackTimer = nil
         // Capture final score and snapshot scoreEngine before reset clears them
         let finalScore = scoreEngine.score
         let isNewRecord = highScoreService.saveIfHighScore(finalScore, for: chart.persistentModelID)

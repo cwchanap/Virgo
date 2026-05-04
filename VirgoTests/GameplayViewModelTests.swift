@@ -1635,7 +1635,10 @@ struct GameplayViewModelTests {
         #expect(abs(position.y - expectedPosition.y) < 0.001)
     }
 
-    @Test func testNotationPurpleBarPositionDoesNotFallbackToLegacyWhenMeasureMissing() async throws {
+    @Test func testNotationPurpleBarPositionClampsAtEndOfTrack() async throws {
+        // Creates a chart with one measure (measureIndex 0) at BPM 120 (4 beats per measure)
+        // At elapsedTime = 2.0 seconds: 2 * 120 / 60 = 4 beats, measureIndex = 4 / 4 = 1
+        // This is one past the last measure, so the position should clamp to the last measure
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
@@ -1647,8 +1650,10 @@ struct GameplayViewModelTests {
         viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
+        // calculateNotationPurpleBarPosition directly returns nil when measure doesn't exist
         #expect(viewModel.calculateNotationPurpleBarPosition(measureIndex: 1, beatWithinMeasure: 0.0) == nil)
-        #expect(viewModel.calculatePurpleBarPosition(elapsedTime: 2.0) == nil)
+        // But calculatePurpleBarPosition clamps to the last valid measure at track end
+        #expect(viewModel.calculatePurpleBarPosition(elapsedTime: 2.0) != nil)
     }
 
     // MARK: - Input Manager Tests
