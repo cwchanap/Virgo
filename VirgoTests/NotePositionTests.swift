@@ -118,4 +118,42 @@ struct NotePositionTests {
         key2.hash(into: &hasher2)
         #expect(hasher1.finalize() == hasher2.finalize())
     }
+
+    // MARK: - Normalized Key
+
+    @Test func testNormalizedReturnsSelfWhenOffsetLessThanOne() {
+        let key = NotePositionKey(measureNumber: 3, measureOffset: 0.75)
+        let normalized = key.normalized()
+        #expect(normalized == key)
+    }
+
+    @Test func testNormalizedRollsOffsetOneIntoNextMeasure() {
+        // (measureNumber: 1, measureOffset: 1.0) → timePosition = 1.0 → (2, 0.0)
+        let key = NotePositionKey(measureNumber: 1, measureOffset: 1.0)
+        let normalized = key.normalized()
+        let expected = NotePositionKey(measureNumber: 2, measureOffset: 0.0)
+        #expect(normalized == expected)
+    }
+
+    @Test func testNormalizedSameMusicalInstantDifferentEncodings() {
+        // Both (1, 1.0) and (2, 0.0) represent the same time position
+        let keyA = NotePositionKey(measureNumber: 1, measureOffset: 1.0)
+        let keyB = NotePositionKey(measureNumber: 2, measureOffset: 0.0)
+        #expect(keyA.normalized() == keyB.normalized())
+    }
+
+    @Test func testNormalizedHandlesLargeOffset() {
+        // (measureNumber: 1, measureOffset: 2.5) → timePosition = 0 + 2.5 = 2.5 → measureIndex 2, offset 0.5 → (3, 0.5)
+        let key = NotePositionKey(measureNumber: 1, measureOffset: 2.5)
+        let normalized = key.normalized()
+        let expected = NotePositionKey(measureNumber: 3, measureOffset: 0.5)
+        #expect(normalized == expected)
+    }
+
+    @Test func testNormalizedIdempotent() {
+        let key = NotePositionKey(measureNumber: 1, measureOffset: 1.0)
+        let once = key.normalized()
+        let twice = once.normalized()
+        #expect(once == twice)
+    }
 }

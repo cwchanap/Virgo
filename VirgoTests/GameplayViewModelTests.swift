@@ -255,6 +255,34 @@ struct GameplayViewModelTests {
         #expect(viewModel.notationStaffLinesView == nil)
     }
 
+    @Test func testNotesAtSameMusicalInstantEncodedDifferentlyShareBeatID() async throws {
+        // Note A: (measureNumber: 1, measureOffset: 1.0) → timePosition 1.0
+        // Note B: (measureNumber: 2, measureOffset: 0.0) → timePosition 1.0
+        // Both represent the same musical instant and should map to the same DrumBeat.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 1.0)
+        )
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        // Normalization merges both notes into a single DrumBeat
+        #expect(viewModel.cachedDrumBeats.count == 1,
+                "Notes at the same timePosition should be grouped into one DrumBeat")
+
+        let beat = try #require(viewModel.cachedDrumBeats.first)
+        // Both noteHeads should map to the same beatID via the bridge
+        let noteHeadIDs = viewModel.cachedNotationNoteHeadIDsByBeatID[beat.id]
+        #expect(noteHeadIDs?.count == 2,
+                "Both noteHeads should be linked to the single beatID")
+    }
+
     @Test func testNotationStaffLinesViewCachedWhenLayoutHasNotes() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
@@ -1689,6 +1717,42 @@ struct GameplayViewModelTests {
         #expect(viewModel.calculateNotationPurpleBarPosition(measureIndex: 1, beatWithinMeasure: 0.0) == nil)
         // But calculatePurpleBarPosition clamps to the last valid measure at track end
         #expect(viewModel.calculatePurpleBarPosition(elapsedTime: 2.0) != nil)
+    }
+
+    @Test func testPurpleBarClampsToEndOfFinalMeasure() async throws {
+        // One measure, 4/4 at BPM 120. At elapsedTime = 2.0s:
+        // totalBeatsElapsed = 4.0, measureIndex = 1 (past last measure).
+        // The bar should be at the END of measure 0 (beatWithinMeasure = 4.0),
+        // NOT at the start (beatWithinMeasure = 0.0).
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        let clampedPosition = try #require(
+            viewModel.calculatePurpleBarPosition(elapsedTime: 2.0)
+        )
+        let measure = try #require(viewModel.cachedNotationLayout.measures.first)
+        // beatWithinMeasure clamped to 4.0 → bar at the rightmost edge
+        let drawableWidth = measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing
+        let expectedX = measure.xOffset
+            + GameplayLayout.barLineWidth
+            + GameplayLayout.uniformSpacing
+            + drawableWidth
+
+        #expect(abs(clampedPosition.x - Double(expectedX)) < 0.5)
+
+        // Verify it's NOT at the start of the measure (beat 0)
+        let startX = measure.xOffset
+            + GameplayLayout.barLineWidth
+            + GameplayLayout.uniformSpacing
+        #expect(abs(clampedPosition.x - Double(startX)) > 1.0)
     }
 
     @Test func testPurpleBarUsesFractionalBeatForSubBeatPosition() async throws {

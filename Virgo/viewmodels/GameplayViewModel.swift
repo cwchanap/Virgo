@@ -1295,13 +1295,18 @@ final class GameplayViewModel {
         let beatWithinMeasure = totalBeatsElapsed - Double(measureIndex * beatsPerMeasure)
 
         let isNotationLayoutActive = !cachedNotationLayout.noteHeads.isEmpty
-        // Clamp measureIndex to valid range for notation layout lookup
-        let clampedMeasureIndex = isNotationLayoutActive && measureIndex >= cachedNotationLayout.measures.count
-            ? cachedNotationLayout.measures.count - 1
-            : measureIndex
+        // Clamp measureIndex to valid range for notation layout lookup.
+        // Also clamp beatWithinMeasure so the purple bar stays at the end
+        // of the final measure instead of jumping back to beat 0.
+        var clampedMeasureIndex = measureIndex
+        var clampedBeatWithinMeasure = beatWithinMeasure
+        if isNotationLayoutActive && measureIndex >= cachedNotationLayout.measures.count {
+            clampedMeasureIndex = cachedNotationLayout.measures.count - 1
+            clampedBeatWithinMeasure = Double(beatsPerMeasure)
+        }
         if let notationPosition = calculateNotationPurpleBarPosition(
             measureIndex: clampedMeasureIndex,
-            beatWithinMeasure: beatWithinMeasure
+            beatWithinMeasure: clampedBeatWithinMeasure
         ) {
             return notationPosition
         }
@@ -1409,7 +1414,7 @@ final class GameplayViewModel {
         }
 
         let groupedNotes = Dictionary(grouping: cachedNotes) { note in
-            NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
+            NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset).normalized()
         }
 
         cachedDrumBeatIDByNotePositionKey = [:]
@@ -1531,7 +1536,7 @@ final class GameplayViewModel {
             uniqueKeysWithValues: cachedNotes.map { note in
                 (
                     ObjectIdentifier(note),
-                    NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset)
+                    NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset).normalized()
                 )
             }
         )
