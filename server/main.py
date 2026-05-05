@@ -323,5 +323,12 @@ def on_fetch(request, env):
     pass
 
 if __name__ == "__main__":
+    import os
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+
+    # Read host/port from environment with secure defaults
+    # 127.0.0.1 (localhost-only) is default for local dev security
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8001"))
+
+    uvicorn.run(app, host=host, port=port)

@@ -93,6 +93,11 @@ struct NotationMeasureBarView: View {
         let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measureBar.row)
 
         if measureBar.isFinal {
+            // Compute total double-bar width: thin bar + spacing + thick bar.
+            let totalWidth = GameplayLayout.doubleBarLineWidths.thin
+                + GameplayLayout.doubleBarLineSpacing
+                + GameplayLayout.doubleBarLineWidths.thick
+            // Position HStack so its trailing edge (thick bar) aligns at measureBar.x.
             HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
                 Rectangle()
                     .frame(width: GameplayLayout.doubleBarLineWidths.thin, height: GameplayLayout.staffHeight)
@@ -101,7 +106,7 @@ struct NotationMeasureBarView: View {
                     .frame(width: GameplayLayout.doubleBarLineWidths.thick, height: GameplayLayout.staffHeight)
                     .foregroundColor(.white)
             }
-            .position(x: measureBar.x, y: centerY)
+            .position(x: measureBar.x - totalWidth / 2, y: centerY)
         } else {
             Rectangle()
                 .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)

@@ -120,12 +120,10 @@ final class GameplayViewModel {
     /// Currently active beat ID for highlighting
     var activeBeatId: UInt64? {
         didSet {
-            if activeBeatId == nil {
-                activeNotationNoteHeadIDs = []
-            }
+            // Always clear active note heads when beat changes (self-enforcing invariant)
+            activeNotationNoteHeadIDs = []
         }
     }
-    /// Rendered notation note heads currently highlighted by the playhead.
     private(set) var activeNotationNoteHeadIDs: Set<UInt64> = []
     /// Current purple bar position (x, y)
     var purpleBarPosition: (x: Double, y: Double)?
@@ -1203,22 +1201,8 @@ final class GameplayViewModel {
         let maxLookBehind = 1.0 / Double(track.timeSignature.beatsPerMeasure)
 
         // Step 1: find the last beat at or before the playhead.
-        var left = 0
-        var right = cachedDrumBeats.count - 1
-        var result = -1
-
-        while left <= right {
-            let mid = (left + right) / 2
-            if cachedDrumBeats[mid].timePosition <= currentTimePosition {
-                result = mid
-                left = mid + 1
-            } else {
-                right = mid - 1
-            }
-        }
-
-        if result >= 0 {
-            let beat = cachedDrumBeats[result]
+        if let index = lastBeatIndex(atOrBefore: currentTimePosition, lookAhead: 0) {
+            let beat = cachedDrumBeats[index]
             if currentTimePosition - beat.timePosition <= maxLookBehind {
                 activeBeatId = beat.id
                 updateActiveNotation(forBeatID: beat.id, fallbackTimePosition: currentTimePosition)
@@ -1228,22 +1212,8 @@ final class GameplayViewModel {
 
         // Step 2: no beat at/before playhead — try a small look-ahead for
         // sub-beat notes that the playhead is about to reach.
-        left = 0
-        right = cachedDrumBeats.count - 1
-        result = -1
-
-        while left <= right {
-            let mid = (left + right) / 2
-            if cachedDrumBeats[mid].timePosition <= currentTimePosition + lookAhead {
-                result = mid
-                left = mid + 1
-            } else {
-                right = mid - 1
-            }
-        }
-
-        if result >= 0 {
-            let beat = cachedDrumBeats[result]
+        if let index = lastBeatIndex(atOrBefore: currentTimePosition, lookAhead: lookAhead) {
+            let beat = cachedDrumBeats[index]
             if currentTimePosition - beat.timePosition <= maxLookBehind {
                 activeBeatId = beat.id
                 updateActiveNotation(forBeatID: beat.id, fallbackTimePosition: currentTimePosition)
@@ -1252,6 +1222,30 @@ final class GameplayViewModel {
         }
 
         clearActiveBeat()
+    }
+
+    /// Performs binary search over cachedDrumBeats to find the last beat at or before
+    /// (timePosition + lookAhead).
+    private func lastBeatIndex(atOrBefore timePosition: Double, lookAhead: Double = 0.0) -> Int? {
+        guard !cachedDrumBeats.isEmpty else { return nil }
+
+        var left = 0
+        var right = cachedDrumBeats.count - 1
+        var result = -1
+
+        let target = timePosition + lookAhead
+
+        while left <= right {
+            let mid = (left + right) / 2
+            if cachedDrumBeats[mid].timePosition <= target {
+                result = mid
+                left = mid + 1
+            } else {
+                right = mid - 1
+            }
+        }
+
+        return result >= 0 ? result : nil
     }
 
     func updateActiveNotation(forTimePosition timePosition: Double) {

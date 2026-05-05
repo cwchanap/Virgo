@@ -2959,6 +2959,7 @@ struct GameplayViewModelTests {
 
         // At timePosition 0.0625 (sub-beat, between quarter boundaries),
         // the sixteenth at 0.0625 should be active — not just the one at 0.0.
+        // This simulates what happens inside updateContinuousVisualsTick.
         viewModel.updateActiveBeat(forTimePosition: 0.0625)
         let subBeatNote = viewModel.cachedDrumBeats.first { abs($0.timePosition - 0.0625) < 0.001 }
         #expect(viewModel.activeBeatId == subBeatNote?.id)

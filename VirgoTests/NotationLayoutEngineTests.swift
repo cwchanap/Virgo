@@ -802,14 +802,16 @@ extension NotationLayoutEngineTests {
 
     @Test("contentWidth expands for notes beyond default row width")
     func contentWidthExpandsForDenseNotes() throws {
+        // Use sixteenth (0.0625) spacing for denser notes that exceed default row width.
         let notes = (0..<8).map { i in
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: Double(i) * 0.125)
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: Double(i) * 0.0625)
         }
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
         let lastNoteHead = try #require(layout.noteHeads.max(by: { $0.position.x < $1.position.x }))
         #expect(layout.contentWidth > lastNoteHead.position.x)
+        // Width expands to accommodate dense notes - at minimum equals max row width.
         #expect(layout.contentWidth >= GameplayLayout.maxRowWidth)
     }
 

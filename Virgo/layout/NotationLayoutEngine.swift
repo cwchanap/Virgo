@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 
+/// Core layout engine - handles measure construction and note head placement.
 struct NotationLayoutEngine {
     private static let columnResolution = 960.0
     private static let topStaffStep = -8
@@ -16,7 +17,7 @@ struct NotationLayoutEngine {
         let collisionColumn: VoiceCollisionColumn
     }
 
-    private struct BeamGroupKey: Hashable {
+    struct BeamGroupKey: Hashable {
         let measureIndex: Int
         let row: Int
         let voice: NotationVoice
@@ -28,8 +29,6 @@ struct NotationLayoutEngine {
             MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
             < MeasureUtils.timePosition(measureNumber: $1.measureNumber, measureOffset: $1.measureOffset)
         }
-        // Derive total measures from normalized positions so notes with
-        // measureOffset >= 1.0 (which roll into the next measure) are allocated correctly.
         let maxNormalizedMeasureIndex = sortedNotes.map { note in
             MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
                 measureNumber: note.measureNumber, measureOffset: note.measureOffset
@@ -38,8 +37,9 @@ struct NotationLayoutEngine {
         let totalMeasures = max(input.minimumMeasureCount, maxNormalizedMeasureIndex + 1, 1)
         let measures = buildMeasures(totalMeasures: totalMeasures, notes: sortedNotes, input: input)
         let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, input: input)
-        let stems = buildStems(noteHeads: noteHeads, style: input.style)
+        // Build beams first so stems can extend to beam lines when notes are beamed.
         let beams = buildBeams(noteHeads: noteHeads, style: input.style)
+        let stems = buildStems(noteHeads: noteHeads, beams: beams, style: input.style)
         let flags = buildFlags(noteHeads: noteHeads, beams: beams, style: input.style)
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
@@ -67,6 +67,8 @@ struct NotationLayoutEngine {
             totalHeight: totalHeight
         )
     }
+
+    // MARK: - Measure Building
 
     private func buildMeasures(
         totalMeasures: Int,
@@ -98,7 +100,7 @@ struct NotationLayoutEngine {
         return result
     }
 
-    private func measureWidth(
+    func measureWidth(
         measureIndex: Int,
         notes: [Note],
         input: NotationLayoutInput
@@ -144,7 +146,7 @@ struct NotationLayoutEngine {
         return style.minimumNoteColumnGap + 2 * style.voiceCollisionOffset
     }
 
-    private func containsCrossVoiceCollision(measureIndex: Int, notes: [Note]) -> Bool {
+    func containsCrossVoiceCollision(measureIndex: Int, notes: [Note]) -> Bool {
         Dictionary(
             grouping: notes.filter { normalizedMeasureIndex(for: $0) == measureIndex },
             by: { quantizedColumn(for: normalizedOffset(for: $0)) }
@@ -161,6 +163,8 @@ struct NotationLayoutEngine {
             return voices.count > 1
         }
     }
+
+    // MARK: - Note Head Building
 
     private func buildNoteHeads(
         notes: [Note],
@@ -255,6 +259,8 @@ struct NotationLayoutEngine {
         }
     }
 
+    // MARK: - Helpers
+
     private func beatGap(for measure: RenderedMeasure, input: NotationLayoutInput) -> CGFloat {
         let drawableWidth = measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing
         return drawableWidth / CGFloat(input.timeSignature.beatsPerMeasure)
@@ -271,14 +277,12 @@ struct NotationLayoutEngine {
         (measureOffset * Self.columnResolution).rounded() / Self.columnResolution
     }
 
-    /// Zero-based measure index after normalizing measureOffset >= 1.0 into the next measure.
     private func normalizedMeasureIndex(for note: Note) -> Int {
         MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
             measureNumber: note.measureNumber, measureOffset: note.measureOffset
         ))
     }
 
-    /// Offset within the normalized measure (always in [0, 1)).
     private func normalizedOffset(for note: Note) -> Double {
         let timePos = MeasureUtils.timePosition(
             measureNumber: note.measureNumber, measureOffset: note.measureOffset
@@ -293,42 +297,51 @@ struct NotationLayoutEngine {
     private func staffStep(for position: GameplayLayout.NotePosition) -> Int {
         Int((position.yOffset / (GameplayLayout.staffLineSpacing / 2)).rounded())
     }
-}
 
-private extension NotationLayoutEngine {
     private func stemDirection(for drumType: DrumType, voice: NotationVoice) -> StemDirection {
         guard voice == .upper else { return .down }
 
         switch drumType.notePosition {
         case .aboveLine9, .aboveLine8, .aboveLine7, .aboveLine6, .aboveLine5, .line5:
             return .down
-        case .spaceBetween4And5,
-             .line4,
-             .spaceBetween3And4,
-             .line3,
-             .spaceBetween2And3,
-             .line2,
-             .spaceBetween1And2,
-             .line1,
-             .spaceBetweenLine1AndBelow,
-             .belowLine1,
-             .belowLine2,
-             .belowLine3,
-             .belowLine4,
-             .belowLine5,
-             .belowLine6:
+        case .spaceBetween4And5, .line4, .spaceBetween3And4, .line3,
+             .spaceBetween2And3, .line2, .spaceBetween1And2, .line1,
+             .spaceBetweenLine1AndBelow, .belowLine1, .belowLine2,
+             .belowLine3, .belowLine4, .belowLine5, .belowLine6:
             return .up
         }
     }
 
+    // MARK: - Rendering Primitives (delegated to fileprivate extension)
+
     private func buildStems(
         noteHeads: [RenderedNoteHead],
+        beams: [RenderedBeam],
         style: NotationLayoutStyle
     ) -> [RenderedStem] {
-        noteHeads
+        // Group beams by the first noteHeadID for quick lookup.
+        let beamsByNoteHeadID = Dictionary(grouping: beams) { beam in
+            beam.noteHeadIDs.first
+        }
+
+        return noteHeads
             .filter { $0.interval.needsStem }
             .map { noteHead in
                 let start = stemStart(for: noteHead, style: style)
+                // Check if this noteHead belongs to beams. If so, compute stem end from beam geometry.
+                // Use the first matching beam for stem end calculation.
+                if let beamsForNote = beamsByNoteHeadID[noteHead.id],
+                   let firstBeam = beamsForNote.first,
+                   let beamY = beamEndY(for: noteHead, beam: firstBeam, style: style) {
+                    return RenderedStem(
+                        id: "stem_\(noteHead.id)",
+                        noteHeadIDs: [noteHead.id],
+                        direction: noteHead.stemDirection,
+                        start: start,
+                        end: CGPoint(x: start.x, y: beamY)
+                    )
+                }
+                // Not beamed - use fixed stem length.
                 let endY = switch noteHead.stemDirection {
                 case .up:
                     start.y - style.stemLength
@@ -346,6 +359,34 @@ private extension NotationLayoutEngine {
             }
     }
 
+    /// Computes stem end Y from beam geometry if noteHead is beamed.
+    private func beamEndY(
+        for noteHead: RenderedNoteHead,
+        beam: RenderedBeam,
+        style: NotationLayoutStyle
+    ) -> Double? {
+        // Only extend to beam if beam has multiple note heads.
+        guard beam.noteHeadIDs.count > 1 else { return nil }
+
+        // The beam spans from start.x to end.x. Find the Y at noteHead's X by linear interpolation.
+        let startX = beam.start.x
+        let endX = beam.end.x
+        let stemX = noteHead.position.x
+
+        // Check if stem X is within beam span.
+        guard stemX >= min(startX, endX) && stemX <= max(startX, endX) else {
+            return nil
+        }
+
+        // Linear interpolation for Y at stemX.
+        let t = (stemX - startX) / (endX - startX)
+        let beamY = beam.start.y + t * (beam.end.y - beam.start.y)
+
+        // For upward stems, beam is above notehead so stem extends to beam Y.
+        // For downward stems, beam is below notehead so stem extends to beam Y.
+        return beamY
+    }
+
     private func buildBeams(
         noteHeads: [RenderedNoteHead],
         style: NotationLayoutStyle
@@ -361,7 +402,7 @@ private extension NotationLayoutEngine {
 
         return groupedHeads.values
             .flatMap { heads in
-                beamRuns(from: heads).flatMap { run in
+                beamRuns(from: Array(heads)).flatMap { run in
                     beams(for: run, style: style)
                 }
             }
@@ -373,8 +414,110 @@ private extension NotationLayoutEngine {
                     return $0.start.x < $1.start.x
                 }
                 return $0.level < $1.level
+            }
+    }
+
+    private func buildFlags(
+        noteHeads: [RenderedNoteHead],
+        beams: [RenderedBeam],
+        style: NotationLayoutStyle
+    ) -> [RenderedFlag] {
+        var coveredLevelsByNoteHead: [UInt64: Int] = [:]
+        for beam in beams {
+            for noteHeadID in beam.noteHeadIDs {
+                let current = coveredLevelsByNoteHead[noteHeadID] ?? 0
+                coveredLevelsByNoteHead[noteHeadID] = max(current, beam.level + 1)
+            }
+        }
+
+        return noteHeads
+            .filter { $0.interval.needsFlag }
+            .flatMap { noteHead -> [RenderedFlag] in
+                let coveredLevels = coveredLevelsByNoteHead[noteHead.id] ?? 0
+                let totalFlags = noteHead.interval.flagCount
+                guard coveredLevels < totalFlags else { return [] }
+
+                let stemBottom = stemStart(for: noteHead, style: style)
+                let flagOrigin = CGPoint(
+                    x: stemBottom.x + GameplayLayout.flagXOffset,
+                    y: noteHead.stemDirection == .up
+                        ? stemBottom.y - style.stemLength
+                        : stemBottom.y + style.stemLength
+                )
+
+                return (coveredLevels..<totalFlags).map { flagIndex in
+                    let yOffset = noteHead.stemDirection == .up
+                        ? CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
+                        : -CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
+
+                    return RenderedFlag(
+                        id: "flag_\(noteHead.id)_\(flagIndex)",
+                        noteHeadID: noteHead.id,
+                        stemDirection: noteHead.stemDirection,
+                        flagIndex: flagIndex,
+                        origin: CGPoint(x: flagOrigin.x, y: flagOrigin.y + yOffset)
+                    )
+                }
+            }
+    }
+
+    private func buildLedgerLines(
+        noteHeads: [RenderedNoteHead],
+        style: NotationLayoutStyle
+    ) -> [RenderedLedgerLine] {
+        noteHeads.flatMap { noteHead in
+            ledgerSteps(for: noteHead.staffStep).map { step in
+                let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: noteHead.row)
+                    + CGFloat(step) * (style.staffLineSpacing / 2)
+                let overhang = style.noteHeadWidth / 2 + style.ledgerLineOverhang
+
+                return RenderedLedgerLine(
+                    id: "ledger_\(noteHead.id)_\(step)",
+                    row: noteHead.row,
+                    start: CGPoint(x: noteHead.position.x - overhang, y: y),
+                    end: CGPoint(x: noteHead.position.x + overhang, y: y)
+                )
+            }
         }
     }
+
+    func buildMeasureBars(measures: [RenderedMeasure]) -> [RenderedMeasureBar] {
+        var bars: [RenderedMeasureBar] = []
+
+        for (index, measure) in measures.enumerated() {
+            let isFirstInRow = index == 0 || measures[index - 1].row != measure.row
+            let isLastOverall = measure.measureIndex == measures.last?.measureIndex
+
+            if isFirstInRow {
+                bars.append(RenderedMeasureBar(
+                    id: "bar_\(measure.measureIndex)",
+                    row: measure.row,
+                    x: measure.xOffset,
+                    isFinal: false
+                ))
+            }
+
+            let nextOnSameRow = measures.count > index + 1
+                && measures[index + 1].row == measure.row
+            let endX: CGFloat
+            if nextOnSameRow {
+                endX = measures[index + 1].xOffset
+            } else {
+                endX = measure.xOffset + measure.width
+            }
+
+            bars.append(RenderedMeasureBar(
+                id: "bar_\(measure.measureIndex)_end",
+                row: measure.row,
+                x: endX,
+                isFinal: isLastOverall
+            ))
+        }
+
+        return bars
+    }
+
+    // MARK: - Beam Helpers
 
     private func beamRuns(from noteHeads: [RenderedNoteHead]) -> [[RenderedNoteHead]] {
         let sortedHeads = noteHeads.sorted {
@@ -426,7 +569,9 @@ private extension NotationLayoutEngine {
 
         return (0..<maxFlagCount).flatMap { level in
             beamSegments(for: noteHeads, level: level).compactMap { levelHeads in
-                guard let firstHead = levelHeads.first, let lastHead = levelHeads.last, levelHeads.count >= 2 else {
+                guard let firstHead = levelHeads.first,
+                      let lastHead = levelHeads.last,
+                      levelHeads.count >= 2 else {
                     return nil
                 }
 
@@ -475,55 +620,6 @@ private extension NotationLayoutEngine {
         return segments
     }
 
-    private func buildFlags(
-        noteHeads: [RenderedNoteHead],
-        beams: [RenderedBeam],
-        style: NotationLayoutStyle
-    ) -> [RenderedFlag] {
-        // Count how many beam levels each notehead is covered by.
-        // A notehead in a level-0 beam has 1 covered level, level-0 and level-1
-        // beams means 2 covered levels, etc.  Flags should only be emitted for
-        // levels NOT already represented by beams.
-        var coveredLevelsByNoteHead: [UInt64: Int] = [:]
-        for beam in beams {
-            for noteHeadID in beam.noteHeadIDs {
-                let current = coveredLevelsByNoteHead[noteHeadID] ?? 0
-                coveredLevelsByNoteHead[noteHeadID] = max(current, beam.level + 1)
-            }
-        }
-
-        return noteHeads
-            .filter { $0.interval.needsFlag }
-            .flatMap { noteHead -> [RenderedFlag] in
-                let coveredLevels = coveredLevelsByNoteHead[noteHead.id] ?? 0
-                let totalFlags = noteHead.interval.flagCount
-                // Emit flags only for levels not already represented by beams
-                guard coveredLevels < totalFlags else { return [] }
-
-                let stemBottom = stemStart(for: noteHead, style: style)
-                let flagOrigin = CGPoint(
-                    x: stemBottom.x + GameplayLayout.flagXOffset,
-                    y: noteHead.stemDirection == .up
-                        ? stemBottom.y - style.stemLength
-                        : stemBottom.y + style.stemLength
-                )
-
-                return (coveredLevels..<totalFlags).map { flagIndex in
-                    let yOffset = noteHead.stemDirection == .up
-                        ? CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
-                        : -CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
-
-                    return RenderedFlag(
-                        id: "flag_\(noteHead.id)_\(flagIndex)",
-                        noteHeadID: noteHead.id,
-                        stemDirection: noteHead.stemDirection,
-                        flagIndex: flagIndex,
-                        origin: CGPoint(x: flagOrigin.x, y: flagOrigin.y + yOffset)
-                    )
-                }
-            }
-    }
-
     private func hasPositiveBeamSpan(
         from firstHead: RenderedNoteHead,
         to lastHead: RenderedNoteHead,
@@ -564,26 +660,6 @@ private extension NotationLayoutEngine {
         return CGPoint(x: start.x, y: noteHead.position.y + yOffset)
     }
 
-    private func buildLedgerLines(
-        noteHeads: [RenderedNoteHead],
-        style: NotationLayoutStyle
-    ) -> [RenderedLedgerLine] {
-        noteHeads.flatMap { noteHead in
-            ledgerSteps(for: noteHead.staffStep).map { step in
-                let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: noteHead.row)
-                    + CGFloat(step) * (style.staffLineSpacing / 2)
-                let overhang = style.noteHeadWidth / 2 + style.ledgerLineOverhang
-
-                return RenderedLedgerLine(
-                    id: "ledger_\(noteHead.id)_\(step)",
-                    row: noteHead.row,
-                    start: CGPoint(x: noteHead.position.x - overhang, y: y),
-                    end: CGPoint(x: noteHead.position.x + overhang, y: y)
-                )
-            }
-        }
-    }
-
     private func ledgerSteps(for staffStep: Int) -> [Int] {
         if staffStep < Self.topStaffStep {
             return stride(from: Self.topStaffStep - 2, through: staffStep, by: -2).map { $0 }
@@ -592,45 +668,5 @@ private extension NotationLayoutEngine {
             return stride(from: Self.bottomStaffStep + 2, through: staffStep, by: 2).map { $0 }
         }
         return []
-    }
-
-    private func buildMeasureBars(measures: [RenderedMeasure]) -> [RenderedMeasureBar] {
-        var bars: [RenderedMeasureBar] = []
-
-        for (index, measure) in measures.enumerated() {
-            let isFirstInRow = index == 0 || measures[index - 1].row != measure.row
-            let isLastOverall = measure.measureIndex == measures.last?.measureIndex
-
-            // Start barline: only at row beginnings
-            if isFirstInRow {
-                bars.append(RenderedMeasureBar(
-                    id: "bar_\(measure.measureIndex)",
-                    row: measure.row,
-                    x: measure.xOffset,
-                    isFinal: false
-                ))
-            }
-
-            // End barline: align with next same-row measure's start so the shared
-            // boundary sits at the following measure's xOffset rather than leaving
-            // a measureSpacing-wide gap between the drawn bar and the next measure.
-            let nextOnSameRow = measures.count > index + 1
-                && measures[index + 1].row == measure.row
-            let endX: CGFloat
-            if nextOnSameRow {
-                endX = measures[index + 1].xOffset
-            } else {
-                endX = measure.xOffset + measure.width
-            }
-
-            bars.append(RenderedMeasureBar(
-                id: "bar_\(measure.measureIndex)_end",
-                row: measure.row,
-                x: endX,
-                isFinal: isLastOverall
-            ))
-        }
-
-        return bars
     }
 }
