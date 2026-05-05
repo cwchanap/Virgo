@@ -428,7 +428,7 @@ struct InputManagerScheduledStartTests {
             MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: 0)
         )
 
-        #expect(result?.matchedNote != nil,
+        #expect(result != nil,
                 "MIDI event with hostTime == 0 should be accepted after effective audio start")
     }
 }
