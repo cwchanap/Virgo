@@ -2937,6 +2937,35 @@ struct GameplayViewModelTests {
         #expect(viewModel.activeBeatId == futureBeat?.id)
     }
 
+    @Test("nearest upcoming beat is selected when multiple beats are in look-ahead window")
+    func nearestUpcomingBeatSelectedWhenMultipleBeatsInLookAhead() async throws {
+        // Regression: when multiple future notes fall inside the 0.05 look-ahead
+        // window after a rest, the look-ahead branch should select the NEAREST
+        // upcoming note, not the farthest one.
+        // Place two notes just ahead of playhead 0.25: at 0.26 and 0.29.
+        // Both are within look-ahead [0.25, 0.30], but 0.26 is nearer.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.26)
+        )
+        chart.notes.append(
+            Note(interval: .thirtysecond, noteType: .hiHat, measureNumber: 1, measureOffset: 0.29)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        viewModel.updateActiveBeat(forTimePosition: 0.25)
+        let nearerBeat = viewModel.cachedDrumBeats.first { abs($0.timePosition - 0.26) < 0.001 }
+        let fartherBeat = viewModel.cachedDrumBeats.first { abs($0.timePosition - 0.29) < 0.001 }
+        #expect(viewModel.activeBeatId == nearerBeat?.id,
+                "Should select the nearer upcoming beat (0.26), not the farther one (0.29)")
+        #expect(viewModel.activeBeatId != fartherBeat?.id)
+    }
+
     @Test("continuous visual tick updates active beat at sub-beat positions between quarter boundaries")
     func continuousVisualTickUpdatesActiveBeatBetweenQuarters() async throws {
         // Regression: before the continuous tick was added, updateActiveBeat was
