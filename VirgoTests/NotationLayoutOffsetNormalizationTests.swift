@@ -43,7 +43,7 @@ struct NotationLayoutOffsetNormalizationTests {
             input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, minimumMeasureCount: 1)
         )
         let msg = "Note must not be dropped — measure count must account for normalized position"
-        let head = try #require(layout.noteHeads.first, msg)
+        let head = try #require(layout.noteHeads.first, "Note must not be dropped — measure count must account for normalized position")
 
         #expect(head.measureIndex == 2)
         #expect(head.timePosition == 2.0)

@@ -621,9 +621,7 @@ extension NotationLayoutEngineTests {
             let stemX = noteHead.position.x - style.stemXInset  // down-stem inset
             let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)
             let expectedY = outermostBeam.start.y + t * (outermostBeam.end.y - outermostBeam.start.y)
-            let msg = "Down-stem for noteHead \(noteHeadID) end.y \(stem.end.y)" +
-                " should reach outermost beam Y \(expectedY)"
-            #expect(abs(stem.end.y - expectedY) < 0.5, msg)
+            #expect(abs(stem.end.y - expectedY) < 0.5)
         }
     }
 

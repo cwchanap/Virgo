@@ -1212,7 +1212,9 @@ final class GameplayViewModel {
 
         // Step 2: no beat at/before playhead — try a small look-ahead for
         // sub-beat notes that the playhead is about to reach.
-        if let index = lastBeatIndex(atOrBefore: currentTimePosition, lookAhead: lookAhead) {
+        // Find the NEAREST upcoming note (first after the playhead), not the
+        // farthest note in the look-ahead window.
+        if let index = firstBeatIndex(atOrAfter: currentTimePosition, within: lookAhead) {
             let beat = cachedDrumBeats[index]
             if currentTimePosition - beat.timePosition <= maxLookBehind {
                 activeBeatId = beat.id
@@ -1246,6 +1248,30 @@ final class GameplayViewModel {
         }
 
         return result >= 0 ? result : nil
+    }
+
+    /// Performs binary search over cachedDrumBeats to find the first beat at or after
+    /// `timePosition` that is also within `maxDistance` of it.
+    /// Used by the look-ahead branch to select the nearest upcoming note.
+    private func firstBeatIndex(atOrAfter timePosition: Double, within maxDistance: Double) -> Int? {
+        guard !cachedDrumBeats.isEmpty else { return nil }
+
+        // Lower-bound binary search: first index where timePosition >= threshold.
+        var left = 0
+        var right = cachedDrumBeats.count
+        while left < right {
+            let mid = (left + right) / 2
+            if cachedDrumBeats[mid].timePosition < timePosition {
+                left = mid + 1
+            } else {
+                right = mid
+            }
+        }
+
+        guard left < cachedDrumBeats.count else { return nil }
+        let candidate = cachedDrumBeats[left]
+        guard candidate.timePosition - timePosition <= maxDistance else { return nil }
+        return left
     }
 
     func updateActiveNotation(forTimePosition timePosition: Double) {
