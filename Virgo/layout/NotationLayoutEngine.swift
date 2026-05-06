@@ -333,10 +333,14 @@ struct NotationLayoutEngine {
             .map { noteHead in
                 let start = stemStart(for: noteHead, style: style)
                 // Check if this noteHead belongs to beams. If so, compute stem end from beam geometry.
-                // Use the first matching beam for stem end calculation.
+                // Pick the beam farthest in the stem direction so the stem extends through all levels.
+                // Beams are sorted by Y ascending: up-stems need .first (lowest Y = outermost),
+                // down-stems need .last (highest Y = outermost).
                 if let beamsForNote = beamsByNoteHeadID[noteHead.id],
-                   let firstBeam = beamsForNote.first,
-                   let beamY = beamEndY(for: noteHead, beam: firstBeam, style: style) {
+                   let outermostBeam = noteHead.stemDirection == .up
+                       ? beamsForNote.first
+                       : beamsForNote.last,
+                   let beamY = beamEndY(for: noteHead, beam: outermostBeam, style: style) {
                     return RenderedStem(
                         id: "stem_\(noteHead.id)",
                         noteHeadIDs: [noteHead.id],

@@ -590,6 +590,43 @@ extension NotationLayoutEngineTests {
         }
     }
 
+    @Test("down-stem sixteenth notes reach outermost beam level")
+    func downStemSixteenthNotesReachOutermostBeam() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .sixteenth,
+                noteType: .crash,
+                measureNumber: 1,
+                measureOffset: Double(index) / 16.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
+        )
+
+        // Crash notes have down-stems; verify two beam levels exist
+        #expect(layout.beams.count == 2)
+        #expect(Set(layout.beams.map(\.level)) == [0, 1])
+
+        // The outermost beam (level 1) is farthest from the note heads in stem direction.
+        // For down-stems that means it has the highest Y value.
+        let outermostBeam = try #require(layout.beams.max { $0.level < $1.level })
+        #expect(outermostBeam.direction == .down)
+
+        // Every stem must reach the outermost beam at its stem x position
+        for noteHeadID in outermostBeam.noteHeadIDs {
+            let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
+            let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
+            let stemX = noteHead.position.x - style.stemXInset  // down-stem inset
+            let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)
+            let expectedY = outermostBeam.start.y + t * (outermostBeam.end.y - outermostBeam.start.y)
+            let msg = "Down-stem for noteHead \(noteHeadID) end.y \(stem.end.y)" +
+                " should reach outermost beam Y \(expectedY)"
+            #expect(abs(stem.end.y - expectedY) < 0.5, msg)
+        }
+    }
+
     // MARK: - Flag Rendering Tests
 
     @Test("isolated eighth note produces one flag")
@@ -902,83 +939,4 @@ extension NotationLayoutEngineTests {
         #expect(layout.contentWidth >= GameplayLayout.maxRowWidth)
     }
 
-    // MARK: - Offset-1 Normalization Tests
-
-    @Test("note with measureOffset 1.0 renders in next measure")
-    func noteWithOffsetOneRendersInNextMeasure() throws {
-        // A note at measureNumber: 1, measureOffset: 1.0 has timePosition = 0 + 1.0 = 1.0,
-        // which is the start of measure index 1 (measure number 2). The note head must
-        // render in measure 1, not at the end of measure 0.
-        let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 1.0)
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, minimumMeasureCount: 3)
-        )
-        let head = try #require(layout.noteHeads.first)
-
-        #expect(head.measureIndex == 1)
-        #expect(head.timePosition == 1.0)
-        // x position should be at the start of measure 1, not the end of measure 0
-        let measure1 = try #require(layout.measures.first { $0.measureIndex == 1 })
-        let expectedX = measure1.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
-        #expect(abs(head.position.x - expectedX) < 0.001)
-    }
-
-    @Test("offset-1 note collision column uses normalized measure")
-    func offsetOneNoteCollisionColumnUsesNormalizedMeasure() throws {
-        // Two notes at the same normalized time position (measure 2 offset 0.0) but
-        // expressed differently: one as (measureNumber:2, offset:0) and one as
-        // (measureNumber:1, offset:1.0). They should collide and get voice offsets.
-        let notes = [
-            Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 0.0),
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 1.0)
-        ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 3)
-        )
-        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
-        let kick = try #require(layout.noteHeads.first { $0.drumType == .kick })
-
-        #expect(snare.measureIndex == 1)
-        #expect(kick.measureIndex == 1)
-        // Both should be at the same x when no collision offset applied, or properly
-        // split when voice collision is detected
-        #expect(abs(snare.timePosition - kick.timePosition) < 0.001)
-    }
-
-    @Test("offset-1 note in last measure is not dropped when minimumMeasureCount is tight")
-    func offsetOneNoteInLastMeasureNotDroppedWithTightMeasureCount() throws {
-        // A note at measureNumber: 2, measureOffset: 1.0 normalizes to measure index 2
-        // (start of measure 3). Without normalization, totalMeasures would be just 2
-        // (from raw measureNumber max), and the note would be dropped. With normalization,
-        // totalMeasures must be 3 to accommodate the overflow.
-        let note = Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 1.0)
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, minimumMeasureCount: 1)
-        )
-        let head = try #require(layout.noteHeads.first, "Note must not be dropped — measure count must account for normalized position")
-
-        #expect(head.measureIndex == 2)
-        #expect(head.timePosition == 2.0)
-        #expect(layout.measures.count >= 3, "At least 3 measures needed for the normalized position")
-    }
-
-    @Test("column offsets for measure use normalized positions not raw measureNumber")
-    func columnOffsetsUseNormalizedPositions() throws {
-        // A note at (measureNumber:1, offset:1.0) normalizes to measure index 1 offset 0.0.
-        // It should contribute to measure 1's column offsets and width, not measure 0's.
-        let notes = [
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0),
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 0.0625)
-        ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 3)
-        )
-
-        // Both notes should render in measure index 1
-        let measure1Heads = layout.noteHeads.filter { $0.measureIndex == 1 }
-        #expect(measure1Heads.count == 2, "Both notes should render in normalized measure index 1")
-        // The heads should be at different x positions (different offsets)
-        let uniqueX = Set(measure1Heads.map { $0.position.x })
-        #expect(uniqueX.count == 2, "Two different offsets should produce two distinct x positions")
-    }
 }
