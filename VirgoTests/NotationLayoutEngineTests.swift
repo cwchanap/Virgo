@@ -503,6 +503,93 @@ extension NotationLayoutEngineTests {
         #expect(beam.start.y > firstHead.position.y)
     }
 
+    // MARK: - Beamed Stem Rendering Tests
+
+    @Test("all notes in up-stem beam group have stems reaching beam level 0")
+    func allUpStemBeamedNotesReachBeam() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .eighth,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 8.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
+        )
+        let beam = try #require(layout.beams.first { $0.level == 0 })
+
+        // Every note head in the beam must have a stem whose end Y matches the beam Y at that stem x.
+        for noteHeadID in beam.noteHeadIDs {
+            let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
+            let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
+            let stemX = noteHead.position.x + style.stemXInset  // up-stem inset
+            let t = (stemX - beam.start.x) / (beam.end.x - beam.start.x)
+            let expectedY = beam.start.y + t * (beam.end.y - beam.start.y)
+            #expect(abs(stem.end.y - expectedY) < 0.5,
+                    "Stem for noteHead \(noteHeadID) end.y \(stem.end.y) should reach beam Y \(expectedY)")
+        }
+    }
+
+    @Test("all notes in down-stem beam group have stems reaching beam")
+    func allDownStemBeamedNotesReachBeam() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .eighth,
+                noteType: .crash,
+                measureNumber: 1,
+                measureOffset: Double(index) / 8.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
+        )
+        let beam = try #require(layout.beams.first { $0.level == 0 })
+
+        for noteHeadID in beam.noteHeadIDs {
+            let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
+            let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
+            let stemX = noteHead.position.x - style.stemXInset  // down-stem inset
+            let t = (stemX - beam.start.x) / (beam.end.x - beam.start.x)
+            let expectedY = beam.start.y + t * (beam.end.y - beam.start.y)
+            #expect(abs(stem.end.y - expectedY) < 0.5,
+                    "Stem for noteHead \(noteHeadID) end.y \(stem.end.y) should reach beam Y \(expectedY)")
+        }
+    }
+
+    @Test("all sixteenth notes in beam group have stems reaching outermost beam level")
+    func allSixteenthBeamedNotesReachBothBeamLevels() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = (0..<4).map { index in
+            Note(
+                interval: .sixteenth,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double(index) / 16.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
+        )
+
+        // Find the outermost beam (highest level = furthest from note heads for up-stems)
+        let outermostBeam = try #require(layout.beams.max { $0.level < $1.level })
+
+        // Every stem must reach the outermost beam at its stem x position
+        for noteHeadID in outermostBeam.noteHeadIDs {
+            let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
+            let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
+            let stemX = noteHead.position.x + style.stemXInset
+            let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)
+            let expectedY = outermostBeam.start.y + t * (outermostBeam.end.y - outermostBeam.start.y)
+            #expect(abs(stem.end.y - expectedY) < 0.5,
+                    "Stem for sixteenth noteHead \(noteHeadID) should reach outermost beam")
+        }
+    }
+
     // MARK: - Flag Rendering Tests
 
     @Test("isolated eighth note produces one flag")

@@ -319,9 +319,13 @@ struct NotationLayoutEngine {
         beams: [RenderedBeam],
         style: NotationLayoutStyle
     ) -> [RenderedStem] {
-        // Group beams by the first noteHeadID for quick lookup.
-        let beamsByNoteHeadID = Dictionary(grouping: beams) { beam in
-            beam.noteHeadIDs.first
+        // Index beams under every noteHeadID so non-leading notes in a beam run
+        // can also look up their beam geometry.
+        var beamsByNoteHeadID: [UInt64: [RenderedBeam]] = [:]
+        for beam in beams {
+            for noteHeadID in beam.noteHeadIDs {
+                beamsByNoteHeadID[noteHeadID, default: []].append(beam)
+            }
         }
 
         return noteHeads
@@ -371,7 +375,7 @@ struct NotationLayoutEngine {
         // The beam spans from start.x to end.x. Find the Y at noteHead's X by linear interpolation.
         let startX = beam.start.x
         let endX = beam.end.x
-        let stemX = noteHead.position.x
+        let stemX = stemStart(for: noteHead, style: style).x
 
         // Check if stem X is within beam span.
         guard stemX >= min(startX, endX) && stemX <= max(startX, endX) else {
