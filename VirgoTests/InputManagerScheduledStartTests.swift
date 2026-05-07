@@ -430,5 +430,9 @@ struct InputManagerScheduledStartTests {
 
         #expect(result != nil,
                 "MIDI event with hostTime == 0 should be accepted after effective audio start")
+        #expect(result?.matchedNote != nil,
+                "Resumed MIDI hit should match the note at the resumed offset")
+        #expect(result?.timingAccuracy != .miss,
+                "Resumed MIDI hit at the exact note position should not be a miss")
     }
 }
