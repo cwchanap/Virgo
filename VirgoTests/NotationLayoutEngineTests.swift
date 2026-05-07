@@ -477,8 +477,43 @@ extension NotationLayoutEngineTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
 
-        #expect(layout.stems.count == 2)
+        // Same-time, same-voice note heads share a single stem (chord grouping).
+        #expect(layout.stems.count == 1)
+        #expect(layout.stems.first?.noteHeadIDs.count == 2)
         #expect(layout.beams.isEmpty)
+    }
+
+    @Test("same voice chord notes share a single stem")
+    func sameVoiceChordNotesShareSingleStem() throws {
+        // Snare (.line3, up-stem) and highTom (.spaceBetween3And4, up-stem) are both
+        // upper-voice drums with up-stems. When simultaneous, they share one stem.
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .highTom, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 1, "Chord notes at the same position should share one stem")
+        let stem = try #require(layout.stems.first)
+        #expect(stem.noteHeadIDs.count == 2, "Shared stem should reference both note head IDs")
+        #expect(stem.direction == .up)
+    }
+
+    @Test("different voice notes at same time get separate stems")
+    func differentVoiceNotesAtSameTimeGetSeparateStems() {
+        // Snare (upper voice) and bass (lower voice) at the same time
+        // should get separate stems due to voice collision offset.
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 2, "Different-voice notes should get separate stems")
     }
 
     @Test("down stem beams align to down stem x coordinates")

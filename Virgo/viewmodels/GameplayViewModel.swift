@@ -1124,6 +1124,10 @@ final class GameplayViewModel {
         // even between quarter-note boundaries.
         updatePurpleBarPosition(elapsedTime: elapsedTime)
 
+        // Playback progress updates on EVERY tick so the progress bar and time
+        // label move smoothly rather than stepping at quarter-note boundaries.
+        playbackProgress = min(elapsedTime / cachedTrackDuration, 1.0)
+
         if discreteTotalBeats != lastDiscreteBeat {
             lastDiscreteBeat = discreteTotalBeats
 
@@ -1135,7 +1139,6 @@ final class GameplayViewModel {
             currentBeatPosition = beatPosition
             currentBeat = findClosestBeatIndex(measureIndex: measureIndex, beatPosition: beatPosition)
             totalBeatsElapsed = discreteTotalBeats
-            playbackProgress = min(elapsedTime / cachedTrackDuration, 1.0)
 
             scanForMissedNotes(upToTimePosition: playheadTimePosition)
 

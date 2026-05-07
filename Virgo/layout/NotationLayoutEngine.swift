@@ -328,43 +328,73 @@ struct NotationLayoutEngine {
             }
         }
 
-        return noteHeads
-            .filter { $0.interval.needsStem }
-            .map { noteHead in
-                let start = stemStart(for: noteHead, style: style)
-                // Check if this noteHead belongs to beams. If so, compute stem end from beam geometry.
-                // Pick the beam farthest in the stem direction so the stem extends through all levels.
-                // Beams are sorted by Y ascending: up-stems need .first (lowest Y = outermost),
-                // down-stems need .last (highest Y = outermost).
-                if let beamsForNote = beamsByNoteHeadID[noteHead.id],
-                   let outermostBeam = noteHead.stemDirection == .up
-                       ? beamsForNote.first
-                       : beamsForNote.last,
-                   let beamY = beamEndY(for: noteHead, beam: outermostBeam, style: style) {
-                    return RenderedStem(
-                        id: "stem_\(noteHead.id)",
-                        noteHeadIDs: [noteHead.id],
-                        direction: noteHead.stemDirection,
-                        start: start,
-                        end: CGPoint(x: start.x, y: beamY)
-                    )
-                }
-                // Not beamed - use fixed stem length.
-                let endY = switch noteHead.stemDirection {
-                case .up:
-                    start.y - style.stemLength
-                case .down:
-                    start.y + style.stemLength
-                }
+        let headsNeedingStems = noteHeads.filter { $0.interval.needsStem }
 
+        // Group note heads that share the same x, voice, and stem direction
+        // (i.e., chord tones) so they share a single stem instead of overlapping.
+        struct StemGroupKey: Hashable {
+            let x: Int // Rounded to avoid floating-point drift
+            let voice: NotationVoice
+            let direction: StemDirection
+        }
+
+        let grouped = Dictionary(grouping: headsNeedingStems) { head in
+            StemGroupKey(
+                x: Int((head.position.x * 1000).rounded()),
+                voice: head.voice,
+                direction: head.stemDirection
+            )
+        }
+
+        return grouped.map { key, group in
+            let allIDs = group.map(\.id)
+
+            // Pick the representative noteHead: the one furthest in the stem direction.
+            // For up-stems: highest y (lowest on staff) — stem goes up from there.
+            // For down-stems: lowest y (highest on staff) — stem goes down from there.
+            let representative: RenderedNoteHead
+            switch key.direction {
+            case .up:
+                representative = group.max(by: { $0.position.y < $1.position.y })!
+            case .down:
+                representative = group.min(by: { $0.position.y < $1.position.y })!
+            }
+
+            let start = stemStart(for: representative, style: style)
+
+            // Check if ANY member of the group belongs to a beam.
+            // Pick the outermost beam across all group members.
+            let candidateBeams = group.flatMap { head in
+                (beamsByNoteHeadID[head.id] ?? [])
+            }
+            let outermostBeam = key.direction == .up
+                ? candidateBeams.min(by: { $0.start.y < $1.start.y })
+                : candidateBeams.max(by: { $0.start.y < $1.start.y })
+
+            if let beam = outermostBeam,
+               let beamY = beamEndY(for: representative, beam: beam, style: style) {
                 return RenderedStem(
-                    id: "stem_\(noteHead.id)",
-                    noteHeadIDs: [noteHead.id],
-                    direction: noteHead.stemDirection,
+                    id: "stem_group_\(key.x)_\(key.voice.rawValue)_\(key.direction.rawValue)",
+                    noteHeadIDs: allIDs,
+                    direction: key.direction,
                     start: start,
-                    end: CGPoint(x: start.x, y: endY)
+                    end: CGPoint(x: start.x, y: beamY)
                 )
             }
+            // Not beamed — use fixed stem length from the representative head.
+            let endY: CGFloat = switch key.direction {
+            case .up: start.y - style.stemLength
+            case .down: start.y + style.stemLength
+            }
+
+            return RenderedStem(
+                id: "stem_group_\(key.x)_\(key.voice.rawValue)_\(key.direction.rawValue)",
+                noteHeadIDs: allIDs,
+                direction: key.direction,
+                start: start,
+                end: CGPoint(x: start.x, y: endY)
+            )
+        }
     }
 
     /// Computes stem end Y from beam geometry if noteHead is beamed.
