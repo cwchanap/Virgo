@@ -105,13 +105,13 @@ final class GameplayViewModel {
     private(set) var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:]
     /// Pre-cached beat positions for performance
     private(set) var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
-    /// Pre-computed notation layout for future gameplay rendering migration
+    /// Pre-computed notation layout that drives rendering when notes are present
     private(set) var cachedNotationLayout = NotationLayout.empty
     /// Fast lookup map from rendered note-head ID to rendered position
     private(set) var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:]
     /// Maps legacy DrumBeat IDs to all rendered note heads at the same musical time.
     private(set) var cachedNotationNoteHeadIDsByBeatID: [UInt64: [UInt64]] = [:]
-    /// Duration-based measure count shared with the legacy sheet layout.
+    /// Duration-based measure count shared with both legacy sheet layout and notation layout.
     private var cachedLayoutMeasureCount = 1
     /// Preserves the legacy grouping key that produced each DrumBeat ID.
     private var cachedDrumBeatIDByNotePositionKey: [NotePositionKey: UInt64] = [:]
@@ -120,7 +120,8 @@ final class GameplayViewModel {
     /// Currently active beat ID for highlighting
     var activeBeatId: UInt64? {
         didSet {
-            // Always clear active note heads when beat changes (self-enforcing invariant)
+            guard oldValue != activeBeatId else { return }
+            // Clear active note heads when beat changes (self-enforcing invariant)
             activeNotationNoteHeadIDs = []
         }
     }
@@ -1069,7 +1070,7 @@ final class GameplayViewModel {
             withTimeInterval: 1.0 / 30.0,
             repeats: true
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 self?.updateContinuousVisualsTick()
             }
         }
@@ -1111,7 +1112,7 @@ final class GameplayViewModel {
         // Continuous playhead position — always computed so sub-beat notes
         // (eighths, sixteenths) can be matched regardless of when the metronome fires.
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
-        let continuousMeasureFraction = totalBeatsElapsedFloat / Double(beatsPerMeasure)
+        let continuousMeasureFraction = max(0, totalBeatsElapsedFloat / Double(beatsPerMeasure))
         let continuousMeasureIdx = Int(continuousMeasureFraction)
         let continuousOffset = continuousMeasureFraction - Double(continuousMeasureIdx)
         let playheadTimePosition = Double(continuousMeasureIdx) + continuousOffset
@@ -1189,7 +1190,7 @@ final class GameplayViewModel {
             let secondsPerBeat = 60.0 / effectiveBPM()
             let totalBeats = elapsedTime / secondsPerBeat
             let beatsPerMeasure = Double(track.timeSignature.beatsPerMeasure)
-            let continuousMeasureFraction = totalBeats / beatsPerMeasure
+            let continuousMeasureFraction = max(0, totalBeats / beatsPerMeasure)
             let measureIdx = Int(continuousMeasureFraction)
             let measureOffset = continuousMeasureFraction - Double(measureIdx)
             currentTimePosition = Double(measureIdx) + measureOffset
@@ -1313,7 +1314,7 @@ final class GameplayViewModel {
         let secondsPerBeat = 60.0 / effectiveBPM()
         let totalBeatsElapsed = elapsedTime / secondsPerBeat
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
-        let continuousMeasureFraction = totalBeatsElapsed / Double(beatsPerMeasure)
+        let continuousMeasureFraction = max(0, totalBeatsElapsed / Double(beatsPerMeasure))
         let measureIndex = Int(continuousMeasureFraction)
         let beatWithinMeasure = totalBeatsElapsed - Double(measureIndex * beatsPerMeasure)
 
@@ -1545,8 +1546,19 @@ final class GameplayViewModel {
         }
 
         if cachedNotes.count != cachedNotationLayout.noteHeads.count, !cachedNotes.isEmpty {
+            let renderedSourceIDs = Set(cachedNotationLayout.noteHeads.map { $0.sourceNoteID })
+            let droppedNotes = cachedNotes.filter { !renderedSourceIDs.contains(ObjectIdentifier($0)) }
+            let droppedReasons = droppedNotes.prefix(5).map { note in
+                let drumType = DrumType.from(noteType: note.noteType)
+                let measureIdx = MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
+                    measureNumber: note.measureNumber, measureOffset: note.measureOffset
+                ))
+                return "noteType=\(note.noteType)(\(drumType?.description ?? "unknown")), " +
+                        "measure=\(note.measureNumber)(idx=\(measureIdx))"
+            }
             Logger.warning(
-                "Layout engine dropped notes: \(cachedNotes.count) input → \(cachedNotationLayout.noteHeads.count) noteHeads"
+                "Layout engine dropped \(droppedNotes.count) note(s): \(droppedReasons.joined(separator: "; "))"
+                    + (droppedNotes.count > 5 ? " … and \(droppedNotes.count - 5) more" : "")
             )
         }
 
@@ -1555,14 +1567,18 @@ final class GameplayViewModel {
                 (noteHeadID, (x: Double(position.x), y: Double(position.y)))
             }
         )
-        let notePositionKeyBySourceNoteID = Dictionary(
-            uniqueKeysWithValues: cachedNotes.map { note in
-                (
-                    ObjectIdentifier(note),
-                    NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset).normalized()
+        var notePositionKeyBySourceNoteID: [ObjectIdentifier: NotePositionKey] = [:]
+        for note in cachedNotes {
+            let key = ObjectIdentifier(note)
+            let positionKey = NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset).normalized()
+            if notePositionKeyBySourceNoteID[key] != nil {
+                Logger.warning(
+                    "Duplicate ObjectIdentifier for Note(measure:\(note.measureNumber), " +
+                    "offset:\(note.measureOffset)) — SwiftData faulting returned identical instance"
                 )
             }
-        )
+            notePositionKeyBySourceNoteID[key] = positionKey
+        }
         var noteHeadIDsByBeatID = Dictionary(uniqueKeysWithValues: cachedDrumBeats.map { ($0.id, [UInt64]()) })
         var desyncCount = 0
         for noteHead in cachedNotationLayout.noteHeads {

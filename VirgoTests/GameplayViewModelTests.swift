@@ -2993,6 +2993,47 @@ struct GameplayViewModelTests {
         let subBeatNote = viewModel.cachedDrumBeats.first { abs($0.timePosition - 0.0625) < 0.001 }
         #expect(viewModel.activeBeatId == subBeatNote?.id)
     }
+
+    // MARK: - activeBeatId.didSet Gating Tests
+
+    @Test("Setting activeBeatId to the same value preserves activeNotationNoteHeadIDs")
+    func testActiveBeatIdSameValueDoesNotClearNoteHeads() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        // First call to updateActiveNotation populates activeNotationNoteHeadIDs
+        viewModel.updateActiveNotation(forTimePosition: 0)
+        let firstIDs = viewModel.activeNotationNoteHeadIDs
+        #expect(!firstIDs.isEmpty,
+                "Expected activeNotationNoteHeadIDs to be populated for simultaneous notes at offset 0")
+
+        // Setting activeBeatId to a different value clears note heads (old behavior)
+        viewModel.activeBeatId = 9999
+        #expect(viewModel.activeNotationNoteHeadIDs.isEmpty,
+                "Setting activeBeatId to a different value should clear activeNotationNoteHeadIDs")
+
+        // Re-populate via updateActiveNotation
+        viewModel.activeBeatId = nil
+        viewModel.updateActiveNotation(forTimePosition: 0)
+        let repopulatedIDs = viewModel.activeNotationNoteHeadIDs
+        #expect(!repopulatedIDs.isEmpty)
+
+        // Setting activeBeatId to the SAME value should NOT clear activeNotationNoteHeadIDs
+        let currentBeatId = viewModel.activeBeatId
+        viewModel.activeBeatId = currentBeatId
+        #expect(!viewModel.activeNotationNoteHeadIDs.isEmpty,
+                "Setting activeBeatId to the same value should not clear activeNotationNoteHeadIDs")
+    }
 }
 
 @MainActor

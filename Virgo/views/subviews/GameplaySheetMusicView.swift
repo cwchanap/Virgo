@@ -206,10 +206,8 @@ extension GameplayView {
                 // Then render individual notes
                 ForEach(viewModel.cachedDrumBeats, id: \.id) { beat in
 
-                    // PERFORMANCE FIX: Use pre-cached active beat ID instead of calculating for every beat
                     let isCurrentlyActive = viewModel.activeBeatId == beat.id
 
-                    // PERFORMANCE FIX: Use pre-cached positions to avoid expensive per-frame calculations
                     if let cachedPosition = viewModel.cachedBeatPositions[beat.id] {
                         // Use cached lookup map for O(1) beam group check
                         let isBeamed = viewModel.beatToBeamGroupMap[beat.id] != nil
@@ -234,7 +232,6 @@ extension GameplayView {
 
     func timeBasedBeatProgressionBars(viewModel: GameplayViewModel) -> some View {
         Group {
-            // PERFORMANCE FIX: Use pre-cached purple bar position instead of expensive calculation
             if let position = viewModel.purpleBarPosition {
                 Rectangle()
                     .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
