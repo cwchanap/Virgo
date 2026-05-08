@@ -1066,14 +1066,13 @@ final class GameplayViewModel {
     private func startVisualTickTimer() {
         guard !TestEnvironment.isRunningTests else { return }
         playbackTimer?.invalidate()
-        playbackTimer = Timer.scheduledTimer(
-            withTimeInterval: 1.0 / 30.0,
-            repeats: true
-        ) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.updateContinuousVisualsTick()
             }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        playbackTimer = timer
     }
 
     func updateVisualElementsFromMetronome() {

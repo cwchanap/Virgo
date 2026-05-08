@@ -11,7 +11,6 @@ struct NotationLayoutEngine {
         let measureIndex: Int
         let quantizedColumn: Int
     }
-
     private struct NoteHeadDraft {
         let noteHead: RenderedNoteHead
         let collisionColumn: VoiceCollisionColumn
@@ -37,7 +36,6 @@ struct NotationLayoutEngine {
         let totalMeasures = max(input.minimumMeasureCount, maxNormalizedMeasureIndex + 1, 1)
         let measures = buildMeasures(totalMeasures: totalMeasures, notes: sortedNotes, input: input)
         let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, input: input)
-        // Build beams first so stems can extend to beam lines when notes are beamed.
         let beams = buildBeams(noteHeads: noteHeads, style: input.style)
         let stems = buildStems(noteHeads: noteHeads, beams: beams, style: input.style)
         let flags = buildFlags(noteHeads: noteHeads, beams: beams, style: input.style)
@@ -78,7 +76,6 @@ struct NotationLayoutEngine {
         var result: [RenderedMeasure] = []
         var currentRow = 0
         var currentX = GameplayLayout.leftMargin
-
         for measureIndex in 0..<totalMeasures {
             let width = measureWidth(measureIndex: measureIndex, notes: notes, input: input)
             if currentX + width > input.style.rowWidth, measureIndex > 0 {
@@ -87,11 +84,8 @@ struct NotationLayoutEngine {
             }
             result.append(
                 RenderedMeasure(
-                    id: measureIndex,
-                    measureIndex: measureIndex,
-                    row: currentRow,
-                    xOffset: currentX,
-                    width: width
+                    id: measureIndex, measureIndex: measureIndex,
+                    row: currentRow, xOffset: currentX, width: width
                 )
             )
             currentX += width + GameplayLayout.measureSpacing
@@ -190,15 +184,13 @@ struct NotationLayoutEngine {
                 + CGFloat(beatPosition) * beatGap
             let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
                 + drumType.notePosition.yOffset
-            let id = nextID
             let voice = NotationVoice.voice(for: drumType)
             let direction = stemDirection(for: drumType, voice: voice)
             nextID += 1
-
             drafts.append(
                 NoteHeadDraft(
                     noteHead: RenderedNoteHead(
-                        id: id,
+                        id: nextID - 1,
                         sourceNoteID: ObjectIdentifier(note),
                         drumType: drumType,
                         voice: voice,
@@ -334,6 +326,8 @@ struct NotationLayoutEngine {
         // (i.e., chord tones) so they share a single stem instead of overlapping.
         struct StemGroupKey: Hashable {
             let x: Int // Rounded to avoid floating-point drift
+            let row: Int
+            let measureIndex: Int
             let voice: NotationVoice
             let direction: StemDirection
         }
@@ -341,6 +335,8 @@ struct NotationLayoutEngine {
         let grouped = Dictionary(grouping: headsNeedingStems) { head in
             StemGroupKey(
                 x: Int((head.position.x * 1000).rounded()),
+                row: head.row,
+                measureIndex: head.measureIndex,
                 voice: head.voice,
                 direction: head.stemDirection
             )
@@ -375,7 +371,7 @@ struct NotationLayoutEngine {
             if let beam = outermostBeam,
                let beamY = beamEndY(for: representative, beam: beam, style: style) {
                 return RenderedStem(
-                    id: "stem_group_\(key.x)_\(key.voice.rawValue)_\(key.direction.rawValue)",
+                    id: "stem_group_\(key.x)_r\(key.row)_m\(key.measureIndex)_\(key.voice.rawValue)_\(key.direction.rawValue)",
                     noteHeadIDs: allIDs,
                     direction: key.direction,
                     start: start,
@@ -389,7 +385,7 @@ struct NotationLayoutEngine {
             }
 
             return RenderedStem(
-                id: "stem_group_\(key.x)_\(key.voice.rawValue)_\(key.direction.rawValue)",
+                id: "stem_group_\(key.x)_r\(key.row)_m\(key.measureIndex)_\(key.voice.rawValue)_\(key.direction.rawValue)",
                 noteHeadIDs: allIDs,
                 direction: key.direction,
                 start: start,
