@@ -972,4 +972,24 @@ extension NotationLayoutEngineTests {
         #expect(layout.contentWidth >= GameplayLayout.maxRowWidth)
     }
 
+    @Test("notes in different rows get separate stems even at same x position")
+    func notesInDifferentRowsGetSeparateStems() throws {
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 4, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 5)
+        )
+        let heads = layout.noteHeads.sorted { $0.measureIndex < $1.measureIndex }
+        #expect(heads.count == 2)
+        let first = try #require(heads.first), second = try #require(heads.last)
+        #expect(first.row != second.row)
+        #expect(abs(first.position.x - second.position.x) < 1.0)
+        #expect(layout.stems.count == 2, "Notes in different rows should get separate stems")
+        for stem in layout.stems {
+            #expect(stem.noteHeadIDs.count == 1)
+        }
+    }
+
 }
