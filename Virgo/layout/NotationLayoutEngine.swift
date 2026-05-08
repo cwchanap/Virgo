@@ -346,26 +346,27 @@ struct NotationLayoutEngine {
             )
         }
 
-        return grouped.map { key, group in
+        return grouped.compactMap { key, group in
             let allIDs = group.map(\.id)
 
-            // Pick the representative noteHead: the one furthest in the stem direction.
-            // For up-stems: highest y (lowest on staff) — stem goes up from there.
-            // For down-stems: lowest y (highest on staff) — stem goes down from there.
             let representative: RenderedNoteHead
             switch key.direction {
             case .up:
-                representative = group.max(by: { $0.position.y < $1.position.y })!
+                guard let r = group.max(by: { $0.position.y < $1.position.y }) else {
+                    Logger.error("Stem grouping empty for key \(key) — skipping"); return nil
+                }
+                representative = r
             case .down:
-                representative = group.min(by: { $0.position.y < $1.position.y })!
+                guard let r = group.min(by: { $0.position.y < $1.position.y }) else {
+                    Logger.error("Stem grouping empty for key \(key) — skipping"); return nil
+                }
+                representative = r
             }
 
             let start = stemStart(for: representative, style: style)
 
-            // Check if ANY member of the group belongs to a beam.
-            // Pick the outermost beam across all group members.
             let candidateBeams = group.flatMap { head in
-                (beamsByNoteHeadID[head.id] ?? [])
+                beamsByNoteHeadID[head.id] ?? []
             }
             let outermostBeam = key.direction == .up
                 ? candidateBeams.min(by: { $0.start.y < $1.start.y })
@@ -406,17 +407,13 @@ struct NotationLayoutEngine {
         // Only extend to beam if beam has multiple note heads.
         guard beam.noteHeadIDs.count > 1 else { return nil }
 
-        // The beam spans from start.x to end.x. Find the Y at noteHead's X by linear interpolation.
-        let startX = beam.start.x
-        let endX = beam.end.x
+        let startX = beam.start.x, endX = beam.end.x
         let stemX = stemStart(for: noteHead, style: style).x
 
-        // Check if stem X is within beam span.
-        guard stemX >= min(startX, endX) && stemX <= max(startX, endX) else {
-            return nil
-        }
+        guard stemX >= min(startX, endX) && stemX <= max(startX, endX) else { return nil }
 
-        // Linear interpolation for Y at stemX.
+        guard endX != startX else { return nil }
+
         let t = (stemX - startX) / (endX - startX)
         let beamY = beam.start.y + t * (beam.end.y - beam.start.y)
 
