@@ -128,6 +128,9 @@ final class GameplayViewModel {
     private(set) var activeNotationNoteHeadIDs: Set<UInt64> = []
     /// Current purple bar position (x, y)
     var purpleBarPosition: (x: Double, y: Double)?
+    /// Row index of the staff currently containing the playhead. Drives auto-scroll
+    /// of the sheet music ScrollView so the active row stays visible during playback.
+    var currentRow: Int = 0
     /// Cached static staff lines view (uses AnyView for type erasure)
     var staticStaffLinesView: AnyView?
     /// Cached notation-path staff lines view (width matches notation content width)
@@ -897,6 +900,7 @@ final class GameplayViewModel {
         lastDiscreteBeat = -1
         playbackProgress = 0.0
         purpleBarPosition = nil
+        currentRow = 0
         clearActiveBeat()
         lastScheduledPlaybackStartTime = nil
         lastScheduledPlaybackHostTime = nil
@@ -1101,6 +1105,14 @@ final class GameplayViewModel {
         updateContinuousVisuals(elapsedTime: elapsedTime, track: track)
     }
 
+    /// Test seam that drives the continuous-visual update path with a synthetic
+    /// elapsed time, bypassing the live metronome clock. Used by unit tests to
+    /// verify state that is normally only reached via the 30 Hz tick timer.
+    func updateContinuousVisualsForTesting(elapsedTime: Double) {
+        guard let track = track else { return }
+        updateContinuousVisuals(elapsedTime: elapsedTime, track: track)
+    }
+
     /// Shared logic for both the metronome callback and the continuous tick timer.
     private func updateContinuousVisuals(elapsedTime: Double, track: DrumTrack) {
         // Use effective BPM for visual sync (speed-adjusted)
@@ -1123,6 +1135,13 @@ final class GameplayViewModel {
         // Purple-bar update runs on EVERY tick for smooth 30 Hz playhead movement,
         // even between quarter-note boundaries.
         updatePurpleBarPosition(elapsedTime: elapsedTime)
+
+        // Track which row the playhead is on so the view can auto-scroll. Only
+        // assign on change to avoid spurious observer churn at 30 Hz.
+        let newRow = rowForMeasure(continuousMeasureIdx)
+        if newRow != currentRow {
+            currentRow = newRow
+        }
 
         // Playback progress updates on EVERY tick so the progress bar and time
         // label move smoothly rather than stepping at quarter-note boundaries.
@@ -1298,6 +1317,25 @@ final class GameplayViewModel {
 
     func updatePurpleBarPosition(elapsedTime: Double? = nil) {
         purpleBarPosition = calculatePurpleBarPosition(elapsedTime: elapsedTime)
+    }
+
+    /// Resolves the staff row that contains the given measure index, branching on
+    /// whether the notation layout or the legacy beat layout is active. Out-of-range
+    /// indices clamp to the last valid measure so the cursor stays on the final row
+    /// after the song ends instead of snapping back to row 0.
+    func rowForMeasure(_ measureIndex: Int) -> Int {
+        let isNotationLayoutActive = !cachedNotationLayout.noteHeads.isEmpty
+        if isNotationLayoutActive {
+            guard !cachedNotationLayout.measures.isEmpty else { return 0 }
+            let clamped = min(max(measureIndex, 0), cachedNotationLayout.measures.count - 1)
+            return cachedNotationLayout.measures.first(where: { $0.measureIndex == clamped })?.row ?? 0
+        }
+        if let pos = measurePositionMap[measureIndex] {
+            return pos.row
+        }
+        // Out-of-range (typically after song end): use the last known row.
+        let maxIndex = measurePositionMap.keys.max() ?? 0
+        return measurePositionMap[maxIndex]?.row ?? 0
     }
 
     func calculatePurpleBarPosition(elapsedTime providedElapsedTime: Double? = nil) -> (x: Double, y: Double)? {
