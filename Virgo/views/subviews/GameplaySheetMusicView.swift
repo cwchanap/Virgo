@@ -15,41 +15,83 @@ extension GameplayView {
             let measurePositions = sheetMeasurePositions(viewModel: viewModel)
             let contentWidth = sheetContentWidth(viewModel: viewModel)
             let contentHeight = sheetContentHeight(viewModel: viewModel)
+            let rowCount = sheetRowCount(measurePositions: measurePositions)
 
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                ZStack(alignment: .topLeading) {
-                    // Use cached static staff lines view - created only once
-                    if usesNotationLayout {
-                        if let cachedNotationView = viewModel.notationStaffLinesView {
-                            cachedNotationView
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    ZStack(alignment: .topLeading) {
+                        // Use cached static staff lines view - created only once
+                        if usesNotationLayout {
+                            if let cachedNotationView = viewModel.notationStaffLinesView {
+                                cachedNotationView
+                            } else {
+                                staffLinesView(measurePositions: measurePositions, width: contentWidth)
+                            }
+                        } else if let staticView = viewModel.staticStaffLinesView {
+                            staticView
                         } else {
+                            // Fallback: render dynamic staff lines when static view is not available
                             staffLinesView(measurePositions: measurePositions, width: contentWidth)
                         }
-                    } else if let staticView = viewModel.staticStaffLinesView {
-                        staticView
-                    } else {
-                        // Fallback: render dynamic staff lines when static view is not available
-                        staffLinesView(measurePositions: measurePositions, width: contentWidth)
+
+                        // Dynamic content
+                        ZStack(alignment: .topLeading) {
+                            barLinesView(measurePositions: measurePositions, viewModel: viewModel)
+
+                            clefsAndTimeSignaturesView(measurePositions: measurePositions, viewModel: viewModel)
+
+                            drumNotationView(measurePositions: measurePositions, viewModel: viewModel)
+
+                            timeBasedBeatProgressionBars(viewModel: viewModel)
+                        }
+
+                        // Invisible per-row anchor column. Each anchor occupies the
+                        // exact vertical span of its row in the layout coordinate
+                        // system, so ScrollViewReader.scrollTo("row_n", anchor: .top)
+                        // resolves to the correct y. Kept off-screen horizontally
+                        // (width 1) and outside the visible content area.
+                        rowAnchorColumn(rowCount: rowCount)
                     }
-
-                    // Dynamic content
-                    ZStack(alignment: .topLeading) {
-                        barLinesView(measurePositions: measurePositions, viewModel: viewModel)
-
-                        clefsAndTimeSignaturesView(measurePositions: measurePositions, viewModel: viewModel)
-
-                        drumNotationView(measurePositions: measurePositions, viewModel: viewModel)
-
-                        timeBasedBeatProgressionBars(viewModel: viewModel)
+                    .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
+                }
+                .background(Color.gray.opacity(0.1))
+                .onChange(of: viewModel.currentRow) { _, newRow in
+                    guard viewModel.isPlaying else { return }
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        proxy.scrollTo("row_\(newRow)", anchor: .top)
                     }
                 }
-                .frame(width: contentWidth, height: contentHeight)
             }
-            .background(Color.gray.opacity(0.1))
         } else {
             Color.black
                 .overlay(Text("Loading...").foregroundColor(.white))
         }
+    }
+
+    /// Renders an invisible column of row anchors stacked vertically using `.frame`
+    /// so each anchor has a real, distinct y position. ScrollViewReader uses these
+    /// to scroll the active row to the top.
+    @ViewBuilder
+    func rowAnchorColumn(rowCount: Int) -> some View {
+        let firstRowTop = max(0, GameplayLayout.StaffLinePosition.line5.absoluteY(for: 0)
+            - GameplayLayout.staffLineSpacing)
+        let rowSpan = GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
+        VStack(alignment: .leading, spacing: 0) {
+            // Pad above the first row so row_0 anchors at the actual top of staff 0.
+            Color.clear.frame(width: 1, height: firstRowTop)
+            ForEach(0..<max(rowCount, 1), id: \.self) { row in
+                Color.clear
+                    .frame(width: 1, height: rowSpan)
+                    .id("row_\(row)")
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .allowsHitTesting(false)
+    }
+
+    func sheetRowCount(measurePositions: [GameplayLayout.MeasurePosition]) -> Int {
+        (measurePositions.map { $0.row }.max() ?? 0) + 1
     }
 
     func staffLinesView(
@@ -71,7 +113,6 @@ extension GameplayView {
                             )
                     }
                 }
-                .id("row_\(row)") // Add scroll anchor for each row
             }
         }
     }

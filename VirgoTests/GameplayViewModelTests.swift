@@ -3034,6 +3034,84 @@ struct GameplayViewModelTests {
         #expect(!viewModel.activeNotationNoteHeadIDs.isEmpty,
                 "Setting activeBeatId to the same value should not clear activeNotationNoteHeadIDs")
     }
+
+    // MARK: - currentRow / Auto-scroll Tests
+
+    /// Builds a multi-row chart so that measure layout actually wraps onto a new row,
+    /// then verifies rowForMeasure resolves the correct row for each measure index.
+    @Test func testRowForMeasureFollowsLegacyMeasurePositions() async throws {
+        // 8 measures at 4/4 — each measure ~264pt wide; with maxRowWidth 900 and
+        // leftMargin 100 we get ~3 measures per row, so 8 measures spans ≥3 rows.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        for measureNumber in 1...8 {
+            chart.notes.append(
+                Note(interval: .quarter, noteType: .snare, measureNumber: measureNumber, measureOffset: 0.0)
+            )
+        }
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Sanity: layout actually produced multiple rows.
+        let maxRow = viewModel.cachedMeasurePositions.map { $0.row }.max() ?? 0
+        try #require(maxRow >= 1)
+
+        // Each measure index must resolve to the row recorded by the layout engine.
+        for position in viewModel.cachedMeasurePositions {
+            #expect(viewModel.rowForMeasure(position.measureIndex) == position.row,
+                    "rowForMeasure(\(position.measureIndex)) should equal layout row \(position.row)")
+        }
+
+        // Out-of-range indices clamp to the last known row instead of snapping to 0.
+        #expect(viewModel.rowForMeasure(9_999) == maxRow)
+    }
+
+    /// Verifies the @Observable `currentRow` updates as the playhead crosses measures.
+    /// Drives the same code path the metronome tick uses (`updateContinuousVisualsForTesting`)
+    /// so we don't depend on real audio.
+    @Test func testCurrentRowAdvancesAsPlayheadCrossesRowBoundary() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        for measureNumber in 1...8 {
+            chart.notes.append(
+                Note(interval: .quarter, noteType: .snare, measureNumber: measureNumber, measureOffset: 0.0)
+            )
+        }
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Find the first measure that lives on a row > 0; we need the playhead to land in it.
+        let firstNonZeroRowMeasure = viewModel.cachedMeasurePositions
+            .first(where: { $0.row > 0 })
+        try #require(firstNonZeroRowMeasure != nil)
+        let targetMeasure = firstNonZeroRowMeasure!.measureIndex
+        let targetRow = firstNonZeroRowMeasure!.row
+
+        // Initial state: row 0.
+        #expect(viewModel.currentRow == 0)
+
+        // Drive the visuals forward to the target measure. updateContinuousVisuals
+        // requires isPlaying == true to actually update active beats, but currentRow
+        // is updated unconditionally on every tick.
+        viewModel.isPlaying = true
+        let bpm = viewModel.effectiveBPM()
+        let secondsPerBeat = 60.0 / bpm
+        let beatsPerMeasure = Double(chart.timeSignature.beatsPerMeasure)
+        // Land squarely inside the target measure so continuousMeasureIdx == targetMeasure.
+        let elapsedSeconds = (Double(targetMeasure) + 0.5) * beatsPerMeasure * secondsPerBeat
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: elapsedSeconds)
+
+        #expect(viewModel.currentRow == targetRow,
+                "Playhead in measure \(targetMeasure) should set currentRow to \(targetRow)")
+
+        // Resetting playback should snap currentRow back to 0.
+        viewModel.isPlaying = false
+        viewModel.restartPlayback()
+        #expect(viewModel.currentRow == 0)
+    }
 }
 
 @MainActor
