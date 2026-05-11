@@ -61,7 +61,26 @@
       "Bash(wc:*)",
       "mcp__XcodeBuildMCP__build_macos",
       "mcp__XcodeBuildMCP__session-set-defaults",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(python3 -c 'import json,sys;d=json.load\\(sys.stdin\\); *)",
+      "Bash(awk *)",
+      "mcp__XcodeBuildMCP__session_show_defaults",
+      "mcp__XcodeBuildMCP__session_set_defaults",
+      "mcp__XcodeBuildMCP__build_run_sim",
+      "mcp__XcodeBuildMCP__snapshot_ui",
+      "Bash(claude mcp *)",
+      "Bash(xcodebuildmcp --help)",
+      "Bash(xcodebuildmcp setup *)",
+      "Bash(xcodebuildmcp ui-automation *)",
+      "Bash(xcodebuildmcp mcp *)",
+      "Bash(xcrun simctl *)",
+      "Bash(pip3 install *)",
+      "Bash(nohup /Users/chanwaichan/Library/Python/3.14/bin/uvicorn main:app --host 127.0.0.1 --port 8001)",
+      "Bash(disown)",
+      "Bash(python3 -m json.tool)",
+      "mcp__XcodeBuildMCP__gesture",
+      "Bash(cp /var/folders/_k/lkrpcd8516s5x5szmkq1mbvc0000gn/T/screenshot_optimized_9574e5e7-8022-4ec3-9941-e01301fa8a31.jpg /tmp/virgo-baseline-default-hihat.jpg)",
+      "Read(//tmp/**)"
     ],
     "deny": []
   }

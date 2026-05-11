@@ -6,7 +6,6 @@
 //  - Array.removingDuplicates() extension (order, deduplication, edge cases)
 //  - GameplayLayout.NotePosition gap positions (spaceBetween1And2, spaceBetweenLine1AndBelow)
 //  - PersistentIdentifierPersistenceKey.Resolution.needsMigration
-//  - BeamGroupingHelper threshold boundary (exactly 0.3 apart = grouped; > 0.3 = not grouped)
 //
 
 import Testing
@@ -170,68 +169,5 @@ struct PersistentIdentifierResolutionTests {
         #expect(resolution.value == 999)
         #expect(resolution.canonicalKey == "new-key")
         #expect(resolution.matchedKey == "old-key")
-    }
-}
-
-// MARK: - BeamGroupingHelper Threshold Boundary
-
-@Suite("BeamGroupingHelper Threshold Boundary Tests")
-struct BeamGroupingHelperThresholdTests {
-
-    // maxConsecutiveInterval = 0.3 (inclusive boundary: timeDifference <= 0.3)
-
-    @Test("Notes exactly 0.3 apart in same measure ARE grouped (inclusive boundary)")
-    func testExactThresholdIsGrouped() {
-        let beats = [
-            DrumBeat(id: 1, drums: [.snare], timePosition: 1.0, interval: .eighth),
-            DrumBeat(id: 2, drums: [.hiHat], timePosition: 1.3, interval: .eighth)
-        ]
-        let groups = BeamGroupingHelper.calculateBeamGroups(from: beats)
-        #expect(groups.count == 1)
-        #expect(groups.first?.beats.count == 2)
-    }
-
-    @Test("Notes just over 0.3 apart in same measure are NOT grouped")
-    func testJustOverThresholdIsNotGrouped() {
-        // 0.301 > 0.3 → separate groups, each with 1 note → no beam group
-        let beats = [
-            DrumBeat(id: 1, drums: [.snare], timePosition: 1.0, interval: .eighth),
-            DrumBeat(id: 2, drums: [.hiHat], timePosition: 1.301, interval: .eighth)
-        ]
-        let groups = BeamGroupingHelper.calculateBeamGroups(from: beats)
-        #expect(groups.isEmpty)
-    }
-
-    @Test("Three notes each 0.125 apart are all grouped together")
-    func testThreeConsecutiveNotesGrouped() {
-        let beats = [
-            DrumBeat(id: 1, drums: [.snare], timePosition: 2.0, interval: .eighth),
-            DrumBeat(id: 2, drums: [.hiHat], timePosition: 2.125, interval: .eighth),
-            DrumBeat(id: 3, drums: [.kick], timePosition: 2.25, interval: .eighth)
-        ]
-        let groups = BeamGroupingHelper.calculateBeamGroups(from: beats)
-        #expect(groups.count == 1)
-        #expect(groups.first?.beats.count == 3)
-    }
-
-    @Test("Notes at exactly 0.0 apart (same time) are grouped")
-    func testZeroTimeDifferenceGrouped() {
-        let beats = [
-            DrumBeat(id: 1, drums: [.snare], timePosition: 0.0, interval: .eighth),
-            DrumBeat(id: 2, drums: [.hiHat], timePosition: 0.0, interval: .eighth)
-        ]
-        let groups = BeamGroupingHelper.calculateBeamGroups(from: beats)
-        #expect(groups.count == 1)
-    }
-
-    @Test("Notes in different measures are NOT grouped even if time values are close")
-    func testDifferentMeasuresAreNotGrouped() {
-        // Int(0.9) = 0, Int(1.0) = 1 → different measure numbers
-        let beats = [
-            DrumBeat(id: 1, drums: [.snare], timePosition: 0.9, interval: .eighth),
-            DrumBeat(id: 2, drums: [.hiHat], timePosition: 1.0, interval: .eighth)
-        ]
-        let groups = BeamGroupingHelper.calculateBeamGroups(from: beats)
-        #expect(groups.isEmpty)
     }
 }

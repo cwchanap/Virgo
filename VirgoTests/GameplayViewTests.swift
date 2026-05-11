@@ -266,35 +266,6 @@ struct GameplayViewTests {
         }
     }
 
-    @Test func testBeatToBeamGroupMapOptimization() async throws {
-        // Test the beam group lookup map optimization
-        let beats = [
-            DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .eighth),
-            DrumBeat(id: 1, drums: [.snare], timePosition: 0.125, interval: .eighth),
-            DrumBeat(id: 2, drums: [.hiHat], timePosition: 0.5, interval: .quarter)
-        ]
-
-        // Simulate beam group creation
-        let beamGroup = BeamGroup(id: "test-group-0", beats: Array(beats[0...1]))
-        let cachedBeamGroups = [beamGroup]
-
-        // Simulate the lookup map creation logic from GameplayView
-        var beatToBeamGroupMap: [UInt64: BeamGroup] = [:]
-        for group in cachedBeamGroups {
-            for beat in group.beats {
-                beatToBeamGroupMap[beat.id] = group
-            }
-        }
-
-        // Test O(1) lookup performance
-        #expect(beatToBeamGroupMap[0] != nil)
-        #expect(beatToBeamGroupMap[1] != nil)
-        #expect(beatToBeamGroupMap[2] == nil) // Not beamed
-
-        // Test that beamed beats share the same group
-        #expect(beatToBeamGroupMap[0]?.id == beatToBeamGroupMap[1]?.id)
-    }
-
     @Test func testUIUpdateBatchingLogic() async throws {
         // Test the UI update batching logic from timer optimization
         var shouldUpdateUI = false

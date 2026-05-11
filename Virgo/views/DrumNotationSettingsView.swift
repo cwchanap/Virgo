@@ -455,43 +455,41 @@ class DrumNotationSettingsManager: ObservableObject {
     @Published private var notePositions: [DrumType: GameplayLayout.NotePosition] = [:]
 
     private let userDefaults: UserDefaults
-    private let settingsKey = "DrumNotationSettings"
+    static let settingsKey = "DrumNotationSettings"
+    private var settingsKey: String { Self.settingsKey }
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
     }
-    
-    func loadSettings() {
-        var localPositions: [DrumType: GameplayLayout.NotePosition] = [:]
-        
-        // Load from UserDefaults
+
+    /// Pure loader usable from non-UI contexts (e.g. gameplay view model).
+    /// Returns every drum type, falling back to its default note position when no override is persisted.
+    static func loadPositions(
+        from userDefaults: UserDefaults = .standard
+    ) -> [DrumType: GameplayLayout.NotePosition] {
+        var positions: [DrumType: GameplayLayout.NotePosition] = [:]
+
         if let data = userDefaults.data(forKey: settingsKey),
            let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-            
             for (keyString, positionString) in decoded {
-                var drumType: DrumType?
-                
-                // Try new storage key first
-                if let drumTypeFromStorage = DrumType(storageKey: keyString) {
-                    drumType = drumTypeFromStorage
-                } else {
-                    // Fall back to legacy description-based lookup
-                    drumType = DrumType.allCases.first(where: { $0.description == keyString })
-                }
-                
-                if let drumType = drumType,
+                let drumType = DrumType(storageKey: keyString)
+                    ?? DrumType.allCases.first(where: { $0.description == keyString })
+                if let drumType,
                    let position = GameplayLayout.NotePosition.allCases.first(where: { $0.rawValue == positionString }) {
-                    localPositions[drumType] = position
+                    positions[drumType] = position
                 }
             }
         }
-        
-        // Fill in any missing defaults
-        for drumType in DrumType.allCases where localPositions[drumType] == nil {
-            localPositions[drumType] = drumType.notePosition
+
+        for drumType in DrumType.allCases where positions[drumType] == nil {
+            positions[drumType] = drumType.notePosition
         }
-        
-        notePositions = localPositions
+
+        return positions
+    }
+
+    func loadSettings() {
+        notePositions = Self.loadPositions(from: userDefaults)
     }
     
     func saveSettings() {

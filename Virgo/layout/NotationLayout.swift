@@ -6,17 +6,22 @@ struct NotationLayoutInput {
     let timeSignature: TimeSignature
     let minimumMeasureCount: Int
     let style: NotationLayoutStyle
+    /// Per-drum overrides for the staff position used to render note heads, ledger lines, and stems.
+    /// Drums omitted here fall back to `DrumType.notePosition`.
+    let notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
 
     init(
         notes: [Note],
         timeSignature: TimeSignature,
         minimumMeasureCount: Int = 1,
-        style: NotationLayoutStyle = .gameplayDefault
+        style: NotationLayoutStyle = .gameplayDefault,
+        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
     ) {
         self.notes = notes
         self.timeSignature = timeSignature
         self.minimumMeasureCount = minimumMeasureCount
         self.style = style
+        self.notePositionOverrides = notePositionOverrides
     }
 }
 

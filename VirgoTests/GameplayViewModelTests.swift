@@ -80,7 +80,6 @@ struct GameplayViewModelTests {
         #expect(viewModel.track == nil)
         #expect(viewModel.cachedDrumBeats.isEmpty)
         #expect(viewModel.cachedMeasurePositions.isEmpty)
-        #expect(viewModel.cachedBeamGroups.isEmpty)
         #expect(viewModel.activeBeatId == nil)
         #expect(viewModel.purpleBarPosition == nil)
         #expect(viewModel.bgmPlayer == nil)
@@ -1018,30 +1017,6 @@ struct GameplayViewModelTests {
                 #expect(pos.y > 0, "Y position should be positive")
             }
         }
-    }
-
-    @Test func testBeatToBeamGroupMapPopulation() async throws {
-        // Create chart with consecutive eighth notes (should be beamed)
-        let chart = Chart(difficulty: .medium)
-        for i in 0..<4 {
-            let note = Note(
-                interval: .eighth,
-                noteType: .hiHat,
-                measureNumber: 1,
-                measureOffset: Double(i) * 0.125
-            )
-            chart.notes.append(note)
-        }
-
-        let metronome = createTestMetronome()
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
-
-        await viewModel.loadChartData()
-        viewModel.setupGameplay()
-
-        // Beam groups should be computed
-        // Note: beaming logic may or may not group these notes depending on implementation
-        #expect(viewModel.beatToBeamGroupMap.isEmpty == viewModel.cachedBeamGroups.isEmpty)
     }
 
     // MARK: - Find Closest Beat Tests

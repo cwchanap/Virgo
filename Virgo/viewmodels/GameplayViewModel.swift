@@ -93,10 +93,6 @@ final class GameplayViewModel {
     private(set) var cachedDrumBeats: [DrumBeat] = []
     /// Pre-computed measure positions for layout
     private(set) var cachedMeasurePositions: [GameplayLayout.MeasurePosition] = []
-    /// Pre-computed beam groups for notation
-    private(set) var cachedBeamGroups: [BeamGroup] = []
-    /// Fast lookup map from beat ID to beam group
-    private(set) var beatToBeamGroupMap: [UInt64: BeamGroup] = [:]
     /// Cached track duration in seconds
     private(set) var cachedTrackDuration: Double = 0.0
     /// Cached beat indices for iteration
@@ -1519,15 +1515,6 @@ final class GameplayViewModel {
             timeSignature: track.timeSignature
         )
 
-        cachedBeamGroups = BeamGroupingHelper.calculateBeamGroups(from: cachedDrumBeats)
-
-        beatToBeamGroupMap = [:]
-        for beamGroup in cachedBeamGroups {
-            for beat in beamGroup.beats {
-                beatToBeamGroupMap[beat.id] = beamGroup
-            }
-        }
-
         measurePositionMap = [:]
         for position in cachedMeasurePositions {
             measurePositionMap[position.measureIndex] = position
@@ -1562,7 +1549,8 @@ final class GameplayViewModel {
         let input = NotationLayoutInput(
             notes: cachedNotes,
             timeSignature: track.timeSignature,
-            minimumMeasureCount: cachedLayoutMeasureCount
+            minimumMeasureCount: cachedLayoutMeasureCount,
+            notePositionOverrides: DrumNotationSettingsManager.loadPositions()
         )
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
 
