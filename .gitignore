@@ -20,3 +20,6 @@ ui-test-results-*/
 ui-test-results-diagnostics
 ui-test-activity-log.json
 .worktrees/
+
+.claude/settings.local.json
+.xcodebuildmcp/
