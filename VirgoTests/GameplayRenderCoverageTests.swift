@@ -5,8 +5,8 @@
 //  Render-path coverage for GameplayView's principal visual branches:
 //  1. Loading state (viewModel == nil) — exercised on first layout pass.
 //  2. Populated state (viewModel != nil) — exercised via the injection seam.
-//  3. Sub-view branches: StaffLinesBackgroundView, BeamView/BeamGroupView,
-//     controlsView placeholder/loaded, DrumClefSymbol, TimeSignatureSymbol.
+//  3. Sub-view branches: StaffLinesBackgroundView, controlsView placeholder/loaded,
+//     DrumClefSymbol, TimeSignatureSymbol.
 //
 
 import Testing
@@ -17,16 +17,6 @@ import Foundation
 @Suite("GameplayRenderCoverageTests", .serialized)
 @MainActor
 struct GameplayRenderCoverageTests {
-
-    // MARK: - Fixtures
-
-    /// Returns a standard pair of eighth-note beats used across beam-related tests.
-    private static func makeEighthNotePair() -> [DrumBeat] {
-        [
-            DrumBeat(id: 0, drums: [.kick], timePosition: 0.0, interval: .eighth),
-            DrumBeat(id: 1, drums: [.snare], timePosition: 0.125, interval: .eighth)
-        ]
-    }
 
     // MARK: - Loading-state render path
 
@@ -133,115 +123,6 @@ struct GameplayRenderCoverageTests {
             )
             let customWidth: CGFloat = 500
             let view = StaffLinesBackgroundView(measurePositions: positions, width: customWidth)
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 1280, height: 900)
-            )
-        }
-    }
-
-    // MARK: - BeamGroupView
-
-    /// Renders a `BeamGroupView` whose `beats` are eighth notes in the same measure.
-    /// The `body` iterates `beamCount` times and builds a child `BeamView` for each.
-    @Test("BeamGroupView renders its BeamView children for an eighth-note group")
-    func testBeamGroupView_renders() async throws {
-        try await TestSetup.withTestSetup {
-            let beats = Self.makeEighthNotePair()
-            let beamGroup = BeamGroup(id: "bg1", beats: beats)
-            let positions = GameplayLayout.calculateMeasurePositions(
-                totalMeasures: 1, timeSignature: .fourFour
-            )
-
-            let view = BeamGroupView(
-                beamGroup: beamGroup,
-                measurePositions: positions,
-                timeSignature: .fourFour,
-                isActive: false
-            )
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 1280, height: 900)
-            )
-        }
-    }
-
-    // MARK: - BeamView branches
-
-    /// Two eighth-note beats in measure 0 (same row) → `beamedBeats.count >= 2` and
-    /// `firstMeasurePos.row == lastMeasurePos.row` → the `Path` rendering branch executes.
-    @Test("BeamView renders a beam line when two beats share the same row")
-    func testBeamView_sameRow_renders() async throws {
-        try await TestSetup.withTestSetup {
-            let beats = Self.makeEighthNotePair()
-            let positions = GameplayLayout.calculateMeasurePositions(
-                totalMeasures: 1, timeSignature: .fourFour
-            )
-            #expect(!positions.isEmpty, "calculateMeasurePositions must return at least one position for 1 measure")
-            #expect(positions[0].row == 0, "Single-measure fixture must be in row 0")
-
-            let view = BeamView(
-                beats: beats,
-                beamLevel: 0,
-                measurePositions: positions,
-                timeSignature: .fourFour,
-                isActive: false
-            )
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 1280, height: 900)
-            )
-        }
-    }
-
-    /// `beamLevel = 1` with eighth notes (flagCount = 1): `1 > 1` is false for every beat,
-    /// so `beamedBeats` is empty → the `count < 2` guard fires → `EmptyView()` branch.
-    @Test("BeamView renders EmptyView when fewer than two beats pass the beamLevel filter")
-    func testBeamView_fewerThanTwoBeats_mountsSuccessfully() async throws {
-        try await TestSetup.withTestSetup {
-            let beats = Self.makeEighthNotePair()
-            let positions = GameplayLayout.calculateMeasurePositions(
-                totalMeasures: 1, timeSignature: .fourFour
-            )
-            // beamLevel 1 requires flagCount > 1; eighth notes have flagCount == 1, so none pass.
-            let view = BeamView(
-                beats: beats,
-                beamLevel: 1,
-                measurePositions: positions,
-                timeSignature: .fourFour,
-                isActive: false
-            )
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 1280, height: 900)
-            )
-        }
-    }
-
-    /// Measures 2 and 3 are in different rows when `totalMeasures == 4`.
-    /// `firstMeasurePos.row != lastMeasurePos.row` → the row-mismatch `EmptyView()` branch.
-    @Test("BeamView renders EmptyView when beats span different rows")
-    func testBeamView_rowMismatch_mountsSuccessfully() async throws {
-        try await TestSetup.withTestSetup {
-            // 4 four-four measures: measures 0-2 row 0, measure 3 row 1.
-            let positions = GameplayLayout.calculateMeasurePositions(
-                totalMeasures: 4, timeSignature: .fourFour
-            )
-            #expect(positions.count >= 4, "calculateMeasurePositions must return at least 4 positions for 4 measures")
-            #expect(positions[2].row == 0, "Measure 2 must remain on row 0 for the row-mismatch fixture")
-            #expect(positions[3].row == 1, "Measure 3 must remain on row 1 for the row-mismatch fixture")
-
-            // timePosition 2.0 → measureIndex 2 (row 0); 3.0 → measureIndex 3 (row 1).
-            let beatRow0 = DrumBeat(id: 0, drums: [.kick], timePosition: 2.0, interval: .eighth)
-            let beatRow1 = DrumBeat(id: 1, drums: [.snare], timePosition: 3.0, interval: .eighth)
-
-            let view = BeamView(
-                beats: [beatRow0, beatRow1],
-                beamLevel: 0,
-                measurePositions: positions,
-                timeSignature: .fourFour,
-                isActive: false
-            )
             SwiftUITestUtilities.assertViewWithEnvironment(
                 view,
                 size: CGSize(width: 1280, height: 900)

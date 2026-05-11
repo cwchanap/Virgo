@@ -40,7 +40,7 @@ extension GameplayView {
 
                             clefsAndTimeSignaturesView(measurePositions: measurePositions, viewModel: viewModel)
 
-                            drumNotationView(measurePositions: measurePositions, viewModel: viewModel)
+                            drumNotationView(viewModel: viewModel)
 
                             timeBasedBeatProgressionBars(viewModel: viewModel)
                         }
@@ -197,76 +197,37 @@ extension GameplayView {
         }
     }
 
-    func drumNotationView(
-        measurePositions: [GameplayLayout.MeasurePosition],
-        viewModel: GameplayViewModel
-    ) -> some View {
+    func drumNotationView(viewModel: GameplayViewModel) -> some View {
         let notationLayout = viewModel.cachedNotationLayout
         let activeNotationNoteHeadIDs = viewModel.activeNotationNoteHeadIDs
 
         return ZStack {
-            if !notationLayout.noteHeads.isEmpty {
-                ForEach(notationLayout.ledgerLines) { ledgerLine in
-                    NotationLedgerLineView(ledgerLine: ledgerLine)
-                }
+            ForEach(notationLayout.ledgerLines) { ledgerLine in
+                NotationLedgerLineView(ledgerLine: ledgerLine)
+            }
 
-                ForEach(notationLayout.beams) { beam in
-                    let isActive = beam.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
-                    NotationBeamView(beam: beam, isActive: isActive)
-                }
+            ForEach(notationLayout.beams) { beam in
+                let isActive = beam.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
+                NotationBeamView(beam: beam, isActive: isActive)
+            }
 
-                ForEach(notationLayout.flags) { flag in
-                    NotationFlagView(
-                        flag: flag,
-                        isActive: activeNotationNoteHeadIDs.contains(flag.noteHeadID)
-                    )
-                }
+            ForEach(notationLayout.flags) { flag in
+                NotationFlagView(
+                    flag: flag,
+                    isActive: activeNotationNoteHeadIDs.contains(flag.noteHeadID)
+                )
+            }
 
-                ForEach(notationLayout.stems) { stem in
-                    let isActive = stem.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
-                    NotationStemView(stem: stem, isActive: isActive)
-                }
+            ForEach(notationLayout.stems) { stem in
+                let isActive = stem.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
+                NotationStemView(stem: stem, isActive: isActive)
+            }
 
-                ForEach(notationLayout.noteHeads) { noteHead in
-                    NotationNoteHeadView(
-                        noteHead: noteHead,
-                        isActive: activeNotationNoteHeadIDs.contains(noteHead.id)
-                    )
-                }
-            } else {
-                // Render beams first (behind notes)
-                ForEach(viewModel.cachedBeamGroups, id: \.id) { beamGroup in
-                    BeamGroupView(
-                        beamGroup: beamGroup,
-                        measurePositions: measurePositions,
-                        timeSignature: viewModel.track?.timeSignature ?? TimeSignature.fourFour,
-                        isActive: false // Keep disabled for performance
-                    )
-                }
-
-                // Then render individual notes
-                ForEach(viewModel.cachedDrumBeats, id: \.id) { beat in
-
-                    let isCurrentlyActive = viewModel.activeBeatId == beat.id
-
-                    if let cachedPosition = viewModel.cachedBeatPositions[beat.id] {
-                        // Use cached lookup map for O(1) beam group check
-                        let isBeamed = viewModel.beatToBeamGroupMap[beat.id] != nil
-                        let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
-                        let row = viewModel.measurePositionMap[measureIndex]?.row ?? 0
-
-                        DrumBeatView(
-                            beat: beat,
-                            isActive: isCurrentlyActive,
-                            row: row,
-                            isBeamed: isBeamed
-                        )
-                        .position(
-                            x: cachedPosition.x,
-                            y: cachedPosition.y
-                        )
-                    }
-                }
+            ForEach(notationLayout.noteHeads) { noteHead in
+                NotationNoteHeadView(
+                    noteHead: noteHead,
+                    isActive: activeNotationNoteHeadIDs.contains(noteHead.id)
+                )
             }
         }
     }

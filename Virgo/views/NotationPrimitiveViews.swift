@@ -7,6 +7,27 @@
 
 import SwiftUI
 
+struct FlagView: View {
+    let flagIndex: Int
+    var stemDirection: StemDirection = .up
+
+    var body: some View {
+        Path { path in
+            path.move(to: CGPoint(x: 0, y: 0))
+            path.addCurve(to: CGPoint(x: GameplayLayout.flagCurveMidPointX, y: GameplayLayout.flagCurveMidPointY),
+                          control1: CGPoint(x: GameplayLayout.flagCurveControl1X, y: GameplayLayout.flagCurveControl1Y),
+                          control2: CGPoint(x: GameplayLayout.flagCurveControl2X, y: GameplayLayout.flagCurveControl2Y))
+            path.addCurve(to: CGPoint(x: 0, y: GameplayLayout.flagHeight),
+                          control1: CGPoint(x: GameplayLayout.flagCurveEndControl1X, y: GameplayLayout.flagCurveEndControl1Y),
+                          control2: CGPoint(x: GameplayLayout.flagCurveEndControl2X, y: GameplayLayout.flagCurveEndControl2Y))
+            path.closeSubpath()
+        }
+        .fill(.foreground)
+        .frame(width: GameplayLayout.flagWidth, height: GameplayLayout.flagHeight)
+        .rotationEffect(stemDirection == .down ? .degrees(180) : .zero)
+    }
+}
+
 struct NotationNoteHeadView: View {
     let noteHead: RenderedNoteHead
     let isActive: Bool

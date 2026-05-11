@@ -500,23 +500,6 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
-    @Test("DrumBeatView renders simultaneous beamed notes")
-    func testDrumBeatViewRendering() async throws {
-        try await TestSetup.withTestSetup {
-            let beat = DrumBeat(
-                id: 42,
-                drums: [.snare, .crash, .ride],
-                timePosition: 1.5,
-                interval: .eighth
-            )
-
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                DrumBeatView(beat: beat, isActive: true, row: 0, isBeamed: true),
-                size: CGSize(width: 240, height: 180)
-            )
-        }
-    }
-
     private func makeDownloadedSong(title: String) -> Song {
         let notes = [
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),

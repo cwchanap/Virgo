@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 
 /// Core layout engine - handles measure construction and note head placement.
+// swiftlint:disable:next type_body_length
 struct NotationLayoutEngine {
     private static let columnResolution = 960.0
     private static let topStaffStep = -8
@@ -182,10 +183,11 @@ struct NotationLayoutEngine {
             let beatPosition = quantizedOffset(for: normalizedOffset) * Double(input.timeSignature.beatsPerMeasure)
             let x = measure.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
                 + CGFloat(beatPosition) * beatGap
+            let resolvedPosition = notePosition(for: drumType, overrides: input.notePositionOverrides)
             let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
-                + drumType.notePosition.yOffset
+                + resolvedPosition.yOffset
             let voice = NotationVoice.voice(for: drumType)
-            let direction = stemDirection(for: drumType, voice: voice)
+            let direction = stemDirection(for: resolvedPosition, voice: voice)
             nextID += 1
             drafts.append(
                 NoteHeadDraft(
@@ -198,7 +200,7 @@ struct NotationLayoutEngine {
                         measureIndex: normalizedMeasureIndex,
                         row: measure.row,
                         position: CGPoint(x: x, y: y),
-                        staffStep: staffStep(for: drumType.notePosition),
+                        staffStep: staffStep(for: resolvedPosition),
                         stemDirection: direction,
                         interval: note.interval
                     ),
@@ -290,10 +292,20 @@ struct NotationLayoutEngine {
         Int((position.yOffset / (GameplayLayout.staffLineSpacing / 2)).rounded())
     }
 
-    private func stemDirection(for drumType: DrumType, voice: NotationVoice) -> StemDirection {
+    private func notePosition(
+        for drumType: DrumType,
+        overrides: [DrumType: GameplayLayout.NotePosition]
+    ) -> GameplayLayout.NotePosition {
+        overrides[drumType] ?? drumType.notePosition
+    }
+
+    private func stemDirection(
+        for position: GameplayLayout.NotePosition,
+        voice: NotationVoice
+    ) -> StemDirection {
         guard voice == .upper else { return .down }
 
-        switch drumType.notePosition {
+        switch position {
         case .aboveLine9, .aboveLine8, .aboveLine7, .aboveLine6, .aboveLine5, .line5:
             return .down
         case .spaceBetween4And5, .line4, .spaceBetween3And4, .line3,
