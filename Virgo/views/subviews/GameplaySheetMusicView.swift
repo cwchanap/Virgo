@@ -18,7 +18,7 @@ extension GameplayView {
             let rowCount = sheetRowCount(measurePositions: measurePositions)
 
             ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: false) {
+                ScrollView([.horizontal, .vertical], showsIndicators: false) {
                     ZStack(alignment: .topLeading) {
                         // Use cached static staff lines view - created only once
                         if usesNotationLayout {
@@ -73,8 +73,11 @@ extension GameplayView {
     /// to scroll the active row to the top.
     @ViewBuilder
     func rowAnchorColumn(rowCount: Int) -> some View {
+        // Anchor 3 staff-line spacings above line5 to ensure noteheads above the
+        // staff (e.g. crash cymbal at aboveLine5) and their ledger lines remain
+        // fully visible after scrollTo(_, anchor: .top).
         let firstRowTop = max(0, GameplayLayout.StaffLinePosition.line5.absoluteY(for: 0)
-            - GameplayLayout.staffLineSpacing)
+            - 3 * GameplayLayout.staffLineSpacing)
         let rowSpan = GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
         VStack(alignment: .leading, spacing: 0) {
             // Pad above the first row so row_0 anchors at the actual top of staff 0.
