@@ -1551,11 +1551,24 @@ final class GameplayViewModel {
             return
         }
 
+        // Use default positions in tests to avoid reading developer's local
+        // UserDefaults overrides, which would make layout non-deterministic
+        // across contributor machines.  Position overrides are independently
+        // tested in DrumNotationSettingsManager unit tests.
+        let notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
+        if TestEnvironment.isRunningTests {
+            notePositionOverrides = Dictionary(
+                uniqueKeysWithValues: DrumType.allCases.map { ($0, $0.notePosition) }
+            )
+        } else {
+            notePositionOverrides = DrumNotationSettingsManager.loadPositions()
+        }
+
         let input = NotationLayoutInput(
             notes: cachedNotes,
             timeSignature: track.timeSignature,
             minimumMeasureCount: cachedLayoutMeasureCount,
-            notePositionOverrides: DrumNotationSettingsManager.loadPositions()
+            notePositionOverrides: notePositionOverrides
         )
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
         cachedMeasureRowMap = Dictionary(
