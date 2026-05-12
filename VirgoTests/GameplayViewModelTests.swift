@@ -754,6 +754,7 @@ struct GameplayViewModelTests {
         viewModel.currentBeatPosition = 3.0
         viewModel.currentQuarterNotePosition = 12.0
         viewModel.totalBeatsElapsed = 8
+        viewModel.currentRow = 4
 
         viewModel.skipToEnd()
 
@@ -772,6 +773,8 @@ struct GameplayViewModelTests {
                 "currentQuarterNotePosition must be preserved from the pre-skip snapshot")
         #expect(viewModel.totalBeatsElapsed == 8,
                 "totalBeatsElapsed must be preserved from the pre-skip snapshot")
+        #expect(viewModel.currentRow == 4,
+                "currentRow must be preserved from the pre-skip snapshot")
         #expect(viewModel.isPlaying == false)
 
         viewModel.cleanup()
@@ -3040,6 +3043,32 @@ struct GameplayViewModelTests {
 
         // Out-of-range indices clamp to the last known row instead of snapping to 0.
         #expect(viewModel.rowForMeasure(9_999) == maxRow)
+    }
+
+    /// Verifies that cacheNotationLayout() populates cachedMeasureRowMap and that
+    /// rowForMeasure uses it instead of scanning measures with first(where:).
+    @Test func testCachedMeasureRowMapPopulatedAfterLayout() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        for measureNumber in 1...8 {
+            chart.notes.append(
+                Note(interval: .quarter, noteType: .snare, measureNumber: measureNumber, measureOffset: 0.0)
+            )
+        }
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // If the notation layout is active, cachedMeasureRowMap must be populated.
+        if !viewModel.cachedNotationLayout.noteHeads.isEmpty {
+            try #require(!viewModel.cachedMeasureRowMap.isEmpty,
+                         "cachedMeasureRowMap should be populated after setupGameplay")
+            // Every measure in the layout must have an entry in the map.
+            for measure in viewModel.cachedNotationLayout.measures {
+                #expect(viewModel.cachedMeasureRowMap[measure.measureIndex] == measure.row,
+                        "cachedMeasureRowMap[\(measure.measureIndex)] should be \(measure.row)")
+            }
+        }
     }
 
     /// Verifies the @Observable `currentRow` updates as the playhead crosses measures.

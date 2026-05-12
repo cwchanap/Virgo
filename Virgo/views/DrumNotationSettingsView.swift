@@ -460,6 +460,7 @@ class DrumNotationSettingsManager: ObservableObject {
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
+        self.notePositions = Self.loadPositions(from: userDefaults)
     }
 
     /// Pure loader usable from non-UI contexts (e.g. gameplay view model).

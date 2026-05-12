@@ -103,6 +103,8 @@ final class GameplayViewModel {
     private(set) var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:]
     /// Pre-computed notation layout that drives rendering when notes are present
     private(set) var cachedNotationLayout = NotationLayout.empty
+    /// Fast lookup from measure index to row for the notation layout path.
+    private(set) var cachedMeasureRowMap: [Int: Int] = [:]
     /// Fast lookup map from rendered note-head ID to rendered position
     private(set) var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:]
     /// Maps legacy DrumBeat IDs to all rendered note heads at the same musical time.
@@ -836,6 +838,7 @@ final class GameplayViewModel {
         let endRawBeatPosition = rawBeatPosition
         let endMeasureIndex = currentMeasureIndex
         let endPurpleBarPosition = purpleBarPosition
+        let endRow = currentRow
         handlePlaybackCompletion()
         // Restore the end-of-song position so all playback fields are mutually
         // consistent (playbackProgress = 1.0 and position state at the last beat).
@@ -847,6 +850,7 @@ final class GameplayViewModel {
         rawBeatPosition = endRawBeatPosition
         currentMeasureIndex = endMeasureIndex
         purpleBarPosition = endPurpleBarPosition
+        currentRow = endRow
     }
 
     // MARK: - Cleanup
@@ -1324,7 +1328,7 @@ final class GameplayViewModel {
         if isNotationLayoutActive {
             guard !cachedNotationLayout.measures.isEmpty else { return 0 }
             let clamped = min(max(measureIndex, 0), cachedNotationLayout.measures.count - 1)
-            return cachedNotationLayout.measures.first(where: { $0.measureIndex == clamped })?.row ?? 0
+            return cachedMeasureRowMap[clamped] ?? 0
         }
         if let pos = measurePositionMap[measureIndex] {
             return pos.row
@@ -1541,6 +1545,7 @@ final class GameplayViewModel {
             cachedNotationLayout = .empty
             cachedNotationNoteHeadPositions = [:]
             cachedNotationNoteHeadIDsByBeatID = [:]
+            cachedMeasureRowMap = [:]
             notationStaffLinesView = nil
             activeNotationNoteHeadIDs = []
             return
@@ -1553,6 +1558,9 @@ final class GameplayViewModel {
             notePositionOverrides: DrumNotationSettingsManager.loadPositions()
         )
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
+        cachedMeasureRowMap = Dictionary(
+            uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
+        )
 
         if !cachedNotationLayout.noteHeads.isEmpty {
             let notationMeasurePositions = cachedNotationLayout.measures.map { measure in
