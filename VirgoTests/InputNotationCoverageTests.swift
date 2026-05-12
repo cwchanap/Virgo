@@ -128,6 +128,41 @@ struct InputNotationCoverageTests {
 
     // MARK: - DrumNotationSettingsManager Persistence
 
+    @Test("DrumNotationSettingsManager seeds notePositions in init without calling loadSettings")
+    func testDrumNotationSettingsManagerInitSeedsPositions() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            // Do NOT call loadSettings() — positions should be seeded from init
+            let manager = DrumNotationSettingsManager(userDefaults: userDefaults)
+
+            for drumType in DrumType.allCases {
+                #expect(
+                    manager.getNotePosition(for: drumType) == drumType.notePosition,
+                    "Expected default position for \(drumType) from init-seeded dictionary"
+                )
+            }
+        }
+    }
+
+    @Test("DrumNotationSettingsManager seeds persisted overrides in init")
+    func testDrumNotationSettingsManagerInitSeedsPersistedOverrides() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            // Persist a custom override, then create a fresh manager
+            let firstManager = DrumNotationSettingsManager(userDefaults: userDefaults)
+            firstManager.setNotePosition(.belowLine6, for: .snare)
+
+            let freshManager = DrumNotationSettingsManager(userDefaults: userDefaults)
+            // Must pick up the persisted override without needing loadSettings()
+            #expect(
+                freshManager.getNotePosition(for: .snare) == .belowLine6,
+                "Init-seeded positions must include persisted overrides"
+            )
+        }
+    }
+
     @Test("DrumNotationSettingsManager loads defaults when no persisted state exists")
     func testDrumNotationSettingsManagerDefaultsOnFirstLoad() async throws {
         try await TestSetup.withTestSetup {
