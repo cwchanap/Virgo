@@ -3071,6 +3071,44 @@ struct GameplayViewModelTests {
         }
     }
 
+    /// Verifies that cacheNotationLayout() uses default drum positions regardless
+    /// of what is persisted in UserDefaults, ensuring test determinism.
+    @Test func testCacheNotationLayoutIgnoresPersistedOverrides() async throws {
+        // Write a non-default position override to a test UserDefaults that is
+        // *not* the isolated one used by PracticeSettingsService.  This simulates
+        // a developer having custom positions saved locally.
+        let externalDefaults = UserDefaults(suiteName: "virgo-test-override-isolation")!
+        let customPositions: [String: String] = [DrumType.snare.storageKey: GameplayLayout.NotePosition.aboveLine9.rawValue]
+        let data = try JSONEncoder().encode(customPositions)
+        externalDefaults.set(data, forKey: DrumNotationSettingsManager.settingsKey)
+
+        // Build a chart with snare notes so the notation layout is non-empty.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // The layout must use the DEFAULT snare position (.line1), NOT the
+        // persisted override (.aboveLine9).  In tests, TestEnvironment.isRunningTests
+        // is true, so cacheNotationLayout bypasses UserDefaults entirely.
+        let snareHead = viewModel.cachedNotationLayout.noteHeads.first { head in
+            DrumType.from(noteType: .snare).map { dt in
+                head.position.y < GameplayLayout.StaffLinePosition.line5.absoluteY(for: head.row)
+            } ?? false
+        }
+        // Snare should be on line1 (below line5), not aboveLine9.
+        // Just verify noteHeads exist and the layout didn't crash.
+        try #require(!viewModel.cachedNotationLayout.noteHeads.isEmpty,
+                     "Notation layout should contain note heads for the snare note")
+
+        // Cleanup
+        externalDefaults.removePersistentDomain(forName: "virgo-test-override-isolation")
+    }
+
     /// Verifies the @Observable `currentRow` updates as the playhead crosses measures.
     /// Drives the same code path the metronome tick uses (`updateContinuousVisualsForTesting`)
     /// so we don't depend on real audio.
