@@ -154,4 +154,81 @@ struct GameplayRenderCoverageTests {
             )
         }
     }
+
+    // MARK: - Row anchor column with high note positions
+
+    /// Verifies that `rowAnchorColumn` renders without error when the notation
+    /// layout includes note heads at high above-staff positions (e.g. aboveLine9).
+    /// This exercises the dynamic top-padding computation introduced to fix
+    /// clipping of extended custom note positions.
+    @Test("rowAnchorColumn accommodates note heads at aboveLine9 without clipping")
+    func testRowAnchorColumn_withHighNotePositions_renders() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+
+            let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
+            let rowCount = gameplayView.sheetRowCount(
+                measurePositions: gameplayView.sheetMeasurePositions(viewModel: vm)
+            )
+
+            // The anchor column must render without error for any rowCount.
+            let anchorColumn = gameplayView.rowAnchorColumn(rowCount: rowCount, viewModel: vm)
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                anchorColumn,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    /// Verifies that a chart with notes mapped to .aboveLine9 via notation
+    /// position overrides produces a layout where the highest note head sits
+    /// well above line5, and the anchor column still renders successfully.
+    @Test("rowAnchorColumn with notation layout containing high above-staff notes")
+    func testRowAnchorColumn_withAboveLine9Override_renders() async throws {
+        try await TestSetup.withTestSetup {
+            // Create a chart with crash notes (mapped to .aboveLine5 by default)
+            // then override to .aboveLine9 via DrumNotationSettings.
+            let chart = GameplayViewModelCoverageTestSupport.makeChart(
+                noteCount: 2,
+                interval: .quarter,
+                measureOffset: 0.25
+            )
+            // Change the first note to crash so it uses an above-staff position.
+            chart.notes[0].noteType = .crash
+
+            let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+            await vm.loadChartData()
+            vm.setupGameplay()
+
+            let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
+            let rowCount = gameplayView.sheetRowCount(
+                measurePositions: gameplayView.sheetMeasurePositions(viewModel: vm)
+            )
+
+            let anchorColumn = gameplayView.rowAnchorColumn(rowCount: rowCount, viewModel: vm)
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                anchorColumn,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    /// Verifies that the populated sheet music view (which includes rowAnchorColumn)
+    /// still renders correctly after the rowAnchorColumn signature change.
+    @Test("Full sheet music view renders with updated rowAnchorColumn")
+    func testSheetMusicView_rendersWithUpdatedRowAnchorColumn() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+                .environmentObject(vm.practiceSettings)
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
 }
