@@ -50,7 +50,7 @@ extension GameplayView {
                         // system, so ScrollViewReader.scrollTo("row_n", anchor: .top)
                         // resolves to the correct y. Kept off-screen horizontally
                         // (width 1) and outside the visible content area.
-                        rowAnchorColumn(rowCount: rowCount)
+                        rowAnchorColumn(rowCount: rowCount, viewModel: viewModel)
                     }
                     .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
                 }
@@ -59,6 +59,12 @@ extension GameplayView {
                     guard viewModel.isPlaying else { return }
                     withAnimation(.easeInOut(duration: 0.25)) {
                         proxy.scrollTo("row_\(newRow)", anchor: .top)
+                    }
+                }
+                .onChange(of: viewModel.isPlaying) { _, nowPlaying in
+                    guard nowPlaying else { return }
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        proxy.scrollTo("row_\(viewModel.currentRow)", anchor: .top)
                     }
                 }
             }
@@ -72,12 +78,14 @@ extension GameplayView {
     /// so each anchor has a real, distinct y position. ScrollViewReader uses these
     /// to scroll the active row to the top.
     @ViewBuilder
-    func rowAnchorColumn(rowCount: Int) -> some View {
-        // Anchor 3 staff-line spacings above line5 to ensure noteheads above the
-        // staff (e.g. crash cymbal at aboveLine5) and their ledger lines remain
-        // fully visible after scrollTo(_, anchor: .top).
+    func rowAnchorColumn(rowCount: Int, viewModel: GameplayViewModel) -> some View {
+        // Compute the padding above line5 for row 0 from the actual note heads so
+        // that custom positions (e.g. .aboveLine9) remain fully visible after
+        // scrollTo(_, anchor: .top). Falls back to 3 staff-line spacings when no
+        // notation layout is available.
+        let topPaddingAboveLine5 = spacingAboveLine5(for: viewModel)
         let firstRowTop = max(0, GameplayLayout.StaffLinePosition.line5.absoluteY(for: 0)
-            - 3 * GameplayLayout.staffLineSpacing)
+            - topPaddingAboveLine5)
         let rowSpan = GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
         VStack(alignment: .leading, spacing: 0) {
             // Pad above the first row so row_0 anchors at the actual top of staff 0.
@@ -91,6 +99,27 @@ extension GameplayView {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .allowsHitTesting(false)
+    }
+
+    /// Returns the number of staff-line spacings above line5 needed to
+    /// accommodate the highest note head in the notation layout, with a
+    /// small margin. Falls back to 3 spacings when no notation layout is present.
+    private func spacingAboveLine5(for viewModel: GameplayViewModel) -> CGFloat {
+        let notationLayout = viewModel.cachedNotationLayout
+        let defaultSpacings: CGFloat = 3
+        guard !notationLayout.noteHeads.isEmpty else { return defaultSpacings * GameplayLayout.staffLineSpacing }
+
+        // line5's y for a given row is the reference point. Find the note head
+        // that sits highest (minimum y) relative to its row's line5.
+        let minRelativeOffset = notationLayout.noteHeads.compactMap { noteHead -> CGFloat? in
+            let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: noteHead.row)
+            return line5Y - noteHead.position.y
+        }.max() ?? 0
+
+        // Add 1 extra spacing as margin for ledger lines and note head height.
+        let needed = max(CGFloat(defaultSpacings) * GameplayLayout.staffLineSpacing,
+                         minRelativeOffset + GameplayLayout.staffLineSpacing)
+        return needed
     }
 
     func sheetRowCount(measurePositions: [GameplayLayout.MeasurePosition]) -> Int {

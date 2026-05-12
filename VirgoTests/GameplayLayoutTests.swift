@@ -439,4 +439,41 @@ struct GameplayLayoutTests {
         let narrowWidth = GameplayLayout.measureWidth(for: .twoFour)
         #expect(wideWidth > narrowWidth)
     }
+
+    // MARK: - Above-staff spacing for row anchor computation
+
+    @Test("aboveLine9 is 5 staff-line spacings above line5")
+    func testAboveLine9SpacingAboveLine5() {
+        let line5Y = GameplayLayout.NotePosition.line5.yOffset
+        let aboveLine9Y = GameplayLayout.NotePosition.aboveLine9.yOffset
+        let spacing = GameplayLayout.staffLineSpacing
+        // aboveLine9.yOffset = -9 * spacing, line5.yOffset = -4 * spacing
+        // Difference: 5 * spacing
+        #expect(abs((line5Y - aboveLine9Y) - 5 * spacing) < 0.001)
+    }
+
+    @Test("aboveLine5 through aboveLine9 are each 1 spacing apart")
+    func testAboveStaffPositionsSpacing() {
+        let positions: [GameplayLayout.NotePosition] = [
+            .aboveLine9, .aboveLine8, .aboveLine7, .aboveLine6, .aboveLine5
+        ]
+        let spacing = GameplayLayout.staffLineSpacing
+        for i in 0..<(positions.count - 1) {
+            let gap = positions[i + 1].yOffset - positions[i].yOffset
+            #expect(abs(gap - spacing) < 0.001,
+                    "Expected \(positions[i + 1]) to be \(spacing) below \(positions[i])")
+        }
+    }
+
+    @Test("Default 3-spacing anchor above line5 is insufficient for aboveLine9 notes")
+    func testDefaultAnchorInsufficientForAboveLine9() {
+        let line5Y = GameplayLayout.NotePosition.line5.yOffset
+        let aboveLine9Y = GameplayLayout.NotePosition.aboveLine9.yOffset
+        let spacing = GameplayLayout.staffLineSpacing
+        // Old hardcoded value: 3 spacings above line5
+        let oldAnchorY = line5Y - 3 * spacing
+        // aboveLine9 sits above the old anchor — the old anchor would clip it
+        #expect(aboveLine9Y < oldAnchorY,
+                "aboveLine9 should be above the old 3-spacing anchor, confirming the old value was insufficient")
+    }
 }
