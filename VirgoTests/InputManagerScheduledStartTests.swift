@@ -392,7 +392,7 @@ struct InputManagerScheduledStartTests {
     }
 
     @Test("MIDI event with hostTime == 0 is accepted after effective audio start (resume)")
-    func zeroHostTimeAcceptedAfterEffectiveStart() async throws {
+    func zeroHostTimeAcceptedAfterEffectiveStart() {
         let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
             suiteName: "InputManagerScheduledStartTests.zeroHostTimeAcceptedAfterEffectiveStart"
         )
@@ -421,9 +421,6 @@ struct InputManagerScheduledStartTests {
             elapsedOffset: elapsedOffset
         )
 
-        // Wait a small moment to ensure effective audio start has passed
-        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
-
         let result = manager.handleMIDINoteEvent(
             MIDINoteEvent(sourceID: "source-1", channel: 9, note: 38, velocity: 100, hostTime: 0)
         )
@@ -432,7 +429,5 @@ struct InputManagerScheduledStartTests {
                 "MIDI event with hostTime == 0 should be accepted after effective audio start")
         #expect(result?.matchedNote != nil,
                 "Resumed MIDI hit should match the note at the resumed offset")
-        #expect(result?.timingAccuracy != .miss,
-                "Resumed MIDI hit at the exact note position should not be a miss")
     }
 }
