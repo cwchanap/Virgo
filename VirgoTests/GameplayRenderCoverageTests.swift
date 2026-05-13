@@ -181,14 +181,16 @@ struct GameplayRenderCoverageTests {
         }
     }
 
-    /// Verifies that a chart with notes mapped to .aboveLine9 via notation
-    /// position overrides produces a layout where the highest note head sits
-    /// well above line5, and the anchor column still renders successfully.
-    @Test("rowAnchorColumn with notation layout containing high above-staff notes")
-    func testRowAnchorColumn_withAboveLine9Override_renders() async throws {
+    /// Verifies that a chart with crash notes (default position .aboveLine5) produces
+    /// a layout where the crash note head sits above the staff, and the anchor column
+    /// still renders successfully.
+    ///
+    /// Note: Testing a true .aboveLine9 override is not feasible here because
+    /// `cacheNotationLayout()` bypasses UserDefaults in the test environment.
+    @Test("rowAnchorColumn with above-staff crash notes renders correctly")
+    func testRowAnchorColumn_withAboveStaffCrashNotes_renders() async throws {
         try await TestSetup.withTestSetup {
-            // Create a chart with crash notes (mapped to .aboveLine5 by default)
-            // then override to .aboveLine9 via DrumNotationSettings.
+            // Create a chart with crash notes (mapped to .aboveLine5 by default).
             let chart = GameplayViewModelCoverageTestSupport.makeChart(
                 noteCount: 2,
                 interval: .quarter,
@@ -198,8 +200,19 @@ struct GameplayRenderCoverageTests {
             chart.notes[0].noteType = .crash
 
             let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+            defer { vm.cleanup() }
             await vm.loadChartData()
             vm.setupGameplay()
+
+            // Verify the crash note head is above the highest staff line (line5).
+            // In screen coordinates, above-line5 means a smaller Y value.
+            let crashHead = try #require(
+                vm.cachedNotationLayout.noteHeads.first { $0.drumType == .crash },
+                "Layout should contain a crash note head"
+            )
+            let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: crashHead.row)
+            #expect(crashHead.position.y < line5Y,
+                    "Crash note head should be above line5 (default .aboveLine5 position)")
 
             let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
             let rowCount = gameplayView.sheetRowCount(

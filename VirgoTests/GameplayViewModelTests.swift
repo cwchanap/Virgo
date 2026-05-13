@@ -3077,7 +3077,11 @@ struct GameplayViewModelTests {
         // Write a non-default position override to a test UserDefaults that is
         // *not* the isolated one used by PracticeSettingsService.  This simulates
         // a developer having custom positions saved locally.
-        let externalDefaults = UserDefaults(suiteName: "virgo-test-override-isolation")!
+        let suiteName = "virgo-test-override-isolation"
+        let externalDefaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            externalDefaults.removePersistentDomain(forName: suiteName)
+        }
         let customPositions: [String: String] = [DrumType.snare.storageKey: GameplayLayout.NotePosition.aboveLine9.rawValue]
         let data = try JSONEncoder().encode(customPositions)
         externalDefaults.set(data, forKey: DrumNotationSettingsManager.settingsKey)
@@ -3092,21 +3096,22 @@ struct GameplayViewModelTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
-        // The layout must use the DEFAULT snare position (.line1), NOT the
+        // The layout must use the DEFAULT snare position (.line3), NOT the
         // persisted override (.aboveLine9).  In tests, TestEnvironment.isRunningTests
         // is true, so cacheNotationLayout bypasses UserDefaults entirely.
-        let snareHead = viewModel.cachedNotationLayout.noteHeads.first { head in
-            DrumType.from(noteType: .snare).map { dt in
-                head.position.y < GameplayLayout.StaffLinePosition.line5.absoluteY(for: head.row)
-            } ?? false
-        }
-        // Snare should be on line1 (below line5), not aboveLine9.
-        // Just verify noteHeads exist and the layout didn't crash.
         try #require(!viewModel.cachedNotationLayout.noteHeads.isEmpty,
                      "Notation layout should contain note heads for the snare note")
 
-        // Cleanup
-        externalDefaults.removePersistentDomain(forName: "virgo-test-override-isolation")
+        // Verify the snare is at its default position (line3), which is below line5
+        // in screen coordinates (larger Y value). The persisted .aboveLine9 override
+        // must have been ignored.
+        let snareHead = try #require(
+            viewModel.cachedNotationLayout.noteHeads.first { $0.drumType == .snare },
+            "Layout should contain a snare note head"
+        )
+        let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: snareHead.row)
+        #expect(snareHead.position.y > line5Y,
+                "Snare should be at default line3 (below line5), not at persisted aboveLine9")
     }
 
     /// Verifies the @Observable `currentRow` updates as the playhead crosses measures.
