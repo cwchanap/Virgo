@@ -225,7 +225,7 @@ struct NotationLayoutEngine {
             }
         )
 
-        return drafts.map { draft in
+        let offsetHeads = drafts.map { draft -> RenderedNoteHead in
             let noteHead = draft.noteHead
             guard collisionColumns.contains(draft.collisionColumn) else {
                 return noteHead
@@ -249,6 +249,65 @@ struct NotationLayoutEngine {
                 staffStep: noteHead.staffStep,
                 stemDirection: noteHead.stemDirection,
                 interval: noteHead.interval
+            )
+        }
+
+        return applyChordDirectionUnification(to: offsetHeads)
+    }
+
+    /// Unifies stemDirection for each same-voice chord (notes that share x, row,
+    /// measureIndex, and voice). Without this, a chord with notes whose individual
+    /// default directions disagree (e.g. crash on aboveLine5 → .down + snare on
+    /// line3 → .up, both upper voice) would be split into two stems on opposite
+    /// sides of the column. The chord adopts the direction of the notehead
+    /// farthest from the middle staff line, matching standard engraving practice.
+    private func applyChordDirectionUnification(
+        to noteHeads: [RenderedNoteHead]
+    ) -> [RenderedNoteHead] {
+        struct ChordKey: Hashable {
+            let x: Int
+            let row: Int
+            let measureIndex: Int
+            let voice: NotationVoice
+        }
+        let middleStaffStep = -4  // line3 is at yOffset -40 → staffStep -4
+        let groups = Dictionary(grouping: noteHeads) { head in
+            ChordKey(
+                x: Int((head.position.x * 1000).rounded()),
+                row: head.row,
+                measureIndex: head.measureIndex,
+                voice: head.voice
+            )
+        }
+        var unifiedDirectionByID: [UInt64: StemDirection] = [:]
+        for (_, chord) in groups where chord.count > 1 {
+            guard Set(chord.map(\.stemDirection)).count > 1 else { continue }
+            let farthest = chord.max {
+                abs($0.staffStep - middleStaffStep) < abs($1.staffStep - middleStaffStep)
+            }
+            guard let direction = farthest?.stemDirection else { continue }
+            for head in chord {
+                unifiedDirectionByID[head.id] = direction
+            }
+        }
+
+        return noteHeads.map { head in
+            guard let newDirection = unifiedDirectionByID[head.id],
+                  newDirection != head.stemDirection else {
+                return head
+            }
+            return RenderedNoteHead(
+                id: head.id,
+                sourceNoteID: head.sourceNoteID,
+                drumType: head.drumType,
+                voice: head.voice,
+                timePosition: head.timePosition,
+                measureIndex: head.measureIndex,
+                row: head.row,
+                position: head.position,
+                staffStep: head.staffStep,
+                stemDirection: newDirection,
+                interval: head.interval
             )
         }
     }
@@ -618,8 +677,14 @@ struct NotationLayoutEngine {
                     return nil
                 }
 
-                let start = beamPoint(for: firstHead, level: level, style: style)
-                let end = beamPoint(for: lastHead, level: level, style: style)
+                // Horizontal beam: choose the extremum stem-tip Y across the run
+                // so every stem stays in its proper direction. Stems of the
+                // notes farther from the beam will be lengthened to meet it.
+                let sharedY = sharedBeamY(for: levelHeads, level: level, style: style)
+                let startX = stemStart(for: firstHead, style: style).x
+                let endX = stemStart(for: lastHead, style: style).x
+                let start = CGPoint(x: startX, y: sharedY)
+                let end = CGPoint(x: endX, y: sharedY)
                 guard hasPositiveBeamSpan(from: firstHead, to: lastHead, start: start, end: end) else {
                     return nil
                 }
@@ -635,6 +700,25 @@ struct NotationLayoutEngine {
                     thickness: style.beamThickness
                 )
             }
+        }
+    }
+
+    private func sharedBeamY(
+        for noteHeads: [RenderedNoteHead],
+        level: Int,
+        style: NotationLayoutStyle
+    ) -> CGFloat {
+        let direction = noteHeads.first?.stemDirection ?? .up
+        let levelOffset = CGFloat(level) * style.beamLevelSpacing
+        let candidates = noteHeads.map { head -> CGFloat in
+            switch direction {
+            case .up: return head.position.y - style.stemLength - levelOffset
+            case .down: return head.position.y + style.stemLength + levelOffset
+            }
+        }
+        switch direction {
+        case .up: return candidates.min() ?? 0
+        case .down: return candidates.max() ?? 0
         }
     }
 

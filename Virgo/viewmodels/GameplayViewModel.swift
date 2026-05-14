@@ -111,6 +111,10 @@ final class GameplayViewModel {
     private(set) var cachedNotationNoteHeadIDsByBeatID: [UInt64: [UInt64]] = [:]
     /// Duration-based measure count shared with both legacy sheet layout and notation layout.
     private var cachedLayoutMeasureCount = 1
+    /// Available row width, fed from the sheet music view's GeometryProxy. Falls back
+    /// to the legacy 900pt cap so layouts built before any geometry is observed behave
+    /// the way they always have. Use `updateRowWidth(_:)` to set this from the view.
+    private var cachedLayoutRowWidth: CGFloat = GameplayLayout.maxRowWidth
     /// Preserves the legacy grouping key that produced each DrumBeat ID.
     private var cachedDrumBeatIDByNotePositionKey: [NotePositionKey: UInt64] = [:]
 
@@ -1540,6 +1544,17 @@ final class GameplayViewModel {
         cacheBeatPositions()
     }
 
+    /// Reports the sheet music view's currently available row width. If this changes
+    /// the notation layout is rebuilt so measures repack at the new width. Values at
+    /// or below the legacy `maxRowWidth` (900) are treated as the floor so behavior
+    /// on narrow windows matches the historical layout.
+    func updateRowWidth(_ width: CGFloat) {
+        let resolved = max(GameplayLayout.maxRowWidth, width)
+        guard abs(resolved - cachedLayoutRowWidth) > 0.5 else { return }
+        cachedLayoutRowWidth = resolved
+        cacheNotationLayout()
+    }
+
     func cacheNotationLayout() {
         guard let track = track else {
             cachedNotationLayout = .empty
@@ -1564,10 +1579,13 @@ final class GameplayViewModel {
             notePositionOverrides = DrumNotationSettingsManager.loadPositions()
         }
 
+        let resolvedRowWidth = max(GameplayLayout.maxRowWidth, cachedLayoutRowWidth)
+        let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: resolvedRowWidth)
         let input = NotationLayoutInput(
             notes: cachedNotes,
             timeSignature: track.timeSignature,
             minimumMeasureCount: cachedLayoutMeasureCount,
+            style: style,
             notePositionOverrides: notePositionOverrides
         )
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)

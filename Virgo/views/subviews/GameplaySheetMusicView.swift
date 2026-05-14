@@ -67,6 +67,10 @@ extension GameplayView {
                         proxy.scrollTo("row_\(viewModel.currentRow)", anchor: .top)
                     }
                 }
+                .onAppear { viewModel.updateRowWidth(geometry.size.width) }
+                .onChange(of: geometry.size.width) { _, newWidth in
+                    viewModel.updateRowWidth(newWidth)
+                }
             }
         } else {
             Color.black
