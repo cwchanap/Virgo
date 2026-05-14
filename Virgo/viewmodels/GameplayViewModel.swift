@@ -34,6 +34,12 @@ final class GameplayViewModel {
     /// Latest pending speed value waiting to be applied
     private var latestPendingSpeed: Double?
 
+    // MARK: - Row Width Resize Debounce
+    /// Minimum interval between row-width layout rebuilds
+    private let rowWidthDebounceInterval: TimeInterval = 0.1
+    /// Pending resize timer for trailing-edge debounce
+    private var rowWidthTimer: Timer?
+
     // MARK: - Cached SwiftData Relationships
     /// Cached song to avoid main thread blocking from relationship access
     var cachedSong: Song?
@@ -866,6 +872,10 @@ final class GameplayViewModel {
         speedChangeTimer = nil
         latestPendingSpeed = nil
 
+        // Cancel pending row-width resize to prevent layout rebuild after cleanup
+        rowWidthTimer?.invalidate()
+        rowWidthTimer = nil
+
         // Save speed setting for this chart (SC-06: Remember last-used speed per chart)
         // Guard: Only save if the chart's persisted speed was actually loaded.
         // Prevents race condition where quickly dismissing the view could save the
@@ -1549,10 +1559,36 @@ final class GameplayViewModel {
     /// or below the legacy `maxRowWidth` (900) are treated as the floor so behavior
     /// on narrow windows matches the historical layout.
     func updateRowWidth(_ width: CGFloat) {
+        guard width.isFinite, width > 0 else { return }
         let resolved = max(GameplayLayout.maxRowWidth, width)
         guard abs(resolved - cachedLayoutRowWidth) > 0.5 else { return }
-        cachedLayoutRowWidth = resolved
-        cacheNotationLayout()
+        scheduleRowWidthUpdate(resolved)
+    }
+
+    /// Trailing-edge debounce for row-width changes. During macOS live resize the
+    /// width changes every frame; rebuilding the full notation layout each time is
+    /// expensive. This mirrors the speed-change debounce pattern: coalesce rapid
+    /// width changes and rebuild layout once the user stops resizing.
+    private func scheduleRowWidthUpdate(_ width: CGFloat) {
+        rowWidthTimer?.invalidate()
+
+        // Apply immediately in tests for deterministic behavior
+        if TestEnvironment.isRunningTests {
+            cachedLayoutRowWidth = width
+            cacheNotationLayout()
+            return
+        }
+
+        rowWidthTimer = Timer.scheduledTimer(
+            withTimeInterval: rowWidthDebounceInterval,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.cachedLayoutRowWidth = width
+                self.cacheNotationLayout()
+            }
+        }
     }
 
     func cacheNotationLayout() {

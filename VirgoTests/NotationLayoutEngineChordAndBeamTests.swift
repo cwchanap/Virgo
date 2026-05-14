@@ -18,8 +18,17 @@ struct NotationLayoutEngineChordAndBeamTests {
         )
 
         #expect(!layout.beams.isEmpty, "Run of beamable lower-voice notes should form a beam")
+        let style = NotationLayoutStyle.gameplayDefault
         for beam in layout.beams {
             #expect(abs(beam.start.y - beam.end.y) < 0.001, "Beam should be horizontal")
+            // Verify the beam picks the correct extremum (min for up-stems)
+            let beamHeads = layout.noteHeads.filter { beam.noteHeadIDs.contains($0.id) }
+            for head in beamHeads where head.stemDirection == .up {
+                #expect(
+                    beam.start.y <= head.position.y - style.stemLength + 0.001,
+                    "Up-stem beam Y should be at or above note head minus stem length"
+                )
+            }
         }
     }
 
@@ -161,6 +170,35 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(layout.stems.count == 2)
         for stem in layout.stems {
             #expect(abs(stem.end.y - beam.start.y) < 0.001, "Stem must reach unified beam Y")
+        }
+    }
+
+    @Test("down-stem beams are horizontal and at the correct extremum")
+    func downStemBeamsAreHorizontalAtCorrectExtremum() throws {
+        // Crash drums are above line5 and default to .down stem direction.
+        // This tests the .down branch of sharedBeamY (candidates.max()).
+        let notes = [
+            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0.125),
+            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0.25),
+            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0.375)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let beam = try #require(layout.beams.first, "Down-stem crash eighths should form a beam")
+        #expect(abs(beam.start.y - beam.end.y) < 0.001, "Down-stem beam should be horizontal")
+
+        let style = NotationLayoutStyle.gameplayDefault
+        let beamHeads = layout.noteHeads.filter { beam.noteHeadIDs.contains($0.id) }
+        #expect(!beamHeads.isEmpty)
+        for head in beamHeads {
+            #expect(head.stemDirection == .down, "Crash notes should have .down stem direction")
+            #expect(
+                beam.start.y >= head.position.y + style.stemLength - 0.001,
+                "Down-stem beam Y should be at or below note head plus stem length"
+            )
         }
     }
 
