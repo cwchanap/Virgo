@@ -1,6 +1,7 @@
 import Testing
 import SwiftUI
 @testable import Virgo
+// swiftlint:disable file_length
 
 @Suite("Notation Layout Engine Tests")
 struct NotationLayoutEngineTests {
@@ -499,6 +500,35 @@ extension NotationLayoutEngineTests {
         let stem = try #require(layout.stems.first)
         #expect(stem.noteHeadIDs.count == 2, "Shared stem should reference both note head IDs")
         #expect(stem.direction == .up)
+    }
+
+    @Test("equidistant chord notes from middle line resolve deterministically")
+    func equidistantChordNotesResolveDeterministically() throws {
+        // Override crash to line4 (staffStep -6, distance 2, down-stem) and
+        // highTom to line2 (staffStep -2, distance 2, up-stem).  Both are upper
+        // voice, equidistant from middleStaffStep (-4), but different stem
+        // directions.  The tie-break must deterministically pick the higher
+        // staffStep (line2 → up-stem).
+        let notes = [
+            Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .highTom, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(
+                notes: notes,
+                timeSignature: .fourFour,
+                notePositionOverrides: [.crash: .line4, .tom1: .line2]
+            )
+        )
+
+        // Both notes should share a single stem with unified direction.
+        // Tie-break prefers higher staffStep (line2, step -2 > line4, step -6)
+        // so the chord unifies to up-stem.
+        #expect(layout.stems.count == 1, "Equidistant chord should share one stem")
+        let stem = try #require(layout.stems.first)
+        #expect(stem.direction == .up, "Tie-break should prefer higher staffStep (up)")
+        let heads = layout.noteHeads.sorted { $0.staffStep < $1.staffStep }
+        #expect(heads.allSatisfy { $0.stemDirection == .up })
     }
 
     @Test("different voice notes at same time get separate stems")

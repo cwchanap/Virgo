@@ -283,7 +283,11 @@ struct NotationLayoutEngine {
         for (_, chord) in groups where chord.count > 1 {
             guard Set(chord.map(\.stemDirection)).count > 1 else { continue }
             let farthest = chord.max {
-                abs($0.staffStep - middleStaffStep) < abs($1.staffStep - middleStaffStep)
+                let dist0 = abs($0.staffStep - middleStaffStep)
+                let dist1 = abs($1.staffStep - middleStaffStep)
+                if dist0 != dist1 { return dist0 < dist1 }
+                // Tie-break: prefer higher staffStep (closer to top of staff)
+                return $0.staffStep < $1.staffStep
             }
             guard let direction = farthest?.stemDirection else { continue }
             for head in chord {
