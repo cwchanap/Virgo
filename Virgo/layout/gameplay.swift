@@ -15,8 +15,13 @@ struct GameplayLayout {
 
     // MARK: - Multi-row Layout Constants
     static let maxRowWidth: CGFloat = 900 // Maximum width per row before wrapping
-    static let rowHeight: CGFloat = 200 // Height between rows
-    static let rowVerticalSpacing: CGFloat = 40 // Extra space between rows
+    // Row pitch = rowHeight + rowVerticalSpacing = 320. Sized to clear the worst-case
+    // vertical extent for the default drum vocabulary at up to 64th-note resolution:
+    // crash on aboveLine5 (30pt above line5, including symbol overhang) for the upper
+    // row, plus the staff height (80pt), plus kick on belowLine2 with stem .down and
+    // a four-level beam stack reaching 135pt below line1, plus a small clearance gap.
+    static let rowHeight: CGFloat = 280
+    static let rowVerticalSpacing: CGFloat = 40
 
     // MARK: - Base Y Position (lowest staff line for first row)
     static let baseStaffY: CGFloat = 150 + (staffHeight / 2) // 190 (center of staff area)

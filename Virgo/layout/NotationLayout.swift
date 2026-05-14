@@ -55,6 +55,24 @@ struct NotationLayoutStyle: Equatable {
         ledgerLineOverhang: 6,
         voiceCollisionOffset: 8
     )
+
+    func with(rowWidth newRowWidth: CGFloat) -> NotationLayoutStyle {
+        NotationLayoutStyle(
+            minimumNoteColumnGap: minimumNoteColumnGap,
+            minimumQuarterBeatGap: minimumQuarterBeatGap,
+            rowWidth: newRowWidth,
+            staffLineSpacing: staffLineSpacing,
+            noteHeadWidth: noteHeadWidth,
+            noteHeadHeight: noteHeadHeight,
+            stemLength: stemLength,
+            stemWidth: stemWidth,
+            stemXInset: stemXInset,
+            beamThickness: beamThickness,
+            beamLevelSpacing: beamLevelSpacing,
+            ledgerLineOverhang: ledgerLineOverhang,
+            voiceCollisionOffset: voiceCollisionOffset
+        )
+    }
 }
 
 enum NotationVoice: String, Hashable {
