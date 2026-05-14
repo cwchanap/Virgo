@@ -39,7 +39,7 @@ struct NotationLayoutEngine {
         let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, input: input)
         let beams = buildBeams(noteHeads: noteHeads, style: input.style)
         let stems = buildStems(noteHeads: noteHeads, beams: beams, style: input.style)
-        let flags = buildFlags(noteHeads: noteHeads, beams: beams, style: input.style)
+        let flags = buildFlags(noteHeads: noteHeads, beams: beams, stems: stems, style: input.style)
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
         let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
@@ -526,6 +526,7 @@ struct NotationLayoutEngine {
     private func buildFlags(
         noteHeads: [RenderedNoteHead],
         beams: [RenderedBeam],
+        stems: [RenderedStem],
         style: NotationLayoutStyle
     ) -> [RenderedFlag] {
         var coveredLevelsByNoteHead: [UInt64: Int] = [:]
@@ -533,6 +534,15 @@ struct NotationLayoutEngine {
             for noteHeadID in beam.noteHeadIDs {
                 let current = coveredLevelsByNoteHead[noteHeadID] ?? 0
                 coveredLevelsByNoteHead[noteHeadID] = max(current, beam.level + 1)
+            }
+        }
+
+        // Index stems by noteHeadID so flags can look up the beam-adjusted
+        // stem end Y instead of assuming a fixed stem length.
+        var stemEndByNoteHeadID: [UInt64: CGFloat] = [:]
+        for stem in stems {
+            for noteHeadID in stem.noteHeadIDs {
+                stemEndByNoteHeadID[noteHeadID] = stem.end.y
             }
         }
 
@@ -544,17 +554,27 @@ struct NotationLayoutEngine {
                 guard coveredLevels < totalFlags else { return [] }
 
                 let stemBottom = stemStart(for: noteHead, style: style)
-                let flagOrigin = CGPoint(
-                    x: stemBottom.x + GameplayLayout.flagXOffset,
-                    y: noteHead.stemDirection == .up
+
+                // Use beam-adjusted stem end when available; fall back to
+                // default stem length for unbeamed notes.
+                let stemEndY: CGFloat
+                if let adjustedEndY = stemEndByNoteHeadID[noteHead.id] {
+                    stemEndY = adjustedEndY
+                } else {
+                    stemEndY = noteHead.stemDirection == .up
                         ? stemBottom.y - style.stemLength
                         : stemBottom.y + style.stemLength
+                }
+
+                let flagOrigin = CGPoint(
+                    x: stemBottom.x + GameplayLayout.flagXOffset,
+                    y: stemEndY
                 )
 
                 return (coveredLevels..<totalFlags).map { flagIndex in
                     let yOffset = noteHead.stemDirection == .up
-                        ? CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
-                        : -CGFloat(flagIndex) * GameplayLayout.flagVerticalSpacing
+                        ? -CGFloat(flagIndex - coveredLevels + 1) * GameplayLayout.flagVerticalSpacing
+                        : CGFloat(flagIndex - coveredLevels + 1) * GameplayLayout.flagVerticalSpacing
 
                     return RenderedFlag(
                         id: "flag_\(noteHead.id)_\(flagIndex)",
@@ -681,10 +701,13 @@ struct NotationLayoutEngine {
                     return nil
                 }
 
-                // Horizontal beam: choose the extremum stem-tip Y across the run
-                // so every stem stays in its proper direction. Stems of the
-                // notes farther from the beam will be lengthened to meet it.
-                let sharedY = sharedBeamY(for: levelHeads, level: level, style: style)
+                // Horizontal beam: choose the extremum stem-tip Y across the
+                // full run (not just this level's subset) so all beam levels
+                // stack consistently outward from the same reference point.
+                // Using only levelHeads could place a secondary beam between
+                // the primary beam and the noteheads when the subset has
+                // different pitch extremes.
+                let sharedY = sharedBeamY(for: noteHeads, level: level, style: style)
                 let startX = stemStart(for: firstHead, style: style).x
                 let endX = stemStart(for: lastHead, style: style).x
                 let start = CGPoint(x: startX, y: sharedY)

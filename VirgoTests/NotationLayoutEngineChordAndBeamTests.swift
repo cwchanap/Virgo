@@ -46,8 +46,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(abs(beam.start.y - beam.end.y) < 0.001)
     }
 
-    @Test("default 900pt row width fits only one 8th-note measure per row (baseline)")
-    func defaultRowWidthFitsOneEighthNoteMeasurePerRow() {
+    @Test("four 8th-note measures at default row width span multiple rows (baseline)")
+    func fourEighthNoteMeasuresAtDefaultRowWidthSpanMultipleRows() {
         let notes = (1...4).flatMap { measure -> [Note] in
             (0..<8).map { offsetIndex in
                 Note(
@@ -199,6 +199,104 @@ struct NotationLayoutEngineChordAndBeamTests {
                 beam.start.y >= head.position.y + style.stemLength - 0.001,
                 "Down-stem beam Y should be at or below note head plus stem length"
             )
+        }
+    }
+
+    @Test("secondary beam levels stack consistently above the primary beam for up-stems")
+    func secondaryBeamStacksAbovePrimaryBeamForUpStems() throws {
+        // All snare (upper voice, up-stem) with mixed durations.
+        // 16th notes produce beams at levels 0 and 1; 8th notes only at level 0.
+        let notes = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.1875)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(
+            !layout.beams.isEmpty,
+            "Should produce beams — got \(layout.beams.count) beams: \(layout.beams.map { "L\($0.level)" })"
+        )
+
+        let level0Beams = layout.beams.filter { $0.level == 0 }
+        let level1Beams = layout.beams.filter { $0.level == 1 }
+        #expect(!level0Beams.isEmpty, "Should have at least one primary beam (level 0)")
+
+        // If level 1 beams exist, they must stack above (lower Y) the primary beam
+        if !level1Beams.isEmpty {
+            let level0Y = level0Beams[0].start.y
+            for beam in level1Beams {
+                #expect(
+                    beam.start.y < level0Y - 0.001,
+                    "Level 1 beam Y (\(beam.start.y)) must be above level 0 Y (\(level0Y)) for up-stems"
+                )
+            }
+        }
+    }
+
+    @Test("secondary beam levels stack consistently below the primary beam for down-stems")
+    func secondaryBeamStacksBelowPrimaryBeamForDownStems() throws {
+        // Crash notes default to down-stem direction.
+        let notes = [
+            Note(interval: .sixteenth, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .sixteenth, noteType: .crash, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let level0Beam = try #require(
+            layout.beams.first { $0.level == 0 },
+            "Should have a primary beam (level 0)"
+        )
+        let level1Beam = try #require(
+            layout.beams.first { $0.level == 1 },
+            "Should have a secondary beam (level 1)"
+        )
+
+        // For down-stems: higher Y = lower on screen; secondary beam must be below primary.
+        #expect(
+            level1Beam.start.y > level0Beam.start.y + 0.001,
+            "Secondary beam Y (\(level1Beam.start.y)) must be below primary beam Y (\(level0Beam.start.y)) for down-stems"
+        )
+    }
+
+    @Test("remaining flags for beamed notes originate at beam-adjusted stem end")
+    func remainingFlagsOriginateAtBeamAdjustedStemEnd() throws {
+        // 16th + 32nd + 16th — the single 32nd note can't form a level 2 beam
+        // segment (needs ≥ 2 consecutive 32nd notes). It gets covered at levels
+        // 0 and 1, but has 3 total flags → 1 remaining flag that must be positioned
+        // at the beam-adjusted stem end, not the default stem length.
+        let notes = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let flags = layout.flags
+        #expect(
+            !flags.isEmpty,
+            "Isolated 32nd note should have 1 remaining flag beyond beams — beams: \(layout.beams.map { "L\($0.level)(\($0.noteHeadIDs.count))" })"
+        )
+
+        for flag in flags {
+            let head = layout.noteHeads.first { $0.id == flag.noteHeadID }
+            let stem = layout.stems.first { $0.noteHeadIDs.contains(flag.noteHeadID) }
+            if let head = head, let stem = stem {
+                // The flag origin should be near the beam-adjusted stem end, not at
+                // the default stem-length position.
+                let distance = abs(flag.origin.y - stem.end.y)
+                #expect(
+                    distance < GameplayLayout.flagHeight * 5,
+                    "Flag at Y=\(flag.origin.y) should be near stem end Y=\(stem.end.y) (distance=\(distance))"
+                )
+            }
         }
     }
 
