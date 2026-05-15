@@ -322,6 +322,30 @@ struct NotationLayoutEngineChordAndBeamTests {
         )
     }
 
+    @Test("stemless note does not drive chord stem direction")
+    func stemlessNoteDoesNotDriveChordStemDirection() throws {
+        // Half-note crash (stemless) + eighth-note snare at the same time.
+        // Crash defaults to .down (aboveLine5), snare to .up (line3).
+        // The crash should NOT influence the snare's stem direction because
+        // half notes have no stem.  The snare should keep its .up direction.
+        let notes = [
+            Note(interval: .half, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let snareHead = try #require(
+            layout.noteHeads.first { $0.drumType == .snare },
+            "Should have a snare note head"
+        )
+        #expect(
+            snareHead.stemDirection == .up,
+            "Snare stem should stay .up despite co-occurring stemless crash (which defaults to .down)"
+        )
+    }
+
     @Test("unbeamed eighth note flag attaches at stem tip")
     func unbeamedEighthNoteFlagAttachesAtStemTip() throws {
         let note = Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
@@ -363,13 +387,18 @@ struct NotationLayoutEngineChordAndBeamTests {
         let distance0 = abs(flag0!.origin.y - stem.end.y)
         #expect(distance0 < 0.001, "Flag 0 should be at stem tip, distance=\(distance0)")
 
-        // Flag 1 should be offset by exactly one flagVerticalSpacing from stem tip.
+        // Flag 1 should be offset by exactly one flagVerticalSpacing from stem tip,
+        // toward the note head.  For up-stem notes the stem tip is above the head,
+        // so "toward the head" means positive-y (downward in SwiftUI).
         let spacing = GameplayLayout.flagVerticalSpacing
-        let expectedOffset = spacing
-        let actualOffset = abs(flag1!.origin.y - stem.end.y)
         #expect(
-            abs(actualOffset - expectedOffset) < 0.001,
-            "Flag 1 offset should be \(expectedOffset), got \(actualOffset)"
+            stem.direction == .up,
+            "Snare on line3 should have up-stem"
+        )
+        let signedOffset = flag1!.origin.y - stem.end.y
+        #expect(
+            abs(signedOffset - spacing) < 0.001,
+            "Flag 1 should be \(spacing) below stem tip (toward note head), got offset \(signedOffset)"
         )
     }
 
@@ -397,6 +426,36 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(
             distance >= GameplayLayout.flagVerticalSpacing - 0.001,
             "Beamed residual flag should be offset from stem end, distance=\(distance)"
+        )
+    }
+
+    @Test("down-stem multi-flag notes stack toward the note head")
+    func downStemMultiFlagStacksTowardNoteHead() throws {
+        // Isolated sixteenth crash: defaults to .down (aboveLine5).
+        // The stem tip is below the note head.  Extra flags should stack
+        // upward (negative-y in SwiftUI) toward the note head.
+        let note = Note(interval: .sixteenth, noteType: .crash, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.flags.count == 2, "Isolated 16th crash should have 2 flags")
+        let stem = try #require(layout.stems.first)
+        #expect(stem.direction == .down, "Crash should have down-stem")
+
+        let flag0 = try #require(layout.flags.first { $0.flagIndex == 0 })
+        let flag1 = try #require(layout.flags.first { $0.flagIndex == 1 })
+
+        // Flag 0 at stem tip.
+        let distance0 = abs(flag0.origin.y - stem.end.y)
+        #expect(distance0 < 0.001, "Flag 0 should be at stem tip")
+
+        // Flag 1 should be one spacing ABOVE the stem tip (toward note head).
+        let spacing = GameplayLayout.flagVerticalSpacing
+        let signedOffset = flag1.origin.y - stem.end.y
+        #expect(
+            abs(signedOffset + spacing) < 0.001,
+            "Flag 1 should be \(spacing) above stem tip (toward note head), got offset \(signedOffset)"
         )
     }
 

@@ -281,8 +281,12 @@ struct NotationLayoutEngine {
         }
         var unifiedDirectionByID: [UInt64: StemDirection] = [:]
         for (_, chord) in groups where chord.count > 1 {
-            guard Set(chord.map(\.stemDirection)).count > 1 else { continue }
-            let farthest = chord.max {
+            // Only consider heads that actually need stems when choosing direction.
+            // Stemless heads (full/half notes) would never render a stem, so they
+            // must not drive the unified direction for stemmed notes.
+            let stemmed = chord.filter { $0.interval.needsStem }
+            guard Set(stemmed.map(\.stemDirection)).count > 1 else { continue }
+            let farthest = stemmed.max {
                 let dist0 = abs($0.staffStep - middleStaffStep)
                 let dist1 = abs($1.staffStep - middleStaffStep)
                 if dist0 != dist1 { return dist0 < dist1 }
@@ -290,7 +294,8 @@ struct NotationLayoutEngine {
                 return $0.staffStep < $1.staffStep
             }
             guard let direction = farthest?.stemDirection else { continue }
-            for head in chord {
+            // Only apply unified direction to heads that actually render stems.
+            for head in stemmed {
                 unifiedDirectionByID[head.id] = direction
             }
         }
@@ -610,9 +615,11 @@ struct NotationLayoutEngine {
                     } else {
                         yMultiplier = CGFloat(flagLevel + 1)
                     }
+                    // Flags stack toward the note head: positive-y (downward) for
+                    // up-stem, negative-y (upward) for down-stem.
                     let yOffset = noteHead.stemDirection == .up
-                        ? -yMultiplier * GameplayLayout.flagVerticalSpacing
-                        : yMultiplier * GameplayLayout.flagVerticalSpacing
+                        ? yMultiplier * GameplayLayout.flagVerticalSpacing
+                        : -yMultiplier * GameplayLayout.flagVerticalSpacing
 
                     return RenderedFlag(
                         id: "flag_\(noteHead.id)_\(flagIndex)",
