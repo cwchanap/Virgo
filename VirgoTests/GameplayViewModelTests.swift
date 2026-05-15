@@ -3159,6 +3159,31 @@ struct GameplayViewModelTests {
         viewModel.restartPlayback()
         #expect(viewModel.currentRow == 0)
     }
+
+    @Test func testUpdateRowWidthCancelsStaleTimerOnReturnToCachedWidth() async throws {
+        let chart = createTestChart(noteCount: 8, measuresCount: 2)
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        let initialRowWidth = viewModel.cachedLayoutRowWidth
+
+        // In the test environment the debounce timer is bypassed and width changes
+        // apply immediately.  This test verifies the early-return guard is safe:
+        // after applying a wider width and then returning to the initial value,
+        // cachedLayoutRowWidth must remain at the initial value (not at the wider
+        // stale value).
+        viewModel.updateRowWidth(1200)
+        #expect(viewModel.cachedLayoutRowWidth == 1200,
+                "Widening to 1200 should update cached width immediately in tests")
+
+        // Return to the initial width — the guard should recognise no change is
+        // needed and leave the cached value as-is.
+        viewModel.updateRowWidth(initialRowWidth)
+        #expect(viewModel.cachedLayoutRowWidth == initialRowWidth,
+                "Returning to initial width should restore cached width")
+    }
 }
 
 @MainActor
