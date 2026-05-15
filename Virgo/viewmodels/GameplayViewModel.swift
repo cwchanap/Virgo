@@ -38,7 +38,7 @@ final class GameplayViewModel {
     /// Minimum interval between row-width layout rebuilds
     private let rowWidthDebounceInterval: TimeInterval = 0.1
     /// Pending resize timer for trailing-edge debounce
-    private var rowWidthTimer: Timer?
+    var rowWidthTimer: Timer?
 
     // MARK: - Cached SwiftData Relationships
     /// Cached song to avoid main thread blocking from relationship access
@@ -120,7 +120,7 @@ final class GameplayViewModel {
     /// Available row width, fed from the sheet music view's GeometryProxy. Falls back
     /// to the legacy 900pt cap so layouts built before any geometry is observed behave
     /// the way they always have. Use `updateRowWidth(_:)` to set this from the view.
-    private var cachedLayoutRowWidth: CGFloat = GameplayLayout.maxRowWidth
+    var cachedLayoutRowWidth: CGFloat = GameplayLayout.maxRowWidth
     /// Preserves the legacy grouping key that produced each DrumBeat ID.
     private var cachedDrumBeatIDByNotePositionKey: [NotePositionKey: UInt64] = [:]
 
@@ -1561,7 +1561,14 @@ final class GameplayViewModel {
     func updateRowWidth(_ width: CGFloat) {
         guard width.isFinite, width > 0 else { return }
         let resolved = max(GameplayLayout.maxRowWidth, width)
-        guard abs(resolved - cachedLayoutRowWidth) > 0.5 else { return }
+        guard abs(resolved - cachedLayoutRowWidth) > 0.5 else {
+            // Width returned to the cached value — cancel any pending stale
+            // timer so a previously-scheduled wider/narrower update doesn't
+            // fire after the window is already back at the current width.
+            rowWidthTimer?.invalidate()
+            rowWidthTimer = nil
+            return
+        }
         scheduleRowWidthUpdate(resolved)
     }
 

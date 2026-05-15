@@ -300,6 +300,106 @@ struct NotationLayoutEngineChordAndBeamTests {
         }
     }
 
+    @Test("same-voice chord with mixed directions does not produce duplicate flags")
+    func sameVoiceChordWithMixedDirectionsDoesNotDuplicateFlags() throws {
+        // crash + snare at the same time: crash defaults to .down, snare to .up.
+        // After unification they share one stem.  Both are eighth notes so each
+        // would normally get one flag — but only one flag should be emitted for
+        // the shared stem.
+        let notes = [
+            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        // Isolated unbeamed chord: no beams, so each note head would have flags.
+        #expect(layout.beams.isEmpty, "Isolated chord notes should not form beams")
+        #expect(
+            layout.flags.count == 1,
+            "Unified chord should emit exactly 1 flag for the shared stem, got \(layout.flags.count)"
+        )
+    }
+
+    @Test("unbeamed eighth note flag attaches at stem tip")
+    func unbeamedEighthNoteFlagAttachesAtStemTip() throws {
+        let note = Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        let flag = try #require(layout.flags.first, "Eighth note should produce exactly one flag")
+        let stem = try #require(layout.stems.first, "Eighth note should have a stem")
+
+        // The first flag of an unbeamed note should be at the stem tip (offset 0),
+        // not displaced by flagVerticalSpacing.
+        let distance = abs(flag.origin.y - stem.end.y)
+        #expect(
+            distance < 0.001,
+            "First flag (Y=\(flag.origin.y)) should be at stem tip (Y=\(stem.end.y)), distance=\(distance)"
+        )
+    }
+
+    @Test("unbeamed sixteenth note flags stack from stem tip")
+    func unbeamedSixteenthNoteFlagsStackFromStemTip() throws {
+        // Two consecutive sixteenth notes that are NOT beamed (different voices so
+        // they don't join into a beam run — use snare + bass on same offset but
+        // different voices).  Actually, same-voice consecutive 16ths DO beam, so
+        // use an isolated 16th note.
+        let note = Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.flags.count == 2, "Isolated 16th should have 2 flags")
+        let stem = try #require(layout.stems.first)
+
+        let flag0 = layout.flags.first { $0.flagIndex == 0 }
+        let flag1 = layout.flags.first { $0.flagIndex == 1 }
+        try #require(flag0 != nil && flag1 != nil)
+
+        // Flag 0 should be at the stem tip.
+        let distance0 = abs(flag0!.origin.y - stem.end.y)
+        #expect(distance0 < 0.001, "Flag 0 should be at stem tip, distance=\(distance0)")
+
+        // Flag 1 should be offset by exactly one flagVerticalSpacing from stem tip.
+        let spacing = GameplayLayout.flagVerticalSpacing
+        let expectedOffset = spacing
+        let actualOffset = abs(flag1!.origin.y - stem.end.y)
+        #expect(
+            abs(actualOffset - expectedOffset) < 0.001,
+            "Flag 1 offset should be \(expectedOffset), got \(actualOffset)"
+        )
+    }
+
+    @Test("beamed residual flag is offset from beam, not at stem tip")
+    func beamedResidualFlagIsOffsetFromBeam() throws {
+        // 16th + 32nd + 16th — the 32nd gets covered at levels 0 and 1 but has
+        // 3 total flags → 1 remaining flag that must be offset from the beam.
+        let notes = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let flag = try #require(layout.flags.first, "Should have 1 remaining flag")
+        let stem = try #require(
+            layout.stems.first { $0.noteHeadIDs.contains(flag.noteHeadID) }
+        )
+
+        // The beamed residual flag should NOT be at the stem tip — it must be
+        // offset by at least flagVerticalSpacing from the beam level.
+        let distance = abs(flag.origin.y - stem.end.y)
+        #expect(
+            distance >= GameplayLayout.flagVerticalSpacing - 0.001,
+            "Beamed residual flag should be offset from stem end, distance=\(distance)"
+        )
+    }
+
     private func rowContentMaxY(layout: NotationLayout, row: Int) -> CGFloat {
         let heads = layout.noteHeads.filter { $0.row == row }
         let headIDs = Set(heads.map(\.id))

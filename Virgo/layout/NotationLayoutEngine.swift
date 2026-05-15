@@ -546,8 +546,37 @@ struct NotationLayoutEngine {
             }
         }
 
-        return noteHeads
-            .filter { $0.interval.needsFlag }
+        // Deduplicate: chord notes sharing a stem (same x, row, measure, voice,
+        // direction) must emit flags only once from the representative head that
+        // needs the most flags.  Without this, unified mixed-direction chords
+        // would draw overlapping flags for every note head on the shared stem.
+        struct FlagGroupKey: Hashable {
+            let x: Int
+            let row: Int
+            let measureIndex: Int
+            let voice: NotationVoice
+            let direction: StemDirection
+        }
+        var flaggedHeads = noteHeads.filter { $0.interval.needsFlag }
+        // Pick one representative per stem group — the one with the most total flags.
+        var bestByKey: [FlagGroupKey: RenderedNoteHead] = [:]
+        for head in flaggedHeads {
+            let key = FlagGroupKey(
+                x: Int((head.position.x * 1000).rounded()),
+                row: head.row,
+                measureIndex: head.measureIndex,
+                voice: head.voice,
+                direction: head.stemDirection
+            )
+            let existing = bestByKey[key]
+            if existing == nil || head.interval.flagCount > existing!.interval.flagCount {
+                bestByKey[key] = head
+            }
+        }
+        let representatives = Set(bestByKey.values.map(\.id))
+
+        return flaggedHeads
+            .filter { representatives.contains($0.id) }
             .flatMap { noteHead -> [RenderedFlag] in
                 let coveredLevels = coveredLevelsByNoteHead[noteHead.id] ?? 0
                 let totalFlags = noteHead.interval.flagCount
@@ -572,9 +601,18 @@ struct NotationLayoutEngine {
                 )
 
                 return (coveredLevels..<totalFlags).map { flagIndex in
+                    let flagLevel = flagIndex - coveredLevels
+                    // Unbeamed notes: first flag at stem tip (offset 0).
+                    // Beamed notes: remaining flags offset from beam level.
+                    let yMultiplier: CGFloat
+                    if coveredLevels == 0 {
+                        yMultiplier = CGFloat(flagLevel)
+                    } else {
+                        yMultiplier = CGFloat(flagLevel + 1)
+                    }
                     let yOffset = noteHead.stemDirection == .up
-                        ? -CGFloat(flagIndex - coveredLevels + 1) * GameplayLayout.flagVerticalSpacing
-                        : CGFloat(flagIndex - coveredLevels + 1) * GameplayLayout.flagVerticalSpacing
+                        ? -yMultiplier * GameplayLayout.flagVerticalSpacing
+                        : yMultiplier * GameplayLayout.flagVerticalSpacing
 
                     return RenderedFlag(
                         id: "flag_\(noteHead.id)_\(flagIndex)",
