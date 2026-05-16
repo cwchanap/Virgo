@@ -3,6 +3,7 @@ import SwiftUI
 @testable import Virgo
 
 @Suite("Notation Layout Engine – Chord & Beam Tests")
+// swiftlint:disable:next type_body_length
 struct NotationLayoutEngineChordAndBeamTests {
 
     @Test("beams are horizontal across notes at different staff positions")

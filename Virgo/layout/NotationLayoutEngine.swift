@@ -911,22 +911,6 @@ struct NotationLayoutEngine {
         return CGPoint(x: noteHead.position.x + xOffset, y: noteHead.position.y)
     }
 
-    private func beamPoint(
-        for noteHead: RenderedNoteHead,
-        level: Int,
-        style: NotationLayoutStyle
-    ) -> CGPoint {
-        let start = stemStart(for: noteHead, style: style)
-        let yOffset = switch noteHead.stemDirection {
-        case .up:
-            -style.stemLength - CGFloat(level) * style.beamLevelSpacing
-        case .down:
-            style.stemLength + CGFloat(level) * style.beamLevelSpacing
-        }
-
-        return CGPoint(x: start.x, y: noteHead.position.y + yOffset)
-    }
-
     private func ledgerSteps(for staffStep: Int) -> [Int] {
         if staffStep < Self.topStaffStep {
             return stride(from: Self.topStaffStep - 2, through: staffStep, by: -2).map { $0 }
