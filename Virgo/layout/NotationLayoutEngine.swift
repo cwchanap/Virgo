@@ -252,7 +252,8 @@ struct NotationLayoutEngine {
             )
         }
 
-        return applyChordDirectionUnification(to: offsetHeads)
+        let unified = applyChordDirectionUnification(to: offsetHeads)
+        return applyBeamRunDirectionUnification(to: unified)
     }
 
     /// Unifies stemDirection for each same-voice chord (notes that share x, row,
@@ -316,6 +317,73 @@ struct NotationLayoutEngine {
                 position: head.position,
                 staffStep: head.staffStep,
                 stemDirection: newDirection,
+                interval: head.interval
+            )
+        }
+    }
+
+    /// Unifies stem direction across each beam run (same voice, measure, row)
+    /// so that chord direction unification does not split adjacent beamable
+    /// notes into separate groups. For example, a crash+snare chord at offset 0
+    /// whose direction is unified to `.down` followed by a solo snare at offset
+    /// 0.125 (natural `.up`) would otherwise be keyed into different beam
+    /// groups and render as isolated flags instead of a connected beam.
+    private func applyBeamRunDirectionUnification(
+        to noteHeads: [RenderedNoteHead]
+    ) -> [RenderedNoteHead] {
+        struct RunGroupKey: Hashable {
+            let measureIndex: Int
+            let row: Int
+            let voice: NotationVoice
+        }
+
+        let grouped = Dictionary(grouping: noteHeads) { head in
+            RunGroupKey(measureIndex: head.measureIndex, row: head.row, voice: head.voice)
+        }
+
+        var directionOverrides: [UInt64: StemDirection] = [:]
+        let middleStaffStep = -4
+
+        for (_, heads) in grouped {
+            let beamableHeads = heads.filter { $0.interval.needsFlag }
+            let runs = beamRuns(from: beamableHeads)
+
+            for run in runs where run.count >= 2 {
+                let directions = Set(run.map(\.stemDirection))
+                guard directions.count > 1 else { continue }
+
+                // Pick the direction of the note farthest from the middle
+                // staff line, matching the chord-unification heuristic.
+                let farthest = run.max {
+                    let dist0 = abs($0.staffStep - middleStaffStep)
+                    let dist1 = abs($1.staffStep - middleStaffStep)
+                    if dist0 != dist1 { return dist0 < dist1 }
+                    return $0.staffStep < $1.staffStep
+                }
+                guard let unifiedDir = farthest?.stemDirection else { continue }
+
+                for head in run {
+                    directionOverrides[head.id] = unifiedDir
+                }
+            }
+        }
+
+        return noteHeads.map { head in
+            guard let newDir = directionOverrides[head.id],
+                  newDir != head.stemDirection else {
+                return head
+            }
+            return RenderedNoteHead(
+                id: head.id,
+                sourceNoteID: head.sourceNoteID,
+                drumType: head.drumType,
+                voice: head.voice,
+                timePosition: head.timePosition,
+                measureIndex: head.measureIndex,
+                row: head.row,
+                position: head.position,
+                staffStep: head.staffStep,
+                stemDirection: newDir,
                 interval: head.interval
             )
         }
