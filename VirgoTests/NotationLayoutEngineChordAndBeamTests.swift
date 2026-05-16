@@ -156,6 +156,66 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(layout.stems.count == 2, "One stem per beat (each shared by both chord notes)")
     }
 
+    @Test("chord-unified direction does not split beam run with adjacent solo note")
+    func chordUnificationDoesNotSplitBeamRunWithAdjacentSoloNote() throws {
+        // Crash+snare chord at offset 0: crash is aboveLine5 (→ .down), snare is
+        // line3 (→ .up).  Chord unification forces the snare to .down.  A solo
+        // snare at offset 0.125 naturally stays .up.  Without beam-run unification
+        // these land in different BeamGroupKeys and render as isolated flags.
+        let notes = [
+            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(
+            layout.beams.count == 1,
+            "Chord + solo note in same voice should form a single beam, got \(layout.beams.count) beams"
+        )
+
+        // All upper-voice note heads should share the same stem direction.
+        let upperHeads = layout.noteHeads.filter { $0.voice == .upper }
+        let directions = Set(upperHeads.map(\.stemDirection))
+        #expect(
+            directions.count == 1,
+            "All upper-voice notes should have unified stem direction, got \(directions)"
+        )
+
+        // Verify the crash note head is part of the beam.
+        let beam = try #require(layout.beams.first)
+        let crashHead = try #require(layout.noteHeads.first { $0.drumType == .crash })
+        #expect(
+            beam.noteHeadIDs.contains(crashHead.id),
+            "Crash note head should be included in the beam"
+        )
+    }
+
+    @Test("beam-run unification prefers farthest note from middle staff line")
+    func beamRunUnificationPrefersFarthestFromMiddle() throws {
+        // Snare at offset 0 (natural .up) + solo snare at offset 0.125 (natural .up)
+        // + hi-hat at offset 0.25 (above staff, natural .down).  The hi-hat is
+        // farthest from middle staff line, so the whole run should unify to .down.
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let beam = try #require(layout.beams.first, "Should form a beam across all three notes")
+        let heads = layout.noteHeads.filter { beam.noteHeadIDs.contains($0.id) }
+        let directions = Set(heads.map(\.stemDirection))
+        #expect(
+            directions == [.down],
+            "All notes in beam run should be .down (hi-hat is farthest from middle), got \(directions)"
+        )
+    }
+
     @Test("stems extend to the shared beam Y when notes differ in pitch")
     func stemsExtendToSharedBeamY() throws {
         let notes = [
