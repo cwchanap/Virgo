@@ -21,5 +21,8 @@ ui-test-results-diagnostics
 ui-test-activity-log.json
 .worktrees/
 
+# macOS screenshots
+Screenshot*.png
+
 .claude/settings.local.json
 .xcodebuildmcp/
