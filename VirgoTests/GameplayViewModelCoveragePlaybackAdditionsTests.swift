@@ -367,4 +367,21 @@ struct GameplayViewModelPlaybackCoverageTests {
         #expect(elapsed == 0.0,
                 "calculateElapsedTime should clamp to zero before scheduled start, got \(elapsed ?? -1)")
     }
+
+    @Test("finite missed-note scan is ignored while playback is paused")
+    func testFiniteMissScanIgnoredWhilePaused() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        vm.startPlayback()
+        vm.pausePlayback()
+
+        #expect(vm.isPlaying == false)
+        vm.scanForMissedNotes(upToTimePosition: 10.0)
+
+        #expect(vm.scoreEngine.missCount == 0)
+        #expect(vm.liveScoreSnapshot.judgedNoteCount == 0)
+    }
 }
