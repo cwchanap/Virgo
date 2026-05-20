@@ -375,17 +375,19 @@ struct SwiftUIRenderingCoverageTests {
     @Test("SessionResultsView renders a verified new high score state")
     func testSessionResultsViewRenderingForNewRecord() async throws {
         try await TestSetup.withTestSetup {
+            let scoreEngine = makeScoreEngineForResults()
+            let expectedScore = scoreEngine.score.formatted()
             let view = SessionResultsView(
-                finalScore: 2450,
                 highScore: 2450,
                 isNewRecord: true,
-                scoreEngine: makeScoreEngineForResults(),
+                scoreSnapshot: LiveScoreSnapshot(scoreEngine: scoreEngine),
                 onPlayAgain: {},
                 onDone: {}
             )
 
-            SwiftUITestUtilities.assertViewWithEnvironment(
+            SwiftUITestUtilities.assertView(
                 view,
+                containsStrings: [expectedScore, "QUALITY"],
                 size: CGSize(width: 900, height: 900)
             )
         }
@@ -399,16 +401,16 @@ struct SwiftUIRenderingCoverageTests {
             scoreEngine.processHit(accuracy: .miss)
 
             let view = SessionResultsView(
-                finalScore: 80,
                 highScore: 900,
                 isNewRecord: false,
-                scoreEngine: scoreEngine,
+                scoreSnapshot: LiveScoreSnapshot(scoreEngine: scoreEngine),
                 onPlayAgain: {},
                 onDone: {}
             )
 
-            SwiftUITestUtilities.assertViewWithEnvironment(
+            SwiftUITestUtilities.assertView(
                 view,
+                containsStrings: ["QUALITY", "40%"],
                 size: CGSize(width: 900, height: 900)
             )
         }
