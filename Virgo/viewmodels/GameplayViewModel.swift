@@ -1832,6 +1832,8 @@ final class GameplayViewModel {
 
     /// Scan cachedNotes for notes that scrolled past without any hit attempt.
     func scanForMissedNotes(upToTimePosition playheadPosition: Double) {
+        guard isPlaying || playheadPosition.isInfinite else { return }
+
         // Offset the miss boundary by the good-tier late tolerance so that late hits
         // arriving within ±100 ms can still score before we auto-mark them missed.
         let bpm = effectiveBPM()
