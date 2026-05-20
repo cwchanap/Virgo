@@ -8,17 +8,16 @@
 import SwiftUI
 
 struct SessionResultsView: View {
-    let finalScore: Int
     let highScore: Int
     /// Whether the save service confirmed this score as a verified new record.
     /// Derived from `HighScoreService.saveIfHighScore` return value rather than
     /// a local score comparison, so the badge only appears when the write succeeded.
     let isNewRecord: Bool
-    let scoreEngine: ScoreEngine
+    let scoreSnapshot: LiveScoreSnapshot
     let onPlayAgain: () -> Void
     let onDone: () -> Void
 
-    private var isNewHighScore: Bool { finalScore > 0 && isNewRecord }
+    private var isNewHighScore: Bool { scoreSnapshot.score > 0 && isNewRecord }
 
     var body: some View {
         NavigationStack {
@@ -40,10 +39,10 @@ struct SessionResultsView: View {
 
                         // Accuracy ring + Score
                         HStack(spacing: 32) {
-                            AccuracyCircleView(percentage: scoreEngine.accuracyPercentage)
+                            AccuracyCircleView(percentage: scoreSnapshot.hitAccuracy)
 
                             VStack(spacing: 4) {
-                                Text("\(finalScore)")
+                                Text("\(scoreSnapshot.score)")
                                     .font(.system(size: 44, weight: .bold, design: .monospaced))
                                     .foregroundColor(.white)
                                 Text("SCORE")
@@ -54,10 +53,10 @@ struct SessionResultsView: View {
 
                         // Hit breakdown chart
                         AccuracyBreakdownChart(
-                            perfectCount: scoreEngine.perfectCount,
-                            greatCount: scoreEngine.greatCount,
-                            goodCount: scoreEngine.goodCount,
-                            missCount: scoreEngine.missCount
+                            perfectCount: scoreSnapshot.perfectCount,
+                            greatCount: scoreSnapshot.greatCount,
+                            goodCount: scoreSnapshot.goodCount,
+                            missCount: scoreSnapshot.missCount
                         )
                         .padding(.horizontal)
                         .padding(.vertical, 8)
@@ -67,10 +66,10 @@ struct SessionResultsView: View {
 
                         // Timing deviation
                         TimingDeviationView(
-                            averageDeviation: scoreEngine.averageTimingDeviation,
-                            earlyPercentage: scoreEngine.earlyPercentage,
-                            latePercentage: scoreEngine.latePercentage,
-                            tendency: scoreEngine.timingTendency
+                            averageDeviation: scoreSnapshot.averageTimingDeviation,
+                            earlyPercentage: scoreSnapshot.earlyPercentage,
+                            latePercentage: scoreSnapshot.latePercentage,
+                            tendency: scoreSnapshot.timingTendency
                         )
                         .padding(.horizontal)
                         .padding(.vertical, 8)
@@ -119,7 +118,8 @@ struct SessionResultsView: View {
 
     private var statsGrid: some View {
         HStack(spacing: 0) {
-            statCell(label: "MAX COMBO", value: "\(scoreEngine.maxCombo)x", color: .orange)
+            statCell(label: "MAX COMBO", value: "\(scoreSnapshot.maxCombo)x", color: .orange)
+            statCell(label: "QUALITY", value: scoreSnapshot.timingQualityPercentText, color: .cyan)
             statCell(label: "BEST SCORE", value: "\(highScore)", color: .purple)
         }
         .padding(.horizontal)
@@ -150,10 +150,9 @@ struct SessionResultsView: View {
     for _ in 0..<3 { engine.processHit(accuracy: .miss) }
 
     return SessionResultsView(
-        finalScore: 2450,
         highScore: 2450,
         isNewRecord: true,
-        scoreEngine: engine,
+        scoreSnapshot: LiveScoreSnapshot(scoreEngine: engine),
         onPlayAgain: {},
         onDone: {}
     )

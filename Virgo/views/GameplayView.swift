@@ -113,10 +113,9 @@ struct GameplayView: View {
         )) {
             if let vm = viewModel {
                 SessionResultsView(
-                    finalScore: vm.sessionFinalScore,
                     highScore: vm.highScoreService.highScore(for: chart.persistentModelID),
                     isNewRecord: vm.sessionIsNewRecord,
-                    scoreEngine: vm.sessionScoreEngine,
+                    scoreSnapshot: vm.sessionScoreSnapshot,
                     onPlayAgain: {
                         vm.isShowingSessionResults = false
                         vm.restartPlayback()
