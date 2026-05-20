@@ -384,4 +384,21 @@ struct GameplayViewModelPlaybackCoverageTests {
         #expect(vm.scoreEngine.missCount == 0)
         #expect(vm.liveScoreSnapshot.judgedNoteCount == 0)
     }
+
+    @Test("infinite missed-note scan flushes remaining misses while paused")
+    func testInfiniteMissScanFlushesRemainingMissesWhilePaused() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        vm.startPlayback()
+        vm.pausePlayback()
+
+        #expect(vm.isPlaying == false)
+        vm.scanForMissedNotes(upToTimePosition: .infinity)
+
+        #expect(vm.scoreEngine.missCount == 2)
+        #expect(vm.liveScoreSnapshot.judgedNoteCount == 2)
+    }
 }

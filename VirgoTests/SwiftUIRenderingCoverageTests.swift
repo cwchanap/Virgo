@@ -538,6 +538,47 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
+    @Test("GameplayHeaderView uses compact score layout at iPhone portrait width")
+    func testGameplayHeaderViewUsesCompactScoreLayoutAtPortraitWidth() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            vm.isPlaying = true
+            let note = try #require(vm.cachedNotes.first)
+            let result = NoteMatchResult(
+                hitInput: InputHit(drumType: .kick, velocity: 1.0, timestamp: Date()),
+                matchedNote: note,
+                timingAccuracy: .perfect,
+                measureNumber: note.measureNumber,
+                measureOffset: note.measureOffset,
+                timingError: 0.0
+            )
+            vm.recordHit(result: result)
+
+            let track = try #require(vm.track)
+            let view = GameplayHeaderView(
+                track: track,
+                isPlaying: .constant(true),
+                viewModel: vm,
+                onDismiss: {},
+                onPlayPause: {},
+                onRestart: {}
+            )
+            .background(Color.black)
+
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 390, height: 160)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
+
+            for string in ["SCORE", "ACC", "QLTY", "100%", "1x"] {
+                #expect(texts.contains(string), "Expected compact header texts to include '\(string)', got \(texts)")
+            }
+
+            vm.cleanup()
+        }
+    }
+
     private func makeDownloadedSong(title: String) -> Song {
         let notes = [
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
