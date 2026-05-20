@@ -500,6 +500,42 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
+    @Test("GameplayHeaderView renders score snapshot stats")
+    func testGameplayHeaderViewRendersScoreSnapshotStats() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            vm.isPlaying = true
+            let note = try #require(vm.cachedNotes.first)
+            let result = NoteMatchResult(
+                hitInput: InputHit(drumType: .kick, velocity: 1.0, timestamp: Date()),
+                matchedNote: note,
+                timingAccuracy: .perfect,
+                measureNumber: note.measureNumber,
+                measureOffset: note.measureOffset,
+                timingError: 0.0
+            )
+            vm.recordHit(result: result)
+
+            let track = try #require(vm.track)
+            let view = GameplayHeaderView(
+                track: track,
+                isPlaying: .constant(true),
+                viewModel: vm,
+                onDismiss: {},
+                onPlayPause: {},
+                onRestart: {}
+            )
+            .background(Color.black)
+
+            SwiftUITestUtilities.assertView(
+                view,
+                containsStrings: ["SCORE", "ACC", "QLTY", "100%", "1x"],
+                size: CGSize(width: 1280, height: 130)
+            )
+            vm.cleanup()
+        }
+    }
+
     private func makeDownloadedSong(title: String) -> Song {
         let notes = [
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),

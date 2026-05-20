@@ -48,21 +48,14 @@ struct GameplayHeaderView: View {
 
             Spacer()
 
-            // Score and combo display — reading from viewModel here keeps the
-            // observation dependency scoped to this subview only.
-            VStack(alignment: .trailing, spacing: 2) {
-                let score = viewModel?.scoreEngine.score ?? 0
-                Text("\(score)")
-                    .font(.system(.body, design: .monospaced).weight(.semibold))
-                    .foregroundColor(.white)
-                    .accessibilityLabel("Score: \(score)")
-
-                ComboCounterView(
-                    combo: viewModel?.scoreEngine.combo ?? 0,
-                    showMilestone: viewModel?.showMilestoneAnimation ?? false,
-                    showBreak: viewModel?.showComboBreakFeedback ?? false
-                )
-            }
+            // Score display reads a snapshot here so score observation stays scoped
+            // to this compact HUD instead of the full gameplay view tree.
+            let snapshot = viewModel?.liveScoreSnapshot ?? .empty
+            GameplayScoreHUDView(
+                snapshot: snapshot,
+                showMilestone: viewModel?.showMilestoneAnimation ?? false,
+                showBreak: viewModel?.showComboBreakFeedback ?? false
+            )
 
             HStack(spacing: 12) {
                 Button(action: onRestart) {
@@ -85,6 +78,54 @@ struct GameplayHeaderView: View {
         }
         .padding(.vertical, 8)
         .background(Color.black.opacity(0.8))
+    }
+}
+
+// MARK: - Score HUD
+
+private struct GameplayScoreHUDView: View {
+    let snapshot: LiveScoreSnapshot
+    let showMilestone: Bool
+    let showBreak: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ScoreStatCell(label: "SCORE", value: "\(snapshot.score)", color: .white, minWidth: 76)
+            ScoreStatCell(label: "ACC", value: snapshot.hitAccuracyPercentText, color: .green, minWidth: 54)
+            ScoreStatCell(label: "QLTY", value: snapshot.timingQualityPercentText, color: .cyan, minWidth: 54)
+            ComboCounterView(
+                combo: snapshot.currentCombo,
+                showMilestone: showMilestone,
+                showBreak: showBreak
+            )
+            .frame(minWidth: 44, alignment: .trailing)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "Score \(snapshot.score), accuracy \(snapshot.hitAccuracyPercentText), " +
+            "quality \(snapshot.timingQualityPercentText), combo \(snapshot.currentCombo)"
+        )
+    }
+}
+
+private struct ScoreStatCell: View {
+    let label: String
+    let value: String
+    let color: Color
+    let minWidth: CGFloat
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(value)
+                .font(.system(.body, design: .monospaced).weight(.semibold))
+                .foregroundColor(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(label)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundColor(.gray)
+        }
+        .frame(minWidth: minWidth, alignment: .trailing)
     }
 }
 
