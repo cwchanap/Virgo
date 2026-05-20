@@ -10,6 +10,60 @@ import Foundation
 @Suite("GameplayViewModelPlaybackCoverageTests", .serialized)
 @MainActor
 struct GameplayViewModelPlaybackCoverageTests {
+    @Test("liveScoreSnapshot reflects current score engine state")
+    func testLiveScoreSnapshotReflectsCurrentScore() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        vm.isPlaying = true
+        let note = try #require(vm.cachedNotes.first)
+        let result = NoteMatchResult(
+            hitInput: InputHit(drumType: .kick, velocity: 1.0, timestamp: Date()),
+            matchedNote: note,
+            timingAccuracy: .perfect,
+            measureNumber: note.measureNumber,
+            measureOffset: note.measureOffset,
+            timingError: 0.0
+        )
+
+        vm.recordHit(result: result)
+
+        #expect(vm.liveScoreSnapshot.score == 100)
+        #expect(vm.liveScoreSnapshot.currentCombo == 1)
+        #expect(vm.liveScoreSnapshot.hitAccuracy == 100.0)
+        #expect(vm.liveScoreSnapshot.timingQuality == 100.0)
+    }
+
+    @Test("handlePlaybackCompletion captures final score snapshot before reset")
+    func testHandlePlaybackCompletionCapturesFinalScoreSnapshot() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+        vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        vm.startPlayback()
+        let note = try #require(vm.cachedNotes.first)
+        let result = NoteMatchResult(
+            hitInput: InputHit(drumType: .kick, velocity: 1.0, timestamp: Date()),
+            matchedNote: note,
+            timingAccuracy: .great,
+            measureNumber: note.measureNumber,
+            measureOffset: note.measureOffset,
+            timingError: 20.0
+        )
+        vm.recordHit(result: result)
+
+        vm.handlePlaybackCompletion()
+
+        #expect(vm.liveScoreSnapshot.score == 0)
+        #expect(vm.sessionScoreSnapshot.score == 80)
+        #expect(vm.sessionScoreSnapshot.currentCombo == 1)
+        #expect(vm.sessionScoreSnapshot.timingQuality == 80.0)
+        #expect(vm.sessionScoreSnapshot.averageTimingDeviation == 20.0)
+    }
+
     // MARK: - handlePlaybackCompletion session-result state (lines 1041–1049)
 
     @Test("handlePlaybackCompletion sets isShowingSessionResults and captures session score snapshot")

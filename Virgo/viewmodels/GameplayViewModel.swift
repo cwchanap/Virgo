@@ -168,8 +168,13 @@ final class GameplayViewModel {
     // MARK: - Scoring State
     /// All combo and scoring state
     var scoreEngine = ScoreEngine()
+    var liveScoreSnapshot: LiveScoreSnapshot {
+        LiveScoreSnapshot(scoreEngine: scoreEngine)
+    }
     /// Snapshot of scoreEngine captured at session end before resetScoring clears it
     var sessionScoreEngine = ScoreEngine()
+    /// Snapshot captured at session end before resetScoring clears live state.
+    var sessionScoreSnapshot = LiveScoreSnapshot.empty
     /// Final score captured at session end (survives resetScoring)
     var sessionFinalScore: Int = 0
     /// Whether the verified save returned a new high-score record (set by handlePlaybackCompletion).
@@ -1463,6 +1468,7 @@ final class GameplayViewModel {
         playbackTimer = nil
         // Capture final score and snapshot scoreEngine before reset clears them
         let finalScore = scoreEngine.score
+        let finalSnapshot = LiveScoreSnapshot(scoreEngine: scoreEngine)
         let isNewRecord = highScoreService.saveIfHighScore(finalScore, for: chart.persistentModelID)
         sessionScoreEngine = scoreEngine
         resetPlaybackState()
@@ -1471,6 +1477,7 @@ final class GameplayViewModel {
         bgmPlayer?.stop()
         // Set session result after reset (resetScoring zeroes sessionFinalScore)
         sessionFinalScore = finalScore
+        sessionScoreSnapshot = finalSnapshot
         sessionIsNewRecord = isNewRecord
         isShowingSessionResults = true
         Logger.audioPlayback(
@@ -1873,6 +1880,7 @@ final class GameplayViewModel {
     func resetScoring() {
         scoreEngine.reset()
         sessionFinalScore = 0
+        sessionScoreSnapshot = .empty
         sessionIsNewRecord = false
         isShowingSessionResults = false
         showMilestoneAnimation = false
