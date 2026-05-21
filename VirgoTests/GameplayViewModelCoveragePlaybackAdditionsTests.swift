@@ -92,7 +92,7 @@ struct GameplayViewModelPlaybackCoverageTests {
         vm.handlePlaybackCompletion()
 
         #expect(vm.isShowingSessionResults == true)
-        #expect(vm.sessionFinalScore == scoreAtCompletion)
+        #expect(vm.sessionScoreSnapshot.score == scoreAtCompletion)
         #expect(vm.sessionScoreEngine.score == scoreAtCompletion)
         #expect(vm.scoreEngine.score == 0)
     }

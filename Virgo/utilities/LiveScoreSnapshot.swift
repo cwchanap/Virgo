@@ -65,6 +65,8 @@ struct LiveScoreSnapshot: Equatable {
         return weightedHits / Double(judgedNotes) * 100.0
     }
 
+    /// Rounds a percentage for display, guarding against floating-point boundary cases
+    /// (e.g., 57.4999999 → 58). Two-stage: micro-round to 6 decimals, then round to integer.
     private static func percentText(_ value: Double) -> String {
         let normalizedValue = (value * 1_000_000).rounded() / 1_000_000
         return "\(Int(normalizedValue.rounded()))%"
