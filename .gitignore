@@ -28,3 +28,4 @@ Screenshot*.png
 .superpowers/
 .devin/config.local.json
 .xcodebuildmcp/
+@.superpowers/
