@@ -171,12 +171,12 @@ final class GameplayViewModel {
     var liveScoreSnapshot: LiveScoreSnapshot {
         LiveScoreSnapshot(scoreEngine: scoreEngine)
     }
-    /// Snapshot of scoreEngine captured at session end before resetScoring clears it
+    /// Snapshot of scoreEngine captured at session end before resetScoring clears it.
+    /// Retained for test observability of raw timing deviations (not exposed in LiveScoreSnapshot).
+    /// Production code reads sessionScoreSnapshot; remove once snapshot exposes deviation detail.
     var sessionScoreEngine = ScoreEngine()
     /// Snapshot captured at session end before resetScoring clears live state.
     var sessionScoreSnapshot = LiveScoreSnapshot.empty
-    /// Final score captured at session end (survives resetScoring)
-    var sessionFinalScore: Int = 0
     /// Whether the verified save returned a new high-score record (set by handlePlaybackCompletion).
     /// Passed directly to SessionResultsView so the NEW HIGH SCORE badge reflects
     /// whether the write actually succeeded, not just a local score comparison.
@@ -1475,8 +1475,7 @@ final class GameplayViewModel {
         playbackStartTime = nil
         pausedElapsedTime = 0.0
         bgmPlayer?.stop()
-        // Set session result after reset (resetScoring zeroes sessionFinalScore)
-        sessionFinalScore = finalScore
+        // Set session result after reset
         sessionScoreSnapshot = finalSnapshot
         sessionIsNewRecord = isNewRecord
         isShowingSessionResults = true
@@ -1881,7 +1880,6 @@ final class GameplayViewModel {
     /// Resets all scoring state. Called by resetPlaybackState() on restart and completion.
     func resetScoring() {
         scoreEngine.reset()
-        sessionFinalScore = 0
         sessionScoreSnapshot = .empty
         sessionIsNewRecord = false
         isShowingSessionResults = false

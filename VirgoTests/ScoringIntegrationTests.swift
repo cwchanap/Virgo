@@ -68,7 +68,7 @@ struct ScoringIntegrationTests {
         #expect(vm.scoreEngine.score == 0)
         #expect(vm.scoreEngine.combo == 0)
         #expect(vm.isShowingSessionResults == false)
-        #expect(vm.sessionFinalScore == 0)
+        #expect(vm.sessionScoreSnapshot.score == 0)
     }
 
     // MARK: - recordHit
@@ -199,14 +199,14 @@ struct ScoringIntegrationTests {
 
     // MARK: - Session Results
 
-    @Test("handlePlaybackCompletion sets sessionFinalScore before reset")
+    @Test("handlePlaybackCompletion captures score in sessionScoreSnapshot before reset")
     func testHandlePlaybackCompletionPreservesScore() {
         let vm = makeViewModel()
         vm.isPlaying = true
         vm.recordHit(result: makePerfectResult())
         let expectedScore = vm.scoreEngine.score
         vm.handlePlaybackCompletion()
-        #expect(vm.sessionFinalScore == expectedScore)
+        #expect(vm.sessionScoreSnapshot.score == expectedScore)
         #expect(vm.isShowingSessionResults == true)
     }
 
@@ -216,7 +216,7 @@ struct ScoringIntegrationTests {
         vm.isPlaying = true
         vm.recordHit(result: makePerfectResult())
         vm.handlePlaybackCompletion()
-        #expect(vm.scoreEngine.score == 0) // reset, sessionFinalScore holds the final
+        #expect(vm.scoreEngine.score == 0) // reset, snapshot holds the final score
     }
 
     // MARK: - Timing Error Passthrough
