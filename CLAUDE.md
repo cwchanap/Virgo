@@ -51,6 +51,17 @@ swiftlint lint --fix   # Auto-fix
 ./scripts/setup-git-hooks.sh   # Installs SwiftLint pre-commit hook
 ```
 
+`AGENTS.md` is a symlink to `CLAUDE.md` — edit `CLAUDE.md` only.
+
+### SwiftLint Size Limits (frequent refactor blockers)
+- Line: 120 (warn) / 150 (error)
+- Function body: 50 / 100 lines
+- Type body: 300 / 600 lines
+- File: 600 / 1000 lines
+
+### CI
+GitHub Actions: `.github/workflows/ci.yml` (build + unit tests, macOS), `ui-tests.yml` (UI tests).
+
 ## Architecture
 
 ### Data Model (SwiftData)
@@ -156,8 +167,11 @@ Virgo/
 ## FastAPI Backend Server
 
 ```bash
-# Start local server (from repo root)
-cd server && uvicorn main:app --host 127.0.0.1 --port 8001 --reload
+# Initial setup (uses uv, not pip)
+cd server && uv sync
+
+# Start local server
+cd server && uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 - Local dev: `http://127.0.0.1:8001` (configurable via UserDefaults)
