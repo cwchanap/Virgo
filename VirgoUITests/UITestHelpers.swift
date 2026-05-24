@@ -118,6 +118,63 @@ extension XCTestCase {
         return elements.first(where: { $0.exists })
     }
 
+    func textContainsPredicate(_ text: String) -> NSPredicate {
+        NSPredicate(
+            format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
+            text,
+            text
+        )
+    }
+
+    @discardableResult
+    func requireStaticText(
+        containing text: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let staticText = app.staticTexts.matching(textContainsPredicate(text)).firstMatch
+        if let element = waitForFirstExisting([staticText], timeout: timeout) {
+            return element
+        }
+
+        XCTFail("Expected static text containing \(text) to exist", file: file, line: line)
+        throw UITestFailure.elementNotFound(text)
+    }
+
+    func waitForStaticText(
+        containing text: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) -> Bool {
+        app.staticTexts.matching(textContainsPredicate(text)).firstMatch.waitForExistence(timeout: timeout)
+    }
+
+    func controlIsSelected(_ element: XCUIElement) -> Bool {
+        if element.isSelected {
+            return true
+        }
+
+        if let value = element.value as? String {
+            return value == "1" || value.localizedCaseInsensitiveContains("selected")
+        }
+
+        if let value = element.value as? NSNumber {
+            return value.intValue == 1
+        }
+
+        return false
+    }
+
+    func elementText(_ element: XCUIElement) -> String {
+        if let value = element.value as? String, !value.isEmpty {
+            return value
+        }
+
+        return element.label
+    }
+
     @discardableResult
     func requireControl(
         named name: String,
@@ -205,12 +262,7 @@ extension XCTestCase {
             searchField.clearAndEnterText(songTitle)
         }
 
-        XCTAssertTrue(
-            app.staticTexts[songTitle].waitForExistence(timeout: timeout),
-            "\(songTitle) should be visible before opening gameplay",
-            file: file,
-            line: line
-        )
+        try requireStaticText(containing: songTitle, in: app, timeout: timeout, file: file, line: line)
 
         let chartButton = try requireButton(containing: "charts", in: app, timeout: timeout, file: file, line: line)
         chartButton.tap()
@@ -222,29 +274,15 @@ extension XCTestCase {
             line: line
         )
 
-        let difficultyPredicate = NSPredicate(
-            format: "label CONTAINS[c] %@ AND label CONTAINS[c] 'Level'",
-            difficulty
-        )
-        let difficultyButton = app.buttons.matching(difficultyPredicate).firstMatch
-        guard let difficultyElement = waitForFirstExisting([difficultyButton], timeout: timeout) else {
+        let difficultyElement = app.buttons["chartDifficulty\(difficulty)"]
+        guard waitForFirstExisting([difficultyElement], timeout: timeout) != nil else {
             XCTFail("Expected \(difficulty) difficulty button to exist", file: file, line: line)
             throw UITestFailure.elementNotFound(difficulty)
         }
         difficultyElement.tap()
 
-        XCTAssertTrue(
-            app.staticTexts[songTitle].waitForExistence(timeout: timeout),
-            "\(songTitle) should be visible in gameplay",
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(
-            app.staticTexts[artist].waitForExistence(timeout: timeout),
-            "\(artist) should be visible in gameplay",
-            file: file,
-            line: line
-        )
+        try requireStaticText(containing: songTitle, in: app, timeout: timeout, file: file, line: line)
+        try requireStaticText(containing: artist, in: app, timeout: timeout, file: file, line: line)
         try requireControl(named: "Play", in: app, timeout: timeout, file: file, line: line)
     }
 
@@ -287,11 +325,13 @@ extension XCTestCase {
             app.buttons["Downloaded"],
             app.radioButtons["Downloaded"]
         ], timeout: timeout) else { return false }
-        
-        if !downloadedTab.isSelected {
+
+        if !controlIsSelected(downloadedTab) {
             downloadedTab.tap()
         }
-        return downloadedTab.isSelected
+
+        return waitForStaticText(containing: "songs available", in: app, timeout: timeout) ||
+            waitForStaticText(containing: "No Downloaded Songs", in: app, timeout: timeout)
     }
     
     /// Switch to Server sub-tab in Songs tab
@@ -300,37 +340,47 @@ extension XCTestCase {
             app.buttons["Server"],
             app.radioButtons["Server"]
         ], timeout: timeout) else { return false }
-        
-        if !serverTab.isSelected {
+
+        if !controlIsSelected(serverTab) {
             serverTab.tap()
         }
-        return serverTab.isSelected
+
+        return app.buttons["refreshServerSongsButton"].waitForExistence(timeout: timeout) ||
+            app.buttons["Refresh server songs"].waitForExistence(timeout: timeout)
     }
     
     /// Check if there are any downloaded songs available
     func hasDownloadedSongs(app: XCUIApplication, timeout: TimeInterval = 5) -> Bool {
-        let songCount = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'songs available'")).firstMatch
+        let songCount = app.staticTexts.matching(textContainsPredicate("songs available")).firstMatch
         guard songCount.waitForExistence(timeout: timeout) else { return false }
         
-        let countText = songCount.label
+        let countText = elementText(songCount)
         return !countText.hasPrefix("0 ")
     }
     
     /// Verify Songs tab empty state for Downloaded tab
     func verifyDownloadedSongsEmptyState(app: XCUIApplication, timeout: TimeInterval = 5) -> Bool {
         let emptyIcon = app.images["arrow.down.circle"]
-        let emptyTitle = app.staticTexts["No Downloaded Songs"]
-        let emptyMessage = app.staticTexts["Download songs from the Server tab to see them here"]
-        
-        return waitForElements([emptyIcon, emptyTitle, emptyMessage], timeout: timeout)
+
+        return emptyIcon.waitForExistence(timeout: timeout) &&
+            waitForStaticText(containing: "No Downloaded Songs", in: app, timeout: timeout) &&
+            waitForStaticText(
+                containing: "Download songs from the Server tab to see them here",
+                in: app,
+                timeout: timeout
+            )
     }
     
     /// Verify Songs tab empty state for Server tab
     func verifyServerSongsEmptyState(app: XCUIApplication, timeout: TimeInterval = 5) -> Bool {
         let emptyIcon = app.images["cloud"]
-        let emptyTitle = app.staticTexts["No Server Songs"]
-        let emptyMessage = app.staticTexts["Tap the refresh button to load songs from the server"]
-        
-        return waitForElements([emptyIcon, emptyTitle, emptyMessage], timeout: timeout)
+
+        return emptyIcon.waitForExistence(timeout: timeout) &&
+            waitForStaticText(containing: "No Server Songs", in: app, timeout: timeout) &&
+            waitForStaticText(
+                containing: "Tap the refresh button to load songs from the server",
+                in: app,
+                timeout: timeout
+            )
     }
 }

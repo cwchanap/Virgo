@@ -85,8 +85,8 @@ final class GameplayViewUITests: XCTestCase {
         try openGameplay(in: app)
 
         // Test header contains track information
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should be displayed")
-        XCTAssertTrue(app.staticTexts["Rock Masters"].exists, "Artist name should be displayed")
+        try requireStaticText(containing: "Thunder Beat", in: app)
+        try requireStaticText(containing: "Rock Masters", in: app)
 
         // Test back button exists and is accessible
         let backButton = try requireControl(named: "Go back", in: app)
@@ -106,7 +106,7 @@ final class GameplayViewUITests: XCTestCase {
 
         // The fact that we can see the play button and track info suggests the sheet music area
         // has also loaded (since they're part of the same view hierarchy)
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].exists)
+        try requireStaticText(containing: "Thunder Beat", in: app)
     }
 
     @MainActor
@@ -122,8 +122,8 @@ final class GameplayViewUITests: XCTestCase {
 
         // Controls should be in the bottom area of the screen
         // We can verify this by checking that controls exist alongside the main content
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].exists && playButton.exists, 
-                     "Both header and controls should be visible simultaneously")
+        try requireStaticText(containing: "Thunder Beat", in: app)
+        XCTAssertTrue(playButton.exists, "Controls should be visible with the header")
     }
 
     @MainActor
@@ -164,8 +164,8 @@ final class GameplayViewUITests: XCTestCase {
         XCTAssertTrue(backButton.isHittable, "Back button should be accessible")
 
         // Test that text elements are readable
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should be accessible")
-        XCTAssertTrue(app.staticTexts["Rock Masters"].exists, "Artist should be accessible")
+        try requireStaticText(containing: "Thunder Beat", in: app)
+        try requireStaticText(containing: "Rock Masters", in: app)
     }
 
     @MainActor
@@ -179,8 +179,8 @@ final class GameplayViewUITests: XCTestCase {
 
         // Test navigation to second track.
         try openGameplay(in: app, songTitle: "Jazz Groove", artist: "Smooth Collective")
-        XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Smooth Collective"].waitForExistence(timeout: 10))
+        try requireStaticText(containing: "Jazz Groove", in: app)
+        try requireStaticText(containing: "Smooth Collective", in: app)
 
         // Navigate back again
         try tapBackFromGameplay(in: app)
@@ -205,8 +205,8 @@ final class GameplayViewUITests: XCTestCase {
         }
 
         // Verify UI is still functional after rapid interactions
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should still be visible")
-        XCTAssertTrue(app.buttons["Play"].exists, "Play button should still be functional")
+        try requireStaticText(containing: "Thunder Beat", in: app)
+        try requireControl(named: "Play", in: app, timeout: 3)
         XCTAssertTrue(restartButton.exists, "Restart button should still be functional")
 
         // Test final navigation back

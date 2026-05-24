@@ -64,10 +64,10 @@ final class SongsTabUITests: XCTestCase {
         
         // Test switching between sub-tabs
         serverTab.tap()
-        XCTAssertTrue(serverTab.isSelected)
-        
+        XCTAssertTrue(switchToServerTab(app: app))
+
         downloadedTab.tap()
-        XCTAssertTrue(downloadedTab.isSelected)
+        XCTAssertTrue(switchToDownloadedTab(app: app))
     }
     
     @MainActor
@@ -81,8 +81,10 @@ final class SongsTabUITests: XCTestCase {
         XCTAssertTrue(switchToDownloadedTab(app: app))
 
         // Verify empty state is shown
-        XCTAssertTrue(app.staticTexts["No Downloaded Songs"].exists)
-        XCTAssertTrue(app.staticTexts["Download songs from the Server tab to see them here"].exists)
+        XCTAssertTrue(waitForStaticText(containing: "No Downloaded Songs", in: app, timeout: 5))
+        XCTAssertTrue(
+            waitForStaticText(containing: "Download songs from the Server tab to see them here", in: app, timeout: 5)
+        )
     }
     
     @MainActor
@@ -94,9 +96,9 @@ final class SongsTabUITests: XCTestCase {
         
         // Check if there are downloaded songs (DTX Import genre)
         // This test will pass if there are downloaded songs, or skip verification if empty
-        let songCount = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'songs available'")).firstMatch
+        let songCount = app.staticTexts.matching(textContainsPredicate("songs available")).firstMatch
         if songCount.waitForExistence(timeout: 5) {
-            let countText = songCount.label
+            let countText = elementText(songCount)
             if !countText.hasPrefix("0 ") {
                 // Verify downloaded songs list elements exist
                 try requireControl(named: "Play", in: app, timeout: 5)
@@ -143,10 +145,7 @@ final class SongsTabUITests: XCTestCase {
             
             // Verify expansion content (difficulty badges should appear)
             let difficultyButton = app.buttons.matching(
-                NSPredicate(
-                    format: "(label CONTAINS 'Easy' OR label CONTAINS 'Medium' OR label CONTAINS 'Hard') " +
-                        "AND label CONTAINS 'Level'"
-                )
+                NSPredicate(format: "identifier BEGINSWITH %@", "chartDifficulty")
             ).firstMatch
             XCTAssertTrue(difficultyButton.waitForExistence(timeout: 3))
             
@@ -171,10 +170,8 @@ final class SongsTabUITests: XCTestCase {
         let deleteButton = app.buttons["Delete"]
         if deleteButton.waitForExistence(timeout: 5) {
             // Count songs before deletion
-            let songCountBefore = app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS 'songs available'")
-            ).firstMatch
-            let beforeText = songCountBefore.label
+            let songCountBefore = app.staticTexts.matching(textContainsPredicate("songs available")).firstMatch
+            let beforeText = elementText(songCountBefore)
             
             // Tap delete button
             deleteButton.tap()
@@ -187,10 +184,8 @@ final class SongsTabUITests: XCTestCase {
             }
             
             // Wait for song count to update or empty state to appear
-            let songCountAfter = app.staticTexts.matching(
-                NSPredicate(format: "label CONTAINS 'songs available'")
-            ).firstMatch
-            let emptyState = app.staticTexts["No songs available"]
+            let songCountAfter = app.staticTexts.matching(textContainsPredicate("songs available")).firstMatch
+            let emptyState = app.staticTexts.matching(textContainsPredicate("No Downloaded Songs")).firstMatch
             
             // Wait for either count update or empty state
             let stateUpdated = songCountAfter.waitForExistence(timeout: 3.0) ||
@@ -198,11 +193,11 @@ final class SongsTabUITests: XCTestCase {
             XCTAssertTrue(stateUpdated, "Song count should update or empty state should appear after deletion")
             
             if songCountAfter.exists {
-                let afterText = songCountAfter.label
+                let afterText = elementText(songCountAfter)
                 XCTAssertNotEqual(beforeText, afterText, "Song count should change after deletion")
             } else {
                 // Empty state should appear if all songs deleted
-                XCTAssertTrue(app.staticTexts["No Downloaded Songs"].waitForExistence(timeout: 5))
+                XCTAssertTrue(waitForStaticText(containing: "No Downloaded Songs", in: app, timeout: 5))
             }
         }
     }

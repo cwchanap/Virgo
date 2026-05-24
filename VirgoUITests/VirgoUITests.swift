@@ -57,17 +57,13 @@ final class VirgoUITests: XCTestCase {
         try openSongsView(in: app)
 
         // Wait for tracks to load with longer timeout
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
+        try requireStaticText(containing: "Thunder Beat", in: app, timeout: 10)
 
         // Verify sample tracks are displayed
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].exists)
-        XCTAssertTrue(app.staticTexts["Rock Masters"].exists)
-        XCTAssertTrue(
-            app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'BPM'"))
-                .firstMatch
-                .waitForExistence(timeout: 5)
-        )
-        XCTAssertTrue(app.staticTexts["Medium"].waitForExistence(timeout: 5))
+        try requireStaticText(containing: "Thunder Beat", in: app, timeout: 5)
+        try requireStaticText(containing: "Rock Masters", in: app, timeout: 5)
+        XCTAssertTrue(waitForStaticText(containing: "BPM", in: app, timeout: 5))
+        XCTAssertTrue(waitForStaticText(containing: "Medium", in: app, timeout: 5))
 
         // Verify at least one play button exists
         try requireControl(named: "Play", in: app, timeout: 5)
@@ -79,7 +75,7 @@ final class VirgoUITests: XCTestCase {
         try openSongsView(in: app)
 
         // Wait for tracks to load
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
+        try requireStaticText(containing: "Thunder Beat", in: app, timeout: 10)
 
         let searchField = app.textFields["searchField"]
         XCTAssertTrue(searchField.waitForExistence(timeout: 5))
@@ -89,8 +85,7 @@ final class VirgoUITests: XCTestCase {
         searchField.typeText("Thunder")
 
         // Wait for search results to update - Thunder Beat should still be visible
-        let thunderBeatAfterSearch = app.staticTexts["Thunder Beat"]
-        XCTAssertTrue(thunderBeatAfterSearch.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForStaticText(containing: "Thunder Beat", in: app, timeout: 5))
 
         // Clear search - try different approaches
         if app.buttons["Clear text"].exists {
@@ -106,8 +101,8 @@ final class VirgoUITests: XCTestCase {
         }
 
         // Wait for all tracks to be visible again after clearing search
-        let thunderBeatVisible = app.staticTexts["Thunder Beat"].waitForExistence(timeout: 5)
-        let jazzGrooveVisible = app.staticTexts["Jazz Groove"].waitForExistence(timeout: 5)
+        let thunderBeatVisible = waitForStaticText(containing: "Thunder Beat", in: app, timeout: 5)
+        let jazzGrooveVisible = waitForStaticText(containing: "Jazz Groove", in: app, timeout: 5)
         XCTAssertTrue(thunderBeatVisible && jazzGrooveVisible, "All tracks should be visible after clearing search")
 
         // Test search by artist - search for "Smooth" which exists in Jazz Groove
@@ -115,7 +110,7 @@ final class VirgoUITests: XCTestCase {
         searchField.typeText("Smooth")
 
         // Wait for search to filter results
-        XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForStaticText(containing: "Jazz Groove", in: app, timeout: 5))
     }
 
     @MainActor
@@ -124,8 +119,8 @@ final class VirgoUITests: XCTestCase {
         try openGameplay(in: app)
 
         // Verify we're in gameplay view - check for unique gameplay elements
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].exists) // Track title in header
-        XCTAssertTrue(app.staticTexts["Rock Masters"].exists) // Artist name
+        try requireStaticText(containing: "Thunder Beat", in: app)
+        try requireStaticText(containing: "Rock Masters", in: app)
 
         // Verify playback controls exist
         try requireControl(named: "Play", in: app)
