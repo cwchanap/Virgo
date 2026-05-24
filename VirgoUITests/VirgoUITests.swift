@@ -21,6 +21,7 @@ final class VirgoUITests: XCTestCase {
         // ContentView.isUITesting checks for this argument
         app = XCUIApplication()
         app.launchArguments.append("-UITesting")
+        app.launchArguments.append("-ResetState")
 
         // In UI tests it's important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
     }
@@ -39,7 +40,7 @@ final class VirgoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["START"].exists)
 
         // Tap start button to navigate to content view
-        app.buttons["START"].tap()
+        try tapControl(named: "START", in: app)
 
         // Wait for navigation to complete and verify we're in the songs view
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
@@ -51,7 +52,7 @@ final class VirgoUITests: XCTestCase {
         app.launch()
 
         // Navigate to songs
-        app.buttons["START"].tap()
+        try openSongsView(in: app)
 
         // Wait for tracks to load with longer timeout
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -67,13 +68,13 @@ final class VirgoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Medium"].waitForExistence(timeout: 5))
 
         // Verify at least one play button exists
-        XCTAssertTrue(app.buttons.matching(identifier: "play.circle.fill").firstMatch.waitForExistence(timeout: 5))
+        try requireControl(named: "Play", in: app, timeout: 5)
     }
 
     @MainActor
     func testSearchFunctionality() throws {
         app.launch()
-        app.buttons["START"].tap()
+        try openSongsView(in: app)
 
         // Wait for tracks to load
         XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
@@ -108,6 +109,7 @@ final class VirgoUITests: XCTestCase {
         XCTAssertTrue(thunderBeatVisible && jazzGrooveVisible, "All tracks should be visible after clearing search")
 
         // Test search by artist - search for "Smooth" which exists in Jazz Groove
+        searchField.tap()
         searchField.typeText("Smooth")
 
         // Wait for search to filter results
@@ -117,35 +119,18 @@ final class VirgoUITests: XCTestCase {
     @MainActor
     func testGameplayViewNavigation() throws {
         app.launch()
-        app.buttons["START"].tap()
-
-        // Wait for tracks to load
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-
-        // Tap on first track to navigate to gameplay
-        app.staticTexts["Thunder Beat"].tap()
-
-        // Wait for gameplay view to load by checking for unique gameplay elements
-        let gameplayLoadedPredicate = NSPredicate(format: "exists == true")
-        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
-
-        let gameplayLoaded = expectation(for: gameplayLoadedPredicate,
-                                         evaluatedWith: playButton,
-                                         handler: nil)
-        wait(for: [gameplayLoaded], timeout: 10)
+        try openGameplay(in: app)
 
         // Verify we're in gameplay view - check for unique gameplay elements
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists) // Track title in header
         XCTAssertTrue(app.staticTexts["Rock Masters"].exists) // Artist name
 
         // Verify playback controls exist
-        XCTAssertTrue(playButton.exists)
-        XCTAssertTrue(app.buttons.matching(identifier: "backward.end.fill").firstMatch.exists)
+        try requireControl(named: "Play", in: app)
+        try requireControl(named: "Restart", in: app)
 
         // Test back navigation
-        XCTAssertTrue(backButton.waitForExistence(timeout: 5))
-        backButton.tap()
+        try tapBackFromGameplay(in: app)
 
         // Wait for navigation back to complete by checking for songs list
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
@@ -157,30 +142,30 @@ final class VirgoUITests: XCTestCase {
     @MainActor
     func testTabNavigation() throws {
         app.launch()
-        app.buttons["START"].tap()
+        try openSongsView(in: app)
 
         // Test tab navigation
-        XCTAssertTrue(app.tabBars.buttons["Songs"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Metronome"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Library"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Settings"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Profile"].exists)
+        try requireControl(named: "Songs", in: app)
+        try requireControl(named: "Metronome", in: app)
+        try requireControl(named: "Library", in: app)
+        try requireControl(named: "Settings", in: app)
+        try requireControl(named: "Profile", in: app)
 
         // Test switching tabs
-        app.tabBars.buttons["Metronome"].tap()
+        try tapControl(named: "Metronome", in: app)
         XCTAssertTrue(app.staticTexts["Metronome"].exists)
 
-        app.tabBars.buttons["Library"].tap()
+        try tapControl(named: "Library", in: app)
         XCTAssertTrue(app.staticTexts["Downloaded Songs"].exists)
 
-        app.tabBars.buttons["Settings"].tap()
+        try tapControl(named: "Settings", in: app)
         XCTAssertTrue(app.staticTexts["Settings"].exists)
 
-        app.tabBars.buttons["Profile"].tap()
+        try tapControl(named: "Profile", in: app)
         XCTAssertTrue(app.staticTexts["Profile"].exists)
 
         // Return to songs tab
-        app.tabBars.buttons["Songs"].tap()
+        try tapControl(named: "Songs", in: app)
         XCTAssertTrue(app.staticTexts["Songs"].exists)
     }
 

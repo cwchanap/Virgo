@@ -112,6 +112,9 @@ jobs:
           echo "  Device: ${{ matrix.destination }}"
           echo "  Test target: $TEST_TARGET"
           echo "  Timeout: ${TIMEOUT}s"
+
+          mkdir -p ./ui-test-results
+          rm -rf ./ui-test-results/ui-tests.xcresult
           
           xcodebuild test-without-building \
             -project Virgo.xcodeproj \
@@ -124,7 +127,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             -enableCodeCoverage YES \
             -destination-timeout $TIMEOUT \
-            -resultBundlePath ./ui-test-results \
+            -resultBundlePath ./ui-test-results/ui-tests.xcresult \
             | tee ui-test-output.log
             
       - name: Set device name for artifacts

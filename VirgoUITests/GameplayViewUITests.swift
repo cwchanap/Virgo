@@ -18,6 +18,7 @@ final class GameplayViewUITests: XCTestCase {
         // ContentView.isUITesting checks for this argument
         app = XCUIApplication()
         app.launchArguments.append("-UITesting")
+        app.launchArguments.append("-ResetState")
         app.launch()
     }
 
@@ -26,108 +27,80 @@ final class GameplayViewUITests: XCTestCase {
         app?.terminate()
     }
 
+    @discardableResult
+    private func requirePlaybackButton(timeout: TimeInterval = 3) throws -> XCUIElement {
+        guard let button = waitForFirstExisting([
+            app.buttons["Play"],
+            app.buttons["Pause"]
+        ], timeout: timeout) else {
+            XCTFail("Expected Play or Pause button to exist")
+            throw UITestFailure.elementNotFound("Play or Pause")
+        }
+        return button
+    }
+
     @MainActor
     func testGameplayViewNavigation() throws {
-        // Navigate to ContentView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
-        
-        // Navigate to GameplayView by tapping on first track
-        app.staticTexts["Thunder Beat"].tap()
-        
-        // Verify GameplayView elements load
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Rock Masters"].exists)
-        
+        try openGameplay(in: app)
+
         // Test back navigation
-        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
-        XCTAssertTrue(backButton.waitForExistence(timeout: 5))
-        backButton.tap()
-        
+        try tapBackFromGameplay(in: app)
+
         // Verify we're back on the songs list
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
     }
 
     @MainActor
     func testGameplayViewPlaybackControls() throws {
-        // Navigate to GameplayView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        app.staticTexts["Thunder Beat"].tap()
-        
-        // Wait for GameplayView to load
-        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        XCTAssertTrue(playButton.waitForExistence(timeout: 10))
-        
+        try openGameplay(in: app)
+        let playButton = try requireControl(named: "Play", in: app)
+
         // Test play button exists and is tappable
         XCTAssertTrue(playButton.isHittable)
-        
+
         // Test restart button exists
-        let restartButton = app.buttons.matching(identifier: "backward.end.fill").firstMatch
-        XCTAssertTrue(restartButton.waitForExistence(timeout: 5))
+        let restartButton = try requireControl(named: "Restart", in: app)
         XCTAssertTrue(restartButton.isHittable)
-        
+
         // Test play button tap
         playButton.tap()
-        
-        // After tapping play, wait for either play or pause button to be available
-        let playButtonAfterTap = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        let pauseButton = app.buttons.matching(identifier: "pause.circle.fill").firstMatch
-        
-        // Wait for either button state to be available
-        let buttonAvailable = playButtonAfterTap.waitForExistence(timeout: 2.0) ||
-                               pauseButton.waitForExistence(timeout: 2.0)
-        XCTAssertTrue(buttonAvailable, "Either play or pause button should be available")
-        
+
+        let playbackButton = try requirePlaybackButton(timeout: 2)
+
         // Test that we can tap the button again (whether it's play or pause)
-        let playbackButton = playButtonAfterTap.exists ? playButtonAfterTap : pauseButton
         XCTAssertTrue(playbackButton.isHittable)
-        
+
         // Test restart functionality
         restartButton.tap()
-        
+
         // After restart, should have play button available
-        XCTAssertTrue(app.buttons.matching(identifier: "play.circle.fill").firstMatch.waitForExistence(timeout: 3))
+        try requireControl(named: "Play", in: app, timeout: 3)
     }
 
     @MainActor
     func testGameplayViewHeaderElements() throws {
-        // Navigate to GameplayView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        app.staticTexts["Thunder Beat"].tap()
-        
-        // Wait for GameplayView to load
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        
+        try openGameplay(in: app)
+
         // Test header contains track information
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should be displayed")
         XCTAssertTrue(app.staticTexts["Rock Masters"].exists, "Artist name should be displayed")
-        
+
         // Test back button exists and is accessible
-        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
-        XCTAssertTrue(backButton.waitForExistence(timeout: 5))
+        let backButton = try requireControl(named: "Go back", in: app)
         XCTAssertTrue(backButton.isHittable, "Back button should be tappable")
     }
 
     @MainActor
     func testGameplayViewSheetMusicArea() throws {
-        // Navigate to GameplayView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        app.staticTexts["Thunder Beat"].tap()
-        
-        // Wait for GameplayView to load
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        
+        try openGameplay(in: app)
+
         // The sheet music area should be present (this is the main content area)
         // We can't easily test for specific musical notation elements, but we can test
         // that the main scrollable area exists by checking that the screen has loaded properly
-        
+
         // Verify the view has loaded by checking for both header and control elements
-        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        XCTAssertTrue(playButton.waitForExistence(timeout: 10))
-        
+        try requireControl(named: "Play", in: app)
+
         // The fact that we can see the play button and track info suggests the sheet music area
         // has also loaded (since they're part of the same view hierarchy)
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists)
@@ -135,22 +108,15 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewControlsArea() throws {
-        // Navigate to GameplayView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        app.staticTexts["Thunder Beat"].tap()
-        
-        // Wait for GameplayView to load
-        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        XCTAssertTrue(playButton.waitForExistence(timeout: 10))
-        
+        try openGameplay(in: app)
+        let playButton = try requireControl(named: "Play", in: app)
+
         // Test that control elements are present and accessible
         XCTAssertTrue(playButton.isHittable, "Play button should be accessible")
-        
-        let restartButton = app.buttons.matching(identifier: "backward.end.fill").firstMatch
-        XCTAssertTrue(restartButton.waitForExistence(timeout: 5))
+
+        let restartButton = try requireControl(named: "Restart", in: app)
         XCTAssertTrue(restartButton.isHittable, "Restart button should be accessible")
-        
+
         // Controls should be in the bottom area of the screen
         // We can verify this by checking that controls exist alongside the main content
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists && playButton.exists, 
@@ -159,68 +125,41 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewPlaybackSequence() throws {
-        // Navigate to GameplayView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        app.staticTexts["Thunder Beat"].tap()
-        
-        // Wait for GameplayView to load
-        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        XCTAssertTrue(playButton.waitForExistence(timeout: 10))
-        
+        try openGameplay(in: app)
+        let playButton = try requireControl(named: "Play", in: app)
+
         // Test complete playback sequence
         // 1. Initial state - should have play button
         XCTAssertTrue(playButton.exists, "Should start with play button")
-        
+
         // 2. Start playback
         playButton.tap()
-        
-        // Wait for playback state to update - either play or pause button should be available
-        let playButtonElement = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        let pauseButtonElement = app.buttons.matching(identifier: "pause.circle.fill").firstMatch
-        let playbackStateUpdated = playButtonElement.waitForExistence(timeout: 2.0) ||
-                                    pauseButtonElement.waitForExistence(timeout: 2.0)
-        XCTAssertTrue(playbackStateUpdated, "Playback state should update after play button tap")
-        
-        // 3. During playback - button state might change
-        // (In some implementations, play becomes pause during playback)
-        let hasPlayButton = playButtonElement.exists
-        let hasPauseButton = pauseButtonElement.exists
-        XCTAssertTrue(hasPlayButton || hasPauseButton, "Should have either play or pause button during playback")
-        
+
+        // 3. During playback - button state might change.
+        try requirePlaybackButton(timeout: 2)
+
         // 4. Test restart functionality
-        let restartButton = app.buttons.matching(identifier: "backward.end.fill").firstMatch
-        XCTAssertTrue(restartButton.exists)
+        let restartButton = try requireControl(named: "Restart", in: app)
         restartButton.tap()
-        
+
         // 5. After restart - should return to initial state
-        XCTAssertTrue(app.buttons.matching(identifier: "play.circle.fill").firstMatch.waitForExistence(timeout: 3),
-                     "Should return to play button after restart")
+        try requireControl(named: "Play", in: app, timeout: 3)
     }
 
     @MainActor
     func testGameplayViewAccessibility() throws {
-        // Navigate to GameplayView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        app.staticTexts["Thunder Beat"].tap()
-        
-        // Wait for GameplayView to load
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        
+        try openGameplay(in: app)
+
         // Test that key interactive elements are accessible
-        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        XCTAssertTrue(playButton.waitForExistence(timeout: 10))
+        let playButton = try requireControl(named: "Play", in: app)
         XCTAssertTrue(playButton.isHittable, "Play button should be accessible")
-        
-        let restartButton = app.buttons.matching(identifier: "backward.end.fill").firstMatch
-        XCTAssertTrue(restartButton.waitForExistence(timeout: 5))
+
+        let restartButton = try requireControl(named: "Restart", in: app)
         XCTAssertTrue(restartButton.isHittable, "Restart button should be accessible")
-        
-        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
-        XCTAssertTrue(backButton.waitForExistence(timeout: 5))
+
+        let backButton = try requireControl(named: "Go back", in: app)
         XCTAssertTrue(backButton.isHittable, "Back button should be accessible")
-        
+
         // Test that text elements are readable
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should be accessible")
         XCTAssertTrue(app.staticTexts["Rock Masters"].exists, "Artist should be accessible")
@@ -228,67 +167,47 @@ final class GameplayViewUITests: XCTestCase {
 
     @MainActor
     func testGameplayViewMultipleTracksNavigation() throws {
-        // Navigate to ContentView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
-        
         // Test navigation to first track
-        app.staticTexts["Thunder Beat"].tap()
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Rock Masters"].exists)
-        
+        try openGameplay(in: app)
+
         // Navigate back
-        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
-        backButton.tap()
+        try tapBackFromGameplay(in: app)
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
-        
-        // Test navigation to second track (must always be present)
-        XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10), "Jazz Groove track must be available")
-        app.staticTexts["Jazz Groove"].tap()
+
+        // Test navigation to second track.
+        try openGameplay(in: app, songTitle: "Jazz Groove", artist: "Smooth Collective")
         XCTAssertTrue(app.staticTexts["Jazz Groove"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Smooth Collective"].waitForExistence(timeout: 10))
 
         // Navigate back again
-        let backButton2 = app.buttons.matching(identifier: "chevron.left").firstMatch
-        backButton2.tap()
+        try tapBackFromGameplay(in: app)
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
     }
 
     @MainActor
     func testGameplayViewStabilityDuringInteraction() throws {
-        // Navigate to GameplayView
-        app.buttons["START"].tap()
-        XCTAssertTrue(app.staticTexts["Thunder Beat"].waitForExistence(timeout: 10))
-        app.staticTexts["Thunder Beat"].tap()
-        
-        // Wait for GameplayView to load
-        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
-        XCTAssertTrue(playButton.waitForExistence(timeout: 10))
-        
+        try openGameplay(in: app)
+
         // Rapid interaction test - ensure UI remains stable
-        let restartButton = app.buttons.matching(identifier: "backward.end.fill").firstMatch
-        
+        let restartButton = try requireControl(named: "Restart", in: app)
+
         // Multiple rapid interactions
         for _ in 0..<3 {
-            playButton.tap()
+            try requirePlaybackButton(timeout: 1).tap()
             // Wait for button to be responsive after tap
             XCTAssertTrue(restartButton.waitForExistence(timeout: 1.0), "Restart button should remain available")
             restartButton.tap()
             // Wait for button to be responsive after tap
-            XCTAssertTrue(playButton.waitForExistence(timeout: 1.0), "Play button should remain available")
+            try requireControl(named: "Play", in: app, timeout: 1)
         }
-        
+
         // Verify UI is still functional after rapid interactions
         XCTAssertTrue(app.staticTexts["Thunder Beat"].exists, "Track title should still be visible")
-        XCTAssertTrue(
-            app.buttons.matching(identifier: "play.circle.fill").firstMatch.exists,
-            "Play button should still be functional"
-        )
+        XCTAssertTrue(app.buttons["Play"].exists, "Play button should still be functional")
         XCTAssertTrue(restartButton.exists, "Restart button should still be functional")
-        
+
         // Test final navigation back
-        let backButton = app.buttons.matching(identifier: "chevron.left").firstMatch
-        backButton.tap()
+        try tapBackFromGameplay(in: app)
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
     }
 }

@@ -91,6 +91,8 @@ struct SongsTabView: View {
                                     )
                             }
                             .disabled(serverSongService.isRefreshing)
+                            .accessibilityIdentifier("refreshServerSongsButton")
+                            .accessibilityLabel("Refresh server songs")
                             .onLongPressGesture(minimumDuration: 1.0) {
                                 Task {
                                     await serverSongService.forceRefreshServerSongs()
