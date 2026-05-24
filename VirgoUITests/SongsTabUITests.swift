@@ -115,13 +115,13 @@ final class SongsTabUITests: XCTestCase {
         XCTAssertTrue(switchToDownloadedTab(app: app))
         
         // Find first play button if songs exist
-        let playButton = app.buttons["Play"]
+        let playButton = app.buttons.matching(NSPredicate(format: "label == %@", "Play")).firstMatch
         if playButton.waitForExistence(timeout: 5) {
             // Test play functionality
             playButton.tap()
             
             // Verify play button changes to pause (may take a moment for audio to start)
-            let pauseButton = app.buttons["Pause"]
+            let pauseButton = app.buttons.matching(NSPredicate(format: "label == %@", "Pause")).firstMatch
             XCTAssertTrue(pauseButton.waitForExistence(timeout: 3))
             
             // Test pause functionality
@@ -145,7 +145,7 @@ final class SongsTabUITests: XCTestCase {
             
             // Verify expansion content (difficulty badges should appear)
             let difficultyButton = app.buttons.matching(
-                NSPredicate(format: "identifier BEGINSWITH %@", "chartDifficulty")
+                NSPredicate(format: "identifier BEGINSWITH %@ OR label CONTAINS[c] %@", "chartDifficulty", "difficulty")
             ).firstMatch
             XCTAssertTrue(difficultyButton.waitForExistence(timeout: 3))
             
@@ -167,7 +167,7 @@ final class SongsTabUITests: XCTestCase {
         XCTAssertTrue(switchToDownloadedTab(app: app))
         
         // Find delete button if songs exist
-        let deleteButton = app.buttons["Delete"]
+        let deleteButton = app.buttons.matching(NSPredicate(format: "label == %@", "Delete")).firstMatch
         if deleteButton.waitForExistence(timeout: 5) {
             // Count songs before deletion
             let songCountBefore = app.staticTexts.matching(textContainsPredicate("songs available")).firstMatch
