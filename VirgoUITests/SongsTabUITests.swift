@@ -40,10 +40,8 @@ final class SongsTabUITests: XCTestCase {
     /// Waits for the START button to appear and taps it.
     /// Use this instead of directly calling app.buttons["START"].tap() to avoid flakiness.
     @MainActor
-    private func tapStartButton() {
-        let startButton = app.buttons["START"]
-        XCTAssertTrue(startButton.waitForExistence(timeout: 5), "START button should exist")
-        startButton.tap()
+    private func tapStartButton() throws {
+        try openSongsView(in: app)
     }
 
     // MARK: - Songs Tab Tests
@@ -51,17 +49,14 @@ final class SongsTabUITests: XCTestCase {
     @MainActor
     func testSongsTabNavigation() throws {
         // Wait for START button to appear before tapping to avoid flakiness
-        tapStartButton()
+        try tapStartButton()
 
         // Navigate to Songs tab via Content View (which shows SongsTabView)
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
         
         // Verify sub-tab picker exists
-        let downloadedTab = app.buttons["Downloaded"]
-        let serverTab = app.buttons["Server"]
-        
-        XCTAssertTrue(downloadedTab.waitForExistence(timeout: 5))
-        XCTAssertTrue(serverTab.exists)
+        let downloadedTab = try requireControl(named: "Downloaded", in: app, timeout: 5)
+        let serverTab = try requireControl(named: "Server", in: app, timeout: 5)
         
         // Test switching between sub-tabs
         serverTab.tap()
@@ -76,31 +71,22 @@ final class SongsTabUITests: XCTestCase {
         // This test needs empty state, so relaunch with -SkipSeed flag
         launchAppSkippingSeed()
 
-        tapStartButton()
+        try tapStartButton()
 
         // Ensure we're on Downloaded tab (default)
-        let downloadedTab = app.buttons["Downloaded"]
-        XCTAssertTrue(downloadedTab.waitForExistence(timeout: 5))
-        if !downloadedTab.isSelected {
-            downloadedTab.tap()
-        }
+        XCTAssertTrue(switchToDownloadedTab(app: app))
 
         // Verify empty state is shown
-        XCTAssertTrue(app.images["arrow.down.circle"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["No Downloaded Songs"].exists)
         XCTAssertTrue(app.staticTexts["Download songs from the Server tab to see them here"].exists)
     }
     
     @MainActor
     func testDownloadedSongsWithData() throws {
-        tapStartButton()
+        try tapStartButton()
         
         // Ensure we're on Downloaded tab
-        let downloadedTab = app.buttons["Downloaded"]
-        XCTAssertTrue(downloadedTab.waitForExistence(timeout: 5))
-        if !downloadedTab.isSelected {
-            downloadedTab.tap()
-        }
+        XCTAssertTrue(switchToDownloadedTab(app: app))
         
         // Check if there are downloaded songs (DTX Import genre)
         // This test will pass if there are downloaded songs, or skip verification if empty
@@ -109,36 +95,27 @@ final class SongsTabUITests: XCTestCase {
             let countText = songCount.label
             if !countText.hasPrefix("0 ") {
                 // Verify downloaded songs list elements exist
-                XCTAssertTrue(
-                    app.buttons.matching(identifier: "play.circle.fill").firstMatch.waitForExistence(timeout: 5)
-                )
-                XCTAssertTrue(
-                    app.buttons.matching(identifier: "bookmark").firstMatch.waitForExistence(timeout: 5) ||
-                    app.buttons.matching(identifier: "bookmark.fill").firstMatch.exists
-                )
+                try requireControl(named: "Play", in: app, timeout: 5)
+                try requireControl(named: "Bookmark", in: app, timeout: 5)
             }
         }
     }
     
     @MainActor
     func testDownloadedSongsPlayback() throws {
-        tapStartButton()
+        try tapStartButton()
         
         // Ensure we're on Downloaded tab
-        let downloadedTab = app.buttons["Downloaded"]
-        XCTAssertTrue(downloadedTab.waitForExistence(timeout: 5))
-        if !downloadedTab.isSelected {
-            downloadedTab.tap()
-        }
+        XCTAssertTrue(switchToDownloadedTab(app: app))
         
         // Find first play button if songs exist
-        let playButton = app.buttons.matching(identifier: "play.circle.fill").firstMatch
+        let playButton = app.buttons["Play"]
         if playButton.waitForExistence(timeout: 5) {
             // Test play functionality
             playButton.tap()
             
             // Verify play button changes to pause (may take a moment for audio to start)
-            let pauseButton = app.buttons.matching(identifier: "pause.circle.fill").firstMatch
+            let pauseButton = app.buttons["Pause"]
             XCTAssertTrue(pauseButton.waitForExistence(timeout: 3))
             
             // Test pause functionality
@@ -149,24 +126,23 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongExpansion() throws {
-        tapStartButton()
+        try tapStartButton()
         
         // Ensure we're on Downloaded tab
-        let downloadedTab = app.buttons["Downloaded"]
-        XCTAssertTrue(downloadedTab.waitForExistence(timeout: 5))
-        if !downloadedTab.isSelected {
-            downloadedTab.tap()
-        }
+        XCTAssertTrue(switchToDownloadedTab(app: app))
         
         // Find first chart count indicator if songs exist
-        let chartIndicator = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'charts'")).firstMatch
+        let chartIndicator = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'charts'")).firstMatch
         if chartIndicator.waitForExistence(timeout: 5) {
             // Tap to expand
             chartIndicator.tap()
             
             // Verify expansion content (difficulty badges should appear)
             let difficultyButton = app.buttons.matching(
-                NSPredicate(format: "label CONTAINS 'Easy' OR label CONTAINS 'Medium' OR label CONTAINS 'Hard'")
+                NSPredicate(
+                    format: "(label CONTAINS 'Easy' OR label CONTAINS 'Medium' OR label CONTAINS 'Hard') " +
+                        "AND label CONTAINS 'Level'"
+                )
             ).firstMatch
             XCTAssertTrue(difficultyButton.waitForExistence(timeout: 3))
             
@@ -182,14 +158,10 @@ final class SongsTabUITests: XCTestCase {
     
     @MainActor
     func testDownloadedSongDeletion() throws {
-        tapStartButton()
+        try tapStartButton()
         
         // Ensure we're on Downloaded tab
-        let downloadedTab = app.buttons["Downloaded"]
-        XCTAssertTrue(downloadedTab.waitForExistence(timeout: 5))
-        if !downloadedTab.isSelected {
-            downloadedTab.tap()
-        }
+        XCTAssertTrue(switchToDownloadedTab(app: app))
         
         // Find delete button if songs exist
         let deleteButton = app.buttons["Delete"]

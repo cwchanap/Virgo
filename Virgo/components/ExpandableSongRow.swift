@@ -71,6 +71,7 @@ struct ExpandableSongRow: View {
                             .foregroundColor(isPlaying ? .red : .purple)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel(isPlaying ? "Pause" : "Play")
                     .onTapGesture { onPlayTap() } // Prevent song expansion when tapping play
 
                     // Song Info
@@ -108,6 +109,7 @@ struct ExpandableSongRow: View {
                                     .foregroundColor(song.isSaved ? .purple : .gray)
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .accessibilityLabel(song.isSaved ? "Saved" : "Bookmark")
 
                             // Available Difficulties
                             HStack(spacing: 2) {

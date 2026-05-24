@@ -81,6 +81,8 @@ struct ChartSelectionCard: View {
             .opacity(isPressed ? 0.8 : 1.0)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier("chartDifficulty\(chart.difficulty.rawValue)")
+        .accessibilityLabel("\(chart.difficulty.rawValue) difficulty, \(chart.notesCount) notes, Level \(chart.level)")
         .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
             withAnimation(.easeInOut(duration: 0.1)) {
                 isPressed = pressing
