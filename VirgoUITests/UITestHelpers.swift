@@ -183,9 +183,10 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> XCUIElement {
+        let exactMatch = NSPredicate(format: "identifier == %@ OR label == %@", name, name)
         let candidates = [
-            app.buttons[name],
-            app.radioButtons[name]
+            app.buttons.matching(exactMatch).firstMatch,
+            app.radioButtons.matching(exactMatch).firstMatch
         ]
 
         if let element = waitForFirstExisting(candidates, timeout: timeout) {
