@@ -32,9 +32,11 @@ final class GameplayViewUITests: XCTestCase {
 
     @discardableResult
     private func requirePlaybackButton(timeout: TimeInterval = 3) throws -> XCUIElement {
+        let playButton = app.buttons.matching(NSPredicate(format: "label == %@", "Play")).firstMatch
+        let pauseButton = app.buttons.matching(NSPredicate(format: "label == %@", "Pause")).firstMatch
         guard let button = waitForFirstExisting([
-            app.buttons["Play"],
-            app.buttons["Pause"]
+            playButton,
+            pauseButton
         ], timeout: timeout) else {
             XCTFail("Expected Play or Pause button to exist")
             throw UITestFailure.elementNotFound("Play or Pause")
