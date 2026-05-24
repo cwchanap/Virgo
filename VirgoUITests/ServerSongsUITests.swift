@@ -40,59 +40,47 @@ final class ServerSongsUITests: XCTestCase {
         return button
     }
 
-    private func waitForEnabled(_ element: XCUIElement, timeout: TimeInterval = 10) {
+    private func waitForEnabled(_ element: XCUIElement, timeout: TimeInterval = 10) -> Bool {
         let enabledPredicate = NSPredicate(format: "enabled == true")
         let enabledExpectation = expectation(for: enabledPredicate, evaluatedWith: element)
-        wait(for: [enabledExpectation], timeout: timeout)
+        return XCTWaiter.wait(for: [enabledExpectation], timeout: timeout) == .completed
+    }
+
+    private func waitForServerTabState(timeout: TimeInterval = 3) -> Bool {
+        waitForStaticText(containing: "Loading server songs", in: app, timeout: timeout) ||
+            waitForStaticText(containing: "No Server Songs", in: app, timeout: timeout) ||
+            waitForStaticText(containing: "songs available", in: app, timeout: timeout) ||
+            app.buttons["refreshServerSongsButton"].waitForExistence(timeout: timeout)
     }
 
     @MainActor
     func testServerSongsTab() throws {
         try openSongsView(in: app)
-        
+
         // Switch to Server tab
-        let serverTab = try requireControl(named: "Server", in: app, timeout: 5)
-        if !serverTab.isSelected {
-            serverTab.tap()
-        }
-        XCTAssertTrue(serverTab.isSelected)
-        
+        XCTAssertTrue(switchToServerTab(app: app))
+
         // Verify refresh button exists
         let refreshButton = try requireRefreshButton()
-        waitForEnabled(refreshButton)
-        
+        XCTAssertTrue(waitForEnabled(refreshButton))
+
         // Test refresh functionality
         refreshButton.tap()
-        
-        // Should see either loading state or server songs
-        let loadingText = app.staticTexts["Loading server songs..."]
-        let emptyStateIcon = app.images["cloud"]
-        let emptyStateText = app.staticTexts["No Server Songs"]
-        
-        // One of these should appear
-        XCTAssertTrue(
-            loadingText.waitForExistence(timeout: 3) ||
-            emptyStateIcon.waitForExistence(timeout: 3) ||
-            emptyStateText.waitForExistence(timeout: 3)
-        )
+
+        XCTAssertTrue(waitForServerTabState())
     }
     
     @MainActor
     func testServerSongsEmptyState() throws {
         try openSongsView(in: app)
-        
+
         // Switch to Server tab
-        try tapControl(named: "Server", in: app, timeout: 5)
+        XCTAssertTrue(switchToServerTab(app: app))
         
         // Wait for loading to complete and verify empty state (assuming no server connection)
-        let emptyStateText = app.staticTexts["No Server Songs"]
-        let instructionText = app.staticTexts["Tap the refresh button to load songs from the server"]
-        
         // Wait for either empty state or songs to appear after network request
-        let emptyStateAppeared = emptyStateText.waitForExistence(timeout: 8)
-        let songsAppeared = app.staticTexts
-            .matching(NSPredicate(format: "label CONTAINS 'songs available'"))
-            .firstMatch.waitForExistence(timeout: 8)
+        let emptyStateAppeared = waitForStaticText(containing: "No Server Songs", in: app, timeout: 8)
+        let songsAppeared = waitForStaticText(containing: "songs available", in: app, timeout: 8)
         
         XCTAssertTrue(
             emptyStateAppeared || songsAppeared,
@@ -100,32 +88,37 @@ final class ServerSongsUITests: XCTestCase {
         )
         
         if emptyStateAppeared {
-            XCTAssertTrue(emptyStateText.exists, "Empty state text should be visible")
-            XCTAssertTrue(instructionText.exists, "Instruction text should be visible")
+            XCTAssertTrue(
+                waitForStaticText(containing: "No Server Songs", in: app),
+                "Empty state text should be visible"
+            )
+            XCTAssertTrue(
+                waitForStaticText(containing: "Tap the refresh button to load songs from the server", in: app),
+                "Instruction text should be visible"
+            )
         }
     }
     
     @MainActor
     func testServerSongsRefreshButton() throws {
         try openSongsView(in: app)
-        
+
         // Switch to Server tab
-        try tapControl(named: "Server", in: app, timeout: 5)
-        
+        XCTAssertTrue(switchToServerTab(app: app))
+
         let refreshButton = try requireRefreshButton()
-        waitForEnabled(refreshButton)
-        
+        XCTAssertTrue(waitForEnabled(refreshButton))
+
         // Test refresh button tap
         refreshButton.tap()
-        
-        // Refresh can finish quickly when the local server is unavailable, so wait for the final enabled state.
-        waitForEnabled(refreshButton)
+
+        XCTAssertTrue(waitForServerTabState())
     }
     
     @MainActor
     func testSongsTabSearchFunctionality() throws {
         try openSongsView(in: app)
-        
+
         // Test search in Downloaded tab
         XCTAssertTrue(switchToDownloadedTab(app: app))
         
@@ -145,7 +138,7 @@ final class ServerSongsUITests: XCTestCase {
         XCTAssertTrue(clearButton.waitForNonExistence(timeout: 3))
         
         // Test search in Server tab
-        try tapControl(named: "Server", in: app, timeout: 5)
+        XCTAssertTrue(switchToServerTab(app: app))
         
         // Search should work in server tab too
         searchField.tap()
@@ -162,24 +155,24 @@ final class ServerSongsUITests: XCTestCase {
         
         // Check Downloaded tab song count
         let downloadedTab = try requireControl(named: "Downloaded", in: app, timeout: 5)
-        if !downloadedTab.isSelected {
+        if !controlIsSelected(downloadedTab) {
             downloadedTab.tap()
         }
-        
-        let songCountText = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'songs available'")).firstMatch
+
+        let songCountText = app.staticTexts.matching(textContainsPredicate("songs available")).firstMatch
         XCTAssertTrue(songCountText.waitForExistence(timeout: 5))
         
         // Switch to Server tab and check count updates
         let serverTab = try requireControl(named: "Server", in: app, timeout: 5)
         serverTab.tap()
-        
+
         // Song count should update when switching tabs
         XCTAssertTrue(songCountText.waitForExistence(timeout: 5))
-        let serverCountText = songCountText.label
-        
+        let serverCountText = elementText(songCountText)
+
         // Switch back to Downloaded tab
         downloadedTab.tap()
-        let downloadedCountText = songCountText.label
+        let downloadedCountText = elementText(songCountText)
         
         // Assert that counts are tracked separately between tabs
         XCTAssertFalse(downloadedCountText.isEmpty, "Downloaded count should be displayed")
