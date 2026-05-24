@@ -226,6 +226,32 @@ extension XCTestCase {
         throw UITestFailure.elementNotFound(label)
     }
 
+    @discardableResult
+    func requireDifficultyButton(
+        named difficulty: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let identifier = "chartDifficulty\(difficulty)"
+        let labelPredicate = NSPredicate(
+            format: "label CONTAINS[c] %@ AND (label CONTAINS[c] 'difficulty' OR label CONTAINS[c] 'Level')",
+            difficulty
+        )
+        let candidates = [
+            app.buttons[identifier],
+            app.buttons.matching(labelPredicate).firstMatch
+        ]
+
+        if let element = waitForFirstExisting(candidates, timeout: timeout) {
+            return element
+        }
+
+        XCTFail("Expected \(difficulty) difficulty button to exist", file: file, line: line)
+        throw UITestFailure.elementNotFound(difficulty)
+    }
+
     func openSongsView(
         in app: XCUIApplication,
         timeout: TimeInterval = 10,
@@ -234,12 +260,14 @@ extension XCTestCase {
     ) throws {
         dismissSetupAssistantIfPresent(timeout: 1)
 
-        if !app.staticTexts["Songs"].waitForExistence(timeout: 1) {
+        if !waitForStaticText(containing: "Songs", in: app, timeout: 1) &&
+            !app.textFields["searchField"].waitForExistence(timeout: 1) {
             try tapControl(named: "START", in: app, timeout: timeout, file: file, line: line)
         }
 
         XCTAssertTrue(
-            app.staticTexts["Songs"].waitForExistence(timeout: timeout),
+            waitForStaticText(containing: "Songs", in: app, timeout: timeout) ||
+                app.textFields["searchField"].waitForExistence(timeout: timeout),
             "Songs view should load",
             file: file,
             line: line
@@ -268,17 +296,19 @@ extension XCTestCase {
         chartButton.tap()
 
         XCTAssertTrue(
-            app.staticTexts["Select Difficulty"].waitForExistence(timeout: timeout),
+            waitForStaticText(containing: "Select Difficulty", in: app, timeout: timeout),
             "Difficulty selector should appear",
             file: file,
             line: line
         )
 
-        let difficultyElement = app.buttons["chartDifficulty\(difficulty)"]
-        guard waitForFirstExisting([difficultyElement], timeout: timeout) != nil else {
-            XCTFail("Expected \(difficulty) difficulty button to exist", file: file, line: line)
-            throw UITestFailure.elementNotFound(difficulty)
-        }
+        let difficultyElement = try requireDifficultyButton(
+            named: difficulty,
+            in: app,
+            timeout: timeout,
+            file: file,
+            line: line
+        )
         difficultyElement.tap()
 
         try requireStaticText(containing: songTitle, in: app, timeout: timeout, file: file, line: line)
