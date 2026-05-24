@@ -60,6 +60,7 @@ struct GameplayControlsView: View {
                         .foregroundColor(.white)
                 }
                 .accessibilityLabel("Restart")
+                .accessibilityIdentifier("gameplayMainRestartButton")
                 .accessibilityHint("Restarts the track from the beginning")
 
                 Button(action: onPlayPause) {
@@ -68,6 +69,7 @@ struct GameplayControlsView: View {
                         .foregroundColor(isPlaying ? .red : .green)
                 }
                 .accessibilityLabel(isPlaying ? "Pause" : "Play")
+                .accessibilityIdentifier("gameplayMainPlayPauseButton")
                 .accessibilityHint(isPlaying ? "Pauses playback" : "Starts playback")
 
                 Button(action: onSkipToEnd) {
@@ -76,6 +78,7 @@ struct GameplayControlsView: View {
                         .foregroundColor(.white)
                 }
                 .accessibilityLabel("Skip to end")
+                .accessibilityIdentifier("gameplaySkipToEndButton")
                 .accessibilityHint("Jumps to the end of the track")
             }
 

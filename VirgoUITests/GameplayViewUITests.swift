@@ -32,16 +32,7 @@ final class GameplayViewUITests: XCTestCase {
 
     @discardableResult
     private func requirePlaybackButton(timeout: TimeInterval = 3) throws -> XCUIElement {
-        let playButton = app.buttons.matching(NSPredicate(format: "label == %@", "Play")).firstMatch
-        let pauseButton = app.buttons.matching(NSPredicate(format: "label == %@", "Pause")).firstMatch
-        guard let button = waitForFirstExisting([
-            playButton,
-            pauseButton
-        ], timeout: timeout) else {
-            XCTFail("Expected Play or Pause button to exist")
-            throw UITestFailure.elementNotFound("Play or Pause")
-        }
-        return button
+        try requireGameplayPlayPauseControl(in: app, timeout: timeout)
     }
 
     @MainActor
@@ -58,13 +49,13 @@ final class GameplayViewUITests: XCTestCase {
     @MainActor
     func testGameplayViewPlaybackControls() throws {
         try openGameplay(in: app)
-        let playButton = try requireControl(named: "Play", in: app)
+        let playButton = try requirePlaybackButton()
 
         // Test play button exists and is tappable
         XCTAssertTrue(playButton.isHittable)
 
         // Test restart button exists
-        let restartButton = try requireControl(named: "Restart", in: app)
+        let restartButton = try requireGameplayRestartControl(in: app)
         XCTAssertTrue(restartButton.isHittable)
 
         // Test play button tap
@@ -79,7 +70,7 @@ final class GameplayViewUITests: XCTestCase {
         restartButton.tap()
 
         // After restart, should have play button available
-        try requireControl(named: "Play", in: app, timeout: 3)
+        try requirePlaybackButton(timeout: 3)
     }
 
     @MainActor
@@ -104,7 +95,7 @@ final class GameplayViewUITests: XCTestCase {
         // that the main scrollable area exists by checking that the screen has loaded properly
 
         // Verify the view has loaded by checking for both header and control elements
-        try requireControl(named: "Play", in: app)
+        try requirePlaybackButton()
 
         // The fact that we can see the play button and track info suggests the sheet music area
         // has also loaded (since they're part of the same view hierarchy)
@@ -114,12 +105,12 @@ final class GameplayViewUITests: XCTestCase {
     @MainActor
     func testGameplayViewControlsArea() throws {
         try openGameplay(in: app)
-        let playButton = try requireControl(named: "Play", in: app)
+        let playButton = try requirePlaybackButton()
 
         // Test that control elements are present and accessible
         XCTAssertTrue(playButton.isHittable, "Play button should be accessible")
 
-        let restartButton = try requireControl(named: "Restart", in: app)
+        let restartButton = try requireGameplayRestartControl(in: app)
         XCTAssertTrue(restartButton.isHittable, "Restart button should be accessible")
 
         // Controls should be in the bottom area of the screen
@@ -131,7 +122,7 @@ final class GameplayViewUITests: XCTestCase {
     @MainActor
     func testGameplayViewPlaybackSequence() throws {
         try openGameplay(in: app)
-        let playButton = try requireControl(named: "Play", in: app)
+        let playButton = try requirePlaybackButton()
 
         // Test complete playback sequence
         // 1. Initial state - should have play button
@@ -144,11 +135,11 @@ final class GameplayViewUITests: XCTestCase {
         try requirePlaybackButton(timeout: 2)
 
         // 4. Test restart functionality
-        let restartButton = try requireControl(named: "Restart", in: app)
+        let restartButton = try requireGameplayRestartControl(in: app)
         restartButton.tap()
 
         // 5. After restart - should return to initial state
-        try requireControl(named: "Play", in: app, timeout: 3)
+        try requirePlaybackButton(timeout: 3)
     }
 
     @MainActor
@@ -156,10 +147,10 @@ final class GameplayViewUITests: XCTestCase {
         try openGameplay(in: app)
 
         // Test that key interactive elements are accessible
-        let playButton = try requireControl(named: "Play", in: app)
+        let playButton = try requirePlaybackButton()
         XCTAssertTrue(playButton.isHittable, "Play button should be accessible")
 
-        let restartButton = try requireControl(named: "Restart", in: app)
+        let restartButton = try requireGameplayRestartControl(in: app)
         XCTAssertTrue(restartButton.isHittable, "Restart button should be accessible")
 
         let backButton = try requireControl(named: "Go back", in: app)
@@ -194,7 +185,7 @@ final class GameplayViewUITests: XCTestCase {
         try openGameplay(in: app)
 
         // Rapid interaction test - ensure UI remains stable
-        let restartButton = try requireControl(named: "Restart", in: app)
+        let restartButton = try requireGameplayRestartControl(in: app)
 
         // Multiple rapid interactions
         for _ in 0..<3 {
@@ -203,12 +194,12 @@ final class GameplayViewUITests: XCTestCase {
             XCTAssertTrue(restartButton.waitForExistence(timeout: 1.0), "Restart button should remain available")
             restartButton.tap()
             // Wait for button to be responsive after tap
-            try requireControl(named: "Play", in: app, timeout: 1)
+            try requirePlaybackButton(timeout: 1)
         }
 
         // Verify UI is still functional after rapid interactions
         try requireStaticText(containing: "Thunder Beat", in: app)
-        try requireControl(named: "Play", in: app, timeout: 3)
+        try requirePlaybackButton(timeout: 3)
         XCTAssertTrue(restartButton.exists, "Restart button should still be functional")
 
         // Test final navigation back

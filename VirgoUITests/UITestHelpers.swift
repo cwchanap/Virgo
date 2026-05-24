@@ -198,6 +198,51 @@ extension XCTestCase {
     }
 
     @discardableResult
+    func requireGameplayPlayPauseControl(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let playButton = app.buttons.matching(NSPredicate(format: "label == %@", "Play")).firstMatch
+        let pauseButton = app.buttons.matching(NSPredicate(format: "label == %@", "Pause")).firstMatch
+        let candidates = [
+            app.buttons["gameplayMainPlayPauseButton"],
+            app.buttons["gameplayHeaderPlayPauseButton"],
+            playButton,
+            pauseButton
+        ]
+
+        if let element = waitForFirstExisting(candidates, timeout: timeout) {
+            return element
+        }
+
+        XCTFail("Expected gameplay Play or Pause control to exist", file: file, line: line)
+        throw UITestFailure.elementNotFound("gameplay Play or Pause")
+    }
+
+    @discardableResult
+    func requireGameplayRestartControl(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let candidates = [
+            app.buttons["gameplayMainRestartButton"],
+            app.buttons["gameplayHeaderRestartButton"],
+            app.buttons.matching(NSPredicate(format: "label == %@", "Restart")).firstMatch
+        ]
+
+        if let element = waitForFirstExisting(candidates, timeout: timeout) {
+            return element
+        }
+
+        XCTFail("Expected gameplay Restart control to exist", file: file, line: line)
+        throw UITestFailure.elementNotFound("gameplay Restart")
+    }
+
+    @discardableResult
     func tapControl(
         named name: String,
         in app: XCUIApplication,
@@ -314,7 +359,7 @@ extension XCTestCase {
 
         try requireStaticText(containing: songTitle, in: app, timeout: timeout, file: file, line: line)
         try requireStaticText(containing: artist, in: app, timeout: timeout, file: file, line: line)
-        try requireControl(named: "Play", in: app, timeout: timeout, file: file, line: line)
+        try requireGameplayPlayPauseControl(in: app, timeout: timeout, file: file, line: line)
     }
 
     func tapBackFromGameplay(
@@ -323,7 +368,15 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        try tapControl(named: "Go back", in: app, timeout: timeout, file: file, line: line)
+        guard let backButton = waitForFirstExisting([
+            app.buttons["gameplayBackButton"],
+            app.buttons.matching(NSPredicate(format: "label == %@", "Go back")).firstMatch
+        ], timeout: timeout) else {
+            XCTFail("Expected gameplay back control to exist", file: file, line: line)
+            throw UITestFailure.elementNotFound("gameplay back")
+        }
+
+        backButton.tap()
     }
 
     /// Wait for multiple elements to exist

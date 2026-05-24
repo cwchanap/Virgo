@@ -77,6 +77,7 @@ struct GameplayHeaderView: View {
                 .foregroundColor(.white)
         }
         .accessibilityLabel("Go back")
+        .accessibilityIdentifier("gameplayBackButton")
         .accessibilityHint("Returns to the song list")
     }
 
@@ -88,6 +89,7 @@ struct GameplayHeaderView: View {
                     .foregroundColor(.white)
             }
             .accessibilityLabel("Restart")
+            .accessibilityIdentifier("gameplayHeaderRestartButton")
             .accessibilityHint("Restarts playback from the beginning")
 
             Button(action: onPlayPause) {
@@ -96,6 +98,7 @@ struct GameplayHeaderView: View {
                     .foregroundColor(isPlaying ? .red : .green)
             }
             .accessibilityLabel(isPlaying ? "Pause" : "Play")
+            .accessibilityIdentifier("gameplayHeaderPlayPauseButton")
             .accessibilityHint(isPlaying ? "Pauses the drum track" : "Starts playing the drum track")
         }
     }
