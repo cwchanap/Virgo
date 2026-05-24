@@ -123,8 +123,8 @@ final class VirgoUITests: XCTestCase {
         try requireStaticText(containing: "Rock Masters", in: app)
 
         // Verify playback controls exist
-        try requireControl(named: "Play", in: app)
-        try requireControl(named: "Restart", in: app)
+        try requireGameplayPlayPauseControl(in: app)
+        try requireGameplayRestartControl(in: app)
 
         // Test back navigation
         try tapBackFromGameplay(in: app)
