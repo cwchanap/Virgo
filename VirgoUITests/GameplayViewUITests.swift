@@ -13,6 +13,8 @@ final class GameplayViewUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        installSystemDialogHandlers()
+        dismissSetupAssistantIfPresent()
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument
@@ -20,6 +22,7 @@ final class GameplayViewUITests: XCTestCase {
         app.launchArguments.append("-UITesting")
         app.launchArguments.append("-ResetState")
         app.launch()
+        dismissSetupAssistantIfPresent()
     }
 
     override func tearDownWithError() throws {
