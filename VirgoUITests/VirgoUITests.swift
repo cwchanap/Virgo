@@ -16,6 +16,8 @@ final class VirgoUITests: XCTestCase {
 
         // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
+        installSystemDialogHandlers()
+        dismissSetupAssistantIfPresent()
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument

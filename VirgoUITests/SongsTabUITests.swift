@@ -12,6 +12,8 @@ final class SongsTabUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        installSystemDialogHandlers()
+        dismissSetupAssistantIfPresent()
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument
@@ -19,6 +21,7 @@ final class SongsTabUITests: XCTestCase {
         app.launchArguments.append("-UITesting")
         app.launchArguments.append("-ResetState")
         app.launch()
+        dismissSetupAssistantIfPresent()
     }
 
     /// Launches the app with -SkipSeed flag for tests that need empty state
@@ -29,6 +32,7 @@ final class SongsTabUITests: XCTestCase {
         app.launchArguments.append("-ResetState")
         app.launchArguments.append("-SkipSeed")
         app.launch()
+        dismissSetupAssistantIfPresent()
     }
 
     override func tearDownWithError() throws {

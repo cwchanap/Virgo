@@ -17,6 +17,8 @@ final class VirgoUITestsLaunchTests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        installSystemDialogHandlers()
+        dismissSetupAssistantIfPresent()
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument
@@ -27,6 +29,7 @@ final class VirgoUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         app.launch()
+        dismissSetupAssistantIfPresent()
 
         // Wait for app to fully launch
         XCTAssertTrue(app.staticTexts["VIRGO"].waitForExistence(timeout: 10))

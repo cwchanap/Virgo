@@ -12,6 +12,8 @@ final class ServerSongsUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+        installSystemDialogHandlers()
+        dismissSetupAssistantIfPresent()
 
         // Add custom launch argument to distinguish UI tests from unit tests
         // ContentView.isUITesting checks for this argument
@@ -19,6 +21,7 @@ final class ServerSongsUITests: XCTestCase {
         app.launchArguments.append("-UITesting")
         app.launchArguments.append("-ResetState")
         app.launch()
+        dismissSetupAssistantIfPresent()
     }
 
     override func tearDownWithError() throws {

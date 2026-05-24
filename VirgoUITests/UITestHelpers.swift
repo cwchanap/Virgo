@@ -11,6 +11,18 @@ enum UITestFailure: Error {
     case elementNotFound(String)
 }
 
+private let systemDialogButtonLabels = [
+    "Continue",
+    "Not Now",
+    "Skip",
+    "Set Up Later",
+    "Don't Share",
+    "Don’t Share",
+    "OK",
+    "Allow",
+    "Close"
+]
+
 // MARK: - Helper Extensions
 extension XCUIElement {
     func clearAndEnterText(_ text: String) {
@@ -47,6 +59,51 @@ extension XCUIElement {
 }
 
 extension XCTestCase {
+    func installSystemDialogHandlers() {
+        addUIInterruptionMonitor(withDescription: "System setup and permission dialogs") { element in
+            self.tapFirstSystemDialogButton(in: element)
+        }
+    }
+
+    @discardableResult
+    func dismissSetupAssistantIfPresent(timeout: TimeInterval = 2) -> Bool {
+        let setupAssistant = XCUIApplication(bundleIdentifier: "com.apple.SetupAssistant")
+        guard setupAssistant.state != .notRunning else { return false }
+
+        setupAssistant.activate()
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            if tapFirstSystemDialogButton(in: setupAssistant) {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        return false
+    }
+
+    private func tapFirstSystemDialogButton(in root: XCUIElement) -> Bool {
+        for label in systemDialogButtonLabels {
+            let button = root.buttons[label]
+            if button.exists {
+                button.tap()
+                return true
+            }
+        }
+
+        let continueButton = root.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Continue")
+        ).firstMatch
+        if continueButton.exists {
+            continueButton.tap()
+            return true
+        }
+
+        return false
+    }
+
     @discardableResult
     func waitForFirstExisting(_ elements: [XCUIElement], timeout: TimeInterval = 10) -> XCUIElement? {
         let deadline = Date().addingTimeInterval(timeout)
@@ -118,6 +175,8 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
+        dismissSetupAssistantIfPresent(timeout: 1)
+
         if !app.staticTexts["Songs"].waitForExistence(timeout: 1) {
             try tapControl(named: "START", in: app, timeout: timeout, file: file, line: line)
         }

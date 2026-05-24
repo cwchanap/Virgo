@@ -62,6 +62,15 @@ jobs:
         
       - name: Show available simulators
         run: xcrun simctl list devices available
+
+      - name: Disable macOS setup assistant
+        run: |
+          defaults write com.apple.SetupAssistant DidSeeCloudSetup -bool true
+          defaults write com.apple.SetupAssistant DidSeePrivacy -bool true
+          defaults write com.apple.SetupAssistant DidSeeSiriSetup -bool true
+          defaults write com.apple.SetupAssistant LastSeenCloudProductVersion "$(sw_vers -productVersion)"
+          defaults write com.apple.SetupAssistant LastSeenBuddyBuildVersion "$(sw_vers -buildVersion)"
+          killall "Setup Assistant" || true
         
       - name: Clean build folder
         run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
