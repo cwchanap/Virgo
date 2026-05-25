@@ -109,7 +109,8 @@ struct ExpandableSongRow: View {
                                     .foregroundColor(song.isSaved ? .purple : .gray)
                             }
                             .buttonStyle(PlainButtonStyle())
-                            .accessibilityLabel(song.isSaved ? "Saved" : "Bookmark")
+                            .accessibilityLabel(song.isSaved ? "Remove bookmark" : "Save song")
+                            .accessibilityValue(song.isSaved ? "Saved" : "Not saved")
 
                             // Available Difficulties
                             HStack(spacing: 2) {
