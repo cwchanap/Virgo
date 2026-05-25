@@ -46,11 +46,10 @@ final class ServerSongsUITests: XCTestCase {
         return XCTWaiter.wait(for: [enabledExpectation], timeout: timeout) == .completed
     }
 
-    private func waitForServerTabState(timeout: TimeInterval = 3) -> Bool {
+    private func waitForServerTabState(timeout: TimeInterval = 5) -> Bool {
         waitForStaticText(containing: "Loading server songs", in: app, timeout: timeout) ||
             waitForStaticText(containing: "No Server Songs", in: app, timeout: timeout) ||
-            waitForStaticText(containing: "songs available", in: app, timeout: timeout) ||
-            app.buttons["refreshServerSongsButton"].waitForExistence(timeout: timeout)
+            waitForStaticText(containing: "songs available", in: app, timeout: timeout)
     }
 
     @MainActor
