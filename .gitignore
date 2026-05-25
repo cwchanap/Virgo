@@ -25,5 +25,6 @@ ui-test-activity-log.json
 Screenshot*.png
 
 .claude/settings.local.json
+.superpowers/
 .devin/config.local.json
 .xcodebuildmcp/
