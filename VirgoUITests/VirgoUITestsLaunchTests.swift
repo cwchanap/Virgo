@@ -29,7 +29,7 @@ final class VirgoUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         app.launch()
-        dismissSetupAssistantIfPresent()
+        dismissSetupAssistantIfPresent(returningTo: app)
 
         // Wait for app to fully launch
         XCTAssertTrue(app.staticTexts["VIRGO"].waitForExistence(timeout: 10))

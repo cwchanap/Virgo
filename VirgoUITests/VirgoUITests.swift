@@ -35,6 +35,7 @@ final class VirgoUITests: XCTestCase {
     @MainActor
     func testMainMenuNavigation() throws {
         app.launch()
+        dismissSetupAssistantIfPresent(returningTo: app)
 
         // Verify main menu elements are present
         XCTAssertTrue(app.staticTexts["VIRGO"].waitForExistence(timeout: 10))
@@ -52,6 +53,7 @@ final class VirgoUITests: XCTestCase {
     @MainActor
     func testDrumTracksListDisplay() throws {
         app.launch()
+        dismissSetupAssistantIfPresent(returningTo: app)
 
         // Navigate to songs
         try openSongsView(in: app)
@@ -72,6 +74,7 @@ final class VirgoUITests: XCTestCase {
     @MainActor
     func testSearchFunctionality() throws {
         app.launch()
+        dismissSetupAssistantIfPresent(returningTo: app)
         try openSongsView(in: app)
 
         // Wait for tracks to load
@@ -116,6 +119,7 @@ final class VirgoUITests: XCTestCase {
     @MainActor
     func testGameplayViewNavigation() throws {
         app.launch()
+        dismissSetupAssistantIfPresent(returningTo: app)
         try openGameplay(in: app)
 
         // Verify we're in gameplay view - check for unique gameplay elements
@@ -139,6 +143,7 @@ final class VirgoUITests: XCTestCase {
     @MainActor
     func testTabNavigation() throws {
         app.launch()
+        dismissSetupAssistantIfPresent(returningTo: app)
         try openSongsView(in: app)
 
         // Test tab navigation

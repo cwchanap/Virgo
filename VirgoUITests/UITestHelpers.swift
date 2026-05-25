@@ -66,9 +66,18 @@ extension XCTestCase {
     }
 
     @discardableResult
-    func dismissSetupAssistantIfPresent(timeout: TimeInterval = 2) -> Bool {
+    func dismissSetupAssistantIfPresent(
+        timeout: TimeInterval = 2,
+        returningTo app: XCUIApplication? = nil
+    ) -> Bool {
         let setupAssistant = XCUIApplication(bundleIdentifier: "com.apple.SetupAssistant")
         guard setupAssistant.state != .notRunning else { return false }
+
+        defer {
+            if let app, app.state != .notRunning {
+                app.activate()
+            }
+        }
 
         setupAssistant.activate()
         let deadline = Date().addingTimeInterval(timeout)
@@ -304,20 +313,37 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        dismissSetupAssistantIfPresent(timeout: 1)
+        for attempt in 0..<2 {
+            if app.state == .notRunning {
+                app.launch()
+            }
 
-        if !waitForStaticText(containing: "Songs", in: app, timeout: 1) &&
-            !app.textFields["searchField"].waitForExistence(timeout: 1) {
+            dismissSetupAssistantIfPresent(timeout: 1, returningTo: app)
+
+            if songsViewIsLoaded(in: app, timeout: 1) {
+                return
+            }
+
             try tapControl(named: "START", in: app, timeout: timeout, file: file, line: line)
+
+            if songsViewIsLoaded(in: app, timeout: timeout) {
+                return
+            }
+
+            guard attempt == 0, app.state == .notRunning else { break }
         }
 
         XCTAssertTrue(
-            waitForStaticText(containing: "Songs", in: app, timeout: timeout) ||
-                app.textFields["searchField"].waitForExistence(timeout: timeout),
+            songsViewIsLoaded(in: app, timeout: timeout),
             "Songs view should load",
             file: file,
             line: line
         )
+    }
+
+    private func songsViewIsLoaded(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        waitForStaticText(containing: "Songs", in: app, timeout: timeout) ||
+            app.textFields["searchField"].waitForExistence(timeout: timeout)
     }
 
     func openGameplay(

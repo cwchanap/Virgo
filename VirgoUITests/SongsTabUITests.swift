@@ -21,7 +21,7 @@ final class SongsTabUITests: XCTestCase {
         app.launchArguments.append("-UITesting")
         app.launchArguments.append("-ResetState")
         app.launch()
-        dismissSetupAssistantIfPresent()
+        dismissSetupAssistantIfPresent(returningTo: app)
     }
 
     /// Launches the app with -SkipSeed flag for tests that need empty state
@@ -32,7 +32,7 @@ final class SongsTabUITests: XCTestCase {
         app.launchArguments.append("-ResetState")
         app.launchArguments.append("-SkipSeed")
         app.launch()
-        dismissSetupAssistantIfPresent()
+        dismissSetupAssistantIfPresent(returningTo: app)
     }
 
     override func tearDownWithError() throws {
@@ -102,7 +102,14 @@ final class SongsTabUITests: XCTestCase {
             if !countText.hasPrefix("0 ") {
                 // Verify downloaded songs list elements exist
                 try requireControl(named: "Play", in: app, timeout: 5)
-                try requireControl(named: "Bookmark", in: app, timeout: 5)
+                let bookmarkPredicate = NSPredicate(
+                    format: "identifier == %@ OR label == %@ OR label == %@",
+                    "downloadedSongBookmarkButton",
+                    "Save song",
+                    "Remove bookmark"
+                )
+                let bookmarkButton = app.buttons.matching(bookmarkPredicate).firstMatch
+                XCTAssertTrue(bookmarkButton.waitForExistence(timeout: 5))
             }
         }
     }

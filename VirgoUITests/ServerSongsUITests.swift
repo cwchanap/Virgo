@@ -21,7 +21,7 @@ final class ServerSongsUITests: XCTestCase {
         app.launchArguments.append("-UITesting")
         app.launchArguments.append("-ResetState")
         app.launch()
-        dismissSetupAssistantIfPresent()
+        dismissSetupAssistantIfPresent(returningTo: app)
     }
 
     override func tearDownWithError() throws {
