@@ -201,6 +201,9 @@ struct DownloadedSongRowWithDelete: View {
                 .foregroundColor(song.isSaved ? .purple : .gray)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(song.isSaved ? "Remove bookmark" : "Save song")
+        .accessibilityIdentifier("downloadedSongBookmarkButton")
+        .accessibilityValue(song.isSaved ? "Saved" : "Not saved")
     }
     
     private var difficultyBadges: some View {
