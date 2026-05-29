@@ -205,4 +205,45 @@ struct ScorePersistenceServiceTests {
             #expect(limited.count == 2)
         }
     }
+
+    @Test("migrateLegacyHighScores copies legacy bests into Chart.bestScore once")
+    func testMigrateLegacyHighScores() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            let key = PersistentIdentifierPersistenceKey.canonicalKey(
+                for: chart.persistentModelID, logPrefix: "Test"
+            )
+            userDefaults.set([key: 3300], forKey: "HighScorePerChart")
+
+            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
+
+            #expect(chart.bestScore == 3300)
+            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
+            #expect(userDefaults.dictionary(forKey: "HighScorePerChart") == nil)
+        }
+    }
+
+    @Test("migrateLegacyHighScores is idempotent and never lowers an existing best")
+    func testMigrateLegacyHighScoresIdempotent() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            let key = PersistentIdentifierPersistenceKey.canonicalKey(
+                for: chart.persistentModelID, logPrefix: "Test"
+            )
+            userDefaults.set([key: 1000], forKey: "HighScorePerChart")
+            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
+            #expect(chart.bestScore == 1000)
+
+            // A second run with a different dict must be ignored (flag already set).
+            userDefaults.set([key: 9999], forKey: "HighScorePerChart")
+            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
+            #expect(chart.bestScore == 1000)
+        }
+    }
 }
