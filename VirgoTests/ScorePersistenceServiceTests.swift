@@ -151,4 +151,58 @@ struct ScorePersistenceServiceTests {
             #expect(chart.scoreRecords.count == 1)
         }
     }
+
+    @Test("recordAttempt prunes to the 10 most recent by playedAt")
+    func testRecordAttemptPrunesToTen() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            let base = Date(timeIntervalSince1970: 1_000_000)
+
+            // Insert 12 attempts with increasing timestamps and scores.
+            for i in 0..<12 {
+                var engine = ScoreEngine()
+                for _ in 0...(i) { engine.processHit(accuracy: .good, timingError: 0) }
+                let snapshot = LiveScoreSnapshot(scoreEngine: engine)
+                _ = service.recordAttempt(
+                    snapshot, for: chart, atFullSpeed: false, speedMultiplier: 1.0,
+                    now: base.addingTimeInterval(Double(i))
+                )
+            }
+
+            #expect(chart.scoreRecords.count == 10)
+            // Oldest two (i = 0, 1) should have been pruned.
+            let earliest = chart.scoreRecords.map { $0.playedAt }.min()
+            #expect(earliest == base.addingTimeInterval(2))
+        }
+    }
+
+    @Test("recentAttempts returns DTOs newest-first, limited, with all fields")
+    func testRecentAttemptsMapsAndSorts() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            let base = Date(timeIntervalSince1970: 2_000_000)
+
+            for i in 0..<3 {
+                var engine = ScoreEngine()
+                for _ in 0...(i) { engine.processHit(accuracy: .perfect, timingError: 0) }
+                let snapshot = LiveScoreSnapshot(scoreEngine: engine)
+                _ = service.recordAttempt(
+                    snapshot, for: chart, atFullSpeed: true,
+                    speedMultiplier: 0.75, now: base.addingTimeInterval(Double(i))
+                )
+            }
+
+            let attempts = service.recentAttempts(for: chart)
+            #expect(attempts.count == 3)
+            #expect(attempts.first?.playedAt == base.addingTimeInterval(2)) // newest first
+            #expect(attempts.last?.playedAt == base)
+            #expect(attempts.first?.speedMultiplier == 0.75)
+            #expect(attempts.first?.maxCombo ?? 0 > 0)
+
+            let limited = service.recentAttempts(for: chart, limit: 2)
+            #expect(limited.count == 2)
+        }
+    }
 }
