@@ -246,4 +246,19 @@ struct ScorePersistenceServiceTests {
             #expect(chart.bestScore == 1000)
         }
     }
+
+    @Test("migrateLegacyHighScores with no legacy data still sets the flag")
+    func testMigrateLegacyHighScoresNoLegacyData() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            // No "HighScorePerChart" key set at all.
+            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
+
+            #expect(chart.bestScore == 0)
+            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
+        }
+    }
 }
