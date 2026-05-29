@@ -23,7 +23,7 @@ struct ScoringIntegrationTests {
             chart: chart,
             metronome: MetronomeEngine(),
             practiceSettings: PracticeSettingsService(userDefaults: ud),
-            scorePersistence: ScorePersistenceService.makeInMemory()
+            scorePersistence: ScorePersistenceService(modelContext: TestContainer.shared.context)
         )
     }
 
