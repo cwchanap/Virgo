@@ -14,6 +14,7 @@ struct GameplayView: View {
     /// Shared practice settings service - single source of truth injected via environment
     @EnvironmentObject private var practiceSettings: PracticeSettingsService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
 
     let chart: Chart
     let metronome: MetronomeEngine
@@ -82,7 +83,8 @@ struct GameplayView: View {
                 viewModel = GameplayViewModel(
                     chart: chart,
                     metronome: metronome,
-                    practiceSettings: practiceSettings
+                    practiceSettings: practiceSettings,
+                    scorePersistence: ScorePersistenceService(modelContext: modelContext)
                 )
             }
             // Check if the task was cancelled immediately after viewModel creation

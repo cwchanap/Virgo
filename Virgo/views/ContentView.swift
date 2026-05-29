@@ -128,6 +128,11 @@ struct ContentView: View {
                 databaseService = DatabaseMaintenanceService(modelContext: modelContext)
             }
             databaseService?.performInitialMaintenance(songs: allSongs)
+            ScorePersistenceService(modelContext: modelContext)
+                .migrateLegacyHighScores(
+                    charts: allSongs.flatMap { $0.charts },
+                    from: .standard
+                )
             serverSongService.setModelContext(modelContext)
             Task {
                 await serverSongService.loadServerSongs()
