@@ -23,6 +23,7 @@ final class ScorePersistenceService {
     /// Records a completed run, prunes old history, and updates the chart's
     /// all-time best when the run was full speed.
     /// - Returns: `true` if a new all-time best was set.
+    /// Returns `false` if the underlying save fails (no best-score change is reported).
     @discardableResult
     func recordAttempt(
         _ snapshot: LiveScoreSnapshot,
@@ -43,6 +44,7 @@ final class ScorePersistenceService {
 
         pruneOldRecords(for: chart)
 
+        let previousBestScore = chart.bestScore
         var isNewBest = false
         if atFullSpeed && record.score > chart.bestScore {
             chart.bestScore = record.score
@@ -53,6 +55,8 @@ final class ScorePersistenceService {
             try modelContext.save()
         } catch {
             Logger.error("ScorePersistenceService: failed to save score record: \(error.localizedDescription)")
+            chart.bestScore = previousBestScore
+            return false
         }
         return isNewBest
     }
