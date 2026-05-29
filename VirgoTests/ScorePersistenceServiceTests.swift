@@ -74,4 +74,81 @@ struct ScorePersistenceServiceTests {
             #expect(remaining.isEmpty)
         }
     }
+
+    @Test("recordAttempt at full speed sets a new best and returns true")
+    func testRecordAttemptFullSpeedSetsBest() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            var engine = ScoreEngine()
+            for _ in 0..<10 { engine.processHit(accuracy: .perfect, timingError: 0) }
+            let snapshot = LiveScoreSnapshot(scoreEngine: engine)
+
+            let isNewBest = service.recordAttempt(
+                snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0
+            )
+
+            #expect(isNewBest == true)
+            #expect(service.bestScore(for: chart) == snapshot.score)
+            #expect(chart.scoreRecords.count == 1)
+        }
+    }
+
+    @Test("recordAttempt below current best returns false and keeps best")
+    func testRecordAttemptLowerScoreKeepsBest() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            chart.bestScore = 5000
+
+            var engine = ScoreEngine()
+            for _ in 0..<3 { engine.processHit(accuracy: .good, timingError: 0) }
+            let snapshot = LiveScoreSnapshot(scoreEngine: engine)
+
+            let isNewBest = service.recordAttempt(
+                snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0
+            )
+
+            #expect(isNewBest == false)
+            #expect(service.bestScore(for: chart) == 5000)
+            #expect(chart.scoreRecords.count == 1) // still recorded in history
+        }
+    }
+
+    @Test("recordAttempt not at full speed records history but never sets best")
+    func testRecordAttemptSlowedDoesNotSetBest() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            var engine = ScoreEngine()
+            for _ in 0..<20 { engine.processHit(accuracy: .perfect, timingError: 0) }
+            let snapshot = LiveScoreSnapshot(scoreEngine: engine)
+
+            let isNewBest = service.recordAttempt(
+                snapshot, for: chart, atFullSpeed: false, speedMultiplier: 0.5
+            )
+
+            #expect(isNewBest == false)
+            #expect(service.bestScore(for: chart) == 0)
+            #expect(chart.scoreRecords.count == 1)
+            #expect(chart.scoreRecords.first?.speedMultiplier == 0.5)
+        }
+    }
+
+    @Test("recordAttempt with zero score never sets best")
+    func testRecordAttemptZeroScore() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            let snapshot = LiveScoreSnapshot(scoreEngine: ScoreEngine())
+
+            let isNewBest = service.recordAttempt(
+                snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0
+            )
+
+            #expect(isNewBest == false)
+            #expect(service.bestScore(for: chart) == 0)
+            #expect(chart.scoreRecords.count == 1)
+        }
+    }
 }
