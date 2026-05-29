@@ -13,6 +13,8 @@ import SwiftData
 final class ScorePersistenceService {
 
     nonisolated static let maxRecentAttempts = 10
+    private static let migrationFlagKey = "DidMigrateHighScoresToSwiftData"
+    private static let legacyHighScoreKey = "HighScorePerChart"
 
     private let modelContext: ModelContext
 
@@ -85,6 +87,36 @@ final class ScorePersistenceService {
             }
     }
 
+    /// One-time migration of legacy UserDefaults high scores into Chart.bestScore.
+    /// Guarded by a flag so it runs at most once; idempotent and never lowers a best.
+    func migrateLegacyHighScores(charts: [Chart], from userDefaults: UserDefaults) {
+        guard !userDefaults.bool(forKey: Self.migrationFlagKey) else { return }
+
+        let legacy = readLegacyScores(from: userDefaults)
+        if !legacy.isEmpty {
+            for chart in charts {
+                let key = PersistentIdentifierPersistenceKey.canonicalKey(
+                    for: chart.persistentModelID,
+                    logPrefix: "ScorePersistenceService"
+                )
+                if let legacyBest = legacy[key], legacyBest > chart.bestScore {
+                    chart.bestScore = legacyBest
+                }
+            }
+            do {
+                try modelContext.save()
+            } catch {
+                Logger.error(
+                    "ScorePersistenceService: failed to save migrated high scores: \(error.localizedDescription)"
+                )
+                return // leave the flag unset so migration retries next launch
+            }
+        }
+
+        userDefaults.removeObject(forKey: Self.legacyHighScoreKey)
+        userDefaults.set(true, forKey: Self.migrationFlagKey)
+    }
+
     // MARK: - Private
 
     private func pruneOldRecords(for chart: Chart) {
@@ -93,5 +125,18 @@ final class ScorePersistenceService {
         for record in sorted[Self.maxRecentAttempts...] {
             modelContext.delete(record)
         }
+    }
+
+    private func readLegacyScores(from userDefaults: UserDefaults) -> [String: Int] {
+        guard let raw = userDefaults.dictionary(forKey: Self.legacyHighScoreKey) else { return [:] }
+        var scores: [String: Int] = [:]
+        for (key, value) in raw {
+            if let intValue = value as? Int {
+                scores[key] = intValue
+            } else if let numberValue = value as? NSNumber {
+                scores[key] = numberValue.intValue
+            }
+        }
+        return scores
     }
 }
