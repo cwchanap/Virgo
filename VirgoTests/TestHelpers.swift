@@ -77,7 +77,8 @@ class TestContainer {
             Chart.self,
             Note.self,
             ServerSong.self,
-            ServerChart.self
+            ServerChart.self,
+            ScoreRecord.self
         ])
 
         let modelConfiguration = ModelConfiguration(
@@ -144,6 +145,9 @@ class TestContainer {
 
             let serverCharts = try context.fetch(FetchDescriptor<ServerChart>())
             serverCharts.forEach { context.delete($0) }
+
+            let scoreRecords = try context.fetch(FetchDescriptor<ScoreRecord>())
+            scoreRecords.forEach { context.delete($0) }
 
             // Force immediate persistence
             try context.save()

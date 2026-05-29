@@ -34,6 +34,9 @@ final class Chart {
     var song: Song?
     @Relationship(deleteRule: .cascade, inverse: \Note.chart)
     var notes: [Note]
+    var bestScore: Int = 0
+    @Relationship(deleteRule: .cascade, inverse: \ScoreRecord.chart)
+    var scoreRecords: [ScoreRecord] = []
 
     var timeSignature: TimeSignature {
         get {
