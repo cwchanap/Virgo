@@ -22,7 +22,8 @@ struct VirgoApp: App {
             Chart.self,
             Note.self,
             ServerSong.self,
-            ServerChart.self
+            ServerChart.self,
+            ScoreRecord.self
         ])
         let modelConfiguration = ModelConfiguration(
             schema: schema,
