@@ -1523,7 +1523,7 @@ struct GameplayViewModelTests {
         viewModel.setupGameplay()
 
         // Seed a high score so the next session can't beat it
-        viewModel.highScoreService.saveIfHighScore(99999, for: chart.persistentModelID)
+        chart.bestScore = 99999
 
         viewModel.startPlayback()
         // Score 1 point — far below the seeded record

@@ -14,16 +14,15 @@ import Foundation
 @MainActor
 struct GameplayViewModelCoverageAdditionsTests {
 
-    @Test("GameplayViewModelCoverageTestSupport.makeViewModel uses an injected high score service")
-    func testMakeViewModelUsesInjectedHighScoreService() async throws {
-        let (userDefaults, _) = TestUserDefaults.makeIsolated()
-        let highScoreService = HighScoreService(userDefaults: userDefaults)
+    @Test("GameplayViewModelCoverageTestSupport.makeViewModel uses an injected score persistence service")
+    func testMakeViewModelUsesInjectedScorePersistence() async throws {
+        let service = ScorePersistenceService.makeInMemory()
 
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(
-            highScoreService: highScoreService
+            scorePersistence: service
         )
 
-        #expect(vm.highScoreService === highScoreService)
+        #expect(vm.scorePersistence === service)
     }
 
     // MARK: - effectiveBPM nil-track fallback (line 210–213)

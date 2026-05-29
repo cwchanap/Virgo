@@ -113,7 +113,7 @@ struct GameplayView: View {
         )) {
             if let vm = viewModel {
                 SessionResultsView(
-                    highScore: vm.highScoreService.highScore(for: chart.persistentModelID),
+                    highScore: vm.scorePersistence.bestScore(for: chart),
                     isNewRecord: vm.sessionIsNewRecord,
                     scoreSnapshot: vm.sessionScoreSnapshot,
                     onPlayAgain: {

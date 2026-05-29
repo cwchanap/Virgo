@@ -10,7 +10,7 @@ import SwiftUI
 struct SessionResultsView: View {
     let highScore: Int
     /// Whether the save service confirmed this score as a verified new record.
-    /// Derived from `HighScoreService.saveIfHighScore` return value rather than
+    /// Derived from `ScorePersistenceService.recordAttempt` return value rather than
     /// a local score comparison, so the badge only appears when the write succeeded.
     let isNewRecord: Bool
     let scoreSnapshot: LiveScoreSnapshot
