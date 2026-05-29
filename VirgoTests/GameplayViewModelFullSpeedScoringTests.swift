@@ -80,4 +80,50 @@ struct GameplayViewModelFullSpeedScoringTests {
             #expect(chart.scoreRecords.count == 1)
         }
     }
+
+    @Test("Fresh start at a slowed speed marks the run not best-eligible")
+    func testFreshStartAtSlowedSpeedIsNotFullSpeed() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeChartInContext()
+            let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+            settings.setSpeed(0.75)
+            let vm = GameplayViewModel(
+                chart: chart,
+                metronome: MetronomeEngine(audioDriver: RecordingAudioDriver()),
+                practiceSettings: settings,
+                scorePersistence: ScorePersistenceService(modelContext: TestContainer.shared.context)
+            )
+            await vm.loadChartData()
+            vm.setupGameplay(loadPersistedSpeed: false)
+
+            vm.startPlayback()
+
+            #expect(vm.sessionAtFullSpeed == false)
+            vm.cleanup()
+        }
+    }
+
+    @Test("Slowing down mid-run clears full-speed eligibility")
+    func testMidRunSlowDownClearsFullSpeed() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeChartInContext()
+            let settings = GameplayViewModelCoverageTestSupport.makeSettings() // 1.0x default
+            let vm = GameplayViewModel(
+                chart: chart,
+                metronome: MetronomeEngine(audioDriver: RecordingAudioDriver()),
+                practiceSettings: settings,
+                scorePersistence: ScorePersistenceService(modelContext: TestContainer.shared.context)
+            )
+            await vm.loadChartData()
+            vm.setupGameplay(loadPersistedSpeed: false)
+
+            vm.startPlayback()
+            #expect(vm.sessionAtFullSpeed == true) // fresh start at full speed
+
+            vm.updateSpeed(0.75)
+            #expect(vm.sessionAtFullSpeed == false) // cleared by mid-run slow-down
+
+            vm.cleanup()
+        }
+    }
 }
