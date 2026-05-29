@@ -66,6 +66,25 @@ final class ScorePersistenceService {
         chart.bestScore
     }
 
+    /// Most recent attempts for a chart, newest first, as value-type DTOs.
+    func recentAttempts(
+        for chart: Chart,
+        limit: Int = ScorePersistenceService.maxRecentAttempts
+    ) -> [ScoreAttemptSummary] {
+        chart.scoreRecords
+            .sorted { $0.playedAt > $1.playedAt }
+            .prefix(limit)
+            .map { record in
+                ScoreAttemptSummary(
+                    score: record.score,
+                    maxCombo: record.maxCombo,
+                    accuracy: record.accuracy,
+                    speedMultiplier: record.speedMultiplier,
+                    playedAt: record.playedAt
+                )
+            }
+    }
+
     // MARK: - Private
 
     private func pruneOldRecords(for chart: Chart) {
