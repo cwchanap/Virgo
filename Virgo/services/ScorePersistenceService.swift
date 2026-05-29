@@ -94,22 +94,31 @@ final class ScorePersistenceService {
 
         let legacy = readLegacyScores(from: userDefaults)
         if !legacy.isEmpty {
+            var rollback: [(chart: Chart, previousBest: Int)] = []
             for chart in charts {
-                let key = PersistentIdentifierPersistenceKey.canonicalKey(
+                guard let resolution = PersistentIdentifierPersistenceKey.resolve(
                     for: chart.persistentModelID,
+                    in: legacy,
                     logPrefix: "ScorePersistenceService"
-                )
-                if let legacyBest = legacy[key], legacyBest > chart.bestScore {
-                    chart.bestScore = legacyBest
+                ), resolution.value > chart.bestScore else {
+                    continue
                 }
+                rollback.append((chart, chart.bestScore))
+                chart.bestScore = resolution.value
             }
-            do {
-                try modelContext.save()
-            } catch {
-                Logger.error(
-                    "ScorePersistenceService: failed to save migrated high scores: \(error.localizedDescription)"
-                )
-                return // leave the flag unset so migration retries next launch
+
+            if !rollback.isEmpty {
+                do {
+                    try modelContext.save()
+                } catch {
+                    Logger.error(
+                        "ScorePersistenceService: failed to save migrated high scores: \(error.localizedDescription)"
+                    )
+                    for entry in rollback {
+                        entry.chart.bestScore = entry.previousBest
+                    }
+                    return // leave the flag unset so migration retries next launch
+                }
             }
         }
 
