@@ -199,7 +199,7 @@ struct ScorePersistenceServiceTests {
             #expect(attempts.first?.playedAt == base.addingTimeInterval(2)) // newest first
             #expect(attempts.last?.playedAt == base)
             #expect(attempts.first?.speedMultiplier == 0.75)
-            #expect(attempts.first?.maxCombo ?? 0 > 0)
+            #expect(attempts.first?.maxCombo == 3)
 
             let limited = service.recentAttempts(for: chart, limit: 2)
             #expect(limited.count == 2)

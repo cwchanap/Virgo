@@ -12,7 +12,7 @@ import SwiftData
 @MainActor
 final class ScorePersistenceService {
 
-    static let maxRecentAttempts = 10
+    nonisolated static let maxRecentAttempts = 10
 
     private let modelContext: ModelContext
 
