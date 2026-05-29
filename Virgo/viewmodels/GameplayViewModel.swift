@@ -210,8 +210,12 @@ final class GameplayViewModel {
     /// Task for delayed completion to allow late-tolerance window for final notes
     var completionTask: Task<Void, Never>?
 
-    // MARK: - High Score
-    let highScoreService: HighScoreService
+    // MARK: - Score Persistence
+    let scorePersistence: ScorePersistenceService
+
+    /// True only while the current run has been at 1.0x speed for its entire
+    /// duration. Gates all-time best eligibility.
+    var sessionAtFullSpeed: Bool = true
 
     // MARK: - Haptic Generators (iOS only)
     #if os(iOS)
@@ -230,29 +234,40 @@ final class GameplayViewModel {
         chart: Chart,
         metronome: MetronomeEngine,
         practiceSettings: PracticeSettingsService,
-        highScoreService: HighScoreService
+        scorePersistence: ScorePersistenceService
     ) {
         self.chart = chart
         self.metronome = metronome
         self.practiceSettings = practiceSettings
-        self.highScoreService = highScoreService
+        self.scorePersistence = scorePersistence
         self.lastAppliedSpeedMultiplier = practiceSettings.speedMultiplier
     }
 
     @MainActor
     convenience init(chart: Chart, metronome: MetronomeEngine, practiceSettings: PracticeSettingsService) {
-        self.init(chart: chart, metronome: metronome, practiceSettings: practiceSettings, highScoreService: HighScoreService())
+        self.init(
+            chart: chart, metronome: metronome, practiceSettings: practiceSettings,
+            scorePersistence: ScorePersistenceService.makeInMemory()
+        )
     }
 
     #if DEBUG
     @MainActor
     convenience init(chart: Chart, metronome: MetronomeEngine) {
         let ps = PracticeSettingsService()
-        self.init(chart: chart, metronome: metronome, practiceSettings: ps, highScoreService: HighScoreService())
+        self.init(
+            chart: chart, metronome: metronome, practiceSettings: ps,
+            scorePersistence: ScorePersistenceService.makeInMemory()
+        )
     }
     #endif
 
     // MARK: - Speed Control
+
+    /// True when a speed multiplier is effectively 1.0x.
+    static func isFullSpeed(_ multiplier: Double) -> Bool {
+        abs(multiplier - 1.0) < 0.0001
+    }
 
     /// Calculates the effective BPM based on current speed multiplier.
     /// This should be used for all timing calculations instead of track.bpm directly.
@@ -339,6 +354,9 @@ final class GameplayViewModel {
         let currentSpeed = practiceSettings.speedMultiplier
         guard abs(previousSpeed - currentSpeed) > 0.0001 else { return }
         lastAppliedSpeedMultiplier = currentSpeed
+        if isPlaying && !Self.isFullSpeed(currentSpeed) {
+            sessionAtFullSpeed = false
+        }
         let effectiveBPMValue = effectiveBPM()
 
         if isDataLoaded, let track = track {
@@ -726,6 +744,8 @@ final class GameplayViewModel {
             // Starting from beginning - reset all state
             resetPlaybackState()
             pausedElapsedTime = 0.0
+            // A fresh run is best-eligible only if it begins at full speed.
+            sessionAtFullSpeed = Self.isFullSpeed(practiceSettings.speedMultiplier)
         }
 
         startBGMPlayback(track: track)
@@ -1469,7 +1489,12 @@ final class GameplayViewModel {
         // Capture final score and snapshot scoreEngine before reset clears them
         let finalScore = scoreEngine.score
         let finalSnapshot = LiveScoreSnapshot(scoreEngine: scoreEngine)
-        let isNewRecord = highScoreService.saveIfHighScore(finalScore, for: chart.persistentModelID)
+        let isNewRecord = scorePersistence.recordAttempt(
+            finalSnapshot,
+            for: chart,
+            atFullSpeed: sessionAtFullSpeed,
+            speedMultiplier: lastAppliedSpeedMultiplier
+        )
         sessionScoreEngine = scoreEngine
         resetPlaybackState()
         playbackStartTime = nil

@@ -149,3 +149,21 @@ final class ScorePersistenceService {
         return scores
     }
 }
+
+extension ScorePersistenceService {
+    /// A service backed by a throwaway in-memory store, for previews and tests
+    /// that do not assert on cross-launch persistence.
+    static func makeInMemory() -> ScorePersistenceService {
+        let schema = Schema([
+            Song.self, Chart.self, Note.self,
+            ServerSong.self, ServerChart.self, ScoreRecord.self
+        ])
+        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true)
+        do {
+            let container = try ModelContainer(for: schema, configurations: [config])
+            return ScorePersistenceService(modelContext: container.mainContext)
+        } catch {
+            fatalError("ScorePersistenceService.makeInMemory failed: \(error)")
+        }
+    }
+}

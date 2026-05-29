@@ -23,7 +23,7 @@ struct ScoringIntegrationTests {
             chart: chart,
             metronome: MetronomeEngine(),
             practiceSettings: PracticeSettingsService(userDefaults: ud),
-            highScoreService: HighScoreService(userDefaults: ud)
+            scorePersistence: ScorePersistenceService.makeInMemory()
         )
     }
 
