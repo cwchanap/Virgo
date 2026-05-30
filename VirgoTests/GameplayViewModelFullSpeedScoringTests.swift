@@ -126,4 +126,34 @@ struct GameplayViewModelFullSpeedScoringTests {
             vm.cleanup()
         }
     }
+
+    @Test("A speed change made while paused disqualifies the resumed run from best")
+    func testPausedSlowDownThenResumeClearsFullSpeed() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeChartInContext()
+            let settings = GameplayViewModelCoverageTestSupport.makeSettings() // 1.0x
+            let vm = GameplayViewModel(
+                chart: chart,
+                metronome: MetronomeEngine(audioDriver: RecordingAudioDriver()),
+                practiceSettings: settings,
+                scorePersistence: ScorePersistenceService(modelContext: TestContainer.shared.context)
+            )
+            await vm.loadChartData()
+            vm.setupGameplay(loadPersistedSpeed: false)
+            vm.startPlayback()
+            #expect(vm.sessionAtFullSpeed == true)
+
+            // Pause, then slow down while paused (the clear in applySpeedChangeInternal
+            // is skipped because isPlaying is false), then resume.
+            vm.pausePlayback()
+            // Force the resume path on the next start.
+            vm.pausedElapsedTime = 1.0
+            vm.updateSpeed(0.75)
+
+            vm.startPlayback() // resume
+
+            #expect(vm.sessionAtFullSpeed == false)
+            vm.cleanup()
+        }
+    }
 }
