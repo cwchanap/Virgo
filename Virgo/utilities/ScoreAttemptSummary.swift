@@ -6,9 +6,10 @@
 //
 
 import Foundation
+import SwiftData
 
 struct ScoreAttemptSummary: Identifiable, Equatable {
-    let id: UUID
+    let id: PersistentIdentifier
     let score: Int
     let maxCombo: Int
     let accuracy: Double          // 0–100
@@ -16,7 +17,7 @@ struct ScoreAttemptSummary: Identifiable, Equatable {
     let playedAt: Date
 
     init(
-        id: UUID = UUID(),
+        id: PersistentIdentifier,
         score: Int,
         maxCombo: Int,
         accuracy: Double,

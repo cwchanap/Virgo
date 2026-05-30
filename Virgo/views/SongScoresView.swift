@@ -11,9 +11,7 @@ import SwiftData
 struct SongScoresView: View {
     let song: Song
 
-    @Environment(\.modelContext) private var modelContext
     @State private var charts: [Chart] = []
-    @State private var bestScores: [PersistentIdentifier: Int] = [:]
 
     var body: some View {
         ZStack {
@@ -30,7 +28,7 @@ struct SongScoresView: View {
                         HStack {
                             DifficultyBadge(difficulty: chart.difficulty, size: .normal)
                             Spacer()
-                            Text("Best \(bestScores[chart.persistentModelID] ?? 0)")
+                            Text("Best \(chart.bestScore)")
                                 .font(.system(.subheadline, design: .monospaced))
                                 .foregroundColor(.purple)
                         }
@@ -50,11 +48,8 @@ struct SongScoresView: View {
     }
 
     private func load() {
-        let service = ScorePersistenceService(modelContext: modelContext)
-        let sorted = song.charts.sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
-        charts = sorted
-        bestScores = Dictionary(
-            uniqueKeysWithValues: sorted.map { ($0.persistentModelID, service.bestScore(for: $0)) }
-        )
+        charts = song.charts
+            .filter { !$0.isDeleted }
+            .sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
     }
 }
