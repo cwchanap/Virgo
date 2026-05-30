@@ -18,7 +18,8 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        ZStack {
+        NavigationStack {
+            ZStack {
             // Background gradient
             LinearGradient(
                 gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
@@ -76,15 +77,20 @@ struct LibraryView: View {
                 } else {
                     List {
                         ForEach(downloadedSongs, id: \.id) { song in
-                            SavedSongRow(
-                                song: song,
-                                isDeleting: serverSongService.isDeleting(song),
-                                onDelete: {
-                                    Task { @MainActor in
-                                        await serverSongService.deleteLocalSong(song)
+                            NavigationLink {
+                                SongScoresView(song: song)
+                            } label: {
+                                SavedSongRow(
+                                    song: song,
+                                    isDeleting: serverSongService.isDeleting(song),
+                                    onDelete: {
+                                        Task { @MainActor in
+                                            await serverSongService.deleteLocalSong(song)
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
+                            .buttonStyle(.plain)
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -95,6 +101,7 @@ struct LibraryView: View {
                     .background(Color.clear)
                 }
             }
+        }
         }
     }
 }
