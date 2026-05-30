@@ -261,4 +261,30 @@ struct ScorePersistenceServiceTests {
             #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
         }
     }
+
+    @Test("recordAttempt prunes correctly and maintains exact count after multiple calls")
+    func testRecordAttemptPruneMaintainsInvariant() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            let base = Date(timeIntervalSince1970: 3_000_000)
+
+            // Insert exactly maxRecentAttempts + 1 records to trigger one prune.
+            for i in 0...ScorePersistenceService.maxRecentAttempts {
+                var engine = ScoreEngine()
+                for _ in 0...i { engine.processHit(accuracy: .good, timingError: 0) }
+                let snapshot = LiveScoreSnapshot(scoreEngine: engine)
+                _ = service.recordAttempt(
+                    snapshot, for: chart, atFullSpeed: false, speedMultiplier: 1.0,
+                    now: base.addingTimeInterval(Double(i))
+                )
+            }
+
+            // Should have exactly maxRecentAttempts records.
+            #expect(chart.scoreRecords.count == ScorePersistenceService.maxRecentAttempts)
+            // The oldest record (i=0) should have been pruned.
+            let earliest = chart.scoreRecords.map { $0.playedAt }.min()
+            #expect(earliest == base.addingTimeInterval(1))
+        }
+    }
 }
