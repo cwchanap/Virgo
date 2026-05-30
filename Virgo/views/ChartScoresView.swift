@@ -13,7 +13,12 @@ struct ChartScoresView: View {
 
     @Environment(\.modelContext) private var modelContext
     @State private var attempts: [ScoreAttemptSummary] = []
-    @State private var bestScore: Int = 0
+    @State private var bestScore: Int
+
+    init(chart: Chart) {
+        self.chart = chart
+        self._bestScore = State(initialValue: chart.bestScore)
+    }
 
     var body: some View {
         ZStack {
@@ -63,6 +68,7 @@ struct ChartScoresView: View {
                 .foregroundColor(.gray)
             Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var attemptsList: some View {
