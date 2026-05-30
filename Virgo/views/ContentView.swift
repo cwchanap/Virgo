@@ -128,9 +128,13 @@ struct ContentView: View {
                 databaseService = DatabaseMaintenanceService(modelContext: modelContext)
             }
             databaseService?.performInitialMaintenance(songs: allSongs)
+            // Re-fetch live charts after maintenance: performInitialMaintenance may delete
+            // duplicate songs, making the @Query snapshot stale. Using a fresh fetch avoids
+            // traversing charts on deleted Song objects that could fault or crash.
+            let liveCharts = (try? modelContext.fetch(FetchDescriptor<Chart>())) ?? []
             ScorePersistenceService(modelContext: modelContext)
                 .migrateLegacyHighScores(
-                    charts: allSongs.flatMap { $0.charts },
+                    charts: liveCharts,
                     from: .standard
                 )
             serverSongService.setModelContext(modelContext)

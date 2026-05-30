@@ -62,7 +62,7 @@ final class ScorePersistenceService {
         )
         modelContext.insert(record)
 
-        pruneOldRecords(for: chart)
+        let pruned = pruneOldRecordsForRollback(for: chart)
 
         let previousBestScore = chart.bestScore
         var isNewBest = false
@@ -75,7 +75,12 @@ final class ScorePersistenceService {
             try modelContext.save()
         } catch {
             Logger.error("ScorePersistenceService: failed to save score record: \(error.localizedDescription)")
+            // Roll back all pending mutations so a later save cannot persist them.
             chart.bestScore = previousBestScore
+            modelContext.delete(record)
+            for deletedRecord in pruned {
+                modelContext.insert(deletedRecord)
+            }
             return false
         }
         return isNewBest
@@ -146,12 +151,15 @@ final class ScorePersistenceService {
 
     // MARK: - Private
 
-    private func pruneOldRecords(for chart: Chart) {
+    @discardableResult
+    private func pruneOldRecordsForRollback(for chart: Chart) -> [ScoreRecord] {
         let sorted = chart.scoreRecords.sorted { $0.playedAt > $1.playedAt }
-        guard sorted.count > Self.maxRecentAttempts else { return }
-        for record in sorted[Self.maxRecentAttempts...] {
+        guard sorted.count > Self.maxRecentAttempts else { return [] }
+        let toPrune = Array(sorted[Self.maxRecentAttempts...])
+        for record in toPrune {
             modelContext.delete(record)
         }
+        return toPrune
     }
 
     private func readLegacyScores(from userDefaults: UserDefaults) -> [String: Int] {
