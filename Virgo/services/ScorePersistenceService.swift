@@ -17,9 +17,19 @@ final class ScorePersistenceService {
     private static let legacyHighScoreKey = "HighScorePerChart"
 
     private let modelContext: ModelContext
+    /// Retains the container when this service owns an in-memory store, so the
+    /// context cannot dangle. `ModelContext` does not keep its `ModelContainer`
+    /// alive; without this, a `makeInMemory()` service would crash on first use.
+    private let retainedContainer: ModelContainer?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
+        self.retainedContainer = nil
+    }
+
+    private init(inMemoryContainer: ModelContainer) {
+        self.modelContext = inMemoryContainer.mainContext
+        self.retainedContainer = inMemoryContainer
     }
 
     /// Records a completed run, prunes old history, and updates the chart's
@@ -34,6 +44,14 @@ final class ScorePersistenceService {
         speedMultiplier: Double,
         now: Date = Date()
     ) -> Bool {
+        // The linked chart must belong to this service's context before we attach a
+        // ScoreRecord to it. In production the gameplay chart is already managed by the
+        // injected context; for in-memory/preview services handed a detached (context-less)
+        // chart, adopt it so SwiftData does not crash faulting a context-less related object.
+        if chart.modelContext == nil {
+            modelContext.insert(chart)
+        }
+
         let record = ScoreRecord(
             score: snapshot.score,
             maxCombo: snapshot.maxCombo,
@@ -161,7 +179,7 @@ extension ScorePersistenceService {
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true)
         do {
             let container = try ModelContainer(for: schema, configurations: [config])
-            return ScorePersistenceService(modelContext: container.mainContext)
+            return ScorePersistenceService(inMemoryContainer: container)
         } catch {
             fatalError("ScorePersistenceService.makeInMemory failed: \(error)")
         }
