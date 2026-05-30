@@ -101,6 +101,7 @@ final class ScorePersistenceService {
             .prefix(limit)
             .map { record in
                 ScoreAttemptSummary(
+                    id: record.persistentModelID,
                     score: record.score,
                     maxCombo: record.maxCombo,
                     accuracy: record.accuracy,
