@@ -738,6 +738,13 @@ final class GameplayViewModel {
 
             // Preserve elapsed offset as base time for this playback session
             pausedElapsedTime = actualElapsedTime
+
+            // A speed change applied while paused is not cleared by applySpeedChangeInternal
+            // (which only acts while playing). Re-evaluate on resume so a run slowed at any
+            // point cannot set an all-time best. One-way latch: only ever clears.
+            if !Self.isFullSpeed(practiceSettings.speedMultiplier) {
+                sessionAtFullSpeed = false
+            }
         } else {
             Logger.audioPlayback("🎮 Starting fresh playback")
 
