@@ -47,8 +47,21 @@ struct ChartSelectionCard: View {
     let chart: Chart
     let onSelect: () -> Void
     @State private var isPressed = false
+    @State private var showingScores = false
 
     var body: some View {
+        HStack(spacing: 8) {
+            playButton
+            scoresButton
+        }
+        .sheet(isPresented: $showingScores) {
+            NavigationStack {
+                ChartScoresView(chart: chart)
+            }
+        }
+    }
+
+    private var playButton: some View {
         Button(action: onSelect) {
             HStack(spacing: 12) {
                 DifficultyBadge(difficulty: chart.difficulty, size: .normal)
@@ -63,6 +76,12 @@ struct ChartSelectionCard: View {
                 }
 
                 Spacer()
+
+                if chart.bestScore > 0 {
+                    Text("\(chart.bestScore)")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.purple)
+                }
 
                 Image(systemName: "chevron.right")
                     .font(.caption)
@@ -88,5 +107,21 @@ struct ChartSelectionCard: View {
                 isPressed = pressing
             }
         }, perform: {})
+    }
+
+    private var scoresButton: some View {
+        Button {
+            showingScores = true
+        } label: {
+            Image(systemName: "list.bullet.rectangle")
+                .font(.body)
+                .foregroundColor(.cyan)
+                .frame(width: 36, height: 36)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(8)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier("chartScores\(chart.difficulty.rawValue)")
+        .accessibilityLabel("View scores for \(chart.difficulty.rawValue) difficulty")
     }
 }
