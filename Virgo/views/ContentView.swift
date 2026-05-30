@@ -131,12 +131,16 @@ struct ContentView: View {
             // Re-fetch live charts after maintenance: performInitialMaintenance may delete
             // duplicate songs, making the @Query snapshot stale. Using a fresh fetch avoids
             // traversing charts on deleted Song objects that could fault or crash.
-            let liveCharts = (try? modelContext.fetch(FetchDescriptor<Chart>())) ?? []
-            ScorePersistenceService(modelContext: modelContext)
-                .migrateLegacyHighScores(
-                    charts: liveCharts,
-                    from: .standard
-                )
+            // Only migrate legacy scores when the fetch succeeds — an empty result from a
+            // failed fetch would cause migrateLegacyHighScores to delete the legacy
+            // UserDefaults data and set the migration flag without migrating anything.
+            if let liveCharts = try? modelContext.fetch(FetchDescriptor<Chart>()) {
+                ScorePersistenceService(modelContext: modelContext)
+                    .migrateLegacyHighScores(
+                        charts: liveCharts,
+                        from: .standard
+                    )
+            }
             serverSongService.setModelContext(modelContext)
             Task {
                 await serverSongService.loadServerSongs()
