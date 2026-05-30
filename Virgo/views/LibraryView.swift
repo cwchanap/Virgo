@@ -77,20 +77,47 @@ struct LibraryView: View {
                 } else {
                     List {
                         ForEach(downloadedSongs, id: \.id) { song in
-                            NavigationLink {
-                                SongScoresView(song: song)
-                            } label: {
-                                SavedSongRow(
-                                    song: song,
-                                    isDeleting: serverSongService.isDeleting(song),
-                                    onDelete: {
+                            ZStack(alignment: .trailing) {
+                                NavigationLink {
+                                    SongScoresView(song: song)
+                                } label: {
+                                    SavedSongRow(
+                                        song: song,
+                                        isDeleting: serverSongService.isDeleting(song),
+                                        onDelete: nil
+                                    )
+                                }
+                                .buttonStyle(.plain)
+
+                                // Delete button sits outside the NavigationLink
+                                // so taps don't trigger both navigation and deletion.
+                                if serverSongService.isDeleting(song) {
+                                    HStack(spacing: 8) {
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                        Text("Deleting...")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.trailing, 24)
+                                } else {
+                                    Button {
                                         Task { @MainActor in
                                             await serverSongService.deleteLocalSong(song)
                                         }
+                                    } label: {
+                                        Text("Delete")
+                                            .font(.subheadline)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 4)
+                                            .background(Color.red.opacity(0.2))
+                                            .foregroundColor(.red)
+                                            .cornerRadius(6)
                                     }
-                                )
+                                    .buttonStyle(.plain)
+                                    .padding(.trailing, 16)
+                                }
                             }
-                            .buttonStyle(.plain)
                             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -139,7 +166,7 @@ struct SavedSongRow: View {
 
             Spacer()
 
-            // Available Difficulties and Delete Button
+            // Available Difficulties
             VStack(spacing: 8) {
                 HStack(spacing: 2) {
                     ForEach(song.availableDifficulties, id: \.self) { difficulty in
@@ -165,10 +192,6 @@ struct SavedSongRow: View {
                         .foregroundColor(.red)
                         .disabled(isDeleting)
                     }
-                } else {
-                    Text("No delete")
-                        .font(.caption2)
-                        .foregroundColor(.gray)
                 }
             }
         }

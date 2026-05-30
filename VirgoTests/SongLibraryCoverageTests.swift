@@ -244,12 +244,12 @@ struct SongLibraryCoverageTests {
             SwiftUITestUtilities.assertView(
                 SavedSongRow(song: song, isDeleting: true, onDelete: {}),
                 containsStrings: ["Deleting Song", "Deleting..."],
-                excludesStrings: ["No delete", "Delete"]
+                excludesStrings: ["Delete"]
             )
         }
     }
 
-    @Test("SavedSongRow renders no-delete fallback")
+    @Test("SavedSongRow hides delete button when onDelete is nil")
     func testSavedSongRowNoDeleteFallback() async throws {
         try await TestSetup.withTestSetup {
             let song = SwiftUICoverageFixtures.makeSong(
@@ -262,7 +262,7 @@ struct SongLibraryCoverageTests {
 
             SwiftUITestUtilities.assertView(
                 SavedSongRow(song: song, isDeleting: false, onDelete: nil),
-                containsStrings: ["Read Only Song", "No delete"],
+                containsStrings: ["Read Only Song"],
                 excludesStrings: ["Deleting...", "Delete"]
             )
         }
