@@ -101,7 +101,7 @@ struct ChartSelectionCard: View {
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityIdentifier("chartDifficulty\(chart.difficulty.rawValue)")
-        .accessibilityLabel("\(chart.difficulty.rawValue) difficulty, \(chart.notesCount) notes, Level \(chart.level)")
+        .accessibilityLabel(playButtonAccessibilityLabel)
         .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
             withAnimation(.easeInOut(duration: 0.1)) {
                 isPressed = pressing
@@ -123,5 +123,11 @@ struct ChartSelectionCard: View {
         .buttonStyle(PlainButtonStyle())
         .accessibilityIdentifier("chartScores\(chart.difficulty.rawValue)")
         .accessibilityLabel("View scores for \(chart.difficulty.rawValue) difficulty")
+    }
+
+    private var playButtonAccessibilityLabel: String {
+        let base = "\(chart.difficulty.rawValue) difficulty, \(chart.notesCount) notes, Level \(chart.level)"
+        guard chart.bestScore > 0 else { return base }
+        return base + ", best \(chart.bestScore)"
     }
 }
