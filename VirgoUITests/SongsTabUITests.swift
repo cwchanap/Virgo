@@ -228,8 +228,7 @@ final class SongsTabUITests: XCTestCase {
         XCTAssertTrue(waitForStaticText(containing: "Select Difficulty", in: app, timeout: 5))
 
         _ = try requireDifficultyButton(named: "Easy", in: app, timeout: 5)
-        let scoresButton = try requireScoresButton(named: "Easy", in: app, timeout: 5)
-        scoresButton.tap()
+        try tapScoresButton(named: "Easy", in: app, timeout: 5)
 
         try requireStaticText(containing: "Scores", in: app, timeout: 5)
         try requireStaticText(containing: "BEST SCORE", in: app, timeout: 5)
@@ -245,8 +244,7 @@ final class SongsTabUITests: XCTestCase {
         try requireElement(containing: "Thunder Beat", in: app, timeout: 5)
         try requireStaticText(containing: "7 songs downloaded", in: app, timeout: 5)
 
-        let deleteButton = app.buttons["libraryDeleteButton"].firstMatch
-        XCTAssertTrue(deleteButton.waitForExistence(timeout: 5))
+        let deleteButton = try requireButton(containing: "Delete Thunder Beat", in: app, timeout: 5)
         deleteButton.tap()
 
         XCTAssertTrue(

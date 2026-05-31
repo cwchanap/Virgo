@@ -126,6 +126,7 @@ struct LibraryView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityIdentifier("libraryDeleteButton")
+                                    .accessibilityLabel("Delete \(song.title)")
                                     .padding(.trailing, 16)
                                 }
                             }
