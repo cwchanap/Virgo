@@ -223,6 +223,73 @@ struct GameplayViewModelCoverageAdditionsTests {
         #expect(bpmAfter < bpmBefore, "effectiveBPM must decrease after slowing down to 0.75×")
     }
 
+    @Test("isFullSpeed allows tiny floating point drift around 1x")
+    func testIsFullSpeedTolerance() {
+        #expect(GameplayViewModel.isFullSpeed(1.0))
+        #expect(GameplayViewModel.isFullSpeed(1.00005))
+        #expect(!GameplayViewModel.isFullSpeed(0.9998))
+        #expect(!GameplayViewModel.isFullSpeed(1.25))
+    }
+
+    @Test("active playback speed change clears full-speed score eligibility")
+    func testActiveSpeedChangeClearsFullSpeedEligibility() async throws {
+        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8, settings: settings)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+
+        vm.sessionAtFullSpeed = true
+        vm.isPlaying = true
+
+        settings.setSpeed(0.75)
+        vm.updateSettings(settings)
+
+        #expect(vm.sessionAtFullSpeed == false)
+        vm.isPlaying = false
+    }
+
+    @Test("fresh playback eligibility follows starting speed")
+    func testFreshPlaybackEligibilityFollowsStartingSpeed() async throws {
+        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        settings.setSpeed(0.75)
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4, settings: settings)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+
+        vm.startPlayback()
+
+        #expect(vm.isPlaying)
+        #expect(vm.sessionAtFullSpeed == false)
+        vm.pausePlayback()
+    }
+
+    @Test("playback completion records score through injected persistence")
+    func testPlaybackCompletionRecordsInjectedPersistenceResult() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let service = ScorePersistenceService(modelContext: context)
+            let vm = GameplayViewModelCoverageTestSupport.makeViewModel(
+                noteCount: 4,
+                scorePersistence: service
+            )
+            defer { vm.cleanup() }
+            await vm.loadChartData()
+            vm.setupGameplay(loadPersistedSpeed: false)
+            vm.isPlaying = true
+            vm.sessionAtFullSpeed = true
+            vm.scoreEngine.processHit(accuracy: .perfect, timingError: 0)
+
+            vm.handlePlaybackCompletion()
+
+            #expect(vm.sessionRecordResult == .newBest)
+            #expect(vm.isShowingSessionResults)
+            #expect(service.bestScore(for: vm.chart) == vm.sessionScoreSnapshot.score)
+            #expect(vm.chart.scoreRecords.count == 1)
+        }
+    }
+
     // MARK: - DEBUG convenience init coverage
 
     @Test("DEBUG convenience init creates a view model with in-memory score persistence")

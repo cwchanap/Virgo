@@ -79,6 +79,79 @@ struct ScorePersistenceServiceTests {
         }
     }
 
+    @Test("ScoreRecord initializer clamps accuracy and preserves metadata")
+    func testScoreRecordInitializerClampsAccuracy() async throws {
+        try await TestSetup.withTestSetup {
+            let date = Date(timeIntervalSince1970: 123)
+            let lowAccuracy = ScoreRecord(
+                score: 1,
+                maxCombo: 2,
+                accuracy: -20.0,
+                speedMultiplier: 0.5,
+                playedAt: date
+            )
+            let highAccuracy = ScoreRecord(
+                score: 3,
+                maxCombo: 4,
+                accuracy: 140.0,
+                speedMultiplier: 1.25,
+                playedAt: date.addingTimeInterval(1)
+            )
+
+            #expect(lowAccuracy.accuracy == 0.0)
+            #expect(highAccuracy.accuracy == 100.0)
+            #expect(lowAccuracy.score == 1)
+            #expect(lowAccuracy.maxCombo == 2)
+            #expect(lowAccuracy.speedMultiplier == 0.5)
+            #expect(lowAccuracy.playedAt == date)
+            #expect(lowAccuracy.chart == nil)
+        }
+    }
+
+    @Test("ScoreAttemptSummary preserves values and supports equality")
+    func testScoreAttemptSummaryValueSemantics() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = try makeTestChart()
+            let date = Date(timeIntervalSince1970: 456)
+            let record = ScoreRecord(
+                score: 1234,
+                maxCombo: 32,
+                accuracy: 91.5,
+                speedMultiplier: 0.75,
+                playedAt: date,
+                chart: chart
+            )
+            context.insert(record)
+            try context.save()
+
+            let summary = ScoreAttemptSummary(
+                id: record.persistentModelID,
+                score: record.score,
+                maxCombo: record.maxCombo,
+                accuracy: record.accuracy,
+                speedMultiplier: record.speedMultiplier,
+                playedAt: record.playedAt
+            )
+            let copy = ScoreAttemptSummary(
+                id: record.persistentModelID,
+                score: 1234,
+                maxCombo: 32,
+                accuracy: 91.5,
+                speedMultiplier: 0.75,
+                playedAt: date
+            )
+
+            #expect(summary == copy)
+            #expect(summary.id == record.persistentModelID)
+            #expect(summary.score == 1234)
+            #expect(summary.maxCombo == 32)
+            #expect(summary.accuracy == 91.5)
+            #expect(summary.speedMultiplier == 0.75)
+            #expect(summary.playedAt == date)
+        }
+    }
+
     @Test("recordAttempt at full speed sets a new best and returns true")
     func testRecordAttemptFullSpeedSetsBest() async throws {
         try await TestSetup.withTestSetup {
@@ -357,6 +430,37 @@ struct ScorePersistenceServiceTests {
             #expect(chart.bestScore == 5000)
             #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
         }
+    }
+
+    @Test("migrateLegacyHighScores clears stale legacy data when nothing is updated")
+    func testMigrateLegacyHighScoresClearsLegacyDataWithoutUpdates() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = try makeTestChart()
+            chart.bestScore = 5000
+            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            let key = PersistentIdentifierPersistenceKey.canonicalKey(
+                for: chart.persistentModelID,
+                logPrefix: "Test"
+            )
+            userDefaults.set([key: 100], forKey: "HighScorePerChart")
+
+            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
+
+            #expect(chart.bestScore == 5000)
+            #expect(userDefaults.dictionary(forKey: "HighScorePerChart") == nil)
+            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
+        }
+    }
+
+    @Test("RecordResult cases compare by value")
+    func testRecordResultEquatableCases() {
+        #expect(ScorePersistenceService.RecordResult.newBest == .newBest)
+        #expect(ScorePersistenceService.RecordResult.recorded == .recorded)
+        #expect(ScorePersistenceService.RecordResult.saveFailed == .saveFailed)
+        #expect(ScorePersistenceService.RecordResult.newBest != .recorded)
+        #expect(ScorePersistenceService.RecordResult.recorded != .saveFailed)
     }
 
     @Test("migrateLegacyHighScores returns early when migration flag is already set")

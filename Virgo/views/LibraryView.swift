@@ -115,6 +115,7 @@ struct LibraryView: View {
                                             .cornerRadius(6)
                                     }
                                     .buttonStyle(.plain)
+                                    .accessibilityIdentifier("libraryDeleteButton")
                                     .padding(.trailing, 16)
                                 }
                             }

@@ -87,6 +87,36 @@ struct SwiftUIRenderingLibraryAndResultsTests {
         }
     }
 
+    @Test("ScoreAttemptRow renders attempt metadata")
+    func testScoreAttemptRowRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = makeChartInContext(title: "Attempt Row", bestScore: 9_876)
+            let record = ScoreRecord(
+                score: 9_876,
+                maxCombo: 123,
+                accuracy: 94.4,
+                speedMultiplier: 0.875,
+                playedAt: Date(timeIntervalSinceNow: -90),
+                chart: chart
+            )
+            context.insert(record)
+            try context.save()
+
+            let attempt = try #require(
+                ScorePersistenceService(modelContext: context)
+                    .recentAttempts(for: chart)
+                    .first
+            )
+
+            SwiftUITestUtilities.assertView(
+                ScoreAttemptRow(attempt: attempt),
+                containsStrings: ["9,876", "123x · 94%", "88% speed"],
+                size: CGSize(width: 600, height: 120)
+            )
+        }
+    }
+
     @Test("SongScoresView renders empty chart state")
     func testSongScoresViewEmptyState() async throws {
         try await TestSetup.withTestSetup {
@@ -133,6 +163,62 @@ struct SwiftUIRenderingLibraryAndResultsTests {
 
             let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
             #expect(!texts.contains("No charts available"))
+        }
+    }
+
+    @Test("DifficultyExpansionView renders sorted chart choices")
+    func testDifficultyExpansionViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let hardChart = SwiftUICoverageFixtures.makeChart(
+                difficulty: .hard,
+                level: 70,
+                notes: [
+                    SwiftUICoverageFixtures.makeNote(measureNumber: 1),
+                    SwiftUICoverageFixtures.makeNote(noteType: .snare, measureNumber: 1)
+                ]
+            )
+            let easyChart = SwiftUICoverageFixtures.makeChart(difficulty: .easy, level: 20)
+
+            SwiftUITestUtilities.assertView(
+                DifficultyExpansionView(charts: [hardChart, easyChart], onChartSelect: { _ in }),
+                containsStrings: ["Select Difficulty", "0 notes", "4 notes", "Level 20", "Level 70"],
+                size: CGSize(width: 900, height: 360)
+            )
+        }
+    }
+
+    @Test("ChartSelectionCard renders best score and scores button affordance")
+    func testChartSelectionCardRendersScoresAffordance() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = SwiftUICoverageFixtures.makeChart(difficulty: .expert, level: 95)
+            chart.bestScore = 4321
+
+            SwiftUITestUtilities.assertView(
+                ChartSelectionCard(chart: chart, onSelect: {}),
+                containsStrings: ["4,321", "Level 95"],
+                size: CGSize(width: 900, height: 300)
+            )
+        }
+    }
+
+    @Test("SavedSongRow renders metadata and delete states")
+    func testSavedSongRowRenderingStates() async throws {
+        try await TestSetup.withTestSetup {
+            let song = SwiftUICoverageFixtures.makeSong(title: "Saved Row Song")
+
+            SwiftUITestUtilities.assertView(
+                SavedSongRow(song: song, isDeleting: false, onDelete: {}),
+                containsStrings: ["Saved Row Song", "Fixture Artist", "128 BPM", "2:15", "DTX Import", "Delete"],
+                excludesStrings: ["Deleting..."],
+                size: CGSize(width: 900, height: 220)
+            )
+
+            SwiftUITestUtilities.assertView(
+                SavedSongRow(song: song, isDeleting: true, onDelete: {}),
+                containsStrings: ["Saved Row Song", "Deleting..."],
+                excludesStrings: ["Delete"],
+                size: CGSize(width: 900, height: 220)
+            )
         }
     }
 
