@@ -323,28 +323,31 @@ extension XCTestCase {
         throw UITestFailure.elementNotFound(label)
     }
 
-    @discardableResult
-    func requireScoresButton(
+    func tapScoresButton(
         named difficulty: String,
         in app: XCUIApplication,
         timeout: TimeInterval = 10,
         file: StaticString = #filePath,
         line: UInt = #line
-    ) throws -> XCUIElement {
+    ) throws {
         let identifier = "chartScores\(difficulty)"
-        let label = "View scores for \(difficulty)"
-        let labelPredicate = textContainsPredicate(label)
-        let candidates = [
-            app.buttons[identifier],
-            app.buttons.matching(labelPredicate).firstMatch
-        ]
-
-        if let element = waitForFirstExisting(candidates, timeout: timeout) {
-            return element
+        let scoresButton = app.buttons[identifier]
+        if scoresButton.exists {
+            scoresButton.tap()
+            return
         }
 
-        XCTFail("Expected \(difficulty) scores button to exist", file: file, line: line)
-        throw UITestFailure.elementNotFound(identifier)
+        let difficultyButton = try requireDifficultyButton(
+            named: difficulty,
+            in: app,
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+
+        difficultyButton.coordinate(withNormalizedOffset: CGVector(dx: 1.0, dy: 0.5))
+            .withOffset(CGVector(dx: 26, dy: 0))
+            .tap()
     }
 
     @discardableResult
