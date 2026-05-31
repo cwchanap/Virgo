@@ -157,8 +157,17 @@ struct ContentView: View {
     }
 
     private func clearPersistedTestState() {
-        // Delete all existing songs and their cascaded charts/notes for a clean test slate
-        for song in allSongs {
+        // Fetch live objects instead of relying on a potentially stale @Query snapshot.
+        let songsToDelete: [Song]
+        do {
+            songsToDelete = try modelContext.fetch(FetchDescriptor<Song>())
+        } catch {
+            Logger.databaseError(error)
+            songsToDelete = allSongs
+        }
+
+        // Delete all existing songs and their cascaded charts/notes for a clean test slate.
+        for song in songsToDelete {
             modelContext.delete(song)
         }
         do {
@@ -185,11 +194,14 @@ struct ContentView: View {
                 timeSignature: templateSong.timeSignature
             )
             modelContext.insert(song)
+            var seededCharts: [Chart] = []
             for templateChart in templateSong.charts {
                 let chart = Chart(difficulty: templateChart.difficulty, level: templateChart.level)
                 chart.song = song
+                seededCharts.append(chart)
                 modelContext.insert(chart)
             }
+            song.charts = seededCharts
         }
 
         do {

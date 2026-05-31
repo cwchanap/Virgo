@@ -112,10 +112,41 @@ struct DownloadedSongRowWithDelete: View {
     let onDelete: () -> Void
 
     // Cache relationship data to prevent SwiftData concurrency issues
-    @State private var chartCount: Int = 0
-    @State private var measureCount: Int = 0
-    @State private var charts: [Chart] = []
-    @State private var availableDifficulties: [Difficulty] = []
+    @State private var chartCount: Int
+    @State private var measureCount: Int
+    @State private var charts: [Chart]
+    @State private var availableDifficulties: [Difficulty]
+
+    @MainActor
+    init(
+        song: Song,
+        isPlaying: Bool,
+        isExpanded: Bool,
+        isDeleting: Bool,
+        expandedSongId: Binding<PersistentIdentifier?>,
+        selectedChart: Binding<Chart?>,
+        navigateToGameplay: Binding<Bool>,
+        onPlayTap: @escaping () -> Void,
+        onSaveTap: @escaping () -> Void,
+        onDelete: @escaping () -> Void
+    ) {
+        self.song = song
+        self.isPlaying = isPlaying
+        self.isExpanded = isExpanded
+        self.isDeleting = isDeleting
+        self._expandedSongId = expandedSongId
+        self._selectedChart = selectedChart
+        self._navigateToGameplay = navigateToGameplay
+        self.onPlayTap = onPlayTap
+        self.onSaveTap = onSaveTap
+        self.onDelete = onDelete
+
+        let initialData = SongRelationshipLoader.relationshipData(for: song)
+        self._chartCount = State(initialValue: initialData.chartCount)
+        self._measureCount = State(initialValue: initialData.measureCount)
+        self._charts = State(initialValue: initialData.charts)
+        self._availableDifficulties = State(initialValue: initialData.availableDifficulties)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -123,7 +154,7 @@ struct DownloadedSongRowWithDelete: View {
             expandedContent
         }
         .loadSongRelationships(for: song) { data in
-            charts = data.charts
+            charts = data.charts.filter { SongRelationshipLoader.isModelAvailable($0) }
             chartCount = data.chartCount
             measureCount = data.measureCount
             availableDifficulties = data.availableDifficulties
@@ -225,9 +256,10 @@ struct DownloadedSongRowWithDelete: View {
                         .foregroundColor(.secondary)
                 }
             } else {
-                Button("Delete") {
-                    onDelete()
+                Button(action: onDelete) {
+                    Text("Delete")
                 }
+                .accessibilityIdentifier("downloadedSongDeleteButton")
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .foregroundColor(.red)
@@ -254,10 +286,12 @@ struct DownloadedSongRowWithDelete: View {
     }
     
     private var expandedContent: some View {
-        Group {
+        let displayCharts = charts.filter { SongRelationshipLoader.isModelAvailable($0) }
+
+        return Group {
             if isExpanded {
                 DifficultyExpansionView(
-                    charts: charts,
+                    charts: displayCharts,
                     onChartSelect: handleChartSelect
                 )
                 .padding(.top, 8)

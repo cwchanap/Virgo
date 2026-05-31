@@ -12,12 +12,19 @@ struct ChartScoresView: View {
     let chart: Chart
 
     @Environment(\.modelContext) private var modelContext
-    @State private var attempts: [ScoreAttemptSummary] = []
+    @State private var attempts: [ScoreAttemptSummary]
     @State private var bestScore: Int
 
+    @MainActor
     init(chart: Chart) {
         self.chart = chart
-        self._bestScore = State(initialValue: chart.bestScore)
+        if SongRelationshipLoader.isModelAvailable(chart) {
+            self._bestScore = State(initialValue: chart.bestScore)
+            self._attempts = State(initialValue: Self.summaries(from: chart.scoreRecords))
+        } else {
+            self._bestScore = State(initialValue: 0)
+            self._attempts = State(initialValue: [])
+        }
     }
 
     var body: some View {
@@ -81,9 +88,31 @@ struct ChartScoresView: View {
     }
 
     private func load() {
+        guard SongRelationshipLoader.isModelAvailable(chart) else {
+            bestScore = 0
+            attempts = []
+            return
+        }
+
         let service = ScorePersistenceService(modelContext: modelContext)
         bestScore = service.bestScore(for: chart)
         attempts = service.recentAttempts(for: chart)
+    }
+
+    private static func summaries(from records: [ScoreRecord]) -> [ScoreAttemptSummary] {
+        records
+            .sorted { $0.playedAt > $1.playedAt }
+            .prefix(ScorePersistenceService.maxRecentAttempts)
+            .map { record in
+                ScoreAttemptSummary(
+                    id: record.persistentModelID,
+                    score: record.score,
+                    maxCombo: record.maxCombo,
+                    accuracy: record.accuracy,
+                    speedMultiplier: record.speedMultiplier,
+                    playedAt: record.playedAt
+                )
+            }
     }
 }
 
