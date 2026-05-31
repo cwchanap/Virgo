@@ -160,6 +160,32 @@ extension XCTestCase {
         app.staticTexts.matching(textContainsPredicate(text)).firstMatch.waitForExistence(timeout: timeout)
     }
 
+    @discardableResult
+    func requireElement(
+        containing text: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let element = app.descendants(matching: .any).matching(textContainsPredicate(text)).firstMatch
+        if let element = waitForFirstExisting([element], timeout: timeout) {
+            return element
+        }
+
+        XCTFail("Expected element containing \(text) to exist", file: file, line: line)
+        throw UITestFailure.elementNotFound(text)
+    }
+
+    func waitForNoElement(
+        containing text: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10
+    ) -> Bool {
+        let element = app.descendants(matching: .any).matching(textContainsPredicate(text)).firstMatch
+        return element.waitForNonExistence(timeout: timeout)
+    }
+
     func controlIsSelected(_ element: XCUIElement) -> Bool {
         if element.isSelected {
             return true
@@ -279,6 +305,33 @@ extension XCTestCase {
 
         XCTFail("Expected button containing \(label) to exist", file: file, line: line)
         throw UITestFailure.elementNotFound(label)
+    }
+
+    @discardableResult
+    func requireScoresButton(
+        named difficulty: String,
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let identifier = "chartScores\(difficulty)"
+        let label = "View scores for \(difficulty)"
+        let identifierPredicate = NSPredicate(format: "identifier == %@", identifier)
+        let labelPredicate = textContainsPredicate(label)
+        let candidates = [
+            app.buttons[identifier],
+            app.buttons.matching(labelPredicate).firstMatch,
+            app.descendants(matching: .any).matching(identifierPredicate).firstMatch,
+            app.descendants(matching: .any).matching(labelPredicate).firstMatch
+        ]
+
+        if let element = waitForFirstExisting(candidates, timeout: timeout) {
+            return element
+        }
+
+        XCTFail("Expected \(difficulty) scores button to exist", file: file, line: line)
+        throw UITestFailure.elementNotFound(identifier)
     }
 
     @discardableResult

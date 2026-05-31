@@ -227,8 +227,8 @@ final class SongsTabUITests: XCTestCase {
 
         XCTAssertTrue(waitForStaticText(containing: "Select Difficulty", in: app, timeout: 5))
 
-        let scoresButton = app.buttons["chartScoresEasy"]
-        XCTAssertTrue(scoresButton.waitForExistence(timeout: 5))
+        _ = try requireDifficultyButton(named: "Easy", in: app, timeout: 5)
+        let scoresButton = try requireScoresButton(named: "Easy", in: app, timeout: 5)
         scoresButton.tap()
 
         try requireStaticText(containing: "Scores", in: app, timeout: 5)
@@ -242,7 +242,7 @@ final class SongsTabUITests: XCTestCase {
 
         try tapControl(named: "Library", in: app, timeout: 5)
         try requireStaticText(containing: "Downloaded Songs", in: app, timeout: 5)
-        try requireStaticText(containing: "Thunder Beat", in: app, timeout: 5)
+        try requireElement(containing: "Thunder Beat", in: app, timeout: 5)
         try requireStaticText(containing: "7 songs downloaded", in: app, timeout: 5)
 
         let deleteButton = app.buttons["libraryDeleteButton"].firstMatch
@@ -253,8 +253,8 @@ final class SongsTabUITests: XCTestCase {
             waitForStaticText(containing: "6 songs downloaded", in: app, timeout: 10),
             "Library should update its downloaded-song count after deleting one fixture song"
         )
-        XCTAssertFalse(
-            app.staticTexts.matching(textContainsPredicate("Thunder Beat")).firstMatch.exists,
+        XCTAssertTrue(
+            waitForNoElement(containing: "Thunder Beat", in: app, timeout: 5),
             "Deleted song should no longer be listed in Library"
         )
     }
