@@ -103,6 +103,13 @@ struct SongRelationshipData {
     let measureCount: Int
     let charts: [Chart]
     let availableDifficulties: [Difficulty]
+
+    static let empty = SongRelationshipData(
+        chartCount: 0,
+        measureCount: 1,
+        charts: [],
+        availableDifficulties: []
+    )
 }
 
 @MainActor
@@ -110,12 +117,7 @@ class SongRelationshipLoader: BaseSwiftDataRelationshipLoader<Song, SongRelation
     convenience init(song: Song) {
         self.init(
             model: song,
-            defaultData: SongRelationshipData(
-                chartCount: 0,
-                measureCount: 1,
-                charts: [],
-                availableDifficulties: []
-            ),
+            defaultData: .empty,
             dataLoader: { song in
                 await Self.loadSongData(song)
             }
@@ -124,28 +126,83 @@ class SongRelationshipLoader: BaseSwiftDataRelationshipLoader<Song, SongRelation
 
     private static func loadSongData(_ song: Song) async -> SongRelationshipData {
         // Access SwiftData relationships on MainActor to prevent data races
-        return await MainActor.run {
-            let validCharts = song.charts.filter { !$0.isDeleted }
-            let measureCount = calculateMeasureCount(from: validCharts)
-            let difficulties = validCharts.compactMap { $0.difficulty }
-                .removingDuplicates()
-                .sorted { $0.sortOrder < $1.sortOrder }
-
-            return SongRelationshipData(
-                chartCount: validCharts.count,
-                measureCount: measureCount,
-                charts: validCharts,
-                availableDifficulties: difficulties
-            )
+        await MainActor.run {
+            relationshipData(for: song)
         }
+    }
+
+    static func relationshipData(for song: Song) -> SongRelationshipData {
+        guard isModelAvailable(song) else { return .empty }
+
+        let validCharts = song.charts.filter { isModelAvailable($0) }
+        let measureCount = calculateMeasureCount(from: validCharts)
+        let difficulties = validCharts.compactMap { $0.difficulty }
+            .removingDuplicates()
+            .sorted { $0.sortOrder < $1.sortOrder }
+
+        return SongRelationshipData(
+            chartCount: validCharts.count,
+            measureCount: measureCount,
+            charts: validCharts,
+            availableDifficulties: difficulties
+        )
+    }
+
+    static func isModelAvailable(_ song: Song) -> Bool {
+        guard !isDetachedPersistentModel(song), !song.isDeleted else { return false }
+        return true
+    }
+
+    static func isModelAvailable(_ chart: Chart) -> Bool {
+        guard !isDetachedPersistentModel(chart), !chart.isDeleted else { return false }
+        return true
+    }
+
+    static func isModelAvailable(_ note: Note) -> Bool {
+        guard !isDetachedPersistentModel(note), !note.isDeleted else { return false }
+        return true
     }
 
     private static func calculateMeasureCount(from charts: [Chart]) -> Int {
         // Access notes relationships safely - charts are already loaded on main thread
         let allNotes = charts.flatMap { chart in
-            chart.notes.filter { !$0.isDeleted }
+            chart.notes.filter { isModelAvailable($0) }
         }
         return allNotes.map(\.measureNumber).max() ?? 1
+    }
+
+    private static func isDetachedPersistentModel<T: PersistentModel>(_ model: T) -> Bool {
+        model.modelContext == nil && !isTemporaryIdentifier(model.persistentModelID)
+    }
+
+    private static func isTemporaryIdentifier(_ identifier: PersistentIdentifier) -> Bool {
+        guard let data = try? JSONEncoder().encode(identifier),
+              let object = try? JSONSerialization.jsonObject(with: data) else {
+            return true
+        }
+
+        return findIsTemporary(in: object) ?? true
+    }
+
+    private static func findIsTemporary(in object: Any) -> Bool? {
+        if let dictionary = object as? [String: Any] {
+            for (key, value) in dictionary {
+                if key == "isTemporary", let isTemporary = value as? Bool {
+                    return isTemporary
+                }
+                if let nested = findIsTemporary(in: value) {
+                    return nested
+                }
+            }
+        } else if let array = object as? [Any] {
+            for value in array {
+                if let nested = findIsTemporary(in: value) {
+                    return nested
+                }
+            }
+        }
+
+        return nil
     }
 }
 
@@ -175,7 +232,15 @@ class ChartRelationshipLoader: BaseSwiftDataRelationshipLoader<Chart, ChartRelat
     private static func loadChartData(_ chart: Chart) async -> ChartRelationshipData {
         // Access SwiftData relationships on MainActor to prevent data races
         return await MainActor.run {
-            let validNotes = chart.notes.filter { !$0.isDeleted }
+            guard SongRelationshipLoader.isModelAvailable(chart) else {
+                return ChartRelationshipData(
+                    notesCount: 0,
+                    notes: [],
+                    measureCount: 1
+                )
+            }
+
+            let validNotes = chart.notes.filter { SongRelationshipLoader.isModelAvailable($0) }
             let measureCount = validNotes.map(\.measureNumber).max() ?? 1
 
             return ChartRelationshipData(

@@ -185,9 +185,10 @@ struct SavedSongRow: View {
                                 .foregroundColor(.secondary)
                         }
                     } else {
-                        Button("Delete") {
-                            onDelete()
+                        Button(action: onDelete) {
+                            Text("Delete")
                         }
+                        .accessibilityIdentifier("savedSongDeleteButton")
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .foregroundColor(.red)

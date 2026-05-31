@@ -11,17 +11,25 @@ import SwiftData
 struct SongScoresView: View {
     let song: Song
 
-    @State private var charts: [Chart] = []
+    @State private var charts: [Chart]
+
+    @MainActor
+    init(song: Song) {
+        self.song = song
+        self._charts = State(initialValue: Self.sortedCharts(for: song))
+    }
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if charts.isEmpty {
+            let displayCharts = charts.filter { SongRelationshipLoader.isModelAvailable($0) }
+
+            if displayCharts.isEmpty {
                 Text("No charts available")
                     .foregroundColor(.gray)
             } else {
-                List(charts, id: \.persistentModelID) { chart in
+                List(displayCharts, id: \.persistentModelID) { chart in
                     NavigationLink {
                         ChartScoresView(chart: chart)
                     } label: {
@@ -48,8 +56,14 @@ struct SongScoresView: View {
     }
 
     private func load() {
-        charts = song.charts
-            .filter { !$0.isDeleted }
+        charts = Self.sortedCharts(for: song)
+    }
+
+    private static func sortedCharts(for song: Song) -> [Chart] {
+        guard SongRelationshipLoader.isModelAvailable(song) else { return [] }
+
+        return song.charts
+            .filter { SongRelationshipLoader.isModelAvailable($0) }
             .sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
     }
 }
