@@ -222,4 +222,16 @@ struct GameplayViewModelCoverageAdditionsTests {
                 "effectiveBPM should be 90 (120 × 0.75) after updateSettings applied the speed change")
         #expect(bpmAfter < bpmBefore, "effectiveBPM must decrease after slowing down to 0.75×")
     }
+
+    // MARK: - DEBUG convenience init coverage
+
+    @Test("DEBUG convenience init creates a view model with in-memory score persistence")
+    func testDEBUGConvenienceInit() {
+        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4)
+        let vm = GameplayViewModel(chart: chart, metronome: MetronomeEngine(audioDriver: RecordingAudioDriver()))
+
+        #expect(vm.chart === chart)
+        #expect(vm.scorePersistence is ScorePersistenceService)
+        vm.cleanup()
+    }
 }
