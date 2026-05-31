@@ -134,12 +134,15 @@ struct ContentView: View {
             // Only migrate legacy scores when the fetch succeeds — an empty result from a
             // failed fetch would cause migrateLegacyHighScores to delete the legacy
             // UserDefaults data and set the migration flag without migrating anything.
-            if let liveCharts = try? modelContext.fetch(FetchDescriptor<Chart>()) {
+            do {
+                let liveCharts = try modelContext.fetch(FetchDescriptor<Chart>())
                 ScorePersistenceService(modelContext: modelContext)
                     .migrateLegacyHighScores(
                         charts: liveCharts,
                         from: .standard
                     )
+            } catch {
+                Logger.error("ContentView: failed to fetch charts for legacy migration: \(error.localizedDescription)")
             }
             serverSongService.setModelContext(modelContext)
             Task {

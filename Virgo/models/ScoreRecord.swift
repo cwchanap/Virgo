@@ -25,9 +25,10 @@ final class ScoreRecord {
         playedAt: Date,
         chart: Chart? = nil
     ) {
+        precondition(score >= 0, "ScoreRecord.score must be non-negative")
         self.score = score
         self.maxCombo = maxCombo
-        self.accuracy = accuracy
+        self.accuracy = min(max(accuracy, 0), 100)
         self.speedMultiplier = speedMultiplier
         self.playedAt = playedAt
         self.chart = chart

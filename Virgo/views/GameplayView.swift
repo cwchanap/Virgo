@@ -116,7 +116,7 @@ struct GameplayView: View {
             if let vm = viewModel {
                 SessionResultsView(
                     highScore: vm.scorePersistence.bestScore(for: chart),
-                    isNewRecord: vm.sessionIsNewRecord,
+                    recordResult: vm.sessionRecordResult,
                     scoreSnapshot: vm.sessionScoreSnapshot,
                     onPlayAgain: {
                         vm.isShowingSessionResults = false

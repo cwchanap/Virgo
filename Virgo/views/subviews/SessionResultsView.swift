@@ -9,15 +9,15 @@ import SwiftUI
 
 struct SessionResultsView: View {
     let highScore: Int
-    /// Whether the save service confirmed this score as a verified new record.
-    /// Derived from `ScorePersistenceService.recordAttempt` return value rather than
-    /// a local score comparison, so the badge only appears when the write succeeded.
-    let isNewRecord: Bool
+    /// The save outcome from `ScorePersistenceService.recordAttempt`.
+    /// `.newBest` shows the NEW HIGH SCORE badge; `.saveFailed` shows a non-blocking
+    /// warning that the score was not persisted.
+    let recordResult: ScorePersistenceService.RecordResult
     let scoreSnapshot: LiveScoreSnapshot
     let onPlayAgain: () -> Void
     let onDone: () -> Void
 
-    private var isNewHighScore: Bool { scoreSnapshot.score > 0 && isNewRecord }
+    private var isNewHighScore: Bool { scoreSnapshot.score > 0 && recordResult == .newBest }
 
     var body: some View {
         NavigationStack {
@@ -34,6 +34,17 @@ struct SessionResultsView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
                                 .background(Color.yellow)
+                                .clipShape(Capsule())
+                        }
+
+                        // Save-failure warning — non-blocking so the user can still see their score
+                        if recordResult == .saveFailed {
+                            Text("Score not saved")
+                                .font(.system(.caption, design: .rounded).weight(.semibold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.red.opacity(0.8))
                                 .clipShape(Capsule())
                         }
 
@@ -151,7 +162,7 @@ struct SessionResultsView: View {
 
     return SessionResultsView(
         highScore: 2450,
-        isNewRecord: true,
+        recordResult: .newBest,
         scoreSnapshot: LiveScoreSnapshot(scoreEngine: engine),
         onPlayAgain: {},
         onDone: {}

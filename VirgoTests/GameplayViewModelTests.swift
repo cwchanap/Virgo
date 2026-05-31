@@ -1507,8 +1507,8 @@ struct GameplayViewModelTests {
         viewModel.scoreEngine.processHit(accuracy: .perfect)
         viewModel.handlePlaybackCompletion()
 
-        #expect(viewModel.sessionIsNewRecord == true,
-                "A score beating the previous best should set sessionIsNewRecord")
+        #expect(viewModel.sessionRecordResult == .newBest,
+                "A score beating the previous best should set sessionRecordResult to newBest")
 
         viewModel.cleanup()
     }
@@ -1530,14 +1530,14 @@ struct GameplayViewModelTests {
         viewModel.scoreEngine.processHit(accuracy: .good)
         viewModel.handlePlaybackCompletion()
 
-        #expect(viewModel.sessionIsNewRecord == false,
-                "A score below the existing record should leave sessionIsNewRecord false")
+        #expect(viewModel.sessionRecordResult == .recorded,
+                "A score below the existing record should leave sessionRecordResult as recorded")
 
         viewModel.cleanup()
     }
 
-    @Test("sessionIsNewRecord resets to false after resetScoring")
-    func testSessionIsNewRecordResetsOnResetScoring() async throws {
+    @Test("sessionRecordResult resets to recorded after resetScoring")
+    func testSessionRecordResultResetsOnResetScoring() async throws {
         let chart = createTestChart(noteCount: 1)
         let metronome = createTestMetronome()
 
@@ -1548,12 +1548,12 @@ struct GameplayViewModelTests {
 
         viewModel.scoreEngine.processHit(accuracy: .perfect)
         viewModel.handlePlaybackCompletion()
-        #expect(viewModel.sessionIsNewRecord == true)
+        #expect(viewModel.sessionRecordResult == .newBest)
 
         // Simulate restarting (which calls resetScoring internally)
         viewModel.resetScoring()
-        #expect(viewModel.sessionIsNewRecord == false,
-                "resetScoring() should clear sessionIsNewRecord")
+        #expect(viewModel.sessionRecordResult == .recorded,
+                "resetScoring() should reset sessionRecordResult to recorded")
 
         viewModel.cleanup()
     }

@@ -14,6 +14,10 @@ import Foundation
 @MainActor
 struct ScorePersistenceServiceTests {
 
+    private enum SaveHookError: Error {
+        case forced
+    }
+
     /// Inserts a Song + Chart into the shared test context and saves.
     private func makeTestChart(difficulty: Difficulty = .medium) throws -> Chart {
         let context = TestContainer.shared.context
@@ -88,7 +92,7 @@ struct ScorePersistenceServiceTests {
                 snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0
             )
 
-            #expect(isNewBest == true)
+            #expect(isNewBest == .newBest)
             #expect(service.bestScore(for: chart) == snapshot.score)
             #expect(chart.scoreRecords.count == 1)
         }
@@ -109,7 +113,7 @@ struct ScorePersistenceServiceTests {
                 snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0
             )
 
-            #expect(isNewBest == false)
+            #expect(isNewBest == .recorded)
             #expect(service.bestScore(for: chart) == 5000)
             #expect(chart.scoreRecords.count == 1) // still recorded in history
         }
@@ -128,7 +132,7 @@ struct ScorePersistenceServiceTests {
                 snapshot, for: chart, atFullSpeed: false, speedMultiplier: 0.5
             )
 
-            #expect(isNewBest == false)
+            #expect(isNewBest == .recorded)
             #expect(service.bestScore(for: chart) == 0)
             #expect(chart.scoreRecords.count == 1)
             #expect(chart.scoreRecords.first?.speedMultiplier == 0.5)
@@ -146,7 +150,7 @@ struct ScorePersistenceServiceTests {
                 snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0
             )
 
-            #expect(isNewBest == false)
+            #expect(isNewBest == .recorded)
             #expect(service.bestScore(for: chart) == 0)
             #expect(chart.scoreRecords.count == 1)
         }
@@ -302,7 +306,7 @@ struct ScorePersistenceServiceTests {
                 snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0
             )
 
-            #expect(isNewBest == true)
+            #expect(isNewBest == .newBest)
             #expect(chart.modelContext != nil)
             #expect(chart.bestScore == snapshot.score)
             #expect(chart.scoreRecords.count == 1)
@@ -372,6 +376,84 @@ struct ScorePersistenceServiceTests {
             service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
 
             #expect(chart.bestScore == 1000)
+        }
+    }
+
+    // MARK: - Save-failure rollback tests
+
+    @Test("recordAttempt rollback on save failure restores chart state")
+    func testRecordAttemptRollbackOnSaveFailure() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = try makeTestChart()
+            chart.bestScore = 5000
+            // Pre-populate with existing records so we can verify they are untouched.
+            let base = Date(timeIntervalSince1970: 4_000_000)
+            for i in 0..<ScorePersistenceService.maxRecentAttempts {
+                let record = ScoreRecord(
+                    score: 100 * (i + 1),
+                    maxCombo: i,
+                    accuracy: 80.0,
+                    speedMultiplier: 1.0,
+                    playedAt: base.addingTimeInterval(Double(i)),
+                    chart: chart
+                )
+                context.insert(record)
+            }
+            try context.save()
+            let originalRecordCount = chart.scoreRecords.count
+
+            let service = ScorePersistenceService(
+                modelContext: context,
+                saveContext: { _ in throw SaveHookError.forced }
+            )
+
+            var engine = ScoreEngine()
+            for _ in 0..<10 { engine.processHit(accuracy: .perfect, timingError: 0) }
+            let snapshot = LiveScoreSnapshot(scoreEngine: engine)
+
+            let result = service.recordAttempt(
+                snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0
+            )
+
+            #expect(result == .saveFailed)
+            // bestScore must be restored to its pre-attempt value.
+            #expect(chart.bestScore == 5000)
+            // Pruning is deferred until after save succeeds, so existing records are untouched.
+            // The new record is deleted but SwiftData doesn't remove it from the relationship
+            // array until the next save — commit the pending delete to verify the final count.
+            try context.save()
+            #expect(chart.scoreRecords.count == originalRecordCount)
+        }
+    }
+
+    @Test("migrateLegacyHighScores rollback on save failure preserves original bests and leaves flag unset")
+    func testMigrateLegacyHighScoresRollbackOnSaveFailure() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = try makeTestChart()
+            chart.bestScore = 200
+            try context.save()
+
+            let service = ScorePersistenceService(
+                modelContext: context,
+                saveContext: { _ in throw SaveHookError.forced }
+            )
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            let key = PersistentIdentifierPersistenceKey.canonicalKey(
+                for: chart.persistentModelID, logPrefix: "Test"
+            )
+            userDefaults.set([key: 5000], forKey: "HighScorePerChart")
+
+            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
+
+            // bestScore must be restored — save failed, property-level rollback kicks in.
+            #expect(chart.bestScore == 200)
+            // Flag must NOT be set — migration should retry on next launch.
+            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == false)
+            // Legacy data must NOT be deleted — it's the only copy until migration succeeds.
+            #expect(userDefaults.dictionary(forKey: "HighScorePerChart") != nil)
         }
     }
 }
