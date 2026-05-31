@@ -168,8 +168,7 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> XCUIElement {
-        let element = app.descendants(matching: .any).matching(textContainsPredicate(text)).firstMatch
-        if let element = waitForFirstExisting([element], timeout: timeout) {
+        if let element = waitForFirstExisting(textElementCandidates(containing: text, in: app), timeout: timeout) {
             return element
         }
 
@@ -182,8 +181,25 @@ extension XCTestCase {
         in app: XCUIApplication,
         timeout: TimeInterval = 10
     ) -> Bool {
-        let element = app.descendants(matching: .any).matching(textContainsPredicate(text)).firstMatch
-        return element.waitForNonExistence(timeout: timeout)
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            if textElementCandidates(containing: text, in: app).allSatisfy({ !$0.exists }) {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+
+        return textElementCandidates(containing: text, in: app).allSatisfy { !$0.exists }
+    }
+
+    private func textElementCandidates(containing text: String, in app: XCUIApplication) -> [XCUIElement] {
+        let predicate = textContainsPredicate(text)
+        return [
+            app.staticTexts.matching(predicate).firstMatch,
+            app.buttons.matching(predicate).firstMatch,
+            app.cells.matching(predicate).firstMatch
+        ]
     }
 
     func controlIsSelected(_ element: XCUIElement) -> Bool {
@@ -317,13 +333,10 @@ extension XCTestCase {
     ) throws -> XCUIElement {
         let identifier = "chartScores\(difficulty)"
         let label = "View scores for \(difficulty)"
-        let identifierPredicate = NSPredicate(format: "identifier == %@", identifier)
         let labelPredicate = textContainsPredicate(label)
         let candidates = [
             app.buttons[identifier],
-            app.buttons.matching(labelPredicate).firstMatch,
-            app.descendants(matching: .any).matching(identifierPredicate).firstMatch,
-            app.descendants(matching: .any).matching(labelPredicate).firstMatch
+            app.buttons.matching(labelPredicate).firstMatch
         ]
 
         if let element = waitForFirstExisting(candidates, timeout: timeout) {

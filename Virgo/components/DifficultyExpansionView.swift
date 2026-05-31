@@ -113,19 +113,19 @@ struct ChartSelectionCard: View {
         Button {
             showingScores = true
         } label: {
-            Label(scoreButtonAccessibilityLabel, systemImage: "list.bullet.rectangle")
-                .labelStyle(.iconOnly)
+            Image(systemName: "list.bullet.rectangle")
                 .font(.body)
                 .foregroundColor(.cyan)
                 .frame(width: 36, height: 36)
                 .background(Color.white.opacity(0.1))
                 .cornerRadius(8)
-                .accessibilityIdentifier(scoreButtonIdentifier)
-                .accessibilityLabel(scoreButtonAccessibilityLabel)
+                .accessibilityHidden(true)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityElement(children: .ignore)
         .accessibilityIdentifier(scoreButtonIdentifier)
         .accessibilityLabel(scoreButtonAccessibilityLabel)
+        .accessibilityAddTraits(.isButton)
     }
 
     private var scoreButtonIdentifier: String {
