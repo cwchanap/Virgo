@@ -208,5 +208,55 @@ final class SongsTabUITests: XCTestCase {
             }
         }
     }
+
+    @MainActor
+    func testDifficultyScoresButtonOpensScoresSheet() throws {
+        try tapStartButton()
+
+        XCTAssertTrue(switchToDownloadedTab(app: app))
+
+        let searchField = app.textFields["searchField"]
+        if searchField.waitForExistence(timeout: 3) {
+            searchField.clearAndEnterText("Thunder Beat")
+        }
+
+        try requireStaticText(containing: "Thunder Beat", in: app, timeout: 5)
+
+        let chartButton = try requireButton(containing: "charts", in: app, timeout: 5)
+        chartButton.tap()
+
+        XCTAssertTrue(waitForStaticText(containing: "Select Difficulty", in: app, timeout: 5))
+
+        let scoresButton = app.buttons["chartScoresEasy"]
+        XCTAssertTrue(scoresButton.waitForExistence(timeout: 5))
+        scoresButton.tap()
+
+        try requireStaticText(containing: "Scores", in: app, timeout: 5)
+        try requireStaticText(containing: "BEST SCORE", in: app, timeout: 5)
+        try requireStaticText(containing: "No attempts yet", in: app, timeout: 5)
+    }
+
+    @MainActor
+    func testLibraryDeleteButtonRemovesDownloadedSong() throws {
+        try tapStartButton()
+
+        try tapControl(named: "Library", in: app, timeout: 5)
+        try requireStaticText(containing: "Downloaded Songs", in: app, timeout: 5)
+        try requireStaticText(containing: "Thunder Beat", in: app, timeout: 5)
+        try requireStaticText(containing: "7 songs downloaded", in: app, timeout: 5)
+
+        let deleteButton = app.buttons["libraryDeleteButton"].firstMatch
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 5))
+        deleteButton.tap()
+
+        XCTAssertTrue(
+            waitForStaticText(containing: "6 songs downloaded", in: app, timeout: 10),
+            "Library should update its downloaded-song count after deleting one fixture song"
+        )
+        XCTAssertFalse(
+            app.staticTexts.matching(textContainsPredicate("Thunder Beat")).firstMatch.exists,
+            "Deleted song should no longer be listed in Library"
+        )
+    }
     
 }

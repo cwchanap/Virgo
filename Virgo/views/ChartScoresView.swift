@@ -87,7 +87,7 @@ struct ChartScoresView: View {
     }
 }
 
-private struct ScoreAttemptRow: View {
+struct ScoreAttemptRow: View {
     let attempt: ScoreAttemptSummary
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
