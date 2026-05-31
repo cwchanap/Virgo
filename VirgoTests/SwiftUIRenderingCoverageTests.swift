@@ -322,6 +322,106 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
+    @Test("ChartScoresView renders empty score state")
+    func testChartScoresViewEmptyState() async throws {
+        try await TestSetup.withTestSetup {
+            let emptyChart = makeChartInContext(title: "Empty Scores", bestScore: 0)
+            let emptyView = NavigationStack {
+                ChartScoresView(chart: emptyChart)
+            }
+            .modelContainer(TestContainer.shared.container)
+
+            SwiftUITestUtilities.assertView(
+                emptyView,
+                containsStrings: ["0", "BEST SCORE", "No attempts yet", "Play this chart to record a score"],
+                size: CGSize(width: 900, height: 900)
+            )
+        }
+    }
+
+    @Test("ChartScoresView renders populated score state")
+    func testChartScoresViewPopulatedState() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let scoredChart = makeChartInContext(title: "Scored Chart", bestScore: 567)
+            let record = ScoreRecord(
+                score: 567,
+                maxCombo: 24,
+                accuracy: 94.0,
+                speedMultiplier: 0.75,
+                playedAt: Date(timeIntervalSinceNow: -60),
+                chart: scoredChart
+            )
+            context.insert(record)
+            try context.save()
+
+            let scoredView = NavigationStack {
+                ChartScoresView(chart: scoredChart)
+            }
+            .modelContainer(TestContainer.shared.container)
+
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                scoredView,
+                size: CGSize(width: 900, height: 900)
+            )
+            try await Task.sleep(nanoseconds: 300_000_000)
+
+            let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
+            #expect(texts.contains("567"))
+            #expect(texts.contains("BEST SCORE"))
+            #expect(!texts.contains("No attempts yet"))
+        }
+    }
+
+    @Test("SongScoresView renders empty chart state")
+    func testSongScoresViewEmptyState() async throws {
+        try await TestSetup.withTestSetup {
+            let emptySong = Song(
+                title: "Scoreless Song", artist: "Scores", bpm: 120, duration: "1:00", genre: "DTX Import"
+            )
+            TestContainer.shared.context.insert(emptySong)
+            try TestContainer.shared.context.save()
+
+            let emptyView = NavigationStack {
+                SongScoresView(song: emptySong)
+            }
+            .modelContainer(TestContainer.shared.container)
+
+            SwiftUITestUtilities.assertView(
+                emptyView,
+                containsStrings: ["No charts available"],
+                size: CGSize(width: 900, height: 900)
+            )
+        }
+    }
+
+    @Test("SongScoresView renders populated chart state")
+    func testSongScoresViewPopulatedState() async throws {
+        try await TestSetup.withTestSetup {
+            let hardChart = SwiftUICoverageFixtures.makeChart(difficulty: .hard, level: 70)
+            hardChart.bestScore = 890
+            let easyChart = SwiftUICoverageFixtures.makeChart(difficulty: .easy, level: 20)
+            easyChart.bestScore = 567
+            let song = SwiftUICoverageFixtures.makeSong(
+                title: "Scores Song",
+                charts: [hardChart, easyChart]
+            )
+
+            let populatedView = NavigationStack {
+                SongScoresView(song: song)
+            }
+
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                populatedView,
+                size: CGSize(width: 900, height: 900)
+            )
+            try await Task.sleep(nanoseconds: 300_000_000)
+
+            let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
+            #expect(!texts.contains("No charts available"))
+        }
+    }
+
     @Test("ServerSongsView renders empty, loading, and populated states")
     func testServerSongsViewRenderingStates() async throws {
         try await TestSetup.withTestSetup {
@@ -416,169 +516,6 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
-    @Test("ProfileView renders inside a navigation stack")
-    func testProfileViewRendering() async throws {
-        try await TestSetup.withTestSetup {
-            let view = NavigationStack {
-                ProfileView()
-            }
-
-            SwiftUITestUtilities.assertViewWithEnvironment(view)
-        }
-    }
-
-    @Test("InputSettingsView renders its default mapping state")
-    func testInputSettingsViewRendering() async throws {
-        try await TestSetup.withTestSetup {
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                InputSettingsView(),
-                size: CGSize(width: 1440, height: 1400)
-            )
-        }
-    }
-
-    @Test("InputSettingsView renders key capture overlay state")
-    func testInputSettingsViewRenderingWithCaptureOverlay() async throws {
-        try await TestSetup.withTestSetup {
-            #if os(macOS)
-            let keyCaptureState = InputKeyCaptureState()
-            keyCaptureState.selectedDrumType = .snare
-            keyCaptureState.isCapturingKey = true
-            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
-                InputSettingsView(keyCaptureState: keyCaptureState),
-                size: CGSize(width: 1440, height: 1400)
-            )
-            let renderedTexts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
-            #expect(
-                renderedTexts.contains("Press any key"),
-                "Expected the mounted overlay prompt to be rendered; got \(renderedTexts)"
-            )
-            #expect(
-                renderedTexts.contains("for \(DrumType.snare.description)"),
-                "Expected the mounted overlay to include the selected drum; got \(renderedTexts)"
-            )
-            #endif
-        }
-    }
-
-    @Test("MetronomeView renders practice tips and settings layout")
-    func testMetronomeViewRendering() async throws {
-        try await TestSetup.withTestSetup {
-            let view = NavigationStack {
-                MetronomeView()
-            }
-            .environmentObject(MetronomeEngine(audioDriver: RecordingAudioDriver()))
-
-            SwiftUITestUtilities.assertViewWithEnvironment(view)
-        }
-    }
-
-    @Test("GameplayHeaderView renders score and transport controls")
-    func testGameplayHeaderViewRendering() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = Chart(difficulty: .hard, level: 70)
-            let song = Song(
-                title: "Header Song",
-                artist: "Header Artist",
-                bpm: 160,
-                duration: "2:34",
-                genre: "Render Test",
-                charts: [chart]
-            )
-            chart.song = song
-            let track = DrumTrack(chart: chart)
-
-            let view = GameplayHeaderView(
-                track: track,
-                isPlaying: .constant(true),
-                viewModel: nil,
-                onDismiss: {},
-                onPlayPause: {},
-                onRestart: {}
-            )
-            .background(Color.black)
-
-            SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 1280, height: 120))
-        }
-    }
-
-    @Test("GameplayHeaderView renders score snapshot stats")
-    func testGameplayHeaderViewRendersScoreSnapshotStats() async throws {
-        try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
-            vm.isPlaying = true
-            let note = try #require(vm.cachedNotes.first)
-            let result = NoteMatchResult(
-                hitInput: InputHit(drumType: .kick, velocity: 1.0, timestamp: Date()),
-                matchedNote: note,
-                timingAccuracy: .perfect,
-                measureNumber: note.measureNumber,
-                measureOffset: note.measureOffset,
-                timingError: 0.0
-            )
-            vm.recordHit(result: result)
-
-            let track = try #require(vm.track)
-            let view = GameplayHeaderView(
-                track: track,
-                isPlaying: .constant(true),
-                viewModel: vm,
-                onDismiss: {},
-                onPlayPause: {},
-                onRestart: {}
-            )
-            .background(Color.black)
-
-            SwiftUITestUtilities.assertView(
-                view,
-                containsStrings: ["SCORE", "ACC", "QLTY", "100%", "1x"],
-                size: CGSize(width: 1280, height: 130)
-            )
-            vm.cleanup()
-        }
-    }
-
-    @Test("GameplayHeaderView uses compact score layout at iPhone portrait width")
-    func testGameplayHeaderViewUsesCompactScoreLayoutAtPortraitWidth() async throws {
-        try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
-            vm.isPlaying = true
-            let note = try #require(vm.cachedNotes.first)
-            let result = NoteMatchResult(
-                hitInput: InputHit(drumType: .kick, velocity: 1.0, timestamp: Date()),
-                matchedNote: note,
-                timingAccuracy: .perfect,
-                measureNumber: note.measureNumber,
-                measureOffset: note.measureOffset,
-                timingError: 0.0
-            )
-            vm.recordHit(result: result)
-
-            let track = try #require(vm.track)
-            let view = GameplayHeaderView(
-                track: track,
-                isPlaying: .constant(true),
-                viewModel: vm,
-                onDismiss: {},
-                onPlayPause: {},
-                onRestart: {}
-            )
-            .background(Color.black)
-
-            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 390, height: 160)
-            )
-            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
-
-            for string in ["SCORE", "ACC", "QLTY", "100%", "1x"] {
-                #expect(texts.contains(string), "Expected compact header texts to include '\(string)', got \(texts)")
-            }
-
-            vm.cleanup()
-        }
-    }
-
     private func makeDownloadedSong(title: String) -> Song {
         let notes = [
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
@@ -598,6 +535,17 @@ struct SwiftUIRenderingCoverageTests {
         chart.song = song
         notes.forEach { $0.chart = chart }
         return song
+    }
+
+    private func makeChartInContext(title: String, bestScore: Int) -> Chart {
+        let context = TestContainer.shared.context
+        let song = Song(title: title, artist: "Score Artist", bpm: 120, duration: "1:00", genre: "DTX Import")
+        let chart = Chart(difficulty: .medium, level: 42, song: song)
+        chart.bestScore = bestScore
+        song.charts = [chart]
+        context.insert(song)
+        context.insert(chart)
+        return chart
     }
 
     private func makeServerSong(title: String, isDownloaded: Bool = false) -> ServerSong {

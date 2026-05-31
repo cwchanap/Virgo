@@ -130,6 +130,37 @@ struct ComponentRefactoringTests {
         }
     }
 
+    @Test("ChartSelectionCard renders notes, level, best score, and scores action")
+    func testChartSelectionCardRendersBestScoreAndScoresAction() async throws {
+        try await TestSetup.withTestSetup {
+            let notes = [
+                Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25),
+                Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.5)
+            ]
+            let chart = Chart(difficulty: .expert, level: 85, notes: notes)
+            chart.bestScore = 4567
+
+            SwiftUITestUtilities.assertView(
+                ChartSelectionCard(chart: chart, onSelect: {}),
+                containsStrings: ["3 notes", "Level 85", "4,567"]
+            )
+        }
+    }
+
+    @Test("ChartSelectionCard omits best score when it is zero")
+    func testChartSelectionCardOmitsBestScoreWhenZero() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = Chart(difficulty: .easy, level: 20)
+            chart.bestScore = 0
+
+            SwiftUITestUtilities.assertView(
+                ChartSelectionCard(chart: chart, onSelect: {}),
+                containsStrings: ["0 notes", "Level 20"]
+            )
+        }
+    }
+
     @Test("ServerSongRow displays server song information")
     func testServerSongRow() async throws {
         try await TestSetup.withTestSetup {
