@@ -304,11 +304,14 @@ struct SongLibraryCoverageTests {
                 ]
             )
 
-            SwiftUITestUtilities.assertView(
-                SavedSongRow(song: song, isDeleting: false, onDelete: {}),
-                containsStrings: ["Deletable Song", "Delete"],
-                excludesStrings: ["Deleting..."]
-            )
+            let row = SavedSongRow(song: song, isDeleting: false, onDelete: {})
+            #expect(row.showsDeleteButton)
+
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(row)
+            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
+
+            #expect(texts.contains("Deletable Song"), "Expected title; got \(texts)")
+            #expect(!texts.contains("Deleting..."), "Should not show deleting state; got \(texts)")
         }
     }
 
@@ -323,8 +326,11 @@ struct SongLibraryCoverageTests {
                 ]
             )
 
+            let row = SavedSongRow(song: song, isDeleting: false, onDelete: nil)
+            #expect(!row.showsDeleteButton)
+
             SwiftUITestUtilities.assertView(
-                SavedSongRow(song: song, isDeleting: false, onDelete: nil),
+                row,
                 containsStrings: ["Read Only Song"],
                 excludesStrings: ["Deleting...", "Delete"]
             )

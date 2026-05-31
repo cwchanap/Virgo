@@ -206,15 +206,24 @@ struct SwiftUIRenderingLibraryAndResultsTests {
         try await TestSetup.withTestSetup {
             let song = SwiftUICoverageFixtures.makeSong(title: "Saved Row Song")
 
-            SwiftUITestUtilities.assertView(
-                SavedSongRow(song: song, isDeleting: false, onDelete: {}),
-                containsStrings: ["Saved Row Song", "Fixture Artist", "128 BPM", "2:15", "DTX Import", "Delete"],
-                excludesStrings: ["Deleting..."],
+            let row = SavedSongRow(song: song, isDeleting: false, onDelete: {})
+            #expect(row.showsDeleteButton)
+
+            let mountedRow = SwiftUITestUtilities.assertViewWithEnvironment(
+                row,
                 size: CGSize(width: 900, height: 220)
             )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mountedRow.root)
+            for expected in ["Saved Row Song", "Fixture Artist", "128 BPM", "2:15", "DTX Import"] {
+                #expect(texts.contains(expected), "Expected rendered texts to include '\(expected)', got \(texts)")
+            }
+            #expect(!texts.contains("Deleting..."), "Expected non-deleting row; got \(texts)")
+
+            let deletingRow = SavedSongRow(song: song, isDeleting: true, onDelete: {})
+            #expect(!deletingRow.showsDeleteButton)
 
             SwiftUITestUtilities.assertView(
-                SavedSongRow(song: song, isDeleting: true, onDelete: {}),
+                deletingRow,
                 containsStrings: ["Saved Row Song", "Deleting..."],
                 excludesStrings: ["Delete"],
                 size: CGSize(width: 900, height: 220)

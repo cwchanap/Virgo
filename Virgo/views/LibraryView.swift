@@ -12,6 +12,14 @@ struct LibraryView: View {
     let songs: [Song]
     @ObservedObject var serverSongService: ServerSongService
 
+    static func rowViewID(for song: Song) -> String {
+        let stableSongID = PersistentIdentifierPersistenceKey.canonicalKey(
+            for: song.persistentModelID,
+            logPrefix: "LibraryView"
+        )
+        return "library-song-row-\(stableSongID)"
+    }
+
     var downloadedSongs: [Song] {
         // Show all songs that were downloaded from server (DTX Import genre)
         songs.filter { $0.genre == "DTX Import" }
@@ -88,6 +96,8 @@ struct LibraryView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityIdentifier(Self.rowViewID(for: song))
+                                .accessibilityLabel("\(song.title), \(song.artist)")
 
                                 // Delete button sits outside the NavigationLink
                                 // so taps don't trigger both navigation and deletion.
@@ -138,6 +148,10 @@ struct SavedSongRow: View {
     let song: Song
     let isDeleting: Bool
     let onDelete: (() -> Void)?
+
+    var showsDeleteButton: Bool {
+        onDelete != nil && !isDeleting
+    }
 
     var body: some View {
         HStack(spacing: 12) {
