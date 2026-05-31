@@ -51,7 +51,7 @@ struct GameplayViewModelFullSpeedScoringTests {
 
             vm.handlePlaybackCompletion()
 
-            #expect(vm.sessionIsNewRecord == true)
+            #expect(vm.sessionRecordResult == .newBest)
             #expect(service.bestScore(for: chart) > 0)
             #expect(chart.scoreRecords.count == 1)
         }
@@ -75,7 +75,7 @@ struct GameplayViewModelFullSpeedScoringTests {
 
             vm.handlePlaybackCompletion()
 
-            #expect(vm.sessionIsNewRecord == false)
+            #expect(vm.sessionRecordResult == .recorded)
             #expect(service.bestScore(for: chart) == 0)
             #expect(chart.scoreRecords.count == 1)
         }

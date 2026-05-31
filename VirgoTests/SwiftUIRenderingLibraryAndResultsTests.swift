@@ -193,7 +193,7 @@ struct SwiftUIRenderingLibraryAndResultsTests {
             let expectedScore = scoreEngine.score.formatted()
             let view = SessionResultsView(
                 highScore: 2450,
-                isNewRecord: true,
+                recordResult: .newBest,
                 scoreSnapshot: LiveScoreSnapshot(scoreEngine: scoreEngine),
                 onPlayAgain: {},
                 onDone: {}
@@ -216,7 +216,7 @@ struct SwiftUIRenderingLibraryAndResultsTests {
 
             let view = SessionResultsView(
                 highScore: 900,
-                isNewRecord: false,
+                recordResult: .recorded,
                 scoreSnapshot: LiveScoreSnapshot(scoreEngine: scoreEngine),
                 onPlayAgain: {},
                 onDone: {}

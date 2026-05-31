@@ -12,30 +12,49 @@ import SwiftData
 @MainActor
 final class ScorePersistenceService {
 
+    /// Outcome of a `recordAttempt` call, distinguishing save failures from normal results.
+    enum RecordResult: Equatable {
+        /// The run was saved and set a new all-time best (full-speed only).
+        case newBest
+        /// The run was saved but did not beat the existing best (or was not at full speed).
+        case recorded
+        /// The underlying save failed — nothing was persisted.
+        case saveFailed
+    }
+
     nonisolated static let maxRecentAttempts = 10
     private static let migrationFlagKey = "DidMigrateHighScoresToSwiftData"
     private static let legacyHighScoreKey = "HighScorePerChart"
 
     private let modelContext: ModelContext
+    private let saveContext: @Sendable (ModelContext) throws -> Void
     /// Retains the container when this service owns an in-memory store, so the
     /// context cannot dangle. `ModelContext` does not keep its `ModelContainer`
     /// alive; without this, a `makeInMemory()` service would crash on first use.
     private let retainedContainer: ModelContainer?
 
-    init(modelContext: ModelContext) {
+    init(
+        modelContext: ModelContext,
+        saveContext: @escaping @Sendable (ModelContext) throws -> Void = { context in try context.save() }
+    ) {
         self.modelContext = modelContext
+        self.saveContext = saveContext
         self.retainedContainer = nil
     }
 
-    private init(inMemoryContainer: ModelContainer) {
+    private init(
+        inMemoryContainer: ModelContainer,
+        saveContext: @escaping @Sendable (ModelContext) throws -> Void = { context in try context.save() }
+    ) {
         self.modelContext = inMemoryContainer.mainContext
+        self.saveContext = saveContext
         self.retainedContainer = inMemoryContainer
     }
 
     /// Records a completed run, prunes old history, and updates the chart's
     /// all-time best when the run was full speed.
-    /// - Returns: `true` if a new all-time best was set.
-    /// Returns `false` if the underlying save fails (no best-score change is reported).
+    /// - Returns: A `RecordResult` indicating whether a new best was set, the run
+    ///   was merely recorded, or the save failed (nothing persisted).
     @discardableResult
     func recordAttempt(
         _ snapshot: LiveScoreSnapshot,
@@ -43,7 +62,7 @@ final class ScorePersistenceService {
         atFullSpeed: Bool,
         speedMultiplier: Double,
         now: Date = Date()
-    ) -> Bool {
+    ) -> RecordResult {
         // The linked chart must belong to this service's context before we attach a
         // ScoreRecord to it. In production the gameplay chart is already managed by the
         // injected context; for in-memory/preview services handed a detached (context-less)
@@ -62,8 +81,6 @@ final class ScorePersistenceService {
         )
         modelContext.insert(record)
 
-        let pruned = pruneOldRecordsForRollback(for: chart)
-
         let previousBestScore = chart.bestScore
         var isNewBest = false
         if atFullSpeed && record.score > chart.bestScore {
@@ -72,18 +89,22 @@ final class ScorePersistenceService {
         }
 
         do {
-            try modelContext.save()
+            try saveContext(modelContext)
         } catch {
             Logger.error("ScorePersistenceService: failed to save score record: \(error.localizedDescription)")
-            // Roll back all pending mutations so a later save cannot persist them.
+            // Restore the two pending mutations — no pruning has occurred yet so only
+            // the insert and bestScore need reverting.
             chart.bestScore = previousBestScore
             modelContext.delete(record)
-            for deletedRecord in pruned {
-                modelContext.insert(deletedRecord)
-            }
-            return false
+            return .saveFailed
         }
-        return isNewBest
+
+        // Prune after a successful save so a save failure never requires "undeleting"
+        // pruned records.  Pruning failure is non-critical (extra records, no data loss).
+        pruneOldRecords(for: chart)
+        try? saveContext(modelContext)
+
+        return isNewBest ? .newBest : .recorded
     }
 
     /// The all-time best score for a chart (0 if none).
@@ -118,7 +139,7 @@ final class ScorePersistenceService {
 
         let legacy = readLegacyScores(from: userDefaults)
         if !legacy.isEmpty {
-            var rollback: [(chart: Chart, previousBest: Int)] = []
+            var updated: [(chart: Chart, previousBest: Int)] = []
             for chart in charts {
                 guard let resolution = PersistentIdentifierPersistenceKey.resolve(
                     for: chart.persistentModelID,
@@ -127,18 +148,19 @@ final class ScorePersistenceService {
                 ), resolution.value > chart.bestScore else {
                     continue
                 }
-                rollback.append((chart, chart.bestScore))
+                updated.append((chart, chart.bestScore))
                 chart.bestScore = resolution.value
             }
 
-            if !rollback.isEmpty {
+            if !updated.isEmpty {
                 do {
-                    try modelContext.save()
+                    try saveContext(modelContext)
                 } catch {
                     Logger.error(
                         "ScorePersistenceService: failed to save migrated high scores: \(error.localizedDescription)"
                     )
-                    for entry in rollback {
+                    // Restore each chart's bestScore to its pre-migration value.
+                    for entry in updated {
                         entry.chart.bestScore = entry.previousBest
                     }
                     return // leave the flag unset so migration retries next launch
@@ -152,15 +174,13 @@ final class ScorePersistenceService {
 
     // MARK: - Private
 
-    @discardableResult
-    private func pruneOldRecordsForRollback(for chart: Chart) -> [ScoreRecord] {
+    private func pruneOldRecords(for chart: Chart) {
         let sorted = chart.scoreRecords.sorted { $0.playedAt > $1.playedAt }
-        guard sorted.count > Self.maxRecentAttempts else { return [] }
+        guard sorted.count > Self.maxRecentAttempts else { return }
         let toPrune = Array(sorted[Self.maxRecentAttempts...])
         for record in toPrune {
             modelContext.delete(record)
         }
-        return toPrune
     }
 
     private func readLegacyScores(from userDefaults: UserDefaults) -> [String: Int] {
@@ -171,6 +191,8 @@ final class ScorePersistenceService {
                 scores[key] = intValue
             } else if let numberValue = value as? NSNumber {
                 scores[key] = numberValue.intValue
+            } else {
+                Logger.warning("ScorePersistenceService: dropping non-numeric legacy value for key \(key)")
             }
         }
         return scores

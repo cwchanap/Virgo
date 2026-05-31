@@ -177,10 +177,10 @@ final class GameplayViewModel {
     var sessionScoreEngine = ScoreEngine()
     /// Snapshot captured at session end before resetScoring clears live state.
     var sessionScoreSnapshot = LiveScoreSnapshot.empty
-    /// Whether the verified save returned a new high-score record (set by handlePlaybackCompletion).
-    /// Passed directly to SessionResultsView so the NEW HIGH SCORE badge reflects
-    /// whether the write actually succeeded, not just a local score comparison.
-    var sessionIsNewRecord: Bool = false
+    /// The save outcome from the most recent handlePlaybackCompletion, passed to
+    /// SessionResultsView so the NEW HIGH SCORE badge only appears when the write
+    /// actually succeeded, and a "not saved" banner can surface save failures.
+    var sessionRecordResult: ScorePersistenceService.RecordResult = .recorded
     /// Whether the session results sheet is visible
     var isShowingSessionResults: Bool = false
     /// Non-nil for one render cycle to drive milestone animation (10/25/50/100)
@@ -1496,7 +1496,7 @@ final class GameplayViewModel {
         // Capture final score and snapshot scoreEngine before reset clears them
         let finalScore = scoreEngine.score
         let finalSnapshot = LiveScoreSnapshot(scoreEngine: scoreEngine)
-        let isNewRecord = scorePersistence.recordAttempt(
+        let recordResult = scorePersistence.recordAttempt(
             finalSnapshot,
             for: chart,
             atFullSpeed: sessionAtFullSpeed,
@@ -1509,10 +1509,10 @@ final class GameplayViewModel {
         bgmPlayer?.stop()
         // Set session result after reset
         sessionScoreSnapshot = finalSnapshot
-        sessionIsNewRecord = isNewRecord
+        sessionRecordResult = recordResult
         isShowingSessionResults = true
         Logger.audioPlayback(
-            "Playback finished. Score: \(finalScore)\(isNewRecord ? " (new high score!)" : "")"
+            "Playback finished. Score: \(finalScore)\(recordResult == .newBest ? " (new high score!)" : "")"
         )
     }
 
@@ -1913,7 +1913,7 @@ final class GameplayViewModel {
     func resetScoring() {
         scoreEngine.reset()
         sessionScoreSnapshot = .empty
-        sessionIsNewRecord = false
+        sessionRecordResult = .recorded
         isShowingSessionResults = false
         showMilestoneAnimation = false
         showComboBreakFeedback = false
