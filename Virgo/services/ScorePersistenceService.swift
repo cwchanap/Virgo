@@ -176,7 +176,9 @@ final class ScorePersistenceService {
     // MARK: - Private
 
     private func pruneOldRecords(for chart: Chart) {
-        let sorted = chart.scoreRecords.sorted { $0.playedAt > $1.playedAt }
+        let sorted = chart.scoreRecords
+            .filter { !$0.isDeleted }
+            .sorted { $0.playedAt > $1.playedAt }
         guard sorted.count > Self.maxRecentAttempts else { return }
         let toPrune = Array(sorted[Self.maxRecentAttempts...])
         for record in toPrune {

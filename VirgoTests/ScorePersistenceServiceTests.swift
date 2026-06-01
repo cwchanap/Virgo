@@ -574,6 +574,66 @@ struct ScorePersistenceServiceTests {
         }
     }
 
+    @Test("pruneOldRecords ignores deleted tombstones from prior failed saves")
+    func testPruneIgnoresDeletedTombstones() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = try makeTestChart()
+            let base = Date(timeIntervalSince1970: 6_000_000)
+
+            // Pre-populate exactly maxRecentAttempts valid records.
+            for i in 0..<ScorePersistenceService.maxRecentAttempts {
+                let record = ScoreRecord(
+                    score: 100 * (i + 1),
+                    maxCombo: i,
+                    accuracy: 80.0,
+                    speedMultiplier: 1.0,
+                    playedAt: base.addingTimeInterval(Double(i)),
+                    chart: chart
+                )
+                context.insert(record)
+            }
+            try context.save()
+            // Sanity: exactly 10 records before the failed attempt.
+            #expect(chart.scoreRecords.filter { !$0.isDeleted }.count == ScorePersistenceService.maxRecentAttempts)
+
+            // Simulate a failed save: the catch block deletes the new record,
+            // but SwiftData keeps the tombstone in the relationship array.
+            let failService = ScorePersistenceService(
+                modelContext: context,
+                saveContext: { _ in throw SaveHookError.forced }
+            )
+            var engine = ScoreEngine()
+            for _ in 0..<5 { engine.processHit(accuracy: .perfect, timingError: 0) }
+            let failSnapshot = LiveScoreSnapshot(scoreEngine: engine)
+
+            let failResult = failService.recordAttempt(
+                failSnapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0,
+                now: base.addingTimeInterval(100)
+            )
+            #expect(failResult == .saveFailed)
+
+            // Now record a successful attempt with a working service.
+            // The tombstone is still in chart.scoreRecords; pruneOldRecords
+            // must filter it out so only valid records are counted for pruning.
+            let goodService = ScorePersistenceService(modelContext: context)
+            var engine2 = ScoreEngine()
+            for _ in 0..<8 { engine2.processHit(accuracy: .perfect, timingError: 0) }
+            let goodSnapshot = LiveScoreSnapshot(scoreEngine: engine2)
+
+            _ = goodService.recordAttempt(
+                goodSnapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0,
+                now: base.addingTimeInterval(200)
+            )
+
+            // After the successful save + prune, there should be exactly
+            // maxRecentAttempts non-deleted records. The tombstone must not
+            // inflate the count and cause premature pruning of a valid record.
+            let validRecords = chart.scoreRecords.filter { !$0.isDeleted }
+            #expect(validRecords.count == ScorePersistenceService.maxRecentAttempts)
+        }
+    }
+
     @Test("migrateLegacyHighScores rollback on save failure preserves original bests and leaves flag unset")
     func testMigrateLegacyHighScoresRollbackOnSaveFailure() async throws {
         try await TestSetup.withTestSetup {
