@@ -238,14 +238,17 @@ struct AudioPlaybackServiceTests {
 
     @Test("playPreview updates currentTime via progress timer")
     func testPlayPreviewUpdatesProgress() async throws {
-        let service = AudioPlaybackService()
+        let service = AudioPlaybackService(startPlayback: { player in
+            player.currentTime = 0.25
+            return true
+        })
         let previewPath = try makeTemporaryWAVPath(durationSeconds: 2.0)
         defer { try? FileManager.default.removeItem(atPath: previewPath) }
 
         let song = makeSong(title: "Progress Song", previewPath: previewPath)
         service.playPreview(for: song)
 
-        try await Task.sleep(nanoseconds: 500_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
 
         #expect(service.currentTime > 0)
         #expect(service.duration > 0)
