@@ -142,6 +142,7 @@ struct SwiftUIRenderingLibraryAndResultsTests {
     @Test("SongScoresView renders populated chart state")
     func testSongScoresViewPopulatedState() async throws {
         try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
             let hardChart = SwiftUICoverageFixtures.makeChart(difficulty: .hard, level: 70)
             hardChart.bestScore = 890
             let easyChart = SwiftUICoverageFixtures.makeChart(difficulty: .easy, level: 20)
@@ -150,10 +151,19 @@ struct SwiftUIRenderingLibraryAndResultsTests {
                 title: "Scores Song",
                 charts: [hardChart, easyChart]
             )
+            context.insert(song)
+            context.insert(hardChart)
+            context.insert(easyChart)
+            try context.save()
+
+            let relationshipData = SongRelationshipLoader.relationshipData(for: song)
+            #expect(relationshipData.charts.count == 2)
+            #expect(Set(relationshipData.charts.map(\.bestScore)) == Set([567, 890]))
 
             let populatedView = NavigationStack {
                 SongScoresView(song: song)
             }
+            .modelContainer(TestContainer.shared.container)
 
             let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
                 populatedView,
@@ -168,7 +178,7 @@ struct SwiftUIRenderingLibraryAndResultsTests {
                 texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
                 if !texts.contains("No charts available") { break }
             }
-            #expect(!texts.contains("No charts available"))
+            #expect(!texts.contains("No charts available"), "Expected populated chart state, got \(texts)")
         }
     }
 
