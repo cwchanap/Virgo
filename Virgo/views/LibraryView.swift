@@ -124,10 +124,11 @@ struct LibraryView: View {
                                 } else {
                                     Button {
                                         let songID = song.persistentModelID
+                                        locallyDeletedSongIDs.insert(songID)
                                         Task { @MainActor in
                                             let success = await serverSongService.deleteLocalSong(song)
-                                            if success {
-                                                locallyDeletedSongIDs.insert(songID)
+                                            if !success {
+                                                locallyDeletedSongIDs.remove(songID)
                                             }
                                         }
                                     } label: {
