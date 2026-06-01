@@ -14,8 +14,9 @@ struct SongScoresView: View {
     @State private var charts: [Chart] = []
 
     @MainActor
-    init(song: Song) {
+    init(song: Song, initialCharts: [Chart] = []) {
         self.song = song
+        self._charts = State(initialValue: Self.sortedCharts(initialCharts))
     }
 
     var body: some View {
@@ -52,12 +53,17 @@ struct SongScoresView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         #endif
         .task {
+            guard charts.isEmpty else { return }
             loadCharts()
         }
     }
 
     private func loadCharts() {
         let data = SongRelationshipLoader.relationshipData(for: song)
-        charts = data.charts.sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
+        charts = Self.sortedCharts(data.charts)
+    }
+
+    private static func sortedCharts(_ charts: [Chart]) -> [Chart] {
+        charts.sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
     }
 }

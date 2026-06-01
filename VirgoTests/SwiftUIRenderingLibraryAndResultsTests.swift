@@ -161,7 +161,7 @@ struct SwiftUIRenderingLibraryAndResultsTests {
             #expect(Set(relationshipData.charts.map(\.bestScore)) == Set([567, 890]))
 
             let populatedView = NavigationStack {
-                SongScoresView(song: song)
+                SongScoresView(song: song, initialCharts: relationshipData.charts)
             }
             .modelContainer(TestContainer.shared.container)
 
