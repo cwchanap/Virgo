@@ -118,6 +118,7 @@ final class ScorePersistenceService {
         limit: Int = ScorePersistenceService.maxRecentAttempts
     ) -> [ScoreAttemptSummary] {
         chart.scoreRecords
+            .filter { !$0.isDeleted }
             .sorted { $0.playedAt > $1.playedAt }
             .prefix(limit)
             .map { record in
