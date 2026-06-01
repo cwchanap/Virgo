@@ -11,12 +11,11 @@ import SwiftData
 struct SongScoresView: View {
     let song: Song
 
-    @State private var charts: [Chart]
+    @State private var charts: [Chart] = []
 
     @MainActor
     init(song: Song) {
         self.song = song
-        self._charts = State(initialValue: Self.sortedCharts(for: song))
     }
 
     var body: some View {
@@ -52,18 +51,13 @@ struct SongScoresView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         #endif
-        .task { load() }
+        .task {
+            loadCharts()
+        }
     }
 
-    private func load() {
-        charts = Self.sortedCharts(for: song)
-    }
-
-    private static func sortedCharts(for song: Song) -> [Chart] {
-        guard SongRelationshipLoader.isModelAvailable(song) else { return [] }
-
-        return song.charts
-            .filter { SongRelationshipLoader.isModelAvailable($0) }
-            .sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
+    private func loadCharts() {
+        let data = SongRelationshipLoader.relationshipData(for: song)
+        charts = data.charts.sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
     }
 }

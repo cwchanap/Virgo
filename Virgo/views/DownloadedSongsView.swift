@@ -141,11 +141,13 @@ struct DownloadedSongRowWithDelete: View {
         self.onSaveTap = onSaveTap
         self.onDelete = onDelete
 
-        let initialData = SongRelationshipLoader.relationshipData(for: song)
-        self._chartCount = State(initialValue: initialData.chartCount)
-        self._measureCount = State(initialValue: initialData.measureCount)
-        self._charts = State(initialValue: initialData.charts)
-        self._availableDifficulties = State(initialValue: initialData.availableDifficulties)
+        // Seed empty state; the .loadSongRelationships modifier populates
+        // asynchronously to avoid synchronous SwiftData relationship faulting
+        // during view construction.
+        self._chartCount = State(initialValue: 0)
+        self._measureCount = State(initialValue: 1)
+        self._charts = State(initialValue: [])
+        self._availableDifficulties = State(initialValue: [])
     }
 
     var body: some View {

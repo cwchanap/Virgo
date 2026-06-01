@@ -159,9 +159,15 @@ struct SwiftUIRenderingLibraryAndResultsTests {
                 populatedView,
                 size: CGSize(width: 900, height: 900)
             )
-            try await Task.sleep(nanoseconds: 300_000_000)
 
-            let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
+            // The view loads charts asynchronously via .loadSongRelationships.
+            // Poll until the async loader populates the charts.
+            var texts: [String] = []
+            for _ in 0..<10 {
+                try await Task.sleep(nanoseconds: 200_000_000)
+                texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
+                if !texts.contains("No charts available") { break }
+            }
             #expect(!texts.contains("No charts available"))
         }
     }
