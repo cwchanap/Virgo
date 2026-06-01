@@ -531,6 +531,49 @@ struct ScorePersistenceServiceTests {
         }
     }
 
+    @Test("recentAttempts excludes deleted records after save failure")
+    func testRecentAttemptsExcludesDeletedRecords() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = try makeTestChart()
+            // Pre-populate one successful record.
+            let base = Date(timeIntervalSince1970: 5_000_000)
+            let existingRecord = ScoreRecord(
+                score: 500,
+                maxCombo: 10,
+                accuracy: 85.0,
+                speedMultiplier: 1.0,
+                playedAt: base,
+                chart: chart
+            )
+            context.insert(existingRecord)
+            try context.save()
+
+            // Service with forced save failure.
+            let service = ScorePersistenceService(
+                modelContext: context,
+                saveContext: { _ in throw SaveHookError.forced }
+            )
+
+            var engine = ScoreEngine()
+            for _ in 0..<5 { engine.processHit(accuracy: .perfect, timingError: 0) }
+            let snapshot = LiveScoreSnapshot(scoreEngine: engine)
+
+            let result = service.recordAttempt(
+                snapshot, for: chart, atFullSpeed: true, speedMultiplier: 1.0,
+                now: base.addingTimeInterval(1)
+            )
+
+            #expect(result == .saveFailed)
+
+            // The deleted record must not appear in recentAttempts even though
+            // SwiftData still keeps it in the relationship array.
+            let attempts = service.recentAttempts(for: chart)
+            #expect(attempts.count == 1)
+            #expect(attempts.first?.score == 500)
+        }
+    }
+
     @Test("migrateLegacyHighScores rollback on save failure preserves original bests and leaves flag unset")
     func testMigrateLegacyHighScoresRollbackOnSaveFailure() async throws {
         try await TestSetup.withTestSetup {

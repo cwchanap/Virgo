@@ -101,6 +101,7 @@ struct ChartScoresView: View {
 
     private static func summaries(from records: [ScoreRecord]) -> [ScoreAttemptSummary] {
         records
+            .filter { !$0.isDeleted }
             .sorted { $0.playedAt > $1.playedAt }
             .prefix(ScorePersistenceService.maxRecentAttempts)
             .map { record in
