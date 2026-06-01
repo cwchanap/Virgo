@@ -11,6 +11,7 @@ import SwiftData
 struct LibraryView: View {
     let songs: [Song]
     @ObservedObject var serverSongService: ServerSongService
+    @State private var locallyDeletedSongIDs: Set<PersistentIdentifier> = []
 
     static func rowViewID(for song: Song) -> String {
         let stableSongID = PersistentIdentifierPersistenceKey.canonicalKey(
@@ -21,8 +22,18 @@ struct LibraryView: View {
     }
 
     var downloadedSongs: [Song] {
-        // Show all songs that were downloaded from server (DTX Import genre)
-        songs.filter { $0.genre == "DTX Import" }
+        Self.downloadedSongs(from: songs, excluding: locallyDeletedSongIDs)
+    }
+
+    static func downloadedSongs(
+        from songs: [Song],
+        excluding hiddenSongIDs: Set<PersistentIdentifier> = []
+    ) -> [Song] {
+        songs.filter { song in
+            song.genre == "DTX Import" &&
+                !song.isDeleted &&
+                !hiddenSongIDs.contains(song.persistentModelID)
+        }
     }
 
     var body: some View {
@@ -112,8 +123,12 @@ struct LibraryView: View {
                                     .padding(.trailing, 24)
                                 } else {
                                     Button {
+                                        let songID = song.persistentModelID
                                         Task { @MainActor in
-                                            await serverSongService.deleteLocalSong(song)
+                                            let success = await serverSongService.deleteLocalSong(song)
+                                            if success {
+                                                locallyDeletedSongIDs.insert(songID)
+                                            }
                                         }
                                     } label: {
                                         Text("Delete")

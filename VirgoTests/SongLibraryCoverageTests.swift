@@ -235,6 +235,28 @@ struct SongLibraryCoverageTests {
         }
     }
 
+    @Test("LibraryView downloaded-song filter excludes locally hidden songs")
+    func testLibraryViewDownloadedSongsExcludesLocallyHiddenSongs() async throws {
+        try await TestSetup.withTestSetup {
+            let visibleSong = SwiftUICoverageFixtures.makeSong(
+                title: "Visible Download",
+                genre: "DTX Import"
+            )
+            let hiddenSong = SwiftUICoverageFixtures.makeSong(
+                title: "Deleted Download",
+                genre: "DTX Import"
+            )
+            let streamingSong = SwiftUICoverageFixtures.makeSong(title: "Streaming Only", genre: "Rock")
+
+            let downloadedSongs = LibraryView.downloadedSongs(
+                from: [visibleSong, hiddenSong, streamingSong],
+                excluding: [hiddenSong.persistentModelID]
+            )
+
+            #expect(downloadedSongs.map(\.title) == ["Visible Download"])
+        }
+    }
+
     @Test("LibraryView renders external deleting overlay for a downloaded song")
     func testLibraryViewDeletingOverlayState() async throws {
         try await TestSetup.withTestSetup {
