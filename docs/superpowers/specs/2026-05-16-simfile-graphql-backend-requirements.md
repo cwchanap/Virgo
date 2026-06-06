@@ -34,7 +34,8 @@ API. It does not describe server-side ingestion, parsing, or storage.
 - Support paginated listing and substring search as the catalog grows.
 - Consume richer metadata than the raw DTX files provide (genre, tags, duration,
   per-file encoding).
-- Cache the catalog in SwiftData and refresh it periodically.
+- Cache the catalog in SwiftData; refresh it **only on explicit user action** (a manual
+  "re-fetch" control), never automatically.
 
 ### Non-goals (v1)
 - **Auth.** No sign-in, `me`, magic-link, or `scope: MINE`. The client queries
@@ -186,13 +187,33 @@ Powers the browse screen (`ServerSongsView`) and future search UI.
 - `page` / `pageSize` — 1-based paging. `pageSize` default per schema (20); the client
   may request a larger page (Open Question 2). `count` gives the total for paging math.
 
-### Refresh strategy
-The client keeps a persistent `ServerSong` SwiftData cache across launches, refreshed
-roughly every 5 minutes. Because the backend offers neither cursors nor an
-`updatedSince` filter, refresh is a **full page-walk reload**: page through all
-`PUBLISHED` results, upsert by `Simfile.id`, and prune ids no longer present. `count`
-bounds the walk. This is acceptable at the stated catalog size (hundreds now, low
-thousands within a year).
+### Caching & refresh strategy
+
+The client keeps a persistent `ServerSong` SwiftData cache across launches. **There is no
+automatic refresh.** The catalog only changes via:
+
+1. A **manual "re-fetch simfiles" control** in `ServerSongsView` (the sole way to pull
+   new catalog data), and
+2. **User-initiated deletion** of a downloaded song.
+
+The manual re-fetch refreshes **catalog metadata only** — it never downloads binary
+files. Binaries (`.dtx`/`.ogg`/`.mp3`) are still fetched per-song when the user taps
+download, exactly as today, and a song's files are downloaded at most once.
+
+**Re-fetch algorithm.** Page-walk the full `PUBLISHED` list to obtain the complete
+current set of `Simfile.id`s (`count` bounds the walk), then diff against the cache by id:
+
+- **New ids** → insert metadata for new simfiles (`ServerSong` + `ServerChart`).
+- **Existing ids (still on server)** → **left untouched.** No metadata overwrite, no
+  binary re-download. (Server-side updates are not detectable in v1 — see below.)
+- **Stale ids (cached but absent from server)** → **pruned**, including downloaded ones:
+  delete the `ServerSong`/`ServerChart` records and clean up any local binary files for
+  that id.
+
+**Why no update detection.** `Simfile.updatedAt` is available but the client has no
+trigger to act on it (no background refresh, and existing entries are intentionally not
+re-fetched). It is stored on `ServerSong.lastUpdated` for forward compatibility; a future
+revision could compare it to detect and refresh changed entries. v1 does not.
 
 ## 9. Errors
 
@@ -244,7 +265,7 @@ New/changed components:
 | `Simfile.bpm` | `ServerSong.bpm` / `Song.bpm` | metronome, gameplay |
 | `Simfile.genre` | `Song.genre` (`"DTX Import"` if null) | list filter, library grouping |
 | `Simfile.durationSeconds` | `Song.duration` (`mm:ss`; estimate if null) | list, detail |
-| `Simfile.updatedAt` | `ServerSong.lastUpdated` (ISO parse) | refresh bookkeeping |
+| `Simfile.updatedAt` | `ServerSong.lastUpdated` (ISO parse) | stored for forward-compat; not acted on in v1 |
 | `Simfile.files[]` | `ServerSong.hasBGM` / `hasPreview` + sizes | download UX |
 | assembled `{R2}/{id}/bgm.ogg` | downloaded → `Song.bgmFilePath` | BGM in gameplay |
 | assembled `{R2}/{id}/preview.mp3` | downloaded → `Song.previewFilePath` | preview clip |
