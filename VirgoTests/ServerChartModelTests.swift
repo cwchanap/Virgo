@@ -122,11 +122,26 @@ struct ServerChartModelTests {
                 difficulty: "hard", difficultyLabel: "EXTREME", level: 75, filename: "alternative_file.dtx", size: 1500
             )
             context.insert(alternativeChart)
-            
+
             #expect(dtxChart.filename.hasSuffix(".dtx"))
             #expect(alternativeChart.filename.hasSuffix(".dtx"))
             #expect(dtxChart.filename == "song.dtx")
             #expect(alternativeChart.filename == "alternative_file.dtx")
         }
+    }
+
+    @Test("ServerChart stores fileURL and encoding")
+    func testServerChartFileURLAndEncoding() async throws {
+        let chart = ServerChart(
+            difficulty: "hard",
+            difficultyLabel: "EXTREME",
+            level: 74,
+            filename: "ext.dtx",
+            size: 1234,
+            fileURL: "https://r2.example/song/ext.dtx",
+            fileEncoding: "SHIFT_JIS"
+        )
+        #expect(chart.fileURL == "https://r2.example/song/ext.dtx")
+        #expect(chart.fileEncoding == "SHIFT_JIS")
     }
 }

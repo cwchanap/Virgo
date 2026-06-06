@@ -186,6 +186,8 @@ final class ServerChart {
     var level: Int  // Numeric difficulty level (e.g., 36, 60, 74, 87)
     var filename: String  // DTX file name (e.g., "bas.dtx")
     var size: Int
+    var fileURL: String = ""  // Public R2 URL for the .dtx file (DtxFile.fileUrl)
+    var fileEncoding: String = "SHIFT_JIS"  // "SHIFT_JIS" | "UTF_8" (DtxFile.fileEncoding)
     var serverSong: ServerSong?
 
     init(
@@ -194,6 +196,8 @@ final class ServerChart {
         level: Int,
         filename: String,
         size: Int,
+        fileURL: String = "",
+        fileEncoding: String = "SHIFT_JIS",
         serverSong: ServerSong? = nil
     ) {
         self.difficulty = difficulty
@@ -201,6 +205,8 @@ final class ServerChart {
         self.level = level
         self.filename = filename
         self.size = size
+        self.fileURL = fileURL
+        self.fileEncoding = fileEncoding
         self.serverSong = serverSong
     }
 }
@@ -211,6 +217,8 @@ final class ServerSong {
     var title: String
     var artist: String
     var bpm: Double
+    var genre: String?            // server-curated; nil -> client falls back to "DTX Import"
+    var durationSeconds: Int?     // accurate duration if known
     @Relationship(deleteRule: .cascade) var charts: [ServerChart]
     var lastUpdated: Date
     var isDownloaded: Bool
@@ -224,6 +232,8 @@ final class ServerSong {
         title: String,
         artist: String,
         bpm: Double,
+        genre: String? = nil,
+        durationSeconds: Int? = nil,
         charts: [ServerChart] = [],
         isDownloaded: Bool = false,
         hasBGM: Bool = false,
@@ -235,6 +245,8 @@ final class ServerSong {
         self.title = title
         self.artist = artist
         self.bpm = bpm
+        self.genre = genre
+        self.durationSeconds = durationSeconds
         self.charts = charts
         self.lastUpdated = Date()
         self.isDownloaded = isDownloaded
@@ -242,7 +254,7 @@ final class ServerSong {
         self.bgmDownloaded = bgmDownloaded
         self.hasPreview = hasPreview
         self.previewDownloaded = previewDownloaded
-        
+
         // SwiftData automatically manages bidirectional relationships
         // No need to manually set back-references as it causes duplication
     }
