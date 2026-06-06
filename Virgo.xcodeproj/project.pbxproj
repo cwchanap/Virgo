@@ -133,6 +133,7 @@
 			);
 			name = Virgo;
 			packageProductDependencies = (
+				A90110000000000000000002 /* Apollo */,
 			);
 			productName = Virgo;
 			productReference = 24829CE72E1217CA00F99FD7 /* Virgo.app */;
@@ -216,6 +217,9 @@
 			);
 			mainGroup = 24829CDE2E1217CA00F99FD7;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A90110000000000000000001 /* XCRemoteSwiftPackageReference "apollo-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 24829CE82E1217CA00F99FD7 /* Products */;
 			projectDirPath = "";
@@ -602,6 +606,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A90110000000000000000001 /* XCRemoteSwiftPackageReference "apollo-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apollographql/apollo-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.15.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A90110000000000000000002 /* Apollo */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A90110000000000000000001 /* XCRemoteSwiftPackageReference "apollo-ios" */;
+			productName = Apollo;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 24829CDF2E1217CA00F99FD7 /* Project object */;
 }

@@ -1,0 +1,21 @@
+fragment SimfileFields on Simfile {
+  id
+  title
+  artist
+  bpm
+  genre
+  tags
+  durationSeconds
+  updatedAt
+  dtxFiles {
+    label
+    level
+    fileUrl
+    fileSizeBytes
+    fileEncoding
+  }
+  files {
+    key
+    size
+  }
+}
