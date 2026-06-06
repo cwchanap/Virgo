@@ -209,8 +209,18 @@ struct ServerSongModelTests {
                 size: 1000
             )
             context.insert(serverSong)
-            
+
             #expect(serverSong.songId == "test_song_with_spaces")
         }
+    }
+
+    @Test("ServerSong stores genre and durationSeconds")
+    func testServerSongGenreAndDuration() async throws {
+        let song = ServerSong(
+            songId: "s1", title: "T", artist: "A", bpm: 120,
+            genre: "Rock", durationSeconds: 210
+        )
+        #expect(song.genre == "Rock")
+        #expect(song.durationSeconds == 210)
     }
 }
