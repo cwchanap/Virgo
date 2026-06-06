@@ -11,42 +11,27 @@ struct ServerSongServiceTests {
         case forced
     }
 
-    private final class MockURLProtocol: URLProtocol {
-        static var requestHandler: ((URLRequest) throws -> (Int, Data))?
+    /// In-memory `FileDownloading` keyed by absolute URL; can throw for missing keys.
+    private final class MockFileDownloader: FileDownloading, @unchecked Sendable {
+        var responses: [String: Data] = [:]
+        var throwsForAll = false
 
-        override class func canInit(with request: URLRequest) -> Bool { true }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-        override func startLoading() {
-            guard let handler = Self.requestHandler else {
-                client?.urlProtocol(self, didFailWithError: URLError(.badURL))
-                return
+        func downloadData(from url: URL) async throws -> Data {
+            if throwsForAll { throw URLError(.notConnectedToInternet) }
+            guard let data = responses[url.absoluteString] else {
+                throw URLError(.fileDoesNotExist)
             }
-
-            do {
-                let (statusCode, data) = try handler(request)
-                let response = HTTPURLResponse(
-                    url: request.url ?? URL(string: "https://example.test")!,
-                    statusCode: statusCode,
-                    httpVersion: nil,
-                    headerFields: nil
-                )!
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: data)
-                client?.urlProtocolDidFinishLoading(self)
-            } catch {
-                client?.urlProtocol(self, didFailWithError: error)
-            }
+            return data
         }
-
-        override func stopLoading() {}
     }
 
     @MainActor
     private final class MockServerSongCache: ServerSongCache {
         var loadResult: Result<[ServerSong], Error> = .success([])
         var refreshError: Error?
-        var refreshCalls: [Bool] = []
+        var refreshCallCount = 0
+
+        init() { super.init(fetcher: MockSimfileFetcher()) }
 
         override func loadServerSongs(modelContext: ModelContext) async throws -> [ServerSong] {
             switch loadResult {
@@ -57,8 +42,8 @@ struct ServerSongServiceTests {
             }
         }
 
-        override func refreshServerSongs(modelContext: ModelContext, forceClear: Bool = false) async throws {
-            refreshCalls.append(forceClear)
+        override func refreshCatalog(modelContext: ModelContext) async throws {
+            refreshCallCount += 1
             if let refreshError {
                 throw refreshError
             }
@@ -70,7 +55,9 @@ struct ServerSongServiceTests {
         var receivedSongIDs: [String] = []
 
         @MainActor
-        override func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
+        override func downloadAndImportSong(
+            _ serverSong: ServerSong, container: ModelContainer
+        ) async -> (Bool, String?) {
             receivedSongIDs.append(serverSong.songId)
             return result
         }
@@ -95,6 +82,17 @@ struct ServerSongServiceTests {
         }
     }
 
+    private func makeInMemoryContainer() throws -> ModelContainer {
+        let schema = Schema([ServerSong.self, ServerChart.self, Song.self, Chart.self, Note.self])
+        return try ModelContainer(for: schema, configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+    }
+
+    private func makeConfig(_ name: String, withR2: Bool) -> ServerConfig {
+        let (defaults, _) = TestUserDefaults.makeIsolated(suiteName: name)
+        if withR2 { defaults.set("https://r2.example", forKey: ServerConfig.r2BaseURLKey) }
+        return ServerConfig(userDefaults: defaults)
+    }
+
     @Test("loadServerSongs returns empty list when modelContext is not set")
     func testLoadServerSongsWithoutModelContext() async {
         let service = ServerSongService()
@@ -104,15 +102,11 @@ struct ServerSongServiceTests {
         #expect(songs.isEmpty)
     }
 
-    @Test("refresh methods are no-op when modelContext is not set")
+    @Test("refreshCatalog is a no-op when modelContext is not set")
     func testRefreshWithoutModelContext() async {
         let service = ServerSongService()
 
-        await service.refreshServerSongs()
-        #expect(service.isRefreshing == false)
-        #expect(service.errorMessage == nil)
-
-        await service.forceRefreshServerSongs()
+        await service.refreshCatalog()
         #expect(service.isRefreshing == false)
         #expect(service.errorMessage == nil)
     }
@@ -151,40 +145,37 @@ struct ServerSongServiceTests {
         }
     }
 
-    @Test("refreshServerSongs calls cache with forceClear false")
-    func testRefreshServerSongsUsesForceClearFalse() async throws {
+    @Test("refreshCatalog delegates to the cache")
+    func testRefreshCatalogCallsCache() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let cache = MockServerSongCache()
             let service = ServerSongService(cache: cache)
             service.setModelContext(context)
 
-            await service.refreshServerSongs()
+            await service.refreshCatalog()
 
-            #expect(cache.refreshCalls == [false])
+            #expect(cache.refreshCallCount == 1)
             #expect(service.isRefreshing == false)
             #expect(service.errorMessage == nil)
         }
     }
 
-    @Test("forceRefreshServerSongs calls cache with forceClear true")
-    func testForceRefreshServerSongsUsesForceClearTrue() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let cache = MockServerSongCache()
-            let service = ServerSongService(cache: cache)
-            service.setModelContext(context)
+    @Test("refreshCatalog populates cache from fetcher")
+    func testServiceRefreshCatalog() async throws {
+        let container = try makeInMemoryContainer()
+        let fetcher = MockSimfileFetcher(all: [.stub(id: "x"), .stub(id: "y")])
+        let service = ServerSongService(cache: ServerSongCache(fetcher: fetcher, pageSize: 50))
+        service.setModelContext(ModelContext(container))
 
-            await service.forceRefreshServerSongs()
+        await service.refreshCatalog()
 
-            #expect(cache.refreshCalls == [true])
-            #expect(service.isRefreshing == false)
-            #expect(service.errorMessage == nil)
-        }
+        let songs = await service.loadServerSongs()
+        #expect(Set(songs.map(\.songId)) == ["x", "y"])
     }
 
-    @Test("refreshServerSongs sets error message when cache refresh fails")
-    func testRefreshServerSongsFailureSetsError() async throws {
+    @Test("refreshCatalog sets error message when cache refresh fails")
+    func testRefreshCatalogFailureSetsError() async throws {
         struct RefreshFailure: LocalizedError {
             var errorDescription: String? { "boom" }
         }
@@ -196,9 +187,9 @@ struct ServerSongServiceTests {
             let service = ServerSongService(cache: cache)
             service.setModelContext(context)
 
-            await service.refreshServerSongs()
+            await service.refreshCatalog()
 
-            #expect(cache.refreshCalls == [false])
+            #expect(cache.refreshCallCount == 1)
             #expect(service.isRefreshing == false)
             #expect(service.errorMessage?.contains("Failed to refresh server songs") == true)
             #expect(service.errorMessage?.contains("boom") == true)
@@ -461,16 +452,8 @@ struct ServerSongServiceTests {
 
     @Test("downloadAndImportSong imports song without charts and marks as downloaded")
     func testDownloadAndImportSongSuccessWithoutCharts() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
-            suiteName: "ServerSongServiceTests.successWithoutCharts.\(UUID().uuidString)"
-        )
-        userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
-        let apiClient = DTXAPIClient(userDefaults: userDefaults)
-        let downloader = ServerSongDownloader(apiClient: apiClient)
-
-        defer {
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
+        let config = makeConfig("ServerSongServiceTests.noCharts.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: MockFileDownloader(), config: config)
 
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -547,16 +530,10 @@ struct ServerSongServiceTests {
 
     @Test("downloadAndImportSong surfaces chart download failures")
     func testDownloadAndImportSongChartDownloadFailure() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
-            suiteName: "ServerSongServiceTests.chartDownloadFailure.\(UUID().uuidString)"
-        )
-        userDefaults.set("://invalid-base-url", forKey: "DTXServerURL")
-        let apiClient = DTXAPIClient(userDefaults: userDefaults)
-        let downloader = ServerSongDownloader(apiClient: apiClient)
-
-        defer {
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
+        let mock = MockFileDownloader()
+        mock.throwsForAll = true
+        let config = makeConfig("ServerSongServiceTests.chartFail.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, config: config)
 
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -568,7 +545,8 @@ struct ServerSongServiceTests {
                 difficultyLabel: "MASTER",
                 level: 90,
                 filename: "master.dtx",
-                size: 1024
+                size: 1024,
+                fileURL: "https://r2.example/invalid-download/master.dtx"
             )
             let serverSong = ServerSong(
                 songId: "invalid-download",
@@ -583,7 +561,7 @@ struct ServerSongServiceTests {
 
             #expect(success == false)
             #expect(service.downloadingSongs.isEmpty)
-            #expect(service.errorMessage?.contains("Multi-difficulty import failed") == true)
+            #expect(service.errorMessage?.contains("Import failed") == true)
             #expect(serverSong.isDownloaded == false)
 
             let allSongs = try context.fetch(FetchDescriptor<Song>())
@@ -594,50 +572,19 @@ struct ServerSongServiceTests {
 
     @Test("downloadAndImportSong imports chart notes and maps unknown difficulty to medium")
     func testDownloadAndImportSongWithChartSuccess() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
-            suiteName: "ServerSongServiceTests.chartSuccess.\(UUID().uuidString)"
-        )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
-        let downloader = ServerSongDownloader(apiClient: apiClient)
+        let mock = MockFileDownloader()
+        let dtxContent = """
+        #TITLE: Long Song
+        #ARTIST: Long Artist
+        #BPM: 165.55
+        #DLEVEL: 88
+        #03113: 01000000
+        """
+        mock.responses["https://r2.example/networked-song/master.dtx"] =
+            dtxContent.data(using: .shiftJIS) ?? Data(dtxContent.utf8)
+        let config = makeConfig("ServerSongServiceTests.chartOK.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, config: config)
         let service = ServerSongService(downloader: downloader)
-
-        let lock = NSLock()
-        var requestedPaths: [String] = []
-
-        MockURLProtocol.requestHandler = { request in
-            let path = request.url?.path ?? ""
-            lock.lock()
-            requestedPaths.append(path)
-            lock.unlock()
-
-            if path == "/dtx/download/networked-song/master.dtx" {
-                let dtxContent = """
-                #TITLE: Long Song
-                #ARTIST: Long Artist
-                #BPM: 165.55
-                #DLEVEL: 88
-                #03113: 01000000
-                """
-                let data = dtxContent.data(using: .shiftJIS) ?? Data(dtxContent.utf8)
-                return (200, data)
-            }
-
-            if path == "/dtx/download/networked-song/bgm.ogg" || path == "/dtx/download/networked-song/preview.mp3" {
-                return (404, Data())
-            }
-
-            return (404, Data())
-        }
-
-        defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
 
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -648,7 +595,8 @@ struct ServerSongServiceTests {
                 difficultyLabel: "MASTER",
                 level: 88,
                 filename: "master.dtx",
-                size: 4096
+                size: 4096,
+                fileURL: "https://r2.example/networked-song/master.dtx"
             )
             let serverSong = ServerSong(
                 songId: "networked-song",
@@ -682,11 +630,6 @@ struct ServerSongServiceTests {
             #expect(importedChart?.difficulty == .medium)
             #expect(importedChart?.level == 88)
             #expect(importedChart?.notesCount == 1)
-
-            let capturedPaths = lock.withLock { requestedPaths }
-            #expect(capturedPaths.contains("/dtx/download/networked-song/master.dtx"))
-            #expect(capturedPaths.contains("/dtx/download/networked-song/bgm.ogg"))
-            #expect(capturedPaths.contains("/dtx/download/networked-song/preview.mp3"))
         }
     }
 }

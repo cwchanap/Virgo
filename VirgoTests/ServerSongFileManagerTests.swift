@@ -52,4 +52,18 @@ struct ServerSongFileManagerTests {
 
         #expect(true)
     }
+
+    @Test("Deletes BGM and preview by songId")
+    func testDeleteBySongId() throws {
+        let manager = ServerSongFileManager()
+        let bgm = try manager.saveBGMFile(Data([1, 2, 3]), for: "del-test")
+        let preview = try manager.savePreviewFile(Data([4, 5, 6]), for: "del-test")
+        #expect(FileManager.default.fileExists(atPath: bgm))
+        #expect(FileManager.default.fileExists(atPath: preview))
+
+        manager.deleteFiles(forSongId: "del-test")
+
+        #expect(!FileManager.default.fileExists(atPath: bgm))
+        #expect(!FileManager.default.fileExists(atPath: preview))
+    }
 }

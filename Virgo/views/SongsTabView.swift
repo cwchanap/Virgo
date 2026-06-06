@@ -76,7 +76,7 @@ struct SongsTabView: View {
                         if selectedSubTab == 1 {
                             Button {
                                 Task {
-                                    await serverSongService.refreshServerSongs()
+                                    await serverSongService.refreshCatalog()
                                 }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
@@ -93,11 +93,6 @@ struct SongsTabView: View {
                             .disabled(serverSongService.isRefreshing)
                             .accessibilityIdentifier("refreshServerSongsButton")
                             .accessibilityLabel("Refresh server songs")
-                            .onLongPressGesture(minimumDuration: 1.0) {
-                                Task {
-                                    await serverSongService.forceRefreshServerSongs()
-                                }
-                            }
                         }
                     }
                     .padding(.horizontal)

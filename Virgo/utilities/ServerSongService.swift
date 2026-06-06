@@ -16,15 +16,21 @@ class ServerSongService: ObservableObject {
     private let saveModelContext: (ModelContext) throws -> Void
 
     init(
-        cache: ServerSongCache = ServerSongCache(),
+        config: ServerConfig = ServerConfig(),
+        cache: ServerSongCache? = nil,
         downloader: ServerSongDownloader = ServerSongDownloader(),
         statusManager: ServerSongStatusManager? = nil,
         saveModelContext: @escaping (ModelContext) throws -> Void = { context in try context.save() }
     ) {
-        self.cache = cache
         self.downloader = downloader
         self.saveModelContext = saveModelContext
-        self.statusManager = statusManager ?? ServerSongStatusManager(saveContext: saveModelContext)
+        let resolvedStatusManager = statusManager ?? ServerSongStatusManager(saveContext: saveModelContext)
+        self.statusManager = resolvedStatusManager
+        self.cache = cache ?? ServerSongCache(
+            fetcher: ApolloSimfileClient(endpointURL: config.graphQLEndpoint),
+            statusManager: resolvedStatusManager,
+            saveContext: saveModelContext
+        )
     }
 
     func setModelContext(_ context: ModelContext) {
@@ -43,25 +49,17 @@ class ServerSongService: ObservableObject {
         }
     }
 
-    func refreshServerSongs() async {
-        await refreshServerSongs(forceClear: false)
-    }
-
-    func forceRefreshServerSongs() async {
-        await refreshServerSongs(forceClear: true)
-    }
-
-    private func refreshServerSongs(forceClear: Bool = false) async {
-        guard let modelContext = modelContext else { return }
+    func refreshCatalog() async {
+        guard let modelContext else { return }
 
         isRefreshing = true
         errorMessage = nil
 
         do {
-            try await cache.refreshServerSongs(modelContext: modelContext, forceClear: forceClear)
+            try await cache.refreshCatalog(modelContext: modelContext)
         } catch {
             errorMessage = "Failed to refresh server songs: \(error.localizedDescription)"
-            Logger.debug("Failed to refresh server songs: \(error)")
+            Logger.debug("Failed to refresh catalog: \(error)")
         }
 
         isRefreshing = false

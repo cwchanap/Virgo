@@ -6,39 +6,18 @@ import Foundation
 @Suite("ServerSongDownloader Tests", .serialized)
 @MainActor
 struct ServerSongDownloaderTests {
-    private final class MockURLProtocol: URLProtocol {
-        static var requestHandler: ((URLRequest) throws -> (Int, Data))?
+    /// In-memory `FileDownloading` keyed by absolute URL; records requests.
+    private final class MockFileDownloader: FileDownloading, @unchecked Sendable {
+        var responses: [String: Data] = [:]
+        private(set) var requestedURLs: [String] = []
 
-        override static func canInit(with request: URLRequest) -> Bool { true }
-        override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-        override func startLoading() {
-            guard let handler = Self.requestHandler else {
-                client?.urlProtocol(self, didFailWithError: URLError(.badURL))
-                return
+        func downloadData(from url: URL) async throws -> Data {
+            requestedURLs.append(url.absoluteString)
+            guard let data = responses[url.absoluteString] else {
+                throw URLError(.fileDoesNotExist)
             }
-
-            do {
-                let (statusCode, data) = try handler(request)
-                let response = HTTPURLResponse(
-                    url: request.url ?? URL(string: "https://example.test")!,
-                    statusCode: statusCode,
-                    httpVersion: nil,
-                    headerFields: nil
-                )!
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: data)
-                client?.urlProtocolDidFinishLoading(self)
-            } catch {
-                client?.urlProtocol(self, didFailWithError: error)
-            }
+            return data
         }
-
-        override func stopLoading() {}
-    }
-
-    private final class RequestedPathsStore {
-        var values: [String] = []
     }
 
     private final class MockServerSongFileManager: ServerSongFileManager {
@@ -58,200 +37,105 @@ struct ServerSongDownloaderTests {
         }
     }
 
+    private let r2Base = "https://r2.example"
+
+    private func makeConfig(_ name: String, withR2: Bool) -> ServerConfig {
+        let (defaults, _) = TestUserDefaults.makeIsolated(suiteName: name)
+        if withR2 { defaults.set(r2Base, forKey: ServerConfig.r2BaseURLKey) }
+        return ServerConfig(userDefaults: defaults)
+    }
+
+    private func chart(_ diff: String, label: String, level: Int, file: String, songId: String) -> ServerChart {
+        ServerChart(
+            difficulty: diff, difficultyLabel: label, level: level,
+            filename: file, size: 100,
+            fileURL: "\(r2Base)/\(songId)/\(file)", fileEncoding: "SHIFT_JIS"
+        )
+    }
+
     private func makeMultiDifficultyServerSong() -> ServerSong {
+        let songId = "multi-diff"
         let serverSong = ServerSong(
-            songId: "multi-diff",
-            title: "Multi Diff",
-            artist: "Tester",
-            bpm: 120.0,
-            charts: [],
-            isDownloaded: false
+            songId: songId, title: "Multi Diff", artist: "Tester", bpm: 120.0,
+            charts: [], isDownloaded: false, hasBGM: true, hasPreview: true
         )
-        let easyChart = ServerChart(
-            difficulty: "easy",
-            difficultyLabel: "Easy",
-            level: 10,
-            filename: "easy.dtx",
-            size: 111
-        )
-        let mediumChart = ServerChart(
-            difficulty: "medium",
-            difficultyLabel: "Normal",
-            level: 20,
-            filename: "medium.dtx",
-            size: 222
-        )
-        let hardChart = ServerChart(
-            difficulty: "hard",
-            difficultyLabel: "Hard",
-            level: 30,
-            filename: "hard.dtx",
-            size: 333
-        )
-        let expertChart = ServerChart(
-            difficulty: "expert",
-            difficultyLabel: "Expert",
-            level: 40,
-            filename: "expert.dtx",
-            size: 444
-        )
-        serverSong.charts = [easyChart, mediumChart, hardChart, expertChart]
+        serverSong.charts = [
+            chart("easy", label: "Easy", level: 10, file: "easy.dtx", songId: songId),
+            chart("medium", label: "Normal", level: 20, file: "medium.dtx", songId: songId),
+            chart("hard", label: "Hard", level: 30, file: "hard.dtx", songId: songId),
+            chart("expert", label: "Expert", level: 40, file: "expert.dtx", songId: songId)
+        ]
         return serverSong
     }
 
-    private func makeMultiDifficultyRequestHandler(
-        pathsQueue: DispatchQueue,
-        requestedPathsStore: RequestedPathsStore
-    ) -> (URLRequest) throws -> (Int, Data) {
-        return { request in
-            let path = request.url?.path ?? ""
-            pathsQueue.sync { requestedPathsStore.values.append(path) }
-
-            if path.hasSuffix("/multi-diff/easy.dtx") || path.hasSuffix("/multi-diff/medium.dtx")
-                || path.hasSuffix("/multi-diff/hard.dtx") || path.hasSuffix("/multi-diff/expert.dtx") {
-                let dtxContent = "#TITLE: Multi Diff\n#ARTIST: Tester\n#BPM: 170\n#DLEVEL: 88\n#03113: 01000000"
-                let data = dtxContent.data(using: .shiftJIS) ?? Data(dtxContent.utf8)
-                return (200, data)
-            }
-
-            if path.hasSuffix("/multi-diff/bgm.ogg") { return (200, Data([0x10, 0x11, 0x12])) }
-            if path.hasSuffix("/multi-diff/preview.mp3") { return (200, Data([0x20, 0x21, 0x22])) }
-            return (404, Data())
-        }
-    }
-
-    private func assertSavedFiles(_ fileManager: MockServerSongFileManager) {
-        #expect(fileManager.savedBGMData == [Data([0x10, 0x11, 0x12])])
-        #expect(fileManager.savedPreviewData == [Data([0x20, 0x21, 0x22])])
-    }
-
-    private func assertImportedSongAndCharts(in container: ModelContainer) throws {
-        let verificationContext = ModelContext(container)
-        let songs = try verificationContext.fetch(FetchDescriptor<Song>())
-        let importedSong = songs.first {
-            $0.title == "Multi Diff" && $0.artist == "Tester" && $0.genre == "DTX Import"
-        }
-        guard importedSong != nil else {
-            #expect(Bool(false), "Expected imported song to exist")
-            return
-        }
-
-        #expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.ogg")
-        #expect(importedSong?.previewFilePath == "/tmp/mock-preview.mp3")
-
-        let allCharts = try verificationContext.fetch(FetchDescriptor<Chart>())
-        let importedCharts = allCharts.filter { $0.song?.title == "Multi Diff" && $0.song?.artist == "Tester" }
-        #expect(importedCharts.count == 4)
-        #expect(importedCharts.contains { $0.difficulty == .easy })
-        #expect(importedCharts.contains { $0.difficulty == .medium })
-        #expect(importedCharts.contains { $0.difficulty == .hard })
-        #expect(importedCharts.contains { $0.difficulty == .expert })
-    }
-
-    private func assertDownloadedPaths(_ capturedPaths: [String]) {
-        #expect(capturedPaths.contains("/dtx/download/multi-diff/easy.dtx"))
-        #expect(capturedPaths.contains("/dtx/download/multi-diff/medium.dtx"))
-        #expect(capturedPaths.contains("/dtx/download/multi-diff/hard.dtx"))
-        #expect(capturedPaths.contains("/dtx/download/multi-diff/expert.dtx"))
-        #expect(capturedPaths.contains("/dtx/download/multi-diff/bgm.ogg"))
-        #expect(capturedPaths.contains("/dtx/download/multi-diff/preview.mp3"))
+    private func dtxData(_ content: String) -> Data {
+        content.data(using: .shiftJIS) ?? Data(content.utf8)
     }
 
     @Test("downloadAndImportSong maps all known difficulties and downloads optional files")
     func testDownloadAndImportSongMapsDifficultiesAndDownloadsOptionalFiles() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
-            suiteName: "ServerSongDownloaderTests.multiDifficulty.\(UUID().uuidString)"
-        )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
         let fileManager = MockServerSongFileManager()
-        let downloader = ServerSongDownloader(apiClient: apiClient, fileManager: fileManager)
-
-        let pathsQueue = DispatchQueue(label: "ServerSongDownloaderTests.paths")
-        let requestedPathsStore = RequestedPathsStore()
-        MockURLProtocol.requestHandler = makeMultiDifficultyRequestHandler(
-            pathsQueue: pathsQueue,
-            requestedPathsStore: requestedPathsStore
-        )
-
-        defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
+        let mock = MockFileDownloader()
+        let dtx = dtxData("#TITLE: Multi Diff\n#ARTIST: Tester\n#BPM: 170\n#DLEVEL: 88\n#03113: 01000000")
+        for file in ["easy.dtx", "medium.dtx", "hard.dtx", "expert.dtx"] {
+            mock.responses["\(r2Base)/multi-diff/\(file)"] = dtx
         }
+        mock.responses["\(r2Base)/multi-diff/bgm.ogg"] = Data([0x10, 0x11, 0x12])
+        mock.responses["\(r2Base)/multi-diff/preview.mp3"] = Data([0x20, 0x21, 0x22])
+
+        let config = makeConfig("ServerSongDownloaderTests.multi.\(UUID().uuidString)", withR2: true)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: fileManager, config: config)
 
         try await TestSetup.withTestSetup {
             let container = TestContainer.shared.container
-
             let serverSong = makeMultiDifficultyServerSong()
 
             let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
-
             guard success else {
-                let message = errorMessage ?? "nil"
-                #expect(Bool(false), "Expected success, got error: \(message)")
+                #expect(Bool(false), "Expected success, got error: \(errorMessage ?? "nil")")
                 return
             }
-
             #expect(errorMessage == nil)
-            assertSavedFiles(fileManager)
-            try assertImportedSongAndCharts(in: container)
+            #expect(fileManager.savedBGMData == [Data([0x10, 0x11, 0x12])])
+            #expect(fileManager.savedPreviewData == [Data([0x20, 0x21, 0x22])])
 
-            let capturedPaths = pathsQueue.sync { requestedPathsStore.values }
-            assertDownloadedPaths(capturedPaths)
+            let verificationContext = ModelContext(container)
+            let songs = try verificationContext.fetch(FetchDescriptor<Song>())
+            let importedSong = songs.first {
+                $0.title == "Multi Diff" && $0.artist == "Tester" && $0.genre == "DTX Import"
+            }
+            #expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.ogg")
+            #expect(importedSong?.previewFilePath == "/tmp/mock-preview.mp3")
+
+            let allCharts = try verificationContext.fetch(FetchDescriptor<Chart>())
+            let importedCharts = allCharts.filter { $0.song?.title == "Multi Diff" && $0.song?.artist == "Tester" }
+            #expect(importedCharts.count == 4)
+            #expect(importedCharts.contains { $0.difficulty == .easy })
+            #expect(importedCharts.contains { $0.difficulty == .medium })
+            #expect(importedCharts.contains { $0.difficulty == .hard })
+            #expect(importedCharts.contains { $0.difficulty == .expert })
+
+            #expect(mock.requestedURLs.contains("\(r2Base)/multi-diff/bgm.ogg"))
+            #expect(mock.requestedURLs.contains("\(r2Base)/multi-diff/preview.mp3"))
         }
     }
 
-    @Test("downloadAndImportSong tolerates non Shift-JIS chart content and still imports song")
-    func testDownloadAndImportSongHandlesNonShiftJISChartData() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
-            suiteName: "ServerSongDownloaderTests.nonShiftJIS.\(UUID().uuidString)"
-        )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
-        let downloader = ServerSongDownloader(apiClient: apiClient)
-
-        MockURLProtocol.requestHandler = { request in
-            let path = request.url?.path ?? ""
-            if path == "/dtx/download/non-shift/broken.dtx" {
-                return (200, Data([0xFF, 0xFF, 0xFF]))
-            }
-            return (404, Data())
-        }
-
-        defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
+    @Test("downloadAndImportSong tolerates undecodable chart content and still imports song")
+    func testDownloadAndImportSongHandlesUndecodableChartData() async throws {
+        let mock = MockFileDownloader()
+        mock.responses["\(r2Base)/non-shift/broken.dtx"] = Data([0xFF, 0xFF, 0xFF])
+        let config = makeConfig("ServerSongDownloaderTests.broken.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
 
         try await TestSetup.withTestSetup {
             let container = TestContainer.shared.container
-
-            let chart = ServerChart(
-                difficulty: "easy",
-                difficultyLabel: "Easy",
-                level: 7,
-                filename: "broken.dtx",
-                size: 42
-            )
+            let brokenChart = chart("easy", label: "Easy", level: 7, file: "broken.dtx", songId: "non-shift")
             let serverSong = ServerSong(
-                songId: "non-shift",
-                title: "Broken Encoding",
-                artist: "Tester",
-                bpm: 123.0,
-                charts: [chart],
-                isDownloaded: false
+                songId: "non-shift", title: "Broken Encoding", artist: "Tester", bpm: 123.0,
+                charts: [brokenChart], isDownloaded: false
             )
 
             let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
-
             #expect(success)
             #expect(errorMessage == nil)
 
@@ -270,53 +154,21 @@ struct ServerSongDownloaderTests {
 
     @Test("downloadAndImportSong uses 1:00 duration fallback for charts with no notes")
     func testDownloadAndImportSongUsesEmptyNotesDurationFallback() async throws {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
-            suiteName: "ServerSongDownloaderTests.emptyNotesDuration.\(UUID().uuidString)"
-        )
-        userDefaults.set("https://example.test", forKey: "DTXServerURL")
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        let apiClient = DTXAPIClient(userDefaults: userDefaults, session: session)
-        let downloader = ServerSongDownloader(apiClient: apiClient)
-
-        MockURLProtocol.requestHandler = { request in
-            let path = request.url?.path ?? ""
-            if path == "/dtx/download/empty-notes/empty.dtx" {
-                let dtxContent = "#TITLE: Empty Notes\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 12"
-                let data = dtxContent.data(using: .shiftJIS) ?? Data(dtxContent.utf8)
-                return (200, data)
-            }
-            return (404, Data())
-        }
-
-        defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
+        let mock = MockFileDownloader()
+        mock.responses["\(r2Base)/empty-notes/empty.dtx"] =
+            dtxData("#TITLE: Empty Notes\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 12")
+        let config = makeConfig("ServerSongDownloaderTests.empty.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
 
         try await TestSetup.withTestSetup {
             let container = TestContainer.shared.container
-
-            let chart = ServerChart(
-                difficulty: "easy",
-                difficultyLabel: "Easy",
-                level: 12,
-                filename: "empty.dtx",
-                size: 10
-            )
+            let emptyChart = chart("easy", label: "Easy", level: 12, file: "empty.dtx", songId: "empty-notes")
             let serverSong = ServerSong(
-                songId: "empty-notes",
-                title: "Empty Notes",
-                artist: "Tester",
-                bpm: 120.0,
-                charts: [chart],
-                isDownloaded: false
+                songId: "empty-notes", title: "Empty Notes", artist: "Tester", bpm: 120.0,
+                charts: [emptyChart], isDownloaded: false
             )
 
             let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
-
             #expect(success)
             #expect(errorMessage == nil)
 

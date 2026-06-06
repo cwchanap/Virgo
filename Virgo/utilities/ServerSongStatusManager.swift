@@ -136,6 +136,20 @@ class ServerSongStatusManager: @unchecked Sendable {
         }
     }
 
+    /// Remove a cached server song that is no longer on the server: delete any
+    /// downloaded local Song + files for the same title/artist, then delete the
+    /// ServerSong/ServerChart records and the by-songId audio files.
+    @MainActor
+    func pruneCachedSong(_ serverSong: ServerSong, modelContext: ModelContext) async {
+        let songId = serverSong.songId
+        if serverSong.isDownloaded {
+            _ = await deleteDownloadedSong(serverSong, modelContext: modelContext)
+        }
+        modelContext.delete(serverSong)
+        try? saveContext(modelContext)
+        fileManager.deleteFiles(forSongId: songId)
+    }
+
     // MARK: - Private Helper Methods
 
     /// Find a song by ID in the given context
