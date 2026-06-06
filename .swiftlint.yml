@@ -12,6 +12,7 @@ excluded:
   - DerivedData
   - .build
   - .git
+  - Virgo/GraphQL/Generated # Apollo-generated code, not hand-maintained
 
 # Disabled rules
 disabled_rules:

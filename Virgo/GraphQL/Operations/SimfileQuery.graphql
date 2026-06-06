@@ -1,0 +1,5 @@
+query Simfile($id: ID!) {
+  simfile(id: $id) {
+    ...SimfileFields
+  }
+}

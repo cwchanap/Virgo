@@ -1,0 +1,8 @@
+query Simfiles($page: Int!, $pageSize: Int!, $search: String) {
+  simfiles(scope: PUBLISHED, page: $page, pageSize: $pageSize, search: $search) {
+    count
+    data {
+      ...SimfileFields
+    }
+  }
+}

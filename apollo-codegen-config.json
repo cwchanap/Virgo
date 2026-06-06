@@ -1,0 +1,21 @@
+{
+  "schemaNamespace": "VirgoGraphQL",
+  "input": {
+    "operationSearchPaths": ["Virgo/GraphQL/Operations/**/*.graphql"],
+    "schemaSearchPaths": ["Virgo/schema.graphql"]
+  },
+  "output": {
+    "testMocks": { "none": {} },
+    "schemaTypes": {
+      "path": "Virgo/GraphQL/Generated",
+      "moduleType": { "embeddedInTarget": { "name": "Virgo", "accessModifier": "internal" } }
+    },
+    "operations": { "inSchemaModule": {} }
+  },
+  "options": {
+    "additionalInflectionRules": [],
+    "deprecatedEnumCases": "include",
+    "schemaDocumentation": "exclude",
+    "warningsOnDeprecatedUsage": "include"
+  }
+}
