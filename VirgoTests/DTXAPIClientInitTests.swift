@@ -91,7 +91,6 @@ struct DTXAPIClientInitTests {
         // Test that client conforms to expected protocols
         #expect(client is DTXConfiguration)
         #expect(client is DTXNetworking)
-        #expect(client is DTXFileOperations)
-        #expect(client is DTXDownloadOperations)
+        #expect(client is FileDownloading)
     }
 }

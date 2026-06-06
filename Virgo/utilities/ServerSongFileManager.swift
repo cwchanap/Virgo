@@ -50,4 +50,13 @@ class ServerSongFileManager: @unchecked Sendable {
         try? FileManager.default.removeItem(atPath: path)
         Logger.database("Deleted preview file at path: \(path)")
     }
+
+    /// Delete BGM and preview files saved under this songId, if present.
+    func deleteFiles(forSongId songId: String) {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let bgm = documents.appendingPathComponent("BGM").appendingPathComponent("\(songId).ogg")
+        let preview = documents.appendingPathComponent("Preview").appendingPathComponent("\(songId).mp3")
+        try? FileManager.default.removeItem(at: bgm)
+        try? FileManager.default.removeItem(at: preview)
+    }
 }

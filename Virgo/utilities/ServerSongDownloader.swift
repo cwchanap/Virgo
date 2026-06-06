@@ -1,179 +1,146 @@
 import Foundation
 import SwiftData
 
-/// Handles downloading and importing server songs
+/// Downloads and imports a server song's charts and optional audio.
 class ServerSongDownloader {
-    private let apiClient: DTXAPIClient
+    private let downloader: FileDownloading
     private let fileManager: ServerSongFileManager
+    private let config: ServerConfig
 
     init(
-        apiClient: DTXAPIClient = DTXAPIClient(),
-        fileManager: ServerSongFileManager = ServerSongFileManager()
+        downloader: FileDownloading = DTXAPIClient(),
+        fileManager: ServerSongFileManager = ServerSongFileManager(),
+        config: ServerConfig = ServerConfig()
     ) {
-        self.apiClient = apiClient
+        self.downloader = downloader
         self.fileManager = fileManager
+        self.config = config
     }
 
-    /// Download and import a multi-difficulty song
     @MainActor
     func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
-        let backgroundContext = ModelContext(container)
-
+        let context = ModelContext(container)
         do {
-            // Check if song already exists
-            if try songAlreadyExists(serverSong, in: backgroundContext) {
+            if try songAlreadyExists(serverSong, in: context) {
                 return (false, "Song already exists in database")
             }
-            
-            // Create and populate the song
             let song = createSong(from: serverSong)
-            try await processCharts(for: song, from: serverSong, in: backgroundContext)
+            try await processCharts(for: song, from: serverSong, in: context)
             await downloadOptionalFiles(for: song, serverSong: serverSong)
-            
-            // Save to SwiftData
-            backgroundContext.insert(song)
-            try backgroundContext.save()
-            
+            context.insert(song)
+            try context.save()
             return (true, nil)
         } catch {
-            return (false, "Multi-difficulty import failed: \(error.localizedDescription)")
+            return (false, "Import failed: \(error.localizedDescription)")
         }
     }
 
-    // MARK: - Private Helper Methods
-    
-    /// Check if a song with the same title and artist already exists
+    // MARK: - Decoding (testable)
+
+    static func decode(_ data: Data, encoding: String) -> String? {
+        let enc: String.Encoding = (encoding == "UTF_8") ? .utf8 : .shiftJIS
+        return String(data: data, encoding: enc) ?? String(data: data, encoding: .utf8)
+    }
+
+    // MARK: - Private
+
     @MainActor
     private func songAlreadyExists(_ serverSong: ServerSong, in context: ModelContext) throws -> Bool {
-        let existingDescriptor = FetchDescriptor<Song>()
-        let existingSongs = try context.fetch(existingDescriptor)
-
-        return existingSongs.contains { existingSong in
-            existingSong.title.lowercased() == serverSong.title.lowercased() &&
-                existingSong.artist.lowercased() == serverSong.artist.lowercased()
+        let existing = try context.fetch(FetchDescriptor<Song>())
+        return existing.contains {
+            $0.title.lowercased() == serverSong.title.lowercased() &&
+            $0.artist.lowercased() == serverSong.artist.lowercased()
         }
     }
-    
-    /// Create a new Song object from server song data
+
     private func createSong(from serverSong: ServerSong) -> Song {
-        return Song(
+        Song(
             title: serverSong.title,
             artist: serverSong.artist,
-            bpm: serverSong.bpm, // Preserve Double precision (e.g., 165.55)
-            duration: "3:30", // Will be updated after parsing first chart
-            genre: "DTX Import",
+            bpm: serverSong.bpm,
+            duration: serverSong.durationSeconds.map(Self.formatDuration) ?? "3:30",
+            genre: serverSong.genre ?? "DTX Import",
             timeSignature: .fourFour
         )
     }
-    
-    /// Process all charts for a song
+
     @MainActor
     private func processCharts(for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
         for (index, serverChart) in serverSong.charts.enumerated() {
-            // Add small delay between downloads to reduce system stress
-            if index > 0 {
-                try await Task.sleep(nanoseconds: 100_000_000) // 100ms delay
-            }
-            
-            try await processChart(serverChart, for: song, from: serverSong, in: context)
+            if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
+            try await processChart(serverChart, for: song, in: context)
         }
     }
-    
-    /// Process a single chart
+
     @MainActor
-    private func processChart(
-        _ serverChart: ServerChart,
-        for song: Song,
-        from serverSong: ServerSong,
-        in context: ModelContext
-    ) async throws {
-        let fileData = try await apiClient.downloadChartFile(
-            songId: serverSong.songId,
-            chartFilename: serverChart.filename
-        )
-        
-        guard let dtxContent = String(data: fileData, encoding: .shiftJIS) else {
-            Logger.debug("Failed to decode \(serverChart.filename) with Shift-JIS encoding")
+    private func processChart(_ serverChart: ServerChart, for song: Song, in context: ModelContext) async throws {
+        guard let url = URL(string: serverChart.fileURL) else { return }
+        let data = try await downloader.downloadData(from: url)
+        guard let content = Self.decode(data, encoding: serverChart.fileEncoding) else {
+            Logger.debug("Failed to decode \(serverChart.filename) with \(serverChart.fileEncoding)")
             return
         }
-        
-        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
-        
-        // Update song BPM from the first chart if not already set
+        let chartData = try DTXFileParser.parseChartMetadata(from: content)
         if song.charts.isEmpty {
-            if chartData.bpm.isFinite && chartData.bpm > 0 {
-                song.bpm = chartData.bpm
+            if chartData.bpm.isFinite && chartData.bpm > 0 { song.bpm = chartData.bpm }
+            if serverChart.serverSong?.durationSeconds == nil {
+                song.duration = Self.formatDuration(Int(calculateDuration(from: chartData.notes)))
             }
-            song.duration = formatDuration(calculateDuration(from: chartData.notes))
         }
-        
-        // Create and populate chart
         let difficulty = mapServerDifficultyToApp(serverChart.difficulty)
         let chart = Chart(difficulty: difficulty, level: serverChart.level, song: song)
-        
-        let notes = chartData.toNotes(for: chart)
-        notes.forEach { note in
-            chart.notes.append(note)
-        }
-        
+        chartData.toNotes(for: chart).forEach { chart.notes.append($0) }
         context.insert(chart)
     }
-    
-    /// Download optional BGM and preview files
+
     @MainActor
     private func downloadOptionalFiles(for song: Song, serverSong: ServerSong) async {
-        // Download BGM file if available
-        do {
-            let bgmData = try await apiClient.downloadBGMFile(songId: serverSong.songId)
-            let bgmPath = try fileManager.saveBGMFile(bgmData, for: serverSong.songId)
-            song.bgmFilePath = bgmPath
-            Logger.database("Downloaded BGM file for song: \(song.title)")
-        } catch {
-            Logger.database("Failed to download BGM for song \(song.title): \(error.localizedDescription)")
+        guard let base = config.r2BaseURL else {
+            Logger.database("No R2 base URL configured; skipping audio for \(song.title)")
+            return
         }
-        
-        // Download preview file if available
+        if serverSong.hasBGM {
+            await download(SimfileMapper.bgmURL(base: base, songId: serverSong.songId), kind: .bgm,
+                           songId: serverSong.songId, song: song)
+        }
+        if serverSong.hasPreview {
+            await download(SimfileMapper.previewURL(base: base, songId: serverSong.songId), kind: .preview,
+                           songId: serverSong.songId, song: song)
+        }
+    }
+
+    private enum AudioKind { case bgm, preview }
+
+    @MainActor
+    private func download(_ url: URL, kind: AudioKind, songId: String, song: Song) async {
         do {
-            let previewData = try await apiClient.downloadPreviewFile(songId: serverSong.songId)
-            let previewPath = try fileManager.savePreviewFile(previewData, for: serverSong.songId)
-            song.previewFilePath = previewPath
-            Logger.database("Downloaded preview file for song: \(song.title)")
+            let data = try await downloader.downloadData(from: url)
+            switch kind {
+            case .bgm: song.bgmFilePath = try fileManager.saveBGMFile(data, for: songId)
+            case .preview: song.previewFilePath = try fileManager.savePreviewFile(data, for: songId)
+            }
         } catch {
-            Logger.database("Failed to download preview for song \(song.title): \(error.localizedDescription)")
+            Logger.database("Failed to download \(kind) for \(song.title): \(error.localizedDescription)")
         }
     }
 
     private func mapServerDifficultyToApp(_ serverDifficulty: String) -> Difficulty {
         switch serverDifficulty.lowercased() {
-        case "easy":
-            return .easy
-        case "medium":
-            return .medium
-        case "hard":
-            return .hard
-        case "expert":
-            return .expert
-        default:
-            return .medium
+        case "easy": return .easy
+        case "medium": return .medium
+        case "hard": return .hard
+        case "expert": return .expert
+        default: return .medium
         }
     }
 
     private func calculateDuration(from notes: [DTXNote]) -> TimeInterval {
         guard !notes.isEmpty else { return 60.0 }
-
-        let maxMeasure = notes.reduce(Int.min) { currentMax, note in
-            max(currentMax, note.measureNumber)
-        }
-        let estimatedMeasures = maxMeasure + 1
-
-        // Estimate duration based on 4/4 time signature and average BPM
-        let measuresPerMinute = 30.0 // Assuming ~120 BPM average
-        return Double(estimatedMeasures) / measuresPerMinute * 60.0
+        let maxMeasure = notes.reduce(Int.min) { max($0, $1.measureNumber) }
+        return Double(maxMeasure + 1) / 30.0 * 60.0
     }
 
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let minutes = Int(seconds) / 60
-        let remainingSeconds = Int(seconds) % 60
-        return String(format: "%d:%02d", minutes, remainingSeconds)
+    private static func formatDuration(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
