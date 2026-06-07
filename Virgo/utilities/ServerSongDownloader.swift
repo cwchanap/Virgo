@@ -1,6 +1,24 @@
 import Foundation
 import SwiftData
 
+/// Errors that can occur during server song import.
+enum ServerSongImportError: LocalizedError {
+    case invalidChartURL(String)
+    case decodeFailed(String)
+    case allChartsFailed(reason: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidChartURL(let url):
+            return "Invalid chart URL: \(url)"
+        case .decodeFailed(let filename):
+            return "Failed to decode chart file: \(filename)"
+        case .allChartsFailed(let reason):
+            return "All charts failed to import: \(reason)"
+        }
+    }
+}
+
 /// Downloads and imports a server song's charts and optional audio.
 class ServerSongDownloader {
     private let downloader: FileDownloading
@@ -31,6 +49,7 @@ class ServerSongDownloader {
             try context.save()
             return (true, nil)
         } catch {
+            context.rollback()
             return (false, "Import failed: \(error.localizedDescription)")
         }
     }
@@ -39,7 +58,9 @@ class ServerSongDownloader {
 
     static func decode(_ data: Data, encoding: String) -> String? {
         let enc: String.Encoding = (encoding == "UTF_8") ? .utf8 : .shiftJIS
-        return String(data: data, encoding: enc) ?? String(data: data, encoding: .utf8)
+        if let decoded = String(data: data, encoding: enc) { return decoded }
+        Logger.warning("Primary decode (\(encoding)) failed; trying UTF-8 fallback")
+        return String(data: data, encoding: .utf8)
     }
 
     // MARK: - Private
@@ -66,19 +87,32 @@ class ServerSongDownloader {
 
     @MainActor
     private func processCharts(for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
+        var successCount = 0
+        var lastError = "Unknown error"
         for (index, serverChart) in serverSong.charts.enumerated() {
             if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
-            try await processChart(serverChart, for: song, in: context)
+            do {
+                try await processChart(serverChart, for: song, in: context)
+                successCount += 1
+            } catch {
+                lastError = error.localizedDescription
+                Logger.warning("Failed to process chart \(serverChart.filename): \(error.localizedDescription)")
+            }
+        }
+        // Abort if every chart failed — never save a chartless song as "downloaded".
+        guard successCount > 0 || serverSong.charts.isEmpty else {
+            throw ServerSongImportError.allChartsFailed(reason: lastError)
         }
     }
 
     @MainActor
     private func processChart(_ serverChart: ServerChart, for song: Song, in context: ModelContext) async throws {
-        guard let url = URL(string: serverChart.fileURL) else { return }
+        guard let url = URL(string: serverChart.fileURL) else {
+            throw ServerSongImportError.invalidChartURL(serverChart.fileURL)
+        }
         let data = try await downloader.downloadData(from: url)
         guard let content = Self.decode(data, encoding: serverChart.fileEncoding) else {
-            Logger.debug("Failed to decode \(serverChart.filename) with \(serverChart.fileEncoding)")
-            return
+            throw ServerSongImportError.decodeFailed(serverChart.filename)
         }
         let chartData = try DTXFileParser.parseChartMetadata(from: content)
         if song.charts.isEmpty {
@@ -125,13 +159,7 @@ class ServerSongDownloader {
     }
 
     private func mapServerDifficultyToApp(_ serverDifficulty: String) -> Difficulty {
-        switch serverDifficulty.lowercased() {
-        case "easy": return .easy
-        case "medium": return .medium
-        case "hard": return .hard
-        case "expert": return .expert
-        default: return .medium
-        }
+        Difficulty(rawValue: serverDifficulty.capitalized) ?? .medium
     }
 
     private func calculateDuration(from notes: [DTXNote]) -> TimeInterval {

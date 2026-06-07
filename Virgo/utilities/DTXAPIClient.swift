@@ -20,22 +20,10 @@ enum DTXAPIError: LocalizedError {
     }
 }
 
-// MARK: - Protocol Definitions
-
-protocol DTXNetworking {
-    func performRequest<T: Codable>(url: URL, responseType: T.Type) async throws -> T
-    func downloadData(from url: URL) async throws -> Data
-}
-
-protocol DTXConfiguration {
-    var baseURL: String { get }
-    func setServerURL(_ url: String)
-    func resetToLocalServer()
-    func testConnection() async -> Bool
-}
-
-// MARK: - Main DTXAPIClient Class
-
+/// HTTP client used as a `FileDownloading` implementation by `ServerSongDownloader`.
+/// The legacy REST configuration layer (`DTXServerURL`, `setServerURL`,
+/// `testConnection`, `performRequest`) was removed after the GraphQL migration;
+/// catalog access now goes through `ApolloSimfileClient` → `ServerConfig`.
 class DTXAPIClient: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -63,80 +51,9 @@ class DTXAPIClient: ObservableObject {
     }
 }
 
-// MARK: - Configuration Extension
+// MARK: - File Downloading
 
-extension DTXAPIClient: DTXConfiguration {
-    var baseURL: String {
-        if let customURL = userDefaults.string(forKey: "DTXServerURL"), !customURL.isEmpty {
-            return customURL
-        }
-        return "http://127.0.0.1:8001"
-    }
-
-    func setServerURL(_ url: String) {
-        // If URL is empty or whitespace only, remove the custom URL to fall back to default
-        let trimmedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedURL.isEmpty {
-            userDefaults.removeObject(forKey: "DTXServerURL")
-            return
-        }
-        
-        // Validate and normalize the URL
-        guard let parsedURL = URL(string: trimmedURL),
-              let scheme = parsedURL.scheme,
-              let host = parsedURL.host,
-              ["http", "https"].contains(scheme.lowercased()),
-              !host.isEmpty else {
-            // Invalid URL: clear override to fall back to default
-            userDefaults.removeObject(forKey: "DTXServerURL")
-            return
-        }
-        
-        // Normalize by removing single trailing slash to avoid // in path composition
-        var normalizedURL = trimmedURL
-        if normalizedURL.hasSuffix("/") && !normalizedURL.hasSuffix("//") {
-            normalizedURL = String(normalizedURL.dropLast())
-        }
-        
-        userDefaults.set(normalizedURL, forKey: "DTXServerURL")
-    }
-
-    func resetToLocalServer() {
-        userDefaults.removeObject(forKey: "DTXServerURL")
-    }
-
-    func testConnection() async -> Bool {
-        guard let url = URL(string: "\(baseURL)/") else {
-            return false
-        }
-
-        do {
-            let (_, response) = try await session.data(from: url)
-            return (response as? HTTPURLResponse)?.statusCode == 200
-        } catch {
-            return false
-        }
-    }
-}
-
-// MARK: - Networking Extension
-
-extension DTXAPIClient: DTXNetworking {
-    func performRequest<T: Codable>(url: URL, responseType: T.Type) async throws -> T {
-        await updateLoadingState(isLoading: true, error: nil)
-
-        do {
-            let (data, _) = try await session.data(from: url)
-            let response = try JSONDecoder().decode(responseType, from: data)
-
-            await updateLoadingState(isLoading: false, error: nil)
-            return response
-        } catch {
-            await updateLoadingState(isLoading: false, error: error.localizedDescription)
-            throw DTXAPIError.networkError(error)
-        }
-    }
-
+extension DTXAPIClient {
     func downloadData(from url: URL) async throws -> Data {
         await updateLoadingState(isLoading: true, error: nil)
 
@@ -165,7 +82,5 @@ extension DTXAPIClient: DTXNetworking {
         self.errorMessage = error
     }
 }
-
-// MARK: - File Downloading Extension
 
 extension DTXAPIClient: FileDownloading {}

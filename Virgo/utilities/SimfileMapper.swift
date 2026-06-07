@@ -55,7 +55,7 @@ enum SimfileMapper {
     }
 
     private static func hasFile(named name: String, in keys: [String]) -> Bool {
-        keys.contains { $0.hasSuffix(name) }
+        keys.contains { ($0 as NSString).lastPathComponent == name }
     }
 
     private static func parseDate(_ iso: String) -> Date {
@@ -63,6 +63,8 @@ enum SimfileMapper {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let date = formatter.date(from: iso) { return date }
         formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: iso) ?? Date()
+        if let date = formatter.date(from: iso) { return date }
+        Logger.warning("Malformed updatedAt date: \(iso); using .distantPast")
+        return .distantPast
     }
 }

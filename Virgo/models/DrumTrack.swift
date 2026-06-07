@@ -182,7 +182,7 @@ final class Song {
 @Model
 final class ServerChart {
     var difficulty: String  // "easy", "medium", "hard", "expert"
-    var difficultyLabel: String  // "BASIC", "ADVANCED", "EXTREME", "MASTER"
+    var difficultyLabel: String  // "BASIC", "ADVANCED", "EXTREME", "MASTER", "REAL"
     var level: Int  // Numeric difficulty level (e.g., 36, 60, 74, 87)
     var filename: String  // DTX file name (e.g., "bas.dtx")
     var size: Int

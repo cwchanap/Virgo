@@ -33,15 +33,32 @@ class ServerSongCache {
 
     /// Manual catalog refresh: page-walk PUBLISHED, insert new, prune stale.
     func refreshCatalog(modelContext: ModelContext) async throws {
-        let serverDTOs = try await fetchAllPages()
+        let (serverDTOs, isComplete) = try await fetchAllPages()
         let serverIds = Set(serverDTOs.map(\.id))
+
+        // Warn if levels appear to be on a 0-10 scale instead of the expected 0-100.
+        let allLevels = serverDTOs.flatMap(\.dtxFiles).map(\.level)
+        if let maxLevel = allLevels.max(), maxLevel <= 10, !allLevels.isEmpty {
+            Logger.warning(
+                "Chart levels max at \(maxLevel) — possible 0-10 scale (expected 0-100). " +
+                "Difficulty bucketing may be incorrect."
+            )
+        }
 
         let existing = try modelContext.fetch(FetchDescriptor<ServerSong>())
         let existingIds = Set(existing.map(\.songId))
 
-        // Prune ids no longer on the server (delete record + local files).
-        for song in existing where !serverIds.contains(song.songId) {
-            await statusManager.pruneCachedSong(song, modelContext: modelContext)
+        // Only prune stale ids when the page-walk completed fully. An incomplete
+        // walk (e.g. a transient empty page mid-walk) must NOT trigger destructive
+        // deletes of songs that may still be valid on the server.
+        if isComplete {
+            for song in existing where !serverIds.contains(song.songId) {
+                await statusManager.pruneCachedSong(song, modelContext: modelContext)
+            }
+        } else {
+            Logger.warning(
+                "Catalog refresh incomplete (\(serverDTOs.count) fetched); skipping prune to avoid data loss"
+            )
         }
 
         // Insert only new ids; never overwrite existing entries.
@@ -55,15 +72,17 @@ class ServerSongCache {
         await statusManager.refreshDownloadStatus(modelContext: modelContext)
     }
 
-    private func fetchAllPages() async throws -> [SimfileDTO] {
+    /// Walks all pages, returning the accumulated DTOs and whether the walk
+    /// reached `totalCount` (true) or stopped early on an empty page (false).
+    private func fetchAllPages() async throws -> (simfiles: [SimfileDTO], isComplete: Bool) {
         var results: [SimfileDTO] = []
         var page = 1
         while true {
             let pageResult = try await fetcher.fetchSimfiles(page: page, pageSize: pageSize, search: nil)
             results.append(contentsOf: pageResult.simfiles)
-            if results.count >= pageResult.totalCount || pageResult.simfiles.isEmpty { break }
+            if results.count >= pageResult.totalCount { return (results, true) }
+            if pageResult.simfiles.isEmpty { return (results, false) }
             page += 1
         }
-        return results
     }
 }

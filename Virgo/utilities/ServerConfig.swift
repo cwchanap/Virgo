@@ -1,7 +1,7 @@
 import Foundation
 
 /// Configurable backend URLs, persisted in UserDefaults.
-/// - GraphQL endpoint replaces the legacy `DTXServerURL` default.
+/// - GraphQL endpoint is the sole server access path (legacy REST `DTXServerURL` removed).
 /// - R2 base URL is used to assemble public audio URLs.
 final class ServerConfig {
     static let graphQLEndpointKey = "GraphQLEndpointURL"

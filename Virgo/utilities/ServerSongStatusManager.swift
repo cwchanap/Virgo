@@ -52,7 +52,7 @@ class ServerSongStatusManager: @unchecked Sendable {
             return true
         } catch {
             modelContext.rollback()
-            Logger.debug("Failed to delete song: \(error.localizedDescription)")
+            Logger.error("Failed to delete song: \(error.localizedDescription)")
             return false
         }
     }
@@ -89,7 +89,7 @@ class ServerSongStatusManager: @unchecked Sendable {
                 return true
             } catch {
                 backgroundContext.rollback()
-                Logger.debug("Delete error details: \(error)")
+                Logger.error("Delete error details: \(error)")
                 return false
             }
         }.value
@@ -132,7 +132,7 @@ class ServerSongStatusManager: @unchecked Sendable {
                 try saveContext(modelContext)
             }
         } catch {
-            Logger.debug("Failed to refresh download status: \(error)")
+            Logger.error("Failed to refresh download status: \(error)")
         }
     }
 
@@ -143,13 +143,19 @@ class ServerSongStatusManager: @unchecked Sendable {
     func pruneCachedSong(_ serverSong: ServerSong, modelContext: ModelContext) async {
         let songId = serverSong.songId
         if serverSong.isDownloaded {
-            _ = await deleteDownloadedSong(serverSong, modelContext: modelContext)
+            let deleted = await deleteDownloadedSong(serverSong, modelContext: modelContext)
+            guard deleted else {
+                // If we can't clean up the downloaded local song, abort the prune
+                // to avoid orphaning the local Song + audio files.
+                Logger.error("Prune aborted: failed to delete downloaded song \(serverSong.title)")
+                return
+            }
         }
         modelContext.delete(serverSong)
         do {
             try saveContext(modelContext)
         } catch {
-            Logger.debug("Failed to persist pruned song deletion: \(error)")
+            Logger.error("Failed to persist pruned song deletion: \(error)")
             return
         }
         fileManager.deleteFiles(forSongId: songId)
@@ -165,7 +171,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         let songs = try context.fetch(songDescriptor)
 
         guard let songToDelete = songs.first else {
-            Logger.debug("Song not found in background context")
+            Logger.warning("Song not found in background context")
             return nil
         }
 

@@ -80,17 +80,14 @@ struct DTXAPIClientInitTests {
         #expect(client.errorMessage == "Test error")
     }
     
-    @Test("DTXAPIClient protocols conformance")
+    @Test("DTXAPIClient conforms to FileDownloading")
     func testProtocolConformance() {
         let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
             suiteName: "DTXAPIClientInitTests.protocols.\(UUID().uuidString)"
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
         let client = DTXAPIClient(userDefaults: userDefaults)
-        
-        // Test that client conforms to expected protocols
-        #expect(client is DTXConfiguration)
-        #expect(client is DTXNetworking)
+
         #expect(client is FileDownloading)
     }
 }

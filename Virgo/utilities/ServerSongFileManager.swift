@@ -41,14 +41,22 @@ class ServerSongFileManager: @unchecked Sendable {
 
     /// Delete BGM file for a song
     func deleteBGMFile(at path: String) {
-        try? FileManager.default.removeItem(atPath: path)
-        Logger.database("Deleted BGM file at path: \(path)")
+        do {
+            try FileManager.default.removeItem(atPath: path)
+            Logger.database("Deleted BGM file at path: \(path)")
+        } catch {
+            Logger.error("Failed to delete BGM file at \(path): \(error.localizedDescription)")
+        }
     }
 
     /// Delete preview file for a song
     func deletePreviewFile(at path: String) {
-        try? FileManager.default.removeItem(atPath: path)
-        Logger.database("Deleted preview file at path: \(path)")
+        do {
+            try FileManager.default.removeItem(atPath: path)
+            Logger.database("Deleted preview file at path: \(path)")
+        } catch {
+            Logger.error("Failed to delete preview file at \(path): \(error.localizedDescription)")
+        }
     }
 
     /// Delete BGM and preview files saved under this songId, if present.

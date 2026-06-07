@@ -395,4 +395,30 @@ struct ServerSongStatusManagerTests {
             #expect(remaining.isEmpty)
         }
     }
+
+    @Test("pruneCachedSong deletes local Song when ServerSong is downloaded")
+    func testPruneRemovesDownloadedSongAndLocalSong() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let serverSong = ServerSong(
+                songId: "prune-dl", title: "PruneDL", artist: "X", bpm: 120, isDownloaded: true
+            )
+            let localSong = Song(
+                title: "PruneDL", artist: "X", bpm: 120, duration: "3:30", genre: "DTX Import"
+            )
+            context.insert(serverSong); context.insert(localSong)
+            try context.save()
+
+            await ServerSongStatusManager().pruneCachedSong(serverSong, modelContext: context)
+
+            let remainingServer = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(remainingServer.isEmpty, "ServerSong record must be deleted")
+
+            let remainingLocal = try context.fetch(FetchDescriptor<Song>())
+            let orphanedLocal = remainingLocal.contains {
+                $0.title == "PruneDL" && $0.artist == "X" && $0.genre == "DTX Import"
+            }
+            #expect(!orphanedLocal, "Downloaded local Song must also be deleted")
+        }
+    }
 }
