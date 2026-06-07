@@ -74,7 +74,13 @@ jobs:
         
       - name: Clean build folder
         run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
-        
+
+      - name: Generate ServerEndpoints.env from CI variables
+        env:
+          GRAPHQL_ENDPOINT: ${{ vars.GRAPHQL_ENDPOINT }}
+          R2_BASE_URL: ${{ vars.R2_BASE_URL }}
+        run: bash .github/scripts/generate-endpoints-env.sh
+
       - name: Build project for UI testing
         run: |
           xcodebuild build-for-testing \

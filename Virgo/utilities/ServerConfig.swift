@@ -1,30 +1,54 @@
 import Foundation
 
-/// Configurable backend URLs, persisted in UserDefaults.
+/// Configurable backend URLs.
+///
+/// Resolution order (highest precedence first):
+/// 1. `UserDefaults` override (set via the settings UI).
+/// 2. `EndpointDefaults` loaded from the bundled `ServerEndpoints.env`.
+/// 3. A hard-coded local-dev fallback so the build never breaks when neither
+///    is present (e.g. a fresh checkout with no `.env`).
+///
 /// - GraphQL endpoint is the sole server access path (legacy REST `DTXServerURL` removed).
 /// - R2 base URL is used to assemble public audio URLs.
 final class ServerConfig {
     static let graphQLEndpointKey = "GraphQLEndpointURL"
     static let r2BaseURLKey = "R2BaseURL"
-    private static let defaultEndpoint = "http://127.0.0.1:8001/graphql"
+    /// Used only when no override and no `.env` default are available.
+    private static let fallbackEndpoint = "http://127.0.0.1:8001/graphql"
 
     private let userDefaults: UserDefaults
+    private let endpointDefaults: EndpointDefaults
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(
+        userDefaults: UserDefaults = .standard,
+        endpointDefaults: EndpointDefaults = .load()
+    ) {
         self.userDefaults = userDefaults
+        self.endpointDefaults = endpointDefaults
     }
 
     var graphQLEndpoint: URL {
-        let raw = userDefaults.string(forKey: Self.graphQLEndpointKey) ?? Self.defaultEndpoint
-        let validated = Self.normalized(raw) ?? Self.defaultEndpoint
-        return URL(string: validated) ?? URL(string: Self.defaultEndpoint)!
+        let resolved = userDefaults.string(forKey: Self.graphQLEndpointKey)
+            ?? endpointDefaults.graphQLEndpoint
+            ?? Self.fallbackEndpoint
+        let validated = Self.normalized(resolved) ?? Self.fallbackEndpoint
+        return URL(string: validated) ?? URL(string: Self.fallbackEndpoint)!
     }
 
     var r2BaseURL: URL? {
-        guard let raw = userDefaults.string(forKey: Self.r2BaseURLKey),
-              !raw.isEmpty,
-              let normalized = Self.normalized(raw) else { return nil }
-        return URL(string: normalized)
+        // 1. Explicit UserDefaults override wins.
+        if let raw = userDefaults.string(forKey: Self.r2BaseURLKey),
+           !raw.isEmpty,
+           let normalized = Self.normalized(raw) {
+            return URL(string: normalized)
+        }
+        // 2. `.env` default.
+        if let raw = endpointDefaults.r2BaseURL,
+           let normalized = Self.normalized(raw) {
+            return URL(string: normalized)
+        }
+        // 3. No R2 base configured → audio downloads are skipped (by the downloader).
+        return nil
     }
 
     func setGraphQLEndpoint(_ value: String) {

@@ -241,4 +241,65 @@ struct DatabaseMaintenanceServiceTests {
             TestAssertions.assertNotDeleted(song3, in: context) // Different song should remain
         }
     }
+
+    // MARK: - isServerImported backfill (legacy "DTX Import" genre -> flag)
+
+    @Test("performInitialMaintenance backfills isServerImported for legacy DTX Import songs")
+    func testBackfillServerImportedFlagForLegacyDTXImportSongs() async throws {
+        try await TestSetup.withTestSetup {
+            let service = DatabaseMaintenanceService(modelContext: context)
+
+            // Legacy downloaded song: pre-migration it was classified by genre only,
+            // so after the additive SwiftData migration isServerImported defaults to false.
+            let legacyDownloaded = TestModelFactory.createSong(
+                in: context, title: "Legacy DL", artist: "Server", genre: "DTX Import"
+            )
+            // Local (non-downloaded) song must be left untouched.
+            let localSong = TestModelFactory.createSong(
+                in: context, title: "Local Jam", artist: "Me", genre: "Rock"
+            )
+            // A server-imported song with a curated genre that already has the flag set
+            // must not be reclassified or disturbed.
+            let curatedImported = Song(
+                title: "Curated", artist: "Server", bpm: 120, duration: "3:00",
+                genre: "Pop", isServerImported: true
+            )
+            context.insert(curatedImported)
+            try context.save()
+
+            // Sanity: legacy song starts un-flagged (simulating the migration default).
+            #expect(legacyDownloaded.isServerImported == false)
+
+            service.performInitialMaintenance(
+                songs: [legacyDownloaded, localSong, curatedImported]
+            )
+
+            // Legacy DTX Import song is backfilled to the explicit flag.
+            #expect(legacyDownloaded.isServerImported == true,
+                    "Legacy server-imported song must be backfilled to isServerImported == true")
+            // Local song is never marked as server-imported.
+            #expect(localSong.isServerImported == false)
+            // Already-flagged curated song is unchanged.
+            #expect(curatedImported.isServerImported == true)
+        }
+    }
+
+    @Test("Backfill is idempotent across repeated maintenance runs")
+    func testBackfillServerImportedFlagIsIdempotent() async throws {
+        try await TestSetup.withTestSetup {
+            let service = DatabaseMaintenanceService(modelContext: context)
+
+            let localSong = TestModelFactory.createSong(
+                in: context, title: "Local", artist: "Me", genre: "Jazz"
+            )
+            try context.save()
+
+            service.performInitialMaintenance(songs: [localSong])
+            service.performInitialMaintenance(songs: [localSong])
+
+            // A genuinely local song must not get flipped to server-imported even after
+            // repeated runs — the backfill predicate is scoped to genre == "DTX Import".
+            #expect(localSong.isServerImported == false)
+        }
+    }
 }

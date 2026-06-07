@@ -17,6 +17,7 @@ class DatabaseMaintenanceService {
     }
 
     func performInitialMaintenance(songs: [Song]) {
+        backfillServerImportedFlag(songs: songs)
         updateExistingChartLevels(songs: songs)
         cleanupDuplicateSongs(songs: songs)
         cleanupOldSampleSongs(songs: songs)
@@ -27,6 +28,27 @@ class DatabaseMaintenanceService {
             Logger.database("performInitialMaintenance completed successfully")
         } catch {
             Logger.databaseError(error)
+        }
+    }
+
+    /// Backfills `Song.isServerImported` for stores created before the flag existed.
+    ///
+    /// Prior to the dedicated `isServerImported` Bool, server-imported songs were
+    /// identified by `genre == "DTX Import"`. The additive SwiftData migration that
+    /// introduced the property defaults existing rows to `false`, which would make
+    /// already-downloaded songs vanish from downloaded views, lose preview playback,
+    /// and become undeletable as server imports. This one-time, idempotent pass
+    /// promotes the legacy genre signal to the explicit flag so existing users keep
+    /// their downloaded songs. Safe because only the legacy server-imported songs ever
+    /// carried the "DTX Import" genre, and the predicate is empty after the first run.
+    private func backfillServerImportedFlag(songs: [Song]) {
+        var migrated = 0
+        for song in songs where song.genre == "DTX Import" && !song.isServerImported {
+            song.isServerImported = true
+            migrated += 1
+        }
+        if migrated > 0 {
+            Logger.database("Backfilled isServerImported for \(migrated) legacy server-imported song(s)")
         }
     }
 
