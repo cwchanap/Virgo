@@ -23,11 +23,12 @@ enum SimfileMapper {
     static func makeServerChart(from dto: DtxFileDTO) -> ServerChart {
         let level = Int(dto.level.rounded())
         let difficulty = DifficultyClassifier.classify(label: dto.label, level: level)
+        let filename = Self.filename(from: dto.fileURL) ?? dto.label
         return ServerChart(
             difficulty: difficulty.rawValue.lowercased(),
             difficultyLabel: dto.label,
             level: level,
-            filename: dto.label,
+            filename: filename,
             size: dto.fileSizeBytes,
             fileURL: dto.fileURL,
             fileEncoding: dto.encoding.rawValue
@@ -43,6 +44,15 @@ enum SimfileMapper {
     }
 
     // MARK: - Helpers
+
+    /// Extract the last path component from a URL string (e.g. "ext.dtx" from
+    /// "https://r2/song-1/ext.dtx"). Returns nil when the URL is empty or has
+    /// no path component, so callers can fall back to the label.
+    private static func filename(from fileURL: String) -> String? {
+        guard !fileURL.isEmpty else { return nil }
+        let last = URL(string: fileURL)?.lastPathComponent
+        return (last?.isEmpty == false) ? last : nil
+    }
 
     private static func hasFile(named name: String, in keys: [String]) -> Bool {
         keys.contains { $0.hasSuffix(name) }

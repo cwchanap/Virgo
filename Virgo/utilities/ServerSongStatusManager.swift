@@ -146,7 +146,12 @@ class ServerSongStatusManager: @unchecked Sendable {
             _ = await deleteDownloadedSong(serverSong, modelContext: modelContext)
         }
         modelContext.delete(serverSong)
-        try? saveContext(modelContext)
+        do {
+            try saveContext(modelContext)
+        } catch {
+            Logger.debug("Failed to persist pruned song deletion: \(error)")
+            return
+        }
         fileManager.deleteFiles(forSongId: songId)
     }
 

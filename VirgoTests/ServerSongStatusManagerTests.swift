@@ -384,16 +384,15 @@ struct ServerSongStatusManagerTests {
 
     @Test("pruneCachedSong removes the ServerSong record")
     func testPruneRemovesRecord() async throws {
-        let schema = Schema([ServerSong.self, ServerChart.self, Song.self, Chart.self, Note.self])
-        let container = try ModelContainer(
-            for: schema, configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
-        let context = ModelContext(container)
-        let song = ServerSong(songId: "prune-me", title: "P", artist: "A", bpm: 120)
-        context.insert(song); try context.save()
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let song = ServerSong(songId: "prune-me", title: "P", artist: "A", bpm: 120)
+            context.insert(song); try context.save()
 
-        await ServerSongStatusManager().pruneCachedSong(song, modelContext: context)
+            await ServerSongStatusManager().pruneCachedSong(song, modelContext: context)
 
-        let remaining = try context.fetch(FetchDescriptor<ServerSong>())
-        #expect(remaining.isEmpty)
+            let remaining = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(remaining.isEmpty)
+        }
     }
 }

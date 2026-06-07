@@ -28,6 +28,7 @@ struct SimfileMapperTests {
         #expect(song.charts.count == 1)
         #expect(song.charts[0].difficulty == "hard")     // EXTREME -> .hard, lowercased bucket
         #expect(song.charts[0].level == 74)
+        #expect(song.charts[0].filename == "ext.dtx")     // derived from fileURL lastPathComponent
         #expect(song.charts[0].fileURL == "https://r2/song-1/ext.dtx")
         #expect(song.charts[0].fileEncoding == "SHIFT_JIS")
     }

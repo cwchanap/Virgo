@@ -31,4 +31,12 @@ struct ServerConfigTests {
         config.setGraphQLEndpoint("ftp://nope")
         #expect(config.graphQLEndpoint == URL(string: "http://127.0.0.1:8001/graphql"))
     }
+
+    @Test("Read-path rejects an invalid scheme pre-seeded directly in UserDefaults")
+    func testInvalidSchemePreseeded() {
+        let (config, defaults) = makeConfig("config.preseeded")
+        // Bypass the setter to simulate a stale/corrupt persisted value.
+        defaults.set("ftp://nope", forKey: ServerConfig.graphQLEndpointKey)
+        #expect(config.graphQLEndpoint == URL(string: "http://127.0.0.1:8001/graphql"))
+    }
 }
