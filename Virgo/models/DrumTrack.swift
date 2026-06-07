@@ -99,6 +99,7 @@ final class Song {
     var dateAdded: Date
     var playCount: Int
     var isSaved: Bool = false
+    var isServerImported: Bool = false // True for songs downloaded from the server
     var bgmFilePath: String? // Path to downloaded BGM audio file
     var previewFilePath: String? // Path to downloaded preview audio file
     @Relationship(deleteRule: .cascade, inverse: \Chart.song)
@@ -158,6 +159,7 @@ final class Song {
         isPlaying: Bool = false,
         playCount: Int = 0,
         isSaved: Bool = false,
+        isServerImported: Bool = false,
         bgmFilePath: String? = nil,
         previewFilePath: String? = nil
     ) {
@@ -172,6 +174,7 @@ final class Song {
         self.dateAdded = Date()
         self.playCount = playCount
         self.isSaved = isSaved
+        self.isServerImported = isServerImported
         self.bgmFilePath = bgmFilePath
         self.previewFilePath = previewFilePath
     }

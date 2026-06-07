@@ -104,6 +104,7 @@ struct ServerSongDownloaderTests {
             let importedSong = songs.first {
                 $0.title == "Multi Diff" && $0.artist == "Tester" && $0.genre == "DTX Import"
             }
+            #expect(importedSong?.isServerImported == true, "Downloaded song must be marked as server-imported")
             #expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.ogg")
             #expect(importedSong?.previewFilePath == "/tmp/mock-preview.mp3")
 

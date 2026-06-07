@@ -39,6 +39,6 @@ enum ContentStartupPolicy {
 
     /// Returns true when the song should use `AudioPlaybackService` (preview-file-backed playback).
     static func shouldUsePreviewPlayer(for song: Song) -> Bool {
-        song.genre == "DTX Import" && song.previewFilePath != nil
+        song.isServerImported && song.previewFilePath != nil
     }
 }

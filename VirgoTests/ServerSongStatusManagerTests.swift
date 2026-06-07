@@ -29,7 +29,7 @@ struct ServerSongStatusManagerTests {
         return try context.fetch(descriptor).first
     }
 
-    @Test("deleteDownloadedSong deletes only matching DTX Import songs")
+    @Test("deleteDownloadedSong deletes only matching server-imported songs")
     func testDeleteDownloadedSongSelectiveDeletion() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -49,21 +49,24 @@ struct ServerSongStatusManagerTests {
                 artist: "Artist A",
                 bpm: 120.0,
                 duration: "3:00",
-                genre: "DTX Import"
+                genre: "DTX Import",
+                isServerImported: true
             )
             let nonImportedMatch = Song(
                 title: "Song A",
                 artist: "Artist A",
                 bpm: 120.0,
                 duration: "3:00",
-                genre: "Rock"
+                genre: "Rock",
+                isServerImported: false
             )
             let differentSong = Song(
                 title: "Song B",
                 artist: "Artist A",
                 bpm: 120.0,
                 duration: "3:00",
-                genre: "DTX Import"
+                genre: "DTX Import",
+                isServerImported: true
             )
             context.insert(importedMatch)
             context.insert(nonImportedMatch)
@@ -77,6 +80,41 @@ struct ServerSongStatusManagerTests {
             TestAssertions.assertDeleted(importedMatch, in: context)
             TestAssertions.assertNotDeleted(nonImportedMatch, in: context)
             TestAssertions.assertNotDeleted(differentSong, in: context)
+        }
+    }
+
+    @Test("deleteDownloadedSong deletes server-imported song with curated genre")
+    func testDeleteDownloadedSongWithCuratedGenre() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let manager = ServerSongStatusManager()
+
+            let serverSong = ServerSong(
+                songId: "server-song-curated",
+                title: "Curated",
+                artist: "Curated Artist",
+                bpm: 130.0,
+                isDownloaded: true
+            )
+            context.insert(serverSong)
+
+            // Server-imported song with a curated (non-"DTX Import") genre must still be deletable.
+            let curatedSong = Song(
+                title: "Curated",
+                artist: "Curated Artist",
+                bpm: 130.0,
+                duration: "4:00",
+                genre: "Rock",
+                isServerImported: true
+            )
+            context.insert(curatedSong)
+            try context.save()
+
+            let success = await manager.deleteDownloadedSong(serverSong, modelContext: context)
+
+            #expect(success)
+            #expect(serverSong.isDownloaded == false)
+            TestAssertions.assertDeleted(curatedSong, in: context)
         }
     }
 
@@ -155,21 +193,24 @@ struct ServerSongStatusManagerTests {
             artist: "Grouped Artist",
             bpm: 128.0,
             duration: "2:50",
-            genre: "DTX Import"
+            genre: "DTX Import",
+            isServerImported: true
         )
         let secondImported = Song(
             title: "Grouped Song",
             artist: "Grouped Artist",
             bpm: 128.0,
             duration: "2:50",
-            genre: "DTX Import"
+            genre: "DTX Import",
+            isServerImported: true
         )
         let nonImported = Song(
             title: "Grouped Song",
             artist: "Grouped Artist",
             bpm: 128.0,
             duration: "2:50",
-            genre: "Rock"
+            genre: "Rock",
+            isServerImported: false
         )
         context.insert(firstImported)
         context.insert(secondImported)
@@ -184,7 +225,7 @@ struct ServerSongStatusManagerTests {
         )
     }
 
-    @Test("deleteLocalSong updates server download status only after last DTX Import match is removed")
+    @Test("deleteLocalSong updates server download status only after last server-imported match is removed")
     func testDeleteLocalSongUpdatesStatusAfterLastMatch() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -310,7 +351,8 @@ struct ServerSongStatusManagerTests {
                 artist: "Artist",
                 bpm: 120.0,
                 duration: "2:00",
-                genre: "DTX Import"
+                genre: "DTX Import",
+                isServerImported: true
             )
             context.insert(localSong)
             try context.save()
@@ -404,7 +446,8 @@ struct ServerSongStatusManagerTests {
                 songId: "prune-dl", title: "PruneDL", artist: "X", bpm: 120, isDownloaded: true
             )
             let localSong = Song(
-                title: "PruneDL", artist: "X", bpm: 120, duration: "3:30", genre: "DTX Import"
+                title: "PruneDL", artist: "X", bpm: 120, duration: "3:30", genre: "DTX Import",
+                isServerImported: true
             )
             context.insert(serverSong); context.insert(localSong)
             try context.save()
@@ -416,7 +459,7 @@ struct ServerSongStatusManagerTests {
 
             let remainingLocal = try context.fetch(FetchDescriptor<Song>())
             let orphanedLocal = remainingLocal.contains {
-                $0.title == "PruneDL" && $0.artist == "X" && $0.genre == "DTX Import"
+                $0.title == "PruneDL" && $0.artist == "X" && $0.isServerImported
             }
             #expect(!orphanedLocal, "Downloaded local Song must also be deleted")
         }

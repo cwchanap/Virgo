@@ -22,12 +22,12 @@ class ServerSongStatusManager: @unchecked Sendable {
             let descriptor = FetchDescriptor<Song>()
             let allSongs = try modelContext.fetch(descriptor)
 
-            // IMPORTANT: Only delete songs that match title/artist AND are from DTX Import genre
-            // This prevents deleting sample data or other local songs
+            // Only delete songs that match title/artist AND were imported from the server.
+            // This prevents deleting sample data or other local songs.
             let songsToDelete = allSongs.filter { song in
                 song.title.lowercased() == serverSong.title.lowercased() &&
                     song.artist.lowercased() == serverSong.artist.lowercased() &&
-                    song.genre == "DTX Import" // Only delete downloaded songs, not sample data
+                    song.isServerImported
             }
 
             let associatedFilePaths = songsToDelete.map { song in
@@ -227,7 +227,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         return hasUpdates
     }
 
-    /// Check if there are other DTX Import songs with the same title/artist
+    /// Check if there are other server-imported songs with the same title/artist
     private func checkForOtherMatchingSongs(
         songTitle: String,
         songArtist: String,
@@ -241,7 +241,7 @@ class ServerSongStatusManager: @unchecked Sendable {
             otherSong.persistentModelID != excludingSongId &&
                 otherSong.title.lowercased() == songTitle &&
                 otherSong.artist.lowercased() == songArtist &&
-                otherSong.genre == "DTX Import"
+                otherSong.isServerImported
         }
     }
 
