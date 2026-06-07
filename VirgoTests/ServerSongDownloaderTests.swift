@@ -120,8 +120,8 @@ struct ServerSongDownloaderTests {
         }
     }
 
-    @Test("downloadAndImportSong tolerates undecodable chart content and still imports song")
-    func testDownloadAndImportSongHandlesUndecodableChartData() async throws {
+    @Test("downloadAndImportSong fails when all charts are undecodable")
+    func testDownloadAndImportSongFailsWhenAllChartsUndecodable() async throws {
         let mock = MockFileDownloader()
         mock.responses["\(r2Base)/non-shift/broken.dtx"] = Data([0xFF, 0xFF, 0xFF])
         let config = makeConfig("ServerSongDownloaderTests.broken.\(UUID().uuidString)", withR2: false)
@@ -136,19 +136,45 @@ struct ServerSongDownloaderTests {
             )
 
             let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
-            #expect(success)
-            #expect(errorMessage == nil)
+            #expect(success == false)
+            #expect(errorMessage != nil)
 
+            // Song must NOT be persisted when all charts fail.
             let verificationContext = ModelContext(container)
             let songs = try verificationContext.fetch(FetchDescriptor<Song>())
             let importedSong = songs.first { $0.title == "Broken Encoding" && $0.artist == "Tester" }
-            #expect(importedSong != nil)
-            #expect(importedSong?.bpm == 123.0)
-            #expect(importedSong?.duration == "3:30")
+            #expect(importedSong == nil)
+        }
+    }
 
+    @Test("downloadAndImportSong succeeds with partial chart failure")
+    func testDownloadAndImportSongPartialChartFailure() async throws {
+        let mock = MockFileDownloader()
+        let dtx = dtxData("#TITLE: Partial\n#ARTIST: Tester\n#BPM: 150\n#DLEVEL: 50\n#03113: 01000000")
+        mock.responses["\(r2Base)/partial-fail/good.dtx"] = dtx
+        // broken.dtx returns non-decodable bytes
+        mock.responses["\(r2Base)/partial-fail/broken.dtx"] = Data([0xFF, 0xFF, 0xFF])
+        let config = makeConfig("ServerSongDownloaderTests.partial.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let goodChart = chart("easy", label: "Easy", level: 10, file: "good.dtx", songId: "partial-fail")
+            let brokenChart = chart("hard", label: "Hard", level: 30, file: "broken.dtx", songId: "partial-fail")
+            let serverSong = ServerSong(
+                songId: "partial-fail", title: "Partial", artist: "Tester", bpm: 150.0,
+                charts: [goodChart, brokenChart], isDownloaded: false
+            )
+
+            let (success, _) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success == true)
+
+            // Only the good chart should be imported.
+            let verificationContext = ModelContext(container)
             let allCharts = try verificationContext.fetch(FetchDescriptor<Chart>())
-            let importedCharts = allCharts.filter { $0.song?.title == "Broken Encoding" }
-            #expect(importedCharts.isEmpty)
+            let importedCharts = allCharts.filter { $0.song?.title == "Partial" }
+            #expect(importedCharts.count == 1)
+            #expect(importedCharts.first?.difficulty == .easy)
         }
     }
 

@@ -44,7 +44,7 @@ class ServerSongService: ObservableObject {
         do {
             return try await cache.loadServerSongs(modelContext: modelContext)
         } catch {
-            Logger.debug("Failed to load server songs: \(error)")
+            Logger.error("Failed to load server songs: \(error)")
             return []
         }
     }
@@ -59,7 +59,7 @@ class ServerSongService: ObservableObject {
             try await cache.refreshCatalog(modelContext: modelContext)
         } catch {
             errorMessage = "Failed to refresh server songs: \(error.localizedDescription)"
-            Logger.debug("Failed to refresh catalog: \(error)")
+            Logger.error("Failed to refresh catalog: \(error)")
         }
 
         isRefreshing = false
@@ -107,7 +107,7 @@ class ServerSongService: ObservableObject {
                 do {
                     try saveModelContext(modelContext)
                 } catch {
-                    Logger.debug("Failed to save download status: \(error)")
+                    Logger.error("Failed to save download status: \(error)")
                 }
             }
 

@@ -61,12 +61,20 @@ final class ApolloSimfileClient: SimfileFetching {
             durationSeconds: s.durationSeconds,
             updatedAt: s.updatedAt,
             dtxFiles: s.dtxFiles.map { f in
-                DtxFileDTO(
+                let rawEncoding = f.fileEncoding.rawValue
+                let encoding: SimfileEncoding
+                if let parsed = SimfileEncoding(rawValue: rawEncoding) {
+                    encoding = parsed
+                } else {
+                    Logger.warning("Unknown file encoding '\(rawEncoding)' for \(f.label); defaulting to Shift-JIS")
+                    encoding = .shiftJIS
+                }
+                return DtxFileDTO(
                     label: f.label,
                     level: f.level,
                     fileURL: f.fileUrl,
                     fileSizeBytes: f.fileSizeBytes,
-                    encoding: SimfileEncoding(rawValue: f.fileEncoding.rawValue) ?? .shiftJIS
+                    encoding: encoding
                 )
             },
             fileKeys: s.files.map { $0.key }

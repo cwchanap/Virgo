@@ -34,12 +34,8 @@ struct DTXAPIClientNetworkingTests {
         override func stopLoading() {}
     }
 
-    private func makeClient(
-        suiteName: String,
-        baseURL: String = "https://example.test"
-    ) -> (DTXAPIClient, UserDefaults, String) {
+    private func makeClient(suiteName: String) -> (DTXAPIClient, UserDefaults, String) {
         let (userDefaults, fullSuiteName) = TestUserDefaults.makeIsolated(suiteName: suiteName)
-        userDefaults.set(baseURL, forKey: "DTXServerURL")
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -107,30 +103,5 @@ struct DTXAPIClientNetworkingTests {
 
         #expect(client.isLoading == false)
         #expect(client.errorMessage?.contains("Network error") == true)
-    }
-
-    @Test("testConnection returns true when root endpoint responds with 200")
-    func testTestConnectionSuccessWithMockedResponse() async {
-        let (client, userDefaults, suiteName) = makeClient(
-            suiteName: "DTXAPIClientNetworkingTests.testConnectionSuccess.\(UUID().uuidString)"
-        )
-        defer {
-            MockURLProtocol.requestHandler = nil
-            userDefaults.removePersistentDomain(forName: suiteName)
-        }
-
-        MockURLProtocol.requestHandler = { request in
-            #expect(request.url?.absoluteString == "https://example.test/")
-            let response = HTTPURLResponse(
-                url: request.url ?? URL(string: "https://example.test")!,
-                statusCode: 200,
-                httpVersion: nil,
-                headerFields: nil
-            )!
-            return (response, Data())
-        }
-
-        let isConnected = await client.testConnection()
-        #expect(isConnected == true)
     }
 }

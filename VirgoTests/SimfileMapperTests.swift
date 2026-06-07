@@ -33,7 +33,7 @@ struct SimfileMapperTests {
         #expect(song.charts[0].fileEncoding == "SHIFT_JIS")
     }
 
-    @Test("Audio availability comes from file keys (suffix match)")
+    @Test("Audio availability comes from file keys (exact lastPathComponent match)")
     func testAudioAvailability() {
         let withBoth = SimfileMapper.makeServerSong(
             from: sampleDTO(fileKeys: ["song-1/bgm.ogg", "song-1/preview.mp3"]))
@@ -43,6 +43,12 @@ struct SimfileMapperTests {
         let withNone = SimfileMapper.makeServerSong(from: sampleDTO(fileKeys: ["song-1/ext.dtx"]))
         #expect(withNone.hasBGM == false)
         #expect(withNone.hasPreview == false)
+
+        // Suffix over-match must NOT trigger: "intro-bgm.ogg" ≠ "bgm.ogg".
+        let withSimilar = SimfileMapper.makeServerSong(
+            from: sampleDTO(fileKeys: ["song-1/intro-bgm.ogg", "song-1/demo-preview.mp3"]))
+        #expect(withSimilar.hasBGM == false)
+        #expect(withSimilar.hasPreview == false)
     }
 
     @Test("Assembles audio URLs from R2 base + id")
@@ -52,5 +58,31 @@ struct SimfileMapperTests {
                 == URL(string: "https://r2.example/bucket/song-1/bgm.ogg"))
         #expect(SimfileMapper.previewURL(base: base, songId: "song-1")
                 == URL(string: "https://r2.example/bucket/song-1/preview.mp3"))
+    }
+
+    @Test("Malformed updatedAt falls back to .distantPast (not Date())")
+    func testMalformedDateFallback() {
+        let song = SimfileMapper.makeServerSong(
+            from: SimfileDTO(
+                id: "bad-date", title: "T", artist: "A", bpm: 120, genre: nil, tags: [],
+                durationSeconds: nil, updatedAt: "not-a-date",
+                dtxFiles: [], fileKeys: []
+            )
+        )
+        #expect(song.lastUpdated == .distantPast)
+    }
+
+    @Test("Valid fractional ISO8601 date parses correctly")
+    func testValidFractionalDate() {
+        let song = SimfileMapper.makeServerSong(
+            from: SimfileDTO(
+                id: "good-date", title: "T", artist: "A", bpm: 120, genre: nil, tags: [],
+                durationSeconds: nil, updatedAt: "2026-01-15T10:30:00.123Z",
+                dtxFiles: [], fileKeys: []
+            )
+        )
+        let expected = ISO8601DateFormatter()
+        expected.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        #expect(song.lastUpdated == expected.date(from: "2026-01-15T10:30:00.123Z"))
     }
 }

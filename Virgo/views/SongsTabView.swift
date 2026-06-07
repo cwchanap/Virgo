@@ -165,5 +165,13 @@ struct SongsTabView: View {
                 }
             }
         }
+        .alert("Error", isPresented: Binding(
+            get: { serverSongService.errorMessage != nil },
+            set: { if !$0 { serverSongService.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(serverSongService.errorMessage ?? "")
+        }
     }
 }
