@@ -132,16 +132,21 @@ struct ServerChartModelTests {
 
     @Test("ServerChart stores fileURL and encoding")
     func testServerChartFileURLAndEncoding() async throws {
-        let chart = ServerChart(
-            difficulty: "hard",
-            difficultyLabel: "EXTREME",
-            level: 74,
-            filename: "ext.dtx",
-            size: 1234,
-            fileURL: "https://r2.example/song/ext.dtx",
-            fileEncoding: "SHIFT_JIS"
-        )
-        #expect(chart.fileURL == "https://r2.example/song/ext.dtx")
-        #expect(chart.fileEncoding == "SHIFT_JIS")
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = ServerChart(
+                difficulty: "hard",
+                difficultyLabel: "EXTREME",
+                level: 74,
+                filename: "ext.dtx",
+                size: 1234,
+                fileURL: "https://r2.example/song/ext.dtx",
+                fileEncoding: "SHIFT_JIS"
+            )
+            context.insert(chart)
+
+            #expect(chart.fileURL == "https://r2.example/song/ext.dtx")
+            #expect(chart.fileEncoding == "SHIFT_JIS")
+        }
     }
 }

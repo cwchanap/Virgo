@@ -216,11 +216,15 @@ struct ServerSongModelTests {
 
     @Test("ServerSong stores genre and durationSeconds")
     func testServerSongGenreAndDuration() async throws {
-        let song = ServerSong(
-            songId: "s1", title: "T", artist: "A", bpm: 120,
-            genre: "Rock", durationSeconds: 210
-        )
-        #expect(song.genre == "Rock")
-        #expect(song.durationSeconds == 210)
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let song = ServerSong(
+                songId: "s1", title: "T", artist: "A", bpm: 120,
+                genre: "Rock", durationSeconds: 210
+            )
+            context.insert(song)
+            #expect(song.genre == "Rock")
+            #expect(song.durationSeconds == 210)
+        }
     }
 }

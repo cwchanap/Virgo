@@ -16,12 +16,15 @@ final class ServerConfig {
 
     var graphQLEndpoint: URL {
         let raw = userDefaults.string(forKey: Self.graphQLEndpointKey) ?? Self.defaultEndpoint
-        return URL(string: raw) ?? URL(string: Self.defaultEndpoint)!
+        let validated = Self.normalized(raw) ?? Self.defaultEndpoint
+        return URL(string: validated) ?? URL(string: Self.defaultEndpoint)!
     }
 
     var r2BaseURL: URL? {
-        guard let raw = userDefaults.string(forKey: Self.r2BaseURLKey), !raw.isEmpty else { return nil }
-        return URL(string: raw)
+        guard let raw = userDefaults.string(forKey: Self.r2BaseURLKey),
+              !raw.isEmpty,
+              let normalized = Self.normalized(raw) else { return nil }
+        return URL(string: normalized)
     }
 
     func setGraphQLEndpoint(_ value: String) {

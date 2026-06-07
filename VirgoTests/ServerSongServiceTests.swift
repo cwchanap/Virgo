@@ -82,11 +82,6 @@ struct ServerSongServiceTests {
         }
     }
 
-    private func makeInMemoryContainer() throws -> ModelContainer {
-        let schema = Schema([ServerSong.self, ServerChart.self, Song.self, Chart.self, Note.self])
-        return try ModelContainer(for: schema, configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
-    }
-
     private func makeConfig(_ name: String, withR2: Bool) -> ServerConfig {
         let (defaults, _) = TestUserDefaults.makeIsolated(suiteName: name)
         if withR2 { defaults.set("https://r2.example", forKey: ServerConfig.r2BaseURLKey) }
@@ -163,15 +158,17 @@ struct ServerSongServiceTests {
 
     @Test("refreshCatalog populates cache from fetcher")
     func testServiceRefreshCatalog() async throws {
-        let container = try makeInMemoryContainer()
-        let fetcher = MockSimfileFetcher(all: [.stub(id: "x"), .stub(id: "y")])
-        let service = ServerSongService(cache: ServerSongCache(fetcher: fetcher, pageSize: 50))
-        service.setModelContext(ModelContext(container))
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let fetcher = MockSimfileFetcher(all: [.stub(id: "x"), .stub(id: "y")])
+            let service = ServerSongService(cache: ServerSongCache(fetcher: fetcher, pageSize: 50))
+            service.setModelContext(context)
 
-        await service.refreshCatalog()
+            await service.refreshCatalog()
 
-        let songs = await service.loadServerSongs()
-        #expect(Set(songs.map(\.songId)) == ["x", "y"])
+            let songs = await service.loadServerSongs()
+            #expect(Set(songs.map(\.songId)) == ["x", "y"])
+        }
     }
 
     @Test("refreshCatalog sets error message when cache refresh fails")

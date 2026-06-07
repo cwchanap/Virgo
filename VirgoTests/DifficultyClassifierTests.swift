@@ -18,5 +18,13 @@ struct DifficultyClassifierTests {
         #expect(DifficultyClassifier.classify(label: "???", level: 45) == .medium)
         #expect(DifficultyClassifier.classify(label: "???", level: 65) == .hard)
         #expect(DifficultyClassifier.classify(label: "???", level: 85) == .expert)
+
+        // Boundary edges: 35/55/75 are the first values of each higher bucket.
+        #expect(DifficultyClassifier.classify(label: "???", level: 34) == .easy)
+        #expect(DifficultyClassifier.classify(label: "???", level: 35) == .medium)
+        #expect(DifficultyClassifier.classify(label: "???", level: 54) == .medium)
+        #expect(DifficultyClassifier.classify(label: "???", level: 55) == .hard)
+        #expect(DifficultyClassifier.classify(label: "???", level: 74) == .hard)
+        #expect(DifficultyClassifier.classify(label: "???", level: 75) == .expert)
     }
 }
