@@ -1,4 +1,5 @@
 .env
+Virgo/Config/ServerEndpoints.env
 
 # Server DTX files (for testing only)
 server/dtx_files/
