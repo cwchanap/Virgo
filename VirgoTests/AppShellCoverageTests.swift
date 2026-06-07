@@ -68,7 +68,7 @@ struct AppShellCoverageTests {
 
     // MARK: - ContentStartupPolicy.shouldUsePreviewPlayer
 
-    @Test("shouldUsePreviewPlayer returns true for DTX Import genre with preview file")
+    @Test("shouldUsePreviewPlayer returns true for server-imported song with preview file")
     func testShouldUsePreviewPlayerTrueForDTXImportWithPreview() {
         let song = Song(
             title: "Test Song",
@@ -76,13 +76,14 @@ struct AppShellCoverageTests {
             bpm: 120,
             duration: "3:00",
             genre: "DTX Import",
-            timeSignature: .fourFour
+            timeSignature: .fourFour,
+            isServerImported: true
         )
         song.previewFilePath = "/some/preview.mp3"
         #expect(ContentStartupPolicy.shouldUsePreviewPlayer(for: song) == true)
     }
 
-    @Test("shouldUsePreviewPlayer returns false for non-DTX Import genre")
+    @Test("shouldUsePreviewPlayer returns false for non-server-imported song")
     func testShouldUsePreviewPlayerFalseForNonDTXImport() {
         let song = Song(
             title: "Rock Song",
@@ -90,12 +91,13 @@ struct AppShellCoverageTests {
             bpm: 140,
             duration: "3:30",
             genre: "Rock",
-            timeSignature: .fourFour
+            timeSignature: .fourFour,
+            isServerImported: false
         )
         #expect(ContentStartupPolicy.shouldUsePreviewPlayer(for: song) == false)
     }
 
-    @Test("shouldUsePreviewPlayer returns false for DTX Import genre without preview file")
+    @Test("shouldUsePreviewPlayer returns false for server-imported song without preview file")
     func testShouldUsePreviewPlayerFalseForDTXImportWithoutPreview() {
         let song = Song(
             title: "Test Song",
@@ -103,9 +105,25 @@ struct AppShellCoverageTests {
             bpm: 120,
             duration: "3:00",
             genre: "DTX Import",
-            timeSignature: .fourFour
+            timeSignature: .fourFour,
+            isServerImported: true
         )
         #expect(ContentStartupPolicy.shouldUsePreviewPlayer(for: song) == false)
+    }
+
+    @Test("shouldUsePreviewPlayer returns true for server-imported song with curated genre and preview file")
+    func testShouldUsePreviewPlayerTrueForServerImportedWithCuratedGenre() {
+        let song = Song(
+            title: "Curated Song",
+            artist: "Artist",
+            bpm: 120,
+            duration: "3:00",
+            genre: "Rock",
+            timeSignature: .fourFour,
+            isServerImported: true
+        )
+        song.previewFilePath = "/some/preview.mp3"
+        #expect(ContentStartupPolicy.shouldUsePreviewPlayer(for: song) == true)
     }
 
     // MARK: - VirgoAppLaunchBehavior.shouldDisableAnimations

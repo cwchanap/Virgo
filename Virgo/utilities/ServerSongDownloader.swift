@@ -81,7 +81,8 @@ class ServerSongDownloader {
             bpm: serverSong.bpm,
             duration: serverSong.durationSeconds.map(Self.formatDuration) ?? "3:30",
             genre: serverSong.genre ?? "DTX Import",
-            timeSignature: .fourFour
+            timeSignature: .fourFour,
+            isServerImported: true
         )
     }
 

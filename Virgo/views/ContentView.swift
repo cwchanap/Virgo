@@ -191,7 +191,8 @@ struct ContentView: View {
                 bpm: templateSong.bpm,
                 duration: templateSong.duration,
                 genre: "DTX Import",
-                timeSignature: templateSong.timeSignature
+                timeSignature: templateSong.timeSignature,
+                isServerImported: true
             )
             modelContext.insert(song)
             var seededCharts: [Chart] = []

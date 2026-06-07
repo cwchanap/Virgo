@@ -30,7 +30,7 @@ struct LibraryView: View {
         excluding hiddenSongIDs: Set<PersistentIdentifier> = []
     ) -> [Song] {
         songs.filter { song in
-            song.genre == "DTX Import" &&
+            song.isServerImported &&
                 !song.isDeleted &&
                 !hiddenSongIDs.contains(song.persistentModelID)
         }

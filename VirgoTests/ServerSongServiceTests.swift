@@ -433,7 +433,8 @@ struct ServerSongServiceTests {
                 artist: "Artist",
                 bpm: 120.0,
                 duration: "3:00",
-                genre: "DTX Import"
+                genre: "DTX Import",
+                isServerImported: true
             )
             context.insert(serverSong)
             context.insert(importedSong)

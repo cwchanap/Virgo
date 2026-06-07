@@ -96,7 +96,7 @@ struct SecondWaveCoverageTests {
         }
     }
 
-    @Test("DownloadedSongsView.downloadedSongs filters to DTX Import genre only")
+    @Test("DownloadedSongsView.downloadedSongs filters to server-imported songs only")
     func testDownloadedSongsViewFiltersNonDTXSongs() async throws {
         try await TestSetup.withTestSetup {
             let downloadedSong = makeDownloadedSong(title: "DTX Track")
@@ -106,7 +106,8 @@ struct SecondWaveCoverageTests {
                 bpm: 120,
                 duration: "3:00",
                 genre: "Rock",
-                timeSignature: .fourFour
+                timeSignature: .fourFour,
+                isServerImported: false
             )
             let serverSongService = ServerSongService()
             let audioPlaybackService = AudioPlaybackService(startPlayback: { _ in false })
@@ -123,7 +124,7 @@ struct SecondWaveCoverageTests {
                 onSaveTap: { _ in }
             )
 
-            // Assert real filtering behaviour: only the DTX Import song passes the predicate
+            // Assert real filtering behaviour: only the server-imported song passes the predicate
             #expect(view.downloadedSongs.count == 1)
             #expect(view.downloadedSongs.first?.title == "DTX Track")
 

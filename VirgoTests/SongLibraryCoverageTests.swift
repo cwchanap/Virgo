@@ -167,7 +167,7 @@ struct SongLibraryCoverageTests {
         }
     }
 
-    @Test("LibraryView filters songs by DTX Import genre")
+    @Test("LibraryView filters songs by server-imported flag")
     func testLibraryViewFiltersByGenre() async throws {
         try await TestSetup.withTestSetup {
             let dtxSong1 = SwiftUICoverageFixtures.makeSong(
@@ -180,14 +180,14 @@ struct SongLibraryCoverageTests {
                 genre: "DTX Import",
                 charts: [SwiftUICoverageFixtures.makeChart(difficulty: .hard, level: 60)]
             )
-            let rockSong = SwiftUICoverageFixtures.makeSong(title: "Rock Anthem", genre: "Rock")
-            let popSong = SwiftUICoverageFixtures.makeSong(title: "Pop Hit", genre: "Pop")
+            let rockSong = SwiftUICoverageFixtures.makeSong(title: "Rock Anthem", genre: "Rock", isServerImported: false)
+            let popSong = SwiftUICoverageFixtures.makeSong(title: "Pop Hit", genre: "Pop", isServerImported: false)
 
             let allSongs = [dtxSong1, dtxSong2, rockSong, popSong]
 
-            let filtered = allSongs.filter { $0.genre == "DTX Import" }
+            let filtered = allSongs.filter { $0.isServerImported }
             #expect(filtered.count == 2)
-            #expect(filtered.allSatisfy { $0.genre == "DTX Import" })
+            #expect(filtered.allSatisfy { $0.isServerImported })
             let filteredTitles = Set(filtered.map(\.title))
             #expect(filteredTitles == ["DTX Track One", "DTX Track Two"])
             #expect(!filtered.contains { $0.genre == "Rock" || $0.genre == "Pop" })
@@ -219,10 +219,10 @@ struct SongLibraryCoverageTests {
                     )
                 ]
             )
-            let nonDownloadedSong = SwiftUICoverageFixtures.makeSong(title: "Streaming Only", genre: "Rock")
+            let nonDownloadedSong = SwiftUICoverageFixtures.makeSong(title: "Streaming Only", genre: "Rock", isServerImported: false)
             let allSongs = [downloadedSong, nonDownloadedSong]
 
-            let downloadedSongs = allSongs.filter { $0.genre == "DTX Import" }
+            let downloadedSongs = allSongs.filter { $0.isServerImported }
             #expect(downloadedSongs.count == 1)
             #expect(downloadedSongs.first?.title == "Stored Groove")
             #expect(!downloadedSongs.contains { $0.title == "Streaming Only" })
@@ -246,7 +246,7 @@ struct SongLibraryCoverageTests {
                 title: "Deleted Download",
                 genre: "DTX Import"
             )
-            let streamingSong = SwiftUICoverageFixtures.makeSong(title: "Streaming Only", genre: "Rock")
+            let streamingSong = SwiftUICoverageFixtures.makeSong(title: "Streaming Only", genre: "Rock", isServerImported: false)
 
             let downloadedSongs = LibraryView.downloadedSongs(
                 from: [visibleSong, hiddenSong, streamingSong],

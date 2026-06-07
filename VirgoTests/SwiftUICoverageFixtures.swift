@@ -55,6 +55,7 @@ enum SwiftUICoverageFixtures {
         isPlaying: Bool = false,
         playCount: Int = 0,
         isSaved: Bool = true,
+        isServerImported: Bool = true,
         bgmFilePath: String? = nil,
         previewFilePath: String? = nil
     ) -> Song {
@@ -69,6 +70,7 @@ enum SwiftUICoverageFixtures {
             isPlaying: isPlaying,
             playCount: playCount,
             isSaved: isSaved,
+            isServerImported: isServerImported,
             bgmFilePath: bgmFilePath,
             previewFilePath: previewFilePath
         )

@@ -30,15 +30,15 @@ struct DownloadedSongsView: View {
     let onPlayTap: (Song) -> Void
     let onSaveTap: (Song) -> Void
 
-    // Filter to show only downloaded songs (DTX Import genre)
+    // Filter to show only downloaded songs (server-imported)
     var downloadedSongs: [Song] {
-        songs.filter { $0.genre == "DTX Import" }
+        songs.filter { $0.isServerImported }
     }
 
     // Helper function to determine if a song is currently playing
     private func isPlaying(_ song: Song) -> Bool {
-        // Check if playing via preview audio (for DTX Import songs with preview)
-        if song.genre == "DTX Import" && song.previewFilePath != nil {
+        // Check if playing via preview audio (for server-imported songs with preview)
+        if song.isServerImported && song.previewFilePath != nil {
             return audioPlaybackService.isPlaying && audioPlaybackService.currentlyPlayingSong == song.title
         }
         // Check if playing via regular playback service

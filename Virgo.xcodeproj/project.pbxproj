@@ -134,6 +134,7 @@
 			name = Virgo;
 			packageProductDependencies = (
 				A90110000000000000000002 /* Apollo */,
+				A90110000000000000000003 /* ApolloAPI */,
 			);
 			productName = Virgo;
 			productReference = 24829CE72E1217CA00F99FD7 /* Virgo.app */;
@@ -623,6 +624,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A90110000000000000000001 /* XCRemoteSwiftPackageReference "apollo-ios" */;
 			productName = Apollo;
+		};
+		A90110000000000000000003 /* ApolloAPI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A90110000000000000000001 /* XCRemoteSwiftPackageReference "apollo-ios" */;
+			productName = ApolloAPI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
