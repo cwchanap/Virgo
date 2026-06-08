@@ -27,12 +27,17 @@ final class MockSimfileFetcher: SimfileFetching, @unchecked Sendable {
 
 extension SimfileDTO {
     /// Convenience builder for tests.
-    static func stub(id: String, title: String = "T", fileKeys: [String] = []) -> SimfileDTO {
+    static func stub(
+        id: String,
+        title: String = "T",
+        fileKeys: [String] = [],
+        encoding: SimfileEncoding = .shiftJIS
+    ) -> SimfileDTO {
         SimfileDTO(
             id: id, title: title, artist: "A", bpm: 120, genre: nil, tags: [],
             durationSeconds: nil, updatedAt: "2026-06-01T00:00:00Z",
             dtxFiles: [DtxFileDTO(label: "BASIC", level: 30, fileURL: "https://r2/\(id)/bas.dtx",
-                                  fileSizeBytes: 100, encoding: .shiftJIS)],
+                                  fileSizeBytes: 100, encoding: encoding)],
             fileKeys: fileKeys
         )
     }

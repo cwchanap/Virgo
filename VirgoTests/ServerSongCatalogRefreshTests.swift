@@ -83,6 +83,106 @@ struct ServerSongCatalogRefreshTests {
         }
     }
 
+    @Test("Backfills empty fileURL on legacy charts without clobbering user state")
+    func testBackfillLegacyChartURLs() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            // Seed a legacy "a" entry: downloaded, with a chart whose fileURL
+            // predated the column (""), as SwiftData lightweight migration would
+            // produce for REST-catalog upgraders.
+            let legacyChart = ServerChart(
+                difficulty: "basic",
+                difficultyLabel: "BASIC",
+                level: 30,
+                filename: "bas.dtx",
+                size: 100,
+                fileURL: "",
+                fileEncoding: "SHIFT_JIS"
+            )
+            let legacy = ServerSong(
+                songId: "a",
+                title: "OLD TITLE",
+                artist: "A",
+                bpm: 120,
+                charts: [legacyChart],
+                isDownloaded: true
+            )
+            // Matching local Song so refreshDownloadStatus reconciles isDownloaded
+            // to true (mirrors testAdditiveAndPrune); isolates the backfill check
+            // from the download-status reconciliation path.
+            let localSong = Song(title: "OLD TITLE", artist: "A", bpm: 120,
+                                 duration: "3:30", genre: "DTX Import")
+            context.insert(legacy); context.insert(legacyChart); context.insert(localSong)
+            try context.save()
+
+            let fetcher = MockSimfileFetcher(all: [.stub(id: "a", title: "NEW TITLE")])
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
+            try await cache.refreshCatalog(modelContext: context)
+
+            let songs = try context.fetch(FetchDescriptor<ServerSong>())
+            let songA = try #require(songs.first { $0.songId == "a" })
+            // fileURL backfilled from the DTO (download would otherwise throw invalidChartURL).
+            #expect(songA.charts.first?.fileURL == "https://r2/a/bas.dtx")
+            #expect(songA.charts.first?.fileEncoding == "SHIFT_JIS")
+            // Additive contract preserved: existing entry not replaced.
+            #expect(songA.title == "OLD TITLE")
+            #expect(songA.isDownloaded == true)
+        }
+    }
+
+    @Test("Backfills fileEncoding alongside fileURL when DTO differs")
+    func testBackfillLegacyChartEncoding() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            // Legacy chart carries the migration default ("SHIFT_JIS"); the DTO
+            // reports UTF_8. Backfill must correct both fileURL and fileEncoding.
+            let legacyChart = ServerChart(
+                difficulty: "basic", difficultyLabel: "BASIC", level: 30,
+                filename: "bas.dtx", size: 100, fileURL: "", fileEncoding: "SHIFT_JIS"
+            )
+            let legacy = ServerSong(
+                songId: "a", title: "OLD", artist: "A", bpm: 120,
+                charts: [legacyChart], isDownloaded: false
+            )
+            context.insert(legacy); context.insert(legacyChart)
+            try context.save()
+
+            let fetcher = MockSimfileFetcher(all: [.stub(id: "a", encoding: .utf8)])
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
+            try await cache.refreshCatalog(modelContext: context)
+
+            let songA = try context.fetch(FetchDescriptor<ServerSong>()).first { $0.songId == "a" }
+            let chart = try #require(songA?.charts.first)
+            #expect(chart.fileURL == "https://r2/a/bas.dtx")
+            #expect(chart.fileEncoding == "UTF_8")
+        }
+    }
+
+    @Test("Leaves charts with a fileURL untouched (no double-backfill)")
+    func testNoBackfillWhenFileURLPresent() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = ServerChart(
+                difficulty: "basic", difficultyLabel: "BASIC", level: 30,
+                filename: "bas.dtx", size: 100,
+                fileURL: "https://example/legacy.dtx", fileEncoding: "SHIFT_JIS"
+            )
+            let song = ServerSong(
+                songId: "a", title: "OLD", artist: "A", bpm: 120, charts: [chart]
+            )
+            context.insert(song); context.insert(chart)
+            try context.save()
+
+            let fetcher = MockSimfileFetcher(all: [.stub(id: "a")])
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
+            try await cache.refreshCatalog(modelContext: context)
+
+            let songA = try context.fetch(FetchDescriptor<ServerSong>()).first { $0.songId == "a" }
+            // Non-empty fileURL is preserved — backfill must not overwrite it.
+            #expect(songA?.charts.first?.fileURL == "https://example/legacy.dtx")
+        }
+    }
+
     @Test("Propagates fetch errors from refreshCatalog")
     func testRefreshCatalogThrowsOnFetchError() async throws {
         try await TestSetup.withTestSetup {
