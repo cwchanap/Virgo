@@ -50,6 +50,17 @@ class ServerSongCache {
         let existing = try modelContext.fetch(FetchDescriptor<ServerSong>())
         let existingIds = Set(existing.map(\.songId))
 
+        // Backfill charts on legacy entries whose `fileURL` column was defaulted
+        // to "" by SwiftData lightweight migration (REST-catalog era). Without
+        // this, `downloadAndImportSong` throws `invalidChartURL` for every chart
+        // and the song can never be downloaded. Only charts missing a URL are
+        // touched; other fields and user state (isDownloaded, etc.) are preserved.
+        //
+        // Must run BEFORE pruning: `existing` still holds valid SwiftData
+        // references at this point. After pruning, deleted objects in the
+        // array would fault or crash when accessing `song.charts`.
+        backfillLegacyChartURLs(existing: existing, dtos: serverDTOs)
+
         // Only prune stale ids when the page-walk completed fully. An incomplete
         // walk (e.g. a transient empty page mid-walk) must NOT trigger destructive
         // deletes of songs that may still be valid on the server.
@@ -62,13 +73,6 @@ class ServerSongCache {
                 "Catalog refresh incomplete (\(serverDTOs.count) fetched); skipping prune to avoid data loss"
             )
         }
-
-        // Backfill charts on legacy entries whose `fileURL` column was defaulted
-        // to "" by SwiftData lightweight migration (REST-catalog era). Without
-        // this, `downloadAndImportSong` throws `invalidChartURL` for every chart
-        // and the song can never be downloaded. Only charts missing a URL are
-        // touched; other fields and user state (isDownloaded, etc.) are preserved.
-        backfillLegacyChartURLs(existing: existing, dtos: serverDTOs)
 
         // Insert only new ids; never overwrite existing entries.
         for dto in serverDTOs where !existingIds.contains(dto.id) {
