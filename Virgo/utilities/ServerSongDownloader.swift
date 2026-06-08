@@ -5,7 +5,7 @@ import SwiftData
 enum ServerSongImportError: LocalizedError {
     case invalidChartURL(String)
     case decodeFailed(String)
-    case allChartsFailed(reason: String)
+    case chartFailure(reason: String)
 
     var errorDescription: String? {
         switch self {
@@ -13,8 +13,8 @@ enum ServerSongImportError: LocalizedError {
             return "Invalid chart URL: \(url)"
         case .decodeFailed(let filename):
             return "Failed to decode chart file: \(filename)"
-        case .allChartsFailed(let reason):
-            return "All charts failed to import: \(reason)"
+        case .chartFailure(let reason):
+            return "Chart import failed: \(reason)"
         }
     }
 }
@@ -88,21 +88,16 @@ class ServerSongDownloader {
 
     @MainActor
     private func processCharts(for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
-        var successCount = 0
-        var lastError = "Unknown error"
         for (index, serverChart) in serverSong.charts.enumerated() {
             if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
             do {
                 try await processChart(serverChart, for: song, in: context)
-                successCount += 1
             } catch {
-                lastError = error.localizedDescription
                 Logger.warning("Failed to process chart \(serverChart.filename): \(error.localizedDescription)")
+                throw ServerSongImportError.chartFailure(
+                    reason: "Chart '\(serverChart.filename)' failed: \(error.localizedDescription)"
+                )
             }
-        }
-        // Abort if every chart failed — never save a chartless song as "downloaded".
-        guard successCount > 0 || serverSong.charts.isEmpty else {
-            throw ServerSongImportError.allChartsFailed(reason: lastError)
         }
     }
 
