@@ -183,6 +183,38 @@ struct ServerSongCatalogRefreshTests {
         }
     }
 
+    @Test("Backfills legacy charts AND prunes stale entries in the same refresh without crash")
+    func testBackfillAndPruneSameRefresh() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            // Song "a": legacy chart with empty fileURL — needs backfill.
+            let legacyChart = ServerChart(
+                difficulty: "basic", difficultyLabel: "BASIC", level: 30,
+                filename: "bas.dtx", size: 100, fileURL: "", fileEncoding: "SHIFT_JIS"
+            )
+            let legacy = ServerSong(
+                songId: "a", title: "LEGACY", artist: "A", bpm: 120,
+                charts: [legacyChart], isDownloaded: false
+            )
+            // Song "z": stale — absent from server, will be pruned.
+            let stale = ServerSong(songId: "z", title: "STALE", artist: "Z", bpm: 120)
+            context.insert(legacy); context.insert(legacyChart); context.insert(stale)
+            try context.save()
+
+            // Server only returns "a"; "z" is stale and should be pruned.
+            let fetcher = MockSimfileFetcher(all: [.stub(id: "a")])
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
+            // Must not crash when backfilling "a" and pruning "z" in one pass.
+            try await cache.refreshCatalog(modelContext: context)
+
+            let songs = try context.fetch(FetchDescriptor<ServerSong>())
+            let byId = Dictionary(uniqueKeysWithValues: songs.map { ($0.songId, $0) })
+            #expect(Set(byId.keys) == ["a"], "Only 'a' should remain; 'z' pruned")
+            let chart = try #require(byId["a"]?.charts.first)
+            #expect(chart.fileURL == "https://r2/a/bas.dtx", "Legacy chart backfilled")
+        }
+    }
+
     @Test("Propagates fetch errors from refreshCatalog")
     func testRefreshCatalogThrowsOnFetchError() async throws {
         try await TestSetup.withTestSetup {
