@@ -148,8 +148,8 @@ struct ServerSongDownloaderTests {
         }
     }
 
-    @Test("downloadAndImportSong succeeds with partial chart failure")
-    func testDownloadAndImportSongPartialChartFailure() async throws {
+    @Test("downloadAndImportSong fails when any chart fails to process")
+    func testDownloadAndImportSongFailsOnPartialChartFailure() async throws {
         let mock = MockFileDownloader()
         let dtx = dtxData("#TITLE: Partial\n#ARTIST: Tester\n#BPM: 150\n#DLEVEL: 50\n#03113: 01000000")
         mock.responses["\(r2Base)/partial-fail/good.dtx"] = dtx
@@ -167,15 +167,19 @@ struct ServerSongDownloaderTests {
                 charts: [goodChart, brokenChart], isDownloaded: false
             )
 
-            let (success, _) = await downloader.downloadAndImportSong(serverSong, container: container)
-            #expect(success == true)
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success == false)
+            #expect(errorMessage != nil)
 
-            // Only the good chart should be imported.
+            // No charts or songs should be persisted when any chart fails.
             let verificationContext = ModelContext(container)
             let allCharts = try verificationContext.fetch(FetchDescriptor<Chart>())
             let importedCharts = allCharts.filter { $0.song?.title == "Partial" }
-            #expect(importedCharts.count == 1)
-            #expect(importedCharts.first?.difficulty == .easy)
+            #expect(importedCharts.isEmpty)
+
+            let allSongs = try verificationContext.fetch(FetchDescriptor<Song>())
+            let importedSong = allSongs.first { $0.title == "Partial" && $0.artist == "Tester" }
+            #expect(importedSong == nil)
         }
     }
 
