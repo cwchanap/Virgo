@@ -44,7 +44,7 @@ struct ServerSongCatalogRefreshTests {
             // Seed an existing entry "a" (downloaded, with a matching local Song so the
             // download-status reconciliation keeps it downloaded) and a stale "z".
             let existing = ServerSong(songId: "a", title: "OLD", artist: "A", bpm: 120, isDownloaded: true)
-            let localSong = Song(title: "OLD", artist: "A", bpm: 120, duration: "3:30", genre: "DTX Import")
+            let localSong = Song(title: "OLD", artist: "A", bpm: 120, duration: "3:30", genre: "DTX Import", isServerImported: true)
             let stale = ServerSong(songId: "z", title: "Z", artist: "A", bpm: 120)
             context.insert(existing); context.insert(localSong); context.insert(stale)
             try context.save()
@@ -111,7 +111,7 @@ struct ServerSongCatalogRefreshTests {
             // to true (mirrors testAdditiveAndPrune); isolates the backfill check
             // from the download-status reconciliation path.
             let localSong = Song(title: "OLD TITLE", artist: "A", bpm: 120,
-                                 duration: "3:30", genre: "DTX Import")
+                                 duration: "3:30", genre: "DTX Import", isServerImported: true)
             context.insert(legacy); context.insert(legacyChart); context.insert(localSong)
             try context.save()
 

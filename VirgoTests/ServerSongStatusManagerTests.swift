@@ -130,6 +130,7 @@ struct ServerSongStatusManagerTests {
                 bpm: 140.0,
                 duration: "4:00",
                 genre: "DTX Import",
+                isServerImported: true,
                 bgmFilePath: "/tmp/test-match.ogg",
                 previewFilePath: "/tmp/test-match.mp3"
             )
@@ -399,6 +400,7 @@ struct ServerSongStatusManagerTests {
                 bpm: 120.0,
                 duration: "2:00",
                 genre: "DTX Import",
+                isServerImported: true,
                 bgmFilePath: "/tmp/refresh-failure.ogg",
                 previewFilePath: "/tmp/refresh-failure.mp3"
             )
@@ -462,6 +464,46 @@ struct ServerSongStatusManagerTests {
                 $0.title == "PruneDL" && $0.artist == "X" && $0.isServerImported
             }
             #expect(!orphanedLocal, "Downloaded local Song must also be deleted")
+        }
+    }
+
+    @Test("refreshDownloadStatus ignores local songs that are not server-imported")
+    func testRefreshDownloadStatusIgnoresNonServerImportedSongs() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let manager = ServerSongStatusManager()
+
+            // Local/sample song sharing title+artist but NOT server-imported
+            let localSong = Song(
+                title: "Local Only",
+                artist: "Local Artist",
+                bpm: 100.0,
+                duration: "3:00",
+                genre: "Rock",
+                isServerImported: false,
+                bgmFilePath: "/tmp/local-only.ogg",
+                previewFilePath: "/tmp/local-only.mp3"
+            )
+            context.insert(localSong)
+
+            let serverSong = ServerSong(
+                songId: "local-only-server",
+                title: "Local Only",
+                artist: "Local Artist",
+                bpm: 100.0,
+                isDownloaded: false,
+                bgmDownloaded: false,
+                previewDownloaded: false
+            )
+            context.insert(serverSong)
+            try context.save()
+
+            await manager.refreshDownloadStatus(modelContext: context)
+
+            // Must remain false — non-server-imported song must not match
+            #expect(serverSong.isDownloaded == false)
+            #expect(serverSong.bgmDownloaded == false)
+            #expect(serverSong.previewDownloaded == false)
         }
     }
 }
