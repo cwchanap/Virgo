@@ -247,16 +247,20 @@ class ServerSongStatusManager: @unchecked Sendable {
 
     private func isAlreadyDownloaded(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {
         return localSongs.contains { localSong in
-            // Match by title and artist (case-insensitive)
-            localSong.title.lowercased() == serverSong.title.lowercased() &&
+            // Only match server-imported songs to avoid false positives from
+            // local/sample songs that share the same title and artist.
+            localSong.isServerImported &&
+                localSong.title.lowercased() == serverSong.title.lowercased() &&
                 localSong.artist.lowercased() == serverSong.artist.lowercased()
         }
     }
 
     private func hasBGMFile(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {
         return localSongs.contains { localSong in
-            // Match by title and artist (case-insensitive) and has BGM file
-            localSong.title.lowercased() == serverSong.title.lowercased() &&
+            // Only match server-imported songs to avoid false positives from
+            // local/sample songs that share the same title and artist.
+            localSong.isServerImported &&
+                localSong.title.lowercased() == serverSong.title.lowercased() &&
                 localSong.artist.lowercased() == serverSong.artist.lowercased() &&
                 localSong.bgmFilePath != nil
         }
@@ -264,8 +268,10 @@ class ServerSongStatusManager: @unchecked Sendable {
 
     private func hasPreviewFile(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {
         return localSongs.contains { localSong in
-            // Match by title and artist (case-insensitive) and has preview file
-            localSong.title.lowercased() == serverSong.title.lowercased() &&
+            // Only match server-imported songs to avoid false positives from
+            // local/sample songs that share the same title and artist.
+            localSong.isServerImported &&
+                localSong.title.lowercased() == serverSong.title.lowercased() &&
                 localSong.artist.lowercased() == serverSong.artist.lowercased() &&
                 localSong.previewFilePath != nil
         }
