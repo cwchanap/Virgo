@@ -105,6 +105,7 @@ struct ServerSongDownloaderTests {
                 $0.title == "Multi Diff" && $0.artist == "Tester" && $0.genre == "DTX Import"
             }
             #expect(importedSong?.isServerImported == true, "Downloaded song must be marked as server-imported")
+            #expect(importedSong?.serverSongId == "multi-diff", "Downloaded song must persist the server songId")
             #expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.ogg")
             #expect(importedSong?.previewFilePath == "/tmp/mock-preview.mp3")
 
@@ -208,6 +209,45 @@ struct ServerSongDownloaderTests {
             let importedSong = songs.first { $0.title == "Empty Notes" && $0.artist == "Tester" }
             #expect(importedSong != nil)
             #expect(importedSong?.duration == "1:00")
+        }
+    }
+
+    @Test("downloadAndImportSong rejects duplicate by serverSongId even with different title")
+    func testDuplicateDetectionByServerSongId() async throws {
+        let mock = MockFileDownloader()
+        let config = makeConfig("ServerSongDownloaderTests.dupId.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let context = TestContainer.shared.context
+
+            // Pre-existing song with serverSongId "dup-test" but different title
+            let existing = Song(
+                title: "Original Title",
+                artist: "Original Artist",
+                bpm: 120.0,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "dup-test"
+            )
+            context.insert(existing)
+            try context.save()
+
+            // Attempt to import a different server song with same serverSongId
+            let serverSong = ServerSong(
+                songId: "dup-test",
+                title: "Different Title",
+                artist: "Different Artist",
+                bpm: 140.0,
+                charts: [],
+                isDownloaded: false
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success == false)
+            #expect(errorMessage == "Song already exists in database")
         }
     }
 }

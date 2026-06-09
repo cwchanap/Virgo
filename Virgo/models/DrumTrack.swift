@@ -100,6 +100,7 @@ final class Song {
     var playCount: Int
     var isSaved: Bool = false
     var isServerImported: Bool = false // True for songs downloaded from the server
+    var serverSongId: String? // Stable ID from the server catalog (folder name). Used for download status, deletion, and duplicate checks.
     var bgmFilePath: String? // Path to downloaded BGM audio file
     var previewFilePath: String? // Path to downloaded preview audio file
     @Relationship(deleteRule: .cascade, inverse: \Chart.song)
@@ -160,6 +161,7 @@ final class Song {
         playCount: Int = 0,
         isSaved: Bool = false,
         isServerImported: Bool = false,
+        serverSongId: String? = nil,
         bgmFilePath: String? = nil,
         previewFilePath: String? = nil
     ) {
@@ -175,6 +177,7 @@ final class Song {
         self.playCount = playCount
         self.isSaved = isSaved
         self.isServerImported = isServerImported
+        self.serverSongId = serverSongId
         self.bgmFilePath = bgmFilePath
         self.previewFilePath = previewFilePath
     }
