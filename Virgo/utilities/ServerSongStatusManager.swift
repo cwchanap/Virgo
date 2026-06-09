@@ -170,6 +170,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         do {
             try saveContext(modelContext)
         } catch {
+            modelContext.rollback()
             Logger.error("Failed to persist pruned song deletion: \(error)")
             return
         }
