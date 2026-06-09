@@ -38,6 +38,7 @@ class ServerSongDownloader {
     @MainActor
     func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
         let context = ModelContext(container)
+        var savedFilePaths: [String] = []
         do {
             if try songAlreadyExists(serverSong, in: context) {
                 return (false, "Song already exists in database")
@@ -45,11 +46,18 @@ class ServerSongDownloader {
             let song = createSong(from: serverSong)
             try await processCharts(for: song, from: serverSong, in: context)
             await downloadOptionalFiles(for: song, serverSong: serverSong)
+            // Track saved file paths so we can clean them up if the database save fails
+            if let bgmPath = song.bgmFilePath { savedFilePaths.append(bgmPath) }
+            if let previewPath = song.previewFilePath { savedFilePaths.append(previewPath) }
             context.insert(song)
             try context.save()
             return (true, nil)
         } catch {
             context.rollback()
+            // Delete any audio files that were written before the database save failed
+            for path in savedFilePaths {
+                fileManager.deleteBGMFile(at: path) // deleteBGMFile deletes any file at path
+            }
             return (false, "Import failed: \(error.localizedDescription)")
         }
     }
@@ -68,9 +76,13 @@ class ServerSongDownloader {
     @MainActor
     private func songAlreadyExists(_ serverSong: ServerSong, in context: ModelContext) throws -> Bool {
         let existing = try context.fetch(FetchDescriptor<Song>())
-        return existing.contains {
-            $0.title.lowercased() == serverSong.title.lowercased() &&
-            $0.artist.lowercased() == serverSong.artist.lowercased()
+        return existing.contains { song in
+            // Prefer stable serverSongId match; fall back to title/artist for legacy data
+            if let songServerId = song.serverSongId {
+                return songServerId == serverSong.songId
+            }
+            return song.title.lowercased() == serverSong.title.lowercased() &&
+                song.artist.lowercased() == serverSong.artist.lowercased()
         }
     }
 
@@ -82,7 +94,8 @@ class ServerSongDownloader {
             duration: serverSong.durationSeconds.map(Self.formatDuration) ?? "3:30",
             genre: serverSong.genre ?? "DTX Import",
             timeSignature: .fourFour,
-            isServerImported: true
+            isServerImported: true,
+            serverSongId: serverSong.songId
         )
     }
 

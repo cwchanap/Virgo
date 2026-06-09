@@ -538,4 +538,160 @@ struct ServerSongStatusManagerTests {
             #expect(serverSong.previewDownloaded == false)
         }
     }
+
+    // MARK: - serverSongId-based matching
+
+    @Test("deleteDownloadedSong uses serverSongId to match songs with same title/artist")
+    func testDeleteDownloadedSongUsesServerSongIdMatching() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let manager = ServerSongStatusManager()
+
+            // Two server songs with identical title/artist but different songIds
+            let serverSongA = ServerSong(
+                songId: "song-a-id",
+                title: "Same Title",
+                artist: "Same Artist",
+                bpm: 120.0,
+                isDownloaded: true
+            )
+            let serverSongB = ServerSong(
+                songId: "song-b-id",
+                title: "Same Title",
+                artist: "Same Artist",
+                bpm: 130.0,
+                isDownloaded: true
+            )
+            context.insert(serverSongA)
+            context.insert(serverSongB)
+
+            // Local songs imported with serverSongId — only songA should be deleted
+            let localSongA = Song(
+                title: "Same Title",
+                artist: "Same Artist",
+                bpm: 120.0,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "song-a-id"
+            )
+            let localSongB = Song(
+                title: "Same Title",
+                artist: "Same Artist",
+                bpm: 130.0,
+                duration: "3:30",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "song-b-id"
+            )
+            context.insert(localSongA)
+            context.insert(localSongB)
+            try context.save()
+
+            let success = await manager.deleteDownloadedSong(serverSongA, modelContext: context)
+
+            #expect(success)
+            #expect(serverSongA.isDownloaded == false)
+            #expect(serverSongB.isDownloaded == true)
+            TestAssertions.assertDeleted(localSongA, in: context)
+            TestAssertions.assertNotDeleted(localSongB, in: context)
+        }
+    }
+
+    @Test("refreshDownloadStatus uses serverSongId for matching when available")
+    func testRefreshDownloadStatusUsesServerSongIdMatching() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let manager = ServerSongStatusManager()
+
+            // Server songs with same title/artist but different IDs
+            let serverA = ServerSong(
+                songId: "server-a",
+                title: "Identical",
+                artist: "Identical Artist",
+                bpm: 120.0,
+                isDownloaded: false,
+                bgmDownloaded: false,
+                previewDownloaded: false
+            )
+            let serverB = ServerSong(
+                songId: "server-b",
+                title: "Identical",
+                artist: "Identical Artist",
+                bpm: 130.0,
+                isDownloaded: false,
+                bgmDownloaded: false,
+                previewDownloaded: false
+            )
+            context.insert(serverA)
+            context.insert(serverB)
+
+            // Only serverA has a local import
+            let localA = Song(
+                title: "Identical",
+                artist: "Identical Artist",
+                bpm: 120.0,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "server-a",
+                bgmFilePath: "/tmp/a-bgm.ogg",
+                previewFilePath: "/tmp/a-preview.mp3"
+            )
+            context.insert(localA)
+            try context.save()
+
+            await manager.refreshDownloadStatus(modelContext: context)
+
+            // Only serverA should be marked as downloaded
+            #expect(serverA.isDownloaded == true)
+            #expect(serverA.bgmDownloaded == true)
+            #expect(serverA.previewDownloaded == true)
+
+            #expect(serverB.isDownloaded == false)
+            #expect(serverB.bgmDownloaded == false)
+            #expect(serverB.previewDownloaded == false)
+        }
+    }
+
+    @Test("deleteLocalSong clears all server song status flags including bgm and preview")
+    func testDeleteLocalSongClearsAllStatusFlags() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let container = TestContainer.shared.container
+            let manager = ServerSongStatusManager()
+
+            let serverSong = ServerSong(
+                songId: "flag-test-id",
+                title: "Flag Test",
+                artist: "Flag Artist",
+                bpm: 120.0,
+                isDownloaded: true,
+                bgmDownloaded: true,
+                previewDownloaded: true
+            )
+            context.insert(serverSong)
+
+            let localSong = Song(
+                title: "Flag Test",
+                artist: "Flag Artist",
+                bpm: 120.0,
+                duration: "2:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "flag-test-id"
+            )
+            context.insert(localSong)
+            try context.save()
+
+            let success = await manager.deleteLocalSong(localSong, container: container)
+            #expect(success)
+
+            let verificationContext = ModelContext(container)
+            let updatedServer = try fetchServerSong(songId: "flag-test-id", context: verificationContext)
+            #expect(updatedServer?.isDownloaded == false)
+            #expect(updatedServer?.bgmDownloaded == false)
+            #expect(updatedServer?.previewDownloaded == false)
+        }
+    }
 }

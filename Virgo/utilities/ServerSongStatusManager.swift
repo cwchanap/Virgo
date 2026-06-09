@@ -22,12 +22,11 @@ class ServerSongStatusManager: @unchecked Sendable {
             let descriptor = FetchDescriptor<Song>()
             let allSongs = try modelContext.fetch(descriptor)
 
-            // Only delete songs that match title/artist AND were imported from the server.
+            // Only delete songs that match the server song identity AND were imported from the server.
+            // Prefer stable serverSongId match; fall back to title/artist for legacy data.
             // This prevents deleting sample data or other local songs.
             let songsToDelete = allSongs.filter { song in
-                song.title.lowercased() == serverSong.title.lowercased() &&
-                    song.artist.lowercased() == serverSong.artist.lowercased() &&
-                    song.isServerImported
+                song.isServerImported && matchesServerSong(song, serverSong: serverSong)
             }
 
             let associatedFilePaths = songsToDelete.map { song in
@@ -62,6 +61,7 @@ class ServerSongStatusManager: @unchecked Sendable {
     func deleteLocalSong(_ song: Song, container: ModelContainer) async -> Bool {
         let songTitle = song.title.lowercased()
         let songArtist = song.artist.lowercased()
+        let songServerSongId = song.serverSongId
         let songId = song.persistentModelID
 
         return await Task.detached {
@@ -79,6 +79,7 @@ class ServerSongStatusManager: @unchecked Sendable {
                 _ = try self.updateServerSongStatus(
                     songTitle: songTitle,
                     songArtist: songArtist,
+                    songServerSongId: songServerSongId,
                     songId: songId,
                     context: backgroundContext
                 )
@@ -212,6 +213,7 @@ class ServerSongStatusManager: @unchecked Sendable {
     private func updateServerSongStatus(
         songTitle: String,
         songArtist: String,
+        songServerSongId: String?,
         songId: PersistentIdentifier,
         context: ModelContext
     ) throws -> Bool {
@@ -220,19 +222,28 @@ class ServerSongStatusManager: @unchecked Sendable {
 
         var hasUpdates = false
         for serverSong in allServerSongs {
-            if serverSong.title.lowercased() == songTitle &&
-                serverSong.artist.lowercased() == songArtist &&
-                serverSong.isDownloaded {
+            let matchesServerSong = matchesServerSongByServerSongId(
+                serverSongId: serverSong.songId,
+                songServerSongId: songServerSongId,
+                serverSongTitle: serverSong.title,
+                serverSongArtist: serverSong.artist,
+                songTitle: songTitle,
+                songArtist: songArtist
+            )
 
+            if matchesServerSong && serverSong.isDownloaded {
                 let hasOtherMatchingSongs = try checkForOtherMatchingSongs(
                     songTitle: songTitle,
                     songArtist: songArtist,
+                    songServerSongId: songServerSongId,
                     excludingSongId: songId,
                     context: context
                 )
 
                 if !hasOtherMatchingSongs {
                     serverSong.isDownloaded = false
+                    serverSong.bgmDownloaded = false
+                    serverSong.previewDownloaded = false
                     hasUpdates = true
                 }
             }
@@ -241,10 +252,11 @@ class ServerSongStatusManager: @unchecked Sendable {
         return hasUpdates
     }
 
-    /// Check if there are other server-imported songs with the same title/artist
+    /// Check if there are other server-imported songs with the same identity
     private func checkForOtherMatchingSongs(
         songTitle: String,
         songArtist: String,
+        songServerSongId: String?,
         excludingSongId: PersistentIdentifier,
         context: ModelContext
     ) throws -> Bool {
@@ -253,9 +265,13 @@ class ServerSongStatusManager: @unchecked Sendable {
 
         return remainingSongs.contains { otherSong in
             otherSong.persistentModelID != excludingSongId &&
-                otherSong.title.lowercased() == songTitle &&
-                otherSong.artist.lowercased() == songArtist &&
-                otherSong.isServerImported
+                otherSong.isServerImported &&
+                matchesSongIdentity(
+                    song: otherSong,
+                    songTitle: songTitle,
+                    songArtist: songArtist,
+                    songServerSongId: songServerSongId
+                )
         }
     }
 
@@ -263,9 +279,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         return localSongs.contains { localSong in
             // Only match server-imported songs to avoid false positives from
             // local/sample songs that share the same title and artist.
-            localSong.isServerImported &&
-                localSong.title.lowercased() == serverSong.title.lowercased() &&
-                localSong.artist.lowercased() == serverSong.artist.lowercased()
+            localSong.isServerImported && matchesServerSong(localSong, serverSong: serverSong)
         }
     }
 
@@ -274,8 +288,7 @@ class ServerSongStatusManager: @unchecked Sendable {
             // Only match server-imported songs to avoid false positives from
             // local/sample songs that share the same title and artist.
             localSong.isServerImported &&
-                localSong.title.lowercased() == serverSong.title.lowercased() &&
-                localSong.artist.lowercased() == serverSong.artist.lowercased() &&
+                matchesServerSong(localSong, serverSong: serverSong) &&
                 localSong.bgmFilePath != nil
         }
     }
@@ -285,9 +298,50 @@ class ServerSongStatusManager: @unchecked Sendable {
             // Only match server-imported songs to avoid false positives from
             // local/sample songs that share the same title and artist.
             localSong.isServerImported &&
-                localSong.title.lowercased() == serverSong.title.lowercased() &&
-                localSong.artist.lowercased() == serverSong.artist.lowercased() &&
+                matchesServerSong(localSong, serverSong: serverSong) &&
                 localSong.previewFilePath != nil
         }
+    }
+
+    // MARK: - Identity Matching Helpers
+
+    /// Match a local Song to a ServerSong, preferring stable serverSongId when available.
+    private func matchesServerSong(_ song: Song, serverSong: ServerSong) -> Bool {
+        if let songServerId = song.serverSongId {
+            return songServerId == serverSong.songId
+        }
+        // Legacy fallback for songs imported before serverSongId was added
+        return song.title.lowercased() == serverSong.title.lowercased() &&
+            song.artist.lowercased() == serverSong.artist.lowercased()
+    }
+
+    /// Match a local Song to title/artist/serverSongId tuple.
+    private func matchesSongIdentity(
+        song: Song,
+        songTitle: String,
+        songArtist: String,
+        songServerSongId: String?
+    ) -> Bool {
+        if let songServerId = song.serverSongId, let targetServerId = songServerSongId {
+            return songServerId == targetServerId
+        }
+        return song.title.lowercased() == songTitle &&
+            song.artist.lowercased() == songArtist
+    }
+
+    /// Match a ServerSong to serverSongId/title/artist tuple.
+    private func matchesServerSongByServerSongId(
+        serverSongId: String,
+        songServerSongId: String?,
+        serverSongTitle: String,
+        serverSongArtist: String,
+        songTitle: String,
+        songArtist: String
+    ) -> Bool {
+        if let songServerId = songServerSongId {
+            return serverSongId == songServerId
+        }
+        return serverSongTitle.lowercased() == songTitle &&
+            serverSongArtist.lowercased() == songArtist
     }
 }
