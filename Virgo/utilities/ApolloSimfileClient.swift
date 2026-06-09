@@ -29,15 +29,26 @@ final class ApolloSimfileClient: SimfileFetching {
 
     // MARK: - Apollo bridging
 
+    /// Fetches a GraphQL query, preserving partial data when field-level errors occur.
+    ///
+    /// GraphQL spec allows `{ data, errors }` coexistence — e.g. one chart's `fileUrl`
+    /// may error while the rest of the payload is valid. We return available `data`
+    /// and only throw when `data` is absent (true failure).
     private func fetch<Q: GraphQLQuery>(_ query: Q) async throws -> Q.Data {
         try await withCheckedThrowingContinuation { continuation in
             apollo.fetch(query: query, cachePolicy: .fetchIgnoringCacheCompletely) { result in
                 switch result {
                 case .success(let response):
-                    if let errors = response.errors, !errors.isEmpty {
-                        continuation.resume(throwing: SimfileGraphQLError(graphQLErrors: errors))
-                    } else if let data = response.data {
+                    if let data = response.data {
+                        if let errors = response.errors, !errors.isEmpty {
+                            Logger.warning(
+                                "GraphQL partial data: \(errors.count) error(s) — " +
+                                errors.compactMap(\.message).joined(separator: "; ")
+                            )
+                        }
                         continuation.resume(returning: data)
+                    } else if let errors = response.errors, !errors.isEmpty {
+                        continuation.resume(throwing: SimfileGraphQLError(graphQLErrors: errors))
                     } else {
                         continuation.resume(throwing: SimfileGraphQLError(graphQLErrors: []))
                     }
