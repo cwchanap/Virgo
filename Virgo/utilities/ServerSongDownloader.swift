@@ -101,16 +101,22 @@ class ServerSongDownloader {
 
     @MainActor
     private func processCharts(for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
+        var successCount = 0
+        var failedCharts: [String] = []
         for (index, serverChart) in serverSong.charts.enumerated() {
             if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
             do {
                 try await processChart(serverChart, for: song, in: context)
+                successCount += 1
             } catch {
                 Logger.warning("Failed to process chart \(serverChart.filename): \(error.localizedDescription)")
-                throw ServerSongImportError.chartFailure(
-                    reason: "Chart '\(serverChart.filename)' failed: \(error.localizedDescription)"
-                )
+                failedCharts.append(serverChart.filename)
             }
+        }
+        if successCount == 0, !serverSong.charts.isEmpty {
+            throw ServerSongImportError.chartFailure(
+                reason: "All charts failed: \(failedCharts.joined(separator: ", "))"
+            )
         }
     }
 
