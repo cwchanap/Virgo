@@ -142,7 +142,20 @@ class ServerSongStatusManager: @unchecked Sendable {
     @MainActor
     func pruneCachedSong(_ serverSong: ServerSong, modelContext: ModelContext) async {
         let songId = serverSong.songId
-        if serverSong.isDownloaded {
+
+        // Derive from local database rather than relying on the potentially-stale
+        // `isDownloaded` flag.  During `refreshCatalog`, pruning runs BEFORE
+        // `refreshDownloadStatus`, so the flag may not reflect reality yet.
+        let hasLocalSong: Bool
+        do {
+            let localSongs = try modelContext.fetch(FetchDescriptor<Song>())
+            hasLocalSong = isAlreadyDownloaded(serverSong, in: localSongs)
+        } catch {
+            Logger.error("Prune: failed to query local songs, assuming none: \(error)")
+            hasLocalSong = false
+        }
+
+        if serverSong.isDownloaded || hasLocalSong {
             let deleted = await deleteDownloadedSong(serverSong, modelContext: modelContext)
             guard deleted else {
                 // If we can't clean up the downloaded local song, abort the prune
@@ -151,6 +164,7 @@ class ServerSongStatusManager: @unchecked Sendable {
                 return
             }
         }
+
         modelContext.delete(serverSong)
         do {
             try saveContext(modelContext)

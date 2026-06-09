@@ -467,6 +467,38 @@ struct ServerSongStatusManagerTests {
         }
     }
 
+    @Test("pruneCachedSong deletes local Song when isDownloaded is stale false")
+    func testPruneRemovesLocalSongDespiteStaleIsDownloadedFlag() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+
+            // Simulates status drift: isDownloaded=false but a matching
+            // server-imported local Song still exists.  This can happen when
+            // refreshCatalog prunes BEFORE refreshDownloadStatus reconciles flags.
+            let serverSong = ServerSong(
+                songId: "stale-flag", title: "StaleFlag", artist: "Y", bpm: 130,
+                isDownloaded: false
+            )
+            let localSong = Song(
+                title: "StaleFlag", artist: "Y", bpm: 130, duration: "2:00",
+                genre: "DTX Import", isServerImported: true
+            )
+            context.insert(serverSong); context.insert(localSong)
+            try context.save()
+
+            await ServerSongStatusManager().pruneCachedSong(serverSong, modelContext: context)
+
+            let remainingServer = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(remainingServer.isEmpty, "ServerSong record must be deleted")
+
+            let remainingLocal = try context.fetch(FetchDescriptor<Song>())
+            let orphanedLocal = remainingLocal.contains {
+                $0.title == "StaleFlag" && $0.artist == "Y" && $0.isServerImported
+            }
+            #expect(!orphanedLocal, "Local Song must be deleted despite stale isDownloaded=false")
+        }
+    }
+
     @Test("refreshDownloadStatus ignores local songs that are not server-imported")
     func testRefreshDownloadStatusIgnoresNonServerImportedSongs() async throws {
         try await TestSetup.withTestSetup {
