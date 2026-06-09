@@ -2,33 +2,89 @@ import Testing
 import SwiftData
 @testable import Virgo
 
+private enum SaveHookError: Error {
+    case forced
+}
+
+private func fetchSong(
+    songId: PersistentIdentifier,
+    context: ModelContext
+) throws -> Song? {
+    let descriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in
+        songModel.persistentModelID == songId
+    })
+    return try context.fetch(descriptor).first
+}
+
+private func fetchServerSong(
+    songId: String,
+    context: ModelContext
+) throws -> ServerSong? {
+    let descriptor = FetchDescriptor<ServerSong>(predicate: #Predicate<ServerSong> { serverSong in
+        serverSong.songId == songId
+    })
+    return try context.fetch(descriptor).first
+}
+
+private struct GroupedSongsData {
+    let serverSong: ServerSong
+    let firstImported: Song
+    let secondImported: Song
+    let nonImported: Song
+}
+
+private func setupGroupedSongs(
+    context: ModelContext
+) throws -> GroupedSongsData {
+    let serverSong = ServerSong(
+        songId: "song-group",
+        title: "Grouped Song",
+        artist: "Grouped Artist",
+        bpm: 128.0,
+        isDownloaded: true
+    )
+    context.insert(serverSong)
+
+    let firstImported = Song(
+        title: "Grouped Song",
+        artist: "Grouped Artist",
+        bpm: 128.0,
+        duration: "2:50",
+        genre: "DTX Import",
+        isServerImported: true
+    )
+    let secondImported = Song(
+        title: "Grouped Song",
+        artist: "Grouped Artist",
+        bpm: 128.0,
+        duration: "2:50",
+        genre: "DTX Import",
+        isServerImported: true
+    )
+    let nonImported = Song(
+        title: "Grouped Song",
+        artist: "Grouped Artist",
+        bpm: 128.0,
+        duration: "2:50",
+        genre: "Rock",
+        isServerImported: false
+    )
+    context.insert(firstImported)
+    context.insert(secondImported)
+    context.insert(nonImported)
+    try context.save()
+
+    return GroupedSongsData(
+        serverSong: serverSong,
+        firstImported: firstImported,
+        secondImported: secondImported,
+        nonImported: nonImported
+    )
+}
+
 @Suite("ServerSongStatusManager Tests", .serialized)
 @MainActor
 struct ServerSongStatusManagerTests {
-    private enum SaveHookError: Error {
-        case forced
-    }
-
-    private func fetchSong(
-        songId: PersistentIdentifier,
-        context: ModelContext
-    ) throws -> Song? {
-        let descriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in
-            songModel.persistentModelID == songId
-        })
-        return try context.fetch(descriptor).first
-    }
-
-    private func fetchServerSong(
-        songId: String,
-        context: ModelContext
-    ) throws -> ServerSong? {
-        let descriptor = FetchDescriptor<ServerSong>(predicate: #Predicate<ServerSong> { serverSong in
-            serverSong.songId == songId
-        })
-        return try context.fetch(descriptor).first
-    }
-
     @Test("deleteDownloadedSong deletes only matching server-imported songs")
     func testDeleteDownloadedSongSelectiveDeletion() async throws {
         try await TestSetup.withTestSetup {
@@ -168,62 +224,6 @@ struct ServerSongStatusManagerTests {
             #expect(unmatchedServerSong.bgmDownloaded == false)
             #expect(unmatchedServerSong.previewDownloaded == false)
         }
-    }
-
-    private struct GroupedSongsData {
-        let serverSong: ServerSong
-        let firstImported: Song
-        let secondImported: Song
-        let nonImported: Song
-    }
-
-    private func setupGroupedSongs(
-        context: ModelContext
-    ) throws -> GroupedSongsData {
-        let serverSong = ServerSong(
-            songId: "song-group",
-            title: "Grouped Song",
-            artist: "Grouped Artist",
-            bpm: 128.0,
-            isDownloaded: true
-        )
-        context.insert(serverSong)
-
-        let firstImported = Song(
-            title: "Grouped Song",
-            artist: "Grouped Artist",
-            bpm: 128.0,
-            duration: "2:50",
-            genre: "DTX Import",
-            isServerImported: true
-        )
-        let secondImported = Song(
-            title: "Grouped Song",
-            artist: "Grouped Artist",
-            bpm: 128.0,
-            duration: "2:50",
-            genre: "DTX Import",
-            isServerImported: true
-        )
-        let nonImported = Song(
-            title: "Grouped Song",
-            artist: "Grouped Artist",
-            bpm: 128.0,
-            duration: "2:50",
-            genre: "Rock",
-            isServerImported: false
-        )
-        context.insert(firstImported)
-        context.insert(secondImported)
-        context.insert(nonImported)
-        try context.save()
-
-        return GroupedSongsData(
-            serverSong: serverSong,
-            firstImported: firstImported,
-            secondImported: secondImported,
-            nonImported: nonImported
-        )
     }
 
     @Test("deleteLocalSong updates server download status only after last server-imported match is removed")
@@ -692,6 +692,31 @@ struct ServerSongStatusManagerTests {
             #expect(updatedServer?.isDownloaded == false)
             #expect(updatedServer?.bgmDownloaded == false)
             #expect(updatedServer?.previewDownloaded == false)
+        }
+    }
+
+    @Test("pruneCachedSong rolls back context when save fails")
+    func testPruneCachedSongRollbackOnSaveFailure() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let manager = ServerSongStatusManager(saveContext: { _ in throw SaveHookError.forced })
+
+            let serverSong = ServerSong(
+                songId: "prune-save-fail",
+                title: "PruneSaveFail",
+                artist: "Z",
+                bpm: 120,
+                isDownloaded: false
+            )
+            context.insert(serverSong)
+            try context.save()
+
+            await manager.pruneCachedSong(serverSong, modelContext: context)
+
+            // ServerSong must still exist after rollback
+            let remaining = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(remaining.count == 1, "ServerSong should remain after rollback on save failure")
+            #expect(remaining.first?.songId == "prune-save-fail")
         }
     }
 }

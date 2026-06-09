@@ -64,7 +64,19 @@ class ServerSongFileManager: @unchecked Sendable {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let bgm = documents.appendingPathComponent("BGM").appendingPathComponent("\(songId).ogg")
         let preview = documents.appendingPathComponent("Preview").appendingPathComponent("\(songId).mp3")
-        try? FileManager.default.removeItem(at: bgm)
-        try? FileManager.default.removeItem(at: preview)
+
+        do {
+            try FileManager.default.removeItem(at: bgm)
+            Logger.database("Deleted BGM file for songId: \(songId)")
+        } catch {
+            Logger.error("Failed to delete BGM file for songId \(songId): \(error.localizedDescription)")
+        }
+
+        do {
+            try FileManager.default.removeItem(at: preview)
+            Logger.database("Deleted preview file for songId: \(songId)")
+        } catch {
+            Logger.error("Failed to delete preview file for songId \(songId): \(error.localizedDescription)")
+        }
     }
 }

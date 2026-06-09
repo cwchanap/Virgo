@@ -168,7 +168,7 @@ struct SongLibraryCoverageTests {
     }
 
     @Test("LibraryView filters songs by server-imported flag")
-    func testLibraryViewFiltersByGenre() async throws {
+    func testLibraryViewFiltersByServerImportedFlag() async throws {
         try await TestSetup.withTestSetup {
             let dtxSong1 = SwiftUICoverageFixtures.makeSong(
                 title: "DTX Track One",
