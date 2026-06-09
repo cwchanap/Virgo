@@ -82,4 +82,17 @@ struct EndpointDefaultsTests {
         #expect(env.graphQLEndpoint == nil)
         #expect(env.r2BaseURL == nil)
     }
+
+    @Test("load accepts custom subdirectory parameter")
+    func testLoadCustomSubdirectory() {
+        // Should not crash and should return empty when the custom
+        // subdirectory does not contain the resource.
+        let env = EndpointDefaults.load(
+            resource: "DefinitelyNotPresent",
+            extension: "env",
+            subdirectory: "NonexistentDir"
+        )
+        #expect(env.graphQLEndpoint == nil)
+        #expect(env.r2BaseURL == nil)
+    }
 }

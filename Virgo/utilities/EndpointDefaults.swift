@@ -24,9 +24,10 @@ struct EndpointDefaults {
     static func load(
         from bundle: Bundle = .main,
         resource: String = "ServerEndpoints",
-        extension ext: String = "env"
+        extension ext: String = "env",
+        subdirectory: String = "Config"
     ) -> EndpointDefaults {
-        guard let url = bundle.url(forResource: resource, withExtension: ext),
+        guard let url = bundle.url(forResource: resource, withExtension: ext, subdirectory: subdirectory),
               let data = try? Data(contentsOf: url),
               let content = String(data: data, encoding: .utf8) else {
             return EndpointDefaults()
