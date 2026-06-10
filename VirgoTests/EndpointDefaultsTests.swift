@@ -76,6 +76,26 @@ struct EndpointDefaultsTests {
         #expect(config.r2BaseURL == nil)
     }
 
+    @Test("parse handles CRLF (\\r\\n) line endings")
+    func testParseCRLFLineEndings() {
+        let env = EndpointDefaults.parse(
+            "GRAPHQL_ENDPOINT=https://api.example.com/graphql\r\n" +
+            "R2_BASE_URL=https://r2.example.com\r\n"
+        )
+        #expect(env.graphQLEndpoint == "https://api.example.com/graphql")
+        #expect(env.r2BaseURL == "https://r2.example.com")
+    }
+
+    @Test("parse handles CR-only (\\r) line endings")
+    func testParseCRLineEndings() {
+        let env = EndpointDefaults.parse(
+            "GRAPHQL_ENDPOINT=https://api.example.com/graphql\r" +
+            "R2_BASE_URL=https://r2.example.com\r"
+        )
+        #expect(env.graphQLEndpoint == "https://api.example.com/graphql")
+        #expect(env.r2BaseURL == "https://r2.example.com")
+    }
+
     @Test("load returns empty defaults when resource is absent")
     func testLoadMissingResource() {
         let env = EndpointDefaults.load(resource: "DefinitelyNotPresent", extension: "env")
