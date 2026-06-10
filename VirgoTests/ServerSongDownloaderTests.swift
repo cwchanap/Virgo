@@ -280,4 +280,75 @@ struct ServerSongDownloaderTests {
             #expect(errorMessage == "Song already exists in database")
         }
     }
+
+    @Test("downloadAndImportSong preserves server durationSeconds over chart-based estimate")
+    func testPreservesServerDurationWhenAvailable() async throws {
+        let mock = MockFileDownloader()
+        // DTX with a note that would produce a chart-based estimate different from server duration
+        let dtx = dtxData("#TITLE: Duration Test\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000")
+        mock.responses["\(r2Base)/dur-test/chart.dtx"] = dtx
+        let config = makeConfig("ServerSongDownloaderTests.dur.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let serverChart = chart("easy", label: "Easy", level: 10, file: "chart.dtx", songId: "dur-test")
+            // Server reports 210 seconds (3:30); chart-based estimate would differ
+            let serverSong = ServerSong(
+                songId: "dur-test",
+                title: "Duration Test",
+                artist: "Tester",
+                bpm: 120.0,
+                durationSeconds: 210,
+                charts: [serverChart],
+                isDownloaded: false
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success)
+            #expect(errorMessage == nil)
+
+            let verificationContext = ModelContext(container)
+            let songs = try verificationContext.fetch(FetchDescriptor<Song>())
+            let importedSong = songs.first { $0.title == "Duration Test" && $0.artist == "Tester" }
+            #expect(importedSong != nil)
+            // Must use server's 210s (3:30), not the chart-based estimate
+            #expect(importedSong?.duration == "3:30")
+        }
+    }
+
+    @Test("downloadAndImportSong falls back to chart-based duration when server has none")
+    func testFallsBackToChartDurationWhenServerHasNone() async throws {
+        let mock = MockFileDownloader()
+        let dtx = dtxData("#TITLE: No Dur\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000")
+        mock.responses["\(r2Base)/no-dur/chart.dtx"] = dtx
+        let config = makeConfig("ServerSongDownloaderTests.nodur.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let serverChart = chart("easy", label: "Easy", level: 10, file: "chart.dtx", songId: "no-dur")
+            // No durationSeconds from server
+            let serverSong = ServerSong(
+                songId: "no-dur",
+                title: "No Dur",
+                artist: "Tester",
+                bpm: 120.0,
+                charts: [serverChart],
+                isDownloaded: false
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success)
+            #expect(errorMessage == nil)
+
+            let verificationContext = ModelContext(container)
+            let songs = try verificationContext.fetch(FetchDescriptor<Song>())
+            let importedSong = songs.first { $0.title == "No Dur" && $0.artist == "Tester" }
+            #expect(importedSong != nil)
+            // Should use chart-based estimate, not "3:30" default from createSong
+            // Exact value depends on parsed measure numbers from DTX content
+            #expect(importedSong?.duration != "3:30")
+        }
+    }
 }

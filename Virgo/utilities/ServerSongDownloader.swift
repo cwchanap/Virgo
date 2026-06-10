@@ -103,10 +103,11 @@ class ServerSongDownloader {
     private func processCharts(for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
         var successCount = 0
         var failedCharts: [String] = []
+        let serverDuration = serverSong.durationSeconds
         for (index, serverChart) in serverSong.charts.enumerated() {
             if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
             do {
-                try await processChart(serverChart, for: song, in: context)
+                try await processChart(serverChart, for: song, in: context, serverDurationSeconds: serverDuration)
                 successCount += 1
             } catch {
                 Logger.warning("Failed to process chart \(serverChart.filename): \(error.localizedDescription)")
@@ -121,7 +122,12 @@ class ServerSongDownloader {
     }
 
     @MainActor
-    private func processChart(_ serverChart: ServerChart, for song: Song, in context: ModelContext) async throws {
+    private func processChart(
+        _ serverChart: ServerChart,
+        for song: Song,
+        in context: ModelContext,
+        serverDurationSeconds: Int?
+    ) async throws {
         guard let url = URL(string: serverChart.fileURL) else {
             throw ServerSongImportError.invalidChartURL(serverChart.fileURL)
         }
@@ -132,7 +138,7 @@ class ServerSongDownloader {
         let chartData = try DTXFileParser.parseChartMetadata(from: content)
         if song.charts.isEmpty {
             if chartData.bpm.isFinite && chartData.bpm > 0 { song.bpm = chartData.bpm }
-            if serverChart.serverSong?.durationSeconds == nil {
+            if serverDurationSeconds == nil {
                 song.duration = Self.formatDuration(Int(calculateDuration(from: chartData.notes)))
             }
         }
