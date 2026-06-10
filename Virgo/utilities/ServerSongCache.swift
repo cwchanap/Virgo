@@ -81,7 +81,12 @@ class ServerSongCache {
             for chart in song.charts { modelContext.insert(chart) }
         }
 
-        try saveContext(modelContext)
+        do {
+            try saveContext(modelContext)
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
         await statusManager.refreshDownloadStatus(modelContext: modelContext)
     }
 
