@@ -75,15 +75,20 @@ class ServerSongDownloader {
 
     @MainActor
     private func songAlreadyExists(_ serverSong: ServerSong, in context: ModelContext) throws -> Bool {
-        let existing = try context.fetch(FetchDescriptor<Song>())
-        return existing.contains { song in
-            // Prefer stable serverSongId match; fall back to title/artist for legacy data
-            if let songServerId = song.serverSongId {
-                return songServerId == serverSong.songId
-            }
-            return song.title.lowercased() == serverSong.title.lowercased() &&
-                song.artist.lowercased() == serverSong.artist.lowercased()
+        // Check by stable serverSongId first (targeted fetch, avoids loading all songs)
+        let songId = serverSong.songId
+        let serverIdPredicate = #Predicate<Song> { song in
+            song.serverSongId == songId
         }
+        if !(try context.fetch(FetchDescriptor<Song>(predicate: serverIdPredicate)).isEmpty) { return true }
+
+        // Fallback: title/artist match for legacy songs without serverSongId
+        let title = serverSong.title
+        let artist = serverSong.artist
+        let titleArtistPredicate = #Predicate<Song> { song in
+            song.title == title && song.artist == artist
+        }
+        return !(try context.fetch(FetchDescriptor<Song>(predicate: titleArtistPredicate)).isEmpty)
     }
 
     private func createSong(from serverSong: ServerSong) -> Song {

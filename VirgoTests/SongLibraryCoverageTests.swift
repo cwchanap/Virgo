@@ -267,7 +267,7 @@ struct SongLibraryCoverageTests {
                 charts: [SwiftUICoverageFixtures.makeChart(difficulty: .medium, level: 45)]
             )
             let service = ServerSongService()
-            service.deletingSongs.insert("deleting overlay song|deleting artist")
+            service.deletingSongs.insert(song.persistentModelID)
 
             // List row text extraction is unreliable; verify the header and that the view mounts.
             SwiftUITestUtilities.assertView(

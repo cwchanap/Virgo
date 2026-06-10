@@ -236,7 +236,7 @@ struct ServerSongServiceTests {
     func testDeleteLocalSongWhenAlreadyDeleting() async {
         let service = ServerSongService()
         let song = Song(title: "A", artist: "B", bpm: 100.0, duration: "1:00", genre: "DTX Import")
-        let key = "a|b"
+        let key = song.persistentModelID
         service.deletingSongs = [key]
 
         let success = await service.deleteLocalSong(song)
@@ -408,7 +408,7 @@ struct ServerSongServiceTests {
         let localSong = Song(title: "Mixed Case", artist: "Artist", bpm: 100.0, duration: "1:00", genre: "Rock")
 
         service.downloadingSongs = ["song-x"]
-        service.deletingSongs = ["mixed case|artist"]
+        service.deletingSongs = [localSong.persistentModelID]
 
         #expect(service.isDownloading(serverSong))
         #expect(service.isDeleting(localSong))

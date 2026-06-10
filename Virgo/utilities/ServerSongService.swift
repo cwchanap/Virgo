@@ -7,7 +7,7 @@ class ServerSongService: ObservableObject {
     @Published var isRefreshing = false
     @Published var errorMessage: String?
     @Published var downloadingSongs: Set<String> = []
-    @Published var deletingSongs: Set<String> = []
+    @Published var deletingSongs: Set<PersistentIdentifier> = []
 
     private var modelContext: ModelContext?
     private let cache: ServerSongCache
@@ -128,8 +128,8 @@ class ServerSongService: ObservableObject {
     }
 
     func deleteLocalSong(_ song: Song) async -> Bool {
-        // Create song key for tracking deletion state
-        let songKey = "\(song.title.lowercased())|\(song.artist.lowercased())"
+        // Use persistentModelID for unique dedup — title/artist could collide
+        let songKey = song.persistentModelID
 
         // Check if already deleting to prevent race condition
         let isAlreadyDeleting = deletingSongs.contains(songKey)
@@ -171,7 +171,6 @@ class ServerSongService: ObservableObject {
     }
 
     func isDeleting(_ song: Song) -> Bool {
-        let songKey = "\(song.title.lowercased())|\(song.artist.lowercased())"
-        return deletingSongs.contains(songKey)
+        return deletingSongs.contains(song.persistentModelID)
     }
 }
