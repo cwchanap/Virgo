@@ -228,4 +228,27 @@ struct ServerSongCatalogRefreshTests {
             }
         }
     }
+
+    @Test("Rolls back inserted songs when saveContext fails")
+    func testRefreshCatalogRollsBackOnSaveFailure() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let fetcher = MockSimfileFetcher(all: [.stub(id: "a"), .stub(id: "b")])
+
+            // saveContext always fails
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10) { _ in
+                throw URLError(.cannotWriteToFile)
+            }
+
+            await #expect(throws: URLError.self) {
+                try await cache.refreshCatalog(modelContext: context)
+            }
+
+            // After rollback, the context must not contain phantom unsaved inserts.
+            // A fetch in the same context includes unsaved inserts, so if rollback
+            // worked the result should be empty.
+            let songs = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(songs.isEmpty, "Context must be empty after rollback — no phantom inserts")
+        }
+    }
 }

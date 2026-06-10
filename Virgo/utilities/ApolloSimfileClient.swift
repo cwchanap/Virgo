@@ -7,7 +7,21 @@ final class ApolloSimfileClient: SimfileFetching {
     private let apollo: ApolloClient
 
     init(endpointURL: URL) {
-        self.apollo = ApolloClient(url: endpointURL)
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30.0
+        config.timeoutIntervalForResource = 60.0
+        config.httpMaximumConnectionsPerHost = 2
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.waitsForConnectivity = true
+
+        let store = ApolloStore(cache: InMemoryNormalizedCache())
+        let client = URLSessionClient(sessionConfiguration: config)
+        let provider = DefaultInterceptorProvider(client: client, store: store)
+        let transport = RequestChainNetworkTransport(
+            interceptorProvider: provider,
+            endpointURL: endpointURL
+        )
+        self.apollo = ApolloClient(networkTransport: transport, store: store)
     }
 
     func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {

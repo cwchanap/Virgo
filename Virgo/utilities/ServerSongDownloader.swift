@@ -114,6 +114,8 @@ class ServerSongDownloader {
             do {
                 try await processChart(serverChart, for: song, in: context, serverDurationSeconds: serverDuration)
                 successCount += 1
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 Logger.warning("Failed to process chart \(serverChart.filename): \(error.localizedDescription)")
                 failedCharts.append(serverChart.filename)

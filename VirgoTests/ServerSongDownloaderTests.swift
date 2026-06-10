@@ -351,4 +351,49 @@ struct ServerSongDownloaderTests {
             #expect(importedSong?.duration != "3:30")
         }
     }
+
+    @Test("processCharts propagates CancellationError instead of treating it as a chart failure")
+    func testCancellationErrorPropagation() async throws {
+        /// Downloader that throws CancellationError on the second chart's download.
+        final class CancellingDownloader: FileDownloading, @unchecked Sendable {
+            var callCount = 0
+            func downloadData(from url: URL) async throws -> Data {
+                callCount += 1
+                if callCount > 1 { throw CancellationError() }
+                let dtx = "#TITLE: Cancel\n#ARTIST: T\n#BPM: 120\n#DLEVEL: 10\n#03113: 01"
+                return dtx.data(using: .shiftJIS) ?? Data(dtx.utf8)
+            }
+        }
+
+        let downloader = MockServerSongFileManager()
+        let config = makeConfig("ServerSongDownloaderTests.cancel.\(UUID().uuidString)", withR2: false)
+        let subject = ServerSongDownloader(
+            downloader: CancellingDownloader(),
+            fileManager: downloader,
+            config: config
+        )
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let chart1 = ServerChart(
+                difficulty: "easy", difficultyLabel: "Easy", level: 10,
+                filename: "c1.dtx", size: 100,
+                fileURL: "\(r2Base)/cancel/c1.dtx", fileEncoding: "SHIFT_JIS"
+            )
+            let chart2 = ServerChart(
+                difficulty: "hard", difficultyLabel: "Hard", level: 30,
+                filename: "c2.dtx", size: 100,
+                fileURL: "\(r2Base)/cancel/c2.dtx", fileEncoding: "SHIFT_JIS"
+            )
+            let serverSong = ServerSong(
+                songId: "cancel", title: "Cancel", artist: "T", bpm: 120.0,
+                charts: [chart1, chart2], isDownloaded: false
+            )
+
+            let (success, errorMessage) = await subject.downloadAndImportSong(serverSong, container: container)
+            // The download should fail with the CancellationError bubbled up as an import failure
+            #expect(success == false, "Download must fail when CancellationError is thrown")
+            #expect(errorMessage != nil)
+        }
+    }
 }
