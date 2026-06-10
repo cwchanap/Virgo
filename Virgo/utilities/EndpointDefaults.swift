@@ -38,12 +38,12 @@ struct EndpointDefaults {
     /// Parses `.env`-style content into keyed values, then maps the two consumed keys.
     static func parse(_ content: String) -> EndpointDefaults {
         var values: [String: String] = [:]
-        for rawLine in content.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
+        for rawLine in content.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             if line.isEmpty || line.hasPrefix("#") { continue }
             guard let eq = line.firstIndex(of: "=") else { continue }
-            let key = line[..<eq].trimmingCharacters(in: .whitespaces)
-            var value = String(line[line.index(after: eq)...].trimmingCharacters(in: .whitespaces))
+            let key = line[..<eq].trimmingCharacters(in: .whitespacesAndNewlines)
+            var value = String(line[line.index(after: eq)...].trimmingCharacters(in: .whitespacesAndNewlines))
             value = stripMatchingQuotes(value)
             values[String(key)] = value
         }
