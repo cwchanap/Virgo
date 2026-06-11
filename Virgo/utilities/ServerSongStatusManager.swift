@@ -63,20 +63,23 @@ class ServerSongStatusManager: @unchecked Sendable {
         let songArtist = song.artist.lowercased()
         let songServerSongId = song.serverSongId
         let songId = song.persistentModelID
+        // Capture immutable dependencies to avoid capturing `self` in detached task.
+        let fileManager = self.fileManager
+        let saveContext = self.saveContext
 
         return await Task.detached {
             let backgroundContext = ModelContext(container)
             do {
-                guard let songToDelete = try self.findSongInContext(songId: songId, context: backgroundContext) else {
+                guard let songToDelete = try Self.findSongInContextStatic(songId: songId, context: backgroundContext) else {
                     return true // Already deleted or not found
                 }
 
                 let bgmFilePath = songToDelete.bgmFilePath
                 let previewFilePath = songToDelete.previewFilePath
 
-                try self.deleteSongFromContext(songToDelete, context: backgroundContext)
+                backgroundContext.delete(songToDelete)
 
-                _ = try self.updateServerSongStatus(
+                _ = try Self.updateServerSongStatusStatic(
                     songTitle: songTitle,
                     songArtist: songArtist,
                     songServerSongId: songServerSongId,
@@ -84,8 +87,10 @@ class ServerSongStatusManager: @unchecked Sendable {
                     context: backgroundContext
                 )
 
-                try self.saveContext(backgroundContext)
-                self.deleteAssociatedFiles(bgmPath: bgmFilePath, previewPath: previewFilePath)
+                try saveContext(backgroundContext)
+                Self.deleteAssociatedFilesStatic(
+                    bgmPath: bgmFilePath, previewPath: previewFilePath, fileManager: fileManager
+                )
 
                 return true
             } catch {
@@ -99,30 +104,38 @@ class ServerSongStatusManager: @unchecked Sendable {
     /// Refresh download status for all server songs
     @MainActor
     func refreshDownloadStatus(modelContext: ModelContext) async {
-        // Get all local songs and update server song status
         do {
-            let localSongsDescriptor = FetchDescriptor<Song>()
-            let localSongs = try modelContext.fetch(localSongsDescriptor)
+            let localSongs = try modelContext.fetch(FetchDescriptor<Song>())
+            let allServerSongs = try modelContext.fetch(FetchDescriptor<ServerSong>())
 
-            let serverSongsDescriptor = FetchDescriptor<ServerSong>()
-            let allServerSongs = try modelContext.fetch(serverSongsDescriptor)
+            // Build lookup dictionaries keyed by serverSongId and (title, artist)
+            // for O(N+M) instead of O(N×M).
+            let serverImported = localSongs.filter(\.isServerImported)
+            var byServerSongId: [String: [Song]] = [:]
+            var byTitleArtist: [String: [Song]] = [:]
+            for song in serverImported {
+                if let serverId = song.serverSongId {
+                    byServerSongId[serverId, default: []].append(song)
+                }
+                let key = "\(song.title.lowercased())|\(song.artist.lowercased())"
+                byTitleArtist[key, default: []].append(song)
+            }
 
             var hasUpdates = false
             for serverSong in allServerSongs {
-                let isDownloaded = isAlreadyDownloaded(serverSong, in: localSongs)
-                let bgmDownloaded = hasBGMFile(serverSong, in: localSongs)
-                let previewDownloaded = hasPreviewFile(serverSong, in: localSongs)
+                let matched = matchedLocalSongs(for: serverSong, byServerSongId: byServerSongId, byTitleArtist: byTitleArtist)
+                let isDownloaded = !matched.isEmpty
+                let bgmDownloaded = matched.contains { $0.bgmFilePath != nil }
+                let previewDownloaded = matched.contains { $0.previewFilePath != nil }
 
                 if serverSong.isDownloaded != isDownloaded {
                     serverSong.isDownloaded = isDownloaded
                     hasUpdates = true
                 }
-
                 if serverSong.bgmDownloaded != bgmDownloaded {
                     serverSong.bgmDownloaded = bgmDownloaded
                     hasUpdates = true
                 }
-
                 if serverSong.previewDownloaded != previewDownloaded {
                     serverSong.previewDownloaded = previewDownloaded
                     hasUpdates = true
@@ -306,6 +319,23 @@ class ServerSongStatusManager: @unchecked Sendable {
 
     // MARK: - Identity Matching Helpers
 
+    /// Find matching local songs for a ServerSong using pre-built lookup dicts.
+    /// Preserves original matching semantics: songs WITH a serverSongId only match
+    /// via that ID; only legacy songs (no serverSongId) fall back to title/artist.
+    private func matchedLocalSongs(
+        for serverSong: ServerSong,
+        byServerSongId: [String: [Song]],
+        byTitleArtist: [String: [Song]]
+    ) -> [Song] {
+        if let matched = byServerSongId[serverSong.songId], !matched.isEmpty {
+            return matched
+        }
+        // Title/artist fallback only returns songs WITHOUT a serverSongId
+        // (legacy songs). Songs with a serverSongId must only match via that ID.
+        let key = "\(serverSong.title.lowercased())|\(serverSong.artist.lowercased())"
+        return (byTitleArtist[key] ?? []).filter { $0.serverSongId == nil }
+    }
+
     /// Match a local Song to a ServerSong, preferring stable serverSongId when available.
     private func matchesServerSong(_ song: Song, serverSong: ServerSong) -> Bool {
         if let songServerId = song.serverSongId {
@@ -332,6 +362,125 @@ class ServerSongStatusManager: @unchecked Sendable {
 
     /// Match a ServerSong to serverSongId/title/artist tuple.
     private func matchesServerSongByServerSongId(
+        serverSongId: String,
+        songServerSongId: String?,
+        serverSongTitle: String,
+        serverSongArtist: String,
+        songTitle: String,
+        songArtist: String
+    ) -> Bool {
+        if let songServerId = songServerSongId {
+            return serverSongId == songServerId
+        }
+        return serverSongTitle.lowercased() == songTitle &&
+            serverSongArtist.lowercased() == songArtist
+    }
+
+    // MARK: - Static Helpers (safe for Task.detached — no `self` capture)
+
+    private static func findSongInContextStatic(songId: PersistentIdentifier, context: ModelContext) throws -> Song? {
+        let songDescriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in
+            songModel.persistentModelID == songId
+        })
+        let songs = try context.fetch(songDescriptor)
+
+        guard let songToDelete = songs.first else {
+            Logger.warning("Song not found in background context")
+            return nil
+        }
+
+        return songToDelete
+    }
+
+    private static func deleteAssociatedFilesStatic(
+        bgmPath: String?,
+        previewPath: String?,
+        fileManager: ServerSongFileManager
+    ) {
+        if let bgmPath {
+            fileManager.deleteBGMFile(at: bgmPath)
+        }
+        if let previewPath {
+            fileManager.deletePreviewFile(at: previewPath)
+        }
+    }
+
+    private static func updateServerSongStatusStatic(
+        songTitle: String,
+        songArtist: String,
+        songServerSongId: String?,
+        songId: PersistentIdentifier,
+        context: ModelContext
+    ) throws -> Bool {
+        let allServerSongs = try context.fetch(FetchDescriptor<ServerSong>())
+
+        var hasUpdates = false
+        for serverSong in allServerSongs {
+            let matchesServerSong = matchesServerSongByServerSongIdStatic(
+                serverSongId: serverSong.songId,
+                songServerSongId: songServerSongId,
+                serverSongTitle: serverSong.title,
+                serverSongArtist: serverSong.artist,
+                songTitle: songTitle,
+                songArtist: songArtist
+            )
+
+            if matchesServerSong && serverSong.isDownloaded {
+                let hasOtherMatchingSongs = try checkForOtherMatchingSongsStatic(
+                    songTitle: songTitle,
+                    songArtist: songArtist,
+                    songServerSongId: songServerSongId,
+                    excludingSongId: songId,
+                    context: context
+                )
+
+                if !hasOtherMatchingSongs {
+                    serverSong.isDownloaded = false
+                    serverSong.bgmDownloaded = false
+                    serverSong.previewDownloaded = false
+                    hasUpdates = true
+                }
+            }
+        }
+
+        return hasUpdates
+    }
+
+    private static func checkForOtherMatchingSongsStatic(
+        songTitle: String,
+        songArtist: String,
+        songServerSongId: String?,
+        excludingSongId: PersistentIdentifier,
+        context: ModelContext
+    ) throws -> Bool {
+        let remainingSongs = try context.fetch(FetchDescriptor<Song>())
+
+        return remainingSongs.contains { otherSong in
+            otherSong.persistentModelID != excludingSongId &&
+                otherSong.isServerImported &&
+                matchesSongIdentityStatic(
+                    song: otherSong,
+                    songTitle: songTitle,
+                    songArtist: songArtist,
+                    songServerSongId: songServerSongId
+                )
+        }
+    }
+
+    private static func matchesSongIdentityStatic(
+        song: Song,
+        songTitle: String,
+        songArtist: String,
+        songServerSongId: String?
+    ) -> Bool {
+        if let songServerId = song.serverSongId, let targetServerId = songServerSongId {
+            return songServerId == targetServerId
+        }
+        return song.title.lowercased() == songTitle &&
+            song.artist.lowercased() == songArtist
+    }
+
+    private static func matchesServerSongByServerSongIdStatic(
         serverSongId: String,
         songServerSongId: String?,
         serverSongTitle: String,

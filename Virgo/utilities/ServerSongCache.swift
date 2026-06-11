@@ -75,10 +75,19 @@ class ServerSongCache {
         }
 
         // Insert only new ids; never overwrite existing entries.
-        for dto in serverDTOs where !existingIds.contains(dto.id) {
+        // Track inserted ids to skip duplicates within the same fetch batch.
+        var insertedIds = Set<String>()
+        for dto in serverDTOs where !existingIds.contains(dto.id) && !insertedIds.contains(dto.id) {
+            insertedIds.insert(dto.id)
             let song = SimfileMapper.makeServerSong(from: dto)
             modelContext.insert(song)
             for chart in song.charts { modelContext.insert(chart) }
+        }
+        if insertedIds.count < serverDTOs.count - existingIds.intersection(serverIds).count {
+            Logger.warning(
+                "Skipped \(serverDTOs.count - insertedIds.count - existingIds.intersection(serverIds).count) " +
+                "duplicate DTO(s) during catalog insert"
+            )
         }
 
         do {
@@ -110,7 +119,17 @@ class ServerSongCache {
     /// user state lives on it. Charts that already have a URL are left alone so
     /// the additive refresh contract is unchanged for non-legacy entries.
     private func backfillLegacyChartURLs(existing: [ServerSong], dtos: [SimfileDTO]) {
-        let dtoById = Dictionary(uniqueKeysWithValues: dtos.map { ($0.id, $0) })
+        // Use grouping + first to avoid crashing on duplicate DTO IDs (pagination bugs,
+        // data inconsistencies). Logs a warning so the issue is visible.
+        var dtoById: [String: SimfileDTO] = [:]
+        for dto in dtos {
+            if dtoById[dto.id] != nil {
+                Logger.warning("Duplicate simfile ID '\(dto.id)' in server response; using first occurrence")
+            }
+            if dtoById[dto.id] == nil {
+                dtoById[dto.id] = dto
+            }
+        }
         var backfilled = 0
         for song in existing {
             guard song.charts.contains(where: { $0.fileURL.isEmpty }) else { continue }

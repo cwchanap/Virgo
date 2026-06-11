@@ -251,4 +251,69 @@ struct ServerSongCatalogRefreshTests {
             #expect(songs.isEmpty, "Context must be empty after rollback — no phantom inserts")
         }
     }
+
+    @Test("Handles duplicate DTO IDs from server without crash")
+    func testDuplicateDTOsDontCrash() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            // Simulate a server bug returning the same simfile on two pages.
+            let fetcher = DuplicateIdFetcher(
+                duplicates: [.stub(id: "a"), .stub(id: "a"), .stub(id: "b")],
+                pageSize: 2
+            )
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 2)
+
+            // Must not crash from uniqueKeysWithValues on duplicate keys
+            try await cache.refreshCatalog(modelContext: context)
+
+            let songs = try context.fetch(FetchDescriptor<ServerSong>())
+            let ids = Set(songs.map(\.songId))
+            // Only one entry per unique ID
+            #expect(ids == ["a", "b"], "Duplicate DTOs must produce only one entry per unique ID")
+            #expect(songs.count == 2, "Expected exactly 2 songs, got \(songs.count)")
+        }
+    }
+
+    @Test("Handles duplicate DTO IDs in backfill without crash")
+    func testDuplicateDTOsBackfillSafe() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            // Legacy chart with empty fileURL — needs backfill
+            let legacyChart = ServerChart(
+                difficulty: "basic", difficultyLabel: "BASIC", level: 30,
+                filename: "bas.dtx", size: 100, fileURL: "", fileEncoding: "SHIFT_JIS"
+            )
+            let legacy = ServerSong(
+                songId: "a", title: "OLD", artist: "A", bpm: 120,
+                charts: [legacyChart], isDownloaded: false
+            )
+            context.insert(legacy); context.insert(legacyChart)
+            try context.save()
+
+            // Server returns "a" twice — backfill must not crash on duplicate keys
+            let fetcher = DuplicateIdFetcher(
+                duplicates: [.stub(id: "a"), .stub(id: "a")],
+                pageSize: 2
+            )
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 2)
+            try await cache.refreshCatalog(modelContext: context)
+
+            let songA = try context.fetch(FetchDescriptor<ServerSong>()).first { $0.songId == "a" }
+            #expect(songA?.charts.first?.fileURL == "https://r2/a/bas.dtx", "Backfill must succeed despite duplicate DTOs")
+        }
+    }
+
+    /// Fetcher that returns duplicate simfile IDs to simulate server pagination bugs.
+    private final class DuplicateIdFetcher: SimfileFetching, @unchecked Sendable {
+        let duplicates: [SimfileDTO]
+        let pageSize: Int
+        init(duplicates: [SimfileDTO], pageSize: Int) {
+            self.duplicates = duplicates; self.pageSize = pageSize
+        }
+        func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
+            // Return all items in one page to test dedup in backfill
+            SimfilePage(simfiles: duplicates, totalCount: duplicates.count)
+        }
+        func fetchSimfile(id: String) async throws -> SimfileDTO? { duplicates.first { $0.id == id } }
+    }
 }

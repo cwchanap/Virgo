@@ -37,15 +37,19 @@ class ServerSongDownloader {
 
     @MainActor
     func downloadAndImportSong(_ serverSong: ServerSong, container: ModelContainer) async -> (Bool, String?) {
+        // Extract all needed data from serverSong BEFORE creating a new context
+        // to avoid cross-context SwiftData relationship access.
+        let snapshot = ServerSongSnapshot(from: serverSong)
+
         let context = ModelContext(container)
         var savedFilePaths: [String] = []
         do {
-            if try songAlreadyExists(serverSong, in: context) {
+            if try songAlreadyExists(snapshot: snapshot, in: context) {
                 return (false, "Song already exists in database")
             }
-            let song = createSong(from: serverSong)
-            try await processCharts(for: song, from: serverSong, in: context)
-            await downloadOptionalFiles(for: song, serverSong: serverSong)
+            let song = createSong(from: snapshot)
+            try await processCharts(for: song, from: snapshot, in: context)
+            await downloadOptionalFiles(for: song, snapshot: snapshot)
             // Track saved file paths so we can clean them up if the database save fails
             if let bgmPath = song.bgmFilePath { savedFilePaths.append(bgmPath) }
             if let previewPath = song.previewFilePath { savedFilePaths.append(previewPath) }
@@ -74,54 +78,54 @@ class ServerSongDownloader {
     // MARK: - Private
 
     @MainActor
-    private func songAlreadyExists(_ serverSong: ServerSong, in context: ModelContext) throws -> Bool {
+    private func songAlreadyExists(snapshot: ServerSongSnapshot, in context: ModelContext) throws -> Bool {
         // Check by stable serverSongId first (targeted fetch, avoids loading all songs)
-        let songId = serverSong.songId
+        let songId = snapshot.songId
         let serverIdPredicate = #Predicate<Song> { song in
             song.serverSongId == songId
         }
         if !(try context.fetch(FetchDescriptor<Song>(predicate: serverIdPredicate)).isEmpty) { return true }
 
         // Fallback: title/artist match for legacy songs without serverSongId
-        let title = serverSong.title
-        let artist = serverSong.artist
+        let title = snapshot.title
+        let artist = snapshot.artist
         let titleArtistPredicate = #Predicate<Song> { song in
             song.title == title && song.artist == artist
         }
         return !(try context.fetch(FetchDescriptor<Song>(predicate: titleArtistPredicate)).isEmpty)
     }
 
-    private func createSong(from serverSong: ServerSong) -> Song {
+    private func createSong(from snapshot: ServerSongSnapshot) -> Song {
         Song(
-            title: serverSong.title,
-            artist: serverSong.artist,
-            bpm: serverSong.bpm,
-            duration: serverSong.durationSeconds.map(Self.formatDuration) ?? "3:30",
-            genre: serverSong.genre ?? "DTX Import",
+            title: snapshot.title,
+            artist: snapshot.artist,
+            bpm: snapshot.bpm,
+            duration: snapshot.durationSeconds.map(Self.formatDuration) ?? "3:30",
+            genre: snapshot.genre ?? "DTX Import",
             timeSignature: .fourFour,
             isServerImported: true,
-            serverSongId: serverSong.songId
+            serverSongId: snapshot.songId
         )
     }
 
     @MainActor
-    private func processCharts(for song: Song, from serverSong: ServerSong, in context: ModelContext) async throws {
+    private func processCharts(for song: Song, from snapshot: ServerSongSnapshot, in context: ModelContext) async throws {
         var successCount = 0
         var failedCharts: [String] = []
-        let serverDuration = serverSong.durationSeconds
-        for (index, serverChart) in serverSong.charts.enumerated() {
+        let serverDuration = snapshot.durationSeconds
+        for (index, chartSnapshot) in snapshot.charts.enumerated() {
             if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
             do {
-                try await processChart(serverChart, for: song, in: context, serverDurationSeconds: serverDuration)
+                try await processChart(chartSnapshot, for: song, in: context, serverDurationSeconds: serverDuration)
                 successCount += 1
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                Logger.warning("Failed to process chart \(serverChart.filename): \(error.localizedDescription)")
-                failedCharts.append(serverChart.filename)
+                Logger.warning("Failed to process chart \(chartSnapshot.filename): \(error.localizedDescription)")
+                failedCharts.append(chartSnapshot.filename)
             }
         }
-        if successCount == 0, !serverSong.charts.isEmpty {
+        if successCount == 0, !snapshot.charts.isEmpty {
             throw ServerSongImportError.chartFailure(
                 reason: "All charts failed: \(failedCharts.joined(separator: ", "))"
             )
@@ -130,17 +134,20 @@ class ServerSongDownloader {
 
     @MainActor
     private func processChart(
-        _ serverChart: ServerChart,
+        _ chartSnapshot: ServerChartSnapshot,
         for song: Song,
         in context: ModelContext,
         serverDurationSeconds: Int?
     ) async throws {
-        guard let url = URL(string: serverChart.fileURL) else {
-            throw ServerSongImportError.invalidChartURL(serverChart.fileURL)
+        guard !chartSnapshot.fileURL.isEmpty else {
+            throw ServerSongImportError.invalidChartURL("(empty fileURL for \(chartSnapshot.filename))")
+        }
+        guard let url = URL(string: chartSnapshot.fileURL) else {
+            throw ServerSongImportError.invalidChartURL(chartSnapshot.fileURL)
         }
         let data = try await downloader.downloadData(from: url)
-        guard let content = Self.decode(data, encoding: serverChart.fileEncoding) else {
-            throw ServerSongImportError.decodeFailed(serverChart.filename)
+        guard let content = Self.decode(data, encoding: chartSnapshot.fileEncoding) else {
+            throw ServerSongImportError.decodeFailed(chartSnapshot.filename)
         }
         let chartData = try DTXFileParser.parseChartMetadata(from: content)
         if song.charts.isEmpty {
@@ -149,25 +156,25 @@ class ServerSongDownloader {
                 song.duration = Self.formatDuration(Int(calculateDuration(from: chartData.notes)))
             }
         }
-        let difficulty = mapServerDifficultyToApp(serverChart.difficulty)
-        let chart = Chart(difficulty: difficulty, level: serverChart.level, song: song)
+        let difficulty = mapServerDifficultyToApp(chartSnapshot.difficulty)
+        let chart = Chart(difficulty: difficulty, level: chartSnapshot.level, song: song)
         chartData.toNotes(for: chart).forEach { chart.notes.append($0) }
         context.insert(chart)
     }
 
     @MainActor
-    private func downloadOptionalFiles(for song: Song, serverSong: ServerSong) async {
+    private func downloadOptionalFiles(for song: Song, snapshot: ServerSongSnapshot) async {
         guard let base = config.r2BaseURL else {
             Logger.database("No R2 base URL configured; skipping audio for \(song.title)")
             return
         }
-        if serverSong.hasBGM {
-            await download(SimfileMapper.bgmURL(base: base, songId: serverSong.songId), kind: .bgm,
-                           songId: serverSong.songId, song: song)
+        if snapshot.hasBGM {
+            await download(SimfileMapper.bgmURL(base: base, songId: snapshot.songId), kind: .bgm,
+                           songId: snapshot.songId, song: song)
         }
-        if serverSong.hasPreview {
-            await download(SimfileMapper.previewURL(base: base, songId: serverSong.songId), kind: .preview,
-                           songId: serverSong.songId, song: song)
+        if snapshot.hasPreview {
+            await download(SimfileMapper.previewURL(base: base, songId: snapshot.songId), kind: .preview,
+                           songId: snapshot.songId, song: song)
         }
     }
 
@@ -198,5 +205,56 @@ class ServerSongDownloader {
 
     private static func formatDuration(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+// MARK: - Value-type snapshots for cross-context safety
+
+/// Captures all needed data from a `ServerSong` to avoid accessing SwiftData
+/// model relationships across different `ModelContext` boundaries.
+struct ServerSongSnapshot: Sendable {
+    let songId: String
+    let title: String
+    let artist: String
+    let bpm: Double
+    let genre: String?
+    let durationSeconds: Int?
+    let charts: [ServerChartSnapshot]
+    let hasBGM: Bool
+    let hasPreview: Bool
+
+    @MainActor
+    init(from serverSong: ServerSong) {
+        self.songId = serverSong.songId
+        self.title = serverSong.title
+        self.artist = serverSong.artist
+        self.bpm = serverSong.bpm
+        self.genre = serverSong.genre
+        self.durationSeconds = serverSong.durationSeconds
+        self.charts = serverSong.charts.map { ServerChartSnapshot(from: $0) }
+        self.hasBGM = serverSong.hasBGM
+        self.hasPreview = serverSong.hasPreview
+    }
+}
+
+/// Captures all needed data from a `ServerChart` for cross-context-safe processing.
+struct ServerChartSnapshot: Sendable {
+    let difficulty: String
+    let difficultyLabel: String
+    let level: Int
+    let filename: String
+    let size: Int
+    let fileURL: String
+    let fileEncoding: String
+
+    @MainActor
+    init(from chart: ServerChart) {
+        self.difficulty = chart.difficulty
+        self.difficultyLabel = chart.difficultyLabel
+        self.level = chart.level
+        self.filename = chart.filename
+        self.size = chart.size
+        self.fileURL = chart.fileURL
+        self.fileEncoding = chart.fileEncoding
     }
 }
