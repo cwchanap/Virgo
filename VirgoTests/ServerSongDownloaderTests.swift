@@ -396,4 +396,34 @@ struct ServerSongDownloaderTests {
             #expect(errorMessage != nil)
         }
     }
+
+    @Test("downloadAndImportSong gives descriptive error for empty fileURL")
+    func testEmptyFileURLGivesDescriptiveError() async throws {
+        let config = makeConfig("ServerSongDownloaderTests.emptyurl.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(
+            downloader: MockFileDownloader(),
+            fileManager: ServerSongFileManager(),
+            config: config
+        )
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let emptyURLChart = ServerChart(
+                difficulty: "easy", difficultyLabel: "Easy", level: 10,
+                filename: "empty.dtx", size: 100,
+                fileURL: "", fileEncoding: "SHIFT_JIS"
+            )
+            let serverSong = ServerSong(
+                songId: "empty-url", title: "Empty URL", artist: "Tester", bpm: 120.0,
+                charts: [emptyURLChart], isDownloaded: false
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success == false)
+            // Empty fileURL causes chartFailure since the single chart can't be processed.
+            // The error message includes the filename.
+            #expect(errorMessage?.contains("empty.dtx") == true,
+                    "Error must reference the chart filename, got: \(errorMessage ?? "nil")")
+        }
+    }
 }
