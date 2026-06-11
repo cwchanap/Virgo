@@ -86,7 +86,7 @@ class ServerSongDownloader {
         }
         if !(try context.fetch(FetchDescriptor<Song>(predicate: serverIdPredicate)).isEmpty) { return true }
 
-        // Fallback: title/artist match for legacy songs without serverSongId.
+        // Fallback: exact title/artist match for legacy songs without serverSongId.
         // Only matches songs that have no serverSongId so that distinct server
         // songs sharing the same title/artist are not treated as duplicates.
         let title = snapshot.title
@@ -94,7 +94,19 @@ class ServerSongDownloader {
         let titleArtistPredicate = #Predicate<Song> { song in
             song.title == title && song.artist == artist && song.serverSongId == nil
         }
-        return !(try context.fetch(FetchDescriptor<Song>(predicate: titleArtistPredicate)).isEmpty)
+        if !(try context.fetch(FetchDescriptor<Song>(predicate: titleArtistPredicate)).isEmpty) { return true }
+
+        // Final fallback: case-insensitive match for legacy songs without serverSongId.
+        // #Predicate cannot call .lowercased(), so this secondary check runs in
+        // memory over the small set of songs that lack a serverSongId.
+        let noServerIdPredicate = #Predicate<Song> { song in
+            song.serverSongId == nil
+        }
+        let legacySongs = try context.fetch(FetchDescriptor<Song>(predicate: noServerIdPredicate))
+        return legacySongs.contains { song in
+            song.title.lowercased() == snapshot.title.lowercased() &&
+                song.artist.lowercased() == snapshot.artist.lowercased()
+        }
     }
 
     private func createSong(from snapshot: ServerSongSnapshot) -> Song {
