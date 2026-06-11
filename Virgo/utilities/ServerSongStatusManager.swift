@@ -70,7 +70,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         return await Task.detached {
             let backgroundContext = ModelContext(container)
             do {
-                guard let songToDelete = try Self.findSongInContextStatic(songId: songId, context: backgroundContext) else {
+                guard let songToDelete = try Self.findSongInContext(songId: songId, context: backgroundContext) else {
                     return true // Already deleted or not found
                 }
 
@@ -79,7 +79,7 @@ class ServerSongStatusManager: @unchecked Sendable {
 
                 backgroundContext.delete(songToDelete)
 
-                _ = try Self.updateServerSongStatusStatic(
+                _ = try Self.updateServerSongStatus(
                     songTitle: songTitle,
                     songArtist: songArtist,
                     songServerSongId: songServerSongId,
@@ -88,7 +88,7 @@ class ServerSongStatusManager: @unchecked Sendable {
                 )
 
                 try saveContext(backgroundContext)
-                Self.deleteAssociatedFilesStatic(
+                Self.deleteAssociatedFiles(
                     bgmPath: bgmFilePath, previewPath: previewFilePath, fileManager: fileManager
                 )
 
@@ -190,37 +190,16 @@ class ServerSongStatusManager: @unchecked Sendable {
         fileManager.deleteFiles(forSongId: songId)
     }
 
-    // MARK: - Private Helper Methods
+    // MARK: - Private Helper Methods (instance wrappers delegating to static)
 
     /// Find a song by ID in the given context
     private func findSongInContext(songId: PersistentIdentifier, context: ModelContext) throws -> Song? {
-        let songDescriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in
-            songModel.persistentModelID == songId
-        })
-        let songs = try context.fetch(songDescriptor)
-
-        guard let songToDelete = songs.first else {
-            Logger.warning("Song not found in background context")
-            return nil
-        }
-
-        return songToDelete
+        try Self.findSongInContext(songId: songId, context: context)
     }
 
     /// Delete associated BGM and preview files for a song
     private func deleteAssociatedFiles(bgmPath: String?, previewPath: String?) {
-        if let bgmPath {
-            fileManager.deleteBGMFile(at: bgmPath)
-        }
-
-        if let previewPath {
-            fileManager.deletePreviewFile(at: previewPath)
-        }
-    }
-
-    /// Delete song from context
-    private func deleteSongFromContext(_ song: Song, context: ModelContext) throws {
-        context.delete(song)
+        Self.deleteAssociatedFiles(bgmPath: bgmPath, previewPath: previewPath, fileManager: fileManager)
     }
 
     /// Update server song download status after local song deletion
@@ -231,39 +210,13 @@ class ServerSongStatusManager: @unchecked Sendable {
         songId: PersistentIdentifier,
         context: ModelContext
     ) throws -> Bool {
-        let serverSongsDescriptor = FetchDescriptor<ServerSong>()
-        let allServerSongs = try context.fetch(serverSongsDescriptor)
-
-        var hasUpdates = false
-        for serverSong in allServerSongs {
-            let matchesServerSong = matchesServerSongByServerSongId(
-                serverSongId: serverSong.songId,
-                songServerSongId: songServerSongId,
-                serverSongTitle: serverSong.title,
-                serverSongArtist: serverSong.artist,
-                songTitle: songTitle,
-                songArtist: songArtist
-            )
-
-            if matchesServerSong && serverSong.isDownloaded {
-                let hasOtherMatchingSongs = try checkForOtherMatchingSongs(
-                    songTitle: songTitle,
-                    songArtist: songArtist,
-                    songServerSongId: songServerSongId,
-                    excludingSongId: songId,
-                    context: context
-                )
-
-                if !hasOtherMatchingSongs {
-                    serverSong.isDownloaded = false
-                    serverSong.bgmDownloaded = false
-                    serverSong.previewDownloaded = false
-                    hasUpdates = true
-                }
-            }
-        }
-
-        return hasUpdates
+        try Self.updateServerSongStatus(
+            songTitle: songTitle,
+            songArtist: songArtist,
+            songServerSongId: songServerSongId,
+            songId: songId,
+            context: context
+        )
     }
 
     /// Check if there are other server-imported songs with the same identity
@@ -274,19 +227,13 @@ class ServerSongStatusManager: @unchecked Sendable {
         excludingSongId: PersistentIdentifier,
         context: ModelContext
     ) throws -> Bool {
-        let songsDescriptor = FetchDescriptor<Song>()
-        let remainingSongs = try context.fetch(songsDescriptor)
-
-        return remainingSongs.contains { otherSong in
-            otherSong.persistentModelID != excludingSongId &&
-                otherSong.isServerImported &&
-                matchesSongIdentity(
-                    song: otherSong,
-                    songTitle: songTitle,
-                    songArtist: songArtist,
-                    songServerSongId: songServerSongId
-                )
-        }
+        try Self.checkForOtherMatchingSongs(
+            songTitle: songTitle,
+            songArtist: songArtist,
+            songServerSongId: songServerSongId,
+            excludingSongId: excludingSongId,
+            context: context
+        )
     }
 
     private func isAlreadyDownloaded(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {
@@ -353,11 +300,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         songArtist: String,
         songServerSongId: String?
     ) -> Bool {
-        if let songServerId = song.serverSongId, let targetServerId = songServerSongId {
-            return songServerId == targetServerId
-        }
-        return song.title.lowercased() == songTitle &&
-            song.artist.lowercased() == songArtist
+        Self.matchesSongIdentity(song: song, songTitle: songTitle, songArtist: songArtist, songServerSongId: songServerSongId)
     }
 
     /// Match a ServerSong to serverSongId/title/artist tuple.
@@ -369,16 +312,19 @@ class ServerSongStatusManager: @unchecked Sendable {
         songTitle: String,
         songArtist: String
     ) -> Bool {
-        if let songServerId = songServerSongId {
-            return serverSongId == songServerId
-        }
-        return serverSongTitle.lowercased() == songTitle &&
-            serverSongArtist.lowercased() == songArtist
+        Self.matchesServerSongByServerSongId(
+            serverSongId: serverSongId,
+            songServerSongId: songServerSongId,
+            serverSongTitle: serverSongTitle,
+            serverSongArtist: serverSongArtist,
+            songTitle: songTitle,
+            songArtist: songArtist
+        )
     }
 
-    // MARK: - Static Helpers (safe for Task.detached — no `self` capture)
+    // MARK: - Static Helpers (single source of truth; safe for Task.detached)
 
-    private static func findSongInContextStatic(songId: PersistentIdentifier, context: ModelContext) throws -> Song? {
+    private static func findSongInContext(songId: PersistentIdentifier, context: ModelContext) throws -> Song? {
         let songDescriptor = FetchDescriptor<Song>(predicate: #Predicate<Song> { songModel in
             songModel.persistentModelID == songId
         })
@@ -392,20 +338,20 @@ class ServerSongStatusManager: @unchecked Sendable {
         return songToDelete
     }
 
-    private static func deleteAssociatedFilesStatic(
+    private static func deleteAssociatedFiles(
         bgmPath: String?,
         previewPath: String?,
         fileManager: ServerSongFileManager
     ) {
         if let bgmPath {
-            fileManager.deleteBGMFile(at: bgmPath)
+            fileManager.deleteFile(at: bgmPath, label: "BGM")
         }
         if let previewPath {
-            fileManager.deletePreviewFile(at: previewPath)
+            fileManager.deleteFile(at: previewPath, label: "preview")
         }
     }
 
-    private static func updateServerSongStatusStatic(
+    private static func updateServerSongStatus(
         songTitle: String,
         songArtist: String,
         songServerSongId: String?,
@@ -416,7 +362,7 @@ class ServerSongStatusManager: @unchecked Sendable {
 
         var hasUpdates = false
         for serverSong in allServerSongs {
-            let matchesServerSong = matchesServerSongByServerSongIdStatic(
+            let matchesServerSong = matchesServerSongByServerSongId(
                 serverSongId: serverSong.songId,
                 songServerSongId: songServerSongId,
                 serverSongTitle: serverSong.title,
@@ -426,7 +372,7 @@ class ServerSongStatusManager: @unchecked Sendable {
             )
 
             if matchesServerSong && serverSong.isDownloaded {
-                let hasOtherMatchingSongs = try checkForOtherMatchingSongsStatic(
+                let hasOtherMatchingSongs = try checkForOtherMatchingSongs(
                     songTitle: songTitle,
                     songArtist: songArtist,
                     songServerSongId: songServerSongId,
@@ -446,7 +392,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         return hasUpdates
     }
 
-    private static func checkForOtherMatchingSongsStatic(
+    private static func checkForOtherMatchingSongs(
         songTitle: String,
         songArtist: String,
         songServerSongId: String?,
@@ -458,7 +404,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         return remainingSongs.contains { otherSong in
             otherSong.persistentModelID != excludingSongId &&
                 otherSong.isServerImported &&
-                matchesSongIdentityStatic(
+                matchesSongIdentity(
                     song: otherSong,
                     songTitle: songTitle,
                     songArtist: songArtist,
@@ -467,7 +413,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         }
     }
 
-    private static func matchesSongIdentityStatic(
+    private static func matchesSongIdentity(
         song: Song,
         songTitle: String,
         songArtist: String,
@@ -480,7 +426,7 @@ class ServerSongStatusManager: @unchecked Sendable {
             song.artist.lowercased() == songArtist
     }
 
-    private static func matchesServerSongByServerSongIdStatic(
+    private static func matchesServerSongByServerSongId(
         serverSongId: String,
         songServerSongId: String?,
         serverSongTitle: String,
