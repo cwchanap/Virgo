@@ -23,8 +23,6 @@ struct DTXAPIClientTests {
         let client = DTXAPIClient(userDefaults: userDefaults)
         
         // Should initialize without crashing
-        #expect(client.isLoading == false)
-        #expect(client.errorMessage == nil)
         #expect(client.session != nil)
     }
 }

@@ -66,8 +66,6 @@ struct DTXAPIClientNetworkingTests {
 
         let data = try await client.downloadData(from: target)
         #expect(String(data: data, encoding: .utf8) == "chart-bytes")
-        #expect(client.isLoading == false)
-        #expect(client.errorMessage == nil)
     }
 
     @Test("downloadData throws network error for non-200 response")
@@ -100,8 +98,5 @@ struct DTXAPIClientNetworkingTests {
             }
             #expect(urlError.code == .badServerResponse)
         }
-
-        #expect(client.isLoading == false)
-        #expect(client.errorMessage?.contains("Network error") == true)
     }
 }

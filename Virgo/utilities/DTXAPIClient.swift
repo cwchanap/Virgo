@@ -24,10 +24,7 @@ enum DTXAPIError: LocalizedError {
 /// The legacy REST configuration layer (`DTXServerURL`, `setServerURL`,
 /// `testConnection`, `performRequest`) was removed after the GraphQL migration;
 /// catalog access now goes through `ApolloSimfileClient` → `ServerConfig`.
-class DTXAPIClient: ObservableObject {
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-
+class DTXAPIClient {
     internal let session: URLSession
     private let userDefaults: UserDefaults
 
@@ -55,8 +52,6 @@ class DTXAPIClient: ObservableObject {
 
 extension DTXAPIClient {
     func downloadData(from url: URL) async throws -> Data {
-        await updateLoadingState(isLoading: true, error: nil)
-
         do {
             let (data, response) = try await session.data(from: url)
 
@@ -65,21 +60,12 @@ extension DTXAPIClient {
                 throw DTXAPIError.networkError(URLError(.badServerResponse))
             }
 
-            await updateLoadingState(isLoading: false, error: nil)
             return data
         } catch let error as DTXAPIError {
-            await updateLoadingState(isLoading: false, error: error.localizedDescription)
             throw error
         } catch {
-            await updateLoadingState(isLoading: false, error: error.localizedDescription)
             throw DTXAPIError.networkError(error)
         }
-    }
-
-    @MainActor
-    private func updateLoadingState(isLoading: Bool, error: String?) {
-        self.isLoading = isLoading
-        self.errorMessage = error
     }
 }
 
