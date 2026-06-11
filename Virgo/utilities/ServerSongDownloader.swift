@@ -86,11 +86,13 @@ class ServerSongDownloader {
         }
         if !(try context.fetch(FetchDescriptor<Song>(predicate: serverIdPredicate)).isEmpty) { return true }
 
-        // Fallback: title/artist match for legacy songs without serverSongId
+        // Fallback: title/artist match for legacy songs without serverSongId.
+        // Only matches songs that have no serverSongId so that distinct server
+        // songs sharing the same title/artist are not treated as duplicates.
         let title = snapshot.title
         let artist = snapshot.artist
         let titleArtistPredicate = #Predicate<Song> { song in
-            song.title == title && song.artist == artist
+            song.title == title && song.artist == artist && song.serverSongId == nil
         }
         return !(try context.fetch(FetchDescriptor<Song>(predicate: titleArtistPredicate)).isEmpty)
     }

@@ -426,4 +426,90 @@ struct ServerSongDownloaderTests {
                     "Error must reference the chart filename, got: \(errorMessage ?? "nil")")
         }
     }
+
+    @Test("downloadAndImportSong allows distinct server songs with same title/artist")
+    func testAllowsDistinctServerSongsWithSameTitleArtist() async throws {
+        let mock = MockFileDownloader()
+        let dtx = dtxData("#TITLE: Same Name\n#ARTIST: Same Artist\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000")
+        mock.responses["\(r2Base)/server-song-a/chart.dtx"] = dtx
+        mock.responses["\(r2Base)/server-song-b/chart.dtx"] = dtx
+        let config = makeConfig("ServerSongDownloaderTests.diffta.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let context = TestContainer.shared.context
+
+            // Insert first server song with serverSongId "server-song-a"
+            let existing = Song(
+                title: "Same Name",
+                artist: "Same Artist",
+                bpm: 120.0,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "server-song-a"
+            )
+            context.insert(existing)
+            try context.save()
+
+            // Import a second distinct server song with same title/artist but different serverSongId
+            let serverChart = chart("easy", label: "Easy", level: 10, file: "chart.dtx", songId: "server-song-b")
+            let serverSong = ServerSong(
+                songId: "server-song-b",
+                title: "Same Name",
+                artist: "Same Artist",
+                bpm: 140.0,
+                charts: [serverChart],
+                isDownloaded: false
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success, "Distinct server song with different serverSongId should be importable, got: \(errorMessage ?? "nil")")
+
+            let verificationContext = ModelContext(container)
+            let songs = try verificationContext.fetch(FetchDescriptor<Song>())
+            let matchingSongs = songs.filter { $0.title == "Same Name" && $0.artist == "Same Artist" }
+            #expect(matchingSongs.count == 2, "Both songs should exist in database")
+        }
+    }
+
+    @Test("downloadAndImportSong rejects import when legacy song matches title/artist")
+    func testRejectsImportWhenLegacySongMatchesTitleArtist() async throws {
+        let mock = MockFileDownloader()
+        let config = makeConfig("ServerSongDownloaderTests.legacy.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let context = TestContainer.shared.context
+
+            // Insert a legacy song with NO serverSongId
+            let legacy = Song(
+                title: "Legacy Song",
+                artist: "Legacy Artist",
+                bpm: 100.0,
+                duration: "2:30",
+                genre: "Rock",
+                isServerImported: false,
+                serverSongId: nil
+            )
+            context.insert(legacy)
+            try context.save()
+
+            // Try to import a server song with the same title/artist
+            let serverSong = ServerSong(
+                songId: "new-server-id",
+                title: "Legacy Song",
+                artist: "Legacy Artist",
+                bpm: 110.0,
+                charts: [],
+                isDownloaded: false
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success == false)
+            #expect(errorMessage == "Song already exists in database")
+        }
+    }
 }
