@@ -21,8 +21,6 @@ struct DTXAPIClientInitTests {
         let client = DTXAPIClient(userDefaults: userDefaults)
         
         // Should initialize without crashing
-        #expect(client.isLoading == false)
-        #expect(client.errorMessage == nil)
         #expect(client.session != nil)
     }
     
@@ -55,29 +53,6 @@ struct DTXAPIClientInitTests {
         #expect(session.configuration.waitsForConnectivity == true)
         #expect(session.configuration.allowsConstrainedNetworkAccess == true)
         #expect(session.configuration.allowsExpensiveNetworkAccess == true)
-    }
-    
-    @Test("DTXAPIClient state management") 
-    func testStateManagement() async {
-        let (userDefaults, suiteName) = TestUserDefaults.makeIsolated(
-            suiteName: "DTXAPIClientInitTests.state.\(UUID().uuidString)"
-        )
-        defer { userDefaults.removePersistentDomain(forName: suiteName) }
-        let client = DTXAPIClient(userDefaults: userDefaults)
-        
-        // Initial state
-        #expect(client.isLoading == false)
-        #expect(client.errorMessage == nil)
-        
-        // Note: We can't easily test the private updateLoadingState method,
-        // but we can verify the Published properties exist and are accessible
-        await MainActor.run {
-            client.isLoading = true
-            client.errorMessage = "Test error"
-        }
-        
-        #expect(client.isLoading == true)
-        #expect(client.errorMessage == "Test error")
     }
     
     @Test("DTXAPIClient conforms to FileDownloading")

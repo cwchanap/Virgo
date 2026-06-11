@@ -101,16 +101,22 @@ class ServerSongCache {
 
     /// Walks all pages, returning the accumulated DTOs and whether the walk
     /// reached `totalCount` (true) or stopped early on an empty page (false).
-    private func fetchAllPages() async throws -> (simfiles: [SimfileDTO], isComplete: Bool) {
+    /// Guards against infinite loops from a misconfigured backend that reports
+    /// `totalCount` higher than the cumulative results but never returns an empty page.
+    private func fetchAllPages(maxPages: Int = 100) async throws -> (simfiles: [SimfileDTO], isComplete: Bool) {
         var results: [SimfileDTO] = []
         var page = 1
-        while true {
+        while page <= maxPages {
             let pageResult = try await fetcher.fetchSimfiles(page: page, pageSize: pageSize, search: nil)
             results.append(contentsOf: pageResult.simfiles)
             if results.count >= pageResult.totalCount { return (results, true) }
             if pageResult.simfiles.isEmpty { return (results, false) }
             page += 1
         }
+        Logger.warning(
+            "Catalog page-walk hit maxPages limit (\(maxPages)); returning \(results.count) results as incomplete"
+        )
+        return (results, false)
     }
 
     /// Patches `fileURL`/`fileEncoding` on legacy `ServerChart`s that predate
