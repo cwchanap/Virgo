@@ -242,6 +242,60 @@ struct DatabaseMaintenanceServiceTests {
         }
     }
 
+    // MARK: - serverSongId-aware dedup
+
+    @Test("cleanupDuplicateSongs preserves server songs with different serverSongIds")
+    func testPreservesServerSongsWithDifferentServerSongIds() async throws {
+        try await TestSetup.withTestSetup {
+            let service = DatabaseMaintenanceService(modelContext: context)
+
+            // Two server-imported songs with same title/artist but different serverSongIds
+            let songA = Song(
+                title: "Same Name", artist: "Same Artist", bpm: 120, duration: "3:00",
+                genre: "DTX Import", isServerImported: true, serverSongId: "server-song-a"
+            )
+            let songB = Song(
+                title: "Same Name", artist: "Same Artist", bpm: 140, duration: "3:30",
+                genre: "DTX Import", isServerImported: true, serverSongId: "server-song-b"
+            )
+            context.insert(songA)
+            context.insert(songB)
+            try context.save()
+
+            service.performInitialMaintenance(songs: [songA, songB])
+
+            // Both songs survive — they have different serverSongIds
+            TestAssertions.assertNotDeleted(songA, in: context)
+            TestAssertions.assertNotDeleted(songB, in: context)
+        }
+    }
+
+    @Test("cleanupDuplicateSongs removes server songs with same serverSongId and same title/artist")
+    func testRemovesServerSongsWithSameServerSongId() async throws {
+        try await TestSetup.withTestSetup {
+            let service = DatabaseMaintenanceService(modelContext: context)
+
+            // Two server-imported songs with the same serverSongId AND same title/artist
+            let songA = Song(
+                title: "Same Name", artist: "Same Artist", bpm: 120, duration: "3:00",
+                genre: "DTX Import", isServerImported: true, serverSongId: "server-song-a"
+            )
+            let songB = Song(
+                title: "Same Name", artist: "Same Artist", bpm: 140, duration: "3:30",
+                genre: "DTX Import", isServerImported: true, serverSongId: "server-song-a"
+            )
+            context.insert(songA)
+            context.insert(songB)
+            try context.save()
+
+            service.performInitialMaintenance(songs: [songA, songB])
+
+            // First survives, second (exact duplicate) is removed
+            TestAssertions.assertNotDeleted(songA, in: context)
+            TestAssertions.assertDeleted(songB, in: context)
+        }
+    }
+
     // MARK: - isServerImported backfill (legacy "DTX Import" genre -> flag)
 
     @Test("performInitialMaintenance backfills isServerImported for legacy DTX Import songs")
