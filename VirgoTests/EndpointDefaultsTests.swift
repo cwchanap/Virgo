@@ -115,4 +115,29 @@ struct EndpointDefaultsTests {
         #expect(env.graphQLEndpoint == nil)
         #expect(env.r2BaseURL == nil)
     }
+
+    @Test("load finds resource at bundle root when subdirectory lookup fails")
+    func testLoadFallsBackToBundleRoot() {
+        // The actual ServerEndpoints.env is bundled at the resources root
+        // (not in a Config/ subdirectory) by PBXFileSystemSynchronizedRootGroup.
+        // Using a nonexistent subdirectory forces the fallback path; the file
+        // should still be found at the bundle root.
+        let env = EndpointDefaults.load(
+            resource: "ServerEndpoints",
+            extension: "env",
+            subdirectory: "NonexistentSubdir"
+        )
+        // The file exists in the test bundle at the root — just verify it loaded
+        // without crashing. Contents depend on CI/local environment, so we only
+        // assert that the load didn't return the "missing file" nil-everything
+        // result when the file IS present.
+        let content = try? String(
+            contentsOf: Bundle.main.url(forResource: "ServerEndpoints", withExtension: "env")!,
+            encoding: .utf8
+        )
+        if content != nil {
+            // File is in the bundle — load should have found it via fallback.
+            #expect(env.graphQLEndpoint != nil || env.r2BaseURL != nil || content?.isEmpty == true)
+        }
+    }
 }
