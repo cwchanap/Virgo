@@ -66,4 +66,25 @@ struct ServerSongFileManagerTests {
         #expect(!FileManager.default.fileExists(atPath: bgm))
         #expect(!FileManager.default.fileExists(atPath: preview))
     }
+
+    @Test("deleteFile(at:label:) removes any file at the given path")
+    func testDeleteFileGeneric() throws {
+        let fileManager = ServerSongFileManager()
+        let songId = "generic-delete-\(UUID().uuidString)"
+        let savedPath = try fileManager.saveBGMFile(Data("payload".utf8), for: songId)
+        #expect(FileManager.default.fileExists(atPath: savedPath))
+
+        fileManager.deleteFile(at: savedPath, label: "audio")
+        #expect(!FileManager.default.fileExists(atPath: savedPath))
+    }
+
+    @Test("deleteFile(at:label:) tolerates non-existent paths")
+    func testDeleteFileGenericNonExistent() {
+        let fileManager = ServerSongFileManager()
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("virgo-missing-\(UUID().uuidString)").path
+
+        fileManager.deleteFile(at: missing, label: "audio")
+        #expect(true)
+    }
 }

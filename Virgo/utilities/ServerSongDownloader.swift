@@ -60,7 +60,7 @@ class ServerSongDownloader {
             context.rollback()
             // Delete any audio files that were written before the database save failed
             for path in savedFilePaths {
-                fileManager.deleteBGMFile(at: path) // deleteBGMFile deletes any file at path
+                fileManager.deleteFile(at: path, label: "audio")
             }
             return (false, "Import failed: \(error.localizedDescription)")
         }
@@ -114,6 +114,7 @@ class ServerSongDownloader {
         var failedCharts: [String] = []
         let serverDuration = snapshot.durationSeconds
         for (index, chartSnapshot) in snapshot.charts.enumerated() {
+            // Throttle chart downloads to avoid overwhelming the server.
             if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
             do {
                 try await processChart(chartSnapshot, for: song, in: context, serverDurationSeconds: serverDuration)

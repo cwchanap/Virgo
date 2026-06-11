@@ -58,12 +58,22 @@ enum SimfileMapper {
         keys.contains { ($0 as NSString).lastPathComponent == name }
     }
 
-    private static func parseDate(_ iso: String) -> Date {
+    /// Shared formatter reused across all date parsing to avoid per-call allocation.
+    private static let dateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: iso) { return date }
+        return formatter
+    }()
+
+    private static let dateFormatterNoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: iso) { return date }
+        return formatter
+    }()
+
+    private static func parseDate(_ iso: String) -> Date {
+        if let date = dateFormatter.date(from: iso) { return date }
+        if let date = dateFormatterNoFractional.date(from: iso) { return date }
         Logger.warning("Malformed updatedAt date: \(iso); using .distantPast")
         return .distantPast
     }

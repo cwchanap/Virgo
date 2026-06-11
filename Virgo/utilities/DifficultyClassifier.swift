@@ -15,6 +15,8 @@ enum DifficultyClassifier {
         }
     }
 
+    // Level thresholds on the 0–100 scale, derived from DTX spec sample data distribution:
+    // easy = 0–34, medium = 35–54, hard = 55–74, expert = 75–100.
     private static func classifyByLevel(_ level: Int) -> Difficulty {
         switch level {
         case ..<35: return .easy
