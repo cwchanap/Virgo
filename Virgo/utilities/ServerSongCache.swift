@@ -26,11 +26,15 @@ class ServerSongCache {
     }
 
     /// Load the cached catalog. No network — refresh is explicit (see `refreshCatalog`).
+    /// Reconciles download flags against the local `Song` store so that songs
+    /// removed outside this service (maintenance, debug clear) don't appear stale.
     func loadServerSongs(modelContext: ModelContext) async throws -> [ServerSong] {
         let descriptor = FetchDescriptor<ServerSong>(
             sortBy: [SortDescriptor(\.lastUpdated, order: .reverse)]
         )
-        return (try? modelContext.fetch(descriptor)) ?? []
+        let songs = (try? modelContext.fetch(descriptor)) ?? []
+        await statusManager.refreshDownloadStatus(modelContext: modelContext)
+        return songs
     }
 
     /// Manual catalog refresh: page-walk PUBLISHED, insert new, prune stale.
@@ -105,11 +109,13 @@ class ServerSongCache {
     /// `totalCount` higher than the cumulative results but never returns an empty page.
     private func fetchAllPages(maxPages: Int = 100) async throws -> (simfiles: [SimfileDTO], isComplete: Bool) {
         var results: [SimfileDTO] = []
+        var seenIds = Set<String>()
         var page = 1
         while page <= maxPages {
             let pageResult = try await fetcher.fetchSimfiles(page: page, pageSize: pageSize, search: nil)
             results.append(contentsOf: pageResult.simfiles)
-            if results.count >= pageResult.totalCount { return (results, true) }
+            seenIds.formUnion(pageResult.simfiles.map(\.id))
+            if seenIds.count >= pageResult.totalCount { return (results, true) }
             if pageResult.simfiles.isEmpty { return (results, false) }
             page += 1
         }

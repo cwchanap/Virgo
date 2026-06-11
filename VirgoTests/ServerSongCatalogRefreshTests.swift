@@ -304,6 +304,8 @@ struct ServerSongCatalogRefreshTests {
     }
 
     /// Fetcher that returns duplicate simfile IDs to simulate server pagination bugs.
+    /// Returns all items in one page. `totalCount` is set to the **unique** count so
+    /// the walk completes after one page (the server knows its own unique count).
     private final class DuplicateIdFetcher: SimfileFetching, @unchecked Sendable {
         let duplicates: [SimfileDTO]
         let pageSize: Int
@@ -311,9 +313,105 @@ struct ServerSongCatalogRefreshTests {
             self.duplicates = duplicates; self.pageSize = pageSize
         }
         func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
-            // Return all items in one page to test dedup in backfill
-            SimfilePage(simfiles: duplicates, totalCount: duplicates.count)
+            let uniqueCount = Set(duplicates.map(\.id)).count
+            return SimfilePage(simfiles: duplicates, totalCount: uniqueCount)
         }
         func fetchSimfile(id: String) async throws -> SimfileDTO? { duplicates.first { $0.id == id } }
+    }
+
+    /// Fetcher that returns duplicate IDs *across pages*, simulating a server bug
+    /// where the same simfile appears on multiple pages. The raw result count
+    /// reaches totalCount before all unique IDs are fetched.
+    private final class CrossPageDuplicateFetcher: SimfileFetching, @unchecked Sendable {
+        /// All unique DTOs the server knows about.
+        let allUnique: [SimfileDTO]
+        let pageSize: Int
+        /// Total count reported by the server (unique count).
+        let totalCount: Int
+
+        init(allUnique: [SimfileDTO], pageSize: Int) {
+            self.allUnique = allUnique
+            self.pageSize = pageSize
+            self.totalCount = allUnique.count
+        }
+
+        func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
+            // Page 1: returns first pageSize items + one duplicate from the "next"
+            // page to simulate a server pagination bug that duplicates entries.
+            // Page 2: returns the remaining unique items.
+            // Page 3+: empty.
+            if page == 1 {
+                let items = Array(allUnique.prefix(pageSize))
+                // If there are more items, duplicate one from beyond the page boundary.
+                if allUnique.count > pageSize {
+                    var page = items
+                    page.append(allUnique[pageSize]) // duplicate from "next page"
+                    return SimfilePage(simfiles: page, totalCount: totalCount)
+                }
+                return SimfilePage(simfiles: items, totalCount: totalCount)
+            } else if page == 2 {
+                let remaining = Array(allUnique.dropFirst(pageSize))
+                return SimfilePage(simfiles: remaining, totalCount: totalCount)
+            }
+            return SimfilePage(simfiles: [], totalCount: totalCount)
+        }
+
+        func fetchSimfile(id: String) async throws -> SimfileDTO? { allUnique.first { $0.id == id } }
+    }
+
+    @Test("Duplicate IDs across pages do not mark walk complete prematurely")
+    func testCrossPageDuplicatesDoNotMarkCompleteEarly() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            // Seed existing songs for "a", "b", "c". All three should survive pruning.
+            let songA = ServerSong(songId: "a", title: "A", artist: "X", bpm: 120)
+            let songB = ServerSong(songId: "b", title: "B", artist: "X", bpm: 120)
+            let songC = ServerSong(songId: "c", title: "C", artist: "X", bpm: 120)
+            context.insert(songA); context.insert(songB); context.insert(songC)
+            try context.save()
+
+            // 3 unique items, pageSize 2. Page 1 returns [a, b, b(dup)] → raw=3,
+            // unique=2. Old code: results.count(3) >= totalCount(3) → premature complete.
+            // New code: seenIds.count(2) >= totalCount(3) → false, keeps paging.
+            // Page 2 returns [c] → seenIds.count(3) >= totalCount(3) → complete.
+            let fetcher = CrossPageDuplicateFetcher(
+                allUnique: [.stub(id: "a"), .stub(id: "b"), .stub(id: "c")],
+                pageSize: 2
+            )
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 2)
+            try await cache.refreshCatalog(modelContext: context)
+
+            let songs = try context.fetch(FetchDescriptor<ServerSong>())
+            let ids = Set(songs.map(\.songId))
+            // All three songs must survive — no premature pruning.
+            #expect(ids == ["a", "b", "c"], "All unique IDs must survive when duplicates delay completion")
+        }
+    }
+
+    @Test("loadServerSongs reconciles stale download status against local store")
+    func testLoadServerSongsReconcilesDownloadStatus() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            // Seed a ServerSong marked as downloaded but with NO matching local Song
+            // (simulating a local Song deleted outside this service path).
+            let serverSong = ServerSong(
+                songId: "orphan",
+                title: "Orphan",
+                artist: "X",
+                bpm: 120,
+                isDownloaded: true
+            )
+            context.insert(serverSong)
+            try context.save()
+
+            let fetcher = MockSimfileFetcher()
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
+
+            let loaded = try await cache.loadServerSongs(modelContext: context)
+            #expect(loaded.count == 1)
+            // refreshDownloadStatus should have corrected the stale flag.
+            #expect(loaded.first?.isDownloaded == false,
+                    "Stale isDownloaded must be reconciled on load")
+        }
     }
 }
