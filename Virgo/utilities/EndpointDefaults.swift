@@ -21,13 +21,19 @@ struct EndpointDefaults {
 
     /// Reads and parses `ServerEndpoints.env` from `bundle`.
     /// Returns an empty `EndpointDefaults` if the file is missing or unreadable.
+    ///
+    /// Looks in `subdirectory` first (the on-disk source layout), then at the
+    /// bundle root (where `PBXFileSystemSynchronizedRootGroup` places it in
+    /// archive/CI builds).
     static func load(
         from bundle: Bundle = .main,
         resource: String = "ServerEndpoints",
         extension ext: String = "env",
         subdirectory: String = "Config"
     ) -> EndpointDefaults {
-        guard let url = bundle.url(forResource: resource, withExtension: ext, subdirectory: subdirectory),
+        let url = bundle.url(forResource: resource, withExtension: ext, subdirectory: subdirectory)
+            ?? bundle.url(forResource: resource, withExtension: ext)
+        guard let url,
               let data = try? Data(contentsOf: url),
               let content = String(data: data, encoding: .utf8) else {
             return EndpointDefaults()
