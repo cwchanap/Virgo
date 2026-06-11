@@ -78,18 +78,26 @@ class DatabaseMaintenanceService {
     }
 
     private func cleanupDuplicateSongs(songs: [Song]) {
-        // Find and remove duplicate songs (same title + artist)
-        var songTitleArtistPairs: Set<String> = []
+        // Find and remove duplicate songs.
+        // Server-imported songs use title+artist+serverSongId as the key so that
+        // distinct catalog entries sharing the same title/artist are preserved.
+        // Local songs (no serverSongId) use title+artist only.
+        var seenKeys: Set<String> = []
         var duplicatesToRemove: [Song] = []
 
         for song in songs {
-            let key = "\(song.title.lowercased())|\(song.artist.lowercased())"
-            if songTitleArtistPairs.contains(key) {
-                // This is a duplicate
+            let baseKey = "\(song.title.lowercased())|\(song.artist.lowercased())"
+            let key: String
+            if let serverId = song.serverSongId {
+                key = "\(baseKey)|server:\(serverId)"
+            } else {
+                key = baseKey
+            }
+            if seenKeys.contains(key) {
                 duplicatesToRemove.append(song)
                 Logger.database("Found duplicate song to remove: \(song.title) by \(song.artist)")
             } else {
-                songTitleArtistPairs.insert(key)
+                seenKeys.insert(key)
             }
         }
 
