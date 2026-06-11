@@ -80,6 +80,15 @@ class ServerSongService: ObservableObject {
             return false
         }
 
+        // Guard: legacy entries created before ServerChart.fileURL existed
+        // have empty URLs. The backfill only runs during refreshCatalog, so
+        // downloading before refreshing fails on every chart. Reject early
+        // with an actionable message.
+        if serverSong.charts.contains(where: { $0.fileURL.isEmpty }) {
+            errorMessage = "Please refresh the catalog first — this entry needs updated chart URLs"
+            return false
+        }
+
         downloadingSongs.insert(songId)
         errorMessage = nil
 

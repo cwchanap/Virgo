@@ -630,4 +630,36 @@ struct ServerSongServiceTests {
             #expect(importedChart?.notesCount == 1)
         }
     }
+
+    @Test("downloadAndImportSong rejects legacy entries with empty chart fileURL")
+    func testDownloadAndImportSongRejectsLegacyEmptyChartURL() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let service = ServerSongService()
+            service.setModelContext(context)
+
+            let legacyChart = ServerChart(
+                difficulty: "expert",
+                difficultyLabel: "MASTER",
+                level: 90,
+                filename: "master.dtx",
+                size: 1024,
+                fileURL: ""  // Legacy entry missing URL
+            )
+            let serverSong = ServerSong(
+                songId: "legacy-empty-url",
+                title: "Legacy Song",
+                artist: "Artist",
+                bpm: 120.0,
+                charts: [legacyChart],
+                isDownloaded: false
+            )
+
+            let success = await service.downloadAndImportSong(serverSong)
+
+            #expect(success == false)
+            #expect(service.errorMessage?.contains("refresh") == true)
+            #expect(service.downloadingSongs.isEmpty)
+        }
+    }
 }

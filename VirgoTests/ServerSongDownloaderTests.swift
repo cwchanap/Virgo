@@ -512,4 +512,43 @@ struct ServerSongDownloaderTests {
             #expect(errorMessage == "Song already exists in database")
         }
     }
+
+    @Test("downloadAndImportSong rejects import when legacy song matches title/artist with different case")
+    func testRejectsImportWhenLegacySongMatchesCaseInsensitive() async throws {
+        let mock = MockFileDownloader()
+        let config = makeConfig("ServerSongDownloaderTests.cicase.\(UUID().uuidString)", withR2: false)
+        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let context = TestContainer.shared.context
+
+            // Insert a legacy song with mixed-case title/artist and NO serverSongId
+            let legacy = Song(
+                title: "LEGACY SONG",
+                artist: "legacy artist",
+                bpm: 100.0,
+                duration: "2:30",
+                genre: "Rock",
+                isServerImported: false,
+                serverSongId: nil
+            )
+            context.insert(legacy)
+            try context.save()
+
+            // Try to import a server song whose title/artist differs only by case
+            let serverSong = ServerSong(
+                songId: "case-insensitive-id",
+                title: "legacy song",
+                artist: "Legacy Artist",
+                bpm: 110.0,
+                charts: [],
+                isDownloaded: false
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success == false)
+            #expect(errorMessage == "Song already exists in database")
+        }
+    }
 }
