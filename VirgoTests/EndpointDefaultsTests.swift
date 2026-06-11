@@ -131,13 +131,13 @@ struct EndpointDefaultsTests {
         // without crashing. Contents depend on CI/local environment, so we only
         // assert that the load didn't return the "missing file" nil-everything
         // result when the file IS present.
-        let content = try? String(
-            contentsOf: Bundle.main.url(forResource: "ServerEndpoints", withExtension: "env")!,
-            encoding: .utf8
-        )
-        if content != nil {
-            // File is in the bundle — load should have found it via fallback.
-            #expect(env.graphQLEndpoint != nil || env.r2BaseURL != nil || content?.isEmpty == true)
+        guard let fileURL = Bundle.main.url(forResource: "ServerEndpoints", withExtension: "env"),
+              let content = try? String(contentsOf: fileURL, encoding: .utf8)
+        else {
+            // File not in bundle (fresh checkout / local dev) — skip assertion.
+            return
         }
+        // File is in the bundle — load should have found it via fallback.
+        #expect(env.graphQLEndpoint != nil || env.r2BaseURL != nil || content.isEmpty)
     }
 }
