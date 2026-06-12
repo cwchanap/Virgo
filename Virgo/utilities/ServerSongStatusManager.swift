@@ -146,6 +146,7 @@ class ServerSongStatusManager: @unchecked Sendable {
                 try saveContext(modelContext)
             }
         } catch {
+            modelContext.rollback()
             Logger.error("Failed to refresh download status: \(error)")
         }
     }
