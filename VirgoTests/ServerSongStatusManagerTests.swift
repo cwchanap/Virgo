@@ -388,8 +388,8 @@ struct ServerSongStatusManagerTests {
         }
     }
 
-    @Test("refreshDownloadStatus swallows save failures")
-    func testRefreshDownloadStatusSaveFailureIsHandled() async throws {
+    @Test("refreshDownloadStatus rollback cleans context on save failure")
+    func testRefreshDownloadStatusRollbackOnSaveFailure() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let manager = ServerSongStatusManager(saveContext: { _ in throw SaveHookError.forced })
@@ -420,6 +420,8 @@ struct ServerSongStatusManagerTests {
 
             await manager.refreshDownloadStatus(modelContext: context)
 
+            // modelContext.rollback() cleans the transaction but SwiftData does not
+            // revert property mutations on already-registered objects.
             #expect(serverSong.isDownloaded == true)
             #expect(serverSong.bgmDownloaded == true)
             #expect(serverSong.previewDownloaded == true)

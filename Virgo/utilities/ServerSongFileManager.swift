@@ -40,10 +40,14 @@ class ServerSongFileManager: @unchecked Sendable {
     }
 
     /// Delete a file at the given path with a descriptive label for logging.
+    /// Idempotent: missing-file errors are treated as a no-op rather than an error.
     func deleteFile(at path: String, label: String = "file") {
         do {
             try FileManager.default.removeItem(atPath: path)
             Logger.database("Deleted \(label) file at path: \(path)")
+        } catch let error as NSError where error.domain == NSCocoaErrorDomain
+                    && error.code == NSFileNoSuchFileError {
+            Logger.database("\(label) file already absent at path: \(path)")
         } catch {
             Logger.error("Failed to delete \(label) file at \(path): \(error.localizedDescription)")
         }
@@ -65,18 +69,7 @@ class ServerSongFileManager: @unchecked Sendable {
         let bgm = documents.appendingPathComponent("BGM").appendingPathComponent("\(songId).ogg")
         let preview = documents.appendingPathComponent("Preview").appendingPathComponent("\(songId).mp3")
 
-        do {
-            try FileManager.default.removeItem(at: bgm)
-            Logger.database("Deleted BGM file for songId: \(songId)")
-        } catch {
-            Logger.error("Failed to delete BGM file for songId \(songId): \(error.localizedDescription)")
-        }
-
-        do {
-            try FileManager.default.removeItem(at: preview)
-            Logger.database("Deleted preview file for songId: \(songId)")
-        } catch {
-            Logger.error("Failed to delete preview file for songId \(songId): \(error.localizedDescription)")
-        }
+        deleteFile(at: bgm.path, label: "BGM for songId \(songId)")
+        deleteFile(at: preview.path, label: "preview for songId \(songId)")
     }
 }

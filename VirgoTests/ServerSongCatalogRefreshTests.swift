@@ -342,10 +342,12 @@ struct ServerSongCatalogRefreshTests {
             // Page 3+: empty.
             if page == 1 {
                 let items = Array(allUnique.prefix(pageSize))
-                // If there are more items, duplicate one from beyond the page boundary.
+                // If there are more items, duplicate an item already on this page
+                // to simulate a server pagination bug where the same simfile
+                // appears twice within a single page.
                 if allUnique.count > pageSize {
                     var page = items
-                    page.append(allUnique[pageSize]) // duplicate from "next page"
+                    page.append(items[0]) // duplicate first item of current page
                     return SimfilePage(simfiles: page, totalCount: totalCount)
                 }
                 return SimfilePage(simfiles: items, totalCount: totalCount)
