@@ -1683,6 +1683,11 @@ final class GameplayViewModel {
     private func scheduleRowWidthUpdate(_ width: CGFloat) {
         rowWidthTimer?.invalidate()
 
+        if !isGameplayPrepared {
+            cachedLayoutRowWidth = width
+            return
+        }
+
         // Apply immediately in tests for deterministic behavior
         if TestEnvironment.isRunningTests {
             cachedLayoutRowWidth = width

@@ -48,6 +48,32 @@ struct LocalDTXFixtureImporterTests {
         #expect(songs.count == 1)
     }
 
+    @Test("refreshes stale Soukyuu audio paths when already imported")
+    func refreshesStaleSoukyuuAudioPathsWhenAlreadyImported() throws {
+        let store = try makeStore()
+        let context = store.context
+        let fixtureURL = try soukyuuFixtureURL()
+        let staleSong = Song(
+            title: "蒼穹への翔歌",
+            artist: "hapadona feat. Suno AI",
+            bpm: 165.55,
+            duration: "3:50",
+            genre: "DTX Import",
+            timeSignature: .fourFour,
+            isServerImported: true,
+            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
+            bgmFilePath: fixtureURL.appendingPathComponent("bgm.ogg").path,
+            previewFilePath: nil
+        )
+        context.insert(staleSong)
+        try context.save()
+
+        let song = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
+
+        #expect(song.bgmFilePath?.hasSuffix("bgm.m4a") == true)
+        #expect(song.previewFilePath?.hasSuffix("preview.mp3") == true)
+    }
+
     private struct TestStore {
         let container: ModelContainer
         let context: ModelContext

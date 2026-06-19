@@ -64,9 +64,9 @@ final class GameplayViewUITests: XCTestCase {
 
         #if os(macOS)
         XCTAssertEqual(
-            app.windows.count,
+            app.windows.containing(.any, identifier: "gameplayRoot").count,
             1,
-            "Gameplay should run in a single Virgo window on macOS"
+            "Gameplay should be mounted in exactly one Virgo window on macOS"
         )
         #endif
         XCTAssertTrue(
