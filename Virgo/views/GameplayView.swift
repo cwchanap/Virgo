@@ -64,34 +64,77 @@ struct GameplayView: View {
         }
     }
 
+    @MainActor
+    private func prepareGameplay(initialRowWidth: CGFloat) async {
+        if usesInjectedViewModel || viewModel?.isGameplayPrepared == true {
+            return
+        }
+        // Reset speed to default before creating ViewModel to prevent stale speed from previous chart
+        practiceSettings.resetSpeed()
+        // Initialize viewModel with environment dependencies
+        if viewModel == nil {
+            viewModel = GameplayViewModel(
+                chart: chart,
+                metronome: metronome,
+                practiceSettings: practiceSettings,
+                scorePersistence: ScorePersistenceService(modelContext: modelContext)
+            )
+        }
+        // Check if the task was cancelled immediately after viewModel creation
+        if Task.isCancelled {
+            viewModel?.cleanup()
+            viewModel = nil
+            return
+        }
+        guard let vm = viewModel else { return }
+        // Load SwiftData relationships asynchronously to avoid blocking main thread
+        await vm.loadChartData()
+        // Check cancellation after the async boundary to avoid setup with incomplete state
+        guard !Task.isCancelled else { return }
+        // Seed the sheet width before setupGameplay builds the first visible notation layout.
+        vm.updateRowWidth(initialRowWidth)
+        // setupGameplay loads the persisted speed for this chart (SC-06)
+        vm.setupGameplay()
+        // Setup InputManager delegate and metronome subscription after viewModel is ready
+        vm.inputManager.delegate = vm.inputHandler
+        vm.wireInputHandler()
+        vm.setupMetronomeSubscription()
+        Logger.userAction("Opened gameplay view for track: \(vm.track?.title ?? "Unknown")")
+    }
+
     var body: some View {
         GeometryReader { geometry in
-            if isGameplayReady {
-                VStack(spacing: 0) {
-                    // Header with track info and controls
-                    GameplayHeaderView(
-                        track: viewModel?.track ?? cachedFallbackTrack,
-                        isPlaying: isPlayingBinding,
-                        viewModel: viewModel,
-                        onDismiss: dismissGameplay,
-                        onPlayPause: { viewModel?.togglePlayback() },
-                        onRestart: { viewModel?.restartPlayback() }
-                    )
-                    .background(Color.black)
+            Group {
+                if isGameplayReady {
+                    VStack(spacing: 0) {
+                        // Header with track info and controls
+                        GameplayHeaderView(
+                            track: viewModel?.track ?? cachedFallbackTrack,
+                            isPlaying: isPlayingBinding,
+                            viewModel: viewModel,
+                            onDismiss: dismissGameplay,
+                            onPlayPause: { viewModel?.togglePlayback() },
+                            onRestart: { viewModel?.restartPlayback() }
+                        )
+                        .background(Color.black)
 
-                    // Main sheet music area - now the primary scrollable content
-                    sheetMusicView(geometry: geometry)
+                        // Main sheet music area - now the primary scrollable content
+                        sheetMusicView(geometry: geometry)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        // Bottom controls
+                        controlsView
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("gameplayRoot")
+                } else {
+                    Color.black
+                        .overlay(Text("Loading...").foregroundColor(.white))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    // Bottom controls
-                    controlsView
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("gameplayRoot")
-            } else {
-                Color.black
-                    .overlay(Text("Loading...").foregroundColor(.white))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .task {
+                await prepareGameplay(initialRowWidth: geometry.size.width)
             }
         }
         #if os(iOS)
@@ -99,40 +142,6 @@ struct GameplayView: View {
         #endif
         .background(Color.black)
         .foregroundColor(.white)
-        .task {
-            if usesInjectedViewModel {
-                return
-            }
-            // Reset speed to default before creating ViewModel to prevent stale speed from previous chart
-            practiceSettings.resetSpeed()
-            // Initialize viewModel with environment dependencies
-            if viewModel == nil {
-                viewModel = GameplayViewModel(
-                    chart: chart,
-                    metronome: metronome,
-                    practiceSettings: practiceSettings,
-                    scorePersistence: ScorePersistenceService(modelContext: modelContext)
-                )
-            }
-            // Check if the task was cancelled immediately after viewModel creation
-            if Task.isCancelled {
-                viewModel?.cleanup()
-                viewModel = nil
-                return
-            }
-            guard let vm = viewModel else { return }
-            // Load SwiftData relationships asynchronously to avoid blocking main thread
-            await vm.loadChartData()
-            // Check cancellation after the async boundary to avoid setup with incomplete state
-            guard !Task.isCancelled else { return }
-            // setupGameplay loads the persisted speed for this chart (SC-06)
-            vm.setupGameplay()
-            // Setup InputManager delegate and metronome subscription after viewModel is ready
-            vm.inputManager.delegate = vm.inputHandler
-            vm.wireInputHandler()
-            vm.setupMetronomeSubscription()
-            Logger.userAction("Opened gameplay view for track: \(vm.track?.title ?? "Unknown")")
-        }
         .onDisappear {
             viewModel?.cleanup()
         }

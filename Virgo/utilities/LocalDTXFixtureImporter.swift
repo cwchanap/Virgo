@@ -39,6 +39,7 @@ enum LocalDTXFixtureImporter {
     @discardableResult
     static func importSong(from folderURL: URL, songId: String, into context: ModelContext) throws -> Song {
         if let existingSong = try existingSong(with: songId, in: context) {
+            try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
             return existingSong
         }
 
@@ -74,7 +75,7 @@ enum LocalDTXFixtureImporter {
             timeSignature: .fourFour,
             isServerImported: true,
             serverSongId: songId,
-            bgmFilePath: existingAudioPath(named: "bgm.ogg", in: folderURL),
+            bgmFilePath: existingAudioPath(named: "bgm.m4a", in: folderURL),
             previewFilePath: existingAudioPath(named: "preview.mp3", in: folderURL),
             bgmStartOffsetSeconds: importedCharts
                 .map(\.data.bgmStartOffsetSeconds)
@@ -117,6 +118,24 @@ enum LocalDTXFixtureImporter {
     private static func existingSong(with songId: String, in context: ModelContext) throws -> Song? {
         try context.fetch(FetchDescriptor<Song>())
             .first { $0.serverSongId == songId }
+    }
+
+    @MainActor
+    private static func refreshAudioPaths(for song: Song, from folderURL: URL, in context: ModelContext) throws {
+        var didChange = false
+        if let bgmPath = existingAudioPath(named: "bgm.m4a", in: folderURL),
+           song.bgmFilePath != bgmPath {
+            song.bgmFilePath = bgmPath
+            didChange = true
+        }
+        if let previewPath = existingAudioPath(named: "preview.mp3", in: folderURL),
+           song.previewFilePath != previewPath {
+            song.previewFilePath = previewPath
+            didChange = true
+        }
+        if didChange {
+            try context.save()
+        }
     }
 
     private static func decodeSETFile(at url: URL) -> String? {

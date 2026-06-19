@@ -3583,6 +3583,27 @@ struct GameplayViewModelTests {
         #expect(viewModel.cachedLayoutRowWidth == initialRowWidth,
                 "Returning to initial width should restore cached width")
     }
+
+    @Test func testPreSetupRowWidthSeedsInitialLayoutWithoutPrebuildingNotation() async throws {
+        let chart = createTestChart(noteCount: 8, measuresCount: 2)
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+
+        viewModel.updateRowWidth(1200)
+
+        #expect(viewModel.cachedLayoutRowWidth == 1200,
+                "Initial geometry width should be stored before gameplay setup")
+        #expect(viewModel.cachedNotationLayout.measures.isEmpty,
+                "Pre-setup width seeding should not build a throwaway notation layout")
+
+        viewModel.setupGameplay()
+
+        #expect(viewModel.cachedLayoutRowWidth == 1200,
+                "setupGameplay should build the first visible layout with the seeded width")
+        #expect(!viewModel.cachedNotationLayout.measures.isEmpty,
+                "setupGameplay should build notation after data and row width are ready")
+    }
 }
 
 @MainActor
