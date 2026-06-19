@@ -27,7 +27,6 @@ enum LocalDTXFixtureImporter {
     static let soukyuuSongId = "soukyuu_e_no_shouka"
 
     private static let setFilename = "SET.def"
-    private static let bundledSoukyuuChartFilename = "bas.dtx"
 
     @MainActor
     @discardableResult
@@ -108,10 +107,19 @@ enum LocalDTXFixtureImporter {
         into context: ModelContext,
         bundle: Bundle = .main
     ) throws -> Song? {
-        guard let chartURL = bundle.url(forResource: bundledSoukyuuChartFilename, withExtension: nil) else {
+        // Look for SET.def (the import entry point) anywhere in the bundle. This works
+        // whether the fixture folder is preserved as a folder reference or flattened into
+        // the bundle root by fileSystemSynchronizedGroups. Using SET.def instead of a
+        // chart file (e.g. bas.dtx) is more correct because SET.def is the logical root
+        // of a DTX fixture and references all chart/audio files by relative path.
+        guard let setURL = bundle.url(forResource: "SET", withExtension: "def") else {
             return nil
         }
-        return try importSong(from: chartURL.deletingLastPathComponent(), songId: soukyuuSongId, into: context)
+        return try importSong(
+            from: setURL.deletingLastPathComponent(),
+            songId: soukyuuSongId,
+            into: context
+        )
     }
 
     @MainActor

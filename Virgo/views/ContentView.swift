@@ -100,6 +100,14 @@ struct ContentView: View {
                 Task { @MainActor in
                     _ = await serverSongService.loadServerSongs()
                 }
+                // Clear the startup snapshot on the next run loop tick so displayedSongs
+                // falls back to the live @Query, which reflects subsequent mutations
+                // (e.g. song deletion). All startup seeding is synchronous and complete
+                // by this point, so @Query is already consistent.
+                Task { @MainActor in
+                    await Task.yield()
+                    startupSongsOverride = nil
+                }
             }
     }
 
@@ -119,7 +127,8 @@ struct ContentView: View {
     }
 
     private var displayedSongs: [Song] {
-        startupSongsOverride ?? allSongs.filter { SongRelationshipLoader.isModelAvailable($0) }
+        let source = startupSongsOverride ?? allSongs
+        return source.filter { SongRelationshipLoader.isModelAvailable($0) }
     }
 
     private var startupPreparationView: some View {

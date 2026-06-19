@@ -190,15 +190,29 @@ final class SongsTabUITests: XCTestCase {
                 XCTAssertTrue(deletingText.waitForNonExistence(timeout: 10))
             }
             
-            // Wait for song count to update or empty state to appear
+            // Wait for the song count text to actually change (or empty state to appear).
+            // `waitForExistence` alone is insufficient because the count element already
+            // exists before deletion — it returns immediately without waiting for the
+            // count value to update.
             let songCountAfter = app.staticTexts.matching(textContainsPredicate("songs available")).firstMatch
             let emptyState = app.staticTexts.matching(textContainsPredicate("No Downloaded Songs")).firstMatch
-            
-            // Wait for either count update or empty state
-            let stateUpdated = songCountAfter.waitForExistence(timeout: 3.0) ||
-                               emptyState.waitForExistence(timeout: 3.0)
-            XCTAssertTrue(stateUpdated, "Song count should update or empty state should appear after deletion")
-            
+
+            let countChangedPredicate = NSPredicate { _, _ in
+                if emptyState.exists { return true }
+                guard songCountAfter.exists else { return false }
+                return self.elementText(songCountAfter) != beforeText
+            }
+            let countChangedExpectation = expectation(
+                for: countChangedPredicate,
+                evaluatedWith: songCountAfter,
+                handler: nil
+            )
+            let result = XCTWaiter.wait(for: [countChangedExpectation], timeout: 10)
+            XCTAssertTrue(
+                result == .completed,
+                "Song count should change or empty state should appear after deletion"
+            )
+
             if songCountAfter.exists {
                 let afterText = elementText(songCountAfter)
                 XCTAssertNotEqual(beforeText, afterText, "Song count should change after deletion")

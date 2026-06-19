@@ -1,6 +1,8 @@
 .env
 Virgo/Config/ServerEndpoints.env
-Virgo/Fixtures/
+Virgo/Fixtures/*
+!Virgo/Fixtures/soukyuu_e_no_shouka/
+!Virgo/Fixtures/soukyuu_e_no_shouka/**
 
 # Server DTX files (for testing only)
 server/dtx_files/
