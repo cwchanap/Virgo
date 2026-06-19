@@ -28,20 +28,20 @@ struct FlagView: View {
     }
 }
 
-struct NotationNoteHeadView: View {
+struct NotationNoteHeadView: View, Equatable {
     let noteHead: RenderedNoteHead
     let isActive: Bool
 
     var body: some View {
         Text(noteHead.drumType.symbol)
             .font(.system(size: GameplayLayout.drumSymbolFontSize, weight: .bold))
-            .foregroundColor(isActive ? .yellow : .white)
+            .foregroundColor(.white)
             .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.drumSymbolFontSize)
             .position(noteHead.position)
     }
 }
 
-struct NotationStemView: View {
+struct NotationStemView: View, Equatable {
     let stem: RenderedStem
     let isActive: Bool
 
@@ -50,11 +50,11 @@ struct NotationStemView: View {
             path.move(to: stem.start)
             path.addLine(to: stem.end)
         }
-        .stroke(isActive ? Color.yellow : Color.white, lineWidth: GameplayLayout.stemWidth)
+        .stroke(Color.white, lineWidth: GameplayLayout.stemWidth)
     }
 }
 
-struct NotationBeamView: View {
+struct NotationBeamView: View, Equatable {
     let beam: RenderedBeam
     let isActive: Bool
 
@@ -63,11 +63,11 @@ struct NotationBeamView: View {
             path.move(to: beam.start)
             path.addLine(to: beam.end)
         }
-        .stroke(isActive ? Color.yellow : Color.white, lineWidth: beam.thickness)
+        .stroke(Color.white, lineWidth: beam.thickness)
     }
 }
 
-struct NotationLedgerLineView: View {
+struct NotationLedgerLineView: View, Equatable {
     let ledgerLine: RenderedLedgerLine
 
     var body: some View {
@@ -79,7 +79,7 @@ struct NotationLedgerLineView: View {
     }
 }
 
-struct NotationFlagView: View {
+struct NotationFlagView: View, Equatable {
     let flag: RenderedFlag
     let isActive: Bool
 
@@ -102,12 +102,12 @@ struct NotationFlagView: View {
 
     var body: some View {
         FlagView(flagIndex: flag.flagIndex, stemDirection: flag.stemDirection)
-            .foregroundColor(isActive ? .yellow : .white)
+            .foregroundColor(.white)
             .position(adjustedCenter)
     }
 }
 
-struct NotationMeasureBarView: View {
+struct NotationMeasureBarView: View, Equatable {
     let measureBar: RenderedMeasureBar
 
     var body: some View {

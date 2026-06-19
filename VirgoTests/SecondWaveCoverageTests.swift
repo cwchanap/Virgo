@@ -31,9 +31,8 @@ struct SecondWaveCoverageTests {
                 serverSongService: serverSongService,
                 currentlyPlaying: .constant(nil),
                 expandedSongId: .constant(nil),
-                selectedChart: .constant(nil),
-                navigateToGameplay: .constant(false),
                 audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
                 onPlayTap: { _ in },
                 onSaveTap: { _ in }
             )
@@ -58,9 +57,8 @@ struct SecondWaveCoverageTests {
                 serverSongService: serverSongService,
                 currentlyPlaying: .constant(nil),
                 expandedSongId: .constant(nil),
-                selectedChart: .constant(nil),
-                navigateToGameplay: .constant(false),
                 audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
                 onPlayTap: { _ in },
                 onSaveTap: { _ in }
             )
@@ -117,9 +115,8 @@ struct SecondWaveCoverageTests {
                 serverSongService: serverSongService,
                 currentlyPlaying: .constant(nil),
                 expandedSongId: .constant(nil),
-                selectedChart: .constant(nil),
-                navigateToGameplay: .constant(false),
                 audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
                 onPlayTap: { _ in },
                 onSaveTap: { _ in }
             )
@@ -135,6 +132,35 @@ struct SecondWaveCoverageTests {
         }
     }
 
+    @Test("DownloadedSongsView.downloadedSongs ignores deleted songs from stale query snapshots")
+    func testDownloadedSongsViewFiltersDeletedSongs() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let deletedSong = makeDownloadedSong(title: "Deleted DTX Track")
+            let liveSong = makeDownloadedSong(title: "Live DTX Track")
+            context.insert(deletedSong)
+            context.insert(liveSong)
+            try context.save()
+            context.delete(deletedSong)
+            try context.save()
+
+            let serverSongService = ServerSongService()
+            let audioPlaybackService = AudioPlaybackService(startPlayback: { _ in false })
+            let view = DownloadedSongsView(
+                songs: [deletedSong, liveSong],
+                serverSongService: serverSongService,
+                currentlyPlaying: .constant(nil),
+                expandedSongId: .constant(nil),
+                audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
+                onPlayTap: { _ in },
+                onSaveTap: { _ in }
+            )
+
+            #expect(view.downloadedSongs.map(\.title) == ["Live DTX Track"])
+        }
+    }
+
     @Test("DownloadedSongsView renders with currently playing song highlighted")
     func testDownloadedSongsViewWithPlayingState() async throws {
         try await TestSetup.withTestSetup {
@@ -147,9 +173,8 @@ struct SecondWaveCoverageTests {
                 serverSongService: serverSongService,
                 currentlyPlaying: .constant(song.persistentModelID),
                 expandedSongId: .constant(nil),
-                selectedChart: .constant(nil),
-                navigateToGameplay: .constant(false),
                 audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
                 onPlayTap: { _ in },
                 onSaveTap: { _ in }
             )

@@ -22,6 +22,7 @@ final class GameplayViewUITests: XCTestCase {
         app.launchArguments.append("-UITesting")
         app.launchArguments.append("-ResetState")
         app.launch()
+        activateLaunchedAppWindow(in: app)
         dismissSetupAssistantIfPresent(returningTo: app)
     }
 
@@ -44,6 +45,46 @@ final class GameplayViewUITests: XCTestCase {
 
         // Verify we're back on the songs list
         XCTAssertTrue(app.staticTexts["Songs"].waitForExistence(timeout: 10))
+    }
+
+    @MainActor
+    func testGameplayOpensImportedSoukyuuFixture() throws {
+        try openGameplay(
+            in: app,
+            songTitle: "蒼穹への翔歌",
+            artist: "hapadona feat. Suno AI",
+            difficulty: "Easy",
+            timeout: 15
+        )
+    }
+
+    @MainActor
+    func testGameplayDoesNotRenderTabShellSimultaneously() throws {
+        try openGameplay(in: app)
+
+        #if os(macOS)
+        XCTAssertEqual(
+            app.windows.count,
+            1,
+            "Gameplay should run in a single Virgo window on macOS"
+        )
+        #endif
+        XCTAssertTrue(
+            waitForFirstExisting([
+                app.buttons["gameplayMainPlayPauseButton"],
+                app.buttons["gameplayHeaderPlayPauseButton"],
+                app.buttons["gameplayPlayPauseButton"]
+            ], timeout: 3) != nil,
+            "Gameplay controls should be present after chart selection"
+        )
+        XCTAssertFalse(
+            app.otherElements["appTabShell"].exists,
+            "Tab shell should not remain mounted while gameplay is active"
+        )
+        XCTAssertFalse(
+            app.tabBars.firstMatch.exists,
+            "Tab bar should not remain visible while gameplay is active"
+        )
     }
 
     @MainActor

@@ -13,6 +13,28 @@ import Combine
 import UIKit
 #endif
 
+private final class LockedMetronomeVolume {
+    private let lock = NSLock()
+    private var storedValue: Float
+
+    init(_ value: Float) {
+        self.storedValue = value
+    }
+
+    var value: Float {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedValue
+        }
+        set {
+            lock.lock()
+            storedValue = newValue
+            lock.unlock()
+        }
+    }
+}
+
 // MARK: - Main Metronome Engine
 @MainActor
 class MetronomeEngine: ObservableObject {
@@ -26,7 +48,11 @@ class MetronomeEngine: ObservableObject {
 
     // Published properties for UI
     @Published var isEnabled = false
-    @Published var volume: Float = 0.7
+    @Published var volume: Float = 0.7 {
+        didSet {
+            realtimeVolume.value = volume
+        }
+    }
 
     // Beat tracking - use private published for internal updates only
     @Published private(set) var currentBeat = 1
@@ -34,6 +60,7 @@ class MetronomeEngine: ObservableObject {
     // Engine components
     private let audioDriver: AudioDriverProtocol
     private let timingEngine: MetronomeTimingEngine
+    private let realtimeVolume = LockedMetronomeVolume(0.7)
     private var cancellables = Set<AnyCancellable>()
 
     /// Callback invoked when audio interruption state changes (e.g., phone call, Siri)
@@ -63,9 +90,9 @@ class MetronomeEngine: ObservableObject {
         }
     }
 
-    init(audioDriver: AudioDriverProtocol? = nil) {
+    init(audioDriver: AudioDriverProtocol? = nil, timingEngine: MetronomeTimingEngine? = nil) {
         self.audioDriver = audioDriver ?? MetronomeAudioEngine()
-        self.timingEngine = MetronomeTimingEngine()
+        self.timingEngine = timingEngine ?? MetronomeTimingEngine()
 
         // Prepare haptic generators to reduce first-use latency
         #if os(iOS)
@@ -73,9 +100,16 @@ class MetronomeEngine: ObservableObject {
         normalHapticGenerator.prepare()
         #endif
 
-        // Connect timing engine to audio engine
-        timingEngine.onBeat = { [weak self] beat, isAccented, atTime in
-            // Audio playback runs on background thread for precise timing
+        // Keep metronome audio off the main actor. SwiftUI rendering can block
+        // visual updates, but it should not delay already scheduled tick audio.
+        let audioDriver = self.audioDriver
+        let realtimeVolume = self.realtimeVolume
+        self.timingEngine.onAudioBeat = { _, isAccented, atTime in
+            audioDriver.playTick(volume: realtimeVolume.value, isAccented: isAccented, atTime: atTime)
+        }
+
+        // Connect timing engine to visual/haptic beat handling.
+        self.timingEngine.onBeat = { [weak self] beat, isAccented, atTime in
             self?.handleBeat(beat: beat, isAccented: isAccented, atTime: atTime)
         }
 
@@ -135,11 +169,32 @@ class MetronomeEngine: ObservableObject {
         startTime: TimeInterval,
         totalBeatsElapsed: Int = 0
     ) {
+        startAtTime(
+            bpm: bpm,
+            timeSignature: timeSignature,
+            startTime: startTime,
+            totalBeatsElapsed: Double(totalBeatsElapsed)
+        )
+    }
+
+    func startAtTime(
+        bpm: Double,
+        timeSignature: TimeSignature,
+        startTime: TimeInterval,
+        totalBeatsElapsed: Double
+    ) {
         let logMessage = "MetronomeEngine.startAtTime() called with BPM: \(bpm), "
             + "timeSignature: \(timeSignature), "
             + "startTime: \(startTime), "
             + "totalBeatsElapsed: \(totalBeatsElapsed)"
         Logger.audioPlayback("🎵 \(logMessage)")
+
+        if timingEngine.isPlaying {
+            Logger.audioPlayback("🎵 Flushing active metronome before scheduled rebase")
+            timingEngine.stop()
+            audioDriver.stop()
+        }
+
         self.bpm = bpm
         self.timeSignature = timeSignature
 
@@ -176,9 +231,10 @@ class MetronomeEngine: ObservableObject {
     // MARK: - Beat Handling
 
     private func handleBeat(beat: Int, isAccented: Bool, atTime: AVAudioTime? = nil) {
-        Logger.audioPlayback("🎵 MetronomeEngine.handleBeat() called - beat: \(beat), isAccented: \(isAccented), volume: \(volume)")
-        // Play audio tick with precise timing
-        audioDriver.playTick(volume: volume, isAccented: isAccented, atTime: atTime)
+        Logger.audioDebug(
+            "🎵 MetronomeEngine.handleBeat() called - beat: \(beat), "
+                + "isAccented: \(isAccented), volume: \(volume)"
+        )
 
         // Trigger haptic feedback on iOS
         #if os(iOS)
@@ -197,7 +253,7 @@ class MetronomeEngine: ObservableObject {
         }
         #endif
 
-        Logger.audioPlayback("🎵 MetronomeEngine.handleBeat() completed")
+        Logger.audioDebug("🎵 MetronomeEngine.handleBeat() completed")
     }
 
     // MARK: - Configuration Updates

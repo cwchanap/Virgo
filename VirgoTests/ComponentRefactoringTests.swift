@@ -64,16 +64,13 @@ struct ComponentRefactoringTests {
         try await TestSetup.withTestSetup {
             let mockSong = TestModelFactory.createSong(in: context)
             let expandedSongId = Binding.constant(Optional<PersistentIdentifier>.none)
-            let selectedChart = Binding.constant(Optional<Chart>.none)
-            let navigateToGameplay = Binding.constant(false)
 
             let container = ExpandableSongRowContainer(
                 song: mockSong,
                 isPlaying: false,
                 isExpanded: false,
                 expandedSongId: expandedSongId,
-                selectedChart: selectedChart,
-                navigateToGameplay: navigateToGameplay,
+                onChartSelect: { _ in },
                 onPlayTap: {},
                 onSaveTap: {}
             )

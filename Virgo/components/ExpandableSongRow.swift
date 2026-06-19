@@ -14,8 +14,7 @@ struct ExpandableSongRowContainer: View {
     let isPlaying: Bool
     let isExpanded: Bool
     @Binding var expandedSongId: PersistentIdentifier?
-    @Binding var selectedChart: Chart?
-    @Binding var navigateToGameplay: Bool
+    let onChartSelect: (Chart) -> Void
     let onPlayTap: () -> Void
     let onSaveTap: () -> Void
 
@@ -27,7 +26,7 @@ struct ExpandableSongRowContainer: View {
             onPlayTap: onPlayTap,
             onSaveTap: onSaveTap,
             onSongTap: handleSongTap,
-            onChartSelect: handleChartSelect
+            onChartSelect: onChartSelect
         )
     }
 
@@ -35,10 +34,6 @@ struct ExpandableSongRowContainer: View {
         expandedSongId = expandedSongId == song.persistentModelID ? nil : song.persistentModelID
     }
 
-    private func handleChartSelect(_ chart: Chart) {
-        selectedChart = chart
-        navigateToGameplay = true
-    }
 }
 
 // MARK: - Expandable Song Row

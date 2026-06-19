@@ -7,12 +7,19 @@
 
 import SwiftUI
 import SwiftData
+#if os(macOS)
+import AppKit
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
 
 @main
 struct VirgoApp: App {
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(MacSingleWindowDelegate.self) private var appDelegate
+    #endif
+
     @StateObject private var sharedMetronome = MetronomeEngine()
     @StateObject private var sharedPracticeSettings = PracticeSettingsService()
 
@@ -47,12 +54,58 @@ struct VirgoApp: App {
         }
     }
 
+    @ViewBuilder
+    private var rootView: some View {
+        MainMenuView()
+            .environmentObject(sharedMetronome)
+            .environmentObject(sharedPracticeSettings)
+    }
+
     var body: some Scene {
+        #if os(macOS)
         WindowGroup {
-            MainMenuView()
-                .environmentObject(sharedMetronome)
-                .environmentObject(sharedPracticeSettings)
+            rootView
         }
         .modelContainer(sharedModelContainer)
+        .commands {
+            CommandGroup(replacing: .newItem) { }
+        }
+        #else
+        WindowGroup {
+            rootView
+        }
+        .modelContainer(sharedModelContainer)
+        #endif
     }
 }
+
+#if os(macOS)
+final class MacSingleWindowDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        DispatchQueue.main.async {
+            self.closeRestoredDuplicateMainWindows()
+        }
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        closeRestoredDuplicateMainWindows()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            sender.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+        }
+        return false
+    }
+
+    private func closeRestoredDuplicateMainWindows() {
+        let mainWindows = NSApp.windows.filter { window in
+            window.canBecomeMain && window.isVisible && !(window is NSPanel)
+        }
+
+        for window in mainWindows.dropFirst() {
+            window.close()
+        }
+    }
+}
+#endif

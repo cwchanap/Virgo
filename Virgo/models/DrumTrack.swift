@@ -103,6 +103,7 @@ final class Song {
     var serverSongId: String? // Stable ID from the server catalog (folder name). Used for download status, deletion, and duplicate checks.
     var bgmFilePath: String? // Path to downloaded BGM audio file
     var previewFilePath: String? // Path to downloaded preview audio file
+    var bgmStartOffsetSeconds: Double? // DTX lane 01 start time at 1.0x speed
     @Relationship(deleteRule: .cascade, inverse: \Chart.song)
     var charts: [Chart]
 
@@ -163,7 +164,8 @@ final class Song {
         isServerImported: Bool = false,
         serverSongId: String? = nil,
         bgmFilePath: String? = nil,
-        previewFilePath: String? = nil
+        previewFilePath: String? = nil,
+        bgmStartOffsetSeconds: Double? = nil
     ) {
         self.title = title
         self.artist = artist
@@ -180,6 +182,7 @@ final class Song {
         self.serverSongId = serverSongId
         self.bgmFilePath = bgmFilePath
         self.previewFilePath = previewFilePath
+        self.bgmStartOffsetSeconds = bgmStartOffsetSeconds
     }
 }
 
@@ -390,8 +393,83 @@ extension Song {
         
         let chart7Easy = Chart(difficulty: .easy)
         song7.charts = [chart7Easy]
+
+        chart1Easy.notes = Self.thunderBeatVerificationNotes()
+        chart1Medium.notes = Self.thunderBeatVerificationNotes(includeFills: true)
         
         return [song1, song2, song3, song4, song5, song6, song7]
+    }
+
+    static func fixtureCopy(from template: Song, genre: String? = nil, isServerImported: Bool? = nil) -> Song {
+        let song = Song(
+            title: template.title,
+            artist: template.artist,
+            bpm: template.bpm,
+            duration: template.duration,
+            genre: genre ?? template.genre,
+            timeSignature: template.timeSignature,
+            isPlaying: template.isPlaying,
+            playCount: template.playCount,
+            isSaved: template.isSaved,
+            isServerImported: isServerImported ?? template.isServerImported,
+            serverSongId: template.serverSongId,
+            bgmFilePath: template.bgmFilePath,
+            previewFilePath: template.previewFilePath,
+            bgmStartOffsetSeconds: template.bgmStartOffsetSeconds
+        )
+        song.charts = template.charts.map { templateChart in
+            let chart = Chart(
+                difficulty: templateChart.difficulty,
+                level: templateChart.level,
+                timeSignature: templateChart.timeSignature,
+                song: song
+            )
+            chart.notes = templateChart.safeNotes.map { templateNote in
+                Note(
+                    interval: templateNote.interval,
+                    noteType: templateNote.noteType,
+                    measureNumber: templateNote.measureNumber,
+                    measureOffset: templateNote.measureOffset,
+                    chart: chart
+                )
+            }
+            return chart
+        }
+        return song
+    }
+
+    private static func thunderBeatVerificationNotes(includeFills: Bool = false) -> [Note] {
+        var notes: [Note] = []
+
+        func add(_ interval: NoteInterval, _ noteType: NoteType, _ measureNumber: Int, _ measureOffset: Double) {
+            notes.append(
+                Note(
+                    interval: interval,
+                    noteType: noteType,
+                    measureNumber: measureNumber,
+                    measureOffset: measureOffset
+                )
+            )
+        }
+
+        for measureNumber in 1...4 {
+            stride(from: 0.0, through: 0.875, by: 0.125).forEach {
+                add(.eighth, .hiHat, measureNumber, $0)
+            }
+            add(.quarter, .bass, measureNumber, 0.0)
+            add(.quarter, .snare, measureNumber, 0.5)
+            add(.quarter, .bass, measureNumber, 0.75)
+        }
+
+        add(.quarter, .crash, 1, 0.0)
+
+        if includeFills {
+            add(.eighth, .highTom, 4, 0.625)
+            add(.eighth, .midTom, 4, 0.75)
+            add(.eighth, .lowTom, 4, 0.875)
+        }
+
+        return notes
     }
 }
 // MARK: - Legacy Support for DrumTrack

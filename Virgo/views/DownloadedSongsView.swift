@@ -24,15 +24,20 @@ struct DownloadedSongsView: View {
     @ObservedObject var serverSongService: ServerSongService
     @Binding var currentlyPlaying: PersistentIdentifier?
     @Binding var expandedSongId: PersistentIdentifier?
-    @Binding var selectedChart: Chart?
-    @Binding var navigateToGameplay: Bool
     @ObservedObject var audioPlaybackService: AudioPlaybackService
+    let onChartSelect: (Chart) -> Void
     let onPlayTap: (Song) -> Void
     let onSaveTap: (Song) -> Void
 
     // Filter to show only downloaded songs (server-imported)
     var downloadedSongs: [Song] {
-        songs.filter { $0.isServerImported }
+        Self.downloadedSongs(from: songs)
+    }
+
+    static func downloadedSongs(from songs: [Song]) -> [Song] {
+        songs.filter { song in
+            SongRelationshipLoader.isModelAvailable(song) && song.isServerImported
+        }
     }
 
     // Helper function to determine if a song is currently playing
@@ -55,8 +60,7 @@ struct DownloadedSongsView: View {
                         isExpanded: expandedSongId == song.persistentModelID,
                         isDeleting: serverSongService.isDeleting(song),
                         expandedSongId: $expandedSongId,
-                        selectedChart: $selectedChart,
-                        navigateToGameplay: $navigateToGameplay,
+                        onChartSelect: onChartSelect,
                         onPlayTap: { onPlayTap(song) },
                         onSaveTap: { onSaveTap(song) },
                         onDelete: {
@@ -66,7 +70,6 @@ struct DownloadedSongsView: View {
                             }
                         }
                     )
-                    .accessibilityIdentifier(Self.rowViewID(for: song))
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -105,8 +108,7 @@ struct DownloadedSongRowWithDelete: View {
     let isExpanded: Bool
     let isDeleting: Bool
     @Binding var expandedSongId: PersistentIdentifier?
-    @Binding var selectedChart: Chart?
-    @Binding var navigateToGameplay: Bool
+    let onChartSelect: (Chart) -> Void
     let onPlayTap: () -> Void
     let onSaveTap: () -> Void
     let onDelete: () -> Void
@@ -124,8 +126,7 @@ struct DownloadedSongRowWithDelete: View {
         isExpanded: Bool,
         isDeleting: Bool,
         expandedSongId: Binding<PersistentIdentifier?>,
-        selectedChart: Binding<Chart?>,
-        navigateToGameplay: Binding<Bool>,
+        onChartSelect: @escaping (Chart) -> Void,
         onPlayTap: @escaping () -> Void,
         onSaveTap: @escaping () -> Void,
         onDelete: @escaping () -> Void
@@ -135,8 +136,7 @@ struct DownloadedSongRowWithDelete: View {
         self.isExpanded = isExpanded
         self.isDeleting = isDeleting
         self._expandedSongId = expandedSongId
-        self._selectedChart = selectedChart
-        self._navigateToGameplay = navigateToGameplay
+        self.onChartSelect = onChartSelect
         self.onPlayTap = onPlayTap
         self.onSaveTap = onSaveTap
         self.onDelete = onDelete
@@ -285,6 +285,8 @@ struct DownloadedSongRowWithDelete: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier("downloadedSongExpandButton")
+        .accessibilityLabel("\(chartCount) charts")
     }
     
     private var expandedContent: some View {
@@ -311,7 +313,6 @@ struct DownloadedSongRowWithDelete: View {
     }
 
     private func handleChartSelect(_ chart: Chart) {
-        selectedChart = chart
-        navigateToGameplay = true
+        onChartSelect(chart)
     }
 }

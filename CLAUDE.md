@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Virgo is a SwiftUI-based drum notation and metronome application for iOS and macOS. The app provides interactive drum track visualization with musical notation, metronome functionality, and gameplay-style views for practicing drum patterns.
+Virgo is a SwiftUI-based drum notation and metronome application for iPadOS and macOS. The app provides interactive drum track visualization with musical notation, metronome functionality, and gameplay-style views for practicing drum patterns.
 
 - **SwiftUI + SwiftData**: Modern declarative UI with persistent storage
-- **Multi-platform**: iOS 18.5+ and macOS 14.0+
+- **Supported platforms**: macOS 14.0+ and iPadOS via the iOS SDK
 - **AVFoundation**: Audio engine for metronome and song preview playback
+- **No iPhone target**: Do not add iPhone destinations, iPhone UI assumptions, or `TARGETED_DEVICE_FAMILY = "1,2"` back to the project. The app target should remain iPad-only for iOS-family builds (`TARGETED_DEVICE_FAMILY = 2`). Xcode build settings may still mention `iphoneos`/`iphonesimulator`; those SDK platform names are also used for iPad builds.
 
 ## Development Commands
 
@@ -16,6 +17,10 @@ Virgo is a SwiftUI-based drum notation and metronome application for iOS and mac
 ```bash
 # Build for macOS
 xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' build
+
+# Build for iPad simulator compatibility (use an available iPad simulator, never iPhone)
+xcodebuild -project Virgo.xcodeproj -scheme Virgo \
+  -destination 'platform=iOS Simulator,name=iPad Pro 11-inch (M4)' build
 
 # Run all unit tests (CI format - recommended)
 xcodebuild test \
@@ -60,7 +65,7 @@ swiftlint lint --fix   # Auto-fix
 - File: 600 / 1000 lines
 
 ### CI
-GitHub Actions: `.github/workflows/ci.yml` (build + unit tests, macOS), `ui-tests.yml` (UI tests).
+GitHub Actions: `.github/workflows/ci.yml` (macOS build + unit tests, plus a guard that rejects iPhone targeting), `ui-tests.yml` (macOS UI tests). If simulator UI tests are added later, use iPad simulator destinations only.
 
 ## Architecture
 
@@ -178,4 +183,3 @@ cd server && uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 - Endpoints: list, download, and parse DTX files from `server/dtx_files/`
 - Parses `SET.def` files with multi-encoding fallback (UTF-16 → Shift-JIS → UTF-8)
 - CORS-enabled; Cloudflare Workers deployment supported
-

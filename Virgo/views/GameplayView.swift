@@ -19,6 +19,7 @@ struct GameplayView: View {
     let chart: Chart
     let metronome: MetronomeEngine
     private let usesInjectedViewModel: Bool
+    private let onDismissOverride: (() -> Void)?
 
     // MARK: - ViewModel
     /// Consolidated state management - initialized lazily with environment dependencies
@@ -26,10 +27,16 @@ struct GameplayView: View {
     /// Cached fallback track to avoid constructing a new DrumTrack on every render
     @State private var cachedFallbackTrack: DrumTrack
 
-    init(chart: Chart, metronome: MetronomeEngine, initialViewModel: GameplayViewModel? = nil) {
+    init(
+        chart: Chart,
+        metronome: MetronomeEngine,
+        initialViewModel: GameplayViewModel? = nil,
+        onDismiss: (() -> Void)? = nil
+    ) {
         self.chart = chart
         self.metronome = metronome
         self.usesInjectedViewModel = initialViewModel != nil
+        self.onDismissOverride = onDismiss
         self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
         self._viewModel = State(initialValue: initialViewModel)
     }
@@ -45,26 +52,46 @@ struct GameplayView: View {
         )
     }
 
+    private var isGameplayReady: Bool {
+        viewModel?.isGameplayPrepared == true
+    }
+
+    private func dismissGameplay() {
+        if let onDismissOverride {
+            onDismissOverride()
+        } else {
+            dismiss()
+        }
+    }
+
     var body: some View {
         GeometryReader { geometry in
-            VStack(spacing: 0) {
-                // Header with track info and controls
-                GameplayHeaderView(
-                    track: viewModel?.track ?? cachedFallbackTrack,
-                    isPlaying: isPlayingBinding,
-                    viewModel: viewModel,
-                    onDismiss: { dismiss() },
-                    onPlayPause: { viewModel?.togglePlayback() },
-                    onRestart: { viewModel?.restartPlayback() }
-                )
-                .background(Color.black)
+            if isGameplayReady {
+                VStack(spacing: 0) {
+                    // Header with track info and controls
+                    GameplayHeaderView(
+                        track: viewModel?.track ?? cachedFallbackTrack,
+                        isPlaying: isPlayingBinding,
+                        viewModel: viewModel,
+                        onDismiss: dismissGameplay,
+                        onPlayPause: { viewModel?.togglePlayback() },
+                        onRestart: { viewModel?.restartPlayback() }
+                    )
+                    .background(Color.black)
 
-                // Main sheet music area - now the primary scrollable content
-                sheetMusicView(geometry: geometry)
+                    // Main sheet music area - now the primary scrollable content
+                    sheetMusicView(geometry: geometry)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    // Bottom controls
+                    controlsView
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("gameplayRoot")
+            } else {
+                Color.black
+                    .overlay(Text("Loading...").foregroundColor(.white))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                // Bottom controls
-                controlsView
             }
         }
         #if os(iOS)
@@ -125,7 +152,7 @@ struct GameplayView: View {
                     },
                     onDone: {
                         vm.isShowingSessionResults = false
-                        dismiss()
+                        dismissGameplay()
                     }
                 )
             }

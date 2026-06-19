@@ -93,6 +93,33 @@ extension XCTestCase {
         return false
     }
 
+    @discardableResult
+    func activateLaunchedAppWindow(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 5
+    ) -> Bool {
+        app.activate()
+
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if initialAppContentIsVisible(in: app) {
+                return true
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            app.activate()
+        } while Date() < deadline
+
+        return initialAppContentIsVisible(in: app) || app.windows.firstMatch.exists
+    }
+
+    private func initialAppContentIsVisible(in app: XCUIApplication) -> Bool {
+        app.buttons["startButton"].exists ||
+            app.staticTexts["logoText"].exists ||
+            app.otherElements["startupPreparationView"].exists ||
+            songsViewIsLoaded(in: app, timeout: 0.1)
+    }
+
     private func tapFirstSystemDialogButton(in root: XCUIElement) -> Bool {
         for label in systemDialogButtonLabels {
             let button = root.buttons[label]
@@ -249,19 +276,37 @@ extension XCTestCase {
     }
 
     @discardableResult
+    func requireGameplayRoot(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let root = app.descendants(matching: .any)["gameplayRoot"]
+        if root.waitForExistence(timeout: timeout) {
+            return root
+        }
+
+        let snapshot = app.debugDescription
+        let trimmedSnapshot = snapshot.count > 4_000 ? String(snapshot.prefix(4_000)) : snapshot
+        XCTFail(
+            "Expected gameplay root to exist after chart selection. Snapshot: \(trimmedSnapshot)",
+            file: file,
+            line: line
+        )
+        throw UITestFailure.elementNotFound("gameplay root")
+    }
+
+    @discardableResult
     func requireGameplayPlayPauseControl(
         in app: XCUIApplication,
         timeout: TimeInterval = 10,
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> XCUIElement {
-        let playButton = app.buttons.matching(NSPredicate(format: "label == %@", "Play")).firstMatch
-        let pauseButton = app.buttons.matching(NSPredicate(format: "label == %@", "Pause")).firstMatch
         let candidates = [
             app.buttons["gameplayMainPlayPauseButton"],
-            app.buttons["gameplayHeaderPlayPauseButton"],
-            playButton,
-            pauseButton
+            app.buttons["gameplayHeaderPlayPauseButton"]
         ]
 
         if let element = waitForFirstExisting(candidates, timeout: timeout) {
@@ -359,21 +404,33 @@ extension XCTestCase {
         line: UInt = #line
     ) throws -> XCUIElement {
         let identifier = "chartDifficulty\(difficulty)"
-        let labelPredicate = NSPredicate(
-            format: "label CONTAINS[c] %@ AND (label CONTAINS[c] 'difficulty' OR label CONTAINS[c] 'Level')",
-            difficulty
-        )
-        let candidates = [
-            app.buttons[identifier],
-            app.buttons.matching(labelPredicate).firstMatch
-        ]
+        let difficultyButton = app.buttons[identifier]
+        let difficultyElement = app.otherElements[identifier]
 
-        if let element = waitForFirstExisting(candidates, timeout: timeout) {
+        if let element = waitForFirstExisting([difficultyButton, difficultyElement], timeout: timeout) {
             return element
         }
 
-        XCTFail("Expected \(difficulty) difficulty button to exist", file: file, line: line)
+        XCTFail("Expected \(difficulty) difficulty button with identifier \(identifier) to exist", file: file, line: line)
         throw UITestFailure.elementNotFound(difficulty)
+    }
+
+    @discardableResult
+    func requireLoadedChartExpansionButton(
+        in app: XCUIApplication,
+        timeout: TimeInterval = 10,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let nonEmptyChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
+        let chartButton = app.buttons.matching(nonEmptyChartCount).firstMatch
+
+        if let element = waitForFirstExisting([chartButton], timeout: timeout) {
+            return element
+        }
+
+        XCTFail("Expected a loaded song row with one or more charts to exist", file: file, line: line)
+        throw UITestFailure.elementNotFound("loaded chart expansion")
     }
 
     func openSongsView(
@@ -393,7 +450,28 @@ extension XCTestCase {
                 return
             }
 
-            try tapControl(named: "START", in: app, timeout: timeout, file: file, line: line)
+            if app.otherElements["startupPreparationView"].exists {
+                if songsViewIsLoaded(in: app, timeout: timeout) {
+                    return
+                }
+            }
+
+            guard let startControl = waitForFirstExisting(
+                [
+                    app.buttons.matching(identifier: "startButton").firstMatch,
+                    app.buttons.matching(NSPredicate(format: "label == %@", "START")).firstMatch
+                ],
+                timeout: timeout
+            ) else {
+                XCTFail(
+                    "Expected main menu START control or songs view to exist. \(initialAppStateDescription(in: app))",
+                    file: file,
+                    line: line
+                )
+                throw UITestFailure.elementNotFound("main menu START or songs view")
+            }
+
+            startControl.tap()
 
             if songsViewIsLoaded(in: app, timeout: timeout) {
                 return
@@ -415,6 +493,13 @@ extension XCTestCase {
             app.textFields["searchField"].waitForExistence(timeout: timeout)
     }
 
+    private func initialAppStateDescription(in app: XCUIApplication) -> String {
+        let snapshot = app.debugDescription
+        let maxLength = 4_000
+        let trimmedSnapshot = snapshot.count > maxLength ? String(snapshot.prefix(maxLength)) : snapshot
+        return "state=\(app.state.rawValue), windows=\(app.windows.count), snapshot=\(trimmedSnapshot)"
+    }
+
     func openGameplay(
         in app: XCUIApplication,
         songTitle: String = "Thunder Beat",
@@ -433,7 +518,7 @@ extension XCTestCase {
 
         try requireStaticText(containing: songTitle, in: app, timeout: timeout, file: file, line: line)
 
-        let chartButton = try requireButton(containing: "charts", in: app, timeout: timeout, file: file, line: line)
+        let chartButton = try requireLoadedChartExpansionButton(in: app, timeout: timeout, file: file, line: line)
         chartButton.tap()
 
         XCTAssertTrue(
@@ -452,6 +537,7 @@ extension XCTestCase {
         )
         difficultyElement.tap()
 
+        try requireGameplayRoot(in: app, timeout: timeout, file: file, line: line)
         try requireStaticText(containing: songTitle, in: app, timeout: timeout, file: file, line: line)
         try requireStaticText(containing: artist, in: app, timeout: timeout, file: file, line: line)
         try requireGameplayPlayPauseControl(in: app, timeout: timeout, file: file, line: line)
