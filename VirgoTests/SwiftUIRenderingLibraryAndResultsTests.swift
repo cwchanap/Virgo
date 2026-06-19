@@ -283,9 +283,8 @@ struct SwiftUIRenderingLibraryAndResultsTests {
                 searchText: .constant("Downloaded"),
                 currentlyPlaying: .constant(nil),
                 expandedSongId: .constant(nil),
-                selectedChart: .constant(nil),
-                navigateToGameplay: .constant(false),
                 audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
                 onPlayTap: { _ in },
                 onSaveTap: { _ in }
             )

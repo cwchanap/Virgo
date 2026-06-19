@@ -16,7 +16,8 @@ struct SongsTabCoverageTests {
     private func makeSUT(
         allSongs: [Song] = [],
         serverSongs: [ServerSong] = [],
-        searchText: String = ""
+        searchText: String = "",
+        onChartSelect: @escaping (Chart) -> Void = { _ in }
     ) -> SongsTabView {
         var search = searchText
         let binding = Binding(get: { search }, set: { search = $0 })
@@ -27,9 +28,8 @@ struct SongsTabCoverageTests {
             searchText: binding,
             currentlyPlaying: .constant(nil),
             expandedSongId: .constant(nil),
-            selectedChart: .constant(nil),
-            navigateToGameplay: .constant(false),
             audioPlaybackService: AudioPlaybackService(startPlayback: { _ in false }),
+            onChartSelect: onChartSelect,
             onPlayTap: { _ in },
             onSaveTap: { _ in }
         )

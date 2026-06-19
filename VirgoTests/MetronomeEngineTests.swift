@@ -19,10 +19,13 @@ private func timingEngineValue<T>(
     return mirror.children.first { $0.label == label }?.value as? T
 }
 
-@MainActor
 final class RecordingAudioDriver: AudioDriverProtocol {
+    private let lock = NSLock()
+    private let tickSemaphore = DispatchSemaphore(value: 0)
     private(set) var playedTicks: [(volume: Float, isAccented: Bool)] = []
+    private(set) var scheduledAudioTimes: [AVAudioTime?] = []
     private(set) var resumeCallCount = 0
+    private(set) var stopCallCount = 0
     private let audioTimeToReturn: AVAudioTime?
 
     init(audioTimeToReturn: AVAudioTime? = nil) {
@@ -30,18 +33,82 @@ final class RecordingAudioDriver: AudioDriverProtocol {
     }
 
     func playTick(volume: Float, isAccented: Bool, atTime: AVAudioTime?) {
+        lock.lock()
+        defer { lock.unlock() }
         playedTicks.append((volume: volume, isAccented: isAccented))
+        scheduledAudioTimes.append(atTime)
+        tickSemaphore.signal()
+    }
+
+    func stop() {
+        lock.lock()
+        defer { lock.unlock() }
+        stopCallCount += 1
+    }
+
+    func resume() {
+        lock.lock()
+        defer { lock.unlock() }
+        resumeCallCount += 1
+    }
+
+    func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
+        audioTimeToReturn
+    }
+
+    func waitForTicks(count: Int, timeout: TimeInterval) -> Bool {
+        let deadline = DispatchTime.now() + timeout
+        for _ in 0..<count {
+            if tickSemaphore.wait(timeout: deadline) != .success {
+                return false
+            }
+        }
+        return true
+    }
+
+    var playedTicksSnapshot: [(volume: Float, isAccented: Bool)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return playedTicks
+    }
+
+    var scheduledAudioTimesSnapshot: [AVAudioTime?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return scheduledAudioTimes
+    }
+}
+
+final class ThreadRecordingAudioDriver: AudioDriverProtocol {
+    private let lock = NSLock()
+    private let firstTickSemaphore = DispatchSemaphore(value: 0)
+    private var tickThreads: [Bool] = []
+
+    func playTick(volume: Float, isAccented: Bool, atTime: AVAudioTime?) {
+        lock.lock()
+        tickThreads.append(Thread.isMainThread)
+        lock.unlock()
+        firstTickSemaphore.signal()
     }
 
     func stop() {
     }
 
     func resume() {
-        resumeCallCount += 1
     }
 
     func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
-        audioTimeToReturn
+        nil
+    }
+
+    func waitForFirstTick(timeout: TimeInterval) -> Bool {
+        firstTickSemaphore.wait(timeout: .now() + timeout) == .success
+    }
+
+    var firstTickWasOnMainThread: Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return tickThreads.first
     }
 }
 
@@ -249,6 +316,95 @@ struct MetronomeEngineTests {
 
         #expect(converted?.hostTime == expected.hostTime)
     }
+
+    @Test("MetronomeEngine schedules audio ticks without waiting for the main actor")
+    func testAudioTickSchedulingDoesNotWaitForMainActor() {
+        let driver = ThreadRecordingAudioDriver()
+        let timingEngine = MetronomeTimingEngine(isTestEnvironment: false)
+        let engine = MetronomeEngine(audioDriver: driver, timingEngine: timingEngine)
+
+        engine.start(bpm: 300, timeSignature: .fourFour)
+        Thread.sleep(forTimeInterval: 0.25)
+        let receivedTickWhileMainActorWasBlocked = driver.waitForFirstTick(timeout: 0.05)
+        engine.stop()
+
+        #expect(receivedTickWhileMainActorWasBlocked)
+        #expect(driver.firstTickWasOnMainThread == false)
+    }
+
+    @Test("MetronomeEngine emits every beat with stable scheduled audio timing")
+    func testMetronomeEmitsEveryBeatWithStableScheduledAudioTiming() {
+        let driver = RecordingAudioDriver()
+        let timingEngine = MetronomeTimingEngine(isTestEnvironment: false)
+        let engine = MetronomeEngine(audioDriver: driver, timingEngine: timingEngine)
+        let bpm = 300.0
+        let expectedBeatCount = 10
+
+        engine.startAtTime(
+            bpm: bpm,
+            timeSignature: .fourFour,
+            startTime: CFAbsoluteTimeGetCurrent() + 0.08
+        )
+        let receivedExpectedTicks = driver.waitForTicks(count: expectedBeatCount, timeout: 3.0)
+        engine.stop()
+
+        #expect(receivedExpectedTicks, "Expected \(expectedBeatCount) audio ticks from the real timer path")
+        let ticks = driver.playedTicksSnapshot
+        let scheduledTimes = driver.scheduledAudioTimesSnapshot.compactMap { $0 }
+        #expect(ticks.count >= expectedBeatCount)
+        #expect(scheduledTimes.count >= expectedBeatCount)
+
+        for index in 0..<min(expectedBeatCount, ticks.count) {
+            let shouldAccent = index % 4 == 0
+            #expect(
+                ticks[index].isAccented == shouldAccent,
+                "Beat \(index + 1) accent state should follow the 4/4 downbeat pattern"
+            )
+        }
+
+        let expectedInterval = 60.0 / bpm
+        let checkedTimes = Array(scheduledTimes.prefix(expectedBeatCount))
+        for index in checkedTimes.indices.dropFirst() {
+            let previousSeconds = AVAudioTime.seconds(forHostTime: checkedTimes[index - 1].hostTime)
+            let currentSeconds = AVAudioTime.seconds(forHostTime: checkedTimes[index].hostTime)
+            let interval = currentSeconds - previousSeconds
+            #expect(
+                abs(interval - expectedInterval) < 0.015,
+                "Scheduled tick interval \(index) drifted to \(interval)s, expected \(expectedInterval)s"
+            )
+        }
+
+        if let firstTime = checkedTimes.first, let lastTime = checkedTimes.last {
+            let actualSpan = AVAudioTime.seconds(forHostTime: lastTime.hostTime)
+                - AVAudioTime.seconds(forHostTime: firstTime.hostTime)
+            let expectedSpan = Double(expectedBeatCount - 1) * expectedInterval
+            #expect(
+                abs(actualSpan - expectedSpan) < 0.02,
+                "Scheduled audio beat span should not accumulate drift over \(expectedBeatCount) ticks"
+            )
+        }
+    }
+
+    @Test("MetronomeEngine flushes queued audio before rebasing an already-running metronome")
+    func testStartAtTimeFlushesAudioWhenRebasingAlreadyRunningMetronome() {
+        let driver = RecordingAudioDriver()
+        let timingEngine = MetronomeTimingEngine()
+        let engine = MetronomeEngine(audioDriver: driver, timingEngine: timingEngine)
+
+        engine.start(bpm: 120, timeSignature: .fourFour)
+        #expect(timingEngine.isPlaying == true)
+
+        engine.startAtTime(
+            bpm: 120,
+            timeSignature: .fourFour,
+            startTime: CFAbsoluteTimeGetCurrent() + 0.05,
+            totalBeatsElapsed: 4
+        )
+
+        #expect(driver.stopCallCount == 1)
+        #expect(driver.resumeCallCount == 2)
+        engine.stop()
+    }
 }
 
 @Suite("Metronome Audio Engine Tests", .serialized)
@@ -361,6 +517,32 @@ struct MetronomeTimingEngineTests {
         #expect(timingEngine.bpm == 140)
     }
 
+    @Test("MetronomeTimingEngine beat interval stays aligned with gameplay beat clock")
+    func testTimingEngineBeatIntervalMatchesGameplayBeatClock() {
+        let timingEngine = MetronomeTimingEngine()
+
+        timingEngine.bpm = 120
+        timingEngine.timeSignature = .fourFour
+        let quarterBeatInterval = timingEngineValue(timingEngine, label: "cachedBeatInterval", as: Double.self)
+
+        timingEngine.timeSignature = .sixEight
+        let sixEightBeatInterval = timingEngineValue(timingEngine, label: "cachedBeatInterval", as: Double.self)
+
+        #expect(quarterBeatInterval != nil)
+        #expect(sixEightBeatInterval != nil)
+        #expect(abs((quarterBeatInterval ?? 0) - 0.5) < 0.0001)
+        #expect(abs((sixEightBeatInterval ?? 0) - 0.5) < 0.0001)
+    }
+
+    @Test("MetronomeTimingEngine derives fired beat from monotonic beat count instead of UI state")
+    func testTimingEngineBeatNumberComesFromFiredBeatCount() {
+        #expect(MetronomeTimingEngine.beatInMeasure(forFiredBeatNumber: 1, timeSignature: .fourFour) == 1)
+        #expect(MetronomeTimingEngine.beatInMeasure(forFiredBeatNumber: 2, timeSignature: .fourFour) == 2)
+        #expect(MetronomeTimingEngine.beatInMeasure(forFiredBeatNumber: 4, timeSignature: .fourFour) == 4)
+        #expect(MetronomeTimingEngine.beatInMeasure(forFiredBeatNumber: 5, timeSignature: .fourFour) == 1)
+        #expect(MetronomeTimingEngine.beatInMeasure(forFiredBeatNumber: 4, timeSignature: .threeFour) == 1)
+    }
+
     @Test("MetronomeTimingEngine time signature resets beat")
     func testTimeSignatureResetsBeat() {
         let timingEngine = MetronomeTimingEngine()
@@ -395,6 +577,69 @@ struct MetronomeTimingEngineTests {
 
         #expect(callbackTriggeredSuccessfully)
         #expect(receivedBeat >= 1)
+    }
+
+    @Test("MetronomeTimingEngine publishes the audible beat, not the next beat")
+    func testCurrentBeatMatchesAudibleBeatAfterScheduledTick() async throws {
+        let timingEngine = MetronomeTimingEngine(isTestEnvironment: false)
+        timingEngine.bpm = 120
+        timingEngine.timeSignature = .fourFour
+        var receivedBeat: Int?
+
+        timingEngine.onBeat = { beat, _, _ in
+            if receivedBeat == nil {
+                receivedBeat = beat
+            }
+        }
+
+        timingEngine.startAtTime(startTime: CFAbsoluteTimeGetCurrent() + 0.05)
+        defer { timingEngine.stop() }
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let beat = try #require(receivedBeat)
+        #expect(beat == 1)
+        #expect(timingEngine.currentBeat == beat)
+    }
+
+    @Test("MetronomeTimingEngine cancels delayed visual beats from a previous playback token")
+    func testDelayedVisualBeatDoesNotPublishAfterRestart() async throws {
+        let timingEngine = MetronomeTimingEngine(isTestEnvironment: false)
+        timingEngine.bpm = 120
+        timingEngine.timeSignature = .fourFour
+        var receivedBeats: [(beat: Int, timestamp: CFAbsoluteTime)] = []
+
+        timingEngine.onBeat = { beat, _, _ in
+            receivedBeats.append((beat: beat, timestamp: CFAbsoluteTimeGetCurrent()))
+        }
+
+        let firstStartTime = CFAbsoluteTimeGetCurrent() + 0.20
+        timingEngine.startAtTime(startTime: firstStartTime, totalBeatsElapsed: 0)
+
+        // Let the first timer fire early and enqueue its delayed visual callback,
+        // then restart before the audible beat boundary. The old visual callback
+        // must not leak into the new playback session.
+        try await Task.sleep(nanoseconds: 180_000_000)
+
+        let secondStartTime = CFAbsoluteTimeGetCurrent() + 0.20
+        timingEngine.stop()
+        timingEngine.startAtTime(startTime: secondStartTime, totalBeatsElapsed: 2)
+        defer { timingEngine.stop() }
+
+        try await Task.sleep(nanoseconds: 120_000_000)
+        #expect(
+            receivedBeats.isEmpty,
+            "No visual beat should publish before the restarted playback reaches its own scheduled start"
+        )
+
+        let receivedRestartedBeat = await TestHelpers.waitFor(
+            condition: { !receivedBeats.isEmpty },
+            timeout: 1.0,
+            checkInterval: 0.02
+        )
+        #expect(receivedRestartedBeat)
+        let firstBeat = try #require(receivedBeats.first)
+        #expect(firstBeat.timestamp >= secondStartTime)
+        #expect(firstBeat.beat == 3)
     }
 
     @Test("MetronomeTimingEngine reports beat progress only while playing")
@@ -571,6 +816,31 @@ struct MetronomeTimingEngineTests {
             #expect(abs(beatOriginTime - 199.5) < 0.0001)
         } else {
             #expect(Bool(false), "Expected beatOriginTime to be rebuilt")
+        }
+
+        timingEngine.stop()
+    }
+
+    @Test("MetronomeTimingEngine rebases scheduled start while already playing")
+    func testStartAtTimeRebasesAlreadyRunningTimingOrigin() {
+        let timingEngine = MetronomeTimingEngine()
+        timingEngine.bpm = 120
+        timingEngine.timeSignature = .fourFour
+
+        timingEngine.startAtTime(startTime: 100.0, totalBeatsElapsed: 1)
+        timingEngine.startAtTime(startTime: 200.0, totalBeatsElapsed: 8)
+
+        let beatOffset = timingEngineValue(timingEngine, label: "beatOffset", as: Int.self)
+        let beatOriginTime = timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self)
+        let storedStartTime = timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+
+        #expect(timingEngine.currentBeat == 1)
+        #expect(beatOffset == 8)
+        #expect(storedStartTime == 200.0)
+        if let beatOriginTime {
+            #expect(abs(beatOriginTime - 196.0) < 0.0001)
+        } else {
+            #expect(Bool(false), "Expected beatOriginTime to be rebased")
         }
 
         timingEngine.stop()

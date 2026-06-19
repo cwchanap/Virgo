@@ -66,6 +66,22 @@ struct AppShellCoverageTests {
         #expect(action == .noAction)
     }
 
+    // MARK: - ContentStartupPolicy.shouldImportBundledLocalDTXFixtures
+
+    @Test("shouldImportBundledLocalDTXFixtures returns true for normal launches")
+    func testShouldImportBundledLocalDTXFixturesForNormalLaunch() {
+        let shouldImport = ContentStartupPolicy.shouldImportBundledLocalDTXFixtures(arguments: [])
+        #expect(shouldImport == true)
+    }
+
+    @Test("shouldImportBundledLocalDTXFixtures returns false when skipSeed is present")
+    func testShouldImportBundledLocalDTXFixturesRespectsSkipSeed() {
+        let shouldImport = ContentStartupPolicy.shouldImportBundledLocalDTXFixtures(
+            arguments: [LaunchArguments.uiTesting, LaunchArguments.skipSeed]
+        )
+        #expect(shouldImport == false)
+    }
+
     // MARK: - ContentStartupPolicy.shouldUsePreviewPlayer
 
     @Test("shouldUsePreviewPlayer returns true for server-imported song with preview file")

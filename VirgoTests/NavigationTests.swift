@@ -30,20 +30,13 @@ struct NavigationTests {
         context.insert(song)
         context.insert(chart)
 
-        // Test that selecting a chart sets the navigation state
-        var selectedChart: Chart?
-        var navigateToGameplay = false
+        var navigation = GameplayNavigationState()
 
-        let handleChartSelect = { (chart: Chart) in
-            selectedChart = chart
-            navigateToGameplay = true
-        }
+        navigation.openGameplay(with: chart)
 
-        handleChartSelect(chart)
-
-        #expect(selectedChart != nil)
-        #expect(selectedChart?.difficulty == .medium)
-        #expect(navigateToGameplay == true)
+        #expect(navigation.selectedChart != nil)
+        #expect(navigation.selectedChart?.difficulty == .medium)
+        #expect(navigation.isShowingGameplay)
     }
 
     @Test func testNavigationStateInitialization() async throws {
@@ -52,15 +45,14 @@ struct NavigationTests {
         let currentlyPlaying: PersistentIdentifier? = nil
         let searchText = ""
         let expandedSongId: PersistentIdentifier? = nil
-        let selectedChart: Chart? = nil
-        let navigateToGameplay = false
+        let navigation = GameplayNavigationState()
 
         #expect(selectedTab == 0)
         #expect(currentlyPlaying == nil)
         #expect(searchText.isEmpty)
         #expect(expandedSongId == nil)
-        #expect(selectedChart == nil)
-        #expect(navigateToGameplay == false)
+        #expect(navigation.selectedChart == nil)
+        #expect(!navigation.isShowingGameplay)
     }
 
     @Test func testSongExpansionToggle() async throws {
@@ -123,26 +115,18 @@ struct NavigationTests {
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
         let chart = Chart(difficulty: .hard, song: song)
 
-        var selectedChart: Chart?
-        var navigateToGameplay = false
+        var navigation = GameplayNavigationState()
 
         // Test that navigation destination should be available when both conditions are met
-        selectedChart = chart
-        navigateToGameplay = true
+        navigation.openGameplay(with: chart)
 
-        let shouldShowGameplay = navigateToGameplay && selectedChart != nil
+        let shouldShowGameplay = navigation.isShowingGameplay && navigation.selectedChart != nil
         #expect(shouldShowGameplay == true)
 
-        // Test that navigation destination should not be available when chart is nil
-        selectedChart = nil
-        let shouldNotShowGameplay = navigateToGameplay && selectedChart != nil
+        // Test that navigation destination should not be available after dismiss clears the chart.
+        navigation.dismissGameplay()
+        let shouldNotShowGameplay = navigation.isShowingGameplay && navigation.selectedChart != nil
         #expect(shouldNotShowGameplay == false)
-
-        // Test that navigation destination should not be available when flag is false
-        selectedChart = chart
-        navigateToGameplay = false
-        let shouldAlsoNotShowGameplay = navigateToGameplay && selectedChart != nil
-        #expect(shouldAlsoNotShowGameplay == false)
     }
 
     @Test func testMultipleChartSelection() async throws {
@@ -150,42 +134,50 @@ struct NavigationTests {
         let easyChart = Chart(difficulty: .easy, song: song)
         let hardChart = Chart(difficulty: .hard, song: song)
 
-        var selectedChart: Chart?
-        var navigateToGameplay = false
-
-        let handleChartSelect = { (chart: Chart) in
-            selectedChart = chart
-            navigateToGameplay = true
-        }
+        var navigation = GameplayNavigationState()
 
         // Select easy chart
-        handleChartSelect(easyChart)
-        #expect(selectedChart?.difficulty == .easy)
-        #expect(navigateToGameplay == true)
+        navigation.openGameplay(with: easyChart)
+        #expect(navigation.selectedChart?.difficulty == .easy)
+        #expect(navigation.isShowingGameplay)
 
         // Select hard chart (should replace previous selection)
-        handleChartSelect(hardChart)
-        #expect(selectedChart?.difficulty == .hard)
-        #expect(navigateToGameplay == true)
+        navigation.openGameplay(with: hardChart)
+        #expect(navigation.selectedChart?.difficulty == .hard)
+        #expect(navigation.isShowingGameplay)
     }
 
     @Test func testNavigationStateReset() async throws {
         let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
         let chart = Chart(difficulty: .medium, song: song)
 
-        var selectedChart: Chart? = chart
-        var navigateToGameplay = true
+        var navigation = GameplayNavigationState()
+        navigation.openGameplay(with: chart)
 
         // Simulate navigation state reset (like after dismissing GameplayView)
-        let resetNavigation = {
-            selectedChart = nil
-            navigateToGameplay = false
-        }
+        navigation.dismissGameplay()
 
-        resetNavigation()
+        #expect(navigation.selectedChart == nil)
+        #expect(!navigation.isShowingGameplay)
+    }
 
-        #expect(selectedChart == nil)
-        #expect(navigateToGameplay == false)
+    @Test func testGameplayNavigationStateHasNoTabShellIntermediateState() async throws {
+        let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
+        let chart = Chart(difficulty: .medium, song: song)
+        var navigation = GameplayNavigationState()
+
+        #expect(!navigation.isShowingGameplay)
+        #expect(navigation.selectedChart == nil)
+
+        navigation.openGameplay(with: chart)
+
+        #expect(navigation.isShowingGameplay)
+        #expect(navigation.selectedChart === chart)
+
+        navigation.dismissGameplay()
+
+        #expect(!navigation.isShowingGameplay)
+        #expect(navigation.selectedChart == nil)
     }
 
     @Test func testSearchAndNavigationInteraction() async throws {
@@ -211,11 +203,11 @@ struct NavigationTests {
 
         // Test that navigation should still work with filtered results
         if let chart = filteredSongs.first?.charts.first {
-            var selectedChart: Chart? = chart
-            var navigateToGameplay = true
+            var navigation = GameplayNavigationState()
+            navigation.openGameplay(with: chart)
 
-            #expect(selectedChart != nil)
-            #expect(navigateToGameplay == true)
+            #expect(navigation.selectedChart != nil)
+            #expect(navigation.isShowingGameplay)
         }
     }
 }

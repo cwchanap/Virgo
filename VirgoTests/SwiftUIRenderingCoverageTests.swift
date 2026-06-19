@@ -14,6 +14,57 @@ import AppKit
 #endif
 @testable import Virgo
 
+private enum RenderProbeError: Error {
+    case missingCGImage
+    case missingPixelBuffer
+    case missingBitmapContext
+}
+
+#if os(macOS)
+@MainActor
+private func countYellowPixels<V: View>(in view: V, size: CGSize) throws -> Int {
+    let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height))
+    renderer.scale = 1
+    guard let cgImage = renderer.cgImage else {
+        throw RenderProbeError.missingCGImage
+    }
+
+    let width = cgImage.width
+    let height = cgImage.height
+    let bytesPerPixel = 4
+    let bytesPerRow = width * bytesPerPixel
+    var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
+
+    try pixels.withUnsafeMutableBytes { buffer in
+        guard let baseAddress = buffer.baseAddress else {
+            throw RenderProbeError.missingPixelBuffer
+        }
+        guard let context = CGContext(
+            data: baseAddress,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw RenderProbeError.missingBitmapContext
+        }
+
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+    }
+
+    return stride(from: 0, to: pixels.count, by: bytesPerPixel).reduce(0) { count, index in
+        let red = pixels[index]
+        let green = pixels[index + 1]
+        let blue = pixels[index + 2]
+        let alpha = pixels[index + 3]
+        let isYellow = alpha > 20 && red > 180 && green > 150 && blue < 120
+        return count + (isYellow ? 1 : 0)
+    }
+}
+#endif
+
 @Suite("SwiftUI Rendering Coverage Tests", .serialized)
 @MainActor
 struct SwiftUIRenderingCoverageTests {
@@ -156,6 +207,63 @@ struct SwiftUIRenderingCoverageTests {
                 size: CGSize(width: 120, height: 120)
             )
         }
+    }
+
+    @Test("Active notation primitives do not render yellow highlighting")
+    func testActiveNotationPrimitivesDoNotRenderYellowHighlighting() async throws {
+        #if os(macOS)
+        try await TestSetup.withTestSetup {
+            let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+            let noteHead = RenderedNoteHead(
+                id: 42,
+                sourceNoteID: ObjectIdentifier(note),
+                drumType: .snare,
+                voice: .upper,
+                timePosition: 0,
+                measureIndex: 0,
+                row: 0,
+                position: CGPoint(x: 60, y: 70),
+                staffStep: -4,
+                stemDirection: .up,
+                interval: .quarter
+            )
+            let stem = RenderedStem(
+                id: "stem-1",
+                noteHeadIDs: [42],
+                direction: .up,
+                start: CGPoint(x: 66, y: 25),
+                end: CGPoint(x: 66, y: 80)
+            )
+            let beam = RenderedBeam(
+                id: "beam-1",
+                noteHeadIDs: [42],
+                direction: .up,
+                level: 0,
+                start: CGPoint(x: 35, y: 25),
+                end: CGPoint(x: 95, y: 25),
+                thickness: 4
+            )
+            let flag = RenderedFlag(
+                id: "flag-1",
+                noteHeadID: 42,
+                stemDirection: .up,
+                flagIndex: 0,
+                origin: CGPoint(x: 66, y: 25)
+            )
+
+            let view = ZStack {
+                Color.black
+                NotationBeamView(beam: beam, isActive: true)
+                NotationStemView(stem: stem, isActive: true)
+                NotationFlagView(flag: flag, isActive: true)
+                NotationNoteHeadView(noteHead: noteHead, isActive: true)
+            }
+
+            let yellowPixels = try countYellowPixels(in: view, size: CGSize(width: 140, height: 140))
+
+            #expect(yellowPixels == 0, "Active notation should not render yellow pixels")
+        }
+        #endif
     }
 
     @Test("Notation flag view renders in both active and inactive states")

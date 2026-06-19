@@ -76,9 +76,15 @@ struct ServerSongDownloaderTests {
     func testDownloadAndImportSongMapsDifficultiesAndDownloadsOptionalFiles() async throws {
         let fileManager = MockServerSongFileManager()
         let mock = MockFileDownloader()
-        let dtx = dtxData("#TITLE: Multi Diff\n#ARTIST: Tester\n#BPM: 170\n#DLEVEL: 88\n#03113: 01000000")
-        for file in ["easy.dtx", "medium.dtx", "hard.dtx", "expert.dtx"] {
-            mock.responses["\(r2Base)/multi-diff/\(file)"] = dtx
+        let dtxWithoutBGM = dtxData(
+            "#TITLE: Multi Diff\n#ARTIST: Tester\n#BPM: 200\n#DLEVEL: 88\n#03113: 01000000"
+        )
+        let dtxWithBGM = dtxData(
+            "#TITLE: Multi Diff\n#ARTIST: Tester\n#BPM: 200\n#DLEVEL: 88\n#00001: 0000001A\n#03113: 01000000"
+        )
+        mock.responses["\(r2Base)/multi-diff/easy.dtx"] = dtxWithoutBGM
+        for file in ["medium.dtx", "hard.dtx", "expert.dtx"] {
+            mock.responses["\(r2Base)/multi-diff/\(file)"] = dtxWithBGM
         }
         mock.responses["\(r2Base)/multi-diff/bgm.ogg"] = Data([0x10, 0x11, 0x12])
         mock.responses["\(r2Base)/multi-diff/preview.mp3"] = Data([0x20, 0x21, 0x22])
@@ -108,6 +114,7 @@ struct ServerSongDownloaderTests {
             #expect(importedSong?.serverSongId == "multi-diff", "Downloaded song must persist the server songId")
             #expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.ogg")
             #expect(importedSong?.previewFilePath == "/tmp/mock-preview.mp3")
+            #expect(abs((importedSong?.bgmStartOffsetSeconds ?? 0) - 0.9) < 0.001)
 
             let allCharts = try verificationContext.fetch(FetchDescriptor<Chart>())
             let importedCharts = allCharts.filter { $0.song?.title == "Multi Diff" && $0.song?.artist == "Tester" }

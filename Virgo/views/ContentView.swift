@@ -19,37 +19,141 @@ struct ContentView: View {
     @State private var selectedTab = 0
     @State private var searchText = ""
     @State private var expandedSongId: PersistentIdentifier?
-    @State private var selectedChart: Chart?
-    @State private var navigateToGameplay = false
+    @State private var gameplayNavigation = GameplayNavigationState()
+    @State private var isPreparingStartupData =
+        ContentStartupPolicy.shouldPrepareBeforeFirstRender(arguments: ProcessInfo.processInfo.arguments)
+    @State private var startupSongsOverride: [Song]?
 
     @State private var databaseService: DatabaseMaintenanceService?
 
     var body: some View {
+        currentContent
+            .onChange(of: gameplayNavigation.isShowingGameplay) { _, isNavigating in
+                guard isNavigating else { return }
+                audioPlaybackService.stop()
+                playbackService.stopAll()
+            }
+            .onAppear {
+                let args = ProcessInfo.processInfo.arguments
+                let missingFixtures: Set<String>
+                if args.contains(LaunchArguments.uiTesting) {
+                    let fixtureTitles = Set(Song.sampleData.map { $0.title })
+                    let existingTitles = Set(fetchLiveSongs().map { $0.title })
+                    missingFixtures = fixtureTitles.subtracting(existingTitles)
+                } else {
+                    missingFixtures = []
+                }
+
+                var startupSongs: [Song]?
+                var shouldRefreshStartupSongs = false
+                switch ContentStartupPolicy.startupAction(arguments: args, missingFixtureTitles: missingFixtures) {
+                case .clearAndSeed:
+                    clearPersistedTestState()
+                    seedUITestData()
+                    shouldRefreshStartupSongs = true
+                case .clearOnly:
+                    clearPersistedTestState()
+                    startupSongs = []
+                    startupSongsOverride = []
+                case .seedIfNeeded:
+                    seedUITestData(missingFixtures: missingFixtures)
+                    shouldRefreshStartupSongs = true
+                case .noAction:
+                    break
+                }
+                if ContentStartupPolicy.shouldImportBundledLocalDTXFixtures(arguments: args) {
+                    seedLocalDTXFixtures()
+                    shouldRefreshStartupSongs = true
+                }
+                if shouldRefreshStartupSongs {
+                    startupSongs = fetchLiveSongs()
+                    startupSongsOverride = startupSongs
+                }
+                if databaseService == nil {
+                    databaseService = DatabaseMaintenanceService(modelContext: modelContext)
+                }
+                databaseService?.performInitialMaintenance(songs: startupSongs ?? displayedSongs)
+                // Re-fetch live charts after maintenance: performInitialMaintenance may delete
+                // duplicate songs, making the @Query snapshot stale. Using a fresh fetch avoids
+                // traversing charts on deleted Song objects that could fault or crash.
+                // Only migrate legacy scores when the fetch succeeds — an empty result from a
+                // failed fetch would cause migrateLegacyHighScores to delete the legacy
+                // UserDefaults data and set the migration flag without migrating anything.
+                do {
+                    let liveCharts = try modelContext.fetch(FetchDescriptor<Chart>())
+                    ScorePersistenceService(modelContext: modelContext)
+                        .migrateLegacyHighScores(
+                            charts: liveCharts,
+                            from: .standard
+                        )
+                } catch {
+                    Logger.error(
+                        "ContentView: failed to fetch charts for legacy migration: \(error.localizedDescription)"
+                    )
+                }
+                serverSongService.setModelContext(modelContext)
+                let serverSongService = serverSongService
+                if startupSongsOverride != nil {
+                    startupSongsOverride = fetchLiveSongs()
+                }
+                isPreparingStartupData = false
+                Task { @MainActor in
+                    _ = await serverSongService.loadServerSongs()
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var currentContent: some View {
+        if isPreparingStartupData {
+            startupPreparationView
+        } else if let chart = gameplayNavigation.selectedChart {
+            GameplayView(
+                chart: chart,
+                metronome: metronome,
+                onDismiss: dismissGameplay
+            )
+        } else {
+            tabShell
+        }
+    }
+
+    private var displayedSongs: [Song] {
+        startupSongsOverride ?? allSongs.filter { SongRelationshipLoader.isModelAvailable($0) }
+    }
+
+    private var startupPreparationView: some View {
+        Color.black
+            .ignoresSafeArea()
+            .overlay {
+                ProgressView()
+                    .controlSize(.large)
+            }
+            .accessibilityIdentifier("startupPreparationView")
+    }
+
+    private var tabShell: some View {
         TabView(selection: $selectedTab) {
             // Songs Tab with Sub-tabs
-            SongsTabView(
-                allSongs: allSongs,
-                serverSongs: serverSongs,
-                serverSongService: serverSongService,
-                searchText: $searchText,
-                currentlyPlaying: $playbackService.currentlyPlaying,
-                expandedSongId: $expandedSongId,
-                selectedChart: $selectedChart,
-                navigateToGameplay: $navigateToGameplay,
-                audioPlaybackService: audioPlaybackService,
-                onPlayTap: { song in
-                    if ContentStartupPolicy.shouldUsePreviewPlayer(for: song) {
-                        audioPlaybackService.togglePlayback(for: song)
-                    } else {
-                        playbackService.togglePlayback(for: song)
-                    }
-                },
-                onSaveTap: toggleSave
-            )
-            .navigationDestination(isPresented: $navigateToGameplay) {
-                if let chart = selectedChart {
-                    GameplayView(chart: chart, metronome: metronome)
-                }
+            NavigationStack {
+                SongsTabView(
+                    allSongs: displayedSongs,
+                    serverSongs: serverSongs,
+                    serverSongService: serverSongService,
+                    searchText: $searchText,
+                    currentlyPlaying: $playbackService.currentlyPlaying,
+                    expandedSongId: $expandedSongId,
+                    audioPlaybackService: audioPlaybackService,
+                    onChartSelect: openGameplay,
+                    onPlayTap: { song in
+                        if ContentStartupPolicy.shouldUsePreviewPlayer(for: song) {
+                            audioPlaybackService.togglePlayback(for: song)
+                        } else {
+                            playbackService.togglePlayback(for: song)
+                        }
+                    },
+                    onSaveTap: toggleSave
+                )
             }
             .tabItem {
                 Image(systemName: "music.note.list")
@@ -74,9 +178,9 @@ struct ContentView: View {
                 Image(systemName: "metronome")
                 Text("Metronome")
             }
-            .tag(1)
+                .tag(1)
 
-            LibraryView(songs: allSongs, serverSongService: serverSongService)
+            LibraryView(songs: displayedSongs, serverSongService: serverSongService)
                 .tabItem {
                     Image(systemName: "arrow.down.circle")
                     Text("Library")
@@ -102,58 +206,30 @@ struct ContentView: View {
             .tag(4)
         }
         .tint(.purple)
-        .onAppear {
-            let args = ProcessInfo.processInfo.arguments
-            let missingFixtures: Set<String>
-            if args.contains(LaunchArguments.uiTesting) {
-                let fixtureTitles = Set(Song.sampleData.map { $0.title })
-                let existingTitles = Set(allSongs.map { $0.title })
-                missingFixtures = fixtureTitles.subtracting(existingTitles)
-            } else {
-                missingFixtures = []
-            }
-
-            switch ContentStartupPolicy.startupAction(arguments: args, missingFixtureTitles: missingFixtures) {
-            case .clearAndSeed:
-                clearPersistedTestState()
-                seedUITestData()
-            case .clearOnly:
-                clearPersistedTestState()
-            case .seedIfNeeded:
-                seedUITestData(missingFixtures: missingFixtures)
-            case .noAction:
-                break
-            }
-            if databaseService == nil {
-                databaseService = DatabaseMaintenanceService(modelContext: modelContext)
-            }
-            databaseService?.performInitialMaintenance(songs: allSongs)
-            // Re-fetch live charts after maintenance: performInitialMaintenance may delete
-            // duplicate songs, making the @Query snapshot stale. Using a fresh fetch avoids
-            // traversing charts on deleted Song objects that could fault or crash.
-            // Only migrate legacy scores when the fetch succeeds — an empty result from a
-            // failed fetch would cause migrateLegacyHighScores to delete the legacy
-            // UserDefaults data and set the migration flag without migrating anything.
-            do {
-                let liveCharts = try modelContext.fetch(FetchDescriptor<Chart>())
-                ScorePersistenceService(modelContext: modelContext)
-                    .migrateLegacyHighScores(
-                        charts: liveCharts,
-                        from: .standard
-                    )
-            } catch {
-                Logger.error("ContentView: failed to fetch charts for legacy migration: \(error.localizedDescription)")
-            }
-            serverSongService.setModelContext(modelContext)
-            Task {
-                await serverSongService.loadServerSongs()
-            }
-        }
+        .accessibilityIdentifier("appTabShell")
     }
 
     private func toggleSave(for song: Song) {
         song.isSaved.toggle()
         Logger.database("Song \(song.title) \(song.isSaved ? "saved" : "unsaved")")
+    }
+
+    private func dismissGameplay() {
+        gameplayNavigation.dismissGameplay()
+    }
+
+    private func openGameplay(with chart: Chart) {
+        gameplayNavigation.openGameplay(with: chart)
+    }
+
+    private func fetchLiveSongs() -> [Song] {
+        do {
+            return try modelContext.fetch(FetchDescriptor<Song>())
+                .filter { SongRelationshipLoader.isModelAvailable($0) }
+        } catch {
+            Logger.databaseError(error)
+            return []
+        }
     }
 
     private func clearPersistedTestState() {
@@ -184,33 +260,35 @@ struct ContentView: View {
         let sampleSongs = Song.sampleData.filter { fixturesToSeed.contains($0.title) }
 
         for templateSong in sampleSongs {
-            // Create a fresh Song instance to avoid mutating shared/static sampleData
-            let song = Song(
-                title: templateSong.title,
-                artist: templateSong.artist,
-                bpm: templateSong.bpm,
-                duration: templateSong.duration,
-                genre: "DTX Import",
-                timeSignature: templateSong.timeSignature,
-                isServerImported: true
-            )
+            let song = Song.fixtureCopy(from: templateSong, genre: "DTX Import", isServerImported: true)
             modelContext.insert(song)
-            var seededCharts: [Chart] = []
-            for templateChart in templateSong.charts {
-                let chart = Chart(difficulty: templateChart.difficulty, level: templateChart.level)
-                chart.song = song
-                seededCharts.append(chart)
+            for chart in song.charts {
                 modelContext.insert(chart)
+                for note in chart.notes {
+                    modelContext.insert(note)
+                }
             }
-            song.charts = seededCharts
         }
 
         do {
             try modelContext.save()
-            Logger.database("Seeded \(sampleSongs.count) UI test songs: \(fixturesToSeed.sorted().joined(separator: ", "))")
+            let titles = fixturesToSeed.sorted().joined(separator: ", ")
+            Logger.database("Seeded \(sampleSongs.count) UI test songs: \(titles)")
         } catch {
             Logger.databaseError(error)
             assertionFailure("Failed to seed UI test data: \(error.localizedDescription)")
+        }
+    }
+
+    private func seedLocalDTXFixtures() {
+        do {
+            let song = try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(into: modelContext)
+            if let song {
+                Logger.database("Seeded local DTX fixture: \(song.title)")
+            }
+        } catch {
+            Logger.databaseError(error)
+            assertionFailure("Failed to seed local DTX fixture: \(error.localizedDescription)")
         }
     }
 }

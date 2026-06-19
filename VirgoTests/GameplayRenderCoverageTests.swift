@@ -12,6 +12,7 @@
 import Testing
 import SwiftUI
 import Foundation
+import Observation
 @testable import Virgo
 
 @Suite("GameplayRenderCoverageTests", .serialized)
@@ -43,6 +44,30 @@ struct GameplayRenderCoverageTests {
         }
     }
 
+    @Test("GameplayView hides gameplay chrome until the view model is prepared")
+    func testGameplayView_unpreparedViewModelRendersLoadingOnlyState() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
+            defer { vm.cleanup() }
+
+            #expect(!vm.isGameplayPrepared, "Fixture must not call setupGameplay()")
+
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+                .environmentObject(vm.practiceSettings)
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
+            let identifiers = SwiftUITestUtilities.renderedIdentifiers(from: mountedView.root)
+
+            #expect(texts.contains("Loading..."))
+            #expect(!texts.contains("Unknown Song"))
+            #expect(!identifiers.contains("gameplayHeaderPlayPauseButton"))
+            #expect(!identifiers.contains("gameplayMainPlayPauseButton"))
+        }
+    }
+
     // MARK: - Populated render path
 
     /// Injects a fully-prepared view model via the new `initialViewModel` seam.
@@ -56,8 +81,14 @@ struct GameplayRenderCoverageTests {
 
             // Verify the view model was fully prepared before mounting.
             #expect(vm.isDataLoaded, "makePreparedViewModel must call loadChartData()")
-            #expect(!vm.cachedDrumBeats.isEmpty, "makePreparedViewModel must populate cachedDrumBeats via setupGameplay()")
-            #expect(vm.staticStaffLinesView != nil, "makePreparedViewModel must build staticStaffLinesView via setupGameplay()")
+            #expect(
+                !vm.cachedDrumBeats.isEmpty,
+                "makePreparedViewModel must populate cachedDrumBeats via setupGameplay()"
+            )
+            #expect(
+                vm.staticStaffLinesView != nil,
+                "makePreparedViewModel must build staticStaffLinesView via setupGameplay()"
+            )
 
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
                 .environmentObject(vm.practiceSettings)
@@ -66,6 +97,68 @@ struct GameplayRenderCoverageTests {
             SwiftUITestUtilities.assertViewWithEnvironment(
                 view,
                 size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    @Test("Static notation rendering does not observe active note IDs when highlighting is disabled")
+    func testDrumNotationViewDoesNotObserveActiveNotationIDs() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+            vm.isPlaying = true
+
+            vm.updateActiveBeat(forTimePosition: 0.0)
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+
+            var didInvalidate = false
+            withObservationTracking {
+                _ = view.drumNotationView(viewModel: vm)
+            } onChange: {
+                didInvalidate = true
+            }
+
+            vm.updateActiveBeat(forTimePosition: 0.125)
+
+            #expect(
+                !didInvalidate,
+                "Changing active note IDs must not invalidate static notation after active highlighting is disabled"
+            )
+        }
+    }
+
+    @Test("Static sheet music content does not observe purple bar position")
+    func testStaticSheetMusicContentDoesNotObservePurpleBarPosition() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+            vm.isPlaying = true
+            vm.updatePurpleBarPosition(elapsedTime: 0.01)
+
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+            let usesNotationLayout = view.usesNotationLayout(viewModel: vm)
+            let measurePositions = view.sheetMeasurePositions(viewModel: vm)
+            let contentWidth = view.sheetContentWidth(viewModel: vm)
+            let rowCount = view.sheetRowCount(measurePositions: measurePositions)
+
+            var didInvalidate = false
+            withObservationTracking {
+                _ = view.staticSheetMusicContent(
+                    measurePositions: measurePositions,
+                    contentWidth: contentWidth,
+                    rowCount: rowCount,
+                    usesNotationLayout: usesNotationLayout,
+                    viewModel: vm
+                )
+            } onChange: {
+                didInvalidate = true
+            }
+
+            vm.updatePurpleBarPosition(elapsedTime: 0.51)
+
+            #expect(
+                !didInvalidate,
+                "Moving the purple bar must not invalidate static notation content"
             )
         }
     }

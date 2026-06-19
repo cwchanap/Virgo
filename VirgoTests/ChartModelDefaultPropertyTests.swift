@@ -261,6 +261,33 @@ struct SongComputedPropertyTests {
         }
     }
 
+    @Test("Song.sampleData includes a playable Thunder Beat easy chart")
+    func testSampleDataIncludesPlayableThunderBeatEasyChart() throws {
+        let thunderBeat = try #require(Song.sampleData.first { $0.title == "Thunder Beat" })
+        let easyChart = try #require(thunderBeat.chart(for: .easy))
+        let notes = easyChart.safeNotes
+
+        #expect(notes.count >= 20)
+        #expect(Set(notes.map(\.measureNumber)) == Set(1...4))
+        #expect(notes.contains { $0.noteType == .bass && $0.measureOffset == 0.0 })
+        #expect(notes.contains { $0.noteType == .snare && $0.measureOffset == 0.5 })
+        #expect(notes.contains { $0.noteType == .crash && $0.measureNumber == 1 && $0.measureOffset == 0.0 })
+    }
+
+    @Test("Song.fixtureCopy copies chart notes into fresh note models")
+    func testFixtureCopyCopiesChartNotesIntoFreshModels() throws {
+        let template = try #require(Song.sampleData.first { $0.title == "Thunder Beat" })
+        let templateChart = try #require(template.chart(for: .easy))
+        let copiedSong = Song.fixtureCopy(from: template, genre: "DTX Import", isServerImported: true)
+        let copiedChart = try #require(copiedSong.chart(for: .easy))
+
+        #expect(copiedSong.genre == "DTX Import")
+        #expect(copiedSong.isServerImported)
+        #expect(copiedChart.safeNotes.count == templateChart.safeNotes.count)
+        #expect(copiedChart.safeNotes.first !== templateChart.safeNotes.first)
+        #expect(copiedChart.safeNotes.allSatisfy { $0.chart === copiedChart })
+    }
+
     @Test("Song.sampleData progressive song uses 5/4 time signature")
     func testSampleDataProgressiveSongTimeSignature() {
         let progressive = Song.sampleData.first { $0.genre == "Progressive" }

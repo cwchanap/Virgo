@@ -139,7 +139,7 @@ struct SwiftUIRenderingSettingsAndHeaderTests {
         }
     }
 
-    @Test("GameplayHeaderView uses compact score layout at iPhone portrait width")
+    @Test("GameplayHeaderView uses compact score layout at compact portrait width")
     func testGameplayHeaderViewUsesCompactScoreLayoutAtPortraitWidth() async throws {
         try await TestSetup.withTestSetup {
             let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()

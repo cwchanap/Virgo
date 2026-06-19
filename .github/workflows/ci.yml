@@ -22,7 +22,30 @@ jobs:
         
       - name: Show Xcode version
         run: xcodebuild -version
-        
+
+      - name: Validate supported Apple platforms
+        run: |
+          set -euo pipefail
+          echo "Virgo supports macOS and iPad. iPhone targeting is intentionally disabled."
+
+          xcodebuild -project Virgo.xcodeproj -scheme Virgo -showBuildSettings > build-settings.txt
+
+          if ! grep -q "TARGETED_DEVICE_FAMILY = 2" build-settings.txt; then
+            echo "Expected iOS-family builds to target iPad only: TARGETED_DEVICE_FAMILY = 2"
+            grep "TARGETED_DEVICE_FAMILY" build-settings.txt || true
+            exit 1
+          fi
+
+          if grep -q 'TARGETED_DEVICE_FAMILY = "1,2"' Virgo.xcodeproj/project.pbxproj; then
+            echo "Found universal iPhone+iPad targeting in project settings."
+            exit 1
+          fi
+
+          if grep -q "UISupportedInterfaceOrientations_iPhone" Virgo.xcodeproj/project.pbxproj; then
+            echo "Found iPhone-specific orientation settings in project settings."
+            exit 1
+          fi
+
       - name: Clean build folder
         run: xcodebuild clean -project Virgo.xcodeproj -scheme Virgo
         

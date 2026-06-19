@@ -160,6 +160,23 @@ struct DTXFileParserTests {
         #expect(gapNotes[1].measureOffset == 0.75)
     }
 
+    @Test("parseChartMetadata records BGM lane start position")
+    func testParseChartMetadataRecordsBGMLaneStartPosition() throws {
+        let dtxContent = """
+        #TITLE: BGM Offset
+        #ARTIST: Tester
+        #BPM: 200
+        #DLEVEL: 74
+        #00001: 0000001A
+        #00113: 0000000000010000
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+
+        #expect(chartData.bgmStartTimePosition == 0.75)
+        #expect(abs(chartData.bgmStartOffsetSeconds - 0.9) < 0.001)
+    }
+
     @Test func testParseEighthNotes() throws {
         // Test eighth notes: #00211: 0I0J0I0J0I0J0I0J
         let eighthNoteLine = "#00211: 0I0J0I0J0I0J0I0J"

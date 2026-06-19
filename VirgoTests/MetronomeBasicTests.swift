@@ -13,8 +13,8 @@ import AVFoundation
 
 // MARK: - Test Audio Driver
 
-@MainActor
 class FailingAudioDriver: AudioDriverProtocol {
+    private let lock = NSLock()
     private var shouldFailOnStart = true
     
     func playTick(volume: Float, isAccented: Bool, atTime: AVAudioTime?) {
@@ -26,6 +26,8 @@ class FailingAudioDriver: AudioDriverProtocol {
     }
     
     func resume() {
+        lock.lock()
+        defer { lock.unlock() }
         if shouldFailOnStart {
             shouldFailOnStart = false
             // Simulate audio engine failure during startup

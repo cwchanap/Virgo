@@ -47,6 +47,8 @@ final class GameplayViewModel {
     var cachedNotes: [Note] = []
     /// Flag indicating whether async data loading is complete
     var isDataLoaded = false
+    /// Flag indicating whether gameplay-derived layout/audio state has been prepared.
+    var isGameplayPrepared = false
     /// Flag indicating whether the chart's persisted speed was loaded (prevents saving before load)
     private var hasLoadedPersistedSpeed = false
 
@@ -81,6 +83,8 @@ final class GameplayViewModel {
     var lastBeatUpdate: Int = -1
     /// Timer reference retained for cleanup during state transitions (periodic updates driven by metronome callbacks)
     var playbackTimer: Timer?
+    private let playbackProgressPublishInterval: TimeInterval = 0.1
+    private var lastPlaybackProgressPublishElapsedTime: Double?
     /// Playback start time for timing calculations
     var playbackStartTime: Date?
     /// Accumulated elapsed time when paused
@@ -425,6 +429,14 @@ final class GameplayViewModel {
         return (bgmCurrentTime / speedMultiplier) + bgmOffsetSeconds
     }
 
+    private func elapsedBeatsForScheduling(effectiveBPM: Double) -> Double {
+        guard effectiveBPM.isFinite, effectiveBPM > 0 else {
+            Logger.error("elapsedBeatsForScheduling called with invalid effectiveBPM - using integer beat state")
+            return Double(totalBeatsElapsed)
+        }
+        return max(0, pausedElapsedTime * effectiveBPM / 60.0)
+    }
+
     /// Reschedules BGM playback to align with a metronome restart on speed changes.
     /// Internal for unit testing.
     @discardableResult
@@ -463,7 +475,8 @@ final class GameplayViewModel {
             pausedElapsedTime += metronomeTime
             let speedRatio = previousSpeed / currentSpeed
             pausedElapsedTime *= speedRatio
-            let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
+            let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
+            let beatOffset = Int(elapsedBeats)
             totalBeatsElapsed = beatOffset
             metronome.stop()
             let capturedHostTime = mach_absolute_time()
@@ -474,7 +487,7 @@ final class GameplayViewModel {
                 bpm: effectiveBPMValue,
                 timeSignature: track?.timeSignature ?? .fourFour,
                 startTime: scheduledStartTime,
-                totalBeatsElapsed: beatOffset
+                totalBeatsElapsed: elapsedBeats
             )
             rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
         } else {
@@ -482,7 +495,8 @@ final class GameplayViewModel {
                 let speedRatio = previousSpeed / currentSpeed
                 pausedElapsedTime *= speedRatio
             }
-            let beatOffset = Int((pausedElapsedTime * effectiveBPMValue) / 60.0)
+            let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
+            let beatOffset = Int(elapsedBeats)
             totalBeatsElapsed = beatOffset
             metronome.stop()
             let capturedHostTime = mach_absolute_time()
@@ -493,7 +507,7 @@ final class GameplayViewModel {
                 bpm: effectiveBPMValue,
                 timeSignature: track?.timeSignature ?? .fourFour,
                 startTime: scheduledStartTime,
-                totalBeatsElapsed: beatOffset
+                totalBeatsElapsed: elapsedBeats
             )
             rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
             Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
@@ -542,6 +556,7 @@ final class GameplayViewModel {
 
     /// Loads SwiftData relationships asynchronously to avoid blocking main thread
     func loadChartData() async {
+        isGameplayPrepared = false
         cachedSong = chart.song
         cachedNotes = chart.notes.map { $0 }
         // Pre-sort notes by time position once so scanForMissedNotes can advance
@@ -569,6 +584,7 @@ final class GameplayViewModel {
     ///   Pass `false` to use a preconfigured speed instead of the saved value.
     ///   Defaults to `true` to load saved speed (SC-06: Remember last-used speed).
     func setupGameplay(loadPersistedSpeed: Bool = true) {
+        isGameplayPrepared = false
         guard let track = track else {
             Logger.error("setupGameplay() called but track is nil - data not loaded yet")
             return
@@ -608,6 +624,7 @@ final class GameplayViewModel {
         // InputManager should use effective BPM so scoring matches playback speed
         inputManager.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature, notes: cachedNotes)
         setupInterruptionHandling()
+        isGameplayPrepared = true
     }
 
     /// Sets up audio interruption handling to pause playback on phone calls, Siri, etc.
@@ -690,6 +707,10 @@ final class GameplayViewModel {
             Logger.error("Data not loaded, cannot start playback")
             return
         }
+        guard isGameplayPrepared else {
+            Logger.error("Gameplay not prepared, cannot start playback")
+            return
+        }
 
         playbackTimer?.invalidate()
         isShowingMIDIDeviceAlert = false
@@ -762,7 +783,8 @@ final class GameplayViewModel {
         isPlaying = true
 
         // Start continuous visual tick (~30 Hz) so sub-beat notes (eighths,
-        // sixteenths) are highlighted between quarter-note metronome callbacks.
+        // progress and row scrolling responsive between quarter-note metronome callbacks.
+        lastPlaybackProgressPublishElapsedTime = nil
         startVisualTickTimer()
 
         // Synchronize input timeline with the actual scheduled playback start time.
@@ -811,6 +833,8 @@ final class GameplayViewModel {
 
     func pausePlayback() {
         guard isPlaying else { return }
+        let bgmElapsedTime = currentBGMPlaybackElapsedTime()
+
         isPlaying = false
         playbackTimer?.invalidate()
         playbackTimer = nil
@@ -820,7 +844,9 @@ final class GameplayViewModel {
         completionTask = nil
         completionScheduled = false
 
-        if let metronomeTime = metronome.getCurrentPlaybackTime() {
+        if let bgmElapsedTime {
+            pausedElapsedTime = bgmElapsedTime
+        } else if let metronomeTime = metronome.getCurrentPlaybackTime() {
             pausedElapsedTime += metronomeTime
         } else if let startTime = playbackStartTime {
             // playbackStartTime is backdated by pausedElapsedTime, so the raw
@@ -930,6 +956,7 @@ final class GameplayViewModel {
         inputManager.stopListening()
         metronomeSubscription?.cancel()
         metronomeSubscription = nil
+        isGameplayPrepared = false
     }
 
     // MARK: - Private Helpers
@@ -945,6 +972,7 @@ final class GameplayViewModel {
         lastMetronomeBeat = 0
         lastDiscreteBeat = -1
         playbackProgress = 0.0
+        lastPlaybackProgressPublishElapsedTime = nil
         purpleBarPosition = nil
         currentRow = 0
         clearActiveBeat()
@@ -1004,7 +1032,7 @@ final class GameplayViewModel {
             bpm: effectiveBPM,
             timeSignature: track.timeSignature,
             startTime: commonStartTime,
-            totalBeatsElapsed: totalBeatsElapsed
+            totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
         )
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
         if !bgmPlayer.play(atTime: bgmDeviceTime) {
@@ -1026,7 +1054,7 @@ final class GameplayViewModel {
             bpm: effectiveBPM,
             timeSignature: track.timeSignature,
             startTime: commonStartTime,
-            totalBeatsElapsed: totalBeatsElapsed
+            totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
         )
 
         let remainingOffset = remainingBGMOffset()
@@ -1072,7 +1100,7 @@ final class GameplayViewModel {
                 bpm: effectiveBPM,
                 timeSignature: track.timeSignature,
                 startTime: commonStartTime,
-                totalBeatsElapsed: totalBeatsElapsed
+                totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
             )
             return commonStartTime
         } else {
@@ -1107,10 +1135,10 @@ final class GameplayViewModel {
 
     // MARK: - Visual Updates
 
-    /// Starts a ~30 Hz timer that continuously updates active-note highlighting
-    /// and purple-bar position between quarter-note metronome callbacks.
-    /// This ensures sub-beat notes (eighths, sixteenths) become active at the
-    /// correct moment rather than only when the next quarter-note boundary fires.
+    /// Starts a ~30 Hz timer that continuously updates playback progress, row
+    /// scrolling, and beat-boundary playhead movement between metronome callbacks.
+    /// The purple playhead itself is quantized to beat boundaries to avoid
+    /// forcing sheet re-layout on every timer tick.
     /// Skipped in test environments to avoid interfering with the test runner's
     /// main run loop (matches the pattern used by audio components).
     private func startVisualTickTimer() {
@@ -1134,20 +1162,17 @@ final class GameplayViewModel {
             return
         }
 
-        guard let metronomeTime = metronome.getCurrentPlaybackTime() else { return }
-        let elapsedTime = pausedElapsedTime + metronomeTime
+        guard let elapsedTime = calculateElapsedTime() else { return }
 
         updateContinuousVisuals(elapsedTime: elapsedTime, track: track)
     }
 
-    /// Called by the continuous visual tick timer (~30 Hz) so that sub-beat notes
-    /// (eighths, sixteenths) are highlighted even though the metronome only fires
-    /// at quarter-note boundaries.
+    /// Called by the continuous visual tick timer (~30 Hz) so progress and row
+    /// scrolling stay responsive between metronome callbacks.
     private func updateContinuousVisualsTick() {
         guard let track = track, isPlaying else { return }
         guard cachedTrackDuration > 0 else { return }
-        guard let metronomeTime = metronome.getCurrentPlaybackTime() else { return }
-        let elapsedTime = pausedElapsedTime + metronomeTime
+        guard let elapsedTime = calculateElapsedTime() else { return }
         updateContinuousVisuals(elapsedTime: elapsedTime, track: track)
     }
 
@@ -1166,20 +1191,15 @@ final class GameplayViewModel {
         let totalBeatsElapsedFloat = elapsedTime / secondsPerBeat
         let discreteTotalBeats = Int(totalBeatsElapsedFloat)
 
-        // Continuous playhead position — always computed so sub-beat notes
-        // (eighths, sixteenths) can be matched regardless of when the metronome fires.
+        // Continuous playhead position drives missed-note scanning and row scrolling.
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
         let continuousMeasureFraction = max(0, totalBeatsElapsedFloat / Double(beatsPerMeasure))
         let continuousMeasureIdx = Int(continuousMeasureFraction)
         let continuousOffset = continuousMeasureFraction - Double(continuousMeasureIdx)
         let playheadTimePosition = Double(continuousMeasureIdx) + continuousOffset
 
-        // Active-note update runs on EVERY tick (not gated by discrete beat)
-        // so that off-beat notes become active at the right moment.
-        updateActiveBeat(forTimePosition: playheadTimePosition)
-
-        // Purple-bar update runs on EVERY tick for smooth 30 Hz playhead movement,
-        // even between quarter-note boundaries.
+        // Purple-bar math is checked on every tick, but the visible position is
+        // quantized to beat boundaries and only assigned when it changes.
         updatePurpleBarPosition(elapsedTime: elapsedTime)
 
         // Track which row the playhead is on so the view can auto-scroll. Only
@@ -1189,9 +1209,7 @@ final class GameplayViewModel {
             currentRow = newRow
         }
 
-        // Playback progress updates on EVERY tick so the progress bar and time
-        // label move smoothly rather than stepping at quarter-note boundaries.
-        playbackProgress = min(elapsedTime / cachedTrackDuration, 1.0)
+        updatePlaybackProgress(elapsedTime: elapsedTime)
 
         if discreteTotalBeats != lastDiscreteBeat {
             lastDiscreteBeat = discreteTotalBeats
@@ -1362,7 +1380,23 @@ final class GameplayViewModel {
     }
 
     func updatePurpleBarPosition(elapsedTime: Double? = nil) {
-        purpleBarPosition = calculatePurpleBarPosition(elapsedTime: elapsedTime)
+        let newPosition = calculatePurpleBarPosition(elapsedTime: elapsedTime)
+        guard !isSamePurpleBarPosition(purpleBarPosition, newPosition) else { return }
+        purpleBarPosition = newPosition
+    }
+
+    private func isSamePurpleBarPosition(
+        _ lhs: (x: Double, y: Double)?,
+        _ rhs: (x: Double, y: Double)?
+    ) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            return true
+        case let (.some(lhs), .some(rhs)):
+            return abs(lhs.x - rhs.x) < 0.0001 && abs(lhs.y - rhs.y) < 0.0001
+        default:
+            return false
+        }
     }
 
     /// Resolves the staff row that contains the given measure index, branching on
@@ -1395,8 +1429,8 @@ final class GameplayViewModel {
         }
 
         let secondsPerBeat = 60.0 / effectiveBPM()
-        let totalBeatsElapsed = elapsedTime / secondsPerBeat
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
+        let totalBeatsElapsed = quantizedPurpleBarBeatBoundaryBeats(elapsedTime / secondsPerBeat)
         let continuousMeasureFraction = max(0, totalBeatsElapsed / Double(beatsPerMeasure))
         let measureIndex = Int(continuousMeasureFraction)
         let beatWithinMeasure = totalBeatsElapsed - Double(measureIndex * beatsPerMeasure)
@@ -1435,6 +1469,28 @@ final class GameplayViewModel {
         return (x: Double(indicatorX), y: Double(staffCenterY))
     }
 
+    private func quantizedPurpleBarBeatBoundaryBeats(_ totalBeats: Double) -> Double {
+        guard totalBeats.isFinite else { return 0 }
+        let clampedBeats = max(0, totalBeats)
+        return floor(clampedBeats + 0.000_000_001)
+    }
+
+    private func updatePlaybackProgress(elapsedTime: Double) {
+        let nextProgress = min(elapsedTime / cachedTrackDuration, 1.0)
+        let shouldPublish: Bool
+        if let lastElapsed = lastPlaybackProgressPublishElapsedTime {
+            shouldPublish = elapsedTime < lastElapsed
+                || elapsedTime - lastElapsed >= playbackProgressPublishInterval
+                || nextProgress >= 1.0
+        } else {
+            shouldPublish = true
+        }
+
+        guard shouldPublish else { return }
+        lastPlaybackProgressPublishElapsedTime = elapsedTime
+        playbackProgress = nextProgress
+    }
+
     func calculateNotationPurpleBarPosition(
         measureIndex: Int,
         beatWithinMeasure: Double
@@ -1456,6 +1512,9 @@ final class GameplayViewModel {
     }
 
     func calculateElapsedTime() -> Double? {
+        if let bgmElapsedTime = currentBGMPlaybackElapsedTime() {
+            return bgmElapsedTime
+        }
         if let metronomeTime = metronome.getCurrentPlaybackTime() {
             return pausedElapsedTime + metronomeTime
         } else if isPlaying, let startTime = playbackStartTime {
@@ -1465,6 +1524,13 @@ final class GameplayViewModel {
             return max(0, Date().timeIntervalSince(startTime))
         }
         return nil
+    }
+
+    private func currentBGMPlaybackElapsedTime() -> Double? {
+        guard isPlaying, let bgmPlayer = bgmPlayer, bgmPlayer.currentTime > 0 else {
+            return nil
+        }
+        return bgmTimelineElapsedTime(for: bgmPlayer.currentTime)
     }
 
     func findClosestBeatIndex(measureIndex: Int, beatPosition: Double) -> Int {
@@ -1802,6 +1868,14 @@ final class GameplayViewModel {
 
     func calculateBGMOffset() -> Double {
         guard let track = track else { return 0.0 }
+        if let bgmStartOffsetSeconds = cachedSong?.bgmStartOffsetSeconds, bgmStartOffsetSeconds > 0 {
+            let speedMultiplier = practiceSettings.speedMultiplier
+            guard speedMultiplier > 0 else {
+                Logger.error("calculateBGMOffset called with zero speedMultiplier - returning unscaled DTX BGM offset")
+                return bgmStartOffsetSeconds
+            }
+            return bgmStartOffsetSeconds / speedMultiplier
+        }
 
         let earliestNote = cachedNotes.min {
             $0.measureNumber < $1.measureNumber ||

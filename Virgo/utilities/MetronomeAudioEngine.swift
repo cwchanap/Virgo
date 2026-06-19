@@ -13,7 +13,6 @@ import UIKit
 #endif
 
 // MARK: - Audio Driver Protocol
-@MainActor
 protocol AudioDriverProtocol {
     func playTick(volume: Float, isAccented: Bool, atTime: AVAudioTime?)
     func stop()
@@ -22,9 +21,9 @@ protocol AudioDriverProtocol {
 }
 
 // MARK: - Audio Engine
-@MainActor
 class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     private let logger = Logger()
+    private let audioStateLock = NSRecursiveLock()
 
     private var audioEngine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
@@ -72,6 +71,8 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
 
     deinit {
         // Perform cleanup synchronously in deinit to avoid closure capture issues
+        audioStateLock.lock()
+        defer { audioStateLock.unlock() }
         guard !isTestEnvironment, let audioEngine = audioEngine, let playerNode = playerNode else { return }
 
         playerNode.stop()
@@ -155,6 +156,8 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
 
     #if os(iOS)
     private func handleAudioInterruption(_ notification: Notification) {
+        audioStateLock.lock()
+        defer { audioStateLock.unlock() }
         guard let info = notification.userInfo,
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
@@ -204,6 +207,8 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     }
 
     private func handleRouteChange(_ notification: Notification) {
+        audioStateLock.lock()
+        defer { audioStateLock.unlock() }
         guard let info = notification.userInfo,
               let reasonValue = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
@@ -320,19 +325,25 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     // MARK: - Playback Control
 
     func playTick(volume: Float = 1.0, isAccented: Bool = false, atTime: AVAudioTime? = nil) {
-        Logger.audioPlayback("🔊 playTick() called - volume: \(volume), isAccented: \(isAccented), atTime: \(atTime?.description ?? "immediate")")
+        audioStateLock.lock()
+        defer { audioStateLock.unlock() }
+        Logger.audioDebug(
+            "🔊 playTick() called - volume: \(volume), "
+                + "isAccented: \(isAccented), "
+                + "atTime: \(atTime?.description ?? "immediate")"
+        )
         guard !isTestEnvironment else { 
-            Logger.audioPlayback("🔊 Skipping playTick - test environment detected")
+            Logger.audioDebug("🔊 Skipping playTick - test environment detected")
             return 
         }
 
         guard let audioEngine = audioEngine, let playerNode = playerNode else {
-            Logger.audioPlayback("🔊 Audio engine not available - test environment")
+            Logger.audioPlayback("🔊 Audio engine not available")
             return
         }
         
         // Ensure audio engine is running before attempting playback
-        Logger.audioPlayback("🔊 Audio engine running state: \(audioEngine.isRunning)")
+        Logger.audioDebug("🔊 Audio engine running state: \(audioEngine.isRunning)")
         if !audioEngine.isRunning {
             Logger.audioPlayback("🔊 Audio engine not running - attempting to start...")
             do {
@@ -345,9 +356,9 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
         }
 
         do {
-            Logger.audioPlayback("🔊 Getting ticker buffer...")
+            Logger.audioDebug("🔊 Getting ticker buffer...")
             let buffer = try getTickerBuffer()
-            Logger.audioPlayback("🔊 Ticker buffer obtained successfully")
+            Logger.audioDebug("🔊 Ticker buffer obtained successfully")
             
             // Sanitize volume: replace NaN/infinite with safe default
             let sanitizedVolume = volume.isNaN || volume.isInfinite ? 0.0 : volume
@@ -357,13 +368,16 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
             
             // Clamp the final volume between 0.0 and 1.0
             let adjustedVolume = max(0.0, min(1.0, accentedVolume))
-            Logger.audioPlayback(
+            Logger.audioDebug(
                 "🔊 Volume processing: original=\(volume), sanitized=\(sanitizedVolume), " +
                 "accented=\(accentedVolume), final=\(adjustedVolume)"
             )
 
             // Verify buffer has audio data
-            Logger.audioPlayback("🔊 About to schedule buffer - frameLength: \(buffer.frameLength), format: \(buffer.format)")
+            Logger.audioDebug(
+                "🔊 About to schedule buffer - frameLength: \(buffer.frameLength), "
+                    + "format: \(buffer.format)"
+            )
             
             // Check if buffer actually has audio data
             if buffer.frameLength == 0 {
@@ -379,27 +393,30 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
                     
                     // Use the validated time for precise scheduling
                     playerNode.scheduleBuffer(buffer, at: scheduledTime, options: [], completionHandler: {
-                        Logger.audioPlayback("🔊 Buffer playback completed")
+                        Logger.audioDebug("🔊 Buffer playback completed")
                     })
-                    Logger.audioPlayback("🔊 Scheduled buffer at precise time: \(hostTime) with \(buffer.frameLength) frames")
+                    Logger.audioDebug(
+                        "🔊 Scheduled buffer at precise time: \(hostTime) "
+                            + "with \(buffer.frameLength) frames"
+                    )
                 } else {
                     // Fallback to immediate playback if time is invalid
                     playerNode.scheduleBuffer(buffer, completionHandler: {
-                        Logger.audioPlayback("🔊 Buffer playback completed (immediate)")
+                        Logger.audioDebug("🔊 Buffer playback completed (immediate)")
                     })
                     Logger.audioPlayback("🔊 Invalid AVAudioTime - using immediate playback fallback")
                 }
             } else {
                 playerNode.scheduleBuffer(buffer, completionHandler: {
-                    Logger.audioPlayback("🔊 Buffer playback completed (no time)")
+                    Logger.audioDebug("🔊 Buffer playback completed (no time)")
                 })
-                Logger.audioPlayback("🔊 Scheduled buffer immediately with \(buffer.frameLength) frames")
+                Logger.audioDebug("🔊 Scheduled buffer immediately with \(buffer.frameLength) frames")
             }
             
             playerNode.volume = adjustedVolume
 
             // Always ensure the player node is playing after scheduling a buffer
-            Logger.audioPlayback("🔊 Player node playing state: \(playerNode.isPlaying)")
+            Logger.audioDebug("🔊 Player node playing state: \(playerNode.isPlaying)")
             if !playerNode.isPlaying {
                 Logger.audioPlayback("🔊 Starting player node...")
                 playerNode.play()
@@ -409,10 +426,12 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
         } catch {
             Logger.audioPlayback("🔊 Failed to play tick: \(error.localizedDescription)")
         }
-        Logger.audioPlayback("🔊 playTick() completed")
+        Logger.audioDebug("🔊 playTick() completed")
     }
 
     func stop() {
+        audioStateLock.lock()
+        defer { audioStateLock.unlock() }
         guard !isTestEnvironment, let audioEngine = audioEngine, let playerNode = playerNode else { return }
 
         playerNode.stop()
@@ -430,6 +449,8 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     }
 
     func resume() {
+        audioStateLock.lock()
+        defer { audioStateLock.unlock() }
         guard !isTestEnvironment, let audioEngine = audioEngine else { return }
 
         do {
@@ -453,6 +474,8 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     /// Convert CFAbsoluteTime (metronome timebase) to AVAudioEngine timeline
     /// This ensures sample-accurate synchronization between metronome and external audio
     func convertToAudioEngineTime(_ cfTime: CFAbsoluteTime) -> AVAudioTime? {
+        audioStateLock.lock()
+        defer { audioStateLock.unlock() }
         guard !isTestEnvironment, let audioEngine = audioEngine, audioEngine.isRunning else { return nil }
         
         // Get current times from both domains

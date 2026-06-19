@@ -10,7 +10,7 @@ import SwiftUI
 extension GameplayView {
     @ViewBuilder
     func sheetMusicView(geometry: GeometryProxy) -> some View {
-        if let viewModel = viewModel {
+        if let viewModel = viewModel, viewModel.isGameplayPrepared {
             let usesNotationLayout = usesNotationLayout(viewModel: viewModel)
             let measurePositions = sheetMeasurePositions(viewModel: viewModel)
             let contentWidth = sheetContentWidth(viewModel: viewModel)
@@ -20,37 +20,14 @@ extension GameplayView {
             ScrollViewReader { proxy in
                 ScrollView([.horizontal, .vertical], showsIndicators: false) {
                     ZStack(alignment: .topLeading) {
-                        // Use cached static staff lines view - created only once
-                        if usesNotationLayout {
-                            if let cachedNotationView = viewModel.notationStaffLinesView {
-                                cachedNotationView
-                            } else {
-                                staffLinesView(measurePositions: measurePositions, width: contentWidth)
-                            }
-                        } else if let staticView = viewModel.staticStaffLinesView {
-                            staticView
-                        } else {
-                            // Fallback: render dynamic staff lines when static view is not available
-                            staffLinesView(measurePositions: measurePositions, width: contentWidth)
-                        }
-
-                        // Dynamic content
-                        ZStack(alignment: .topLeading) {
-                            barLinesView(measurePositions: measurePositions, viewModel: viewModel)
-
-                            clefsAndTimeSignaturesView(measurePositions: measurePositions, viewModel: viewModel)
-
-                            drumNotationView(viewModel: viewModel)
-
-                            timeBasedBeatProgressionBars(viewModel: viewModel)
-                        }
-
-                        // Invisible per-row anchor column. Each anchor occupies the
-                        // exact vertical span of its row in the layout coordinate
-                        // system, so ScrollViewReader.scrollTo("row_n", anchor: .top)
-                        // resolves to the correct y. Kept off-screen horizontally
-                        // (width 1) and outside the visible content area.
-                        rowAnchorColumn(rowCount: rowCount, viewModel: viewModel)
+                        staticSheetMusicContent(
+                            measurePositions: measurePositions,
+                            contentWidth: contentWidth,
+                            rowCount: rowCount,
+                            usesNotationLayout: usesNotationLayout,
+                            viewModel: viewModel
+                        )
+                        GameplayPurpleBarView(viewModel: viewModel)
                     }
                     .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
                 }
@@ -75,6 +52,40 @@ extension GameplayView {
         } else {
             Color.black
                 .overlay(Text("Loading...").foregroundColor(.white))
+        }
+    }
+
+    func staticSheetMusicContent(
+        measurePositions: [GameplayLayout.MeasurePosition],
+        contentWidth: CGFloat,
+        rowCount: Int,
+        usesNotationLayout: Bool,
+        viewModel: GameplayViewModel
+    ) -> some View {
+        ZStack(alignment: .topLeading) {
+            // Use cached static staff lines view - created only once
+            if usesNotationLayout {
+                if let cachedNotationView = viewModel.notationStaffLinesView {
+                    cachedNotationView
+                } else {
+                    staffLinesView(measurePositions: measurePositions, width: contentWidth)
+                }
+            } else if let staticView = viewModel.staticStaffLinesView {
+                staticView
+            } else {
+                // Fallback: render dynamic staff lines when static view is not available
+                staffLinesView(measurePositions: measurePositions, width: contentWidth)
+            }
+
+            ZStack(alignment: .topLeading) {
+                barLinesView(measurePositions: measurePositions, viewModel: viewModel)
+                clefsAndTimeSignaturesView(measurePositions: measurePositions, viewModel: viewModel)
+                drumNotationView(viewModel: viewModel)
+            }
+
+            // Invisible per-row anchor column. Each anchor occupies the exact
+            // vertical span of its row so ScrollViewReader resolves row anchors.
+            rowAnchorColumn(rowCount: rowCount, viewModel: viewModel)
         }
     }
 
@@ -192,6 +203,7 @@ extension GameplayView {
             if usesNotationLayout {
                 ForEach(notationMeasureBars) { measureBar in
                     NotationMeasureBarView(measureBar: measureBar)
+                        .equatable()
                 }
             } else {
                 // Regular bar lines
@@ -235,47 +247,37 @@ extension GameplayView {
 
     func drumNotationView(viewModel: GameplayViewModel) -> some View {
         let notationLayout = viewModel.cachedNotationLayout
-        let activeNotationNoteHeadIDs = viewModel.activeNotationNoteHeadIDs
 
         return ZStack {
             ForEach(notationLayout.ledgerLines) { ledgerLine in
                 NotationLedgerLineView(ledgerLine: ledgerLine)
+                    .equatable()
             }
 
             ForEach(notationLayout.beams) { beam in
-                let isActive = beam.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
-                NotationBeamView(beam: beam, isActive: isActive)
+                NotationBeamView(beam: beam, isActive: false)
+                    .equatable()
             }
 
             ForEach(notationLayout.flags) { flag in
                 NotationFlagView(
                     flag: flag,
-                    isActive: activeNotationNoteHeadIDs.contains(flag.noteHeadID)
+                    isActive: false
                 )
+                .equatable()
             }
 
             ForEach(notationLayout.stems) { stem in
-                let isActive = stem.noteHeadIDs.contains { activeNotationNoteHeadIDs.contains($0) }
-                NotationStemView(stem: stem, isActive: isActive)
+                NotationStemView(stem: stem, isActive: false)
+                    .equatable()
             }
 
             ForEach(notationLayout.noteHeads) { noteHead in
                 NotationNoteHeadView(
                     noteHead: noteHead,
-                    isActive: activeNotationNoteHeadIDs.contains(noteHead.id)
+                    isActive: false
                 )
-            }
-        }
-    }
-
-    func timeBasedBeatProgressionBars(viewModel: GameplayViewModel) -> some View {
-        Group {
-            if let position = viewModel.purpleBarPosition {
-                Rectangle()
-                    .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
-                    .foregroundColor(Color.purple.opacity(GameplayLayout.activeOpacity))
-                    .cornerRadius(GameplayLayout.beatColumnCornerRadius)
-                    .position(x: position.x, y: position.y)
+                .equatable()
             }
         }
     }
@@ -320,5 +322,21 @@ extension GameplayView {
 
     func notationContentWidth(for notationLayout: NotationLayout) -> CGFloat {
         notationLayout.contentWidth
+    }
+}
+
+private struct GameplayPurpleBarView: View {
+    let viewModel: GameplayViewModel
+
+    var body: some View {
+        Group {
+            if let position = viewModel.purpleBarPosition {
+                Rectangle()
+                    .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
+                    .foregroundColor(Color.purple.opacity(GameplayLayout.activeOpacity))
+                    .cornerRadius(GameplayLayout.beatColumnCornerRadius)
+                    .position(x: position.x, y: position.y)
+            }
+        }
     }
 }

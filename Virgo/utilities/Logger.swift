@@ -40,6 +40,15 @@ struct Logger {
         audio.info("Playback: \(message, privacy: .public)")
     }
 
+    /// Log verbose audio playback traces only when explicitly enabled in debug builds.
+    static func audioDebug(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        guard UserDefaults.standard.bool(forKey: "VirgoVerboseAudioLogging") else { return }
+        let resolvedMessage = message()
+        audio.debug("Playback: \(resolvedMessage, privacy: .public)")
+        #endif
+    }
+
     /// Log UI interactions
     static func userAction(_ action: String) {
         ui.info("User action: \(action, privacy: .public)")

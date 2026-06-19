@@ -8,12 +8,54 @@
 
 import Testing
 import Foundation
+import AVFoundation
+import Observation
 import SwiftUI
 @testable import Virgo
 
 @MainActor
 // swiftlint:disable:next type_body_length
 struct GameplayViewModelTests {
+
+    private func appendLittleEndian<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { bytes in
+            data.append(contentsOf: bytes)
+        }
+    }
+
+    private func makeSilentWAVData(durationSeconds: Double = 2.0) -> Data {
+        let sampleRate: UInt32 = 44_100
+        let channels: UInt16 = 1
+        let bitsPerSample: UInt16 = 16
+        let sampleCount = UInt32(max(1.0, durationSeconds * Double(sampleRate)))
+
+        let blockAlign = channels * bitsPerSample / 8
+        let byteRate = sampleRate * UInt32(blockAlign)
+        let dataSize = sampleCount * UInt32(blockAlign)
+        let chunkSize: UInt32 = 36 + dataSize
+
+        var wavData = Data()
+        wavData.append("RIFF".data(using: .ascii)!)
+        appendLittleEndian(chunkSize, to: &wavData)
+        wavData.append("WAVE".data(using: .ascii)!)
+        wavData.append("fmt ".data(using: .ascii)!)
+        appendLittleEndian(UInt32(16), to: &wavData)
+        appendLittleEndian(UInt16(1), to: &wavData)
+        appendLittleEndian(channels, to: &wavData)
+        appendLittleEndian(sampleRate, to: &wavData)
+        appendLittleEndian(byteRate, to: &wavData)
+        appendLittleEndian(blockAlign, to: &wavData)
+        appendLittleEndian(bitsPerSample, to: &wavData)
+        wavData.append("data".data(using: .ascii)!)
+        appendLittleEndian(dataSize, to: &wavData)
+        wavData.append(Data(repeating: 0, count: Int(dataSize)))
+        return wavData
+    }
+
+    private func makeSilentAudioPlayer(durationSeconds: Double = 5.0) throws -> AVAudioPlayer {
+        try AVAudioPlayer(data: makeSilentWAVData(durationSeconds: durationSeconds))
+    }
 
     private func createTestPracticeSettings() -> PracticeSettingsService {
         let (userDefaults, _) = TestUserDefaults.makeIsolated()
@@ -48,6 +90,39 @@ struct GameplayViewModelTests {
     /// Creates a test MetronomeEngine
     private func createTestMetronome() -> MetronomeEngine {
         return MetronomeEngine()
+    }
+
+    private final class ScheduledMetronomeSpy: MetronomeEngine {
+        struct StartAtTimeCall {
+            let bpm: Double
+            let timeSignature: TimeSignature
+            let startTime: TimeInterval
+            let totalBeatsElapsed: Double
+        }
+
+        private(set) var startAtTimeCalls: [StartAtTimeCall] = []
+
+        override func startAtTime(
+            bpm: Double,
+            timeSignature: TimeSignature,
+            startTime: TimeInterval,
+            totalBeatsElapsed: Double = 0
+        ) {
+            startAtTimeCalls.append(
+                StartAtTimeCall(
+                    bpm: bpm,
+                    timeSignature: timeSignature,
+                    startTime: startTime,
+                    totalBeatsElapsed: totalBeatsElapsed
+                )
+            )
+        }
+
+        override func stop() {}
+
+        override func getCurrentPlaybackTime() -> TimeInterval? {
+            nil
+        }
     }
 
     // MARK: - Initialization Tests
@@ -124,9 +199,13 @@ struct GameplayViewModelTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
+        #expect(viewModel.isDataLoaded)
+        #expect(!viewModel.isGameplayPrepared)
+
         viewModel.setupGameplay()
 
         // Verify computed data is populated
+        #expect(viewModel.isGameplayPrepared)
         #expect(!viewModel.cachedDrumBeats.isEmpty)
         #expect(!viewModel.cachedMeasurePositions.isEmpty)
         #expect(!viewModel.cachedBeatIndices.isEmpty)
@@ -467,8 +546,8 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
-    @Test("purple bar position updates on every tick, not only on discrete beat boundaries")
-    func testPurpleBarUpdatesOnEveryTick() async throws {
+    @Test("purple bar jumps on beat boundaries within each measure")
+    func testPurpleBarJumpsOnBeatBoundariesWithinMeasure() async throws {
         let chart = createTestChart(noteCount: 8)
         let metronome = createTestMetronome()
 
@@ -477,27 +556,61 @@ struct GameplayViewModelTests {
         viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
-        // Call updatePurpleBarPosition with two different elapsed times
-        // that fall within the same beat (same discreteTotalBeats value).
-        // At 120 BPM: secondsPerBeat = 0.5. Beat 0 covers 0..<0.5s, beat 1 covers 0.5..<1.0s.
-        viewModel.updatePurpleBarPosition(elapsedTime: 0.1)
-        let positionAt01 = viewModel.purpleBarPosition
+        // At 120 BPM in 4/4, one beat is 0.5s. The playhead should hold
+        // between beat boundaries, then jump to each beat within the measure.
+        viewModel.updatePurpleBarPosition(elapsedTime: 0.01)
+        let positionAtStart = try #require(viewModel.purpleBarPosition)
 
-        viewModel.updatePurpleBarPosition(elapsedTime: 0.3)
-        let positionAt03 = viewModel.purpleBarPosition
+        viewModel.updatePurpleBarPosition(elapsedTime: 0.49)
+        let positionBeforeSecondBeat = try #require(viewModel.purpleBarPosition)
 
-        // Both times fall within beat 0 (discreteTotalBeats == 0), so discrete-beat-gated
-        // logic would NOT fire for the second call. If the purple bar only updated on
-        // discrete beat boundaries, both positions would be identical. They must differ
-        // because the purple bar should track continuous elapsed time.
-        #expect(positionAt01 != nil, "Purple bar must produce a position at elapsedTime 0.1s")
-        #expect(positionAt03 != nil, "Purple bar must produce a position at elapsedTime 0.3s")
-        // Purple bar must advance between ticks within the same beat —
-        // position at 0.1s should differ from 0.3s
-        if let pos1 = positionAt01, let pos3 = positionAt03 {
-            #expect(abs(pos1.x - pos3.x) > 0.0001 || abs(pos1.y - pos3.y) > 0.0001,
-                   "Purple bar must advance between sub-beat ticks (0.1s vs 0.3s)")
-        }
+        viewModel.updatePurpleBarPosition(elapsedTime: 0.51)
+        let positionAtSecondBeat = try #require(viewModel.purpleBarPosition)
+
+        viewModel.updatePurpleBarPosition(elapsedTime: 0.99)
+        let positionBeforeThirdBeat = try #require(viewModel.purpleBarPosition)
+
+        viewModel.updatePurpleBarPosition(elapsedTime: 1.01)
+        let positionAtThirdBeat = try #require(viewModel.purpleBarPosition)
+
+        #expect(abs(positionAtStart.x - positionBeforeSecondBeat.x) < 0.0001)
+        #expect(abs(positionAtStart.y - positionBeforeSecondBeat.y) < 0.0001)
+        #expect(abs(positionAtSecondBeat.x - positionAtStart.x) > 0.0001)
+        #expect(abs(positionAtSecondBeat.x - positionBeforeThirdBeat.x) < 0.0001)
+        #expect(abs(positionAtThirdBeat.x - positionAtSecondBeat.x) > 0.0001)
+
+        viewModel.cleanup()
+    }
+
+    @Test("purple bar beat-boundary quantization follows the chart time signature")
+    func testPurpleBarBeatBoundaryQuantizationFollowsTimeSignature() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .threeFour)
+        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0))
+        chart.notes.append(Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 0.0))
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        // At 120 BPM in 3/4, one beat is 0.5s and the next measure starts
+        // after the third beat slot.
+        viewModel.updatePurpleBarPosition(elapsedTime: 0.01)
+        let positionAtStart = try #require(viewModel.purpleBarPosition)
+
+        viewModel.updatePurpleBarPosition(elapsedTime: 0.51)
+        let positionAtSecondBeat = try #require(viewModel.purpleBarPosition)
+
+        viewModel.updatePurpleBarPosition(elapsedTime: 1.01)
+        let positionAtThirdBeat = try #require(viewModel.purpleBarPosition)
+
+        viewModel.updatePurpleBarPosition(elapsedTime: 1.51)
+        let positionAtNextMeasure = try #require(viewModel.purpleBarPosition)
+
+        #expect(abs(positionAtSecondBeat.x - positionAtStart.x) > 0.0001)
+        #expect(abs(positionAtThirdBeat.x - positionAtSecondBeat.x) > 0.0001)
+        #expect(abs(positionAtNextMeasure.x - positionAtThirdBeat.x) > 0.0001)
 
         viewModel.cleanup()
     }
@@ -617,6 +730,170 @@ struct GameplayViewModelTests {
         viewModel.cleanup()
     }
 
+    @Test func testCalculateElapsedTimeUsesBGMClockAfterBGMStarts() async throws {
+        let chart = createTestChart(noteCount: 8)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let player = try makeSilentAudioPlayer(durationSeconds: 5.0)
+        player.currentTime = 2.0
+        viewModel.bgmPlayer = player
+        viewModel.bgmOffsetSeconds = 0.75
+        viewModel.isPlaying = true
+
+        metronome.startAtTime(
+            bpm: viewModel.effectiveBPM(),
+            timeSignature: .fourFour,
+            startTime: CFAbsoluteTimeGetCurrent() - 10.0
+        )
+
+        let elapsedTime = try #require(viewModel.calculateElapsedTime())
+
+        #expect(
+            abs(elapsedTime - 2.75) < 0.001,
+            "Elapsed gameplay time should follow BGM currentTime plus BGM offset once BGM has started"
+        )
+
+        metronome.stop()
+        viewModel.cleanup()
+    }
+
+    @Test func testVisualUpdateUsesBGMClockAfterBGMStarts() async throws {
+        let chart = createTestChart(noteCount: 32)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let player = try makeSilentAudioPlayer(durationSeconds: 5.0)
+        player.currentTime = 2.0
+        viewModel.bgmPlayer = player
+        viewModel.bgmOffsetSeconds = 0.75
+        viewModel.isPlaying = true
+
+        metronome.startAtTime(
+            bpm: viewModel.effectiveBPM(),
+            timeSignature: .fourFour,
+            startTime: CFAbsoluteTimeGetCurrent() - 10.0
+        )
+
+        viewModel.updateVisualElementsFromMetronome()
+
+        let expectedProgress = 2.75 / viewModel.cachedTrackDuration
+        #expect(
+            abs(viewModel.playbackProgress - expectedProgress) < 0.001,
+            "Visual progress should use BGM currentTime, not the independent metronome elapsed time"
+        )
+
+        metronome.stop()
+        viewModel.cleanup()
+    }
+
+    @Test("visual timeline stays aligned to speed-adjusted BGM clock over a long run")
+    func testLongRunVisualTimelineUsesSpeedAdjustedBGMClock() async throws {
+        let song = Song(
+            title: "Long BGM Sync",
+            artist: "Tester",
+            bpm: 120,
+            duration: "2:00",
+            genre: "DTX",
+            bgmStartOffsetSeconds: 0.9
+        )
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour, song: song)
+        for measureNumber in 1...40 {
+            chart.notes.append(
+                Note(interval: .quarter, noteType: .snare, measureNumber: measureNumber, measureOffset: 0.0)
+            )
+        }
+        let practiceSettings = createTestPracticeSettings()
+        practiceSettings.setSpeed(0.75)
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        let bgmPlayer = try makeSilentAudioPlayer(durationSeconds: 90.0)
+        bgmPlayer.currentTime = 45.0
+        viewModel.bgmPlayer = bgmPlayer
+        viewModel.isPlaying = true
+
+        viewModel.updateVisualElementsFromMetronome()
+
+        let expectedElapsedTime = 45.0 / 0.75 + (0.9 / 0.75)
+        let expectedTotalBeats = Int(expectedElapsedTime / (60.0 / viewModel.effectiveBPM()))
+        let expectedMeasureIndex = expectedTotalBeats / chart.timeSignature.beatsPerMeasure
+        let expectedBeatPosition = Double(expectedTotalBeats % chart.timeSignature.beatsPerMeasure)
+            / Double(chart.timeSignature.beatsPerMeasure)
+
+        #expect(viewModel.totalBeatsElapsed == expectedTotalBeats)
+        #expect(viewModel.currentMeasureIndex == expectedMeasureIndex)
+        #expect(abs(viewModel.currentBeatPosition - expectedBeatPosition) < 0.0001)
+        #expect(viewModel.purpleBarPosition != nil)
+
+        viewModel.cleanup()
+    }
+
+    @Test func testVisualTickThrottlesObservablePlaybackProgressUpdates() async throws {
+        let chart = createTestChart(noteCount: 32)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 1.00)
+        let firstPublishedProgress = viewModel.playbackProgress
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 1.02)
+        #expect(
+            viewModel.playbackProgress == firstPublishedProgress,
+            "A 30 Hz visual tick should not publish playbackProgress on every frame"
+        )
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 1.12)
+        #expect(
+            viewModel.playbackProgress > firstPublishedProgress,
+            "Progress should still publish after the throttle interval"
+        )
+
+        viewModel.cleanup()
+    }
+
+    @Test func testPausePlaybackUsesBGMClockAfterBGMStarts() async throws {
+        let chart = createTestChart(noteCount: 32)
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let player = try makeSilentAudioPlayer(durationSeconds: 5.0)
+        player.currentTime = 2.0
+        viewModel.bgmPlayer = player
+        viewModel.bgmOffsetSeconds = 0.75
+        viewModel.isPlaying = true
+
+        metronome.startAtTime(
+            bpm: viewModel.effectiveBPM(),
+            timeSignature: .fourFour,
+            startTime: CFAbsoluteTimeGetCurrent() - 10.0
+        )
+
+        viewModel.pausePlayback()
+
+        #expect(
+            abs(viewModel.pausedElapsedTime - 2.75) < 0.001,
+            "Pause should preserve the BGM-derived timeline position once BGM has started"
+        )
+
+        viewModel.cleanup()
+    }
+
     @Test func testPausePlaybackIsIdempotent() async throws {
         let chart = createTestChart()
         let metronome = createTestMetronome()
@@ -651,6 +928,25 @@ struct GameplayViewModelTests {
         #expect(viewModel.playbackStartTime != nil)
 
         // Cleanup
+        viewModel.cleanup()
+    }
+
+    @Test func testStartPlaybackWaitsForGameplayPreparation() async throws {
+        let chart = createTestChart()
+        let metronome = createTestMetronome()
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+
+        #expect(viewModel.isDataLoaded)
+        #expect(!viewModel.isGameplayPrepared)
+
+        viewModel.startPlayback()
+
+        #expect(!viewModel.isPlaying)
+        #expect(viewModel.playbackStartTime == nil)
+        #expect(viewModel.lastScheduledPlaybackStartTime == nil)
+
         viewModel.cleanup()
     }
 
@@ -1214,6 +1510,26 @@ struct GameplayViewModelTests {
         #expect(viewModel.bgmOffsetSeconds > 0.0)
     }
 
+    @Test("calculateBGMOffset uses persisted DTX BGM lane start when available")
+    func testCalculateBGMOffsetUsesPersistedBGMLaneStart() async throws {
+        let song = Song(
+            title: "BGM Offset",
+            artist: "Tester",
+            bpm: 200,
+            duration: "3:30",
+            genre: "DTX",
+            bgmStartOffsetSeconds: 0.9
+        )
+        let chart = Chart(difficulty: .medium, song: song)
+        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 0.625))
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: createTestMetronome())
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        #expect(abs(viewModel.bgmOffsetSeconds - 0.9) < 0.001)
+    }
+
     @Test("calculateBGMOffset scales by speed multiplier for notes after measure 1")
     func testCalculateBGMOffsetScalesWithSpeedMultiplier() async throws {
         // A note in measure 3 should produce a non-zero BGM offset.
@@ -1268,8 +1584,10 @@ struct GameplayViewModelTests {
         viewModel.setupMetronomeSubscription()
         viewModel.startPlayback()
 
+        #expect(viewModel.isGameplayPrepared)
         viewModel.cleanup()
 
+        #expect(!viewModel.isGameplayPrepared)
         #expect(viewModel.playbackTimer == nil)
         #expect(viewModel.bgmPlayer == nil)
         #expect(viewModel.metronomeSubscription == nil)
@@ -1733,11 +2051,10 @@ struct GameplayViewModelTests {
         #expect(abs(clampedPosition.x - Double(startX)) > 1.0)
     }
 
-    @Test func testPurpleBarUsesFractionalBeatForSubBeatPosition() async throws {
-        // At BPM 120, 4/4 time: secondsPerBeat = 0.5
-        // elapsedTime = 0.125s → totalBeatsElapsed = 0.25
-        // This is a 16th note (offset 0.0625 in 4/4). The purple bar should be at
-        // beatWithinMeasure = 0.25 (quarter of a beat), NOT at beat 0.
+    @Test func testPurpleBarHoldsBeatBoundaryPositionForSubBeatNotes() async throws {
+        // Sub-beat notes should still be highlighted by active-note timing, but the
+        // purple marker itself should stay on beat boundaries and should not move
+        // to sixteenth-note positions inside the measure.
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625)
@@ -1753,12 +2070,9 @@ struct GameplayViewModelTests {
             viewModel.calculatePurpleBarPosition(elapsedTime: 0.125)
         )
         let measure = try #require(viewModel.cachedNotationLayout.measures.first)
-        let beatGap = (measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing) / 4
-        // beatWithinMeasure should be 0.25, so x = base + 0.25 * beatGap
         let expectedX = measure.xOffset
             + GameplayLayout.barLineWidth
             + GameplayLayout.uniformSpacing
-            + 0.25 * beatGap
 
         #expect(abs(position.x - Double(expectedX)) < 0.5)
     }
@@ -2077,6 +2391,36 @@ struct GameplayViewModelTests {
         let resumeDateDrift = abs(resumePlaybackStart.timeIntervalSince(expectedResumeDate))
         #expect(resumeDateDrift < 0.01,
                 "Resume playbackStartTime should be derived from scheduled time minus elapsed offset (drift: \(resumeDateDrift)s)")
+
+        viewModel.cleanup()
+    }
+
+    @Test("resume schedules metronome from fractional beat progress")
+    func testResumeSchedulesMetronomeFromFractionalBeatProgress() async throws {
+        let chart = createTestChart(noteCount: 16)
+        let metronome = ScheduledMetronomeSpy()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let pausedElapsedTime = 2.25
+        viewModel.pausedElapsedTime = pausedElapsedTime
+
+        viewModel.startPlayback()
+
+        let call = try #require(
+            metronome.startAtTimeCalls.last,
+            "Resuming playback should schedule the metronome"
+        )
+        let secondsPerBeat = 60.0 / viewModel.effectiveBPM()
+        let expectedBeatsElapsed = pausedElapsedTime / secondsPerBeat
+
+        #expect(
+            abs(call.totalBeatsElapsed - expectedBeatsElapsed) < 0.0001,
+            "Metronome scheduling should preserve fractional beat progress instead of flooring to an integer"
+        )
+        #expect(viewModel.totalBeatsElapsed == Int(expectedBeatsElapsed))
+        #expect(viewModel.isPlaying == true)
 
         viewModel.cleanup()
     }
@@ -2970,6 +3314,61 @@ struct GameplayViewModelTests {
         viewModel.updateActiveBeat(forTimePosition: 0.0625)
         let subBeatNote = viewModel.cachedDrumBeats.first { abs($0.timePosition - 0.0625) < 0.001 }
         #expect(viewModel.activeBeatId == subBeatNote?.id)
+    }
+
+    @Test("continuous visual tick does not mutate active-note highlight state after highlighting is disabled")
+    func continuousVisualTickDoesNotMutateActiveHighlightState() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0625)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 0.03125)
+
+        #expect(viewModel.activeBeatId == nil)
+        #expect(viewModel.activeNotationNoteHeadIDs.isEmpty)
+    }
+
+    @Test("continuous visual ticks do not re-notify sheet state while active beat is unchanged")
+    func continuousVisualTickAvoidsRedundantSheetInvalidation() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        )
+        let metronome = createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+
+        viewModel.updateActiveBeat(forTimePosition: 0.0)
+        let activeBeat = try #require(viewModel.activeBeatId)
+        let activeNoteHeads = viewModel.activeNotationNoteHeadIDs
+        try #require(!activeNoteHeads.isEmpty)
+
+        var invalidationCount = 0
+        withObservationTracking {
+            _ = viewModel.activeBeatId
+            _ = viewModel.activeNotationNoteHeadIDs
+        } onChange: {
+            invalidationCount += 1
+        }
+
+        viewModel.updateActiveBeat(forTimePosition: 0.01)
+
+        #expect(viewModel.activeBeatId == activeBeat)
+        #expect(viewModel.activeNotationNoteHeadIDs == activeNoteHeads)
+        #expect(invalidationCount == 0)
     }
 
     // MARK: - activeBeatId.didSet Gating Tests

@@ -37,6 +37,16 @@ enum ContentStartupPolicy {
         return .noAction
     }
 
+    /// Returns true when startup will delete persisted songs before the first app screen is ready.
+    static func shouldPrepareBeforeFirstRender(arguments: [String]) -> Bool {
+        arguments.contains(LaunchArguments.uiTesting) && arguments.contains(LaunchArguments.resetState)
+    }
+
+    /// Returns true when bundled local DTX fixtures should be imported during startup.
+    static func shouldImportBundledLocalDTXFixtures(arguments: [String]) -> Bool {
+        !arguments.contains(LaunchArguments.skipSeed)
+    }
+
     /// Returns true when the song should use `AudioPlaybackService` (preview-file-backed playback).
     static func shouldUsePreviewPlayer(for song: Song) -> Bool {
         song.isServerImported && song.previewFilePath != nil

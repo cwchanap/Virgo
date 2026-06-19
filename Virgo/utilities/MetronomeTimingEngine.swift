@@ -9,6 +9,37 @@ import Foundation
 import AVFoundation
 import os.log
 
+private final class MetronomePlaybackToken {
+    private let lock = NSLock()
+    private var active = true
+
+    var isActive: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return active
+    }
+
+    func cancel() {
+        lock.lock()
+        active = false
+        lock.unlock()
+    }
+}
+
+private final class MetronomeBeatCounter {
+    private var nextBeatNumber: Int
+
+    init(firstBeatNumber: Int) {
+        self.nextBeatNumber = firstBeatNumber
+    }
+
+    func consumeNextBeatNumber() -> Int {
+        let beatNumber = nextBeatNumber
+        nextBeatNumber += 1
+        return beatNumber
+    }
+}
+
 // MARK: - Timing Engine
 @MainActor
 class MetronomeTimingEngine: ObservableObject {
@@ -22,7 +53,7 @@ class MetronomeTimingEngine: ObservableObject {
     var bpm: Double = 120.0 {
         didSet {
             // Cache beat interval when BPM changes to avoid repeated division
-            cachedBeatInterval = 60.0 / bpm
+            updateCachedBeatInterval()
             if isPlaying {
                 restartTimer()
             }
@@ -31,12 +62,17 @@ class MetronomeTimingEngine: ObservableObject {
 
     var timeSignature: TimeSignature = .fourFour {
         didSet {
+            updateCachedBeatInterval()
             currentBeat = 1
+            if isPlaying {
+                restartTimer()
+            }
         }
     }
 
     // Timer - using single DispatchSourceTimer for consistency
     private var beatTimer: DispatchSourceTimer?
+    private var playbackToken: MetronomePlaybackToken?
     private let timerQueue = DispatchQueue(label: "com.virgo.metronome.timing", qos: .userInitiated)
     
     // High-precision timing
@@ -47,18 +83,24 @@ class MetronomeTimingEngine: ObservableObject {
     
     // Performance optimization: Cache beat interval to avoid repeated division
     private var cachedBeatInterval: TimeInterval = 0.5
+    private let audioSchedulingLeadTime: TimeInterval = 0.04
 
     // Callbacks
+    var onAudioBeat: ((Int, Bool, AVAudioTime?) -> Void)?
     var onBeat: ((Int, Bool, AVAudioTime?) -> Void)?
 
     private var beatInterval: TimeInterval {
         return cachedBeatInterval
     }
-    
-    init() {
-        self.isTestEnvironment = TestEnvironment.isRunningTests
-        // Initialize cached beat interval
+
+    private func updateCachedBeatInterval() {
         cachedBeatInterval = 60.0 / bpm
+    }
+    
+    init(isTestEnvironment: Bool = TestEnvironment.isRunningTests) {
+        self.isTestEnvironment = isTestEnvironment
+        // Initialize cached beat interval
+        updateCachedBeatInterval()
 
         if isTestEnvironment {
             Logger.audioPlayback("Test environment - MetronomeTimingEngine will simulate timing")
@@ -90,14 +132,23 @@ class MetronomeTimingEngine: ObservableObject {
     }
 
     func startAtTime(startTime: TimeInterval, totalBeatsElapsed: Int = 0) {
-        guard !isPlaying else { return }
+        startAtTime(startTime: startTime, totalBeatsElapsed: Double(totalBeatsElapsed))
+    }
 
-        isPlaying = true
+    func startAtTime(startTime: TimeInterval, totalBeatsElapsed: Double) {
+        // A scheduled start is an explicit phase reset. Gameplay uses this when
+        // playback begins, and it must rebase any free-running metronome started
+        // from the standalone toggle.
+        if !isPlaying {
+            isPlaying = true
+        }
+
         // Calculate current beat within measure (1-indexed)
         let beatsPerMeasure = timeSignature.beatsPerMeasure
-        let beatInMeasure = totalBeatsElapsed % beatsPerMeasure + 1
+        let completedBeats = Self.completedBeatCount(forTotalBeatsElapsed: totalBeatsElapsed)
+        let beatInMeasure = completedBeats % beatsPerMeasure + 1
         currentBeat = beatInMeasure
-        lastFiredBeat = totalBeatsElapsed
+        lastFiredBeat = Self.firstFiredBeatNumber(afterTotalBeatsElapsed: totalBeatsElapsed) - 1
 
         if isTestEnvironment {
             // In test environment, simulate start with provided timing
@@ -120,6 +171,7 @@ class MetronomeTimingEngine: ObservableObject {
         beatOffset = 0
         startTime = 0
         beatOriginTime = 0
+        lastFiredBeat = 0
     }
 
     func toggle() {
@@ -136,66 +188,118 @@ class MetronomeTimingEngine: ObservableObject {
         stopTimer()
 
         // Record start time and initialize beat counter
-        startTime = CFAbsoluteTimeGetCurrent()
+        startTime = CFAbsoluteTimeGetCurrent() + audioSchedulingLeadTime
         beatOffset = initialBeatsElapsed
         beatOriginTime = startTime - (Double(beatOffset) * beatInterval)
         lastFiredBeat = initialBeatsElapsed
 
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
         beatTimer = timer
+        let token = MetronomePlaybackToken()
+        playbackToken = token
 
         // Use nanoseconds precision for accurate timing
         let nanoseconds = Int(beatInterval * 1_000_000_000)
 
-        // Use repeating timer with nanosecond precision
-        timer.schedule(deadline: .now(), repeating: .nanoseconds(nanoseconds))
+        let schedule = MetronomeBeatSchedule(
+            beatOriginTime: beatOriginTime,
+            beatInterval: beatInterval,
+            schedulingLeadTime: audioSchedulingLeadTime
+        )
+        let firstDeadline = schedule.timerDeadline(forBeatNumber: initialBeatsElapsed + 1)
+        let startDelayNanos = max(0, Int((firstDeadline - CFAbsoluteTimeGetCurrent()) * 1_000_000_000))
 
+        // Fire ahead of the ideal beat so the audio engine can schedule the tick,
+        // then repeat at the beat interval.
+        timer.schedule(deadline: .now() + .nanoseconds(startDelayNanos), repeating: .nanoseconds(nanoseconds))
+
+        let audioBeatHandler = onAudioBeat
+        let timeSignature = timeSignature
+        let beatCounter = MetronomeBeatCounter(firstBeatNumber: initialBeatsElapsed + 1)
         timer.setEventHandler { [weak self] in
-            let actualFireTime = CFAbsoluteTimeGetCurrent()
+            guard token.isActive else { return }
+            let firedBeatNumber = beatCounter.consumeNextBeatNumber()
+            let idealBeatTime = schedule.audioTargetTime(forBeatNumber: firedBeatNumber)
+            let beatToPlay = Self.beatInMeasure(forFiredBeatNumber: firedBeatNumber, timeSignature: timeSignature)
+            let preciseAudioTime = Self.audioTime(forIdealBeatTime: idealBeatTime)
+            audioBeatHandler?(beatToPlay, beatToPlay == 1, preciseAudioTime)
+
             Task { @MainActor in
-                guard let self = self else { return }
-                self.fireBeat(actualFireTime: actualFireTime)
+                guard let self = self, token.isActive else { return }
+                self.recordVisualBeat(
+                    firedBeatNumber: firedBeatNumber,
+                    idealBeatTime: idealBeatTime,
+                    token: token
+                )
             }
         }
 
         timer.resume()
     }
 
-    private func startTimerAtTime(startTime: TimeInterval, totalBeatsElapsed: Int = 0) {
+    private func startTimerAtTime(startTime: TimeInterval, totalBeatsElapsed: Double) {
         stopTimer()
 
         // Calculate when to actually start relative to current time
         let currentTime = CFAbsoluteTimeGetCurrent()
         let delayUntilStart = startTime - currentTime
-
+        let effectiveStartTime: TimeInterval
+        let effectiveTotalBeatsElapsed: Double
         if delayUntilStart <= 0 {
-            // Start time has already passed, start immediately
-            self.startTime = currentTime
-            startTimer(initialBeatsElapsed: totalBeatsElapsed)
-            return
+            // Start time has already passed. Preserve phase by advancing the
+            // elapsed beat count, while matching the previous behavior of using
+            // "now" as the playback-time origin after a stale schedule.
+            let elapsedSinceStart = currentTime - startTime
+            effectiveStartTime = currentTime
+            effectiveTotalBeatsElapsed = totalBeatsElapsed + (elapsedSinceStart / beatInterval)
+        } else {
+            effectiveStartTime = startTime
+            effectiveTotalBeatsElapsed = totalBeatsElapsed
         }
 
         // Schedule timer to start at the specified time
-        self.startTime = startTime
-        beatOffset = totalBeatsElapsed
-        beatOriginTime = startTime - (Double(beatOffset) * beatInterval)
-        lastFiredBeat = totalBeatsElapsed
+        self.startTime = effectiveStartTime
+        beatOffset = Self.completedBeatCount(forTotalBeatsElapsed: effectiveTotalBeatsElapsed)
+        beatOriginTime = effectiveStartTime - (max(0, effectiveTotalBeatsElapsed) * beatInterval)
+        let firstBeatNumber = Self.firstFiredBeatNumber(afterTotalBeatsElapsed: effectiveTotalBeatsElapsed)
+        lastFiredBeat = firstBeatNumber - 1
 
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
         beatTimer = timer
+        let token = MetronomePlaybackToken()
+        playbackToken = token
 
         // Use nanoseconds precision for accurate timing
         let nanoseconds = Int(beatInterval * 1_000_000_000)
-        let startDelayNanos = Int(delayUntilStart * 1_000_000_000)
+        let schedule = MetronomeBeatSchedule(
+            beatOriginTime: beatOriginTime,
+            beatInterval: beatInterval,
+            schedulingLeadTime: audioSchedulingLeadTime
+        )
+        let firstDeadline = schedule.timerDeadline(forBeatNumber: firstBeatNumber)
+        let startDelayNanos = max(0, Int((firstDeadline - currentTime) * 1_000_000_000))
 
-        // Schedule first beat at the precise start time, then repeat at beat intervals
+        // Schedule first callback ahead of the precise start time, then repeat at beat intervals.
         timer.schedule(deadline: .now() + .nanoseconds(startDelayNanos), repeating: .nanoseconds(nanoseconds))
 
+        let audioBeatHandler = onAudioBeat
+        let timeSignature = timeSignature
+        let beatCounter = MetronomeBeatCounter(firstBeatNumber: firstBeatNumber)
         timer.setEventHandler { [weak self] in
-            let actualFireTime = CFAbsoluteTimeGetCurrent()
+            guard token.isActive else { return }
+            let firedBeatNumber = beatCounter.consumeNextBeatNumber()
+            let idealBeatTime = schedule.audioTargetTime(forBeatNumber: firedBeatNumber)
+            let beatToPlay = Self.beatInMeasure(forFiredBeatNumber: firedBeatNumber, timeSignature: timeSignature)
+            let preciseAudioTime = Self.audioTime(forIdealBeatTime: idealBeatTime)
+            audioBeatHandler?(beatToPlay, beatToPlay == 1, preciseAudioTime)
+
             Task { @MainActor in
-                guard let self = self else { return }
-                self.fireBeat(actualFireTime: actualFireTime)
+                guard let self = self, token.isActive else { return }
+                self.recordVisualBeat(
+                    firedBeatNumber: firedBeatNumber,
+                    idealBeatTime: idealBeatTime,
+                    token: token
+                )
             }
         }
 
@@ -208,6 +312,8 @@ class MetronomeTimingEngine: ObservableObject {
     }
 
     private func stopTimer() {
+        playbackToken?.cancel()
+        playbackToken = nil
         if let timer = beatTimer {
             timer.cancel()
             beatTimer = nil
@@ -220,64 +326,90 @@ class MetronomeTimingEngine: ObservableObject {
         }
     }
     
-    private func fireBeat(actualFireTime: CFAbsoluteTime) {
+    private func recordVisualBeat(
+        firedBeatNumber: Int,
+        idealBeatTime: CFAbsoluteTime,
+        token: MetronomePlaybackToken
+    ) {
         // SAFETY CHECK: Ensure we're still playing and haven't been stopped
         guard isPlaying else { 
             return 
         }
-        
-        lastFiredBeat += 1
-        
-        // Create precise AVAudioTime for sample-accurate scheduling
-        let preciseAudioTime = createPreciseAudioTime(for: actualFireTime)
-        
-        // Play the current beat with precise timing
-        self.handleBeat(preciseAudioTime: preciseAudioTime)
+
+        lastFiredBeat = firedBeatNumber
+        let beatToPlay = Self.beatInMeasure(forFiredBeatNumber: firedBeatNumber, timeSignature: timeSignature)
+        self.handleVisualBeat(
+            beatToPlay: beatToPlay,
+            visualUpdateTime: idealBeatTime,
+            token: token
+        )
     }
 
-    private func createPreciseAudioTime(for fireTime: CFAbsoluteTime) -> AVAudioTime? {
-        // Calculate the ideal beat time based on our start time and beat interval
-        let beatNumber = lastFiredBeat
-        let idealBeatTime = beatOriginTime + (Double(beatNumber - 1) * beatInterval)
-        
-        // Convert CFAbsoluteTime to host time using mach_timebase_info
+    nonisolated static func beatInMeasure(forFiredBeatNumber beatNumber: Int, timeSignature: TimeSignature) -> Int {
+        let beatsPerMeasure = max(timeSignature.beatsPerMeasure, 1)
+        return (max(beatNumber, 1) - 1) % beatsPerMeasure + 1
+    }
+
+    nonisolated static func completedBeatCount(forTotalBeatsElapsed totalBeats: Double) -> Int {
+        guard totalBeats.isFinite else { return 0 }
+        return Int(floor(max(0, totalBeats) + 0.000_000_001))
+    }
+
+    nonisolated static func firstFiredBeatNumber(afterTotalBeatsElapsed totalBeats: Double) -> Int {
+        guard totalBeats.isFinite else { return 1 }
+        let clampedBeats = max(0, totalBeats)
+        let nextBeatBoundary = Int(ceil(clampedBeats - 0.000_000_001))
+        return max(1, nextBeatBoundary + 1)
+    }
+
+    nonisolated static func hostTime(
+        forCFAbsoluteTime targetTime: CFAbsoluteTime,
+        referenceCFTime: CFAbsoluteTime = CFAbsoluteTimeGetCurrent(),
+        referenceHostTime: UInt64 = mach_absolute_time()
+    ) -> UInt64 {
+        let deltaSeconds = targetTime - referenceCFTime
         var timebaseInfo = mach_timebase_info_data_t()
-        let result = mach_timebase_info(&timebaseInfo)
-        guard result == KERN_SUCCESS else { return nil }
-        
-        // Convert seconds to nanoseconds, then to mach absolute ticks
-        let nanoseconds = idealBeatTime * Double(NSEC_PER_SEC)
-        let hostTime = UInt64(nanoseconds * Double(timebaseInfo.denom) / Double(timebaseInfo.numer))
-        
-        // Create AVAudioTime with the calculated host time
-        let audioTime = AVAudioTime(hostTime: hostTime)
-        
-        // Validate the created audio time
-        if audioTime.isHostTimeValid && hostTime > 0 {
-            return audioTime
+        let timebaseResult = mach_timebase_info(&timebaseInfo)
+        guard timebaseResult == KERN_SUCCESS else { return referenceHostTime }
+
+        let deltaNanoseconds = deltaSeconds * Double(NSEC_PER_SEC)
+        let deltaTicks = Int64(deltaNanoseconds * Double(timebaseInfo.denom) / Double(timebaseInfo.numer))
+        if deltaTicks >= 0 {
+            let addition = referenceHostTime.addingReportingOverflow(UInt64(deltaTicks))
+            return addition.overflow ? UInt64.max : addition.partialValue
         }
-        
-        return nil
+
+        let subtraction = referenceHostTime.subtractingReportingOverflow(UInt64(-deltaTicks))
+        return subtraction.overflow ? 0 : referenceHostTime
     }
 
-    private func handleBeat(preciseAudioTime: AVAudioTime? = nil) {
-        let isAccented = (currentBeat == 1)
-        let beatToPlay = currentBeat
+    nonisolated static func audioTime(forIdealBeatTime idealBeatTime: CFAbsoluteTime) -> AVAudioTime? {
+        let hostTime = Self.hostTime(forCFAbsoluteTime: idealBeatTime)
+        let audioTime = AVAudioTime(hostTime: hostTime)
+        guard audioTime.isHostTimeValid && hostTime > 0 else { return nil }
+        return audioTime
+    }
+
+    private func handleVisualBeat(
+        beatToPlay: Int,
+        visualUpdateTime: CFAbsoluteTime,
+        token: MetronomePlaybackToken
+    ) {
+        let isAccented = (beatToPlay == 1)
 
         // Use precise timing for sample-accurate audio synchronization
         let hasCallback = onBeat != nil
         let logMessage = "TimingEngine firing beat: \(beatToPlay), "
             + "isAccented: \(isAccented), "
             + "hasCallback: \(hasCallback)"
-        Logger.audioPlayback("⏰ \(logMessage)")
-        onBeat?(beatToPlay, isAccented, preciseAudioTime)
-
-        // Update UI properties on main thread
-        DispatchQueue.main.async {
-            self.currentBeat += 1
-            if self.currentBeat > self.timeSignature.beatsPerMeasure {
-                self.currentBeat = 1
-            }
+        Logger.audioDebug("⏰ \(logMessage)")
+        // Update UI properties at the audible beat boundary, not at the early
+        // scheduling callback.
+        let visualDelay = max(0, visualUpdateTime - CFAbsoluteTimeGetCurrent())
+        DispatchQueue.main.asyncAfter(deadline: .now() + visualDelay) {
+            guard self.isPlaying, token.isActive else { return }
+            self.onBeat?(beatToPlay, isAccented, nil)
+            self.currentBeat = beatToPlay
         }
     }
     
@@ -302,15 +434,16 @@ class MetronomeTimingEngine: ObservableObject {
     
     // MARK: - Test Environment Simulation
     
-    private func simulateTestBeat(startTime: TimeInterval = 0, beatOffset: Int = 0) {
+    private func simulateTestBeat(startTime: TimeInterval = 0, beatOffset: Double = 0) {
         // In test environment, immediately fire a beat callback to allow tests to verify functionality
         Logger.audioPlayback("Test environment - simulating beat callback")
         let isAccented = (currentBeat == 1)
 
         let effectiveStartTime = startTime == 0 ? CFAbsoluteTimeGetCurrent() : startTime
         self.startTime = effectiveStartTime
-        self.beatOffset = beatOffset
-        beatOriginTime = effectiveStartTime - (Double(beatOffset) * beatInterval)
+        self.beatOffset = Self.completedBeatCount(forTotalBeatsElapsed: beatOffset)
+        beatOriginTime = effectiveStartTime - (max(0, beatOffset) * beatInterval)
+        lastFiredBeat = Self.firstFiredBeatNumber(afterTotalBeatsElapsed: beatOffset) - 1
 
         // Ensure state is published on main thread for Combine subscribers
         Task { @MainActor in

@@ -48,6 +48,7 @@ struct DTXChartData {
     let previewImage: String?
     let stageFile: String?
     let notes: [DTXNote]
+    let bgmStartTimePosition: Double?
 
     init(
         title: String,
@@ -57,7 +58,8 @@ struct DTXChartData {
         preview: String? = nil,
         previewImage: String? = nil,
         stageFile: String? = nil,
-        notes: [DTXNote] = []
+        notes: [DTXNote] = [],
+        bgmStartTimePosition: Double? = nil
     ) {
         self.title = title
         self.artist = artist
@@ -67,6 +69,13 @@ struct DTXChartData {
         self.previewImage = previewImage
         self.stageFile = stageFile
         self.notes = notes
+        self.bgmStartTimePosition = bgmStartTimePosition
+    }
+
+    var bgmStartOffsetSeconds: Double {
+        guard let bgmStartTimePosition else { return 0.0 }
+        let secondsPerMeasure = 4.0 * 60.0 / bpm
+        return bgmStartTimePosition * secondsPerMeasure
     }
 }
 
@@ -162,7 +171,8 @@ class DTXFileParser {
             preview: metadata.preview,
             previewImage: metadata.previewImage,
             stageFile: metadata.stageFile,
-            notes: notes
+            notes: notes,
+            bgmStartTimePosition: Self.bgmStartTimePosition(from: notes)
         )
     }
 
@@ -266,6 +276,13 @@ class DTXFileParser {
         }
 
         return notes
+    }
+
+    private static func bgmStartTimePosition(from notes: [DTXNote]) -> Double? {
+        notes
+            .filter { $0.laneID.uppercased() == DTXLane.bgm.rawValue }
+            .map { Double($0.measureNumber) + $0.measureOffset }
+            .min()
     }
 }
 

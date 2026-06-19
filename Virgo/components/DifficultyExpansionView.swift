@@ -46,7 +46,6 @@ struct DifficultyExpansionView: View {
 struct ChartSelectionCard: View {
     let chart: Chart
     let onSelect: () -> Void
-    @State private var isPressed = false
     @State private var showingScores = false
 
     var body: some View {
@@ -62,51 +61,49 @@ struct ChartSelectionCard: View {
     }
 
     private var playButton: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 12) {
-                DifficultyBadge(difficulty: chart.difficulty, size: .normal)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(chart.notesCount) notes")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                    Text("Level \(chart.level)")
-                        .font(.caption2)
-                        .foregroundColor(.gray)
-                }
-
-                Spacer()
-
-                if chart.bestScore > 0 {
-                    Text("\(chart.bestScore)")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundColor(.purple)
-                }
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(Color.white.opacity(0.1))
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(chart.difficulty.color.opacity(0.4), lineWidth: 1)
-            )
-            .scaleEffect(isPressed ? 0.95 : 1.0)
-            .opacity(isPressed ? 0.8 : 1.0)
+        Button(action: handleSelect) {
+            playButtonContent
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityIdentifier("chartDifficulty\(chart.difficulty.rawValue)")
         .accessibilityLabel(playButtonAccessibilityLabel)
-        .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
-            withAnimation(.easeInOut(duration: 0.1)) {
-                isPressed = pressing
+    }
+
+    private var playButtonContent: some View {
+        HStack(spacing: 12) {
+            DifficultyBadge(difficulty: chart.difficulty, size: .normal)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(chart.notesCount) notes")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Text("Level \(chart.level)")
+                    .font(.caption2)
+                    .foregroundColor(.gray)
             }
-        }, perform: {})
+
+            Spacer()
+
+            if chart.bestScore > 0 {
+                Text("\(chart.bestScore)")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundColor(.purple)
+            }
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundColor(.gray)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color.white.opacity(0.1))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(chart.difficulty.color.opacity(0.4), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
     }
 
     private var scoresButton: some View {
@@ -140,5 +137,9 @@ struct ChartSelectionCard: View {
         let base = "\(chart.difficulty.rawValue) difficulty, \(chart.notesCount) notes, Level \(chart.level)"
         guard chart.bestScore > 0 else { return base }
         return base + ", best \(chart.bestScore)"
+    }
+
+    private func handleSelect() {
+        onSelect()
     }
 }
