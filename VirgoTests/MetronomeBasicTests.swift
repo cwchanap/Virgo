@@ -13,7 +13,7 @@ import AVFoundation
 
 // MARK: - Test Audio Driver
 
-class FailingAudioDriver: AudioDriverProtocol {
+final class FailingAudioDriver: AudioDriverProtocol, @unchecked Sendable {
     private let lock = NSLock()
     private var shouldFailOnStart = true
     

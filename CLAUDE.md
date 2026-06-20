@@ -45,6 +45,32 @@ xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' 
   -only-testing:VirgoTests/DTXFileParserTests/testComplexDTXContent test
 ```
 
+### Running Tests (preferred: XcodeBuildMCP, fallback: xcodebuild)
+
+**Always disable parallel testing** — this machine does not have enough resources for concurrent test workers, and parallel `xcodebuild test` leaves orphaned clones in `~/Library/Developer/XCTestDevices` that accumulate to tens of GB.
+
+**Preferred — via XcodeBuildMCP** (configured in Devin CLI):
+1. Call `session_show_defaults` first to verify the active project/scheme/destination.
+2. If defaults are unset, call `session_set_defaults` with `projectPath`, `scheme`, and `simulatorName` (or macOS destination as appropriate).
+3. Run `test_sim` (iOS) or `test_macos` (macOS) with `extraArgs: ["-parallel-testing-enabled", "NO"]` to disable cloning.
+
+**Fallback — direct xcodebuild** (when XcodeBuildMCP is unavailable):
+```bash
+xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  -only-testing:VirgoTests \
+  -parallel-testing-enabled NO \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  -enableCodeCoverage YES \
+  -destination-timeout 300 \
+  -derivedDataPath ./DerivedData
+```
+
 ### Code Quality
 ```bash
 swiftlint lint         # Manual lint
