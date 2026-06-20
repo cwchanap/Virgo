@@ -256,13 +256,15 @@ final class SongsTabUITests: XCTestCase {
         try tapControl(named: "Library", in: app, timeout: 5)
         try requireStaticText(containing: "Downloaded Songs", in: app, timeout: 5)
         try requireElement(containing: "Thunder Beat", in: app, timeout: 5)
-        try requireStaticText(containing: "7 songs downloaded", in: app, timeout: 5)
+        // The count includes the 7 seeded sample songs plus the bundled Soukyuu
+        // DTX fixture (also server-imported), so expect 8 before deletion.
+        try requireStaticText(containing: "8 songs downloaded", in: app, timeout: 5)
 
         let deleteButton = try requireButton(containing: "Delete Thunder Beat", in: app, timeout: 5)
         deleteButton.tap()
 
         XCTAssertTrue(
-            waitForStaticText(containing: "6 songs downloaded", in: app, timeout: 10),
+            waitForStaticText(containing: "7 songs downloaded", in: app, timeout: 10),
             "Library should update its downloaded-song count after deleting one fixture song"
         )
         XCTAssertTrue(
