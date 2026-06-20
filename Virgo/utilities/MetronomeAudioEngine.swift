@@ -21,7 +21,15 @@ protocol AudioDriverProtocol {
 }
 
 // MARK: - Audio Engine
-class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
+//
+// Threading contract:
+// `MetronomeTimingEngine` drives `playTick`/`resume`/`stop`/`convertToAudioEngineTime`
+// from a background `timerQueue`, while interruption callbacks arrive on the main queue.
+// All mutable audio state (`audioEngine`, `playerNode`, `audioSession`,
+// `cachedTickerBuffer`, `onInterruption`) is guarded by `audioStateLock`
+// (an `NSRecursiveLock`, so methods may call other locked methods safely).
+// `@unchecked Sendable` documents this manual contract and prepares the type for Swift 6.
+final class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol, @unchecked Sendable {
     private let logger = Logger()
     private let audioStateLock = NSRecursiveLock()
 
@@ -37,8 +45,22 @@ class MetronomeAudioEngine: ObservableObject, AudioDriverProtocol {
     // Configuration
     private let isTestEnvironment: Bool
 
-    // Interruption handling callback
-    var onInterruption: ((Bool) -> Void)?
+    // Interruption handling callback. Backed by `_onInterruption` and accessed under
+    // `audioStateLock` so external writes (main actor) cannot race with reads inside
+    // the locked interruption/route-change handlers.
+    private var _onInterruption: ((Bool) -> Void)?
+    var onInterruption: ((Bool) -> Void)? {
+        get {
+            audioStateLock.lock()
+            defer { audioStateLock.unlock() }
+            return _onInterruption
+        }
+        set {
+            audioStateLock.lock()
+            defer { audioStateLock.unlock() }
+            _onInterruption = newValue
+        }
+    }
 
     // MARK: - Observer Tokens
     #if os(iOS)
