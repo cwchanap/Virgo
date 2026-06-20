@@ -76,10 +76,11 @@ enum LocalDTXFixtureImporter {
             serverSongId: songId,
             bgmFilePath: existingAudioPath(named: "bgm.m4a", in: folderURL),
             previewFilePath: existingAudioPath(named: "preview.mp3", in: folderURL),
-            bgmStartOffsetSeconds: importedCharts
-                .map(\.data.bgmStartOffsetSeconds)
-                .first { $0 > 0 }
+            bgmStartOffsetSeconds: nil
         )
+        for imported in importedCharts {
+            song.setBGMStartOffsetIfUnset(imported.data.bgmStartOffsetSeconds)
+        }
 
         context.insert(song)
         song.charts = importedCharts.map { importedChart in

@@ -312,6 +312,15 @@ extension Chart {
 }
 
 extension Song {
+    /// Sets the BGM start offset from the first chart that defines a positive offset.
+    /// Subsequent charts cannot override it (shared-BGM charts share one BGM track).
+    /// Used by both LocalDTXFixtureImporter and ServerSongDownloader so the
+    /// "first-positive-wins" rule has a single definition.
+    func setBGMStartOffsetIfUnset(_ parsed: Double) {
+        guard parsed > 0, (bgmStartOffsetSeconds ?? 0) <= 0 else { return }
+        bgmStartOffsetSeconds = parsed
+    }
+
     static var sampleData: [Song] {
         let song1 = Song(
             title: "Thunder Beat",

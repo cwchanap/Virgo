@@ -165,10 +165,7 @@ class ServerSongDownloader {
             throw ServerSongImportError.decodeFailed(chartSnapshot.filename)
         }
         let chartData = try DTXFileParser.parseChartMetadata(from: content)
-        let parsedBGMStartOffset = chartData.bgmStartOffsetSeconds
-        if parsedBGMStartOffset > 0, (song.bgmStartOffsetSeconds ?? 0) <= 0 {
-            song.bgmStartOffsetSeconds = parsedBGMStartOffset
-        }
+        song.setBGMStartOffsetIfUnset(chartData.bgmStartOffsetSeconds)
         if song.charts.isEmpty {
             if chartData.bpm.isFinite && chartData.bpm > 0 { song.bpm = chartData.bpm }
             if serverDurationSeconds == nil {
