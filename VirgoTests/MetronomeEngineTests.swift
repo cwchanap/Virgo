@@ -481,6 +481,28 @@ struct MetronomeAudioEngineTests {
         #expect(callCount == 2)
         #expect(states == [true, false])
     }
+
+    @Test("MetronomeAudioEngine is Sendable and onInterruption survives concurrent access")
+    func testOnInterruptionConcurrentAccess() async {
+        let audioEngine = MetronomeAudioEngine()
+
+        // The engine is now Sendable, so it may cross actor boundaries — mirroring
+        // how MetronomeTimingEngine drives playTick from a background queue while the
+        // main actor reassigns onInterruption. Concurrently swap, read, and invoke the
+        // callback from many detached tasks; the lock-backed storage must not crash.
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<200 {
+                group.addTask {
+                    audioEngine.onInterruption = { _ in }
+                    audioEngine.onInterruption?(Bool.random())
+                }
+            }
+        }
+
+        // Final state is readable and clearable from the main actor.
+        audioEngine.onInterruption = nil
+        #expect(audioEngine.onInterruption == nil)
+    }
 }
 
 @Suite("Metronome Timing Engine Tests", .serialized)
