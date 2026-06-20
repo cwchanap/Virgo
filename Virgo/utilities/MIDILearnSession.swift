@@ -9,7 +9,10 @@ final class MIDILearnSession: ObservableObject {
 
     private let settingsManager: InputSettingsManager
     private let isSelectedSourceAvailable: @MainActor () -> Bool
-    private var timeoutTask: Task<Void, Never>?
+    private let timeoutQueue = DispatchQueue(label: "com.virgo.midi.learn-timeout")
+    // nonisolated so `deinit` (which is nonisolated) can cancel without a main-actor hop.
+    // All access is serialized through `timeoutQueue`.
+    private nonisolated(unsafe) var timeoutTimer: DispatchSourceTimer?
     private var activeCaptureID = UUID()
 
     var canBeginCapture: Bool {
@@ -28,13 +31,12 @@ final class MIDILearnSession: ObservableObject {
     }
 
     deinit {
-        timeoutTask?.cancel()
+        cancelTimeout()
     }
 
     func beginCapture(for drumType: DrumType, timeoutSeconds: Double = 10) {
-        timeoutTask?.cancel()
+        cancelTimeout()
         guard canBeginCapture else {
-            timeoutTask = nil
             targetDrumType = nil
             isCapturing = false
             return
@@ -46,23 +48,31 @@ final class MIDILearnSession: ObservableObject {
         isCapturing = true
         lastConflictMessage = nil
 
-        timeoutTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(timeoutSeconds))
-            } catch {
-                return
+        let timer = DispatchSource.makeTimerSource(queue: timeoutQueue)
+        timer.schedule(deadline: .now() + timeoutSeconds)
+        timer.setEventHandler { [weak self] in
+            // Hop to the main actor to mutate @MainActor state.
+            Task { @MainActor in
+                self?.timeoutCaptureIfNeeded(captureID: captureID)
             }
-
-            guard let self else { return }
-            self.timeoutCaptureIfNeeded(captureID: captureID)
         }
+        timer.resume()
+        timeoutQueue.sync { timeoutTimer = timer }
     }
 
     func cancelCapture() {
-        timeoutTask?.cancel()
-        timeoutTask = nil
+        cancelTimeout()
         targetDrumType = nil
         isCapturing = false
+    }
+
+    /// Cancels any in-flight timeout timer. Safe from the main actor and from `deinit`
+    /// because it only touches the nonisolated timer via the serial `timeoutQueue`.
+    private nonisolated func cancelTimeout() {
+        timeoutQueue.sync {
+            timeoutTimer?.cancel()
+            timeoutTimer = nil
+        }
     }
 
     @discardableResult
