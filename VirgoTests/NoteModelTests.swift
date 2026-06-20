@@ -104,6 +104,21 @@ struct NoteModelTests {
         #expect(note2.measureOffset == 0.75)
         #expect(note3.measureOffset == 1.0)
     }
+
+    @Test("setBGMStartOffsetIfUnset applies first-positive-wins rule")
+    func setBGMStartOffsetIfUnsetAppliesFirstPositiveWins() {
+        let song = Song(title: "T", artist: "A", bpm: 120, duration: "1:00", genre: "Rock")
+        #expect(song.bgmStartOffsetSeconds == nil)
+
+        song.setBGMStartOffsetIfUnset(0)        // zero is ignored
+        #expect(song.bgmStartOffsetSeconds == nil)
+
+        song.setBGMStartOffsetIfUnset(1.5)      // first positive wins
+        #expect(song.bgmStartOffsetSeconds == 1.5)
+
+        song.setBGMStartOffsetIfUnset(2.0)      // later positive cannot override
+        #expect(song.bgmStartOffsetSeconds == 1.5)
+    }
 }
 
 @Suite("Chart Model Tests")
