@@ -19,7 +19,7 @@ private func timingEngineValue<T>(
     return mirror.children.first { $0.label == label }?.value as? T
 }
 
-final class RecordingAudioDriver: AudioDriverProtocol {
+final class RecordingAudioDriver: AudioDriverProtocol, @unchecked Sendable {
     private let lock = NSLock()
     private let tickSemaphore = DispatchSemaphore(value: 0)
     private(set) var playedTicks: [(volume: Float, isAccented: Bool)] = []
@@ -79,7 +79,7 @@ final class RecordingAudioDriver: AudioDriverProtocol {
     }
 }
 
-final class ThreadRecordingAudioDriver: AudioDriverProtocol {
+final class ThreadRecordingAudioDriver: AudioDriverProtocol, @unchecked Sendable {
     private let lock = NSLock()
     private let firstTickSemaphore = DispatchSemaphore(value: 0)
     private var tickThreads: [Bool] = []

@@ -13,7 +13,13 @@ import UIKit
 #endif
 
 // MARK: - Audio Driver Protocol
-protocol AudioDriverProtocol {
+//
+// `Sendable` is required because `MetronomeEngine` captures the driver into the
+// `MetronomeTimingEngine.onAudioBeat` closure, which fires on a background
+// `timerQueue` (see `MetronomeTimingEngine.timerQueue`). Conformers must be
+// thread-safe across that isolation boundary; production and test conformers
+// back their mutable state with locks and declare `@unchecked Sendable`.
+protocol AudioDriverProtocol: Sendable {
     func playTick(volume: Float, isAccented: Bool, atTime: AVAudioTime?)
     func stop()
     func resume()
