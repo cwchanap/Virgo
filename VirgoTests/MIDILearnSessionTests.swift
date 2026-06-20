@@ -69,21 +69,54 @@ struct MIDILearnSessionTests {
         let learnSession = MIDILearnSession(settingsManager: settings)
         settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
-        // The timeout Task in beginCapture runs on the main actor (MIDILearnSession
-        // is @MainActor). Poll directly on the main actor with Task.sleep yields,
-        // which lets the timeout Task's continuation resume between polls.
-        // Under heavy CI load with parallel test suites, the 0.5s Task.sleep can
-        // take much longer to resume due to main-actor contention, so use a
-        // generous 30s deadline. The test completes in ~0.5s when uncontended.
+        // The timeout now runs on a dedicated background DispatchSourceTimer, so it
+        // fires ~on time regardless of main-actor load. A 3s deadline gives ample
+        // headroom over the 0.5s timeout while still failing fast if the timer broke.
         learnSession.beginCapture(for: .kick, timeoutSeconds: 0.5)
 
         let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(30))
+        let deadline = clock.now.advanced(by: .seconds(3))
         while clock.now < deadline && learnSession.isCapturing {
-            try await Task.sleep(for: .milliseconds(50))
+            try await Task.sleep(for: .milliseconds(20))
         }
 
         #expect(learnSession.isCapturing == false, "Session should time out and stop capturing")
+        #expect(learnSession.targetDrumType == nil)
+    }
+
+    @Test("starting a new capture cancels the previous in-flight timeout")
+    func startingNewCaptureCancelsPreviousTimeout() async throws {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.startingNewCaptureCancelsPreviousTimeout"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let learnSession = MIDILearnSession(settingsManager: settings)
+        settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
+
+        // Begin a capture with a short timeout, then immediately supersede it.
+        learnSession.beginCapture(for: .kick, timeoutSeconds: 0.3)
+        let firstCaptureTarget = learnSession.targetDrumType
+        learnSession.beginCapture(for: .snare, timeoutSeconds: 3)
+
+        #expect(firstCaptureTarget == .kick)
+        #expect(learnSession.targetDrumType == .snare, "New capture should win immediately")
+        #expect(learnSession.isCapturing)
+
+        // Wait well past the FIRST capture's 0.3s timeout. The stale timer must not
+        // fire — if it did, isCapturing would be false and targetDrumType would be nil.
+        try await Task.sleep(for: .milliseconds(600))
+
+        #expect(learnSession.isCapturing, "Superseded timeout must not have fired")
+        #expect(learnSession.targetDrumType == .snare)
+
+        // Now the second capture's timeout should fire and clear state.
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while clock.now < deadline && learnSession.isCapturing {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(learnSession.isCapturing == false)
         #expect(learnSession.targetDrumType == nil)
     }
 
