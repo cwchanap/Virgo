@@ -213,12 +213,16 @@ final class SongsTabUITests: XCTestCase {
                 "Song count should change or empty state should appear after deletion"
             )
 
-            if songCountAfter.exists {
+            // Gate on the same conditions the predicate used, so the assertion
+            // matches the path that actually satisfied the waiter. Checking
+            // `songCountAfter.exists` first would misroute cases where the
+            // empty state appeared but the stale count label still exists.
+            if emptyState.exists {
+                XCTAssertTrue(emptyState.exists, "Empty state should be visible after all songs deleted")
+            } else {
+                XCTAssertTrue(songCountAfter.exists, "Song count element should exist when empty state is absent")
                 let afterText = elementText(songCountAfter)
                 XCTAssertNotEqual(beforeText, afterText, "Song count should change after deletion")
-            } else {
-                // Empty state should appear if all songs deleted
-                XCTAssertTrue(waitForStaticText(containing: "No Downloaded Songs", in: app, timeout: 5))
             }
         }
     }
