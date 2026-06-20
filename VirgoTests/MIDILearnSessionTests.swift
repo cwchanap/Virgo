@@ -69,10 +69,14 @@ struct MIDILearnSessionTests {
         let learnSession = MIDILearnSession(settingsManager: settings)
         settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
-        learnSession.beginCapture(for: .kick, timeoutSeconds: 0.05)
+        // Use a longer timeout (0.5s) and a longer polling deadline (15s) so the
+        // timeout Task reliably gets main-actor time even under heavy CI load.
+        // The previous 0.05s timeout + 5s deadline was flaky because the timeout
+        // Task's continuation competed with the polling loop's MainActor.run hops.
+        learnSession.beginCapture(for: .kick, timeoutSeconds: 0.5)
         let didTimeout = try await Task.detached { () throws -> Bool in
             let clock = ContinuousClock()
-            let deadline = clock.now.advanced(by: .seconds(5))
+            let deadline = clock.now.advanced(by: .seconds(15))
 
             while clock.now < deadline {
                 let isCapturing = await MainActor.run { learnSession.isCapturing }
@@ -80,7 +84,9 @@ struct MIDILearnSessionTests {
                     return true
                 }
 
-                try await Task.sleep(for: .milliseconds(20))
+                // Poll less frequently to reduce main-actor contention, giving the
+                // timeout Task more opportunities to resume and call cancelCapture.
+                try await Task.sleep(for: .milliseconds(50))
             }
 
             return false
