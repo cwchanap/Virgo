@@ -71,24 +71,19 @@ struct MIDILearnSessionTests {
 
         // The timeout Task in beginCapture runs on the main actor (MIDILearnSession
         // is @MainActor). Poll directly on the main actor with Task.sleep yields,
-        // which lets the timeout Task's continuation resume between polls. The
-        // previous detached-task polling approach could starve the timeout Task of
-        // main-actor time under CI load.
+        // which lets the timeout Task's continuation resume between polls.
+        // Under heavy CI load with parallel test suites, the 0.5s Task.sleep can
+        // take much longer to resume due to main-actor contention, so use a
+        // generous 30s deadline. The test completes in ~0.5s when uncontended.
         learnSession.beginCapture(for: .kick, timeoutSeconds: 0.5)
 
         let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(10))
-        var didTimeout = false
-        while clock.now < deadline {
-            if !learnSession.isCapturing {
-                didTimeout = true
-                break
-            }
+        let deadline = clock.now.advanced(by: .seconds(30))
+        while clock.now < deadline && learnSession.isCapturing {
             try await Task.sleep(for: .milliseconds(50))
         }
 
-        #expect(didTimeout)
-        #expect(learnSession.isCapturing == false)
+        #expect(learnSession.isCapturing == false, "Session should time out and stop capturing")
         #expect(learnSession.targetDrumType == nil)
     }
 
