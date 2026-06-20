@@ -3,6 +3,12 @@ Virgo/Config/ServerEndpoints.env
 Virgo/Fixtures/*
 !Virgo/Fixtures/soukyuu_e_no_shouka/
 !Virgo/Fixtures/soukyuu_e_no_shouka/**
+# Ignore non-essential Soukyuu fixture assets (drum sounds, OGG BGM, preview image)
+# Only SET.def, .dtx charts, bgm.m4a, and preview.mp3 are needed by tests/importer
+Virgo/Fixtures/soukyuu_e_no_shouka/*.xa
+Virgo/Fixtures/soukyuu_e_no_shouka/*.XA
+Virgo/Fixtures/soukyuu_e_no_shouka/*.ogg
+Virgo/Fixtures/soukyuu_e_no_shouka/*.jpg
 
 # Server DTX files (for testing only)
 server/dtx_files/
