@@ -248,9 +248,22 @@ struct AudioPlaybackServiceTests {
         let song = makeSong(title: "Progress Song", previewPath: previewPath)
         service.playPreview(for: song)
 
-        try await Task.sleep(nanoseconds: 200_000_000)
+        // The progress timer (0.1s interval) updates currentTime from the audio
+        // player, but the player is loaded asynchronously via loadAndPlayPreview's
+        // Task chain. Under CI load this can take longer than a fixed sleep, so
+        // poll until currentTime becomes positive (or timeout).
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(10))
+        var currentTimeUpdated = false
+        while clock.now < deadline {
+            if service.currentTime > 0 {
+                currentTimeUpdated = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
 
-        #expect(service.currentTime > 0)
+        #expect(currentTimeUpdated, "currentTime should be updated by the progress timer")
         #expect(service.duration > 0)
     }
 
