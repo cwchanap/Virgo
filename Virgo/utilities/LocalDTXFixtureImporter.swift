@@ -39,6 +39,7 @@ enum LocalDTXFixtureImporter {
     static func importSong(from folderURL: URL, songId: String, into context: ModelContext) throws -> Song {
         if let existingSong = try existingSong(with: songId, in: context) {
             try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
+            try refreshBGMStartOffsetIfMissing(for: existingSong, from: folderURL, in: context)
             return existingSong
         }
 
@@ -178,6 +179,41 @@ enum LocalDTXFixtureImporter {
             didChange = true
         }
         if didChange {
+            try context.save()
+        }
+    }
+
+    /// Backfills `bgmStartOffsetSeconds` on an existing record that predates offset
+    /// parsing (nil/zero), by reading the fixture's charts and applying the same
+    /// "first positive wins" rule as a fresh import.
+    ///
+    /// Idempotent and cheap on the steady-state path: the leading guard returns
+    /// immediately once the offset is already positive, so the chart-parse cost is
+    /// paid at most once per legacy record (the first launch after this code ships).
+    /// Mirrors the fresh-import loop above (lines that build `importedCharts`) so the
+    /// two paths stay consistent rather than drifting again.
+    @MainActor
+    private static func refreshBGMStartOffsetIfMissing(
+        for song: Song,
+        from folderURL: URL,
+        in context: ModelContext
+    ) throws {
+        guard (song.bgmStartOffsetSeconds ?? 0) <= 0 else { return }
+
+        guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else { return }
+        let setList = SETList(content: setContent)
+
+        for reference in setList.chartReferences {
+            guard reference.difficulty != nil else { continue }
+            let chartURL = folderURL.appendingPathComponent(reference.filename)
+            guard FileManager.default.fileExists(atPath: chartURL.path) else { continue }
+            guard let data = try? DTXFileParser.parseChartMetadata(from: chartURL) else { continue }
+            song.setBGMStartOffsetIfUnset(data.bgmStartOffsetSeconds)
+            // First positive offset wins; stop once setBGMStartOffsetIfUnset accepted one.
+            if (song.bgmStartOffsetSeconds ?? 0) > 0 { break }
+        }
+
+        if (song.bgmStartOffsetSeconds ?? 0) > 0 {
             try context.save()
         }
     }

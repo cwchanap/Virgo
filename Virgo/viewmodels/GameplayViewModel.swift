@@ -208,8 +208,13 @@ final class GameplayViewModel {
 
     // MARK: - Haptic Generators (iOS only)
     #if os(iOS)
-    private let hitHapticGenerator = UIImpactFeedbackGenerator(style: .light)
-    private let comboBreakHapticGenerator = UINotificationFeedbackGenerator()
+    // `internal` (not `private`) so the cross-file extensions in
+    // GameplayViewModel+Computations.swift can reach these from their `#if os(iOS)`
+    // branches. `private` only allows same-file access; this is the one iOS-only
+    // storage the split moves out of the core file. (CI builds macOS only, so an
+    // accidental `private` here breaks the iPad build silently — see HPA-90.)
+    let hitHapticGenerator = UIImpactFeedbackGenerator(style: .light)
+    let comboBreakHapticGenerator = UINotificationFeedbackGenerator()
     #endif
 
     // MARK: - Subscriptions
