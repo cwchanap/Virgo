@@ -171,24 +171,6 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.cleanup()
     }
 
-    @Test func testUpdateActiveBeatWhenNotPlaying() async throws {
-        let chart = GameplayViewModelTestHarness.createTestChart()
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
-
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
-        await viewModel.loadChartData()
-        viewModel.setupGameplay()
-
-        // Set some active beat
-        viewModel.activeBeatId = 5
-
-        // Update when not playing should clear active beat
-        viewModel.isPlaying = false
-        viewModel.updateActiveBeat()
-
-        #expect(viewModel.activeBeatId == nil)
-    }
-
     @Test func testPurpleBarPositionWhenNotPlaying() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart()
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
@@ -342,6 +324,52 @@ struct GameplayViewModelVisualUpdatesTests {
             + GameplayLayout.uniformSpacing
 
         #expect(abs(position.x - Double(expectedX)) < 0.5)
+    }
+
+    // MARK: - currentRow / Auto-scroll
+
+    /// Builds a multi-row chart so that measure layout actually wraps onto a new row,
+    /// then verifies rowForMeasure resolves the correct row for each measure index.
+    @Test func testCurrentRowAdvancesAsPlayheadCrossesRowBoundary() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        for measureNumber in 1...8 {
+            chart.notes.append(
+                Note(interval: .quarter, noteType: .snare, measureNumber: measureNumber, measureOffset: 0.0)
+            )
+        }
+        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        // Find the first measure that lives on a row > 0; we need the playhead to land in it.
+        let firstNonZeroRowMeasure = viewModel.cachedMeasurePositions
+            .first(where: { $0.row > 0 })
+        try #require(firstNonZeroRowMeasure != nil)
+        let targetMeasure = firstNonZeroRowMeasure!.measureIndex
+        let targetRow = firstNonZeroRowMeasure!.row
+
+        // Initial state: row 0.
+        #expect(viewModel.currentRow == 0)
+
+        // Drive the visuals forward to the target measure. currentRow is updated
+        // unconditionally on every tick when isPlaying == true.
+        viewModel.isPlaying = true
+        let bpm = viewModel.effectiveBPM()
+        let secondsPerBeat = 60.0 / bpm
+        let beatsPerMeasure = Double(chart.timeSignature.beatsPerMeasure)
+        // Land squarely inside the target measure so continuousMeasureIdx == targetMeasure.
+        let elapsedSeconds = (Double(targetMeasure) + 0.5) * beatsPerMeasure * secondsPerBeat
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: elapsedSeconds)
+
+        #expect(viewModel.currentRow == targetRow,
+                "Playhead in measure \(targetMeasure) should set currentRow to \(targetRow)")
+
+        // Resetting playback should snap currentRow back to 0.
+        viewModel.isPlaying = false
+        viewModel.restartPlayback()
+        #expect(viewModel.currentRow == 0)
     }
 
 }

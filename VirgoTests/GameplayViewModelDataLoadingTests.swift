@@ -84,90 +84,6 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)
         #expect(!viewModel.cachedNotationLayout.stems.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadPositions.count == viewModel.cachedNotationLayout.noteHeads.count)
-        #expect(viewModel.cachedNotationNoteHeadIDsByBeatID[beat.id]?.count == 2)
-    }
-
-    @Test func testNotationActiveLookupFindsAllNoteheadsAtCurrentTime() async throws {
-        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
-        chart.notes.append(
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
-        )
-        chart.notes.append(
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
-        )
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
-
-        await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
-
-        viewModel.updateActiveNotation(forTimePosition: 0)
-
-        #expect(viewModel.activeNotationNoteHeadIDs.count == 2)
-    }
-
-    @Test func testNotationActiveLookupUsesExactMicrosecondTimePositions() async throws {
-        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
-        chart.notes.append(
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
-        )
-        chart.notes.append(
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0004)
-        )
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
-
-        await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
-
-        viewModel.updateActiveNotation(forTimePosition: 0)
-        let firstPositionIDs = viewModel.activeNotationNoteHeadIDs
-        viewModel.updateActiveNotation(forTimePosition: 0.0004)
-        let secondPositionIDs = viewModel.activeNotationNoteHeadIDs
-
-        #expect(firstPositionIDs.count == 1)
-        #expect(secondPositionIDs.count == 1)
-        #expect(firstPositionIDs.isDisjoint(with: secondPositionIDs))
-    }
-
-    @Test func testUpdateActiveBeatUsesBeatBridgeForNearIdenticalNotationHeadIDs() async throws {
-        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
-        chart.notes.append(
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
-        )
-        chart.notes.append(
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0004)
-        )
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
-
-        await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
-        let beat = try #require(viewModel.cachedDrumBeats.first)
-        viewModel.isPlaying = true
-
-        viewModel.updateActiveBeat(forTimePosition: 0)
-
-        #expect(viewModel.activeBeatId == beat.id)
-        #expect(viewModel.activeNotationNoteHeadIDs.count == 2)
-    }
-
-    @Test func testPausePlaybackClearsActiveNotationNoteheads() async throws {
-        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
-        chart.notes.append(
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
-        )
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
-
-        await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
-        viewModel.updateActiveNotation(forTimePosition: 0)
-        viewModel.isPlaying = true
-
-        viewModel.pausePlayback()
-
-        #expect(viewModel.activeNotationNoteHeadIDs.isEmpty)
     }
 
     @Test func testNotationLayoutCachesClearWithoutTrack() async throws {
@@ -179,7 +95,6 @@ struct GameplayViewModelDataLoadingTests {
 
         #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
-        #expect(viewModel.cachedNotationNoteHeadIDsByBeatID.isEmpty)
         #expect(viewModel.notationStaffLinesView == nil)
     }
 
@@ -204,11 +119,10 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.cachedDrumBeats.count == 1,
                 "Notes at the same timePosition should be grouped into one DrumBeat")
 
+        // The single grouped beat carries both notes' drum types.
         let beat = try #require(viewModel.cachedDrumBeats.first)
-        // Both noteHeads should map to the same beatID via the bridge
-        let noteHeadIDs = viewModel.cachedNotationNoteHeadIDsByBeatID[beat.id]
-        #expect(noteHeadIDs?.count == 2,
-                "Both noteHeads should be linked to the single beatID")
+        #expect(beat.drums.count == 2,
+                "The merged DrumBeat should carry both notes' drum types")
     }
 
     @Test func testNotationStaffLinesViewCachedWhenLayoutHasNotes() async throws {

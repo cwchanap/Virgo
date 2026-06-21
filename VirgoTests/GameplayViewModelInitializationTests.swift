@@ -42,7 +42,6 @@ struct GameplayViewModelInitializationTests {
         #expect(viewModel.track == nil)
         #expect(viewModel.cachedDrumBeats.isEmpty)
         #expect(viewModel.cachedMeasurePositions.isEmpty)
-        #expect(viewModel.activeBeatId == nil)
         #expect(viewModel.purpleBarPosition == nil)
         #expect(viewModel.bgmPlayer == nil)
     }

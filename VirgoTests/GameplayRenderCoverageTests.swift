@@ -101,14 +101,18 @@ struct GameplayRenderCoverageTests {
         }
     }
 
-    @Test("Static notation rendering does not observe active note IDs when highlighting is disabled")
-    func testDrumNotationViewDoesNotObserveActiveNotationIDs() async throws {
+    @Test("Static notation rendering does not rebuild on per-beat state changes")
+    func testDrumNotationViewDoesNotRebuildOnBeatChanges() async throws {
+        // Regression guard: beat-boundary highlighting was removed because
+        // re-evaluating the notation tree on every beat forced expensive sheet
+        // re-layouts. The notation views must continue to depend only on
+        // cachedNotationLayout, never on per-beat state, so that the ~30 Hz
+        // visual tick does not invalidate them.
         try await TestSetup.withTestSetup {
             let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
             defer { vm.cleanup() }
             vm.isPlaying = true
 
-            vm.updateActiveBeat(forTimePosition: 0.0)
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
 
             var didInvalidate = false
@@ -118,11 +122,14 @@ struct GameplayRenderCoverageTests {
                 didInvalidate = true
             }
 
-            vm.updateActiveBeat(forTimePosition: 0.125)
+            // Per-beat state (driven by the metronome / visual tick) must NOT
+            // invalidate the static notation tree.
+            vm.currentBeat = 3
+            vm.totalBeatsElapsed = 7
 
             #expect(
                 !didInvalidate,
-                "Changing active note IDs must not invalidate static notation after active highlighting is disabled"
+                "Per-beat state changes must not invalidate static notation rendering"
             )
         }
     }

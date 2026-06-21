@@ -112,31 +112,6 @@ struct GameplayViewModelCoverageAdditionsTests {
         }
     }
 
-    // MARK: - updateActiveBeat finds a matching beat (lines 971–974)
-
-    @Test("updateActiveBeat finds and sets activeBeatId for a beat near timePosition 0")
-    func testUpdateActiveBeatFindsMatchingBeat() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
-        await vm.loadChartData()
-        vm.setupGameplay()
-        defer { vm.cleanup() }
-
-        // Force state: metronome not running, so calculateElapsedTime uses the
-        // playbackStartTime fallback and returns ~0 seconds.
-        vm.isPlaying = true
-        vm.pausedElapsedTime = 0.0
-        vm.playbackStartTime = Date()
-
-        vm.updateActiveBeat()
-
-        vm.isPlaying = false
-
-        // cachedDrumBeats has a beat at timePosition 0.0 (measure 1, offset 0).
-        // With currentTimePosition ~0.0 and timeTolerance = 0.05 it should match.
-        #expect(vm.activeBeatId != nil,
-                "Should find the beat near timePosition 0.0 and set activeBeatId")
-    }
-
     // MARK: - wireInputHandler closure routes to recordHit (lines 1321–1323)
 
     @Test("wireInputHandler routes onNoteResult hits to recordHit while playing")
