@@ -272,7 +272,11 @@ extension GameplayViewModel {
 
     func calculateBGMOffset() -> Double {
         guard let track = track else { return 0.0 }
-        if let bgmStartOffsetSeconds = cachedSong?.bgmStartOffsetSeconds, bgmStartOffsetSeconds > 0 {
+        // `nil` means no authoritative BGM offset was parsed (fall back to the
+        // first-note heuristic below). A non-nil value — including 0.0, which
+        // means the chart explicitly starts BGM at time zero — is authoritative
+        // and must be honored rather than replaced by the heuristic.
+        if let bgmStartOffsetSeconds = cachedSong?.bgmStartOffsetSeconds {
             let speedMultiplier = practiceSettings.speedMultiplier
             guard speedMultiplier > 0 else {
                 Logger.error("calculateBGMOffset called with zero speedMultiplier - returning unscaled DTX BGM offset")

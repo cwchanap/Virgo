@@ -72,8 +72,13 @@ struct DTXChartData {
         self.bgmStartTimePosition = bgmStartTimePosition
     }
 
-    var bgmStartOffsetSeconds: Double {
-        guard let bgmStartTimePosition else { return 0.0 }
+    /// `nil` when the chart has no BGM lane-01 notes (no authoritative offset).
+    /// `0.0` when the chart explicitly starts BGM at time zero (e.g. `#00001: 1A…`).
+    /// A positive value when BGM starts later. Returning `Double?` keeps these
+    /// three cases distinct so downstream code does not have to use `> 0` as a
+    /// presence sentinel (which would discard a legitimate "BGM starts now" 0.0).
+    var bgmStartOffsetSeconds: Double? {
+        guard let bgmStartTimePosition else { return nil }
         let secondsPerMeasure = 4.0 * 60.0 / bpm
         return bgmStartTimePosition * secondsPerMeasure
     }

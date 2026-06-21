@@ -327,6 +327,36 @@ struct GameplayViewModelBGMTimelineTests {
         #expect(abs(viewModel.bgmOffsetSeconds - 0.9) < 0.001)
     }
 
+    @Test("calculateBGMOffset honors an explicit zero BGM offset even when the first note is later")
+    func testCalculateBGMOffsetHonorsExplicitZero() async throws {
+        // DTX charts where lane 01 starts at measure 000 (e.g. `#00001: 1A…`)
+        // parse to a legitimate 0.0 BGM offset meaning "audio starts immediately".
+        // The first playable drum note may come later; the BGM must NOT be delayed
+        // to that note's time. Previously the `> 0` presence check discarded the
+        // 0.0 and fell back to the first-note heuristic, delaying the BGM.
+        let song = Song(
+            title: "BGM At Zero",
+            artist: "Tester",
+            bpm: 200,
+            duration: "3:30",
+            genre: "DTX",
+            bgmStartOffsetSeconds: 0.0
+        )
+        let chart = Chart(difficulty: .medium, song: song)
+        // First drum note in measure 3 — well after the BGM start.
+        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.0))
+
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        #expect(abs(viewModel.bgmOffsetSeconds) < 0.001,
+               "An explicit 0.0 BGM offset must be honored, not replaced by the first-note heuristic")
+    }
+
     @Test("calculateBGMOffset scales by speed multiplier for notes after measure 1")
     func testCalculateBGMOffsetScalesWithSpeedMultiplier() async throws {
         // A note in measure 3 should produce a non-zero BGM offset.
