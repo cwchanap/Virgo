@@ -165,4 +165,20 @@ struct AppShellCoverageTests {
         )
         #expect(result == false)
     }
+
+    // MARK: - ReopenPolicy.shouldAppKitHandleReopen
+
+    @Test("shouldAppKitHandleReopen returns false when a visible window exists")
+    func testReopenPolicyReturnsFalseWhenWindowVisible() {
+        // Existing window: delegate activates it itself, so AppKit default is not needed.
+        #expect(ReopenPolicy.shouldAppKitHandleReopen(hasVisibleWindows: true) == false)
+    }
+
+    @Test("shouldAppKitHandleReopen returns true when no visible window exists")
+    func testReopenPolicyReturnsTrueWhenNoWindow() {
+        // Regression guard: File > New is disabled, so the only recovery path after
+        // the user closes the last window is for SwiftUI's WindowGroup to create one.
+        // Returning false here would leave the app running with no usable window.
+        #expect(ReopenPolicy.shouldAppKitHandleReopen(hasVisibleWindows: false) == true)
+    }
 }
