@@ -223,12 +223,13 @@ enum LocalDTXFixtureImporter {
     }
 
     /// Backfills `bgmStartOffsetSeconds` on an existing record that predates offset
-    /// parsing (nil/zero), by reading the fixture's charts and applying the same
-    /// "first positive wins" rule as a fresh import.
+    /// parsing (nil), by reading the fixture's charts and applying the same
+    /// "first writer wins" rule as a fresh import.
     ///
     /// Idempotent and cheap on the steady-state path: the leading guard returns
-    /// immediately once the offset is already positive, so the chart-parse cost is
-    /// paid at most once per legacy record (the first launch after this code ships).
+    /// immediately once the offset is already set (including the legitimate 0.0
+    /// "BGM starts at time zero" case), so the chart-parse cost is paid at most
+    /// once per legacy record (the first launch after this code ships).
     /// Mirrors the fresh-import loop above (lines that build `importedCharts`) so the
     /// two paths stay consistent rather than drifting again.
     @MainActor
@@ -237,7 +238,7 @@ enum LocalDTXFixtureImporter {
         from folderURL: URL,
         in context: ModelContext
     ) throws {
-        guard (song.bgmStartOffsetSeconds ?? 0) <= 0 else { return }
+        guard song.bgmStartOffsetSeconds == nil else { return }
 
         guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else { return }
         let setList = SETList(content: setContent)
@@ -248,11 +249,12 @@ enum LocalDTXFixtureImporter {
             guard FileManager.default.fileExists(atPath: chartURL.path) else { continue }
             guard let data = try? DTXFileParser.parseChartMetadata(from: chartURL) else { continue }
             song.setBGMStartOffsetIfUnset(data.bgmStartOffsetSeconds)
-            // First positive offset wins; stop once setBGMStartOffsetIfUnset accepted one.
-            if (song.bgmStartOffsetSeconds ?? 0) > 0 { break }
+            // First writer wins; stop once setBGMStartOffsetIfUnset accepted any
+            // offset (including 0.0 for "BGM starts at time zero").
+            if song.bgmStartOffsetSeconds != nil { break }
         }
 
-        if (song.bgmStartOffsetSeconds ?? 0) > 0 {
+        if song.bgmStartOffsetSeconds != nil {
             try context.save()
         }
     }
