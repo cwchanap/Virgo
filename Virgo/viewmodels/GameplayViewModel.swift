@@ -115,27 +115,14 @@ final class GameplayViewModel {
     var cachedMeasureRowMap: [Int: Int] = [:] // internal for cross-file extension access
     /// Fast lookup map from rendered note-head ID to rendered position
     var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:] // internal for cross-file extension access
-    /// Maps legacy DrumBeat IDs to all rendered note heads at the same musical time.
-    var cachedNotationNoteHeadIDsByBeatID: [UInt64: [UInt64]] = [:] // internal for cross-file extension access
     /// Duration-based measure count shared with both legacy sheet layout and notation layout.
     var cachedLayoutMeasureCount = 1 // internal for cross-file extension access
     /// Available row width, fed from the sheet music view's GeometryProxy. Falls back
     /// to the legacy 900pt cap so layouts built before any geometry is observed behave
     /// the way they always have. Use `updateRowWidth(_:)` to set this from the view.
     var cachedLayoutRowWidth: CGFloat = GameplayLayout.maxRowWidth
-    /// Preserves the legacy grouping key that produced each DrumBeat ID.
-    var cachedDrumBeatIDByNotePositionKey: [NotePositionKey: UInt64] = [:] // internal for cross-file extension access
 
     // MARK: - Visual State
-    /// Currently active beat ID for highlighting
-    var activeBeatId: UInt64? {
-        didSet {
-            guard oldValue != activeBeatId else { return }
-            // Clear active note heads when beat changes (self-enforcing invariant)
-            activeNotationNoteHeadIDs = []
-        }
-    }
-    var activeNotationNoteHeadIDs: Set<UInt64> = [] // internal for cross-file extension access
     /// Current purple bar position (x, y)
     var purpleBarPosition: (x: Double, y: Double)?
     /// Row index of the staff currently containing the playhead. Drives auto-scroll

@@ -202,15 +202,15 @@ struct SwiftUIRenderingCoverageTests {
             )
 
             SwiftUITestUtilities.assertView(
-                NotationNoteHeadView(noteHead: noteHead, isActive: false),
+                NotationNoteHeadView(noteHead: noteHead),
                 containsStrings: [DrumType.snare.symbol],
                 size: CGSize(width: 120, height: 120)
             )
         }
     }
 
-    @Test("Active notation primitives do not render yellow highlighting")
-    func testActiveNotationPrimitivesDoNotRenderYellowHighlighting() async throws {
+    @Test("Notation primitives never render yellow highlighting")
+    func testNotationPrimitivesDoNotRenderYellowHighlighting() async throws {
         #if os(macOS)
         try await TestSetup.withTestSetup {
             let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
@@ -253,21 +253,21 @@ struct SwiftUIRenderingCoverageTests {
 
             let view = ZStack {
                 Color.black
-                NotationBeamView(beam: beam, isActive: true)
-                NotationStemView(stem: stem, isActive: true)
-                NotationFlagView(flag: flag, isActive: true)
-                NotationNoteHeadView(noteHead: noteHead, isActive: true)
+                NotationBeamView(beam: beam)
+                NotationStemView(stem: stem)
+                NotationFlagView(flag: flag)
+                NotationNoteHeadView(noteHead: noteHead)
             }
 
             let yellowPixels = try countYellowPixels(in: view, size: CGSize(width: 140, height: 140))
 
-            #expect(yellowPixels == 0, "Active notation should not render yellow pixels")
+            #expect(yellowPixels == 0, "Notation should not render yellow pixels")
         }
         #endif
     }
 
-    @Test("Notation flag view renders in both active and inactive states")
-    func testNotationFlagViewRendersInActiveAndInactiveStates() async throws {
+    @Test("Notation flag view mounts and renders")
+    func testNotationFlagViewRenders() async throws {
         try await TestSetup.withTestSetup {
             let flag = RenderedFlag(
                 id: "flag-1",
@@ -277,12 +277,9 @@ struct SwiftUIRenderingCoverageTests {
                 origin: CGPoint(x: 50, y: 50)
             )
 
-            // Smoke test: both states should mount and render without errors
-            let inactiveView = NotationFlagView(flag: flag, isActive: false)
-            SwiftUITestUtilities.assertViewWithEnvironment(inactiveView, size: CGSize(width: 120, height: 120))
-
-            let activeView = NotationFlagView(flag: flag, isActive: true)
-            SwiftUITestUtilities.assertViewWithEnvironment(activeView, size: CGSize(width: 120, height: 120))
+            // Smoke test: the flag view should mount and render without errors.
+            let view = NotationFlagView(flag: flag)
+            SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
         }
     }
 
@@ -298,7 +295,7 @@ struct SwiftUIRenderingCoverageTests {
             )
 
             // Smoke test: stem-down flag should mount and render without errors
-            let view = NotationFlagView(flag: flag, isActive: false)
+            let view = NotationFlagView(flag: flag)
             SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
         }
     }
@@ -326,16 +323,16 @@ struct SwiftUIRenderingCoverageTests {
             // Both directions should render without error (smoke test for the
             // corrected positioning logic — the actual position correction is
             // exercised visually; this ensures no crash/miscompile).
-            let upView = NotationFlagView(flag: flagUp, isActive: true)
+            let upView = NotationFlagView(flag: flagUp)
             SwiftUITestUtilities.assertViewWithEnvironment(upView, size: CGSize(width: 120, height: 120))
 
-            let downView = NotationFlagView(flag: flagDown, isActive: true)
+            let downView = NotationFlagView(flag: flagDown)
             SwiftUITestUtilities.assertViewWithEnvironment(downView, size: CGSize(width: 120, height: 120))
         }
     }
 
-    @Test("Notation stem view renders in both active and inactive states")
-    func testNotationStemViewRendersInBothStates() async throws {
+    @Test("Notation stem view mounts and renders")
+    func testNotationStemViewRenders() async throws {
         try await TestSetup.withTestSetup {
             let stem = RenderedStem(
                 id: "stem-1",
@@ -345,16 +342,13 @@ struct SwiftUIRenderingCoverageTests {
                 end: CGPoint(x: 50, y: 80)
             )
 
-            let inactiveView = NotationStemView(stem: stem, isActive: false)
-            SwiftUITestUtilities.assertViewWithEnvironment(inactiveView, size: CGSize(width: 120, height: 120))
-
-            let activeView = NotationStemView(stem: stem, isActive: true)
-            SwiftUITestUtilities.assertViewWithEnvironment(activeView, size: CGSize(width: 120, height: 120))
+            let view = NotationStemView(stem: stem)
+            SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
         }
     }
 
-    @Test("Notation beam view renders in both active and inactive states")
-    func testNotationBeamViewRendersInBothStates() async throws {
+    @Test("Notation beam view mounts and renders")
+    func testNotationBeamViewRenders() async throws {
         try await TestSetup.withTestSetup {
             let beam = RenderedBeam(
                 id: "beam-1",
@@ -366,11 +360,8 @@ struct SwiftUIRenderingCoverageTests {
                 thickness: 3.0
             )
 
-            let inactiveView = NotationBeamView(beam: beam, isActive: false)
-            SwiftUITestUtilities.assertViewWithEnvironment(inactiveView, size: CGSize(width: 120, height: 120))
-
-            let activeView = NotationBeamView(beam: beam, isActive: true)
-            SwiftUITestUtilities.assertViewWithEnvironment(activeView, size: CGSize(width: 120, height: 120))
+            let view = NotationBeamView(beam: beam)
+            SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
         }
     }
 

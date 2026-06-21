@@ -23,7 +23,6 @@ extension GameplayViewModel {
         lastPlaybackProgressPublishElapsedTime = nil
         purpleBarPosition = nil
         currentRow = 0
-        clearActiveBeat()
         lastScheduledPlaybackStartTime = nil
         lastScheduledPlaybackHostTime = nil
         resetScoring()

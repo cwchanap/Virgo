@@ -9,7 +9,11 @@ import Foundation
 import AVFoundation
 import os.log
 
-private final class MetronomePlaybackToken {
+// Threading contract: instances are captured into the timer event handler that
+// fires on `timerQueue` (see `startTimer` / `startTimerAtTime`). All mutable
+// state is lock-guarded; `@unchecked Sendable` documents this manual contract
+// and keeps the type consistent with `MetronomeAudioEngine`'s Sendable story.
+private final class MetronomePlaybackToken: @unchecked Sendable {
     private let lock = NSLock()
     private var active = true
 
@@ -26,7 +30,12 @@ private final class MetronomePlaybackToken {
     }
 }
 
-private final class MetronomeBeatCounter {
+// Threading contract: a single instance is captured into the timer event
+// handler and mutated only from that serial `timerQueue`. No internal locking
+// is needed because `DispatchSourceTimer` fires its handler serially on one
+// queue; `@unchecked Sendable` makes that isolation contract explicit and
+// matches the rest of the metronome's Sendable story.
+private final class MetronomeBeatCounter: @unchecked Sendable {
     private var nextBeatNumber: Int
 
     init(firstBeatNumber: Int) {
@@ -85,8 +94,24 @@ class MetronomeTimingEngine: ObservableObject {
     private var cachedBeatInterval: TimeInterval = 0.5
     private let audioSchedulingLeadTime: TimeInterval = 0.04
 
-    // Callbacks
+    // MARK: - Beat Callbacks
+
+    /// Audio-tick callback, fired ~40ms ahead of each audible beat so the audio
+    /// driver can schedule the tick sample-accurately. Invoked on `timerQueue`.
+    ///
+    /// - Important: This closure is captured by value when `start()` /
+    ///   `startAtTime()` builds the timer (see `startTimer` / `startTimerAtTime`).
+    ///   Reassigning `onAudioBeat` after playback has begun has no effect until
+    ///   the timer is (re)started — mid-playback reassignment is intentionally
+    ///   ignored to keep the captured callback stable across timer ticks.
     var onAudioBeat: ((Int, Bool, AVAudioTime?) -> Void)?
+
+    /// Visual-beat callback, fired at the audible beat boundary for UI/haptic
+    /// updates. Invoked on the main queue (dispatched from the timer handler).
+    ///
+    /// - Important: Like `onAudioBeat`, this closure is captured by value when
+    ///   the timer is built. Reassignment after playback starts takes effect
+    ///   only on the next `start()` / `startAtTime()` / `restartTimer()`.
     var onBeat: ((Int, Bool, AVAudioTime?) -> Void)?
 
     private var beatInterval: TimeInterval {

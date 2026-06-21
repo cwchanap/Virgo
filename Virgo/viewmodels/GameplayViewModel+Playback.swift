@@ -219,7 +219,6 @@ extension GameplayViewModel {
         playbackStartTime = nil
         bgmPlayer?.pause()
         purpleBarPosition = nil
-        clearActiveBeat()
         Logger.audioPlayback("Paused playback for track: \(track?.title ?? "Unknown")")
     }
 

@@ -13,7 +13,12 @@ import Combine
 import UIKit
 #endif
 
-private final class LockedMetronomeVolume {
+// Threading contract: `MetronomeEngine` is `@MainActor`, but this holder is
+// captured into `MetronomeTimingEngine.onAudioBeat`, which fires on the
+// background `timerQueue`. The stored `Float` is guarded by `lock`, so the type
+// is thread-safe across that isolation boundary; `@unchecked Sendable` documents
+// this manual contract and matches `MetronomeAudioEngine`'s Sendable story.
+private final class LockedMetronomeVolume: @unchecked Sendable {
     private let lock = NSLock()
     private var storedValue: Float
 

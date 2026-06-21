@@ -19,7 +19,6 @@ extension GameplayViewModel {
     func computeDrumBeats() {
         if cachedNotes.isEmpty {
             cachedDrumBeats = []
-            cachedDrumBeatIDByNotePositionKey = [:]
             nextBeatId = 0  // Reset counter for consistency
             return
         }
@@ -28,7 +27,6 @@ extension GameplayViewModel {
             NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset).normalized()
         }
 
-        cachedDrumBeatIDByNotePositionKey = [:]
         cachedDrumBeats = groupedNotes.map { (positionKey, notes) in
             let beatID = generateBeatId()
             let timePosition = MeasureUtils.timePosition(
@@ -37,7 +35,6 @@ extension GameplayViewModel {
             )
             let drumTypes = notes.compactMap { DrumType.from(noteType: $0.noteType) }
             let interval = notes.first?.interval ?? .quarter
-            cachedDrumBeatIDByNotePositionKey[positionKey] = beatID
             return DrumBeat(
                 id: beatID,
                 drums: drumTypes,
@@ -143,10 +140,8 @@ extension GameplayViewModel {
         guard let track = track else {
             cachedNotationLayout = .empty
             cachedNotationNoteHeadPositions = [:]
-            cachedNotationNoteHeadIDsByBeatID = [:]
             cachedMeasureRowMap = [:]
             notationStaffLinesView = nil
-            activeNotationNoteHeadIDs = []
             return
         }
 
@@ -215,34 +210,6 @@ extension GameplayViewModel {
                 (noteHeadID, (x: Double(position.x), y: Double(position.y)))
             }
         )
-        var notePositionKeyBySourceNoteID: [ObjectIdentifier: NotePositionKey] = [:]
-        for note in cachedNotes {
-            let key = ObjectIdentifier(note)
-            let positionKey = NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset).normalized()
-            if notePositionKeyBySourceNoteID[key] != nil {
-                Logger.warning(
-                    "Duplicate ObjectIdentifier for Note(measure:\(note.measureNumber), " +
-                    "offset:\(note.measureOffset)) — SwiftData faulting returned identical instance"
-                )
-            }
-            notePositionKeyBySourceNoteID[key] = positionKey
-        }
-        var noteHeadIDsByBeatID = Dictionary(uniqueKeysWithValues: cachedDrumBeats.map { ($0.id, [UInt64]()) })
-        var desyncCount = 0
-        for noteHead in cachedNotationLayout.noteHeads {
-            guard let positionKey = notePositionKeyBySourceNoteID[noteHead.sourceNoteID],
-                  let beatID = cachedDrumBeatIDByNotePositionKey[positionKey] else {
-                desyncCount += 1
-                continue
-            }
-            noteHeadIDsByBeatID[beatID, default: []].append(noteHead.id)
-        }
-        if desyncCount > 0 {
-            Logger.warning(
-                "NoteHead-to-beatID mapping failed for \(desyncCount)/\(cachedNotationLayout.noteHeads.count) noteHeads"
-            )
-        }
-        cachedNotationNoteHeadIDsByBeatID = noteHeadIDsByBeatID
     }
 
     func cacheBeatPositions() {

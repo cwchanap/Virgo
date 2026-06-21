@@ -255,29 +255,23 @@ extension GameplayView {
             }
 
             ForEach(notationLayout.beams) { beam in
-                NotationBeamView(beam: beam, isActive: false)
+                NotationBeamView(beam: beam)
                     .equatable()
             }
 
             ForEach(notationLayout.flags) { flag in
-                NotationFlagView(
-                    flag: flag,
-                    isActive: false
-                )
-                .equatable()
+                NotationFlagView(flag: flag)
+                    .equatable()
             }
 
             ForEach(notationLayout.stems) { stem in
-                NotationStemView(stem: stem, isActive: false)
+                NotationStemView(stem: stem)
                     .equatable()
             }
 
             ForEach(notationLayout.noteHeads) { noteHead in
-                NotationNoteHeadView(
-                    noteHead: noteHead,
-                    isActive: false
-                )
-                .equatable()
+                NotationNoteHeadView(noteHead: noteHead)
+                    .equatable()
             }
         }
     }
