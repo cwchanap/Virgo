@@ -321,6 +321,7 @@ struct LocalDTXFixtureImporterErrorPathTests {
     }
 
     private struct TestStore {
+        let container: ModelContainer
         let context: ModelContext
     }
 
@@ -330,8 +331,11 @@ struct LocalDTXFixtureImporterErrorPathTests {
             ServerSong.self, ServerChart.self, ScoreRecord.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        // Container must be retained for the lifetime of the context; ModelContext
+        // does not strongly retain its ModelContainer, and using a context whose
+        // backing container has been deallocated crashes under `xcodebuild test`.
         let container = try ModelContainer(for: schema, configurations: [configuration])
-        return TestStore(context: container.mainContext)
+        return TestStore(container: container, context: container.mainContext)
     }
 
     private func makeTempDirectory() -> URL {
