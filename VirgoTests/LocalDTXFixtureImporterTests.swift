@@ -137,6 +137,76 @@ struct LocalDTXFixtureImporterTests {
         #expect(refreshed.previewFilePath == nil, "Stale preview path must be cleared when preview.mp3 is absent")
     }
 
+    @Test("re-import backfills missing BGM start offset on an existing legacy record")
+    func reImportBackfillsMissingBGMStartOffset() throws {
+        let store = try makeStore()
+        let context = store.context
+        let fixtureURL = try soukyuuFixtureURL()
+
+        // Simulate a legacy record created before BGM-offset parsing existed: same
+        // serverSongId, nil offset, and already-correct audio paths so refreshAudioPaths
+        // makes no change. Without the refresh-path backfill this record would keep nil
+        // (and fall back to the note-position heuristic in calculateBGMOffset) while a
+        // fresh import gets the authoritative parsed offset — an audible sync drift.
+        let legacy = Song(
+            title: "蒼穹への翔歌",
+            artist: "legacy",
+            bpm: 165.55,
+            duration: "3:50",
+            genre: "DTX Import",
+            timeSignature: .fourFour,
+            isServerImported: true,
+            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
+            bgmFilePath: fixtureURL.appendingPathComponent("bgm.m4a").path,
+            previewFilePath: fixtureURL.appendingPathComponent("preview.mp3").path,
+            bgmStartOffsetSeconds: nil
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let refreshed = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
+
+        #expect(refreshed === legacy, "Re-import should return the existing song, not a duplicate")
+        #expect(
+            (refreshed.bgmStartOffsetSeconds ?? 0) > 0,
+            "Re-import must backfill the parsed BGM offset on a legacy nil-offset record"
+        )
+    }
+
+    @Test("re-import does not clobber an already-set BGM start offset")
+    func reImportDoesNotClobberExistingBGMStartOffset() throws {
+        let store = try makeStore()
+        let context = store.context
+        let fixtureURL = try soukyuuFixtureURL()
+
+        // An existing record that already has a positive offset must be left alone —
+        // refreshBGMStartOffsetIfMissing's guard returns early so it neither re-parses
+        // nor overrides (first-positive-wins contract from setBGMStartOffsetIfUnset).
+        let existing = Song(
+            title: "蒼穹への翔歌",
+            artist: "existing",
+            bpm: 165.55,
+            duration: "3:50",
+            genre: "DTX Import",
+            timeSignature: .fourFour,
+            isServerImported: true,
+            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
+            bgmFilePath: fixtureURL.appendingPathComponent("bgm.m4a").path,
+            previewFilePath: fixtureURL.appendingPathComponent("preview.mp3").path,
+            bgmStartOffsetSeconds: 0.42
+        )
+        context.insert(existing)
+        try context.save()
+
+        let refreshed = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
+
+        #expect(refreshed === existing)
+        #expect(
+            refreshed.bgmStartOffsetSeconds == 0.42,
+            "An already-set offset must not be overwritten by re-import"
+        )
+    }
+
     private struct TestStore {
         let container: ModelContainer
         let context: ModelContext
