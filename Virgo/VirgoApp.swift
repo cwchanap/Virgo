@@ -92,10 +92,14 @@ final class MacSingleWindowDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
+        if flag {
+            // Existing window present: activate it ourselves and tell AppKit we handled it.
             sender.windows.first { $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
         }
-        return false
+        // When no windows are visible, defer to AppKit so SwiftUI's WindowGroup
+        // creates a new one. File > New is intentionally disabled, so without this
+        // the app would be left running with no window after the user closes the last one.
+        return ReopenPolicy.shouldAppKitHandleReopen(hasVisibleWindows: flag)
     }
 
     private func closeRestoredDuplicateMainWindows() {
