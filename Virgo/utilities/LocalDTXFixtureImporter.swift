@@ -52,10 +52,25 @@ enum LocalDTXFixtureImporter {
 
         let setList = SETList(content: setContent)
         let importedCharts = try setList.chartReferences.compactMap { reference -> ImportedChart? in
-            guard let difficulty = reference.difficulty else { return nil }
+            guard let difficulty = reference.difficulty else {
+                // A SET.def entry whose LABEL is not one of the known difficulties
+                // (BASIC/ADVANCED/EXTREME/MASTER/REAL) is dropped. Without this log a
+                // song would silently ship missing a difficulty.
+                Logger.warning(
+                    "DTX fixture: dropping chart '\(reference.label)' — unrecognized difficulty label"
+                )
+                return nil
+            }
 
             let chartURL = folderURL.appendingPathComponent(reference.filename)
-            guard FileManager.default.fileExists(atPath: chartURL.path) else { return nil }
+            guard FileManager.default.fileExists(atPath: chartURL.path) else {
+                // A chart referenced by SET.def but absent from the bundle would otherwise
+                // vanish with no signal — exactly the regression class CLAUDE.md warns about.
+                Logger.warning(
+                    "DTX fixture: dropping chart '\(reference.label)' — missing file \(reference.filename)"
+                )
+                return nil
+            }
 
             let data = try DTXFileParser.parseChartMetadata(from: chartURL)
             return ImportedChart(reference: reference, difficulty: difficulty, data: data)
@@ -114,6 +129,14 @@ enum LocalDTXFixtureImporter {
         // chart file (e.g. bas.dtx) is more correct because SET.def is the logical root
         // of a DTX fixture and references all chart/audio files by relative path.
         guard let setURL = bundle.url(forResource: "SET", withExtension: "def") else {
+            // This is the entry the caller (ContentView.seedLocalDTXFixtures) only logs on
+            // the success/error branches. If the bundled SET.def goes missing (fresh
+            // checkout, fileSystemSynchronizedGroups regression, CI without the resource)
+            // import returns nil and — without this warning — produces zero log output,
+            // which is the silent-failure regression class called out in CLAUDE.md.
+            Logger.warning(
+                "Bundled DTX fixture not imported: SET.def not found in bundle \(bundle.bundlePath)"
+            )
             return nil
         }
         return try importSong(
@@ -132,13 +155,25 @@ enum LocalDTXFixtureImporter {
     @MainActor
     private static func refreshAudioPaths(for song: Song, from folderURL: URL, in context: ModelContext) throws {
         var didChange = false
-        if let bgmPath = existingAudioPath(named: "bgm.m4a", in: folderURL),
-           song.bgmFilePath != bgmPath {
+
+        // Re-resolve both audio paths from disk. If a previously-recorded asset is no
+        // longer present in the bundle, clear it to nil rather than leaving a dangling
+        // reference that would silently disable BGM/preview at playback time. This is
+        // the symmetric case to the "refresh stale bgm.ogg -> bgm.m4a" fix in
+        // CLAUDE.md's gameplay regression notes.
+        let bgmPath = existingAudioPath(named: "bgm.m4a", in: folderURL)
+        if song.bgmFilePath != bgmPath {
+            if bgmPath == nil, let stalePath = song.bgmFilePath {
+                Logger.warning("DTX fixture: bgm.m4a no longer bundled — clearing stale path \(stalePath)")
+            }
             song.bgmFilePath = bgmPath
             didChange = true
         }
-        if let previewPath = existingAudioPath(named: "preview.mp3", in: folderURL),
-           song.previewFilePath != previewPath {
+        let previewPath = existingAudioPath(named: "preview.mp3", in: folderURL)
+        if song.previewFilePath != previewPath {
+            if previewPath == nil, let stalePath = song.previewFilePath {
+                Logger.warning("DTX fixture: preview.mp3 no longer bundled — clearing stale path \(stalePath)")
+            }
             song.previewFilePath = previewPath
             didChange = true
         }
