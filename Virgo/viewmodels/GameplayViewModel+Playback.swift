@@ -135,7 +135,8 @@ extension GameplayViewModel {
         isPlaying = true
 
         // Start continuous visual tick (~30 Hz) so sub-beat notes (eighths,
-        // progress and row scrolling responsive between quarter-note metronome callbacks.
+        // sixteenths) advance and playback progress + row scrolling stay
+        // responsive between quarter-note metronome callbacks.
         lastPlaybackProgressPublishElapsedTime = nil
         startVisualTickTimer()
 

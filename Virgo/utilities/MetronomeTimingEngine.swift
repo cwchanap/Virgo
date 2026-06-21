@@ -31,11 +31,16 @@ private final class MetronomePlaybackToken: @unchecked Sendable {
 }
 
 // Threading contract: a single instance is captured into the timer event
-// handler and mutated only from that serial `timerQueue`. No internal locking
-// is needed because `DispatchSourceTimer` fires its handler serially on one
-// queue; `@unchecked Sendable` makes that isolation contract explicit and
-// matches the rest of the metronome's Sendable story.
+// handler and mutated only from that serial `timerQueue`. Today only one
+// counter is captured per timer build, so `DispatchSourceTimer`'s serial
+// delivery makes mutation safe. The `NSLock` below makes that contract
+// self-enforcing: a future change that captures the same counter into a second
+// handler (or mutates it off the timer queue) cannot introduce a silent data
+// race. `@unchecked Sendable` documents this manual isolation story and
+// matches the rest of the metronome's Sendable handling (see
+// `MetronomePlaybackToken`).
 private final class MetronomeBeatCounter: @unchecked Sendable {
+    private let lock = NSLock()
     private var nextBeatNumber: Int
 
     init(firstBeatNumber: Int) {
@@ -43,6 +48,8 @@ private final class MetronomeBeatCounter: @unchecked Sendable {
     }
 
     func consumeNextBeatNumber() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
         let beatNumber = nextBeatNumber
         nextBeatNumber += 1
         return beatNumber

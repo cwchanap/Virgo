@@ -74,6 +74,69 @@ struct LocalDTXFixtureImporterTests {
         #expect(song.previewFilePath?.hasSuffix("preview.mp3") == true)
     }
 
+    @Test("importSong drops charts whose difficulty label is not recognized")
+    func dropsChartsWithUnrecognizedDifficultyLabel() throws {
+        let store = try makeStore()
+        let tempDir = makeTempDirectory()
+
+        // L1 is a known label (BASIC -> easy); L2 uses an unknown label so it must be
+        // dropped rather than imported as a silent missing difficulty.
+        let setDef = """
+        #TITLE: Partial Drop
+        #L1LABEL: BASIC
+        #L1FILE: chart1.dtx
+        #L2LABEL: CHALLENGE
+        #L2FILE: chart2.dtx
+        """
+        // SET.def is written as UTF-16 to match the bundled fixture format: the
+        // importer's `decodeSETFile` tries `.utf16` first and a UTF-8 SET.def would be
+        // lossily decoded as garbage CJK, hiding chart references.
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let chart1 = "#TITLE: Partial Drop\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
+        try chart1.write(to: tempDir.appendingPathComponent("chart1.dtx"), atomically: true, encoding: .utf8)
+        let chart2 = "#TITLE: Partial Drop\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 99\n#03113: 01000000"
+        try chart2.write(to: tempDir.appendingPathComponent("chart2.dtx"), atomically: true, encoding: .utf8)
+
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: store.context)
+
+        #expect(song.charts.count == 1, "Only the BASIC chart should import; CHALLENGE must be dropped")
+        #expect(song.charts.first?.difficulty == .easy)
+    }
+
+    @Test("re-import clears stale audio paths when the bundled audio is removed")
+    func refreshClearsStaleAudioPathsWhenAssetsRemoved() throws {
+        let store = try makeStore()
+        let tempDir = makeTempDirectory()
+
+        let setDef = """
+        #TITLE: Stale Fixture
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """
+        // UTF-16 to match the bundled fixture format (see comment above).
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let chartContent = "#TITLE: Stale Fixture\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
+        try chartContent.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
+        // Simulate a bundle that ships with audio assets.
+        try Data().write(to: tempDir.appendingPathComponent("bgm.m4a"))
+        try Data().write(to: tempDir.appendingPathComponent("preview.mp3"))
+
+        let first = try LocalDTXFixtureImporter.importSong(from: tempDir, into: store.context)
+        #expect(first.bgmFilePath?.hasSuffix("bgm.m4a") == true, "Initial import should record bgm.m4a")
+        #expect(first.previewFilePath?.hasSuffix("preview.mp3") == true, "Initial import should record preview.mp3")
+
+        // Remove the assets to simulate a stale-bundle / missing-asset regression.
+        // Re-import must not leave a dangling path that would silently disable BGM.
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("bgm.m4a"))
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("preview.mp3"))
+
+        let refreshed = try LocalDTXFixtureImporter.importSong(from: tempDir, into: store.context)
+
+        #expect(refreshed === first, "Re-import should return the existing song")
+        #expect(refreshed.bgmFilePath == nil, "Stale bgm path must be cleared when bgm.m4a is absent")
+        #expect(refreshed.previewFilePath == nil, "Stale preview path must be cleared when preview.mp3 is absent")
+    }
+
     private struct TestStore {
         let container: ModelContainer
         let context: ModelContext
@@ -99,6 +162,13 @@ struct LocalDTXFixtureImporterTests {
             .deletingLastPathComponent()
             .appendingPathComponent("Virgo/Fixtures/soukyuu_e_no_shouka", isDirectory: true)
         #expect(FileManager.default.fileExists(atPath: url.path))
+        return url
+    }
+
+    private func makeTempDirectory() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("virgo-dtx-test-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
 }

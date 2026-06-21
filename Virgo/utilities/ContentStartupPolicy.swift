@@ -43,6 +43,12 @@ enum ContentStartupPolicy {
     }
 
     /// Returns true when bundled local DTX fixtures should be imported during startup.
+    ///
+    /// Unlike `startupAction`, this intentionally runs on every launch — including
+    /// production cold starts, not just `-UITesting` runs — so the bundled demo song
+    /// (Soukyuu) is seeded for first-time users and refreshed on subsequent launches.
+    /// It is suppressed only by `-SkipSeed`, which UI tests use when they manage their
+    /// own seed data.
     static func shouldImportBundledLocalDTXFixtures(arguments: [String]) -> Bool {
         !arguments.contains(LaunchArguments.skipSeed)
     }
