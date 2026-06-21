@@ -124,12 +124,17 @@ enum LocalDTXFixtureImporter {
         into context: ModelContext,
         bundle: Bundle = .main
     ) throws -> Song? {
-        // Look for SET.def (the import entry point) anywhere in the bundle. This works
-        // whether the fixture folder is preserved as a folder reference or flattened into
-        // the bundle root by fileSystemSynchronizedGroups. Using SET.def instead of a
-        // chart file (e.g. bas.dtx) is more correct because SET.def is the logical root
-        // of a DTX fixture and references all chart/audio files by relative path.
-        guard let setURL = bundle.url(forResource: "SET", withExtension: "def") else {
+        // Locate SET.def (the import entry point) in the bundle. Try the flat
+        // resource-root lookup first — verified in the built Virgo.app,
+        // fileSystemSynchronizedGroups flattens Virgo/Fixtures/soukyuu_e_no_shouka/*
+        // into Contents/Resources/ root, so SET.def lands at the resource root and the
+        // two-arg lookup resolves. If that returns nil, fall back to a whole-bundle
+        // walk via `locateBundledSETDef` so a folder-reference layout (which preserves
+        // Fixtures/soukyuu_e_no_shouka/ and is invisible to the 2-arg lookup) still
+        // imports the bundled demo song instead of failing silently. Using SET.def
+        // (not a chart file like bas.dtx) is correct because SET.def is the logical
+        // root of a DTX fixture and references all chart/audio files by relative path.
+        guard let setURL = locateBundledSETDef(in: bundle) else {
             // This is the entry the caller (ContentView.seedLocalDTXFixtures) only logs on
             // the success/error branches. If the bundled SET.def goes missing (fresh
             // checkout, fileSystemSynchronizedGroups regression, CI without the resource)
@@ -145,6 +150,40 @@ enum LocalDTXFixtureImporter {
             songId: soukyuuSongId,
             into: context
         )
+    }
+
+    /// Locates `SET.def` in `bundle`, trying the flat resource-root lookup first and
+    /// falling back to a whole-bundle walk. The fallback handles a folder-reference
+    /// resource layout where the fixture directory is preserved and the 2-arg
+    /// `Bundle.url(forResource:withExtension:)` cannot recurse into it.
+    private static func locateBundledSETDef(in bundle: Bundle) -> URL? {
+        if let url = bundle.url(forResource: "SET", withExtension: "def") {
+            return url
+        }
+        // Search the bundle's resources tree (and, if that's unavailable, the whole
+        // bundle) for SET.def anywhere under it.
+        let searchRoot = bundle.resourceURL ?? bundle.bundleURL
+        return locateSETFile(in: searchRoot)
+    }
+
+    /// Walks `directory` recursively and returns the first `SET.def` it finds.
+    ///
+    /// Internal (not private) so it can be unit-tested directly with a synthetic
+    /// directory tree — constructing a loadable `Bundle` with a folder-reference
+    /// layout in-process is impractical, but the filesystem walk is the part that
+    /// needs coverage. Used by `locateBundledSETDef` as the folder-reference-layout
+    /// fallback.
+    static func locateSETFile(in directory: URL) -> URL? {
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return nil
+        }
+        for case let url as URL in enumerator where url.lastPathComponent == "SET.def" {
+            return url
+        }
+        return nil
     }
 
     @MainActor
@@ -219,10 +258,25 @@ enum LocalDTXFixtureImporter {
     }
 
     private static func decodeSETFile(at url: URL) -> String? {
-        [.utf16, .shiftJIS, .utf8]
-            .lazy
-            .compactMap { encoding in try? String(contentsOf: url, encoding: encoding) }
-            .first
+        guard let data = try? Data(contentsOf: url) else { return nil }
+
+        // Only trust UTF-16 when the file actually starts with a UTF-16 BOM. A naive
+        // `[.utf16, .shiftJIS, .utf8].lazy.first` chain is unsafe because
+        // `String(contentsOf:encoding: .utf16)` *lossily succeeds* on UTF-8 / Shift-JIS
+        // bytes — it returns garbage CJK that contains no #LxLABEL/#LxFILE directives,
+        // so the importer then rejects the fixture with `noPlayableCharts`. The bundled
+        // Soukyuu SET.def ships with a UTF-16LE BOM (0xFF 0xFE), so this routes real
+        // fixtures correctly while keeping BOM-less UTF-8/Shift-JIS files off the
+        // garbage decode path.
+        let bomPrefix = Array(data.prefix(2))
+        if bomPrefix == [0xFE, 0xFF] || bomPrefix == [0xFF, 0xFE],
+           let decoded = String(data: data, encoding: .utf16) {
+            return decoded
+        }
+
+        // BOM-less fallback: UTF-8 is strict (rejects most Shift-JIS byte sequences),
+        // so try it first; Shift-JIS is the common Japanese-encoded DTX fallback.
+        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .shiftJIS)
     }
 
     private static func existingAudioPath(named filename: String, in folderURL: URL) -> String? {

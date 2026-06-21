@@ -207,6 +207,68 @@ struct LocalDTXFixtureImporterTests {
         )
     }
 
+    @Test("importSong decodes a BOM-less UTF-8 SET.def without lossy UTF-16 garbage")
+    func decodesUTF8SETDefWithoutBOM() throws {
+        let store = try makeStore()
+        let tempDir = makeTempDirectory()
+
+        // UTF-8 with no BOM. Before the BOM-aware decodeSETFile fix, the lazy
+        // [.utf16, ...].first chain *lossily succeeded* on these bytes as garbage CJK
+        // (containing no #LxLABEL/#LxFILE directives), so the importer rejected the
+        // fixture with noPlayableCharts. The fix gates UTF-16 behind an actual BOM and
+        // falls through to strict UTF-8 for BOM-less files.
+        let setDef = """
+        #TITLE: UTF8 Fixture
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
+        let chart = "#TITLE: UTF8 Fixture\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
+        try chart.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
+
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: store.context)
+
+        #expect(song.charts.count == 1, "BOM-less UTF-8 SET.def must decode correctly, not be rejected as garbage")
+        #expect(song.charts.first?.difficulty == .easy)
+    }
+
+    @Test("locateSETFile finds SET.def nested in a subdirectory (folder-reference layout)")
+    func locateSETFileFindsNestedSETDef() throws {
+        // Simulates a bundle laid out as a folder reference — the fixture's directory
+        // structure is preserved (Fixtures/soukyuu/...) instead of being flattened into
+        // the resource root. The 2-arg `Bundle.url(forResource:withExtension:)` cannot
+        // recurse into this, so the importer's `locateBundledSETDef` falls back to the
+        // whole-bundle walk implemented by `locateSETFile`. Constructing a loadable
+        // `Bundle` with this layout in-process is impractical; the filesystem walk is
+        // the unit that needs coverage here.
+        let bundleRoot = makeTempDirectory()
+        let fixtureDir = bundleRoot
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Resources", isDirectory: true)
+            .appendingPathComponent("Fixtures", isDirectory: true)
+            .appendingPathComponent("soukyuu_e_no_shouka", isDirectory: true)
+        try FileManager.default.createDirectory(at: fixtureDir, withIntermediateDirectories: true)
+        let setDef = "#TITLE: Nested\n#L1LABEL: BASIC\n#L1FILE: chart.dtx\n"
+        try setDef.write(to: fixtureDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
+
+        let found = LocalDTXFixtureImporter.locateSETFile(in: bundleRoot)
+
+        #expect(found?.lastPathComponent == "SET.def", "Enumeration fallback should find the nested SET.def")
+        #expect(
+            found?.deletingLastPathComponent().lastPathComponent == "soukyuu_e_no_shouka",
+            "Should locate SET.def inside the preserved fixture directory"
+        )
+    }
+
+    @Test("locateSETFile returns nil when no SET.def exists in the tree")
+    func locateSETFileReturnsNilWhenAbsent() throws {
+        let bundleRoot = makeTempDirectory()
+        // A directory with other files but no SET.def.
+        try Data().write(to: bundleRoot.appendingPathComponent("chart.dtx"))
+
+        #expect(LocalDTXFixtureImporter.locateSETFile(in: bundleRoot) == nil)
+    }
+
     private struct TestStore {
         let container: ModelContainer
         let context: ModelContext
