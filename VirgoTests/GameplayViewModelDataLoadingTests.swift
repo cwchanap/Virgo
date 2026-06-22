@@ -195,8 +195,16 @@ struct GameplayViewModelDataLoadingTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
-        // Wait for any async setup operations (enforceBGMMinimumSpeedIfNeeded) to complete
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Poll for the expected speed/BPM state with a bounded timeout instead of
+        // relying on a fixed sleep. The clamp/speed-load path is synchronous in
+        // tests, so this typically resolves on the first iteration, but polling
+        // guards against any future async setup work without flaking under CI load.
+        let expectedSpeed: Double = 0.5
+        var attempts = 0
+        while abs(viewModel.practiceSettings.speedMultiplier - expectedSpeed) > 0.0001, attempts < 50 {
+            try await Task.sleep(nanoseconds: 10_000_000)
+            attempts += 1
+        }
 
         // Verify speed was loaded
         #expect(

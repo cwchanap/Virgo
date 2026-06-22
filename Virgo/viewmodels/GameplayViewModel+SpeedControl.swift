@@ -216,40 +216,14 @@ extension GameplayViewModel {
             let speedRatio = previousSpeed / currentSpeed
             pausedElapsedTime *= speedRatio
             let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
-            let beatOffset = Int(elapsedBeats)
-            totalBeatsElapsed = beatOffset
-            metronome.stop()
-            let capturedHostTime = mach_absolute_time()
-            lastScheduledPlaybackHostTime = capturedHostTime
-            let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
-            lastScheduledPlaybackStartTime = scheduledStartTime
-            metronome.startAtTime(
-                bpm: effectiveBPMValue,
-                timeSignature: track?.timeSignature ?? .fourFour,
-                startTime: scheduledStartTime,
-                totalBeatsElapsed: elapsedBeats
-            )
-            rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
+            restartMetronomeForSpeedChange(effectiveBPM: effectiveBPMValue, elapsedBeats: elapsedBeats)
         } else {
             if previousSpeed > 0, currentSpeed > 0 {
                 let speedRatio = previousSpeed / currentSpeed
                 pausedElapsedTime *= speedRatio
             }
             let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
-            let beatOffset = Int(elapsedBeats)
-            totalBeatsElapsed = beatOffset
-            metronome.stop()
-            let capturedHostTime = mach_absolute_time()
-            lastScheduledPlaybackHostTime = capturedHostTime
-            let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
-            lastScheduledPlaybackStartTime = scheduledStartTime
-            metronome.startAtTime(
-                bpm: effectiveBPMValue,
-                timeSignature: track?.timeSignature ?? .fourFour,
-                startTime: scheduledStartTime,
-                totalBeatsElapsed: elapsedBeats
-            )
-            rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
+            restartMetronomeForSpeedChange(effectiveBPM: effectiveBPMValue, elapsedBeats: elapsedBeats)
             Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
         }
 
@@ -280,5 +254,31 @@ extension GameplayViewModel {
 
         let speedPercent = Int(currentSpeed * 100)
         Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
+    }
+
+    /// Stops and restarts the metronome at a scheduled future time for a live speed
+    /// change, capturing host time and updating beat bookkeeping. Shared by both the
+    /// metronome-time-available and fallback branches of `applySpeedChangeWhilePlaying`.
+    /// Returns the scheduled CFAbsoluteTime start so callers can reschedule BGM against it.
+    @discardableResult
+    private func restartMetronomeForSpeedChange(
+        effectiveBPM: Double,
+        elapsedBeats: Double
+    ) -> CFAbsoluteTime {
+        let beatOffset = Int(elapsedBeats)
+        totalBeatsElapsed = beatOffset
+        metronome.stop()
+        let capturedHostTime = mach_absolute_time()
+        lastScheduledPlaybackHostTime = capturedHostTime
+        let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
+        lastScheduledPlaybackStartTime = scheduledStartTime
+        metronome.startAtTime(
+            bpm: effectiveBPM,
+            timeSignature: track?.timeSignature ?? .fourFour,
+            startTime: scheduledStartTime,
+            totalBeatsElapsed: elapsedBeats
+        )
+        rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
+        return scheduledStartTime
     }
 }

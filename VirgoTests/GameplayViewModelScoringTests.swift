@@ -48,9 +48,11 @@ struct GameplayViewModelScoringTests {
 
     @Test("Completion is delayed when playback reaches end, preserving late-tolerance window")
     func testCompletionDelayedForLateTolerance() async throws {
-        // When playbackProgress reaches 1.0, completion should be scheduled
-        // after a grace period (TimingAccuracy.good.toleranceMs = 100ms)
-        // to allow late hits on final notes to still be scored.
+        // When playbackProgress reaches 1.0, completion is scheduled after a grace
+        // period (TimingAccuracy.good.toleranceMs = 100ms) so late hits on the final
+        // notes can still be scored. We drive the real continuous-visual path (the
+        // same one the metronome/tick callback uses) to prove the scheduling and the
+        // delayed finalization actually run, rather than only setting a property.
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
 
@@ -59,22 +61,37 @@ struct GameplayViewModelScoringTests {
         viewModel.setupGameplay()
         viewModel.startPlayback()
 
-        // Simulate playback reaching end (this would normally trigger the completion task)
-        viewModel.playbackProgress = 1.0
-
-        // Trigger updatePlaybackState flow manually by calling the internal update
-        // In the real app, this is called by the metronome callback.
-        // We can simulate by checking that completionScheduled flag is false initially.
+        // Before reaching the end, completion is not scheduled.
+        #expect(viewModel.completionScheduled == false,
+                "Completion should not be scheduled before playback reaches the end")
         #expect(viewModel.isShowingSessionResults == false,
-                "Results sheet should not show immediately when progress reaches 1.0")
+                "Results sheet should be hidden during playback")
 
-        // Cleanup
+        // Drive the continuous-visual update with an elapsed time past the track
+        // duration so playbackProgress crosses 1.0 and a fresh beat advances.
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: viewModel.cachedTrackDuration + 1.0)
+
+        // Scheduling must have fired, but the grace-period task must not have run yet.
+        #expect(viewModel.completionScheduled == true,
+                "Reaching the end should schedule delayed completion")
+        #expect(viewModel.isShowingSessionResults == false,
+                "Results sheet should stay hidden during the late-tolerance grace window")
+
+        // Wait past the grace period (100ms) for the scheduled task to finalize.
+        try await Task.sleep(nanoseconds: 250_000_000)
+
+        #expect(viewModel.isShowingSessionResults == true,
+                "Results sheet should appear once the late-tolerance grace period elapses")
+        #expect(viewModel.isPlaying == false,
+                "Playback should be stopped after completion")
+
         viewModel.cleanup()
     }
 
     @Test("pausePlayback cancels scheduled completion during grace period")
     func testPauseCancelsScheduledCompletion() async throws {
-        // If user pauses during the grace period, the scheduled completion should be cancelled.
+        // If the user pauses during the grace period, the scheduled completion task
+        // must be cancelled so the results sheet never appears.
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
 
@@ -83,18 +100,27 @@ struct GameplayViewModelScoringTests {
         viewModel.setupGameplay()
         viewModel.startPlayback()
 
-        // Simulate playback reaching end - this schedules the completion task
-        viewModel.playbackProgress = 1.0
+        // Schedule completion by driving playback to the end.
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: viewModel.cachedTrackDuration + 1.0)
+        #expect(viewModel.completionScheduled == true,
+                "Precondition: completion should be scheduled after reaching the end")
 
-        // Pause should cancel the scheduled completion
+        // Pause must cancel the scheduled completion task.
         viewModel.pausePlayback()
 
-        // After pause, isShowingSessionResults should remain false
-        // (completion was cancelled, not executed)
+        #expect(viewModel.completionScheduled == false,
+                "Pause must clear the completion-scheduled flag")
+        #expect(viewModel.completionTask == nil,
+                "Pause must cancel and clear the completion task reference")
         #expect(viewModel.isShowingSessionResults == false,
                 "Results should not show after pausing during grace period")
         #expect(viewModel.isPlaying == false,
                 "isPlaying should be false after pause")
+
+        // Wait past the original grace window to confirm the cancelled task never fires.
+        try await Task.sleep(nanoseconds: 200_000_000)
+        #expect(viewModel.isShowingSessionResults == false,
+                "Cancelled completion task must not show results later")
 
         viewModel.cleanup()
     }
@@ -109,15 +135,18 @@ struct GameplayViewModelScoringTests {
         viewModel.setupGameplay()
         viewModel.startPlayback()
 
-        // Simulate playback reaching end
-        viewModel.playbackProgress = 1.0
+        // Schedule completion by driving playback to the end.
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: viewModel.cachedTrackDuration + 1.0)
+        #expect(viewModel.completionScheduled == true,
+                "Precondition: completion should be scheduled after reaching the end")
 
-        // Reset should clear any scheduled completion
+        // Reset must cancel and clear the scheduled completion for the next session.
         viewModel.resetScoring()
 
-        // After reset, completion state should be cleared for next session
-        // We verify this indirectly - if we start a new session, it shouldn't
-        // immediately complete
+        #expect(viewModel.completionScheduled == false,
+                "resetScoring must clear the completion-scheduled flag")
+        #expect(viewModel.completionTask == nil,
+                "resetScoring must cancel the completion task")
         #expect(viewModel.isShowingSessionResults == false,
                 "Results should not show after resetScoring")
 
