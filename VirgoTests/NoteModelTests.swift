@@ -11,21 +11,12 @@ import SwiftData
 @testable import Virgo
 
 @Suite("Note Model Tests")
+@MainActor
 struct NoteModelTests {
-    
-    // Create a test model container for SwiftData models
-    static let testContainer: ModelContainer = {
-        do {
-            let config = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
-        } catch {
-            fatalError("Failed to create test container: \(error)")
-        }
-    }()
-    
+
     @Test("Note initializes with correct properties")
     func testNoteInitialization() {
-        let context = ModelContext(Self.testContainer)
+        let context = TestContainer.isolatedContainer().context
         let note = Note(
             interval: .eighth, 
             noteType: .bass, 
@@ -43,7 +34,7 @@ struct NoteModelTests {
     
     @Test("Note can be created with chart reference")
     func testNoteWithChart() {
-        let context = ModelContext(Self.testContainer)
+        let context = TestContainer.isolatedContainer().context
         let song = Song(title: "Test", artist: "Artist", bpm: 120, duration: "3:00", genre: "Rock")
         let chart = Chart(difficulty: .medium, song: song)
         context.insert(song)
@@ -56,7 +47,7 @@ struct NoteModelTests {
     
     @Test("Note handles various intervals correctly")
     func testNoteIntervals() {
-        let context = ModelContext(Self.testContainer)
+        let context = TestContainer.isolatedContainer().context
         let intervals: [NoteInterval] = [.full, .half, .quarter, .eighth, .sixteenth, .thirtysecond]
         
         for interval in intervals {
@@ -68,7 +59,7 @@ struct NoteModelTests {
     
     @Test("Note handles various drum types correctly")
     func testNoteDrumTypes() {
-        let context = ModelContext(Self.testContainer)
+        let context = TestContainer.isolatedContainer().context
         let drumTypes: [NoteType] = [.bass, .snare, .hiHat, .crash, .ride, .highTom, .midTom, .lowTom]
         
         for drumType in drumTypes {
@@ -80,7 +71,7 @@ struct NoteModelTests {
     
     @Test("Note measure number validation")
     func testNoteMeasureValidation() {
-        let context = ModelContext(Self.testContainer)
+        let context = TestContainer.isolatedContainer().context
         let note1 = Note(interval: .quarter, noteType: .bass, measureNumber: 0, measureOffset: 0.0)
         let note2 = Note(interval: .quarter, noteType: .bass, measureNumber: 100, measureOffset: 0.0)
         context.insert(note1)
@@ -92,7 +83,7 @@ struct NoteModelTests {
     
     @Test("Note measure offset validation")
     func testNoteMeasureOffset() {
-        let context = ModelContext(Self.testContainer)
+        let context = TestContainer.isolatedContainer().context
         let note1 = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
         let note2 = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.75)
         let note3 = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 1.0)

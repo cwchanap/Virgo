@@ -13,8 +13,7 @@ import Testing
 struct LocalDTXFixtureImporterTests {
     @Test("imports Soukyuu fixture with four playable charts")
     func importsSoukyuuFixtureWithFourPlayableCharts() throws {
-        let store = try makeStore()
-        let context = store.context
+        let context = TestContainer.isolatedContainer().context
         let fixtureURL = try soukyuuFixtureURL()
 
         let song = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
@@ -48,8 +47,7 @@ struct LocalDTXFixtureImporterTests {
 
     @Test("does not duplicate Soukyuu fixture when already imported")
     func doesNotDuplicateSoukyuuFixtureWhenAlreadyImported() throws {
-        let store = try makeStore()
-        let context = store.context
+        let context = TestContainer.isolatedContainer().context
         let fixtureURL = try soukyuuFixtureURL()
 
         _ = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
@@ -61,8 +59,7 @@ struct LocalDTXFixtureImporterTests {
 
     @Test("refreshes stale Soukyuu audio paths when already imported")
     func refreshesStaleSoukyuuAudioPathsWhenAlreadyImported() throws {
-        let store = try makeStore()
-        let context = store.context
+        let context = TestContainer.isolatedContainer().context
         let fixtureURL = try soukyuuFixtureURL()
         let staleSong = Song(
             title: "蒼穹への翔歌",
@@ -87,7 +84,7 @@ struct LocalDTXFixtureImporterTests {
 
     @Test("importSong drops charts whose difficulty label is not recognized")
     func dropsChartsWithUnrecognizedDifficultyLabel() throws {
-        let store = try makeStore()
+        let context = TestContainer.isolatedContainer().context
         let tempDir = makeTempDirectory()
 
         // L1 is a known label (BASIC -> easy); L2 uses an unknown label so it must be
@@ -108,7 +105,7 @@ struct LocalDTXFixtureImporterTests {
         let chart2 = "#TITLE: Partial Drop\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 99\n#03113: 01000000"
         try chart2.write(to: tempDir.appendingPathComponent("chart2.dtx"), atomically: true, encoding: .utf8)
 
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: store.context)
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
 
         #expect(song.charts.count == 1, "Only the BASIC chart should import; CHALLENGE must be dropped")
         #expect(song.charts.first?.difficulty == .easy)
@@ -116,7 +113,7 @@ struct LocalDTXFixtureImporterTests {
 
     @Test("re-import clears stale audio paths when the bundled audio is removed")
     func refreshClearsStaleAudioPathsWhenAssetsRemoved() throws {
-        let store = try makeStore()
+        let context = TestContainer.isolatedContainer().context
         let tempDir = makeTempDirectory()
 
         let setDef = """
@@ -132,7 +129,7 @@ struct LocalDTXFixtureImporterTests {
         try Data().write(to: tempDir.appendingPathComponent("bgm.m4a"))
         try Data().write(to: tempDir.appendingPathComponent("preview.mp3"))
 
-        let first = try LocalDTXFixtureImporter.importSong(from: tempDir, into: store.context)
+        let first = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
         #expect(first.bgmFilePath?.hasSuffix("bgm.m4a") == true, "Initial import should record bgm.m4a")
         #expect(first.previewFilePath?.hasSuffix("preview.mp3") == true, "Initial import should record preview.mp3")
 
@@ -141,7 +138,7 @@ struct LocalDTXFixtureImporterTests {
         try FileManager.default.removeItem(at: tempDir.appendingPathComponent("bgm.m4a"))
         try FileManager.default.removeItem(at: tempDir.appendingPathComponent("preview.mp3"))
 
-        let refreshed = try LocalDTXFixtureImporter.importSong(from: tempDir, into: store.context)
+        let refreshed = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
 
         #expect(refreshed === first, "Re-import should return the existing song")
         #expect(refreshed.bgmFilePath == nil, "Stale bgm path must be cleared when bgm.m4a is absent")
@@ -150,8 +147,7 @@ struct LocalDTXFixtureImporterTests {
 
     @Test("re-import backfills missing BGM start offset on an existing legacy record")
     func reImportBackfillsMissingBGMStartOffset() throws {
-        let store = try makeStore()
-        let context = store.context
+        let context = TestContainer.isolatedContainer().context
         let fixtureURL = try soukyuuFixtureURL()
 
         // Simulate a legacy record created before BGM-offset parsing existed: same
@@ -186,8 +182,7 @@ struct LocalDTXFixtureImporterTests {
 
     @Test("re-import does not clobber an already-set BGM start offset")
     func reImportDoesNotClobberExistingBGMStartOffset() throws {
-        let store = try makeStore()
-        let context = store.context
+        let context = TestContainer.isolatedContainer().context
         let fixtureURL = try soukyuuFixtureURL()
 
         // An existing record that already has a positive offset must be left alone —
@@ -220,7 +215,7 @@ struct LocalDTXFixtureImporterTests {
 
     @Test("importSong decodes a BOM-less UTF-8 SET.def without lossy UTF-16 garbage")
     func decodesUTF8SETDefWithoutBOM() throws {
-        let store = try makeStore()
+        let context = TestContainer.isolatedContainer().context
         let tempDir = makeTempDirectory()
 
         // UTF-8 with no BOM. Before the BOM-aware decodeSETFile fix, the lazy
@@ -237,7 +232,7 @@ struct LocalDTXFixtureImporterTests {
         let chart = "#TITLE: UTF8 Fixture\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
         try chart.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
 
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: store.context)
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
 
         #expect(song.charts.count == 1, "BOM-less UTF-8 SET.def must decode correctly, not be rejected as garbage")
         #expect(song.charts.first?.difficulty == .easy)
@@ -287,13 +282,11 @@ struct LocalDTXFixtureImporterTests {
         // hard-coded 120 BPM (2 sec/measure), so a 200-BPM chart was overstated by
         // 67% and gameplay progress kept running past the audio end. Both fixtures
         // place a single note in raw measure 99 (0-based), so total measures = 100.
-        let slowStore = try makeStore()
         let slow = try importSyntheticFixture(
-            bpm: 120.0, label: "SLOW", into: slowStore.context
+            bpm: 120.0, label: "SLOW", into: TestContainer.isolatedContainer().context
         )
-        let fastStore = try makeStore()
         let fast = try importSyntheticFixture(
-            bpm: 200.0, label: "FAST", into: fastStore.context
+            bpm: 200.0, label: "FAST", into: TestContainer.isolatedContainer().context
         )
 
         // 100 measures × (4 × 60 / BPM):
@@ -323,25 +316,6 @@ struct LocalDTXFixtureImporterTests {
         let chart = "#TITLE: \(label)\n#ARTIST: Tester\n#BPM: \(bpm)\n#DLEVEL: 50\n#09911: 01000000"
         try chart.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
         return try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-    }
-
-    private struct TestStore {
-        let container: ModelContainer
-        let context: ModelContext
-    }
-
-    private func makeStore() throws -> TestStore {
-        let schema = Schema([
-            Song.self,
-            Chart.self,
-            Note.self,
-            ServerSong.self,
-            ServerChart.self,
-            ScoreRecord.self
-        ])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
-        return TestStore(container: container, context: container.mainContext)
     }
 
     private func soukyuuFixtureURL() throws -> URL {
