@@ -29,6 +29,17 @@ struct LocalDTXFixtureImporterTests {
         #expect(song.previewFilePath?.hasSuffix("preview.mp3") == true)
         #expect((song.bgmStartOffsetSeconds ?? 0) > 0)
 
+        // Duration must be derived from the chart BPM (165.55) rather than the old
+        // hard-coded 2 sec/measure assumption (which only holds at 120 BPM). All four
+        // Soukyuu charts reach measure 156 (0-based raw DTX measure index), so the
+        // expected total is 157 measures × (4 × 60 / 165.55) ≈ 227.6s → "3:47".
+        // The old 120-BPM math produced "5:14", which made gameplay progress run well
+        // past the audio end because calculateTrackDurationInSeconds trusts this field.
+        #expect(
+            song.duration == "3:47",
+            "Soukyuu duration should be BPM-derived (3:47 at 165.55 BPM), not the 120-BPM '5:14' value"
+        )
+
         let charts = song.charts.sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
         #expect(charts.map(\.difficulty) == [.easy, .medium, .hard, .expert])
         #expect(charts.map(\.level) == [36, 60, 74, 87])
@@ -267,6 +278,51 @@ struct LocalDTXFixtureImporterTests {
         try Data().write(to: bundleRoot.appendingPathComponent("chart.dtx"))
 
         #expect(LocalDTXFixtureImporter.locateSETFile(in: bundleRoot) == nil)
+    }
+
+    @Test("importSong derives duration from chart BPM, not a hard-coded 2 sec/measure")
+    func durationDerivedFromChartBPM() throws {
+        // Two synthetic fixtures with the same measure layout but different BPMs must
+        // produce proportionally different durations. The old `calculateDuration`
+        // hard-coded 120 BPM (2 sec/measure), so a 200-BPM chart was overstated by
+        // 67% and gameplay progress kept running past the audio end. Both fixtures
+        // place a single note in raw measure 99 (0-based), so total measures = 100.
+        let slowStore = try makeStore()
+        let slow = try importSyntheticFixture(
+            bpm: 120.0, label: "SLOW", into: slowStore.context
+        )
+        let fastStore = try makeStore()
+        let fast = try importSyntheticFixture(
+            bpm: 200.0, label: "FAST", into: fastStore.context
+        )
+
+        // 100 measures × (4 × 60 / BPM):
+        //   120 BPM → 200.0s → "3:20"
+        //   200 BPM → 120.0s → "2:00"
+        // The old code produced "3:20" for both.
+        #expect(slow.duration == "3:20", "120 BPM @ 100 measures = 200s = 3:20")
+        #expect(fast.duration == "2:00", "200 BPM @ 100 measures = 120s = 2:00")
+        #expect(
+            fast.duration != slow.duration,
+            "Duration must vary with BPM, not be the fixed 2 sec/measure value"
+        )
+    }
+
+    @discardableResult
+    private func importSyntheticFixture(
+        bpm: Double, label: String, into context: ModelContext
+    ) throws -> Song {
+        let tempDir = makeTempDirectory()
+        let setDef = """
+        #TITLE: \(label)
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
+        // Raw measure index 099 in DTX is 0-based; importer uses (maxMeasure + 1) = 100.
+        let chart = "#TITLE: \(label)\n#ARTIST: Tester\n#BPM: \(bpm)\n#DLEVEL: 50\n#09911: 01000000"
+        try chart.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
+        return try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
     }
 
     private struct TestStore {
