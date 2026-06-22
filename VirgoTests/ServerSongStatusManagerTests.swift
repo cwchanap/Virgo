@@ -332,6 +332,60 @@ struct ServerSongStatusManagerTests {
         }
     }
 
+    @Test("deleteLocalSong does not remove bundle-backed audio assets (bundled-fixture regression)")
+    func testDeleteLocalSongSkipsBundleAudioPaths() async throws {
+        // Reproduces the bundled-Soukyuu-fixture regression: a Song whose
+        // bgmFilePath/previewFilePath resolve into the app bundle must not have
+        // those files deleted when the user removes the song from the library.
+        // On writable macOS/dev bundles the delete would otherwise succeed and
+        // silently strip BGM/preview from the bundle, so a later re-import comes
+        // back without audio.
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let container = TestContainer.shared.container
+
+            let bundleRoot = FileManager.default.temporaryDirectory
+                .appendingPathComponent("virgo-test-bundle-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: bundleRoot) }
+
+            let bgmInBundle = bundleRoot.appendingPathComponent("bgm.m4a")
+            let previewInBundle = bundleRoot.appendingPathComponent("preview.mp3")
+            try Data("bundle-bgm".utf8).write(to: bgmInBundle)
+            try Data("bundle-preview".utf8).write(to: previewInBundle)
+            #expect(FileManager.default.fileExists(atPath: bgmInBundle.path))
+            #expect(FileManager.default.fileExists(atPath: previewInBundle.path))
+
+            let fileManager = ServerSongFileManager(bundleRootURL: bundleRoot)
+            let manager = ServerSongStatusManager(fileManager: fileManager)
+
+            let bundledSong = Song(
+                title: "Bundled Fixture",
+                artist: "Bundled Artist",
+                bpm: 120.0,
+                duration: "2:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "bundled-fixture-id",
+                bgmFilePath: bgmInBundle.path,
+                previewFilePath: previewInBundle.path
+            )
+            context.insert(bundledSong)
+            try context.save()
+
+            let success = await manager.deleteLocalSong(bundledSong, container: container)
+            #expect(success)
+
+            // DB row is gone, but the bundle audio assets are untouched.
+            #expect(FileManager.default.fileExists(atPath: bgmInBundle.path))
+            #expect(FileManager.default.fileExists(atPath: previewInBundle.path))
+
+            let verificationContext = ModelContext(container)
+            let remaining = try verificationContext.fetch(FetchDescriptor<Song>())
+            #expect(remaining.isEmpty)
+        }
+    }
+
     @Test("deleteDownloadedSong returns false when save fails")
     func testDeleteDownloadedSongSaveFailureReturnsFalse() async throws {
         try await TestSetup.withTestSetup {

@@ -87,4 +87,57 @@ struct ServerSongFileManagerTests {
         fileManager.deleteFile(at: missing, label: "audio")
         #expect(true)
     }
+
+    @Test("deleteFile(at:label:) refuses to delete files inside the app bundle")
+    func testDeleteFileSkipsBundlePaths() throws {
+        // Treat a throwaway temp directory as the "bundle root" so the guard is
+        // exercised without mutating the real app bundle. Bundled songs (e.g. the
+        // demo Soukyuu fixture) record audio paths that resolve into Bundle.main;
+        // deleting those would corrupt the bundle on writable macOS/dev builds.
+        let bundleRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("virgo-test-bundle-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: bundleRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bundleRoot) }
+
+        let bundleAudio = bundleRoot.appendingPathComponent("bgm.m4a")
+        try Data("bundle-audio".utf8).write(to: bundleAudio)
+        #expect(FileManager.default.fileExists(atPath: bundleAudio.path))
+
+        let manager = ServerSongFileManager(bundleRootURL: bundleRoot)
+        manager.deleteFile(at: bundleAudio.path, label: "BGM")
+
+        #expect(FileManager.default.fileExists(atPath: bundleAudio.path))
+    }
+
+    @Test("deleteFile(at:label:) still deletes user-storage paths when a custom bundle root is set")
+    func testDeleteFileStillRemovesNonBundlePaths() throws {
+        let bundleRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("virgo-test-bundle-\(UUID().uuidString)", isDirectory: true)
+        let externalAudio = FileManager.default.temporaryDirectory
+            .appendingPathComponent("virgo-external-\(UUID().uuidString).m4a")
+        try Data("external".utf8).write(to: externalAudio)
+        defer { try? FileManager.default.removeItem(at: externalAudio) }
+
+        let manager = ServerSongFileManager(bundleRootURL: bundleRoot)
+        manager.deleteFile(at: externalAudio.path, label: "BGM")
+
+        #expect(!FileManager.default.fileExists(atPath: externalAudio.path))
+    }
+
+    @Test("isPath(_:inside:) matches nested bundle resources but not sibling apps")
+    func testIsPathInsideBundle() {
+        let bundleRoot = URL(fileURLWithPath: "/Applications/Virgo.app")
+
+        // Resource nested under the bundle.
+        #expect(ServerSongFileManager.isPath(
+            "/Applications/Virgo.app/Contents/Resources/bgm.m4a", inside: bundleRoot))
+        // Sibling whose name shares a prefix component must NOT match.
+        #expect(!ServerSongFileManager.isPath(
+            "/Applications/Virgo.app.other/Contents/Resources/bgm.m4a", inside: bundleRoot))
+        // Path outside the bundle entirely.
+        #expect(!ServerSongFileManager.isPath(
+            "/Users/u/Documents/BGM/song.ogg", inside: bundleRoot))
+        // The bundle root itself.
+        #expect(ServerSongFileManager.isPath("/Applications/Virgo.app", inside: bundleRoot))
+    }
 }
