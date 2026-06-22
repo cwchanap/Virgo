@@ -85,7 +85,7 @@ enum LocalDTXFixtureImporter {
             title: setList.title ?? firstChart.data.title,
             artist: firstChart.data.artist,
             bpm: firstChart.data.bpm,
-            duration: formatDuration(Int(calculateDuration(from: importedCharts))),
+            duration: formatDuration(Int(calculateDuration(from: importedCharts, bpm: firstChart.data.bpm))),
             genre: "DTX Import",
             timeSignature: .fourFour,
             isServerImported: true,
@@ -286,13 +286,25 @@ enum LocalDTXFixtureImporter {
         return FileManager.default.fileExists(atPath: url.path) ? url.path : nil
     }
 
-    private static func calculateDuration(from importedCharts: [ImportedChart]) -> TimeInterval {
+    /// Derives the imported song's duration from the highest measure number across
+    /// all charts and the chart BPM.
+    ///
+    /// The previous implementation hard-coded `2 seconds per measure` (`/ 30.0 * 60.0`
+    /// = 30 measures/minute at 4/4), which is only correct at 120 BPM. For charts at
+    /// other tempos (the bundled Soukyuu fixture is 165.55 BPM) it overstates
+    /// `Song.duration`, and `GameplayViewModel.calculateTrackDurationInSeconds` trusts
+    /// that value, so gameplay progress keeps running well past the chart/audio end.
+    /// Using `4.0 * 60.0 / bpm` matches the per-measure seconds convention already used
+    /// by `DTXChartData.bgmStartOffsetSeconds` and the `.fourFour` time signature set
+    /// on the `Song`.
+    private static func calculateDuration(from importedCharts: [ImportedChart], bpm: Double) -> TimeInterval {
         let maxMeasure = importedCharts
             .flatMap(\.data.notes)
             .map(\.measureNumber)
             .max()
         guard let maxMeasure else { return 60.0 }
-        return Double(maxMeasure + 1) / 30.0 * 60.0
+        let secondsPerMeasure = 4.0 * 60.0 / bpm
+        return Double(maxMeasure + 1) * secondsPerMeasure
     }
 
     private static func formatDuration(_ seconds: Int) -> String {
