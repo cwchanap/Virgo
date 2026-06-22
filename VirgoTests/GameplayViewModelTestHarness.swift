@@ -60,24 +60,39 @@ enum GameplayViewModelTestHarness {
         return PracticeSettingsService(userDefaults: userDefaults)
     }
 
-    /// Creates a test Chart with sample notes
+    /// Creates a test Chart with sample notes.
+    /// Notes are placed 4-per-measure (the historical layout), but the span is
+    /// extended to at least `measuresCount` measures. This makes the previously
+    /// ignored `measuresCount` parameter actually affect the generated chart
+    /// (it widens the measure span when larger than the natural note-driven
+    /// spread) without changing the default behavior existing tests rely on.
     static func createTestChart(
         noteCount: Int = 4,
         measuresCount: Int = 1
     ) -> Chart {
         let chart = Chart(difficulty: .medium)
 
-        // Add sample notes across measures
-        for i in 0..<noteCount {
-            let measureNumber = (i / 4) + 1
-            let measureOffset = Double(i % 4) * 0.25
-            let note = Note(
-                interval: .quarter,
-                noteType: i % 2 == 0 ? .bass : .snare,
-                measureNumber: measureNumber,
-                measureOffset: measureOffset
-            )
-            chart.notes.append(note)
+        // Natural spread is ceil(noteCount/4) measures at 4 notes per measure.
+        // Respect an explicit measuresCount by widening the span when requested.
+        let naturalMeasures = max(1, (noteCount + 3) / 4)
+        let effectiveMeasures = max(naturalMeasures, max(1, measuresCount))
+        let notesPerMeasure = max(1, (noteCount + effectiveMeasures - 1) / effectiveMeasures)
+
+        var noteIndex = 0
+        for measure in 1...effectiveMeasures {
+            let baseMeasureNumber = measure
+            for beat in 0..<notesPerMeasure {
+                guard noteIndex < noteCount else { break }
+                let measureOffset = Double(beat) * 0.25
+                let note = Note(
+                    interval: .quarter,
+                    noteType: noteIndex % 2 == 0 ? .bass : .snare,
+                    measureNumber: baseMeasureNumber,
+                    measureOffset: measureOffset
+                )
+                chart.notes.append(note)
+                noteIndex += 1
+            }
         }
 
         return chart

@@ -172,43 +172,56 @@ extension GameplayViewModel {
             uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
         )
 
-        if !cachedNotationLayout.noteHeads.isEmpty {
-            let notationMeasurePositions = cachedNotationLayout.measures.map { measure in
-                GameplayLayout.MeasurePosition(
-                    row: measure.row,
-                    xOffset: measure.xOffset,
-                    measureIndex: measure.measureIndex
-                )
-            }
-            let contentWidth = cachedNotationLayout.contentWidth
-            notationStaffLinesView = AnyView(
-                StaffLinesBackgroundView(measurePositions: notationMeasurePositions, width: contentWidth)
-            )
-        } else {
-            notationStaffLinesView = nil
-        }
-
-        if cachedNotes.count != cachedNotationLayout.noteHeads.count, !cachedNotes.isEmpty {
-            let renderedSourceIDs = Set(cachedNotationLayout.noteHeads.map { $0.sourceNoteID })
-            let droppedNotes = cachedNotes.filter { !renderedSourceIDs.contains(ObjectIdentifier($0)) }
-            let droppedReasons = droppedNotes.prefix(5).map { note in
-                let drumType = DrumType.from(noteType: note.noteType)
-                let measureIdx = MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
-                    measureNumber: note.measureNumber, measureOffset: note.measureOffset
-                ))
-                return "noteType=\(note.noteType)(\(drumType?.description ?? "unknown")), " +
-                        "measure=\(note.measureNumber)(idx=\(measureIdx))"
-            }
-            Logger.warning(
-                "Layout engine dropped \(droppedNotes.count) note(s): \(droppedReasons.joined(separator: "; "))"
-                    + (droppedNotes.count > 5 ? " … and \(droppedNotes.count - 5) more" : "")
-            )
-        }
+        cacheNotationStaffLinesView()
+        logDroppedNotesIfAny()
 
         cachedNotationNoteHeadPositions = Dictionary(
             uniqueKeysWithValues: cachedNotationLayout.noteHeadPositionsByID.map { noteHeadID, position in
                 (noteHeadID, (x: Double(position.x), y: Double(position.y)))
             }
+        )
+    }
+
+    /// Builds (or clears) the cached staff-lines background view. Only populated
+    /// when the layout produced note heads, since an empty layout has nothing to
+    /// underlay. Extracted from `cacheNotationLayout()` to keep it under the
+    /// function-body-length limit.
+    private func cacheNotationStaffLinesView() {
+        guard !cachedNotationLayout.noteHeads.isEmpty else {
+            notationStaffLinesView = nil
+            return
+        }
+        let notationMeasurePositions = cachedNotationLayout.measures.map { measure in
+            GameplayLayout.MeasurePosition(
+                row: measure.row,
+                xOffset: measure.xOffset,
+                measureIndex: measure.measureIndex
+            )
+        }
+        let contentWidth = cachedNotationLayout.contentWidth
+        notationStaffLinesView = AnyView(
+            StaffLinesBackgroundView(measurePositions: notationMeasurePositions, width: contentWidth)
+        )
+    }
+
+    /// Logs a diagnostic when the notation layout engine drops notes (i.e. the
+    /// rendered note-head count is lower than the cached note count). Extracted
+    /// from `cacheNotationLayout()` to keep it under the function-body-length limit.
+    private func logDroppedNotesIfAny() {
+        guard cachedNotes.count != cachedNotationLayout.noteHeads.count, !cachedNotes.isEmpty else { return }
+        let renderedSourceIDs = Set(cachedNotationLayout.noteHeads.map { $0.sourceNoteID })
+        let droppedNotes = cachedNotes.filter { !renderedSourceIDs.contains(ObjectIdentifier($0)) }
+        let droppedReasons = droppedNotes.prefix(5).map { note in
+            let drumType = DrumType.from(noteType: note.noteType)
+            let measureIdx = MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
+                measureNumber: note.measureNumber, measureOffset: note.measureOffset
+            ))
+            return "noteType=\(note.noteType)(\(drumType?.description ?? "unknown")), " +
+                    "measure=\(note.measureNumber)(idx=\(measureIdx))"
+        }
+        Logger.warning(
+            "Layout engine dropped \(droppedNotes.count) note(s): \(droppedReasons.joined(separator: "; "))"
+                + (droppedNotes.count > 5 ? " … and \(droppedNotes.count - 5) more" : "")
         )
     }
 

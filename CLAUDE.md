@@ -52,7 +52,7 @@ xcodebuild -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' 
 **Preferred — via XcodeBuildMCP** (configured in Devin CLI):
 1. Call `session_show_defaults` first to verify the active project/scheme/destination.
 2. If defaults are unset, call `session_set_defaults` with `projectPath`, `scheme`, and `simulatorName` (or macOS destination as appropriate).
-3. Run `test_sim` (iOS) or `test_macos` (macOS) with `extraArgs: ["-parallel-testing-enabled", "NO"]` to disable cloning.
+3. Run `test_sim` (iPad simulator) or `test_macos` (macOS) with `extraArgs: ["-parallel-testing-enabled", "NO"]` to disable cloning. `test_sim` must target an iPad simulator destination only — never an iPhone simulator.
 
 **Fallback — direct xcodebuild** (when XcodeBuildMCP is unavailable):
 ```bash

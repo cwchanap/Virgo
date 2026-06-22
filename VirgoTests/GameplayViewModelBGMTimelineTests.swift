@@ -94,7 +94,8 @@ struct GameplayViewModelBGMTimelineTests {
         viewModel.pausedElapsedTime = 2.0
 
         viewModel.updateSpeed(0.5)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Wait for trailing-edge debounce timer to fire (100ms debounce interval + buffer)
+        try await Task.sleep(nanoseconds: 300_000_000)
 
         #expect(
             abs(viewModel.pausedElapsedTime - 4.0) < 0.001,
@@ -284,6 +285,8 @@ struct GameplayViewModelBGMTimelineTests {
 
         // Note at start of measure 1 should have 0 offset
         #expect(viewModel.bgmOffsetSeconds == 0.0)
+
+        viewModel.cleanup()
     }
 
     @Test func testCalculateBGMOffsetWithLaterNote() async throws {
@@ -305,6 +308,8 @@ struct GameplayViewModelBGMTimelineTests {
 
         // Should have non-zero offset since first note is not at start
         #expect(viewModel.bgmOffsetSeconds > 0.0)
+
+        viewModel.cleanup()
     }
 
     @Test("calculateBGMOffset uses persisted DTX BGM lane start when available")
@@ -325,6 +330,8 @@ struct GameplayViewModelBGMTimelineTests {
         viewModel.setupGameplay()
 
         #expect(abs(viewModel.bgmOffsetSeconds - 0.9) < 0.001)
+
+        viewModel.cleanup()
     }
 
     @Test("calculateBGMOffset honors an explicit zero BGM offset even when the first note is later")
@@ -355,6 +362,8 @@ struct GameplayViewModelBGMTimelineTests {
 
         #expect(abs(viewModel.bgmOffsetSeconds) < 0.001,
                "An explicit 0.0 BGM offset must be honored, not replaced by the first-note heuristic")
+
+        viewModel.cleanup()
     }
 
     @Test("calculateBGMOffset scales by speed multiplier for notes after measure 1")
@@ -418,11 +427,11 @@ struct GameplayViewModelBGMTimelineTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
-        // Some CI/local environments may not have BGM test assets available.
-        guard let bgmPlayer = viewModel.bgmPlayer else {
-            viewModel.cleanup()
-            return
-        }
+        // Inject an in-memory BGM player so the clamp path is exercised
+        // deterministically regardless of whether BGM test assets exist on disk.
+        let bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 10.0)
+        viewModel.bgmPlayer = bgmPlayer
+        #expect(viewModel.bgmPlayer != nil, "BGM player must be present to validate the clamp path")
 
         viewModel.startPlayback()
         #expect(viewModel.isPlaying == true)
@@ -450,11 +459,10 @@ struct GameplayViewModelBGMTimelineTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
-        // Some CI/local environments may not have BGM test assets available.
-        guard let bgmPlayer = viewModel.bgmPlayer else {
-            viewModel.cleanup()
-            return
-        }
+        // Inject an in-memory BGM player so the rate assertions are deterministic.
+        let bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 10.0)
+        viewModel.bgmPlayer = bgmPlayer
+        #expect(viewModel.bgmPlayer != nil, "BGM player must be present to validate the rate path")
 
         viewModel.startPlayback()
         #expect(viewModel.isPlaying == true)
@@ -516,23 +524,19 @@ struct GameplayViewModelBGMTimelineTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
 
-        // Inject a mock BGM player to trigger clamp behavior
-        // We can't easily mock AVAudioPlayer, but we can verify the logic
-        // by checking that setupGameplay handles the clamp correctly
+        // Inject a mock BGM player so the clamp behavior is deterministically
+        // exercised. Without this, bgmPlayer is nil and no clamp ever runs.
+        viewModel.bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 10.0)
         viewModel.setupGameplay()
 
         // Wait for async setup
         try await Task.sleep(nanoseconds: 50_000_000)
 
-        // If BGM is present and speed was clamped, verify the effective speed is consistent
-        // The key assertion: practiceSettings.speedMultiplier should be >= 0.5 when BGM is present
-        // (or remain at original value if no BGM)
-        if viewModel.bgmPlayer != nil {
-            #expect(
-                practiceSettings.speedMultiplier >= 0.5,
-                "Speed should be clamped to at least 50% when BGM is present"
-            )
-        }
+        // BGM is present, so persisted 0.25 speed must have been clamped to >= 0.5.
+        #expect(
+            practiceSettings.speedMultiplier >= 0.5,
+            "Speed should be clamped to at least 50% when BGM is present"
+        )
 
         // The critical fix: lastAppliedSpeedMultiplier must reflect the effective speed
         // This is verified indirectly by checking that speed changes work correctly
@@ -542,16 +546,13 @@ struct GameplayViewModelBGMTimelineTests {
         viewModel.updateSpeed(1.0)
         try await Task.sleep(nanoseconds: 300_000_000)
 
-        // After speed change, effective BPM should reflect the new speed
-        // The doubling expectation only applies when BGM is present and speed was clamped
-        // Without BGM, speed goes from 0.25 to 1.0 (4x), not 0.5 to 1.0 (2x)
-        if viewModel.bgmPlayer != nil {
-            let newEffectiveBPM = viewModel.effectiveBPM()
-            #expect(
-                abs(newEffectiveBPM - initialEffectiveBPM * 2.0) < 0.01,
-                "BPM should approximately double when going from 0.5 to 1.0 with BGM clamping"
-            )
-        }
+        // After speed change, effective BPM should reflect the new speed.
+        // With BGM clamping, speed went from 0.5 to 1.0 (2x).
+        let newEffectiveBPM = viewModel.effectiveBPM()
+        #expect(
+            abs(newEffectiveBPM - initialEffectiveBPM * 2.0) < 0.01,
+            "BPM should approximately double when going from 0.5 to 1.0 with BGM clamping"
+        )
 
         viewModel.cleanup()
     }
