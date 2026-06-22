@@ -3,6 +3,15 @@ import Foundation
 /// Handles BGM and preview file operations for server songs
 class ServerSongFileManager: @unchecked Sendable {
 
+    /// Root URL of the app bundle. Paths inside this tree are read-only app
+    /// resources and must never be deleted. Defaults to `Bundle.main.bundleURL`;
+    /// injectable so the guard is unit-testable without mutating the real bundle.
+    private let bundleRootURL: URL
+
+    init(bundleRootURL: URL = Bundle.main.bundleURL) {
+        self.bundleRootURL = bundleRootURL
+    }
+
     /// Save BGM file to local storage
     func saveBGMFile(_ data: Data, for songId: String) throws -> String {
         // Get the Documents directory
@@ -41,7 +50,18 @@ class ServerSongFileManager: @unchecked Sendable {
 
     /// Delete a file at the given path with a descriptive label for logging.
     /// Idempotent: missing-file errors are treated as a no-op rather than an error.
+    ///
+    /// Guards against paths inside the app bundle: bundled songs (e.g. the demo
+    /// Soukyuu fixture) record `bgmFilePath`/`previewFilePath` that point directly
+    /// into `Bundle.main` resources. Deleting those would either throw sandbox
+    /// errors on read-only iOS bundles or — worse — actually remove the audio
+    /// from writable macOS/dev bundles, so a later re-import comes back without
+    /// BGM/preview. Bundle resources are app assets, not user-managed storage.
     func deleteFile(at path: String, label: String = "file") {
+        if Self.isPath(path, inside: bundleRootURL) {
+            Logger.database("Skipping \(label) deletion — path is inside app bundle: \(path)")
+            return
+        }
         do {
             try FileManager.default.removeItem(atPath: path)
             Logger.database("Deleted \(label) file at path: \(path)")
@@ -51,6 +71,15 @@ class ServerSongFileManager: @unchecked Sendable {
         } catch {
             Logger.error("Failed to delete \(label) file at \(path): \(error.localizedDescription)")
         }
+    }
+
+    /// Returns true when `path` is the bundle root itself or lives anywhere beneath it.
+    /// Uses standardized absolute paths and a trailing-slash prefix match so a bundle
+    /// at `/X.app` cannot accidentally match `/X.app.other/file`.
+    static func isPath(_ path: String, inside root: URL) -> Bool {
+        let rootPath = root.standardizedFileURL.path
+        let targetPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        return targetPath == rootPath || targetPath.hasPrefix(rootPath + "/")
     }
 
     /// Delete BGM file for a song
