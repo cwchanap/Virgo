@@ -1,6 +1,15 @@
 import Foundation
 import Combine
 
+/// Builds the `DispatchSourceTimer` that enforces the capture timeout.
+/// `action` must be invoked on the main actor when the timer fires. The default
+/// implementation uses a background-queue timer; tests inject a controllable
+/// scheduler to avoid relying on wall-clock timing under CI load.
+typealias MIDILearnTimeoutTimerFactory = @MainActor (
+    Double, // timeoutSeconds
+    @escaping @MainActor () -> Void
+) -> DispatchSourceTimer
+
 @MainActor
 final class MIDILearnSession: ObservableObject {
     @Published private(set) var targetDrumType: DrumType?
@@ -10,6 +19,7 @@ final class MIDILearnSession: ObservableObject {
     private let settingsManager: InputSettingsManager
     private let isSelectedSourceAvailable: @MainActor () -> Bool
     private let timeoutQueue = DispatchQueue(label: "com.virgo.midi.learn-timeout")
+    private let makeTimer: MIDILearnTimeoutTimerFactory
     // nonisolated so `deinit` (which is nonisolated) can cancel without a main-actor hop.
     // All access is serialized through `timeoutQueue`.
     private nonisolated(unsafe) var timeoutTimer: DispatchSourceTimer?
@@ -24,10 +34,12 @@ final class MIDILearnSession: ObservableObject {
 
     init(
         settingsManager: InputSettingsManager,
-        isSelectedSourceAvailable: @escaping @MainActor () -> Bool = { true }
+        isSelectedSourceAvailable: @escaping @MainActor () -> Bool = { true },
+        makeTimeoutTimer: MIDILearnTimeoutTimerFactory? = nil
     ) {
         self.settingsManager = settingsManager
         self.isSelectedSourceAvailable = isSelectedSourceAvailable
+        self.makeTimer = makeTimeoutTimer ?? Self.defaultTimeoutTimer(queue: timeoutQueue)
     }
 
     deinit {
@@ -48,15 +60,9 @@ final class MIDILearnSession: ObservableObject {
         isCapturing = true
         lastConflictMessage = nil
 
-        let timer = DispatchSource.makeTimerSource(queue: timeoutQueue)
-        timer.schedule(deadline: .now() + timeoutSeconds)
-        timer.setEventHandler { [weak self] in
-            // Hop to the main actor to mutate @MainActor state.
-            Task { @MainActor in
-                self?.timeoutCaptureIfNeeded(captureID: captureID)
-            }
+        let timer = makeTimer(timeoutSeconds) { [weak self] in
+            self?.timeoutCaptureIfNeeded(captureID: captureID)
         }
-        timer.resume()
         timeoutQueue.sync { timeoutTimer = timer }
     }
 
@@ -99,6 +105,22 @@ final class MIDILearnSession: ObservableObject {
     private func timeoutCaptureIfNeeded(captureID: UUID) {
         guard isCapturing, activeCaptureID == captureID else { return }
         cancelCapture()
+    }
+
+    /// Production default: a background-queue `DispatchSourceTimer` whose handler
+    /// hops to the main actor to mutate capture state. Behavior is identical to the
+    /// previous inline implementation.
+    private static func defaultTimeoutTimer(queue: DispatchQueue) -> MIDILearnTimeoutTimerFactory {
+        { seconds, action in
+            let timer = DispatchSource.makeTimerSource(queue: queue)
+            timer.schedule(deadline: .now() + seconds)
+            timer.setEventHandler {
+                // Hop to the main actor to mutate @MainActor state.
+                Task { @MainActor in action() }
+            }
+            timer.resume()
+            return timer
+        }
     }
 }
 

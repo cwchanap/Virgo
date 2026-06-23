@@ -78,7 +78,15 @@ struct GameplayViewModelScoringTests {
                 "Results sheet should stay hidden during the late-tolerance grace window")
 
         // Wait past the grace period (100ms) for the scheduled task to finalize.
-        try await Task.sleep(nanoseconds: 250_000_000)
+        // Poll instead of a fixed sleep: the completion task is not cancelled here,
+        // so it is guaranteed to run — polling catches it whenever the cooperative
+        // pool gets to it, making the assertion robust under CI load where the
+        // grace-period `Task.sleep` can be delayed well past its nominal duration.
+        let clock = ContinuousClock()
+        let completionDeadline = clock.now.advanced(by: .seconds(3))
+        while clock.now < completionDeadline && !viewModel.isShowingSessionResults {
+            try await Task.sleep(for: .milliseconds(10))
+        }
 
         #expect(viewModel.isShowingSessionResults == true,
                 "Results sheet should appear once the late-tolerance grace period elapses")

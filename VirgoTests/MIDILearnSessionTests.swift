@@ -5,6 +5,20 @@ import Foundation
 @Suite("MIDILearnSession Tests", .serialized)
 @MainActor
 struct MIDILearnSessionTests {
+    /// Deterministic timeout scheduler for tests that only need to verify what
+    /// happens once the timeout *fires*. It schedules the action on the main queue
+    /// (via a `DispatchSourceTimer` at `deadline: .now()`) instead of waiting for a
+    /// real wall-clock delay, so the test does not flake under CI load where the
+    /// cooperative thread pool can be starved. The returned timer is cancellable,
+    /// so `cancelTimeout()` still prevents a superseded capture from firing.
+    private static let immediateTimeoutScheduler: MIDILearnTimeoutTimerFactory = { _, action in
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now())
+        timer.setEventHandler { MainActor.assumeIsolated { action() } }
+        timer.resume()
+        return timer
+    }
+
     @Test("learn session captures the first valid note from the selected source")
     func learnSessionCapturesTheFirstValidNoteFromTheSelectedSource() {
         let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
@@ -66,18 +80,23 @@ struct MIDILearnSessionTests {
         )
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
-        let learnSession = MIDILearnSession(settingsManager: settings)
+        // Inject an immediate-fire timeout scheduler so this test never depends on
+        // wall-clock timing. The scheduler fires the timeout on the next main
+        // run-loop turn regardless of `timeoutSeconds`, making the assertion
+        // deterministic even when the CI runner's cooperative thread pool is loaded.
+        let learnSession = MIDILearnSession(
+            settingsManager: settings,
+            makeTimeoutTimer: Self.immediateTimeoutScheduler
+        )
         settings.setSelectedMIDISource(id: "source-2", displayName: "TD-17")
 
-        // The timeout now runs on a dedicated background DispatchSourceTimer, so it
-        // fires ~on time regardless of main-actor load. A 3s deadline gives ample
-        // headroom over the 0.5s timeout while still failing fast if the timer broke.
         learnSession.beginCapture(for: .kick, timeoutSeconds: 0.5)
 
+        // The injected scheduler fires on the main queue; yield until capture clears.
         let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(3))
+        let deadline = clock.now.advanced(by: .seconds(2))
         while clock.now < deadline && learnSession.isCapturing {
-            try await Task.sleep(for: .milliseconds(20))
+            try await Task.sleep(for: .milliseconds(5))
         }
 
         #expect(learnSession.isCapturing == false, "Session should time out and stop capturing")
