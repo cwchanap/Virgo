@@ -85,7 +85,7 @@ struct LocalDTXFixtureImporterTests {
     @Test("importSong drops charts whose difficulty label is not recognized")
     func dropsChartsWithUnrecognizedDifficultyLabel() throws {
         let context = TestContainer.isolatedContainer().context
-        let tempDir = makeTempDirectory()
+        let tempDir = try makeTempDirectory()
 
         // L1 is a known label (BASIC -> easy); L2 uses an unknown label so it must be
         // dropped rather than imported as a silent missing difficulty.
@@ -114,7 +114,7 @@ struct LocalDTXFixtureImporterTests {
     @Test("re-import clears stale audio paths when the bundled audio is removed")
     func refreshClearsStaleAudioPathsWhenAssetsRemoved() throws {
         let context = TestContainer.isolatedContainer().context
-        let tempDir = makeTempDirectory()
+        let tempDir = try makeTempDirectory()
 
         let setDef = """
         #TITLE: Stale Fixture
@@ -216,7 +216,7 @@ struct LocalDTXFixtureImporterTests {
     @Test("importSong decodes a BOM-less UTF-8 SET.def without lossy UTF-16 garbage")
     func decodesUTF8SETDefWithoutBOM() throws {
         let context = TestContainer.isolatedContainer().context
-        let tempDir = makeTempDirectory()
+        let tempDir = try makeTempDirectory()
 
         // UTF-8 with no BOM. Before the BOM-aware decodeSETFile fix, the lazy
         // [.utf16, ...].first chain *lossily succeeded* on these bytes as garbage CJK
@@ -247,7 +247,7 @@ struct LocalDTXFixtureImporterTests {
         // whole-bundle walk implemented by `locateSETFile`. Constructing a loadable
         // `Bundle` with this layout in-process is impractical; the filesystem walk is
         // the unit that needs coverage here.
-        let bundleRoot = makeTempDirectory()
+        let bundleRoot = try makeTempDirectory()
         let fixtureDir = bundleRoot
             .appendingPathComponent("Contents", isDirectory: true)
             .appendingPathComponent("Resources", isDirectory: true)
@@ -268,7 +268,7 @@ struct LocalDTXFixtureImporterTests {
 
     @Test("locateSETFile returns nil when no SET.def exists in the tree")
     func locateSETFileReturnsNilWhenAbsent() throws {
-        let bundleRoot = makeTempDirectory()
+        let bundleRoot = try makeTempDirectory()
         // A directory with other files but no SET.def.
         try Data().write(to: bundleRoot.appendingPathComponent("chart.dtx"))
 
@@ -305,7 +305,7 @@ struct LocalDTXFixtureImporterTests {
     private func importSyntheticFixture(
         bpm: Double, label: String, into context: ModelContext
     ) throws -> Song {
-        let tempDir = makeTempDirectory()
+        let tempDir = try makeTempDirectory()
         let setDef = """
         #TITLE: \(label)
         #L1LABEL: BASIC
@@ -327,10 +327,10 @@ struct LocalDTXFixtureImporterTests {
         return url
     }
 
-    private func makeTempDirectory() -> URL {
+    private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("virgo-dtx-test-\(UUID().uuidString)", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
 }
