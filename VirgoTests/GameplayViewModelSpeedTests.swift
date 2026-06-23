@@ -1,5 +1,5 @@
 //
-//  GameplayViewModelSpeedControlCoverageTests.swift
+//  GameplayViewModelSpeedTests.swift
 //  VirgoTests
 //
 //  Targeted unit tests for GameplayViewModel+SpeedControl.swift.
@@ -29,9 +29,9 @@ final class MetronomePlaybackTimeStub: MetronomeEngine {
     override func stop() {}
 }
 
-@Suite("SpeedControlCoverage", .serialized)
+@Suite("SpeedCoverage", .serialized)
 @MainActor
-struct GameplayViewModelSpeedControlCoverageTests {
+struct GameplayViewModelSpeedTests {
 
     // MARK: - effectiveBPM()
 

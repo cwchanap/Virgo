@@ -1,5 +1,5 @@
 //
-//  GameplayViewModelComputationsVisualCoverageTests.swift
+//  GameplayViewModelComputationsTests.swift
 //  VirgoTests
 //
 //  Targeted coverage for branches in GameplayViewModel+Computations.swift and
@@ -41,9 +41,9 @@ private enum CoverageHelpers {
 
 // MARK: - Computations coverage
 
-@Suite("ComputationsVisualCoverage", .serialized)
+@Suite("ComputationsCoverage", .serialized)
 @MainActor
-struct GameplayViewModelComputationsVisualCoverageTests {
+struct GameplayViewModelComputationsTests {
 
     // MARK: - updateRowWidth
 
