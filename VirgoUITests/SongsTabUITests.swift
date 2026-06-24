@@ -113,7 +113,34 @@ final class SongsTabUITests: XCTestCase {
             }
         }
     }
-    
+
+    /// Regression guard for the stable downloaded-row accessibility identifier.
+    /// `DownloadedSongsView.rowViewID(for:)` produces a canonical
+    /// "downloaded-song-row-<stableID>" identifier that UI automation and
+    /// accessibility clients use to locate a specific row. The identifier must
+    /// actually be attached to the row container in the accessibility tree.
+    @MainActor
+    func testDownloadedSongsExposeStableRowAccessibilityIdentifier() throws {
+        try tapStartButton()
+
+        XCTAssertTrue(switchToDownloadedTab(app: app))
+
+        // Skip when the seeded library has no downloaded songs; the assertion is
+        // only meaningful when rows are actually rendered.
+        guard hasDownloadedSongs(app: app) else {
+            return
+        }
+
+        // Any row whose accessibility identifier begins with the canonical
+        // prefix proves the rowViewID helper is attached to the row container.
+        let rowIdentifierPredicate = NSPredicate(format: "identifier BEGINSWITH %@", "downloaded-song-row-")
+        let matchingRows = app.descendants(matching: .any).matching(rowIdentifierPredicate)
+        XCTAssertTrue(
+            matchingRows.firstMatch.waitForExistence(timeout: 5),
+            "Downloaded rows must expose their stable accessibility identifier (prefix 'downloaded-song-row-')"
+        )
+    }
+
     @MainActor
     func testDownloadedSongsPlayback() throws {
         try tapStartButton()
