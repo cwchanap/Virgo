@@ -98,8 +98,24 @@ enum LocalDTXFixtureImporter {
     @discardableResult
     static func importBundledSoukyuuIfAvailable(
         into context: ModelContext,
-        bundle: Bundle = .main
+        bundle: Bundle = .main,
+        deletionStore: BundledFixtureDeletionStore = .standard
     ) throws -> Song? {
+        // Respect a user's explicit deletion of the bundled demo. `seedLocalDTXFixtures`
+        // runs on every production launch and otherwise recreates a deleted demo
+        // because the only dedupe key is `serverSongId`. If the user removed the
+        // bundled Soukyuu song AND it is no longer present, skip re-seeding so the
+        // Delete action is durable. If the record still exists (e.g. a delete that
+        // did not persist), fall through to the normal path so the self-healing
+        // refresh logic (audio paths, BGM offset, duration) still repairs it.
+        if deletionStore.isDeleted(songId: soukyuuSongId),
+           try existingSong(with: soukyuuSongId, in: context) == nil {
+            Logger.info(
+                "Skipping bundled DTX fixture import: user deleted '\(soukyuuSongId)'"
+            )
+            return nil
+        }
+
         // Locate SET.def (the import entry point) in the bundle. Try the flat
         // resource-root lookup first — verified in the built Virgo.app,
         // fileSystemSynchronizedGroups flattens Virgo/Fixtures/soukyuu_e_no_shouka/*

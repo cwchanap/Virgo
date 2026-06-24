@@ -255,6 +255,10 @@ struct ContentView: View {
         for song in songsToDelete {
             modelContext.delete(song)
         }
+        // Also drop the bundled-fixture deletion tombstone so a `-ResetState` run
+        // re-seeds the bundled demo into the clean slate. Without this, a prior
+        // recorded delete would suppress the re-seed even after wiping all songs.
+        BundledFixtureDeletionStore.standard.clear()
         do {
             try modelContext.save()
             Logger.database("Cleared persisted test state for UI test isolation")

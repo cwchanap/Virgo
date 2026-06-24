@@ -88,6 +88,13 @@ class ServerSongStatusManager: @unchecked Sendable {
                 )
 
                 try saveContext(backgroundContext)
+
+                // Record the user's intent to remove a bundled demo song so the
+                // startup seed path does not recreate it on the next launch.
+                // `recordIfBundled` ignores non-bundled ids (e.g. server-downloaded
+                // songs), so this is a no-op for the normal server-download delete.
+                BundledFixtureDeletionStore.standard.recordIfBundled(songId: songServerSongId)
+
                 Self.deleteAssociatedFiles(
                     bgmPath: bgmFilePath, previewPath: previewFilePath, fileManager: fileManager
                 )
