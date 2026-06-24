@@ -8,6 +8,7 @@
 import Testing
 import Foundation
 import AVFoundation
+import Combine
 import Observation
 import SwiftUI
 @testable import Virgo
@@ -102,6 +103,21 @@ enum GameplayViewModelTestHarness {
     static func createTestMetronome() -> MetronomeEngine {
         return MetronomeEngine()
     }
+
+    /// A `GameplayCompletionScheduler` that fires the completion action on the
+    /// next main-actor run-loop tick instead of waiting the real late-tolerance
+    /// grace window. The grace-period delay is a production constant
+    /// (`TimingAccuracy.good.toleranceMs`) that should not be re-measured by
+    /// wall-clock in unit tests; this scheduler keeps completion-path tests
+    /// deterministic under CI main-actor contention while still preserving the
+    /// schedule-then-defer-then-fire semantics (the action never runs
+    /// synchronously inside `updateContinuousVisuals`).
+    static func immediateCompletionScheduler() -> GameplayCompletionScheduler {
+        { _, action in
+            let task = Task { @MainActor in action() }
+            return AnyCancellable { task.cancel() }
+        }
+    }
 }
 
 @MainActor
@@ -110,6 +126,22 @@ extension GameplayViewModel {
         let (userDefaults, _) = TestUserDefaults.makeIsolated()
         let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
         self.init(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
+    }
+
+    convenience init(
+        chart: Chart,
+        metronome: MetronomeEngine,
+        completionScheduler: @escaping GameplayCompletionScheduler
+    ) {
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        self.init(
+            chart: chart,
+            metronome: metronome,
+            practiceSettings: practiceSettings,
+            scorePersistence: ScorePersistenceService.makeInMemory(),
+            completionScheduler: completionScheduler
+        )
     }
 }
 

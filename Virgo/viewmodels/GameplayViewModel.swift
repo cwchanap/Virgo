@@ -11,6 +11,17 @@ import Observation
 import AVFoundation
 import Combine
 
+/// Schedules the delayed playback-completion action. `action` is invoked on the
+/// main actor after `delaySeconds`; the returned cancellable's `cancel()` must
+/// prevent a not-yet-fired action from running. The default implementation uses a
+/// background-queue `DispatchSourceTimer` (reliable under main-actor contention);
+/// tests inject an immediate scheduler to avoid wall-clock timing under CI load,
+/// mirroring the `MIDILearnTimeoutTimerFactory` pattern.
+typealias GameplayCompletionScheduler = @MainActor (
+    TimeInterval,
+    @escaping @MainActor () -> Void
+) -> AnyCancellable
+
 /// ViewModel for GameplayView that consolidates state management
 /// and provides a clean separation between UI and business logic.
 @Observable
@@ -196,8 +207,13 @@ final class GameplayViewModel {
     // MARK: - Completion Scheduling
     /// Whether playback completion has been scheduled (prevents double-scheduling during grace period)
     var completionScheduled = false // internal for cross-file extension access
-    /// Task for delayed completion to allow late-tolerance window for final notes
-    var completionTask: Task<Void, Never>?
+    /// Cancellable handle for the delayed-completion grace-period timer. Nilled
+    /// by `pausePlayback`/`cleanup`/`resetScoring` so a stale grace-period action
+    /// cannot fire after the user dismisses gameplay or starts a new run.
+    var completionTask: AnyCancellable?
+    /// Injected scheduler used to defer the playback-completion action by the
+    /// late-tolerance grace window. Tests inject an immediate scheduler.
+    let completionScheduler: GameplayCompletionScheduler // internal for cross-file extension access
 
     // MARK: - Score Persistence
     let scorePersistence: ScorePersistenceService
@@ -228,12 +244,14 @@ final class GameplayViewModel {
         chart: Chart,
         metronome: MetronomeEngine,
         practiceSettings: PracticeSettingsService,
-        scorePersistence: ScorePersistenceService
+        scorePersistence: ScorePersistenceService,
+        completionScheduler: GameplayCompletionScheduler? = nil
     ) {
         self.chart = chart
         self.metronome = metronome
         self.practiceSettings = practiceSettings
         self.scorePersistence = scorePersistence
+        self.completionScheduler = completionScheduler ?? Self.defaultCompletionScheduler()
         self.lastAppliedSpeedMultiplier = practiceSettings.speedMultiplier
     }
 
@@ -255,6 +273,25 @@ final class GameplayViewModel {
         )
     }
     #endif
+
+    /// Production default: a background-queue `DispatchSourceTimer` whose handler
+    /// hops to the main actor to finalize playback. Scheduling the timer off the
+    /// main actor keeps the late-tolerance grace-period firing on time even when
+    /// the main actor is contended (final-beat visual/input work), matching the
+    /// `MIDILearnSession` timeout-timer approach.
+    private static func defaultCompletionScheduler() -> GameplayCompletionScheduler {
+        { delaySeconds, action in
+            let queue = DispatchQueue(label: "com.virgo.gameplay.completion")
+            let timer = DispatchSource.makeTimerSource(queue: queue)
+            timer.schedule(deadline: .now() + delaySeconds)
+            timer.setEventHandler {
+                Task { @MainActor in action() }
+            }
+            timer.resume()
+            // The cancellable retains the timer until it fires or is cancelled.
+            return AnyCancellable { timer.cancel() }
+        }
+    }
 
     // MARK: - Unique ID Generation
     /// Monotonic counter for generating unique DrumBeat IDs

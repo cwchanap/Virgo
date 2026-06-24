@@ -53,10 +53,21 @@ struct GameplayViewModelScoringTests {
         // notes can still be scored. We drive the real continuous-visual path (the
         // same one the metronome/tick callback uses) to prove the scheduling and the
         // delayed finalization actually run, rather than only setting a property.
+        //
+        // The view model is constructed with an immediate completion scheduler so the
+        // grace window resolves on the next main-actor tick instead of the real
+        // 100ms wall-clock delay — the delay value itself is a production constant
+        // that must not be re-measured by wall-clock in a unit test (it is flaky
+        // under main-actor contention when the full bundle runs in parallel). This
+        // still exercises the schedule-then-defer-then-fire mechanism end to end.
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
 
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: metronome,
+            completionScheduler: GameplayViewModelTestHarness.immediateCompletionScheduler()
+        )
         await viewModel.loadChartData()
         viewModel.setupGameplay()
         viewModel.startPlayback()
@@ -71,21 +82,20 @@ struct GameplayViewModelScoringTests {
         // duration so playbackProgress crosses 1.0 and a fresh beat advances.
         viewModel.updateContinuousVisualsForTesting(elapsedTime: viewModel.cachedTrackDuration + 1.0)
 
-        // Scheduling must have fired, but the grace-period task must not have run yet.
+        // Scheduling must have fired, but the deferred completion must not have run
+        // yet (the immediate scheduler hops to the next main-actor tick, which has
+        // not happened because no `await` has occurred since scheduling).
         #expect(viewModel.completionScheduled == true,
                 "Reaching the end should schedule delayed completion")
         #expect(viewModel.isShowingSessionResults == false,
                 "Results sheet should stay hidden during the late-tolerance grace window")
 
-        // Wait past the grace period (100ms) for the scheduled task to finalize.
-        // Poll instead of a fixed sleep: the completion task is not cancelled here,
-        // so it is guaranteed to run — polling catches it whenever the cooperative
-        // pool gets to it, making the assertion robust under CI load where the
-        // grace-period `Task.sleep` can be delayed well past its nominal duration.
+        // Yield so the immediate scheduler's deferred action can run and finalize.
+        // A short poll is robust against ordering; it exits on the first tick.
         let clock = ContinuousClock()
-        let completionDeadline = clock.now.advanced(by: .seconds(3))
+        let completionDeadline = clock.now.advanced(by: .seconds(1))
         while clock.now < completionDeadline && !viewModel.isShowingSessionResults {
-            try await Task.sleep(for: .milliseconds(10))
+            try await Task.sleep(for: .milliseconds(5))
         }
 
         #expect(viewModel.isShowingSessionResults == true,
