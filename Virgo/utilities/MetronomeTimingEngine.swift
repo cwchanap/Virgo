@@ -225,54 +225,18 @@ class MetronomeTimingEngine: ObservableObject {
         beatOriginTime = startTime - (Double(beatOffset) * beatInterval)
         lastFiredBeat = initialBeatsElapsed
 
-        let timer = DispatchSource.makeTimerSource(queue: timerQueue)
-        beatTimer = timer
-        let token = MetronomePlaybackToken()
-        playbackToken = token
-
-        // Use nanoseconds precision for accurate timing
-        let nanoseconds = Int(beatInterval * 1_000_000_000)
-
-        let schedule = MetronomeBeatSchedule(
+        scheduleBeatTimer(
+            startTime: startTime,
+            beatOffset: beatOffset,
             beatOriginTime: beatOriginTime,
-            beatInterval: beatInterval,
-            schedulingLeadTime: audioSchedulingLeadTime
+            firstBeatNumber: initialBeatsElapsed + 1,
+            referenceTime: CFAbsoluteTimeGetCurrent()
         )
-        let firstDeadline = schedule.timerDeadline(forBeatNumber: initialBeatsElapsed + 1)
-        let startDelayNanos = max(0, Int((firstDeadline - CFAbsoluteTimeGetCurrent()) * 1_000_000_000))
-
-        // Fire ahead of the ideal beat so the audio engine can schedule the tick,
-        // then repeat at the beat interval.
-        timer.schedule(deadline: .now() + .nanoseconds(startDelayNanos), repeating: .nanoseconds(nanoseconds))
-
-        let audioBeatHandler = onAudioBeat
-        let timeSignature = timeSignature
-        let beatCounter = MetronomeBeatCounter(firstBeatNumber: initialBeatsElapsed + 1)
-        timer.setEventHandler { [weak self] in
-            guard token.isActive else { return }
-            let firedBeatNumber = beatCounter.consumeNextBeatNumber()
-            let idealBeatTime = schedule.audioTargetTime(forBeatNumber: firedBeatNumber)
-            let beatToPlay = Self.beatInMeasure(forFiredBeatNumber: firedBeatNumber, timeSignature: timeSignature)
-            let preciseAudioTime = Self.audioTime(forIdealBeatTime: idealBeatTime)
-            audioBeatHandler?(beatToPlay, beatToPlay == 1, preciseAudioTime)
-
-            Task { @MainActor in
-                guard let self = self, token.isActive else { return }
-                self.recordVisualBeat(
-                    firedBeatNumber: firedBeatNumber,
-                    idealBeatTime: idealBeatTime,
-                    token: token
-                )
-            }
-        }
-
-        timer.resume()
     }
 
     private func startTimerAtTime(startTime: TimeInterval, totalBeatsElapsed: Double) {
         stopTimer()
 
-        // Calculate when to actually start relative to current time
         let currentTime = CFAbsoluteTimeGetCurrent()
         let delayUntilStart = startTime - currentTime
         let effectiveStartTime: TimeInterval
@@ -289,13 +253,30 @@ class MetronomeTimingEngine: ObservableObject {
             effectiveTotalBeatsElapsed = totalBeatsElapsed
         }
 
-        // Schedule timer to start at the specified time
         self.startTime = effectiveStartTime
         beatOffset = Self.completedBeatCount(forTotalBeatsElapsed: effectiveTotalBeatsElapsed)
         beatOriginTime = effectiveStartTime - (max(0, effectiveTotalBeatsElapsed) * beatInterval)
         let firstBeatNumber = Self.firstFiredBeatNumber(afterTotalBeatsElapsed: effectiveTotalBeatsElapsed)
         lastFiredBeat = firstBeatNumber - 1
 
+        scheduleBeatTimer(
+            startTime: effectiveStartTime,
+            beatOffset: beatOffset,
+            beatOriginTime: beatOriginTime,
+            firstBeatNumber: firstBeatNumber,
+            referenceTime: currentTime,
+            onCancel: { Logger.debug("🕐 Scheduled timer cancelled") }
+        )
+    }
+
+    private func scheduleBeatTimer(
+        startTime: TimeInterval,
+        beatOffset: Int,
+        beatOriginTime: TimeInterval,
+        firstBeatNumber: Int,
+        referenceTime: TimeInterval,
+        onCancel: (() -> Void)? = nil
+    ) {
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
         beatTimer = timer
         let token = MetronomePlaybackToken()
@@ -309,7 +290,7 @@ class MetronomeTimingEngine: ObservableObject {
             schedulingLeadTime: audioSchedulingLeadTime
         )
         let firstDeadline = schedule.timerDeadline(forBeatNumber: firstBeatNumber)
-        let startDelayNanos = max(0, Int((firstDeadline - currentTime) * 1_000_000_000))
+        let startDelayNanos = max(0, Int((firstDeadline - referenceTime) * 1_000_000_000))
 
         // Schedule first callback ahead of the precise start time, then repeat at beat intervals.
         timer.schedule(deadline: .now() + .nanoseconds(startDelayNanos), repeating: .nanoseconds(nanoseconds))
@@ -335,12 +316,11 @@ class MetronomeTimingEngine: ObservableObject {
             }
         }
 
-        timer.setCancelHandler {
-            Logger.debug("🕐 Scheduled timer cancelled")
+        if let onCancel {
+            timer.setCancelHandler(handler: onCancel)
         }
 
         timer.resume()
-
     }
 
     private func stopTimer() {
