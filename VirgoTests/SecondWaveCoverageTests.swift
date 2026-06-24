@@ -63,6 +63,11 @@ struct SecondWaveCoverageTests {
                 onSaveTap: { _ in }
             )
 
+            // Mounting the populated view verifies the row (with its newly
+            // re-attached accessibility identifier) renders without crashing.
+            // The identifier itself is verified at the UI-test level, where the
+            // accessibility tree is actually queryable (reflection-based
+            // identifier collection cannot see .accessibilityIdentifier).
             SwiftUITestUtilities.assertViewWithEnvironment(
                 view,
                 size: CGSize(width: 1024, height: 768)
