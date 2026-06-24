@@ -6,6 +6,7 @@
 import Testing
 import Foundation
 import AVFoundation
+import Combine
 import Observation
 import SwiftUI
 @testable import Virgo
@@ -60,17 +61,17 @@ struct GameplayViewModelCleanupTests {
         viewModel.setupGameplay()
         viewModel.startPlayback()
 
-        // Inject a dummy task to simulate the grace-period task being in-flight.
-        let sentinel = Task<Void, Never> {
-            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 s sentinel
-        }
+        // Inject a sentinel cancellable to simulate the grace-period completion
+        // handle being in-flight, and record whether cleanup() cancels it.
+        var sentinelCancelled = false
+        let sentinel = AnyCancellable { sentinelCancelled = true }
         viewModel.completionTask = sentinel
 
         viewModel.cleanup()
 
         #expect(viewModel.completionTask == nil,
                 "cleanup() must nil completionTask so the stale task cannot fire")
-        #expect(sentinel.isCancelled,
+        #expect(sentinelCancelled,
                 "cleanup() must cancel the in-flight completionTask")
     }
 

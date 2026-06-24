@@ -103,20 +103,8 @@ extension GameplayViewModel {
             // late-but-valid hit (within ±100ms) can be scored.
             if playbackProgress >= 1.0 && !completionScheduled {
                 completionScheduled = true
-                let gracePeriodNs = UInt64(TimingAccuracy.good.toleranceMs * 1_000_000)
-                completionTask = Task { @MainActor [weak self] in
-                    // Sleep the full late-tolerance window so that hits arriving
-                    // between ~0–100ms after the last note can still be scored via
-                    // recordHit before we auto-miss and finalize.
-                    // Do NOT scan during the sleep: passing .infinity to
-                    // scanForMissedNotes on every tick would mark all remaining
-                    // notes missed immediately on the first iteration.
-                    do {
-                        try await Task.sleep(nanoseconds: gracePeriodNs)
-                    } catch {
-                        return // cancelled
-                    }
-                    guard !Task.isCancelled else { return }
+                let gracePeriodSeconds = TimingAccuracy.good.toleranceMs / 1000.0
+                completionTask = completionScheduler(gracePeriodSeconds) { [weak self] in
                     // Grace period elapsed — mark any still-unscored notes missed,
                     // then finalize the session.
                     self?.scanForMissedNotes(upToTimePosition: .infinity)
