@@ -180,6 +180,41 @@ struct LocalDTXFixtureImporterTests {
         )
     }
 
+    @Test("re-import refreshes stale duration on an existing legacy record")
+    func reImportRefreshesStaleDuration() throws {
+        let context = TestContainer.isolatedContainer().context
+        let fixtureURL = try soukyuuFixtureURL()
+
+        // Simulate a legacy record created by the old importer, which hard-coded
+        // 2 sec/measure (only correct at 120 BPM) and overstated the 165.55-BPM
+        // Soukyuu fixture as "5:14". calculateTrackDurationInSeconds trusts
+        // Song.duration verbatim, so without a refresh-path recomputation this
+        // stale value would persist across upgrades and gameplay progress would
+        // keep running past the audio end.
+        let legacy = Song(
+            title: "蒼穹への翔歌",
+            artist: "legacy",
+            bpm: 165.55,
+            duration: "5:14",
+            genre: "DTX Import",
+            timeSignature: .fourFour,
+            isServerImported: true,
+            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
+            bgmFilePath: fixtureURL.appendingPathComponent("bgm.m4a").path,
+            previewFilePath: fixtureURL.appendingPathComponent("preview.mp3").path
+        )
+        context.insert(legacy)
+        try context.save()
+
+        let refreshed = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
+
+        #expect(refreshed === legacy, "Re-import should return the existing song, not a duplicate")
+        #expect(
+            refreshed.duration == "3:47",
+            "Stale '5:14' duration must be recomputed to the BPM-derived '3:47' on re-import"
+        )
+    }
+
     @Test("re-import does not clobber an already-set BGM start offset")
     func reImportDoesNotClobberExistingBGMStartOffset() throws {
         let context = TestContainer.isolatedContainer().context
