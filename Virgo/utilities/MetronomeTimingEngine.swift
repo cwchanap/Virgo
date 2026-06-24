@@ -412,7 +412,13 @@ class MetronomeTimingEngine: ObservableObject {
         }
 
         let subtraction = referenceHostTime.subtractingReportingOverflow(UInt64(-deltaTicks))
-        return subtraction.overflow ? 0 : referenceHostTime
+        // Return the actual converted target host time (reference − |delta|).
+        // Returning referenceHostTime here would collapse every non-underflowing
+        // past target onto "now", making small negative deltas indistinguishable
+        // from zero and scheduling late callbacks against the reference instead
+        // of the true target. Clamp to 0 only when the subtraction underflows
+        // (target precedes the mach host-time epoch).
+        return subtraction.overflow ? 0 : subtraction.partialValue
     }
 
     nonisolated static func audioTime(forIdealBeatTime idealBeatTime: CFAbsoluteTime) -> AVAudioTime? {

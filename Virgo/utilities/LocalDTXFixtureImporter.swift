@@ -40,6 +40,7 @@ enum LocalDTXFixtureImporter {
         if let existingSong = try existingSong(with: songId, in: context) {
             try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
             try refreshBGMStartOffsetIfMissing(for: existingSong, from: folderURL, in: context)
+            try refreshDurationIfStale(for: existingSong, from: folderURL, in: context)
             return existingSong
         }
 
@@ -257,6 +258,42 @@ enum LocalDTXFixtureImporter {
         if song.bgmStartOffsetSeconds != nil {
             try context.save()
         }
+    }
+
+    /// Recomputes `Song.duration` from the fixture's charts and migrates any
+    /// stale value persisted by an older importer version.
+    ///
+    /// `GameplayViewModel.calculateTrackDurationInSeconds` trusts `Song.duration`
+    /// verbatim, so a record created before the BPM-derived duration fix (which
+    /// hard-coded 2 sec/measure and overstated tempo-divergent charts such as the
+    /// 165.55-BPM Soukyuu fixture as "5:14") keeps that wrong value across app
+    /// upgrades unless the refresh path recomputes it. Mirrors the fresh-import
+    /// derivation exactly and only writes (and saves) when the persisted value
+    /// actually differs, so a correct record is left untouched.
+    @MainActor
+    private static func refreshDurationIfStale(
+        for song: Song,
+        from folderURL: URL,
+        in context: ModelContext
+    ) throws {
+        guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else { return }
+        let setList = SETList(content: setContent)
+
+        let importedCharts: [ImportedChart] = setList.chartReferences.compactMap { reference in
+            guard let difficulty = reference.difficulty else { return nil }
+            let chartURL = folderURL.appendingPathComponent(reference.filename)
+            guard FileManager.default.fileExists(atPath: chartURL.path) else { return nil }
+            guard let data = try? DTXFileParser.parseChartMetadata(from: chartURL) else { return nil }
+            return ImportedChart(reference: reference, difficulty: difficulty, data: data)
+        }
+        guard let firstChart = importedCharts.first else { return }
+
+        let recomputed = formatDuration(
+            Int(calculateDuration(from: importedCharts, bpm: firstChart.data.bpm))
+        )
+        guard song.duration != recomputed else { return }
+        song.duration = recomputed
+        try context.save()
     }
 
     private static func decodeSETFile(at url: URL) -> String? {
