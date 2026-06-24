@@ -22,6 +22,34 @@ private func timingEngineValue<T>(
     return mirror.children.first { $0.label == label }?.value as? T
 }
 
+private func expectedHostTime(
+    referenceCF: CFAbsoluteTime,
+    referenceHost: UInt64,
+    deltaSeconds: Double
+) -> UInt64 {
+    var timebase = mach_timebase_info_data_t()
+    _ = mach_timebase_info(&timebase)
+    let deltaNanoseconds = deltaSeconds * Double(NSEC_PER_SEC)
+    let deltaTicks = Int64(deltaNanoseconds * Double(timebase.denom) / Double(timebase.numer))
+    return deltaTicks >= 0
+        ? referenceHost + UInt64(deltaTicks)
+        : referenceHost - UInt64(-deltaTicks)
+}
+
+private struct TimingEngineOriginState {
+    let beatOffset: Int?
+    let beatOriginTime: Double?
+    let startTime: Double?
+}
+
+private func timingEngineOriginState(_ timingEngine: MetronomeTimingEngine) -> TimingEngineOriginState {
+    TimingEngineOriginState(
+        beatOffset: timingEngineValue(timingEngine, label: "beatOffset", as: Int.self),
+        beatOriginTime: timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self),
+        startTime: timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+    )
+}
+
 @Suite("Metronome Timing Engine Tests", .serialized)
 @MainActor
 struct MetronomeTimingEngineTests {
@@ -276,15 +304,13 @@ struct MetronomeTimingEngineTests {
         let totalBeatsElapsed = 4
         timingEngine.startAtTime(startTime: startTime, totalBeatsElapsed: totalBeatsElapsed)
 
-        let beatOffset = timingEngineValue(timingEngine, label: "beatOffset", as: Int.self)
-        let beatOriginTime = timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self)
-        let storedStartTime = timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+        let state = timingEngineOriginState(timingEngine)
 
-        #expect(beatOffset == totalBeatsElapsed)
-        #expect(storedStartTime == startTime)
+        #expect(state.beatOffset == totalBeatsElapsed)
+        #expect(state.startTime == startTime)
 
         let expectedOriginTime = startTime - (Double(totalBeatsElapsed) * (60.0 / timingEngine.bpm))
-        if let beatOriginTime {
+        if let beatOriginTime = state.beatOriginTime {
             #expect(abs(beatOriginTime - expectedOriginTime) < 0.0001)
         } else {
             #expect(false, "Expected beatOriginTime to be set")
@@ -323,15 +349,13 @@ struct MetronomeTimingEngineTests {
 
         timingEngine.stop()
 
-        let beatOffset = timingEngineValue(timingEngine, label: "beatOffset", as: Int.self)
-        let beatOriginTime = timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self)
-        let storedStartTime = timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+        let state = timingEngineOriginState(timingEngine)
 
         #expect(timingEngine.isPlaying == false)
         #expect(timingEngine.currentBeat == 1)
-        #expect(beatOffset == 0)
-        #expect(storedStartTime == 0)
-        #expect(beatOriginTime == 0)
+        #expect(state.beatOffset == 0)
+        #expect(state.startTime == 0)
+        #expect(state.beatOriginTime == 0)
         #expect(timingEngine.getCurrentPlaybackTime() == nil)
     }
 
@@ -344,14 +368,12 @@ struct MetronomeTimingEngineTests {
         timingEngine.stop()
         timingEngine.startAtTime(startTime: 200.0, totalBeatsElapsed: 1)
 
-        let beatOffset = timingEngineValue(timingEngine, label: "beatOffset", as: Int.self)
-        let beatOriginTime = timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self)
-        let storedStartTime = timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+        let state = timingEngineOriginState(timingEngine)
 
         #expect(timingEngine.currentBeat == 2)
-        #expect(beatOffset == 1)
-        #expect(storedStartTime == 200.0)
-        if let beatOriginTime {
+        #expect(state.beatOffset == 1)
+        #expect(state.startTime == 200.0)
+        if let beatOriginTime = state.beatOriginTime {
             #expect(abs(beatOriginTime - 199.5) < 0.0001)
         } else {
             #expect(Bool(false), "Expected beatOriginTime to be rebuilt")
@@ -369,14 +391,12 @@ struct MetronomeTimingEngineTests {
         timingEngine.startAtTime(startTime: 100.0, totalBeatsElapsed: 1)
         timingEngine.startAtTime(startTime: 200.0, totalBeatsElapsed: 8)
 
-        let beatOffset = timingEngineValue(timingEngine, label: "beatOffset", as: Int.self)
-        let beatOriginTime = timingEngineValue(timingEngine, label: "beatOriginTime", as: Double.self)
-        let storedStartTime = timingEngineValue(timingEngine, label: "startTime", as: Double.self)
+        let state = timingEngineOriginState(timingEngine)
 
         #expect(timingEngine.currentBeat == 1)
-        #expect(beatOffset == 8)
-        #expect(storedStartTime == 200.0)
-        if let beatOriginTime {
+        #expect(state.beatOffset == 8)
+        #expect(state.startTime == 200.0)
+        if let beatOriginTime = state.beatOriginTime {
             #expect(abs(beatOriginTime - 196.0) < 0.0001)
         } else {
             #expect(Bool(false), "Expected beatOriginTime to be rebased")
@@ -392,14 +412,11 @@ struct MetronomeTimingEngineTests {
         let referenceCF: CFAbsoluteTime = 5_000.0
         let referenceHost: UInt64 = 5_000_000_000
         let deltaSeconds: Double = 1.0
-
-        // Mirror the function's internal math (same operation order) so the
-        // expected value is bit-identical regardless of the platform timebase.
-        var timebase = mach_timebase_info_data_t()
-        _ = mach_timebase_info(&timebase)
-        let deltaNanoseconds = deltaSeconds * Double(NSEC_PER_SEC)
-        let deltaTicks = UInt64(Int64(deltaNanoseconds * Double(timebase.denom) / Double(timebase.numer)))
-        let expected = referenceHost + deltaTicks
+        let expected = expectedHostTime(
+            referenceCF: referenceCF,
+            referenceHost: referenceHost,
+            deltaSeconds: deltaSeconds
+        )
 
         let result = MetronomeTimingEngine.hostTime(
             forCFAbsoluteTime: referenceCF + deltaSeconds,
@@ -412,19 +429,9 @@ struct MetronomeTimingEngineTests {
 
     @Test("hostTime subtracts delta ticks for a slightly-past target (not referenceHostTime)")
     func hostTimeConvertsSlightlyPastTargetToSubtractedHostTime() {
-        // Regression: for a small negative delta within UInt64 range, the
-        // negative branch returned referenceHostTime ("now"), making a
-        // slightly-past target indistinguishable from the reference. Late timer
-        // callbacks then scheduled against "now" instead of the converted target.
         let referenceCF: CFAbsoluteTime = 5_000.0
         let referenceHost: UInt64 = 5_000_000_000
         let deltaSeconds: Double = -0.005 // 5ms before the reference
-
-        var timebase = mach_timebase_info_data_t()
-        _ = mach_timebase_info(&timebase)
-        let deltaNanoseconds = deltaSeconds * Double(NSEC_PER_SEC)
-        let deltaTicks = Int64(deltaNanoseconds * Double(timebase.denom) / Double(timebase.numer))
-        let expected = referenceHost - UInt64(-deltaTicks)
 
         let result = MetronomeTimingEngine.hostTime(
             forCFAbsoluteTime: referenceCF + deltaSeconds,
@@ -432,17 +439,20 @@ struct MetronomeTimingEngineTests {
             referenceHostTime: referenceHost
         )
 
+        let expected = expectedHostTime(
+            referenceCF: referenceCF,
+            referenceHost: referenceHost,
+            deltaSeconds: deltaSeconds
+        )
         #expect(
             result == expected,
-            "Slightly-past target must map to referenceHostTime - |delta| (partialValue), not referenceHostTime"
+            "Slightly-past target must map to referenceHostTime - |delta|, not referenceHostTime"
         )
         #expect(result != referenceHost, "A non-zero negative delta must not collapse to referenceHostTime")
     }
 
     @Test("hostTime clamps to 0 when a past target would underflow the host-time epoch")
     func hostTimeClampsToZeroOnUnderflow() {
-        // Target so far before the reference that referenceHostTime - |delta|
-        // would underflow UInt64 (target precedes the mach host-time epoch).
         let referenceCF: CFAbsoluteTime = 5_000.0
         let referenceHost: UInt64 = 100
         let result = MetronomeTimingEngine.hostTime(

@@ -53,30 +53,7 @@ enum LocalDTXFixtureImporter {
         }
 
         let setList = SETList(content: setContent)
-        let importedCharts = try setList.chartReferences.compactMap { reference -> ImportedChart? in
-            guard let difficulty = reference.difficulty else {
-                // A SET.def entry whose LABEL is not one of the known difficulties
-                // (BASIC/ADVANCED/EXTREME/MASTER/REAL) is dropped. Without this log a
-                // song would silently ship missing a difficulty.
-                Logger.warning(
-                    "DTX fixture: dropping chart '\(reference.label)' — unrecognized difficulty label"
-                )
-                return nil
-            }
-
-            let chartURL = folderURL.appendingPathComponent(reference.filename)
-            guard FileManager.default.fileExists(atPath: chartURL.path) else {
-                // A chart referenced by SET.def but absent from the bundle would otherwise
-                // vanish with no signal — exactly the regression class CLAUDE.md warns about.
-                Logger.warning(
-                    "DTX fixture: dropping chart '\(reference.label)' — missing file \(reference.filename)"
-                )
-                return nil
-            }
-
-            let data = try DTXFileParser.parseChartMetadata(from: chartURL)
-            return ImportedChart(reference: reference, difficulty: difficulty, data: data)
-        }
+        let importedCharts = try loadImportedCharts(from: folderURL, setList: setList)
 
         guard let firstChart = importedCharts.first else {
             throw LocalDTXFixtureImportError.noPlayableCharts(songId)
@@ -95,9 +72,7 @@ enum LocalDTXFixtureImporter {
             previewFilePath: existingAudioPath(named: "preview.mp3", in: folderURL),
             bgmStartOffsetSeconds: nil
         )
-        for imported in importedCharts {
-            song.setBGMStartOffsetIfUnset(imported.data.bgmStartOffsetSeconds)
-        }
+        importedCharts.forEach { song.setBGMStartOffsetIfUnset($0.data.bgmStartOffsetSeconds) }
 
         context.insert(song)
         song.charts = importedCharts.map { importedChart in
@@ -185,6 +160,37 @@ enum LocalDTXFixtureImporter {
             return url
         }
         return nil
+    }
+
+    @MainActor
+    private static func loadImportedCharts(
+        from folderURL: URL,
+        setList: SETList
+    ) throws -> [ImportedChart] {
+        try setList.chartReferences.compactMap { reference -> ImportedChart? in
+            guard let difficulty = reference.difficulty else {
+                // A SET.def entry whose LABEL is not one of the known difficulties
+                // (BASIC/ADVANCED/EXTREME/MASTER/REAL) is dropped. Without this log a
+                // song would silently ship missing a difficulty.
+                Logger.warning(
+                    "DTX fixture: dropping chart '\(reference.label)' — unrecognized difficulty label"
+                )
+                return nil
+            }
+
+            let chartURL = folderURL.appendingPathComponent(reference.filename)
+            guard FileManager.default.fileExists(atPath: chartURL.path) else {
+                // A chart referenced by SET.def but absent from the bundle would otherwise
+                // vanish with no signal — exactly the regression class CLAUDE.md warns about.
+                Logger.warning(
+                    "DTX fixture: dropping chart '\(reference.label)' — missing file \(reference.filename)"
+                )
+                return nil
+            }
+
+            let data = try DTXFileParser.parseChartMetadata(from: chartURL)
+            return ImportedChart(reference: reference, difficulty: difficulty, data: data)
+        }
     }
 
     @MainActor
@@ -279,13 +285,7 @@ enum LocalDTXFixtureImporter {
         guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else { return }
         let setList = SETList(content: setContent)
 
-        let importedCharts: [ImportedChart] = setList.chartReferences.compactMap { reference in
-            guard let difficulty = reference.difficulty else { return nil }
-            let chartURL = folderURL.appendingPathComponent(reference.filename)
-            guard FileManager.default.fileExists(atPath: chartURL.path) else { return nil }
-            guard let data = try? DTXFileParser.parseChartMetadata(from: chartURL) else { return nil }
-            return ImportedChart(reference: reference, difficulty: difficulty, data: data)
-        }
+        let importedCharts = try loadImportedCharts(from: folderURL, setList: setList)
         guard let firstChart = importedCharts.first else { return }
 
         let recomputed = formatDuration(
@@ -399,7 +399,7 @@ private struct SETList {
         return remainder.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func chartDirective(from line: String) -> (slot: Int, field: String, value: String)? {
+    private static func chartDirective(from line: String) -> SETChartDirective? {
         guard line.count > 3, line.hasPrefix("#L") else { return nil }
 
         let afterPrefix = line.dropFirst(2)
@@ -417,8 +417,14 @@ private struct SETList {
         let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
 
-        return (slot, String(field), value)
+        return SETChartDirective(slot: slot, field: String(field), value: value)
     }
+}
+
+private struct SETChartDirective {
+    let slot: Int
+    let field: String
+    let value: String
 }
 
 private struct SETChartEntry {
