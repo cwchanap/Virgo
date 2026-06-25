@@ -27,8 +27,12 @@ struct MetronomeHostTimeConversionTests {
         #expect(abs(elapsedSeconds - 0.5) < 0.001)
     }
 
-    @Test("MetronomeTimingEngine clamps stale audio host times to a schedulable time")
-    func testHostTimeConversionDoesNotReturnStaleAudioTime() {
+    @Test("MetronomeTimingEngine maps a slightly-past target to a host time before the reference")
+    func testHostTimeConversionReturnsTruePastTargetHostTime() {
+        // Regression: a slightly-past target must convert to
+        // `referenceHostTime - |delta|` (the true target host time), not collapse
+        // onto `referenceHostTime`. Collapsing made late timer callbacks schedule
+        // against "now" instead of the converted target. See eec7966.
         let referenceCFTime: CFAbsoluteTime = 1_000.0
         let referenceHostTime: UInt64 = 10_000_000
         let staleTargetCFTime = referenceCFTime - 0.05
@@ -41,8 +45,12 @@ struct MetronomeHostTimeConversionTests {
 
         let elapsedSeconds = AVAudioTime.seconds(forHostTime: convertedHostTime)
             - AVAudioTime.seconds(forHostTime: referenceHostTime)
-        #expect(elapsedSeconds >= 0)
-        #expect(elapsedSeconds < 0.01)
+        // The converted host time sits ~0.05s before the reference (the true
+        // past target), not at or after it.
+        #expect(elapsedSeconds < 0)
+        #expect(abs(elapsedSeconds + 0.05) < 0.001)
+        // Must not collapse onto the reference host time.
+        #expect(convertedHostTime != referenceHostTime)
     }
 
     @Test("MetronomeTimingEngine host time conversion clamps before mach zero")
