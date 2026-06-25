@@ -85,7 +85,8 @@ struct ContentViewMIDILearnCoverageTests {
 
     @Test("canBeginCapture is true when a source is selected and available")
     func midiLearnCanBeginCaptureWhenSourceSelectedAndAvailable() {
-        let (settings, _, _) = TestInputSettingsManager.makeIsolated(suiteName: "can-begin")
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(suiteName: "can-begin")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
         settings.setSelectedMIDISource(id: "src", displayName: "Kit")
 
         let alwaysAvailable = MIDILearnSession(settingsManager: settings)
@@ -97,7 +98,8 @@ struct ContentViewMIDILearnCoverageTests {
 
     @Test("cancelCapture on a session that never began is a safe no-op")
     func midiLearnCancelCaptureBeforeAnyBeginIsSafe() {
-        let (settings, _, _) = TestInputSettingsManager.makeIsolated(suiteName: "cancel-noop")
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(suiteName: "cancel-noop")
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
 
         let session = MIDILearnSession(settingsManager: settings)
         // No timeout timer was ever scheduled -> exercises the nil path in

@@ -124,8 +124,12 @@ struct GameplayViewModelSpeedTests {
         vm.totalBeatsElapsed = 4
         defer { vm.cleanup() }
 
+        // The guard is `effectiveBPM.isFinite, effectiveBPM > 0`. Each value below
+        // targets a distinct failing branch, so neither assertion is redundant.
+        // 0: finite but not > 0 (the positivity branch).
         #expect(vm.elapsedBeatsForScheduling(effectiveBPM: 0) == 4.0)
-        #expect(vm.elapsedBeatsForScheduling(effectiveBPM: -.nan) == 4.0)
+        // .nan: non-finite (the isFinite branch).
+        #expect(vm.elapsedBeatsForScheduling(effectiveBPM: .nan) == 4.0)
     }
 
     @Test("elapsedBeatsForScheduling computes elapsed beats for valid BPM")
