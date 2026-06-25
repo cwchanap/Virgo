@@ -263,14 +263,14 @@ final class SongsTabUITests: XCTestCase {
         let searchField = app.textFields["searchField"]
         if searchField.waitForExistence(timeout: 3) {
             searchField.clearAndEnterText("Thunder Beat")
+            _ = waitForSearchFilterToApply(in: app, timeout: 5)
         }
 
         try requireStaticText(containing: "Thunder Beat", in: app, timeout: 5)
 
-        let chartButton = try requireButton(containing: "charts", in: app, timeout: 5)
-        chartButton.tap()
-
-        XCTAssertTrue(waitForStaticText(containing: "Select Difficulty", in: app, timeout: 5))
+        // Scope the expand button to the Thunder Beat row so we reveal the
+        // correct song's charts (which include Easy difficulty).
+        try expandSongRow(containing: "Thunder Beat", in: app, timeout: 5)
 
         _ = try requireDifficultyButton(named: "Easy", in: app, timeout: 5)
         try tapScoresButton(named: "Easy", in: app, timeout: 5)
