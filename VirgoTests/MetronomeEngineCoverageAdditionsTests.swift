@@ -247,7 +247,11 @@ struct MetronomeEngineCoverageAdditionsTests {
             engine.playTick(volume: 0.5, isAccented: true, atTime: AVAudioTime(hostTime: 42))
             engine.resume()
             engine.stop()
+            // Post-condition: after the test-env lifecycle (where play/resume/stop
+            // early-return), the engine must remain in its non-running test state, so
+            // time conversion stays unavailable. This is a verifiable invariant that
+            // catches regressions instead of the previous tautological #expect(Bool(true)).
+            #expect(engine.convertToAudioEngineTime(CFAbsoluteTimeGetCurrent()) == nil)
         }
-        #expect(Bool(true))
     }
 }

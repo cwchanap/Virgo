@@ -47,7 +47,8 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     @Test("startPlayback surfaces reconnect alert when selected source is unavailable")
     func startPlaybackMIDIGateSourceUnavailable() async throws {
         // Isolated settings with a selected source that no connected device matches.
-        let (settingsManager, _, _) = TestInputSettingsManager.makeIsolated()
+        let (settingsManager, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated()
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
         settingsManager.setSelectedMIDISource(id: "test-midi", displayName: "Test Device")
         let inputManager = InputManager(settingsManager: settingsManager)
         inputManager.requiresMIDISourceForGameplay = true
