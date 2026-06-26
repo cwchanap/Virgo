@@ -198,6 +198,31 @@ struct GameplayViewModelPlaybackCoverageTests {
         #expect(vm.bgmPlayer == nil, "bgmPlayer should remain nil after a failed setup")
     }
 
+    @Test("setupBGMPlayer leaves bgmLoadingError nil when a track has no BGM path")
+    func testSetupBGMPlayerNoErrorWhenNoBGMPath() async throws {
+        // Guards the GameplayView "Background Music Unavailable" alert against
+        // false positives: a track that legitimately has no BGM (metronome-only)
+        // takes the early-return path and must NOT surface the alert, so
+        // `bgmLoadingError` must remain nil.
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+
+        let song = Song(
+            title: "No-BGM Track",
+            artist: "A",
+            bpm: 120.0,
+            duration: "3:00",
+            genre: "Rock",
+            bgmFilePath: nil
+        )
+        vm.cachedSong = song
+
+        vm.setupBGMPlayer()
+
+        #expect(vm.bgmLoadingError == nil, "bgmLoadingError must stay nil when there is no BGM path")
+        #expect(vm.bgmPlayer == nil, "bgmPlayer should stay nil when there is no BGM path")
+    }
+
     // MARK: - applySpeedChangeInternal !isPlaying && metronome.isEnabled (lines 359–361)
 
     @Test("Speed change calls metronome.updateBPM when metronome is enabled but ViewModel is not playing")

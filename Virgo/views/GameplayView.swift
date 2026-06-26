@@ -174,6 +174,17 @@ struct GameplayView: View {
         } message: {
             Text(viewModel?.midiDeviceAlertMessage ?? "")
         }
+        .alert("Background Music Unavailable", isPresented: Binding(
+            get: { viewModel?.bgmLoadingError != nil },
+            set: { if !$0 { viewModel?.bgmLoadingError = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            // `bgmLoadingError` is only non-nil when this alert presents, so the
+            // empty default never renders. Tells the user gameplay fell back to
+            // metronome-only instead of dropping the BGM failure silently.
+            Text((viewModel?.bgmLoadingError ?? "") + "\n\nPlaying with the metronome only.")
+        }
     }
 }
 
