@@ -26,8 +26,11 @@ extension XCTestCase {
     ///
     /// To handle the async chart loading race (chartCount is seeded to 0 and
     /// loaded asynchronously), we wait for the title text first (proving the
-    /// filter applied), then wait for any expand button (including 0 charts)
-    /// to appear, tap it, and wait for the difficulty selector.
+    /// filter applied), then wait for an expand button with NON-ZERO chart
+    /// count (proving charts have loaded), tap it, and wait for the difficulty
+    /// selector. Waiting for non-zero charts is critical: if we tap before
+    /// charts load, the expanded view receives an empty charts array and
+    /// renders no difficulty buttons.
     func expandSongRow(
         containing songTitle: String,
         in app: XCUIApplication,
@@ -47,11 +50,14 @@ extension XCTestCase {
             throw UITestFailure.elementNotFound("song title \(songTitle)")
         }
 
-        // Wait for an expand button to appear. Match any chart count (including
-        // 0) because chart counts load asynchronously. After search filtering,
-        // only the correct song's expand button should be visible.
-        let anyChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[0-9]+ charts.*")
-        let expandButton = app.buttons.matching(anyChartCount).firstMatch
+        // Wait for an expand button with NON-ZERO chart count to appear.
+        // Chart counts are seeded to 0 and loaded asynchronously. If we tap
+        // the expand button before charts have loaded, the expanded
+        // DifficultyExpansionView receives an empty charts array and renders
+        // no difficulty buttons. Waiting for a non-zero count ensures the
+        // charts array has been populated before we expand.
+        let nonZeroChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
+        let expandButton = app.buttons.matching(nonZeroChartCount).firstMatch
         guard expandButton.waitForExistence(timeout: timeout) else {
             XCTFail(
                 "Expected expand button for song \"\(songTitle)\" to exist",
