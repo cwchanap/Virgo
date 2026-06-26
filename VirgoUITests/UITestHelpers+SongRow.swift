@@ -17,11 +17,11 @@ extension XCTestCase {
     /// On macOS, neither `.accessibilityIdentifier` nor `.accessibilityLabel`
     /// on inner SwiftUI Buttons are reliably exposed for predicate queries.
     /// This helper:
-    /// 1. Finds the title text element and gets its frame
+    /// 1. Finds the title text element and gets its center point
     /// 2. Finds the row button (identifier BEGINSWITH "downloaded-song-row-")
-    ///    whose frame contains the title text
-    /// 3. Finds the expand button (label MATCHES "N charts") whose frame is
-    ///    within that row's frame
+    ///    whose frame contains the title text's center
+    /// 3. Finds the expand button (label MATCHES "N charts") whose frame
+    ///    overlaps with that row's frame
     func expandSongRow(
         containing songTitle: String,
         in app: XCUIApplication,
@@ -63,7 +63,7 @@ extension XCTestCase {
         )
     }
 
-    /// Finds the row button whose frame contains the song title text.
+    /// Finds the row button whose frame contains the song title text's center.
     private func findSongRowFrame(
         containing songTitle: String,
         in app: XCUIApplication,
@@ -76,28 +76,22 @@ extension XCTestCase {
             XCTFail("Expected title text for \"\(songTitle)\" to exist", file: file, line: line)
             throw UITestFailure.elementNotFound("title text for \(songTitle)")
         }
-        let titleFrame = titleText.frame
+        let titleCenter = CGPoint(x: titleText.frame.midX, y: titleText.frame.midY)
 
         let rowPredicate = NSPredicate(format: "identifier BEGINSWITH %@", "downloaded-song-row-")
         let rowButtons = app.buttons.matching(rowPredicate)
         for i in 0..<rowButtons.count {
             let row = rowButtons.element(boundBy: i)
-            if row.exists {
-                let rowFrame = row.frame
-                // Check if the title text is within this row's frame
-                if rowFrame.contains(titleFrame) ||
-                    (rowFrame.minX <= titleFrame.minX && rowFrame.maxX >= titleFrame.maxX &&
-                     rowFrame.minY <= titleFrame.minY && rowFrame.maxY >= titleFrame.maxY) {
-                    return rowFrame
-                }
+            if row.exists, row.frame.contains(titleCenter) {
+                return row.frame
             }
         }
 
-        // Fallback: return the title frame expanded to cover the row height
-        return titleFrame.insetBy(dx: 0, dy: -50)
+        // Fallback: expand the title frame to approximate the row bounds
+        return titleText.frame.insetBy(dx: -200, dy: -60)
     }
 
-    /// Finds the expand button whose frame is within the given row frame.
+    /// Finds the expand button whose frame overlaps with the given row frame.
     private func findExpandButton(
         within rowFrame: CGRect,
         buttons: XCUIElementQuery,
@@ -109,9 +103,10 @@ extension XCTestCase {
             let button = buttons.element(boundBy: i)
             if button.exists {
                 let buttonFrame = button.frame
-                // Check if the button's center is within the row frame
-                if rowFrame.contains(buttonFrame.origin) ||
-                    rowFrame.contains(CGPoint(x: buttonFrame.midX, y: buttonFrame.midY)) {
+                // Check if the button's frame overlaps with the row frame
+                let overlapX = min(rowFrame.maxX, buttonFrame.maxX) - max(rowFrame.minX, buttonFrame.minX)
+                let overlapY = min(rowFrame.maxY, buttonFrame.maxY) - max(rowFrame.minY, buttonFrame.minY)
+                if overlapX > 0 && overlapY > 0 {
                     return button
                 }
             }
