@@ -407,7 +407,16 @@ extension XCTestCase {
         let difficultyButton = app.buttons[identifier]
         let difficultyElement = app.otherElements[identifier]
 
-        if let element = waitForFirstExisting([difficultyButton, difficultyElement], timeout: timeout) {
+        // On macOS, accessibility identifiers on SwiftUI Buttons inside
+        // containers may be hidden. Fall back to label-based lookup.
+        // The play button label is "{difficulty} difficulty, N notes, Level X".
+        let labelPredicate = NSPredicate(format: "label CONTAINS[c] %@", "\(difficulty) difficulty")
+        let labelButton = app.buttons.matching(labelPredicate).firstMatch
+
+        if let element = waitForFirstExisting(
+            [difficultyButton, difficultyElement, labelButton],
+            timeout: timeout
+        ) {
             return element
         }
 
