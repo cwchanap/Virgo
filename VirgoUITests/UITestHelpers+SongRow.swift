@@ -11,14 +11,14 @@ import XCTest
 
 extension XCTestCase {
     /// Expands the song row matching `songTitle` and waits for the difficulty
-    /// selector to appear. Scopes the expand button to the row containing the
-    /// title text so the correct song's charts are revealed, even when multiple
-    /// songs are visible and the search filter hasn't reduced the list.
+    /// selector to appear. Finds the expand button whose accessibility label
+    /// contains the song title, ensuring the correct song's charts are revealed
+    /// even when multiple songs are visible.
     ///
-    /// On macOS, SwiftUI `List` rows are exposed as `Button` elements with
-    /// identifiers beginning with `downloaded-song-row-`. This helper finds
-    /// the row button whose contained static text matches the song title,
-    /// then taps the `downloadedSongExpandButton` within that row.
+    /// The expand button's accessibility label is set to
+    /// `"{songTitle} - {chartCount} charts"` in `DownloadedSongsView`, so a
+    /// label-based query uniquely identifies the correct button without
+    /// relying on row scoping or search-filter propagation timing.
     func expandSongRow(
         containing songTitle: String,
         in app: XCUIApplication,
@@ -36,19 +36,25 @@ extension XCTestCase {
             throw UITestFailure.elementNotFound("song title \(songTitle)")
         }
 
-        let row = try requireSongRow(
-            containing: songTitle,
-            in: app,
-            timeout: timeout,
-            file: file,
-            line: line
-        )
-        let expandButton = try requireExpandButton(
-            in: row,
-            timeout: timeout,
-            file: file,
-            line: line
-        )
+        // Find the expand button whose label contains the song title.
+        // The label is "{songTitle} - {chartCount} charts", so a CONTAINS
+        // predicate on the song title uniquely identifies the correct button.
+        let titlePredicate = NSPredicate(format: "label CONTAINS[c] %@", songTitle)
+        let idPredicate = NSPredicate(format: "identifier == %@", "downloadedSongExpandButton")
+        let expandButton = app.buttons
+            .matching(idPredicate)
+            .matching(titlePredicate)
+            .firstMatch
+
+        guard expandButton.waitForExistence(timeout: timeout) else {
+            XCTFail(
+                "Expected expand button for song \"\(songTitle)\" to exist",
+                file: file,
+                line: line
+            )
+            throw UITestFailure.elementNotFound("expand button for \(songTitle)")
+        }
+
         expandButton.tap()
 
         XCTAssertTrue(
@@ -57,69 +63,5 @@ extension XCTestCase {
             file: file,
             line: line
         )
-    }
-
-    /// Finds the downloaded-song row button whose contained static text matches
-    /// `songTitle`. On macOS, rows are exposed as `Button` elements with
-    /// identifiers beginning with `downloaded-song-row-`.
-    private func requireSongRow(
-        containing songTitle: String,
-        in app: XCUIApplication,
-        timeout: TimeInterval,
-        file: StaticString,
-        line: UInt
-    ) throws -> XCUIElement {
-        let rowPredicate = NSPredicate(format: "identifier BEGINSWITH %@", "downloaded-song-row-")
-
-        // Primary: match by staticText identifier (exact title text).
-        let row = app.buttons
-            .matching(rowPredicate)
-            .containing(.staticText, identifier: songTitle)
-            .firstMatch
-
-        if row.waitForExistence(timeout: timeout) {
-            return row
-        }
-
-        // Fallback: label-based predicate for macOS accessibility variations
-        // where the staticText identifier doesn't match exactly.
-        let titlePredicate = textContainsPredicate(songTitle)
-        let fallbackRow = app.buttons
-            .matching(rowPredicate)
-            .containing(titlePredicate)
-            .firstMatch
-
-        if fallbackRow.waitForExistence(timeout: 5) {
-            return fallbackRow
-        }
-
-        XCTFail(
-            "Expected a downloaded song row containing \"\(songTitle)\" to exist",
-            file: file,
-            line: line
-        )
-        throw UITestFailure.elementNotFound("song row containing \(songTitle)")
-    }
-
-    /// Returns the expand button scoped to a specific song row, avoiding the
-    /// global `firstMatch` race that can select a different song's row.
-    private func requireExpandButton(
-        in row: XCUIElement,
-        timeout: TimeInterval,
-        file: StaticString,
-        line: UInt
-    ) throws -> XCUIElement {
-        let expandButton = row.buttons["downloadedSongExpandButton"]
-
-        guard expandButton.waitForExistence(timeout: timeout) else {
-            XCTFail(
-                "Expected expand button in song row",
-                file: file,
-                line: line
-            )
-            throw UITestFailure.elementNotFound("expand button in song row")
-        }
-
-        return expandButton
     }
 }
