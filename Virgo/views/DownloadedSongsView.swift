@@ -286,7 +286,7 @@ struct DownloadedSongRowWithDelete: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityIdentifier("downloadedSongExpandButton")
+        .accessibilityIdentifier("downloadedSongExpandButton_\(song.title)")
         .accessibilityLabel("\(song.title) - \(chartCount) charts")
     }
     

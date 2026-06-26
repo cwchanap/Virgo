@@ -11,13 +11,13 @@ import XCTest
 
 extension XCTestCase {
     /// Expands the song row matching `songTitle` and waits for the difficulty
-    /// selector to appear. Finds the expand button whose accessibility label
-    /// contains the song title, ensuring the correct song's charts are revealed
-    /// even when multiple songs are visible.
+    /// selector to appear. Finds the expand button by its unique accessibility
+    /// identifier, which includes the song title, ensuring the correct song's
+    /// charts are revealed even when multiple songs are visible.
     ///
-    /// The expand button's accessibility label is set to
-    /// `"{songTitle} - {chartCount} charts"` in `DownloadedSongsView`, so a
-    /// label-based query uniquely identifies the correct button without
+    /// The expand button's accessibility identifier is set to
+    /// `downloadedSongExpandButton_{songTitle}` in `DownloadedSongsView`, so a
+    /// direct identifier lookup uniquely identifies the correct button without
     /// relying on row scoping or search-filter propagation timing.
     func expandSongRow(
         containing songTitle: String,
@@ -36,15 +36,9 @@ extension XCTestCase {
             throw UITestFailure.elementNotFound("song title \(songTitle)")
         }
 
-        // Find the expand button whose label contains the song title.
-        // The label is "{songTitle} - {chartCount} charts", so a CONTAINS
-        // predicate on the song title uniquely identifies the correct button.
-        let titlePredicate = NSPredicate(format: "label CONTAINS[c] %@", songTitle)
-        let idPredicate = NSPredicate(format: "identifier == %@", "downloadedSongExpandButton")
-        let expandButton = app.buttons
-            .matching(idPredicate)
-            .matching(titlePredicate)
-            .firstMatch
+        // Find the expand button by its unique identifier, which includes
+        // the song title. This avoids the global firstMatch race.
+        let expandButton = app.buttons["downloadedSongExpandButton_\(songTitle)"]
 
         guard expandButton.waitForExistence(timeout: timeout) else {
             XCTFail(
