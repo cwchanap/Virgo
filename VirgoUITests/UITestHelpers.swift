@@ -518,32 +518,16 @@ extension XCTestCase {
         let searchField = app.textFields["searchField"]
         if searchField.waitForExistence(timeout: 3) {
             searchField.clearAndEnterText(songTitle)
-            // Wait for the SwiftUI list filter to propagate before querying
-            // rows. The filter is asynchronous relative to text typing;
-            // without this wait, a global firstMatch query can resolve to
-            // the wrong (unfiltered) row before the list updates.
-            XCTAssertTrue(
-                waitForSearchFilterToApply(in: app, timeout: timeout),
-                "Search filter should reduce list to the matching song",
-                file: file,
-                line: line
-            )
         }
 
-        try requireStaticText(containing: songTitle, in: app, timeout: timeout, file: file, line: line)
-
-        // After the filter applies, only one row remains so firstMatch is safe.
-        let chartButton = try requireLoadedChartExpansionButton(
+        // Scope the expand button to the row containing the searched title so
+        // we always reveal the correct song's charts (which include the
+        // requested difficulty). A global firstMatch can pick a different
+        // song whose charts lack the requested difficulty.
+        try expandSongRow(
+            containing: songTitle,
             in: app,
             timeout: timeout,
-            file: file,
-            line: line
-        )
-        chartButton.tap()
-
-        XCTAssertTrue(
-            waitForStaticText(containing: "Select Difficulty", in: app, timeout: timeout),
-            "Difficulty selector should appear",
             file: file,
             line: line
         )
