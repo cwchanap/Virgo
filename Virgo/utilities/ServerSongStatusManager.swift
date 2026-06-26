@@ -5,13 +5,20 @@ import SwiftData
 class ServerSongStatusManager: @unchecked Sendable {
     private let fileManager: ServerSongFileManager
     private let saveContext: @Sendable (ModelContext) throws -> Void
+    private let deletionStore: BundledFixtureDeletionStore
 
     init(
         fileManager: ServerSongFileManager = ServerSongFileManager(),
-        saveContext: @escaping @Sendable (ModelContext) throws -> Void = { context in try context.save() }
+        saveContext: @escaping @Sendable (ModelContext) throws -> Void = { context in try context.save() },
+        // Defaults to the production `.standard`-backed store. Injectable so tests
+        // (and any future non-standard caller) can route the bundled-fixture
+        // tombstone through an isolated `UserDefaults` suite instead of polluting
+        // `UserDefaults.standard`, and so the delete→record wiring is assertable.
+        deletionStore: BundledFixtureDeletionStore = .standard
     ) {
         self.fileManager = fileManager
         self.saveContext = saveContext
+        self.deletionStore = deletionStore
     }
 
     /// Delete a downloaded server song from local storage
@@ -66,6 +73,7 @@ class ServerSongStatusManager: @unchecked Sendable {
         // Capture immutable dependencies to avoid capturing `self` in detached task.
         let fileManager = self.fileManager
         let saveContext = self.saveContext
+        let deletionStore = self.deletionStore
 
         return await Task.detached {
             let backgroundContext = ModelContext(container)
@@ -93,7 +101,9 @@ class ServerSongStatusManager: @unchecked Sendable {
                 // startup seed path does not recreate it on the next launch.
                 // `recordIfBundled` ignores non-bundled ids (e.g. server-downloaded
                 // songs), so this is a no-op for the normal server-download delete.
-                BundledFixtureDeletionStore.standard.recordIfBundled(songId: songServerSongId)
+                // Uses the injected store so tests isolate the tombstone to a unique
+                // UserDefaults suite rather than writing to `UserDefaults.standard`.
+                deletionStore.recordIfBundled(songId: songServerSongId)
 
                 Self.deleteAssociatedFiles(
                     bgmPath: bgmFilePath, previewPath: previewFilePath, fileManager: fileManager
