@@ -427,8 +427,7 @@ extension XCTestCase {
         line: UInt = #line
     ) throws -> XCUIElement {
         let nonEmptyChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
-        let expandIdPredicate = NSPredicate(format: "identifier BEGINSWITH %@", "downloadedSongExpandButton_")
-        let chartButton = app.buttons.matching(expandIdPredicate).matching(nonEmptyChartCount).firstMatch
+        let chartButton = app.buttons.matching(nonEmptyChartCount).firstMatch
 
         if let element = waitForFirstExisting([chartButton], timeout: timeout) {
             return element
