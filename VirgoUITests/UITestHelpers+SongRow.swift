@@ -11,17 +11,17 @@ import XCTest
 
 extension XCTestCase {
     /// Expands the song row matching `songTitle` and waits for the difficulty
-    /// selector to appear. Uses coordinate-based matching to find the expand
-    /// button that is in the same row as the song title text, avoiding the
-    /// global `firstMatch` race.
+    /// selector to appear. Uses the row button's frame to precisely locate the
+    /// correct expand button, avoiding the global `firstMatch` race.
     ///
     /// On macOS, neither `.accessibilityIdentifier` nor `.accessibilityLabel`
-    /// on SwiftUI Buttons inside accessibility containers are reliably exposed
-    /// for predicate-based queries. This helper:
-    /// 1. Finds the row button (identifier BEGINSWITH "downloaded-song-row-")
-    ///    whose frame contains the song title text
-    /// 2. Finds the expand button (label MATCHES "N charts") whose frame
-    ///    overlaps with that row's frame
+    /// on inner SwiftUI Buttons are reliably exposed for predicate queries.
+    /// This helper:
+    /// 1. Finds the title text element and gets its frame
+    /// 2. Finds the row button (identifier BEGINSWITH "downloaded-song-row-")
+    ///    whose frame contains the title text
+    /// 3. Finds the expand button (label MATCHES "N charts") whose frame is
+    ///    within that row's frame
     func expandSongRow(
         containing songTitle: String,
         in app: XCUIApplication,
@@ -45,8 +45,13 @@ extension XCTestCase {
             throw UITestFailure.elementNotFound("expand button")
         }
 
-        let expandButton = try requireExpandButtonInSongRow(
-            songTitle, in: app, buttons: allExpandButtons,
+        let rowFrame = try findSongRowFrame(
+            containing: songTitle, in: app,
+            file: file, line: line
+        )
+        let expandButton = try findExpandButton(
+            within: rowFrame, buttons: allExpandButtons,
+            songTitle: songTitle,
             file: file, line: line
         )
         expandButton.tap()
@@ -58,18 +63,13 @@ extension XCTestCase {
         )
     }
 
-    /// Finds the expand button that is within the same row as the song title.
-    /// Uses the row button's frame (which encompasses the entire row) to
-    /// match, since the title text and expand button may be at different
-    /// vertical positions within the row.
-    private func requireExpandButtonInSongRow(
-        _ songTitle: String,
+    /// Finds the row button whose frame contains the song title text.
+    private func findSongRowFrame(
+        containing songTitle: String,
         in app: XCUIApplication,
-        buttons: XCUIElementQuery,
         file: StaticString,
         line: UInt
-    ) throws -> XCUIElement {
-        // Find the title text to locate the correct row.
+    ) throws -> CGRect {
         let titlePredicate = textContainsPredicate(songTitle)
         let titleText = app.staticTexts.matching(titlePredicate).firstMatch
         guard titleText.exists else {
@@ -78,17 +78,40 @@ extension XCTestCase {
         }
         let titleFrame = titleText.frame
 
-        // Find the expand button whose frame is vertically near the title
-        // text. Use a generous Y tolerance to account for the expand button
-        // being below the action buttons in the row's VStack layout.
-        let yTolerance: CGFloat = 100
+        let rowPredicate = NSPredicate(format: "identifier BEGINSWITH %@", "downloaded-song-row-")
+        let rowButtons = app.buttons.matching(rowPredicate)
+        for i in 0..<rowButtons.count {
+            let row = rowButtons.element(boundBy: i)
+            if row.exists {
+                let rowFrame = row.frame
+                // Check if the title text is within this row's frame
+                if rowFrame.contains(titleFrame) ||
+                    (rowFrame.minX <= titleFrame.minX && rowFrame.maxX >= titleFrame.maxX &&
+                     rowFrame.minY <= titleFrame.minY && rowFrame.maxY >= titleFrame.maxY) {
+                    return rowFrame
+                }
+            }
+        }
+
+        // Fallback: return the title frame expanded to cover the row height
+        return titleFrame.insetBy(dx: 0, dy: -50)
+    }
+
+    /// Finds the expand button whose frame is within the given row frame.
+    private func findExpandButton(
+        within rowFrame: CGRect,
+        buttons: XCUIElementQuery,
+        songTitle: String,
+        file: StaticString,
+        line: UInt
+    ) throws -> XCUIElement {
         for i in 0..<buttons.count {
             let button = buttons.element(boundBy: i)
             if button.exists {
                 let buttonFrame = button.frame
-                // Check if the button is within yTolerance of the title text
-                let verticalDistance = abs(buttonFrame.midY - titleFrame.midY)
-                if verticalDistance < yTolerance {
+                // Check if the button's center is within the row frame
+                if rowFrame.contains(buttonFrame.origin) ||
+                    rowFrame.contains(CGPoint(x: buttonFrame.midX, y: buttonFrame.midY)) {
                     return button
                 }
             }
