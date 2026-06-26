@@ -15,11 +15,18 @@ extension XCTestCase {
     /// button that is in the same row as the song title text, avoiding the
     /// global `firstMatch` race.
     ///
-    /// On macOS, `.accessibilityLabel` modifiers on SwiftUI Buttons inside
-    /// accessibility containers are not reliably exposed, so label-based
-    /// queries cannot distinguish between expand buttons for different songs.
-    /// Instead, this helper finds the title text's frame, then finds the
-    /// expand button whose frame overlaps vertically (same row).
+    /// On macOS, neither `.accessibilityIdentifier` nor `.accessibilityLabel`
+    /// on SwiftUI Buttons inside accessibility containers are reliably exposed
+    /// for predicate-based queries. The only reliable query is the label regex
+    /// `.*N charts.*` which matches all expand buttons but can't distinguish
+    /// between them. This helper solves the problem by finding the title text's
+    /// frame, then finding the expand button whose frame overlaps vertically.
+    ///
+    /// Uses `.*[0-9]+ charts.*` (matches 0 charts too) instead of
+    /// `.*[1-9][0-9]* charts.*` because chart counts load asynchronously
+    /// (seeded to 0). Matching 0 charts ensures the correct button is found
+    /// even before chart counts load. After tapping, we wait for the
+    /// difficulty buttons to appear, which handles the async loading.
     func expandSongRow(
         containing songTitle: String,
         in app: XCUIApplication,
@@ -36,11 +43,13 @@ extension XCTestCase {
             throw UITestFailure.elementNotFound("song title \(songTitle)")
         }
 
-        let nonEmptyChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
-        let allExpandButtons = app.buttons.matching(nonEmptyChartCount)
+        // Match any expand button (including 0 charts) so we can find the
+        // correct button by frame overlap before chart counts load.
+        let anyChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[0-9]+ charts.*")
+        let allExpandButtons = app.buttons.matching(anyChartCount)
         guard allExpandButtons.firstMatch.waitForExistence(timeout: timeout) else {
-            XCTFail("Expected at least one loaded expand button to exist", file: file, line: line)
-            throw UITestFailure.elementNotFound("loaded expand button")
+            XCTFail("Expected at least one expand button to exist", file: file, line: line)
+            throw UITestFailure.elementNotFound("expand button")
         }
 
         let expandButton = try requireExpandButtonNearTitle(
@@ -58,7 +67,7 @@ extension XCTestCase {
 
     /// Finds the expand button whose frame overlaps vertically with the song
     /// title text (same row). This avoids the firstMatch race without relying
-    /// on accessibility labels.
+    /// on accessibility labels or identifiers.
     private func requireExpandButtonNearTitle(
         _ songTitle: String,
         in app: XCUIApplication,
