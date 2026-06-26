@@ -11,14 +11,15 @@ import XCTest
 
 extension XCTestCase {
     /// Expands the song row matching `songTitle` and waits for the difficulty
-    /// selector to appear. Finds the expand button by its unique accessibility
-    /// identifier, which includes the song title, ensuring the correct song's
-    /// charts are revealed even when multiple songs are visible.
+    /// selector to appear. Finds the expand button whose accessibility label
+    /// contains both the song title and a non-zero chart count, ensuring the
+    /// correct song's charts are revealed even when multiple songs are visible.
     ///
-    /// The expand button's accessibility identifier is set to
-    /// `downloadedSongExpandButton_{songTitle}` in `DownloadedSongsView`, so a
-    /// direct identifier lookup uniquely identifies the correct button without
-    /// relying on row scoping or search-filter propagation timing.
+    /// The expand button's accessibility label is set to
+    /// `"{songTitle} - {chartCount} charts"` in `DownloadedSongsView`. Querying
+    /// by label (not identifier) is required because macOS SwiftUI accessibility
+    /// container merging can hide inner button identifiers when the parent view
+    /// has its own `.accessibilityIdentifier`.
     func expandSongRow(
         containing songTitle: String,
         in app: XCUIApplication,
@@ -36,9 +37,16 @@ extension XCTestCase {
             throw UITestFailure.elementNotFound("song title \(songTitle)")
         }
 
-        // Find the expand button by its unique identifier, which includes
-        // the song title. This avoids the global firstMatch race.
-        let expandButton = app.buttons["downloadedSongExpandButton_\(songTitle)"]
+        // Find the expand button by label. The label is
+        // "{songTitle} - {chartCount} charts", so matching both the song
+        // title AND a non-zero chart count uniquely identifies the correct
+        // button. We use label (not identifier) because macOS accessibility
+        // container merging can hide inner button identifiers.
+        let labelPredicate = NSPredicate(
+            format: "label CONTAINS[c] %@ AND label MATCHES[c] %@",
+            songTitle, ".*[1-9][0-9]* charts.*"
+        )
+        let expandButton = app.buttons.matching(labelPredicate).firstMatch
 
         guard expandButton.waitForExistence(timeout: timeout) else {
             XCTFail(
