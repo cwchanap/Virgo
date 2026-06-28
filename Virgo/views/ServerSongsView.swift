@@ -12,6 +12,7 @@ import SwiftData
 struct ServerSongsView: View {
     let serverSongs: [ServerSong]
     @ObservedObject var serverSongService: ServerSongService
+    @Environment(\.theme) private var theme
 
     var body: some View {
         List {
@@ -35,22 +36,22 @@ struct ServerSongsView: View {
                     ProgressView()
                         .scaleEffect(0.8)
                     Text("Loading server songs...")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
                 }
                 .listRowBackground(Color.clear)
             } else {
                 VStack(spacing: 16) {
                     Image(systemName: "cloud")
                         .font(.system(size: 50))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
 
                     Text("No Server Songs")
                         .font(.title2)
-                        .foregroundColor(.white)
+                        .foregroundColor(theme.primary)
 
                     Text("Tap the refresh button to load songs from the server")
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
