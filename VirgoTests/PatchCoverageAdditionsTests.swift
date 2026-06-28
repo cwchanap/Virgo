@@ -361,7 +361,7 @@ struct PatchRenderCoverageTests {
 
             SwiftUITestUtilities.assertView(
                 card,
-                containsStrings: ["Level 70", "Hard"],
+                containsStrings: ["Level 70", "HARD"],
                 size: CGSize(width: 360, height: 120)
             )
         }
