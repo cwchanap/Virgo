@@ -26,6 +26,22 @@ struct ContentView: View {
 
     @State private var databaseService: DatabaseMaintenanceService?
 
+    init() {
+        #if canImport(UIKit)
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(Palette.paper)
+        let selected = UIColor(Palette.vermillion)
+        let normal = UIColor(Palette.inkMuted)
+        appearance.stackedLayoutAppearance.selected.iconColor = selected
+        appearance.stackedLayoutAppearance.selected.titleTextAttributes = [.foregroundColor: selected]
+        appearance.stackedLayoutAppearance.normal.iconColor = normal
+        appearance.stackedLayoutAppearance.normal.titleTextAttributes = [.foregroundColor: normal]
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+        #endif
+    }
+
     var body: some View {
         currentContent
             .onChange(of: gameplayNavigation.isShowingGameplay) { _, isNavigating in
@@ -132,7 +148,7 @@ struct ContentView: View {
     }
 
     private var startupPreparationView: some View {
-        Color.black
+        Palette.stage
             .ignoresSafeArea()
             .overlay {
                 ProgressView()
@@ -176,10 +192,11 @@ struct ContentView: View {
                     MetronomeView()
                 } else {
                     // Placeholder view when tab is not active to avoid metronome updates
-                    Color.black
+                    Palette.stage
                         .overlay(
                             Text("Metronome")
-                                .foregroundColor(.white)
+                                .font(AppType.title)
+                                .foregroundColor(Palette.chalk)
                         )
                 }
             }
@@ -214,7 +231,7 @@ struct ContentView: View {
             }
             .tag(4)
         }
-        .tint(.purple)
+        .tint(Palette.vermillion)
         .accessibilityIdentifier("appTabShell")
     }
 
