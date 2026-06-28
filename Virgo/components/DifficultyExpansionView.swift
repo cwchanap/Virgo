@@ -12,15 +12,15 @@ import SwiftData
 struct DifficultyExpansionView: View {
     let charts: [Chart]
     let onChartSelect: (Chart) -> Void
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(spacing: 12) {
             // Expansion header
             HStack {
                 Text("Select Difficulty")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .font(AppType.label)
+                    .foregroundColor(theme.primary)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -36,8 +36,8 @@ struct DifficultyExpansionView: View {
             .padding(.horizontal, 16)
         }
         .padding(.vertical, 12)
-        .background(Color.white.opacity(0.1))
-        .cornerRadius(12)
+        .background(theme.raised)
+        .cornerRadius(Radius.md)
         .padding(.horizontal, 4)
     }
 }
@@ -47,6 +47,7 @@ struct ChartSelectionCard: View {
     let chart: Chart
     let onSelect: () -> Void
     @State private var showingScores = false
+    @Environment(\.theme) private var theme
 
     var body: some View {
         HStack(spacing: 8) {
@@ -71,36 +72,36 @@ struct ChartSelectionCard: View {
 
     private var playButtonContent: some View {
         HStack(spacing: 12) {
-            DifficultyBadge(difficulty: chart.difficulty, size: .normal)
+            DifficultyPips(difficulty: chart.difficulty)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(chart.notesCount) notes")
-                    .font(.caption)
-                    .foregroundColor(.gray)
+                    .font(.plexMono(11))
+                    .foregroundColor(theme.secondary)
                 Text("Level \(chart.level)")
-                    .font(.caption2)
-                    .foregroundColor(.gray)
+                    .font(.plexMono(11))
+                    .foregroundColor(theme.secondary)
             }
 
             Spacer()
 
             if chart.bestScore > 0 {
                 Text("\(chart.bestScore)")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.purple)
+                    .font(.plexMono(11))
+                    .foregroundColor(theme.accent)
             }
 
             Image(systemName: "chevron.right")
                 .font(.caption)
-                .foregroundColor(.gray)
+                .foregroundColor(theme.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(Color.white.opacity(0.1))
-        .cornerRadius(8)
+        .background(theme.raised)
+        .cornerRadius(Radius.sm)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: Radius.sm)
                 .stroke(chart.difficulty.color.opacity(0.4), lineWidth: 1)
         )
         .contentShape(Rectangle())
@@ -112,10 +113,10 @@ struct ChartSelectionCard: View {
         } label: {
             Image(systemName: "list.bullet.rectangle")
                 .font(.body)
-                .foregroundColor(.cyan)
+                .foregroundColor(theme.secondary)
                 .frame(width: 36, height: 36)
-                .background(Color.white.opacity(0.1))
-                .cornerRadius(8)
+                .background(theme.raised)
+                .cornerRadius(Radius.sm)
                 .accessibilityHidden(true)
         }
         .buttonStyle(PlainButtonStyle())

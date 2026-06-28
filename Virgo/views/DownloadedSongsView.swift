@@ -10,6 +10,7 @@ import SwiftData
 
 // MARK: - Downloaded Songs View
 struct DownloadedSongsView: View {
+    @Environment(\.theme) private var theme
     static let emptyStateViewID = "downloaded-empty-state"
 
     static func rowViewID(for song: Song) -> String {
@@ -79,15 +80,15 @@ struct DownloadedSongsView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "arrow.down.circle")
                         .font(.system(size: 50))
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
 
                     Text("No Downloaded Songs")
                         .font(.title2)
-                        .foregroundColor(.white)
+                        .foregroundColor(theme.primary)
 
                     Text("Download songs from the Server tab to see them here")
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
@@ -113,6 +114,8 @@ struct DownloadedSongRowWithDelete: View {
     let onPlayTap: () -> Void
     let onSaveTap: () -> Void
     let onDelete: () -> Void
+
+    @Environment(\.theme) private var theme
 
     // Cache relationship data to prevent SwiftData concurrency issues
     @State private var chartCount: Int
@@ -173,7 +176,7 @@ struct DownloadedSongRowWithDelete: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(isPlaying ? Color.purple.opacity(0.2) : Color.white.opacity(0.1))
+        .background(isPlaying ? theme.accent.opacity(0.12) : theme.raised)
         .cornerRadius(12)
     }
     
@@ -181,7 +184,7 @@ struct DownloadedSongRowWithDelete: View {
         Button(action: onPlayTap) {
             Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                 .font(.system(size: 40))
-                .foregroundColor(isPlaying ? .red : .purple)
+                .foregroundColor(isPlaying ? theme.accent : theme.primary)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -191,11 +194,11 @@ struct DownloadedSongRowWithDelete: View {
             Text(song.title)
                 .font(.headline)
                 .lineLimit(1)
-                .foregroundColor(.white)
+                .foregroundColor(theme.primary)
 
             Text(song.artist)
                 .font(.subheadline)
-                .foregroundColor(.gray)
+                .foregroundColor(theme.secondary)
                 .lineLimit(1)
 
             songMetadataLabels
@@ -214,9 +217,9 @@ struct DownloadedSongRowWithDelete: View {
             Label("\(measureCount) measures", systemImage: "music.note.list")
         }
         .font(.caption)
-        .foregroundColor(.gray)
+        .foregroundColor(theme.secondary)
     }
-    
+
     private var actionsSection: some View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
@@ -232,7 +235,7 @@ struct DownloadedSongRowWithDelete: View {
         Button(action: onSaveTap) {
             Image(systemName: song.isSaved ? "bookmark.fill" : "bookmark")
                 .font(.system(size: 18))
-                .foregroundColor(song.isSaved ? .purple : .gray)
+                .foregroundColor(song.isSaved ? theme.accent : theme.secondary)
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel(song.isSaved ? "Remove bookmark" : "Save song")
@@ -243,7 +246,7 @@ struct DownloadedSongRowWithDelete: View {
     private var difficultyBadges: some View {
         HStack(spacing: 2) {
             ForEach(availableDifficulties, id: \.self) { difficulty in
-                DifficultyBadge(difficulty: difficulty, size: .small)
+                DifficultyPips(difficulty: difficulty, showLabel: false)
             }
         }
     }
@@ -265,7 +268,7 @@ struct DownloadedSongRowWithDelete: View {
                 .accessibilityIdentifier("downloadedSongDeleteButton")
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .foregroundColor(.red)
+                .foregroundColor(theme.accent)
                 .disabled(isDeleting)
             }
         }
@@ -276,13 +279,13 @@ struct DownloadedSongRowWithDelete: View {
             HStack(spacing: 4) {
                 Image(systemName: "chevron.down")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(theme.secondary)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     .animation(.easeInOut(duration: 0.3), value: isExpanded)
 
                 Text("\(chartCount) charts")
                     .font(.caption2)
-                    .foregroundColor(.gray)
+                    .foregroundColor(theme.secondary)
             }
         }
         .buttonStyle(PlainButtonStyle())
