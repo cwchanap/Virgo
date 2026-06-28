@@ -20,4 +20,12 @@ struct DesignSystemTests {
         #expect(VirgoTheme.paper.accent == VirgoTheme.ink.accent)
         #expect(VirgoTheme.paper.accent == Palette.vermillion)
     }
+
+    @Test("difficulty pip fill scales with difficulty", arguments: [
+        (Difficulty.easy, 2), (.medium, 3), (.hard, 4), (.expert, 5)
+    ])
+    func pipFill(difficulty: Difficulty, expected: Int) {
+        #expect(DifficultyPipScale.filled(for: difficulty) == expected)
+        #expect(DifficultyPipScale.filled(for: difficulty) <= DifficultyPipScale.total)
+    }
 }
