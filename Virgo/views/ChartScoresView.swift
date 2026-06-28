@@ -12,6 +12,7 @@ struct ChartScoresView: View {
     let chart: Chart
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.theme) private var theme
     @State private var attempts: [ScoreAttemptSummary]
     @State private var bestScore: Int
 
@@ -29,8 +30,6 @@ struct ChartScoresView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-
             VStack(spacing: 16) {
                 bestScoreHeader
 
@@ -42,10 +41,11 @@ struct ChartScoresView: View {
             }
             .padding(.top, 16)
         }
+        .surface(.paper)
         .navigationTitle("Scores")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(.light, for: .navigationBar)
         #endif
         .task { load() }
     }
@@ -53,11 +53,12 @@ struct ChartScoresView: View {
     private var bestScoreHeader: some View {
         VStack(spacing: 4) {
             Text("\(bestScore)")
-                .font(.system(size: 40, weight: .bold, design: .monospaced))
-                .foregroundColor(.purple)
+                .font(.plexMono(40, weight: .bold))
+                .foregroundColor(theme.accent)
             Text("BEST SCORE")
-                .font(.caption)
-                .foregroundColor(.gray)
+                .font(.plexMono(11, weight: .medium))
+                .tracking(1.5)
+                .foregroundColor(theme.secondary)
         }
     }
 
@@ -66,13 +67,13 @@ struct ChartScoresView: View {
             Spacer()
             Image(systemName: "list.bullet.rectangle")
                 .font(.system(size: 48))
-                .foregroundColor(.white.opacity(0.3))
+                .foregroundColor(theme.rule)
             Text("No attempts yet")
-                .font(.headline)
-                .foregroundColor(.white)
+                .font(AppType.headline)
+                .foregroundColor(theme.primary)
             Text("Play this chart to record a score")
                 .font(.subheadline)
-                .foregroundColor(.gray)
+                .foregroundColor(theme.secondary)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -81,7 +82,9 @@ struct ChartScoresView: View {
     private var attemptsList: some View {
         List(attempts) { attempt in
             ScoreAttemptRow(attempt: attempt)
-                .listRowBackground(Color.white.opacity(0.05))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.visible)
+                .listRowSeparatorTint(theme.rule)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -119,6 +122,7 @@ struct ChartScoresView: View {
 
 struct ScoreAttemptRow: View {
     let attempt: ScoreAttemptSummary
+    @Environment(\.theme) private var theme
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -130,20 +134,20 @@ struct ScoreAttemptRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(attempt.score)")
-                    .font(.system(.headline, design: .monospaced))
-                    .foregroundColor(.white)
+                    .font(.plexMono(16, weight: .semibold))
+                    .foregroundColor(theme.primary)
                 Text(Self.relativeFormatter.localizedString(for: attempt.playedAt, relativeTo: Date()))
                     .font(.caption2)
-                    .foregroundColor(.gray)
+                    .foregroundColor(theme.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
                 Text("\(attempt.maxCombo)x · \(Int(attempt.accuracy.rounded()))%")
-                    .font(.caption)
-                    .foregroundColor(.cyan)
+                    .font(.plexMono(11))
+                    .foregroundColor(theme.accent)
                 Text("\(Int((attempt.speedMultiplier * 100).rounded()))% speed")
-                    .font(.caption2)
-                    .foregroundColor(.orange)
+                    .font(.plexMono(10))
+                    .foregroundColor(theme.secondary)
             }
         }
         .padding(.vertical, 4)
