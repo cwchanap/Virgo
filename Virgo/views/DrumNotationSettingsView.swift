@@ -14,6 +14,7 @@ struct DrumNotationSettingsView: View {
     @State private var draggedDrumType: DrumType?
     @State private var dragOffset: CGSize = .zero
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.theme) private var theme
     
     private let staffHeight: CGFloat = 200
     private let staffLineSpacing: CGFloat = 20
@@ -21,58 +22,49 @@ struct DrumNotationSettingsView: View {
     
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 0) {
                 #if os(macOS)
                 // Title section with back button for macOS
-                HStack {
-                    Button(action: { dismiss() }, label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "chevron.left")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                            Text("Back")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                        }
-                    })
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    Spacer()
-                    
-                    Text("Drum Notation")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                    
-                    Spacer()
+                LedgerRow {
+                    HStack {
+                        Button(action: { dismiss() }, label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "chevron.left")
+                                    .font(.title2)
+                                    .foregroundColor(theme.primary)
+                                Text("Back")
+                                    .font(.headline)
+                                    .foregroundColor(theme.primary)
+                            }
+                        })
+                        .buttonStyle(PlainButtonStyle())
+
+                        Spacer()
+
+                        Text("Drum Notation")
+                            .font(AppType.display)
+                            .foregroundColor(theme.primary)
+
+                        Spacer()
+                    }
                 }
-                .padding(.horizontal)
-                .padding(.top, 10)
                 #endif
-                
+
                 // Header Section
                 headerSection
-                
+
                 // Interactive Staff Section
                 interactiveStaffSection
-                
+
                 // Instructions
                 instructionsSection
-                
+
                 // Reset Section
                 resetSection
             }
-            .padding(.horizontal)
             .padding(.top, 20)
         }
-        .background(
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea(.container, edges: .bottom)
-        )
+        .surface(.paper)
         #if os(iOS)
         .navigationTitle("Drum Notation")
         .navigationBarTitleDisplayMode(.inline)
@@ -85,107 +77,100 @@ struct DrumNotationSettingsView: View {
     // MARK: - Header Section
     
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "music.note")
-                    .foregroundColor(.purple)
-                Text("Drum Note Positions")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                Spacer()
+        LedgerRow {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "music.note")
+                        .foregroundColor(theme.accent)
+                    Text("Drum Note Positions")
+                        .font(AppType.headline)
+                        .foregroundColor(theme.primary)
+                    Spacer()
+                }
+
+                Text("Drag the drum symbols to position them on the staff lines. " +
+                     "This controls where each drum appears in the musical notation.")
+                    .font(.hanken(12))
+                    .foregroundColor(theme.secondary)
+                    .multilineTextAlignment(.leading)
             }
-            
-            Text("Drag the drum symbols to position them on the staff lines. " +
-                 "This controls where each drum appears in the musical notation.")
-                .font(.caption)
-                .foregroundColor(.gray)
-                .multilineTextAlignment(.leading)
         }
-        .padding()
-        .background(Color.black.opacity(0.3))
-        .cornerRadius(12)
     }
     
     // MARK: - Interactive Staff Section
     
     private var interactiveStaffSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "hand.draw")
-                    .foregroundColor(.cyan)
-                Text("Interactive Staff")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+            LedgerRow {
+                HStack {
+                    Image(systemName: "hand.draw")
+                        .foregroundColor(theme.accent)
+                    Text("Interactive Staff")
+                        .font(AppType.headline)
+                        .foregroundColor(theme.primary)
+                    Spacer()
+                }
             }
-            
+
             // Staff with draggable notes
             ZStack {
-                // Staff background
-                Rectangle()
-                    .fill(Color.black.opacity(0.2))
-                    .frame(height: staffHeight + 100) // Extra space above and below staff
-                    .cornerRadius(12)
-                
                 // Staff lines and notes
                 GeometryReader { geometry in
                     let staffWidth = geometry.size.width
                     let staffCenterY = (staffHeight + 100) / 2
-                    
+
                     ZStack {
                         // Staff lines (5 lines)
                         VStack(spacing: staffLineSpacing) {
                             ForEach(0..<5) { _ in
                                 Rectangle()
-                                    .fill(Color.gray.opacity(0.6))
+                                    .fill(theme.primary.opacity(0.5))
                                     .frame(height: 2)
                             }
                         }
                         .frame(height: 4 * staffLineSpacing)
                         .position(x: staffWidth / 2, y: staffCenterY)
-                        
+
                         // Virtual guide lines - extend the main VStack pattern seamlessly
                         VStack(spacing: staffLineSpacing) {
                             // Above-staff virtual lines (4 additional lines above)
                             Rectangle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(theme.rule)
                                 .frame(height: 2)
                             Rectangle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(theme.rule)
                                 .frame(height: 2)
                             Rectangle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(theme.rule)
                                 .frame(height: 2)
                             Rectangle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(theme.rule)
                                 .frame(height: 2)
-                            
-                            // Main staff lines (transparent - they're handled by the main VStack)
+
+                            // Main staff lines (transparent - handled by the main VStack)
                             ForEach(0..<5) { _ in
                                 Rectangle()
                                     .fill(Color.clear)
                                     .frame(height: 2)
                             }
-                            
+
                             // Below-staff virtual lines (4 additional lines below)
                             Rectangle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(theme.rule)
                                 .frame(height: 2)
                             Rectangle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(theme.rule)
                                 .frame(height: 2)
                             Rectangle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(theme.rule)
                                 .frame(height: 2)
                             Rectangle()
-                                .fill(Color.gray.opacity(0.3))
+                                .fill(theme.rule)
                                 .frame(height: 2)
                         }
                         .frame(height: 12 * staffLineSpacing) // Total: 4 above + 4 main + 4 below = 12 gaps
                         .position(x: staffWidth / 2, y: staffCenterY)
-                        
+
                         // Draggable drum notes
                         ForEach(DrumType.allCases, id: \.self) { drumType in
                             draggableDrumNote(
@@ -198,46 +183,44 @@ struct DrumNotationSettingsView: View {
                 }
                 .frame(height: staffHeight + 200)
             }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.md)
+            RuleDivider()
         }
-        .padding()
-        .background(Color.black.opacity(0.3))
-        .cornerRadius(12)
     }
     
     // MARK: - Instructions Section
     
     private var instructionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "info.circle")
-                    .foregroundColor(.blue)
-                Text("How to Use")
-                    .font(.headline)
-                    .foregroundColor(.white)
+        VStack(alignment: .leading, spacing: 0) {
+            LedgerRow {
+                HStack {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(theme.accent)
+                    Text("How to Use")
+                        .font(AppType.headline)
+                        .foregroundColor(theme.primary)
+                    Spacer()
+                }
+            }
+            instructionRow(icon: "hand.point.up.left", text: "Drag drum symbols up or down to position them")
+            instructionRow(icon: "line.3.horizontal", text: "Place symbols on staff lines or between them")
+            instructionRow(icon: "music.note", text: "Changes apply to all gameplay views")
+            instructionRow(icon: "arrow.clockwise", text: "Use Reset to restore default positions")
+        }
+    }
+
+    private func instructionRow(icon: String, text: String) -> some View {
+        LedgerRow {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(theme.secondary)
+                    .frame(width: 16)
+                Text(text)
+                    .font(.hanken(12))
+                    .foregroundColor(theme.secondary)
                 Spacer()
             }
-            
-            VStack(alignment: .leading, spacing: 8) {
-                instructionRow(icon: "hand.point.up.left", text: "Drag drum symbols up or down to position them")
-                instructionRow(icon: "line.3.horizontal", text: "Place symbols on staff lines or between them")
-                instructionRow(icon: "music.note", text: "Changes apply to all gameplay views")
-                instructionRow(icon: "arrow.clockwise", text: "Use Reset to restore default positions")
-            }
-        }
-        .padding()
-        .background(Color.black.opacity(0.3))
-        .cornerRadius(12)
-    }
-    
-    private func instructionRow(icon: String, text: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundColor(.gray)
-                .frame(width: 16)
-            Text(text)
-                .font(.caption)
-                .foregroundColor(.gray)
-            Spacer()
         }
     }
     
@@ -252,17 +235,17 @@ struct DrumNotationSettingsView: View {
             // Drum symbol
             Text(drumType.symbol)
                 .font(.system(size: noteSize))
-                .foregroundColor(.white)
+                .foregroundColor(draggedDrumType == drumType ? theme.accent : theme.primary)
                 .background(
                     Circle()
-                        .fill(draggedDrumType == drumType ? Color.purple.opacity(0.3) : Color.clear)
+                        .fill(draggedDrumType == drumType ? theme.accent.opacity(0.2) : Color.clear)
                         .frame(width: noteSize + 8, height: noteSize + 8)
                 )
-            
+
             // Drum name
             Text(drumType.displayName)
                 .font(.system(size: 10))
-                .foregroundColor(.gray)
+                .foregroundColor(theme.secondary)
                 .multilineTextAlignment(.center)
         }
         .position(x: xPosition, y: yPosition)
@@ -400,52 +383,52 @@ struct DrumNotationSettingsView: View {
     // MARK: - Reset Section
     
     private var resetSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Image(systemName: "arrow.clockwise")
-                    .foregroundColor(.orange)
-                Text("Reset Settings")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                Spacer()
-            }
-            
-            Button {
-                showResetAlert = true
-            } label: {
+        VStack(alignment: .leading, spacing: 0) {
+            LedgerRow {
                 HStack {
-                    Image(systemName: "arrow.counterclockwise")
-                        .foregroundColor(.orange)
-                    Text("Reset All Positions to Default")
-                        .fontWeight(.medium)
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundColor(theme.accent)
+                    Text("Reset Settings")
+                        .font(AppType.headline)
+                        .foregroundColor(theme.primary)
                     Spacer()
                 }
-                .foregroundColor(.orange)
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.orange.opacity(0.1))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                        )
-                )
             }
-            .buttonStyle(PlainButtonStyle())
-            .alert("Reset Drum Notation", isPresented: $showResetAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Reset", role: .destructive) {
-                    settingsManager.resetToDefaults()
+
+            LedgerRow {
+                Button {
+                    showResetAlert = true
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.counterclockwise")
+                            .foregroundColor(theme.accent)
+                        Text("Reset All Positions to Default")
+                            .fontWeight(.medium)
+                        Spacer()
+                    }
+                    .foregroundColor(theme.accent)
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.clear)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(theme.accent.opacity(0.4), lineWidth: 1)
+                            )
+                    )
                 }
-            } message: {
-                Text("This will reset all drum note positions to their default staff line assignments. " +
-                     "This action cannot be undone.")
+                .buttonStyle(PlainButtonStyle())
+                .alert("Reset Drum Notation", isPresented: $showResetAlert) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Reset", role: .destructive) {
+                        settingsManager.resetToDefaults()
+                    }
+                } message: {
+                    Text("This will reset all drum note positions to their default staff line assignments. " +
+                         "This action cannot be undone.")
+                }
             }
         }
-        .padding()
-        .background(Color.black.opacity(0.3))
-        .cornerRadius(12)
     }
 }
 
