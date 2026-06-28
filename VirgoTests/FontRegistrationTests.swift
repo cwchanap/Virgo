@@ -26,5 +26,11 @@ struct FontRegistrationTests {
         #expect(fontExists(AppFontFamily.serif))
         #expect(fontExists(AppFontFamily.sans))
         #expect(fontExists(AppFontFamily.mono))
+
+        // Test idempotency: calling registerAll() again should not cause issues
+        AppFonts.registerAll()
+        #expect(fontExists(AppFontFamily.serif))
+        #expect(fontExists(AppFontFamily.sans))
+        #expect(fontExists(AppFontFamily.mono))
     }
 }

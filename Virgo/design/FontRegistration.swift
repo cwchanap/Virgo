@@ -27,9 +27,16 @@ enum AppFonts {
         }
 
         for url in urls {
-            var error: Unmanaged<CFError>?
-            // .none scope = process-wide; "already registered" errors are safe to ignore.
-            CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error)
+            var cfError: Unmanaged<CFError>?
+            // .process scope = process-wide; "already registered" errors are safe to ignore.
+            CTFontManagerRegisterFontsForURL(url as CFURL, .process, &cfError)
+            if let err = cfError?.takeRetainedValue() {
+                // Releases the owned CFError. "Already registered" on re-runs is benign and ignored.
+                let code = CFErrorGetCode(err)
+                if code != CTFontManagerError.alreadyRegistered.rawValue {
+                    Logger.debug("Font registration failed for \(url.lastPathComponent): \(err)")
+                }
+            }
         }
     }
 }
