@@ -12,25 +12,16 @@ struct MetronomeView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
             VStack(spacing: 30) {
                 // Header
                 VStack(spacing: 8) {
                     Text("Metronome")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
+                        .font(AppType.display)
+                        .foregroundColor(Palette.chalk)
 
                     Text("Perfect your timing with precision beats")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
+                        .font(.plexMono(13))
+                        .foregroundColor(Palette.chalkMuted)
                 }
                 .padding(.top, 20)
 
@@ -45,8 +36,8 @@ struct MetronomeView: View {
                 // Practice tips section
                 VStack(spacing: 16) {
                     Text("Practice Tips")
-                        .font(.headline)
-                        .foregroundColor(.white)
+                        .font(AppType.headline)
+                        .foregroundColor(Palette.chalk)
 
                     VStack(spacing: 12) {
                         PracticeTipRow(
@@ -72,6 +63,7 @@ struct MetronomeView: View {
                 .padding(.bottom, 30)
             }
         }
+        .surface(.ink)
     }
 }
 
@@ -84,26 +76,26 @@ struct PracticeTipRow: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundColor(.purple)
+                .foregroundColor(Palette.vermillion)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(Palette.chalk)
 
                 Text(description)
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Palette.chalkMuted)
             }
 
             Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.white.opacity(0.1))
-        .cornerRadius(12)
+        .background(Palette.stageRaised)
+        .cornerRadius(Radius.md)
     }
 }
 
