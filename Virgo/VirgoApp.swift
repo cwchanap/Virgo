@@ -47,6 +47,7 @@ struct VirgoApp: App {
     }()
 
     init() {
+        AppFonts.registerAll()
         if VirgoAppLaunchBehavior.shouldDisableAnimations(arguments: ProcessInfo.processInfo.arguments) {
             #if canImport(UIKit)
             UIView.setAnimationsEnabled(false)
