@@ -12,4 +12,12 @@ struct DesignSystemTests {
         #expect(abs(comps[1] - 0x34/255.0) < 0.001)
         #expect(abs(comps[2] - 0x1F/255.0) < 0.001)
     }
+
+    @Test("paper and ink themes differ and share the vermillion accent")
+    func themeWorlds() {
+        #expect(VirgoTheme.paper.background != VirgoTheme.ink.background)
+        #expect(VirgoTheme.paper.primary != VirgoTheme.ink.primary)
+        #expect(VirgoTheme.paper.accent == VirgoTheme.ink.accent)
+        #expect(VirgoTheme.paper.accent == Palette.vermillion)
+    }
 }
