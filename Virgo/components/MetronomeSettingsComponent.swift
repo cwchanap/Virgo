@@ -29,24 +29,31 @@ struct MetronomeSettingsView: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("Metronome Settings")
-                .font(.headline)
-                .foregroundColor(.white)
+                .font(AppType.headline)
+                .foregroundColor(Palette.chalk)
 
             // BPM Control
             VStack(spacing: 8) {
-                Text("BPM: \(Int(tempBPM))")
-                    .font(.title2)
-                    .foregroundColor(.white)
+                VStack(spacing: 2) {
+                    Text("\(Int(tempBPM))")
+                        .font(AppType.numericLarge)
+                        .foregroundColor(Palette.chalk)
+
+                    Text("BPM")
+                        .font(.plexMono(11, weight: .medium))
+                        .tracking(1.5)
+                        .foregroundColor(Palette.chalkMuted)
+                }
 
                 Slider(
                     value: $tempBPM,
                     in: MetronomeConstants.minBPM...MetronomeConstants.maxBPM,
                     step: MetronomeConstants.bpmStep
                 )
-                    .accentColor(.purple)
-                    .onChange(of: tempBPM) { bpm in
-                        metronome.configure(bpm: bpm, timeSignature: selectedTimeSignature)
-                    }
+                .tint(Palette.vermillion)
+                .onChange(of: tempBPM) { bpm in
+                    metronome.configure(bpm: bpm, timeSignature: selectedTimeSignature)
+                }
 
                 HStack(spacing: 16) {
                     Button("-\(Int(MetronomeConstants.largeAdjustment))") {
@@ -75,7 +82,7 @@ struct MetronomeSettingsView: View {
             VStack(spacing: 8) {
                 Text("Time Signature")
                     .font(.subheadline)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Palette.chalkMuted)
 
                 Picker("Time Signature", selection: $selectedTimeSignature) {
                     ForEach(
@@ -86,6 +93,7 @@ struct MetronomeSettingsView: View {
                     }
                 }
                 .pickerStyle(SegmentedPickerStyle())
+                .tint(Palette.vermillion)
                 .onChange(of: selectedTimeSignature) { signature in
                     metronome.configure(bpm: tempBPM, timeSignature: signature)
                 }
@@ -95,17 +103,17 @@ struct MetronomeSettingsView: View {
             VStack(spacing: 8) {
                 Text("Volume")
                     .font(.subheadline)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Palette.chalkMuted)
 
                 HStack {
                     Image(systemName: "speaker.fill")
-                        .foregroundColor(.gray)
+                        .foregroundColor(Palette.chalkMuted)
 
                     Slider(value: $metronome.volume, in: MetronomeConstants.volumeRange)
-                        .accentColor(.purple)
+                        .tint(Palette.vermillion)
 
                     Image(systemName: "speaker.wave.3.fill")
-                        .foregroundColor(.gray)
+                        .foregroundColor(Palette.chalkMuted)
                 }
             }
 
@@ -119,7 +127,8 @@ struct MetronomeSettingsView: View {
                         )
                         .foregroundColor(
                             metronome.isEnabled && metronome.currentBeat == beat + 1 ?
-                                (beat == 0 ? .purple : .white) : .gray.opacity(0.3)
+                                (beat == 0 ? Palette.vermillion : Palette.chalk) :
+                                Palette.chalkMuted.opacity(0.4)
                         )
                         .scaleEffect(
                             metronome.isEnabled && metronome.currentBeat == beat + 1 ?
@@ -142,9 +151,9 @@ struct MetronomeSettingsView: View {
                     label: {
                     Text(metronome.isEnabled ? "Stop" : "Start")
                         .font(.title3)
-                        .foregroundColor(.white)
+                        .foregroundColor(Palette.chalk)
                         .frame(width: 80, height: 40)
-                        .background(metronome.isEnabled ? .red : .purple)
+                        .background(Palette.vermillion)
                         .cornerRadius(8)
                     }
                 )
@@ -156,8 +165,8 @@ struct MetronomeSettingsView: View {
             }
         }
         .padding()
-        .background(Color.black.opacity(0.9))
-        .cornerRadius(12)
+        .background(Palette.stageRaised)
+        .cornerRadius(Radius.md)
         .onAppear {
             metronome.configure(bpm: tempBPM, timeSignature: selectedTimeSignature)
         }
@@ -168,9 +177,9 @@ struct MetronomeButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.caption)
-            .foregroundColor(.white)
+            .foregroundColor(Palette.chalk)
             .frame(width: 40, height: 30)
-            .background(Color.gray.opacity(0.5))
+            .background(Palette.stageRaised)
             .cornerRadius(6)
             .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
     }
@@ -179,5 +188,5 @@ struct MetronomeButtonStyle: ButtonStyle {
 #Preview {
     MetronomeSettingsView(metronome: MetronomeEngine())
         .padding()
-        .background(Color.black)
+        .background(Palette.stage)
 }
