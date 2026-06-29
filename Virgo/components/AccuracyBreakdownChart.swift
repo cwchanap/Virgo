@@ -25,8 +25,8 @@ struct AccuracyBreakdownChart: View {
         [
             TierData(label: "Perfect", count: perfectCount, color: Palette.vermillion),
             TierData(label: "Great", count: greatCount, color: Palette.chalkMuted),
-            TierData(label: "Good", count: goodCount, color: Palette.chalkMuted),
-            TierData(label: "Miss", count: missCount, color: Palette.chalkMuted)
+            TierData(label: "Good", count: goodCount, color: Palette.chalkMuted.opacity(0.7)),
+            TierData(label: "Miss", count: missCount, color: Palette.chalkMuted.opacity(0.45))
         ]
     }
 

@@ -31,9 +31,9 @@ struct FlagView: View {
 // Note: these views previously carried an `isActive` parameter intended for
 // beat-boundary highlighting. Highlighting was removed because re-evaluating
 // the notation subviews on every beat forced expensive sheet re-layouts during
-// playback; the quantized purple playhead now provides position feedback
+// playback; the quantized vermillion playhead now provides position feedback
 // without churning the layout tree. The parameter has been deleted so the
-// rendering contract (always white) is explicit.
+// rendering contract (always chalk) is explicit.
 
 struct NotationNoteHeadView: View, Equatable {
     let noteHead: RenderedNoteHead

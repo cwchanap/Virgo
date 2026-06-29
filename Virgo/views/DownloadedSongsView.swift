@@ -259,7 +259,7 @@ struct DownloadedSongRowWithDelete: View {
                         .scaleEffect(0.8)
                     Text("Deleting...")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
                 }
             } else {
                 Button(action: onDelete) {
