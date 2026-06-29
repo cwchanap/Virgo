@@ -23,10 +23,10 @@ struct AccuracyBreakdownChart: View {
 
     private var data: [TierData] {
         [
-            TierData(label: "Perfect", count: perfectCount, color: .cyan),
-            TierData(label: "Great", count: greatCount, color: .green),
-            TierData(label: "Good", count: goodCount, color: .yellow),
-            TierData(label: "Miss", count: missCount, color: .red)
+            TierData(label: "Perfect", count: perfectCount, color: Palette.vermillion),
+            TierData(label: "Great", count: greatCount, color: Palette.chalkMuted),
+            TierData(label: "Good", count: goodCount, color: Palette.chalkMuted),
+            TierData(label: "Miss", count: missCount, color: Palette.chalkMuted)
         ]
     }
 
@@ -34,7 +34,7 @@ struct AccuracyBreakdownChart: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Hit Breakdown")
                 .font(.caption)
-                .foregroundColor(.gray)
+                .foregroundColor(Palette.chalkMuted)
 
             Charts.Chart(data) { tier in
                 BarMark(
@@ -44,8 +44,8 @@ struct AccuracyBreakdownChart: View {
                 .foregroundStyle(tier.color)
                 .annotation(position: .top, alignment: .center) {
                     Text("\(tier.count)")
-                        .font(.caption2)
-                        .foregroundColor(.white)
+                        .font(.plexMono(10))
+                        .foregroundColor(Palette.chalk)
                 }
             }
             .chartXAxis {
@@ -54,7 +54,7 @@ struct AccuracyBreakdownChart: View {
                         if let label = value.as(String.self) {
                             Text(label)
                                 .font(.caption2)
-                                .foregroundColor(.gray)
+                                .foregroundColor(Palette.chalkMuted)
                         }
                     }
                 }
@@ -68,5 +68,5 @@ struct AccuracyBreakdownChart: View {
 #Preview {
     AccuracyBreakdownChart(perfectCount: 15, greatCount: 8, goodCount: 3, missCount: 2)
         .padding()
-        .background(Color.black)
+        .background(Palette.stage)
 }
