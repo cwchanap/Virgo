@@ -17,7 +17,7 @@ struct TimingDeviationView: View {
         VStack(spacing: 10) {
             Text("Timing")
                 .font(.caption)
-                .foregroundColor(.gray)
+                .foregroundColor(Palette.chalkMuted)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if let avg = averageDeviation {
@@ -28,8 +28,8 @@ struct TimingDeviationView: View {
                         .font(.caption.weight(.bold))
 
                     Text(String(format: "%+.1f ms", avg))
-                        .font(.system(.body, design: .monospaced).weight(.semibold))
-                        .foregroundColor(.white)
+                        .font(.plexMono(15, weight: .semibold))
+                        .foregroundColor(Palette.chalk)
 
                     Text(tendencyLabel)
                         .font(.caption)
@@ -53,13 +53,13 @@ struct TimingDeviationView: View {
 
                     HStack(spacing: 1) {
                         Rectangle()
-                            .fill(Color.blue.opacity(0.7))
+                            .fill(Palette.vermillion.opacity(0.7))
                             .frame(width: earlyWidth)
                         Rectangle()
-                            .fill(Color.orange.opacity(0.7))
+                            .fill(Palette.chalkMuted.opacity(0.7))
                             .frame(width: lateWidth)
                         Rectangle()
-                            .fill(Color.gray.opacity(0.5))
+                            .fill(Palette.gridline)
                             .frame(width: neutralWidth)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 3))
@@ -68,26 +68,26 @@ struct TimingDeviationView: View {
 
                 HStack {
                     Label(String(format: "Early %.0f%%", earlyPercentage), systemImage: "arrow.left")
-                        .font(.caption2)
-                        .foregroundColor(.blue)
+                        .font(.plexMono(10))
+                        .foregroundColor(Palette.vermillion)
                     Spacer()
                     Label(String(format: "Late %.0f%%", latePercentage), systemImage: "arrow.right")
-                        .font(.caption2)
-                        .foregroundColor(.orange)
+                        .font(.plexMono(10))
+                        .foregroundColor(Palette.chalkMuted)
                 }
             } else {
                 Text("No timing data")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Palette.chalkMuted)
             }
         }
     }
 
     private var tendencyColor: Color {
         switch tendency {
-        case .early: return .blue
-        case .late:  return .orange
-        case .balanced: return .green
+        case .early: return Palette.vermillion
+        case .late:  return Palette.chalkMuted
+        case .balanced: return Palette.chalk
         }
     }
 
@@ -108,5 +108,5 @@ struct TimingDeviationView: View {
         TimingDeviationView(averageDeviation: nil, earlyPercentage: 0, latePercentage: 0, tendency: .balanced)
     }
     .padding()
-    .background(Color.black)
+    .background(Palette.stage)
 }
