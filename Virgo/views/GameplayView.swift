@@ -207,6 +207,7 @@ struct StaffLinesBackgroundView: View {
                     ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
                         Rectangle()
                             .frame(width: width, height: 1)
+                            // chalkMuted.opacity(0.5), not Palette.gridline — gridline (#2A2419) is near-invisible on stage (#15120D).
                             .foregroundColor(Palette.chalkMuted.opacity(0.5))
                             .position(
                                 x: width / 2,

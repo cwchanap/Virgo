@@ -27,7 +27,7 @@ extension GameplayView {
                             usesNotationLayout: usesNotationLayout,
                             viewModel: viewModel
                         )
-                        GameplayPurpleBarView(viewModel: viewModel)
+                        GameplayPlayheadBarView(viewModel: viewModel)
                     }
                     .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
                 }
@@ -153,6 +153,7 @@ extension GameplayView {
                     ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
                         Rectangle()
                             .frame(width: width, height: 1) // Full width to cover clef area
+                            // chalkMuted.opacity(0.5), not Palette.gridline — gridline (#2A2419) is near-invisible on stage (#15120D).
                             .foregroundColor(Palette.chalkMuted.opacity(0.5))
                             .position(
                                 x: width / 2, // Center in full width
@@ -319,7 +320,7 @@ extension GameplayView {
     }
 }
 
-private struct GameplayPurpleBarView: View {
+private struct GameplayPlayheadBarView: View {
     let viewModel: GameplayViewModel
 
     var body: some View {
