@@ -36,12 +36,12 @@ struct TimeSignatureSymbol: View {
             // Top number (beats per measure)
             Text("\(timeSignature.beatsPerMeasure)")
                 .font(.system(size: 18, weight: .bold, design: .serif))
-                .foregroundColor(.white)
+                .foregroundColor(Palette.chalk)
 
             // Bottom number (note value)
             Text("\(timeSignature.noteValue)")
                 .font(.system(size: 18, weight: .bold, design: .serif))
-                .foregroundColor(.white)
+                .foregroundColor(Palette.chalk)
         }
         .frame(width: 25, height: 50)
     }
