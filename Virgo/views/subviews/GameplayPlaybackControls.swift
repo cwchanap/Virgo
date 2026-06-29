@@ -31,10 +31,10 @@ extension GameplayView {
                     onSkipToEnd: { viewModel.skipToEnd() },
                     onSpeedChange: { viewModel.updateSpeed($0) }
                 )
-                .background(Color.black)
+                .background(Palette.stage)
             } else {
                 // Placeholder when viewModel is not yet initialized
-                Color.black
+                Palette.stage
                     .frame(height: 100)
             }
         }

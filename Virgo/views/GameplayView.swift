@@ -116,7 +116,7 @@ struct GameplayView: View {
                             onPlayPause: { viewModel?.togglePlayback() },
                             onRestart: { viewModel?.restartPlayback() }
                         )
-                        .background(Color.black)
+                        .background(Palette.stage)
 
                         // Main sheet music area - now the primary scrollable content
                         sheetMusicView(geometry: geometry)
@@ -128,8 +128,8 @@ struct GameplayView: View {
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("gameplayRoot")
                 } else {
-                    Color.black
-                        .overlay(Text("Loading...").foregroundColor(.white))
+                    Palette.stage
+                        .overlay(Text("Loading...").foregroundColor(Palette.chalk))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
@@ -140,8 +140,8 @@ struct GameplayView: View {
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
-        .background(Color.black)
-        .foregroundColor(.white)
+        .background(Palette.stage)
+        .foregroundColor(Palette.chalk)
         .onDisappear {
             viewModel?.cleanup()
         }
@@ -207,7 +207,7 @@ struct StaffLinesBackgroundView: View {
                     ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
                         Rectangle()
                             .frame(width: width, height: 1)
-                            .foregroundColor(.gray.opacity(0.5))
+                            .foregroundColor(Palette.chalkMuted.opacity(0.5))
                             .position(
                                 x: width / 2,
                                 y: GameplayLayout.StaffLinePosition(rawValue: lineIndex)?.absoluteY(for: row) ?? 0

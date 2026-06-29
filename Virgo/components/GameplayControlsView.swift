@@ -28,24 +28,25 @@ struct GameplayControlsView: View {
                 HStack {
                     Text(formatTime(playbackProgress, durationSeconds: adjustedDuration))
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundColor(Palette.chalkMuted)
 
                     Spacer()
 
                     Text(formatDuration(adjustedDuration))
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundColor(Palette.chalkMuted)
                 }
 
                 ProgressView(value: playbackProgress, total: 1.0)
-                    .progressViewStyle(LinearProgressViewStyle(tint: .purple))
+                    .progressViewStyle(LinearProgressViewStyle(tint: Palette.vermillion))
                     .frame(height: 4)
             }
             .padding(.horizontal)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Playback progress")
             .accessibilityValue(
-                "\(formatTime(playbackProgress, durationSeconds: adjustedDuration)) of \(formatDuration(adjustedDuration))"
+                "\(formatTime(playbackProgress, durationSeconds: adjustedDuration))" +
+                " of \(formatDuration(adjustedDuration))"
             )
 
             // Speed Control Section
@@ -57,7 +58,7 @@ struct GameplayControlsView: View {
                 Button(action: onRestart) {
                     Image(systemName: "backward.end.fill")
                         .font(.title)
-                        .foregroundColor(.white)
+                        .foregroundColor(Palette.chalk)
                 }
                 .accessibilityLabel("Restart")
                 .accessibilityIdentifier("gameplayMainRestartButton")
@@ -66,7 +67,7 @@ struct GameplayControlsView: View {
                 Button(action: onPlayPause) {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 64))
-                        .foregroundColor(isPlaying ? .red : .green)
+                        .foregroundColor(Palette.vermillion)
                 }
                 .accessibilityLabel(isPlaying ? "Pause" : "Play")
                 .accessibilityIdentifier("gameplayMainPlayPauseButton")
@@ -75,7 +76,7 @@ struct GameplayControlsView: View {
                 Button(action: onSkipToEnd) {
                     Image(systemName: "forward.end.fill")
                         .font(.title)
-                        .foregroundColor(.white)
+                        .foregroundColor(Palette.chalk)
                 }
                 .accessibilityLabel("Skip to end")
                 .accessibilityIdentifier("gameplaySkipToEndButton")
@@ -89,7 +90,7 @@ struct GameplayControlsView: View {
                     let effectiveBPM = practiceSettings.effectiveBPM(baseBPM: track.bpm)
                     metronome.toggle(bpm: effectiveBPM, timeSignature: track.timeSignature)
                 }
-                .foregroundColor(metronome.isEnabled ? .purple : .white)
+                .foregroundColor(metronome.isEnabled ? Palette.vermillion : Palette.chalk)
                 .font(.title2)
                 .accessibilityLabel("Metronome")
                 .accessibilityValue(metronome.isEnabled ? "On" : "Off")
@@ -100,7 +101,7 @@ struct GameplayControlsView: View {
         .padding()
         .background(
             LinearGradient(
-                gradient: Gradient(colors: [Color.clear, Color.black.opacity(0.8)]),
+                gradient: Gradient(colors: [Color.clear, Palette.stage]),
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -117,14 +118,14 @@ struct GameplayControlsView: View {
             HStack {
                 Text("Speed")
                     .font(.subheadline)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Palette.chalkMuted)
                 Spacer()
                 Text(practiceSettings.formattedSpeed)
-                    .font(.headline)
-                    .foregroundColor(.purple)
+                    .font(.plexMono(15, weight: .semibold))
+                    .foregroundColor(Palette.vermillion)
                 Text("(\(practiceSettings.formattedEffectiveBPM(baseBPM: track.bpm)))")
-                    .font(.caption)
-                    .foregroundColor(.gray)
+                    .font(.plexMono(12))
+                    .foregroundColor(Palette.chalkMuted)
             }
 
             // Preset buttons row
@@ -138,12 +139,12 @@ struct GameplayControlsView: View {
                             Text("\(Int(preset * 100))%")
                                 .font(.caption)
                                 .fontWeight(isSpeedSelected(preset) ? .bold : .regular)
-                                .foregroundColor(isSpeedSelected(preset) ? .white : .gray)
+                                .foregroundColor(isSpeedSelected(preset) ? Palette.chalk : Palette.chalkMuted)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
                                 .background(
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(isSpeedSelected(preset) ? Color.purple : Color.gray.opacity(0.3))
+                                        .fill(isSpeedSelected(preset) ? Palette.vermillion : Palette.stageRaised)
                                 )
                         }
                     )
@@ -156,7 +157,7 @@ struct GameplayControlsView: View {
             HStack(spacing: 8) {
                 Text("25%")
                     .font(.caption2)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Palette.chalkMuted)
                     .frame(width: 30)
 
                 Slider(
@@ -172,13 +173,13 @@ struct GameplayControlsView: View {
                     ),
                     in: PracticeSettingsService.minSpeed...PracticeSettingsService.maxSpeed
                 )
-                .tint(.purple)
+                .tint(Palette.vermillion)
                 .accessibilityLabel("Speed adjustment slider")
                 .accessibilityValue("\(Int(practiceSettings.speedMultiplier * 100)) percent")
 
                 Text("150%")
                     .font(.caption2)
-                    .foregroundColor(.gray)
+                    .foregroundColor(Palette.chalkMuted)
                     .frame(width: 35)
             }
         }
@@ -222,5 +223,5 @@ struct GameplayControlsView: View {
         onSkipToEnd: {},
         onSpeedChange: { _ in }
     )
-    .background(Color.black)
+    .background(Palette.stage)
 }
