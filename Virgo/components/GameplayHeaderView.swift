@@ -29,7 +29,7 @@ struct GameplayHeaderView: View {
 
             compactHeader(snapshot: snapshot)
         }
-        .background(Color.black.opacity(0.8))
+        .background(Palette.stageRaised)
     }
 
     private func regularHeader(snapshot: LiveScoreSnapshot) -> some View {
@@ -74,7 +74,7 @@ struct GameplayHeaderView: View {
         Button(action: onDismiss) {
             Image(systemName: "chevron.left")
                 .font(.title2)
-                .foregroundColor(.white)
+                .foregroundColor(Palette.chalk)
         }
         .accessibilityLabel("Go back")
         .accessibilityIdentifier("gameplayBackButton")
@@ -86,7 +86,7 @@ struct GameplayHeaderView: View {
             Button(action: onRestart) {
                 Image(systemName: "backward.end.fill")
                     .font(.title2)
-                    .foregroundColor(.white)
+                    .foregroundColor(Palette.chalk)
             }
             .accessibilityLabel("Restart")
             .accessibilityIdentifier("gameplayHeaderRestartButton")
@@ -95,7 +95,7 @@ struct GameplayHeaderView: View {
             Button(action: onPlayPause) {
                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.largeTitle)
-                    .foregroundColor(isPlaying ? .red : .green)
+                    .foregroundColor(Palette.vermillion)
             }
             .accessibilityLabel(isPlaying ? "Pause" : "Play")
             .accessibilityIdentifier("gameplayHeaderPlayPauseButton")
@@ -110,15 +110,15 @@ struct GameplayHeaderView: View {
     ) -> some View {
         VStack(alignment: alignment, spacing: 4) {
             Text(track.title)
-                .font(.headline)
-                .foregroundColor(.white)
+                .font(AppType.headline)
+                .foregroundColor(Palette.chalk)
                 .multilineTextAlignment(alignment.textAlignment)
                 .lineLimit(titleLineLimit)
                 .minimumScaleFactor(0.75)
 
             Text(track.artist)
                 .font(.subheadline)
-                .foregroundColor(.gray)
+                .foregroundColor(Palette.chalkMuted)
                 .multilineTextAlignment(alignment.textAlignment)
                 .lineLimit(artistLineLimit)
                 .minimumScaleFactor(0.75)
@@ -158,9 +158,9 @@ private struct GameplayScoreHUDView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            ScoreStatCell(label: "SCORE", value: "\(snapshot.score)", color: .white, minWidth: 76)
-            ScoreStatCell(label: "ACC", value: snapshot.hitAccuracyPercentText, color: .green, minWidth: 54)
-            ScoreStatCell(label: "QLTY", value: snapshot.timingQualityPercentText, color: .cyan, minWidth: 54)
+            ScoreStatCell(label: "SCORE", value: "\(snapshot.score)", color: Palette.chalk, minWidth: 76)
+            ScoreStatCell(label: "ACC", value: snapshot.hitAccuracyPercentText, color: Palette.chalk, minWidth: 54)
+            ScoreStatCell(label: "QLTY", value: snapshot.timingQualityPercentText, color: Palette.chalk, minWidth: 54)
             ComboCounterView(
                 combo: snapshot.currentCombo,
                 showMilestone: showMilestone,
@@ -185,13 +185,14 @@ private struct ScoreStatCell: View {
     var body: some View {
         VStack(alignment: .trailing, spacing: 1) {
             Text(value)
-                .font(.system(.body, design: .monospaced).weight(.semibold))
+                .font(.plexMono(15, weight: .semibold))
                 .foregroundColor(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(label)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundColor(.gray)
+                .font(.plexMono(9, weight: .semibold))
+                .tracking(0.5)
+                .foregroundColor(Palette.chalkMuted)
         }
         .frame(minWidth: minWidth, alignment: .trailing)
     }
@@ -208,15 +209,15 @@ private struct ComboCounterView: View {
         Group {
             if combo > 0 {
                 Text("\(combo)x")
-                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .font(.plexMono(13, weight: .bold))
                     .foregroundColor(comboColor)
                     .scaleEffect(showMilestone ? 1.4 : 1.0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.5), value: showMilestone)
                     .animation(.default, value: combo)
             } else if showBreak {
                 Text("BREAK")
-                    .font(.system(.caption, design: .rounded).weight(.bold))
-                    .foregroundColor(.red)
+                    .font(.plexMono(13, weight: .bold))
+                    .foregroundColor(Palette.vermillion)
                     .transition(.opacity)
             }
         }
@@ -224,7 +225,7 @@ private struct ComboCounterView: View {
     }
 
     private var comboColor: Color {
-        showMilestone ? .yellow : .orange
+        showMilestone ? Palette.vermillion : Palette.chalk
     }
 }
 
@@ -237,5 +238,5 @@ private struct ComboCounterView: View {
         onPlayPause: {},
         onRestart: {}
     )
-    .background(Color.black)
+    .background(Palette.stage)
 }
