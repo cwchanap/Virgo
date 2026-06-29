@@ -31,7 +31,7 @@ extension GameplayView {
                     }
                     .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
                 }
-                .background(Color.gray.opacity(0.1))
+                .background(Palette.stage)
                 .onChange(of: viewModel.currentRow) { _, newRow in
                     guard viewModel.isPlaying else { return }
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -50,8 +50,8 @@ extension GameplayView {
                 }
             }
         } else {
-            Color.black
-                .overlay(Text("Loading...").foregroundColor(.white))
+            Palette.stage
+                .overlay(Text("Loading...").foregroundColor(Palette.chalk))
         }
     }
 
@@ -153,7 +153,7 @@ extension GameplayView {
                     ForEach(0..<GameplayLayout.staffLineCount, id: \.self) { lineIndex in
                         Rectangle()
                             .frame(width: width, height: 1) // Full width to cover clef area
-                            .foregroundColor(.gray.opacity(0.5))
+                            .foregroundColor(Palette.chalkMuted.opacity(0.5))
                             .position(
                                 x: width / 2, // Center in full width
                                 y: GameplayLayout.StaffLinePosition(rawValue: lineIndex)?.absoluteY(for: row) ?? 0
@@ -176,7 +176,7 @@ extension GameplayView {
                     // Drum Clef - position at center of staff (line 3)
                     DrumClefSymbol()
                         .frame(width: GameplayLayout.clefWidth, height: GameplayLayout.staffHeight)
-                        .foregroundColor(.white)
+                        .foregroundColor(Palette.chalk)
                         .position(
                             x: GameplayLayout.clefX,
                             y: GameplayLayout.StaffLinePosition.line3.absoluteY(for: row)
@@ -185,7 +185,7 @@ extension GameplayView {
                     // Time Signature - position at center of staff (line 3)
                     TimeSignatureSymbol(timeSignature: viewModel.track?.timeSignature ?? TimeSignature.fourFour)
                         .frame(width: GameplayLayout.timeSignatureWidth, height: GameplayLayout.staffHeight)
-                        .foregroundColor(.white)
+                        .foregroundColor(Palette.chalk)
                         .position(
                             x: GameplayLayout.timeSignatureX,
                             y: GameplayLayout.StaffLinePosition.line3.absoluteY(for: row)
@@ -213,7 +213,7 @@ extension GameplayView {
 
                     Rectangle()
                         .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
-                        .foregroundColor(.white.opacity(0.8))
+                        .foregroundColor(Palette.chalk.opacity(0.8))
                         .position(
                             x: position.xOffset,
                             y: centerY
@@ -231,10 +231,10 @@ extension GameplayView {
                     HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
                         Rectangle()
                             .frame(width: GameplayLayout.doubleBarLineWidths.thin, height: GameplayLayout.staffHeight)
-                            .foregroundColor(.white)
+                            .foregroundColor(Palette.chalk)
                         Rectangle()
                             .frame(width: GameplayLayout.doubleBarLineWidths.thick, height: GameplayLayout.staffHeight)
-                            .foregroundColor(.white)
+                            .foregroundColor(Palette.chalk)
                     }
                     .position(
                         x: endX,
@@ -327,7 +327,7 @@ private struct GameplayPurpleBarView: View {
             if let position = viewModel.purpleBarPosition {
                 Rectangle()
                     .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.staffHeight)
-                    .foregroundColor(Color.purple.opacity(GameplayLayout.activeOpacity))
+                    .foregroundColor(Palette.vermillion.opacity(GameplayLayout.activeOpacity))
                     .cornerRadius(GameplayLayout.beatColumnCornerRadius)
                     .position(x: position.x, y: position.y)
             }
