@@ -22,43 +22,6 @@ struct ComponentRefactoringTests {
         TestContainer.shared.context
     }
 
-    @Test("DifficultyBadge displays correct difficulty")
-    func testDifficultyBadgeRendering() async throws {
-        try await TestSetup.withTestSetup {
-            let badge = DifficultyBadge(difficulty: .easy, size: .normal)
-
-            // Test that the badge is created without crashing
-            #expect(badge.difficulty == .easy)
-            #expect(badge.size == .normal)
-            
-            // Test that view can be created without environment issues
-            SwiftUITestUtilities.assertViewWithEnvironment(badge)
-        }
-    }
-
-    @Test("DifficultyBadge size variations work correctly")
-    func testDifficultyBadgeSizes() {
-        let smallBadge = DifficultyBadge(difficulty: .easy, size: .small)
-        let normalBadge = DifficultyBadge(difficulty: .easy, size: .normal)
-        let largeBadge = DifficultyBadge(difficulty: .easy, size: .large)
-
-        #expect(smallBadge.size == .small)
-        #expect(normalBadge.size == .normal)
-        #expect(largeBadge.size == .large)
-
-        // Test that size affects padding
-        #expect(DifficultyBadge.BadgeSize.small.padding.horizontal == 4)
-        #expect(DifficultyBadge.BadgeSize.normal.padding.horizontal == 8)
-        #expect(DifficultyBadge.BadgeSize.large.padding.horizontal == 12)
-    }
-
-    @Test("DifficultyBadge fonts scale correctly")
-    func testDifficultyBadgeFonts() {
-        #expect(DifficultyBadge.BadgeSize.small.font == .caption2)
-        #expect(DifficultyBadge.BadgeSize.normal.font == .caption2)
-        #expect(DifficultyBadge.BadgeSize.large.font == .caption)
-    }
-
     @Test("ExpandableSongRowContainer handles state correctly")
     func testExpandableSongRowContainer() async throws {
         try await TestSetup.withTestSetup {

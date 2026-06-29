@@ -102,7 +102,7 @@ struct ChartSelectionCard: View {
         .cornerRadius(Radius.sm)
         .overlay(
             RoundedRectangle(cornerRadius: Radius.sm)
-                .stroke(chart.difficulty.color.opacity(0.4), lineWidth: 1)
+                .stroke(theme.rule, lineWidth: 1)
         )
         .contentShape(Rectangle())
     }
