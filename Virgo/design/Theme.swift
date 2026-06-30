@@ -68,3 +68,28 @@ extension View {
             .background(theme.background.ignoresSafeArea())
     }
 }
+
+extension SurfaceWorld {
+    /// Maps the effective SwiftUI color scheme to a surface world.
+    /// Dark → ink, otherwise paper.
+    static func forColorScheme(_ scheme: ColorScheme) -> SurfaceWorld {
+        scheme == .dark ? .ink : .paper
+    }
+}
+
+private struct AppSurfaceModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.surface(.forColorScheme(colorScheme))
+    }
+}
+
+extension View {
+    /// Themed background + theme injection that follows the global appearance
+    /// mode via the effective color scheme. Use on screens that should flip with
+    /// Light/Dark; fixed-world screens keep `.surface(.ink)` instead.
+    func appSurface() -> some View {
+        modifier(AppSurfaceModifier())
+    }
+}
