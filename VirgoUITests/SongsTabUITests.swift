@@ -177,19 +177,20 @@ final class SongsTabUITests: XCTestCase {
 
         guard hasDownloadedSongs(app: app) else { return }
 
-        // Open the first card's picker (card path) or the first row (row path).
+        // Once songs exist, a control MUST reveal the picker: the grid card's
+        // open button (wide) or the row's "N charts" expand button (narrow).
+        // Failing to find either is a real failure, not a vacuous skip.
         let openButton = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH %@", "Open ")
         ).firstMatch
-        if openButton.waitForExistence(timeout: 5) {
-            openButton.tap()
-        } else {
-            let chartIndicator = app.buttons.matching(
-                NSPredicate(format: "label CONTAINS[c] 'charts'")
-            ).firstMatch
-            guard chartIndicator.waitForExistence(timeout: 5) else { return }
-            chartIndicator.tap()
+        let chartIndicator = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'charts'")
+        ).firstMatch
+        guard let control = waitForFirstExisting([openButton, chartIndicator], timeout: 5) else {
+            XCTFail("Expected a card open button or row expand button when downloaded songs exist")
+            return
         }
+        control.tap()
 
         // The difficulty selector appears (same DifficultyExpansionView in both).
         XCTAssertTrue(waitForStaticText(containing: "Select Difficulty", in: app, timeout: 5))

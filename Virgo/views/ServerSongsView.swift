@@ -55,7 +55,7 @@ struct ServerSongsView: View {
     private var serverGrid: some View {
         Group {
             if serverSongs.isEmpty {
-                (serverSongService.isRefreshing ? AnyView(loadingRow) : AnyView(emptyState))
+                gridPlaceholder
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -71,6 +71,15 @@ struct ServerSongsView: View {
                     .padding(Spacing.md)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var gridPlaceholder: some View {
+        if serverSongService.isRefreshing {
+            loadingRow
+        } else {
+            emptyState
         }
     }
 
