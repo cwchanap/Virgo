@@ -93,3 +93,25 @@ extension View {
         modifier(AppSurfaceModifier())
     }
 }
+
+private struct AppThemeRootModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.environment(\.theme, VirgoTheme.resolve(.forColorScheme(colorScheme)))
+    }
+}
+
+extension View {
+    /// Injects the global `VirgoTheme` resolved from the effective color scheme
+    /// so that a screen's OWN body-level `@Environment(\.theme)` reads match the
+    /// active Light/Dark mode. `.appSurface()` injects the theme only into its
+    /// descendants, so a view that both applies `.appSurface()` and reads
+    /// `theme` at its own level would otherwise see the ambient default
+    /// (`.paper`) and render dark-on-dark in Dark mode. Apply ONCE at the app
+    /// root, inside `.preferredColorScheme`. Fixed-world screens (gameplay,
+    /// session results) use raw `Palette`, so this never affects them.
+    func appThemeRoot() -> some View {
+        modifier(AppThemeRootModifier())
+    }
+}
