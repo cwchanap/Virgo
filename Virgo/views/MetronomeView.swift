@@ -9,6 +9,7 @@ import SwiftUI
 
 struct MetronomeView: View {
     @EnvironmentObject private var metronome: MetronomeEngine
+    @Environment(\.theme) private var theme
 
     var body: some View {
         ZStack {
@@ -17,11 +18,11 @@ struct MetronomeView: View {
                 VStack(spacing: 8) {
                     Text("Metronome")
                         .font(AppType.display)
-                        .foregroundColor(Palette.chalk)
+                        .foregroundColor(theme.primary)
 
                     Text("Perfect your timing with precision beats")
                         .font(.plexMono(13))
-                        .foregroundColor(Palette.chalkMuted)
+                        .foregroundColor(theme.secondary)
                 }
                 .padding(.top, 20)
 
@@ -37,7 +38,7 @@ struct MetronomeView: View {
                 VStack(spacing: 16) {
                     Text("Practice Tips")
                         .font(AppType.headline)
-                        .foregroundColor(Palette.chalk)
+                        .foregroundColor(theme.primary)
 
                     VStack(spacing: 12) {
                         PracticeTipRow(
@@ -63,7 +64,7 @@ struct MetronomeView: View {
                 .padding(.bottom, 30)
             }
         }
-        .surface(.ink)
+        .appSurface()
     }
 }
 
@@ -72,29 +73,31 @@ struct PracticeTipRow: View {
     let title: String
     let description: String
 
+    @Environment(\.theme) private var theme
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundColor(Palette.vermillion)
+                .foregroundColor(theme.accent)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(Palette.chalk)
+                    .foregroundColor(theme.primary)
 
                 Text(description)
                     .font(.caption)
-                    .foregroundColor(Palette.chalkMuted)
+                    .foregroundColor(theme.secondary)
             }
 
             Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Palette.stageRaised)
+        .background(theme.raised)
         .cornerRadius(Radius.md)
     }
 }
