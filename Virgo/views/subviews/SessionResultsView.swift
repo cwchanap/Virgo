@@ -111,6 +111,7 @@ struct SessionResultsView: View {
                 }
             }
             .surface(.ink)
+            .colorScheme(.dark)
             .navigationTitle("Results")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)

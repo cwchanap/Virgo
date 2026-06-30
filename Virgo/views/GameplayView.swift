@@ -142,6 +142,7 @@ struct GameplayView: View {
         #endif
         .background(Palette.stage)
         .foregroundColor(Palette.chalk)
+        .colorScheme(.dark)
         .onDisappear {
             viewModel?.cleanup()
         }
