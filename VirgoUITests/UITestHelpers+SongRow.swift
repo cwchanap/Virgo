@@ -50,28 +50,31 @@ extension XCTestCase {
             throw UITestFailure.elementNotFound("song title \(songTitle)")
         }
 
-        // Wait for an expand button with NON-ZERO chart count to appear.
-        // Chart counts are seeded to 0 and loaded asynchronously. If we tap
-        // the expand button before charts have loaded, the expanded
-        // DifficultyExpansionView receives an empty charts array and renders
-        // no difficulty buttons. Waiting for a non-zero count ensures the
-        // charts array has been populated before we expand.
-        let nonZeroChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
-        let expandButton = app.buttons.matching(nonZeroChartCount).firstMatch
-        guard expandButton.waitForExistence(timeout: timeout) else {
-            XCTFail(
-                "Expected expand button for song \"\(songTitle)\" to exist",
-                file: file,
-                line: line
-            )
-            throw UITestFailure.elementNotFound("expand button for \(songTitle)")
+        // Wide layouts (macOS / full-screen iPad) render a card grid: tap the
+        // card's open button. Narrow layouts render rows with a "N charts"
+        // expand button. Try the card path first, then fall back to rows.
+        let openCardButton = app.buttons
+            .matching(NSPredicate(format: "label == %@", "Open \(songTitle)"))
+            .firstMatch
+        if openCardButton.waitForExistence(timeout: 3) {
+            openCardButton.tap()
+        } else {
+            let nonZeroChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
+            let expandButton = app.buttons.matching(nonZeroChartCount).firstMatch
+            guard expandButton.waitForExistence(timeout: timeout) else {
+                XCTFail(
+                    "Expected card open button or expand button for song \"\(songTitle)\"",
+                    file: file,
+                    line: line
+                )
+                throw UITestFailure.elementNotFound("open/expand control for \(songTitle)")
+            }
+            expandButton.tap()
         }
-
-        expandButton.tap()
 
         XCTAssertTrue(
             waitForStaticText(containing: "Select Difficulty", in: app, timeout: timeout),
-            "Difficulty selector should appear after expanding \(songTitle)",
+            "Difficulty selector should appear after opening \(songTitle)",
             file: file, line: line
         )
     }

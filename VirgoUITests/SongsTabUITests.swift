@@ -133,11 +133,16 @@ final class SongsTabUITests: XCTestCase {
 
         // Any row whose accessibility identifier begins with the canonical
         // prefix proves the rowViewID helper is attached to the row container.
-        let rowIdentifierPredicate = NSPredicate(format: "identifier BEGINSWITH %@", "downloaded-song-row-")
+        let rowIdentifierPredicate = NSPredicate(
+            format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
+            "downloaded-song-row-",
+            "downloadedSongCard-"
+        )
         let matchingRows = app.descendants(matching: .any).matching(rowIdentifierPredicate)
         XCTAssertTrue(
             matchingRows.firstMatch.waitForExistence(timeout: 5),
-            "Downloaded rows must expose their stable accessibility identifier (prefix 'downloaded-song-row-')"
+            "Downloaded songs must expose their stable accessibility identifier "
+                + "(prefix 'downloaded-song-row-' for rows or 'downloadedSongCard-' for grid cards)"
         )
     }
 
@@ -167,29 +172,37 @@ final class SongsTabUITests: XCTestCase {
     @MainActor
     func testDownloadedSongExpansion() throws {
         try tapStartButton()
-        
-        // Ensure we're on Downloaded tab
+
         XCTAssertTrue(switchToDownloadedTab(app: app))
-        
-        // Find first chart count indicator if songs exist
-        let chartIndicator = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'charts'")).firstMatch
-        if chartIndicator.waitForExistence(timeout: 5) {
-            // Tap to expand
-            chartIndicator.tap()
-            
-            // Verify expansion content (difficulty badges should appear)
-            let difficultyButton = app.buttons.matching(
-                NSPredicate(format: "identifier BEGINSWITH %@ OR label CONTAINS[c] %@", "chartDifficulty", "difficulty")
+
+        guard hasDownloadedSongs(app: app) else { return }
+
+        // Open the first card's picker (card path) or the first row (row path).
+        let openButton = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Open ")
+        ).firstMatch
+        if openButton.waitForExistence(timeout: 5) {
+            openButton.tap()
+        } else {
+            let chartIndicator = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] 'charts'")
             ).firstMatch
-            XCTAssertTrue(difficultyButton.waitForExistence(timeout: 3))
-            
-            // Tap again to collapse
+            guard chartIndicator.waitForExistence(timeout: 5) else { return }
             chartIndicator.tap()
-            
-            // Wait for collapse animation - difficulty button should disappear or become non-hittable
-            let predicate = NSPredicate(format: "exists == false OR isHittable == false")
-            let expectation = self.expectation(for: predicate, evaluatedWith: difficultyButton, handler: nil)
-            wait(for: [expectation], timeout: 2.0)
+        }
+
+        // The difficulty selector appears (same DifficultyExpansionView in both).
+        XCTAssertTrue(waitForStaticText(containing: "Select Difficulty", in: app, timeout: 5))
+        let difficultyButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "chartDifficulty")
+        ).firstMatch
+        XCTAssertTrue(difficultyButton.waitForExistence(timeout: 3))
+
+        // Dismiss the picker sheet if present (grid path); harmless if absent.
+        let done = app.buttons["difficultyPickerDoneButton"]
+        if done.waitForExistence(timeout: 2) {
+            done.tap()
+            XCTAssertTrue(done.waitForNonExistence(timeout: 3), "Picker sheet should dismiss on Done")
         }
     }
     
