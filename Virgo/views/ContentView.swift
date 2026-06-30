@@ -192,12 +192,10 @@ struct ContentView: View {
                     MetronomeView()
                 } else {
                     // Placeholder view when tab is not active to avoid metronome updates
-                    Palette.stage
-                        .overlay(
-                            Text("Metronome")
-                                .font(AppType.title)
-                                .foregroundColor(Palette.chalk)
-                        )
+                    Text("Metronome")
+                        .font(AppType.title)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .appSurface()
                 }
             }
             .tabItem {
