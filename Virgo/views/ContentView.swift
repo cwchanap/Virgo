@@ -148,12 +148,10 @@ struct ContentView: View {
     }
 
     private var startupPreparationView: some View {
-        Palette.stage
-            .ignoresSafeArea()
-            .overlay {
-                ProgressView()
-                    .controlSize(.large)
-            }
+        ProgressView()
+            .controlSize(.large)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .appSurface()
             .accessibilityIdentifier("startupPreparationView")
     }
 
