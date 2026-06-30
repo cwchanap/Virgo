@@ -30,6 +30,14 @@ struct DownloadedSongsView: View {
     let onPlayTap: (Song) -> Void
     let onSaveTap: (Song) -> Void
 
+    // Sheet target for the grid's difficulty picker. Identifiable wrapper keeps
+    // `.sheet(item:)` independent of Song's own Identifiable conformance.
+    private struct PickerTarget: Identifiable {
+        let song: Song
+        var id: PersistentIdentifier { song.persistentModelID }
+    }
+    @State private var pickerTarget: PickerTarget?
+
     // Filter to show only downloaded songs (server-imported)
     var downloadedSongs: [Song] {
         Self.downloadedSongs(from: songs)
@@ -52,6 +60,27 @@ struct DownloadedSongsView: View {
     }
 
     var body: some View {
+        GeometryReader { proxy in
+            layout(for: SongsLayoutMode.forWidth(proxy.size.width))
+        }
+        .sheet(item: $pickerTarget) { target in
+            DifficultyPickerSheet(
+                song: target.song,
+                onChartSelect: onChartSelect,
+                onDismiss: { pickerTarget = nil }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func layout(for mode: SongsLayoutMode) -> some View {
+        switch mode {
+        case .grid: downloadedGrid
+        case .rows: downloadedList
+        }
+    }
+
+    private var downloadedList: some View {
         List {
             if !downloadedSongs.isEmpty {
                 ForEach(downloadedSongs, id: \.id) { song in
@@ -64,12 +93,7 @@ struct DownloadedSongsView: View {
                         onChartSelect: onChartSelect,
                         onPlayTap: { onPlayTap(song) },
                         onSaveTap: { onSaveTap(song) },
-                        onDelete: {
-                            Task {
-                                let success = await serverSongService.deleteLocalSong(song)
-                                Logger.debug("Delete downloaded song result: \(success)")
-                            }
-                        }
+                        onDelete: { deleteSong(song) }
                     )
                     .accessibilityIdentifier(Self.rowViewID(for: song))
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
@@ -77,29 +101,68 @@ struct DownloadedSongsView: View {
                     .listRowBackground(Color.clear)
                 }
             } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 50))
-                        .foregroundColor(theme.secondary)
-
-                    Text("No Downloaded Songs")
-                        .font(.title2)
-                        .foregroundColor(theme.primary)
-
-                    Text("Download songs from the Server tab to see them here")
-                        .font(.body)
-                        .foregroundColor(theme.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
-                .listRowBackground(Color.clear)
-                .id(Self.emptyStateViewID)
+                emptyState
+                    .listRowBackground(Color.clear)
+                    .id(Self.emptyStateViewID)
             }
         }
         .listStyle(PlainListStyle())
         .scrollContentBackground(.hidden)
         .background(Color.clear)
+    }
+
+    private var downloadedGrid: some View {
+        Group {
+            if downloadedSongs.isEmpty {
+                emptyState
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .id(Self.emptyStateViewID)
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: SongsGrid.columns, spacing: Spacing.md) {
+                        ForEach(downloadedSongs, id: \.id) { song in
+                            SongCard(
+                                song: song,
+                                isPlaying: isPlaying(song),
+                                isDeleting: serverSongService.isDeleting(song),
+                                onOpen: { pickerTarget = PickerTarget(song: song) },
+                                onPlayTap: { onPlayTap(song) },
+                                onSaveTap: { onSaveTap(song) },
+                                onDelete: { deleteSong(song) }
+                            )
+                        }
+                    }
+                    .padding(Spacing.md)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 50))
+                .foregroundColor(theme.secondary)
+
+            Text("No Downloaded Songs")
+                .font(.title2)
+                .foregroundColor(theme.primary)
+
+            Text("Download songs from the Server tab to see them here")
+                .font(.body)
+                .foregroundColor(theme.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+
+    private func deleteSong(_ song: Song) {
+        Task {
+            let success = await serverSongService.deleteLocalSong(song)
+            Logger.debug("Delete downloaded song result: \(success)")
+        }
     }
 }
 
