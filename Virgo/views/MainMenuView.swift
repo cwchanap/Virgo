@@ -115,6 +115,11 @@ struct MainMenuView: View {
                         Text("This will delete all existing data and reload sample tracks. This action cannot be undone.")
                     }
                 }
+                // Fill the GeometryReader: without a flexible child the ZStack would
+                // hug its content's intrinsic width and GeometryReader pins it to the
+                // top-leading corner. The old gradient child used to force this fill;
+                // .surface(.paper) only paints a background, so the frame is explicit.
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .surface(.paper)
             }
         }
