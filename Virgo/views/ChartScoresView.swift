@@ -41,7 +41,7 @@ struct ChartScoresView: View {
             }
             .padding(.top, 16)
         }
-        .surface(.paper)
+        .appSurface()
         .navigationTitle("Scores")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

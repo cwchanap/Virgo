@@ -160,7 +160,7 @@ struct InputSettingsView: View {
             }
             .padding(.top, 20)
         }
-        .surface(.paper)
+        .appSurface()
         #if os(iOS)
         .navigationTitle("Input Settings")
         .navigationBarTitleDisplayMode(.inline)

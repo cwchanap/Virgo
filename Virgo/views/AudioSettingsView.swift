@@ -109,7 +109,7 @@ struct AudioSettingsView: View {
             }
             .padding(.top, 20)
         }
-        .surface(.paper)
+        .appSurface()
         #if os(iOS)
         .navigationTitle("Audio Settings")
         .navigationBarTitleDisplayMode(.inline)

@@ -30,7 +30,7 @@ struct DifficultyPickerSheet: View {
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .surface(.paper)
+        .appSurface()
         .loadSongRelationships(for: song) { data in
             charts = data.charts
         }

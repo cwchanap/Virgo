@@ -64,7 +64,7 @@ struct DrumNotationSettingsView: View {
             }
             .padding(.top, 20)
         }
-        .surface(.paper)
+        .appSurface()
         #if os(iOS)
         .navigationTitle("Drum Notation")
         .navigationBarTitleDisplayMode(.inline)
