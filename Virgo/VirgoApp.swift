@@ -61,6 +61,7 @@ struct VirgoApp: App {
         MainMenuView()
             .environmentObject(sharedMetronome)
             .environmentObject(sharedPracticeSettings)
+            .appThemeRoot()
             .preferredColorScheme(appearanceMode.preferredColorScheme)
     }
 
