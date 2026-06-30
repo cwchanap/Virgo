@@ -8,27 +8,33 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Server Song Row
+// MARK: - Server Song Row (narrow layout)
 struct ServerSongRow: View {
     let serverSong: ServerSong
     let isLoading: Bool
     let onDownload: () -> Void
 
-    @Environment(\.theme) private var theme
-
     var body: some View {
         LedgerRow {
             HStack {
-                songInfoSection
+                ServerSongInfoView(serverSong: serverSong)
                 Spacer()
-                statusSection
+                ServerSongStatusView(
+                    serverSong: serverSong,
+                    isLoading: isLoading,
+                    onDownload: onDownload
+                )
             }
         }
     }
+}
 
-    // MARK: - Song Info
+// MARK: - Shared Info Section
+struct ServerSongInfoView: View {
+    let serverSong: ServerSong
+    @Environment(\.theme) private var theme
 
-    private var songInfoSection: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(serverSong.title)
                 .font(AppType.headline)
@@ -95,21 +101,31 @@ struct ServerSongRow: View {
         }
     }
 
-    // MARK: - Status Section
+    private func formatFileSize(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
+}
 
-    @ViewBuilder
-    private var statusSection: some View {
+// MARK: - Shared Status Section
+struct ServerSongStatusView: View {
+    let serverSong: ServerSong
+    let isLoading: Bool
+    let onDownload: () -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
         if serverSong.isDownloaded {
             downloadedIndicator
         } else if isLoading {
             loadingIndicator
         } else {
-            Button("Download") {
-                onDownload()
-            }
-            .buttonStyle(GhostButtonStyle())
-            .controlSize(.small)
-            .disabled(isLoading)
+            Button("Download") { onDownload() }
+                .buttonStyle(GhostButtonStyle())
+                .controlSize(.small)
+                .disabled(isLoading)
         }
     }
 
@@ -193,14 +209,5 @@ struct ServerSongRow: View {
                 }
             }
         }
-    }
-
-    // MARK: - Helpers
-
-    private func formatFileSize(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
     }
 }
