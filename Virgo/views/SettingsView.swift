@@ -89,7 +89,7 @@ struct SettingsView: View {
 
             Spacer()
         }
-        .surface(.paper)
+        .appSurface()
         .navigationTitle("Settings")
     }
 

@@ -48,7 +48,7 @@ struct SongScoresView: View {
                 .scrollContentBackground(.hidden)
             }
         }
-        .surface(.paper)
+        .appSurface()
         .navigationTitle(song.title)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

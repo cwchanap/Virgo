@@ -65,7 +65,7 @@ struct ProfileView: View {
                 Spacer()
             }
         }
-        .surface(.paper)
+        .appSurface()
         .navigationTitle("Profile")
     }
 

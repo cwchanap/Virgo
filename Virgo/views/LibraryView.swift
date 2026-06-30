@@ -49,7 +49,7 @@ struct LibraryView: View {
                     }
                 }
             }
-            .surface(.paper)
+            .appSurface()
         }
     }
 

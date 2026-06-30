@@ -151,7 +151,7 @@ struct SongsTabView: View {
                 }
             }
         }
-        .surface(.paper)
+        .appSurface()
         .alert("Error", isPresented: Binding(
             get: { serverSongService.errorMessage != nil },
             set: { if !$0 { serverSongService.errorMessage = nil } }
