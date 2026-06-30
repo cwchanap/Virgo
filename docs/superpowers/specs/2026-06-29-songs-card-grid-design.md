@@ -43,7 +43,7 @@ enum SongsLayoutMode: Equatable {
 ```
 
 - Grid columns are adaptive: `LazyVGrid(columns: [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: Spacing.md)], spacing: Spacing.md)`. This yields ~2 columns at 700pt and 3–4 on full iPad/macOS, with no manual column math.
-- Width is read with a **preference-key reader** attached as a `.background(GeometryReader { … })` that writes into a `@State private var contentWidth: CGFloat`. The content is NOT wrapped in a `GeometryReader` container (that pins children top-leading and collapses width — the exact regression just fixed on the start screen). Initial `contentWidth` is `0`, which maps to `.rows` until the first measurement; one layout pass later it resolves to the correct mode.
+- Width is read with a **wrapping `GeometryReader`** in each dispatcher (`GeometryReader { proxy in layout(for: .forWidth(proxy.size.width)) }`). This is safe here because every branch the dispatcher returns fills the offered size — the `List` and the grid's `ScrollView` are both greedy, and the empty/loading states are explicitly `.frame(maxWidth: .infinity, maxHeight: .infinity)` — so the top-leading pinning that collapses a content-hugging `VStack` (the start-screen regression) cannot occur. This also yields the correct mode on the first layout pass, avoiding a rows→grid flash. (An earlier draft of this spec proposed a `.background(GeometryReader)` preference-key reader writing into `@State private var contentWidth`; the wrapping approach was adopted during planning/implementation because it is simpler and flash-free. This bullet reflects the implemented design.)
 - The grid is wrapped in a `ScrollView`; the row path keeps its existing `List`.
 
 ## Components
