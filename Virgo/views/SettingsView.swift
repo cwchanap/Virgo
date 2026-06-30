@@ -74,11 +74,14 @@ struct SettingsView: View {
                     subtitle: "Configure app notifications and alerts"
                 )
 
-                settingsRowDisabled(
-                    icon: "paintbrush.fill",
-                    title: "Appearance",
-                    subtitle: "Customize app theme and visual preferences"
-                )
+                NavigationLink(destination: AppearanceSettingsView()) {
+                    settingsRow(
+                        icon: "paintbrush.fill",
+                        title: "Appearance",
+                        subtitle: "Light, dark, or follow system"
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
 
                 settingsRowDisabled(
                     icon: "icloud.fill",

@@ -22,6 +22,7 @@ struct VirgoApp: App {
 
     @StateObject private var sharedMetronome = MetronomeEngine()
     @StateObject private var sharedPracticeSettings = PracticeSettingsService()
+    @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -60,6 +61,7 @@ struct VirgoApp: App {
         MainMenuView()
             .environmentObject(sharedMetronome)
             .environmentObject(sharedPracticeSettings)
+            .preferredColorScheme(appearanceMode.preferredColorScheme)
     }
 
     var body: some Scene {
