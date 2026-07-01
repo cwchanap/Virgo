@@ -152,7 +152,7 @@ struct MetronomeSettingsView: View {
                     label: {
                     Text(metronome.isEnabled ? "Stop" : "Start")
                         .font(.title3)
-                        .foregroundColor(theme.primary)
+                        .foregroundColor(Palette.paper)
                         .frame(width: 80, height: 40)
                         .background(theme.accent)
                         .cornerRadius(8)
