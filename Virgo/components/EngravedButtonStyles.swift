@@ -29,3 +29,23 @@ struct GhostButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
+
+/// Compact outlined destructive action (e.g. "Delete" in card footers and list
+/// rows). Uses `theme.accent` (vermillion) with a hairline rounded-rect stroke
+/// so it reads as destructive while fitting tight footers where
+/// `GhostButtonStyle`'s padding would be too large.
+struct DestructiveCompactButtonStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline)
+            .foregroundColor(theme.accent)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(theme.accent.opacity(0.4), lineWidth: 1)
+            )
+            .opacity(configuration.isPressed ? 0.6 : 1)
+    }
+}

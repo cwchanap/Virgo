@@ -347,9 +347,7 @@ struct DownloadedSongRowWithDelete: View {
                     Text("Delete")
                 }
                 .accessibilityIdentifier("downloadedSongDeleteButton")
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .foregroundColor(theme.accent)
+                .buttonStyle(DestructiveCompactButtonStyle())
                 .disabled(isDeleting)
             }
         }

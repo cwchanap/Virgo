@@ -31,8 +31,8 @@ struct LibraryView: View {
         excluding hiddenSongIDs: Set<PersistentIdentifier> = []
     ) -> [Song] {
         songs.filter { song in
-            song.isServerImported &&
-                !song.isDeleted &&
+            SongRelationshipLoader.isModelAvailable(song) &&
+                song.isServerImported &&
                 !hiddenSongIDs.contains(song.persistentModelID)
         }
     }
@@ -162,13 +162,8 @@ struct LibraryView: View {
             }
         } label: {
             Text("Delete")
-                .font(.subheadline)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .foregroundColor(theme.accent)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(theme.accent.opacity(0.4), lineWidth: 1))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(DestructiveCompactButtonStyle())
         .accessibilityIdentifier("libraryDeleteButton")
         .accessibilityLabel("Delete \(song.title)")
         .padding(.trailing, 16)
@@ -254,9 +249,7 @@ struct SavedSongRow: View {
                         Text("Delete")
                     }
                     .accessibilityIdentifier("savedSongDeleteButton")
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .foregroundColor(theme.accent)
+                    .buttonStyle(DestructiveCompactButtonStyle())
                     .disabled(isDeleting)
                 }
             }

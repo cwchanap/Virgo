@@ -6,7 +6,6 @@
 //
 
 // This file has been refactored into focused component files:
-// - ExpandableSongRow.swift
 // - DifficultyExpansionView.swift
 // - ServerSongRow.swift
 
