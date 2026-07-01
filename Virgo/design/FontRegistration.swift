@@ -44,8 +44,10 @@ enum AppFonts {
             }
         }
 
-        // Set after the scan so a partially-failed registration can be retried
-        // rather than permanently short-circuiting subsequent calls.
+        // Marks the scan as complete. Subsequent calls short-circuit. A
+        // non-benign failure during the loop is only logged and is NOT retried
+        // by later calls (the benign "already registered" / "duplicated name"
+        // codes are safe to ignore on re-runs anyway).
         didRegister = true
     }
 }

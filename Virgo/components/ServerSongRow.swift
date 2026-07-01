@@ -37,7 +37,8 @@ struct ServerSongInfoView: View {
     // Chart-derived display values. `serverSong.charts` is a SwiftData
     // relationship; faulting it during `body` evaluation is unsafe (see
     // SwiftDataRelationshipLoader / app architecture notes). We resolve the
-    // relationship once off the render path and render from these snapshots.
+    // relationship once off the render path via `.loadServerSongRelationships`
+    // and render from these snapshots.
     @State private var totalSize: Int = 0
     @State private var levelText: String?
     @State private var difficultyChips: [DifficultyChip] = []
@@ -55,34 +56,11 @@ struct ServerSongInfoView: View {
             metadataRow
             difficultyChipsRow
         }
-        .task(id: serverSong.persistentModelID) {
-            // `.task` runs on the MainActor (View context); resolving the
-            // relationship here keeps it out of `body` (which would re-fault on
-            // every render) while remaining synchronous enough to be testable.
-            loadDisplayData()
+        .loadServerSongRelationships(for: serverSong) { data in
+            totalSize = data.totalSize
+            levelText = data.levelText
+            difficultyChips = data.difficultyChips
         }
-    }
-
-    private func loadDisplayData() {
-        guard SongRelationshipLoader.isModelAvailable(serverSong) else {
-            totalSize = 0
-            levelText = nil
-            difficultyChips = []
-            return
-        }
-        let charts = serverSong.charts.filter { SongRelationshipLoader.isModelAvailable($0) }
-        totalSize = charts.reduce(0) { $0 + $1.size }
-        if charts.count > 1 {
-            let levels = charts.map { String($0.level) }.joined(separator: ", ")
-            levelText = "Levels \(levels)"
-        } else if let chart = charts.first {
-            levelText = "Level \(chart.level)"
-        } else {
-            levelText = nil
-        }
-        difficultyChips = charts.count > 1
-            ? charts.map { DifficultyChip(label: $0.difficultyLabel, level: $0.level) }
-            : []
     }
 
     private var metadataRow: some View {
