@@ -94,7 +94,7 @@ struct SongCard: View {
                     .foregroundColor(theme.secondary)
                     .lineLimit(1)
                 HStack(spacing: Spacing.sm) {
-                    TempoMark(bpm: Int(song.bpm))
+                    TempoMark(bpm: song.bpm)
                     Text(song.genre)
                         .font(.plexMono(11))
                         .foregroundColor(theme.secondary)
