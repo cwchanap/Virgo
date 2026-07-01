@@ -358,4 +358,20 @@ struct SongLibraryCoverageTests {
             )
         }
     }
+
+    @Test("SongCard open-button accessibility identifier is unique per song")
+    func testSongCardOpenButtonIdentifierIsUniquePerSong() async throws {
+        try await TestSetup.withTestSetup {
+            let songA = SwiftUICoverageFixtures.makeSong(title: "Unique Card A", genre: "DTX Import")
+            let songB = SwiftUICoverageFixtures.makeSong(title: "Unique Card B", genre: "DTX Import")
+
+            let idA = SongCard.cardOpenButtonID(for: songA)
+            let idB = SongCard.cardOpenButtonID(for: songB)
+
+            // Same prefix family, different per-song suffix → no shared target.
+            #expect(idA.hasPrefix("downloadedSongCardOpenButton-"))
+            #expect(idB.hasPrefix("downloadedSongCardOpenButton-"))
+            #expect(idA != idB, "Open-button identifiers must differ per song")
+        }
+    }
 }

@@ -127,7 +127,7 @@ struct SongsTabView: View {
                     Label("Server", systemImage: "cloud").tag(1)
                 }
                 .pickerStyle(SegmentedPickerStyle())
-                .tint(Palette.vermillion)
+                .tint(theme.accent)
                 .padding(.horizontal)
                 .padding(.bottom, 16)
 

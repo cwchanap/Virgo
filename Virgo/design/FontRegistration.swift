@@ -31,9 +31,15 @@ enum AppFonts {
             // .process scope = process-wide; "already registered" errors are safe to ignore.
             CTFontManagerRegisterFontsForURL(url as CFURL, .process, &cfError)
             if let err = cfError?.takeRetainedValue() {
-                // Releases the owned CFError. "Already registered" on re-runs is benign and ignored.
+                // Releases the owned CFError. "Already registered" and
+                // "duplicated name" (two files registering the same PostScript
+                // name) are both benign on re-runs and ignored.
                 let code = CFErrorGetCode(err)
-                if code != CTFontManagerError.alreadyRegistered.rawValue {
+                let benignCodes: Set<CFIndex> = [
+                    CTFontManagerError.alreadyRegistered.rawValue,
+                    CTFontManagerError.duplicatedName.rawValue
+                ]
+                if !benignCodes.contains(code) {
                     Logger.debug("Font registration failed for \(url.lastPathComponent): \(err)")
                 }
             }

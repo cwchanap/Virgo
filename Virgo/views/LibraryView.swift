@@ -181,6 +181,11 @@ struct SavedSongRow: View {
     let onDelete: (() -> Void)?
     @Environment(\.theme) private var theme
 
+    // Cache relationship-derived display values to avoid faulting SwiftData
+    // relationships (song.availableDifficulties) during view rendering. Matches
+    // the pattern used by SongCard and DownloadedSongRowWithDelete.
+    @State private var availableDifficulties: [Difficulty] = []
+
     var showsDeleteButton: Bool {
         onDelete != nil && !isDeleting
     }
@@ -192,6 +197,9 @@ struct SavedSongRow: View {
                 Spacer()
                 trailingSection
             }
+        }
+        .loadSongRelationships(for: song) { data in
+            availableDifficulties = data.availableDifficulties
         }
     }
 
@@ -227,7 +235,7 @@ struct SavedSongRow: View {
     private var trailingSection: some View {
         VStack(spacing: 8) {
             HStack(spacing: 2) {
-                ForEach(song.availableDifficulties, id: \.self) { difficulty in
+                ForEach(availableDifficulties, id: \.self) { difficulty in
                     DifficultyPips(difficulty: difficulty, showLabel: false)
                 }
             }

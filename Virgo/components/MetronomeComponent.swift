@@ -112,5 +112,7 @@ struct MetronomeComponent: View {
         bpm: 120.0,
         timeSignature: .fourFour
     )
-    .background(Palette.stage)
+    // .surface(.ink) sets the dark stage background AND injects the matching
+    // ink theme so theme.primary/secondary resolve to readable chalk colors.
+    .surface(.ink)
 }

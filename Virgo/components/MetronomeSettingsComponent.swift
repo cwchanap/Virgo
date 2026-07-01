@@ -175,28 +175,23 @@ struct MetronomeSettingsView: View {
 }
 
 struct MetronomeButtonStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
+
     func makeBody(configuration: Configuration) -> some View {
-        StyleBody(configuration: configuration)
-    }
-
-    private struct StyleBody: View {
-        let configuration: Configuration
-        @Environment(\.theme) private var theme
-
-        var body: some View {
-            configuration.label
-                .font(.caption)
-                .foregroundColor(theme.primary)
-                .frame(width: 40, height: 30)
-                .background(theme.raised)
-                .cornerRadius(6)
-                .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
-        }
+        configuration.label
+            .font(.caption)
+            .foregroundColor(theme.primary)
+            .frame(width: 40, height: 30)
+            .background(theme.raised)
+            .cornerRadius(6)
+            .scaleEffect(configuration.isPressed ? 0.9 : 1.0)
     }
 }
 
 #Preview {
     MetronomeSettingsView(metronome: MetronomeEngine())
         .padding()
-        .background(Palette.stage)
+        // Inject the ink theme so theme.* resolves correctly against the dark
+        // stage background used in this preview.
+        .surface(.ink)
 }

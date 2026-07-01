@@ -11,9 +11,37 @@ import SwiftUI
 struct AppearanceSettingsView: View {
     @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
     @Environment(\.theme) private var theme
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(spacing: 0) {
+            #if os(macOS)
+            // In-view back navigation for macOS (matches sibling settings screens).
+            LedgerRow {
+                HStack {
+                    Button(action: { dismiss() }, label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "chevron.left")
+                                .font(.title2)
+                                .foregroundColor(theme.primary)
+                            Text("Back")
+                                .font(.headline)
+                                .foregroundColor(theme.primary)
+                        }
+                    })
+                    .buttonStyle(PlainButtonStyle())
+
+                    Spacer()
+
+                    Text("Appearance")
+                        .font(AppType.display)
+                        .foregroundColor(theme.primary)
+
+                    Spacer()
+                }
+            }
+            #endif
+
             VStack(spacing: 10) {
                 HStack {
                     VStack(alignment: .leading) {
