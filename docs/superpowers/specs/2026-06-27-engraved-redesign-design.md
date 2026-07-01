@@ -61,9 +61,12 @@ This intentionally removes the current `Color.white.opacity(0.1)` card pattern.
 
 ## 4. Typography
 
-Three bundled OFL faces, registered via `Info.plist` (`UIAppFonts` for iOS,
-`ATSApplicationFontsPath` for macOS) and `Copy Bundle Resources`. Helpers live in
-`design/Typography.swift` (e.g. `Font.fraunces(_:)`, `Font.hanken(_:)`, `Font.plexMono(_:)`).
+Three bundled OFL faces, registered programmatically at runtime via
+`CTFontManagerRegisterFontsForURL` (see `design/FontRegistration.swift`) so the
+same code path works on both iOS and macOS without platform-specific Info.plist
+keys. The `.ttf` files are added to the target via `Copy Bundle Resources`.
+Helpers live in `design/Typography.swift` (e.g. `Font.fraunces(_:)`,
+`Font.hanken(_:)`, `Font.plexMono(_:)`).
 
 1. **Fraunces** — high-contrast variable serif. Wordmark, screen titles, song titles.
 2. **Hanken Grotesk** — humanist sans. Body, labels, controls (legible when small).
@@ -140,8 +143,9 @@ theme tokens, screen by screen.
 - **Gameplay performance** — restyling must not introduce per-frame recomputation or
   new `@Published` observation in `GameplayView`'s hierarchy (see CLAUDE.md perf notes).
 - **iPad-only iOS family** — no iPhone targeting; layouts assume iPad/macOS.
-- **Cross-platform fonts** — register for both iOS (`UIAppFonts`) and macOS
-  (`ATSApplicationFontsPath`); verify on both build destinations.
+- **Cross-platform fonts** — registered programmatically via
+  `CTFontManagerRegisterFontsForURL` (no Info.plist keys); verify on both build
+  destinations.
 
 ## 9. Testing & verification
 

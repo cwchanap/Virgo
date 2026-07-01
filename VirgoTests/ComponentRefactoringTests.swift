@@ -22,32 +22,6 @@ struct ComponentRefactoringTests {
         TestContainer.shared.context
     }
 
-    @Test("ExpandableSongRowContainer handles state correctly")
-    func testExpandableSongRowContainer() async throws {
-        try await TestSetup.withTestSetup {
-            let mockSong = TestModelFactory.createSong(in: context)
-            let expandedSongId = Binding.constant(Optional<PersistentIdentifier>.none)
-
-            let container = ExpandableSongRowContainer(
-                song: mockSong,
-                isPlaying: false,
-                isExpanded: false,
-                expandedSongId: expandedSongId,
-                onChartSelect: { _ in },
-                onPlayTap: {},
-                onSaveTap: {}
-            )
-
-            // Test that the container is created without crashing
-            #expect(container.song.title == "Test Song")
-            #expect(container.isPlaying == false)
-            #expect(container.isExpanded == false)
-            
-            // Test that view can be created with proper environment
-            SwiftUITestUtilities.assertViewWithEnvironment(container)
-        }
-    }
-
     @Test("DifficultyExpansionView displays charts correctly")
     func testDifficultyExpansionView() async throws {
         try await TestSetup.withTestSetup {

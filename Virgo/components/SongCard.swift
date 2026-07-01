@@ -41,6 +41,27 @@ struct SongCard: View {
         return "downloadedSongCardOpenButton-\(stableSongID)"
     }
 
+    /// Unique per-song identifier for the card's bookmark button so UI tests
+    /// can target a specific card's bookmark without sharing one id across all
+    /// cards. Prefixes the shared `downloadedSongBookmarkButton` stem so
+    /// prefix-based predicates still match.
+    static func cardBookmarkButtonID(for song: Song) -> String {
+        let stableSongID = PersistentIdentifierPersistenceKey.canonicalKey(
+            for: song.persistentModelID,
+            logPrefix: "SongCardBookmark"
+        )
+        return "downloadedSongBookmarkButton-\(stableSongID)"
+    }
+
+    /// Unique per-song identifier for the card's delete button.
+    static func cardDeleteButtonID(for song: Song) -> String {
+        let stableSongID = PersistentIdentifierPersistenceKey.canonicalKey(
+            for: song.persistentModelID,
+            logPrefix: "SongCardDelete"
+        )
+        return "downloadedSongDeleteButton-\(stableSongID)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             infoButton
@@ -116,7 +137,7 @@ struct SongCard: View {
             .buttonStyle(PlainButtonStyle())
             .disabled(isDeleting)
             .accessibilityLabel(song.isSaved ? "Remove bookmark" : "Save song")
-            .accessibilityIdentifier("downloadedSongBookmarkButton")
+            .accessibilityIdentifier(Self.cardBookmarkButtonID(for: song))
             .accessibilityValue(song.isSaved ? "Saved" : "Not saved")
 
             Text("\(chartCount) charts")
@@ -140,10 +161,8 @@ struct SongCard: View {
             }
         } else {
             Button("Delete", action: onDelete)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .foregroundColor(theme.accent)
-                .accessibilityIdentifier("downloadedSongDeleteButton")
+                .buttonStyle(DestructiveCompactButtonStyle())
+                .accessibilityIdentifier(Self.cardDeleteButtonID(for: song))
         }
     }
 }

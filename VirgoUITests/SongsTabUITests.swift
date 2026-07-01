@@ -103,7 +103,7 @@ final class SongsTabUITests: XCTestCase {
                 // Verify downloaded songs list elements exist
                 try requireControl(named: "Play", in: app, timeout: 5)
                 let bookmarkPredicate = NSPredicate(
-                    format: "identifier == %@ OR label == %@ OR label == %@",
+                    format: "identifier BEGINSWITH %@ OR label == %@ OR label == %@",
                     "downloadedSongBookmarkButton",
                     "Save song",
                     "Remove bookmark"

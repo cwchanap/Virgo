@@ -140,7 +140,7 @@ struct GameplayView: View {
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
-        .background(Palette.stage)
+        .surface(.ink)
         .foregroundColor(Palette.chalk)
         .colorScheme(.dark)
         .onDisappear {
