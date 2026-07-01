@@ -106,6 +106,7 @@ struct SongCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .disabled(isDeleting)
         .accessibilityIdentifier(Self.cardOpenButtonID(for: song))
         .accessibilityLabel("Open \(song.title)")
     }
