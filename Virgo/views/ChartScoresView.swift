@@ -13,6 +13,7 @@ struct ChartScoresView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.theme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @State private var attempts: [ScoreAttemptSummary]
     @State private var bestScore: Int
 
@@ -45,7 +46,7 @@ struct ChartScoresView: View {
         .navigationTitle("Scores")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.light, for: .navigationBar)
+        .toolbarColorScheme(colorScheme == .dark ? .dark : .light, for: .navigationBar)
         #endif
         .task { load() }
     }

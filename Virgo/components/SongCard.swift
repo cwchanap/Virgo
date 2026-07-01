@@ -105,6 +105,7 @@ struct SongCard: View {
                     .foregroundColor(isPlaying ? theme.accent : theme.primary)
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(isDeleting)
             .accessibilityLabel(isPlaying ? "Pause" : "Play")
 
             Button(action: onSaveTap) {
@@ -113,6 +114,7 @@ struct SongCard: View {
                     .foregroundColor(song.isSaved ? theme.accent : theme.secondary)
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(isDeleting)
             .accessibilityLabel(song.isSaved ? "Remove bookmark" : "Save song")
             .accessibilityIdentifier("downloadedSongBookmarkButton")
             .accessibilityValue(song.isSaved ? "Saved" : "Not saved")
