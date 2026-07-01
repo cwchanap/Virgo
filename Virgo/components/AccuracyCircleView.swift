@@ -12,6 +12,18 @@ struct AccuracyCircleView: View {
 
     @State private var animatedFraction: Double = 0.0
 
+    /// Stroke color chosen from accuracy tiers so the ring reflects performance
+    /// at a glance instead of always using the vermillion accent.
+    private var ringColor: Color {
+        if percentage >= 85 {
+            return Palette.chalk       // high accuracy → bright
+        } else if percentage >= 60 {
+            return Palette.vermillion  // mid accuracy → accent
+        } else {
+            return Palette.chalkMuted  // low accuracy → muted
+        }
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             ZStack {
@@ -20,7 +32,7 @@ struct AccuracyCircleView: View {
 
                 Circle()
                     .trim(from: 0, to: animatedFraction)
-                    .stroke(Palette.vermillion, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                    .stroke(ringColor, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.8), value: animatedFraction)
 

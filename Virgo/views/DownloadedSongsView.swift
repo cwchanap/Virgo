@@ -38,6 +38,10 @@ struct DownloadedSongsView: View {
     }
     @State private var pickerTarget: PickerTarget?
 
+    // Surfaced to the user when a delete fails (the row is kept visible either
+    // way, but a silent failure is bad UX). `nil` hides the alert.
+    @State private var deleteErrorMessage: String?
+
     // Filter to show only downloaded songs (server-imported)
     var downloadedSongs: [Song] {
         Self.downloadedSongs(from: songs)
@@ -70,6 +74,15 @@ struct DownloadedSongsView: View {
                 onDismiss: { pickerTarget = nil }
             )
         }
+        .alert(
+            "Delete Failed",
+            isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            ),
+            actions: { Button("OK") { deleteErrorMessage = nil } },
+            message: { Text(deleteErrorMessage ?? "") }
+        )
     }
 
     @ViewBuilder
@@ -162,6 +175,11 @@ struct DownloadedSongsView: View {
         Task {
             let success = await serverSongService.deleteLocalSong(song)
             Logger.debug("Delete downloaded song result: \(success)")
+            if !success {
+                // Row is intentionally kept visible (no optimistic removal);
+                // surface the failure so the user knows the delete didn't happen.
+                deleteErrorMessage = "Could not delete \"\(song.title)\". Please try again."
+            }
         }
     }
 }

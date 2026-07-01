@@ -31,6 +31,16 @@ struct SongCard: View {
         return "downloadedSongCard-\(stableSongID)"
     }
 
+    /// Unique per-song identifier for the card's open button so UI tests can
+    /// target a specific card without every card sharing the same id.
+    static func cardOpenButtonID(for song: Song) -> String {
+        let stableSongID = PersistentIdentifierPersistenceKey.canonicalKey(
+            for: song.persistentModelID,
+            logPrefix: "SongCardOpen"
+        )
+        return "downloadedSongCardOpenButton-\(stableSongID)"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             infoButton
@@ -75,7 +85,7 @@ struct SongCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityIdentifier("downloadedSongCardOpenButton")
+        .accessibilityIdentifier(Self.cardOpenButtonID(for: song))
         .accessibilityLabel("Open \(song.title)")
     }
 

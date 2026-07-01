@@ -13,6 +13,7 @@ struct SongScoresView: View {
 
     @State private var charts: [Chart] = []
     @Environment(\.theme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     @MainActor
     init(song: Song, initialCharts: [Chart] = []) {
@@ -52,7 +53,7 @@ struct SongScoresView: View {
         .navigationTitle(song.title)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.light, for: .navigationBar)
+        .toolbarColorScheme(colorScheme == .dark ? .dark : .light, for: .navigationBar)
         #endif
         .task {
             guard charts.isEmpty else { return }

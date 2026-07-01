@@ -34,6 +34,14 @@ struct ServerSongInfoView: View {
     let serverSong: ServerSong
     @Environment(\.theme) private var theme
 
+    // Chart-derived display values. `serverSong.charts` is a SwiftData
+    // relationship; faulting it during `body` evaluation is unsafe (see
+    // SwiftDataRelationshipLoader / app architecture notes). We resolve the
+    // relationship once off the render path and render from these snapshots.
+    @State private var totalSize: Int = 0
+    @State private var levelText: String?
+    @State private var difficultyChips: [DifficultyChip] = []
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(serverSong.title)
@@ -45,8 +53,36 @@ struct ServerSongInfoView: View {
                 .foregroundColor(theme.secondary)
                 .lineLimit(1)
             metadataRow
-            difficultyChips
+            difficultyChipsRow
         }
+        .task(id: serverSong.persistentModelID) {
+            // `.task` runs on the MainActor (View context); resolving the
+            // relationship here keeps it out of `body` (which would re-fault on
+            // every render) while remaining synchronous enough to be testable.
+            loadDisplayData()
+        }
+    }
+
+    private func loadDisplayData() {
+        guard !serverSong.isDeleted else {
+            totalSize = 0
+            levelText = nil
+            difficultyChips = []
+            return
+        }
+        let charts = serverSong.charts.filter { !$0.isDeleted }
+        totalSize = charts.reduce(0) { $0 + $1.size }
+        if charts.count > 1 {
+            let levels = charts.map { String($0.level) }.joined(separator: ", ")
+            levelText = "Levels \(levels)"
+        } else if let chart = charts.first {
+            levelText = "Level \(chart.level)"
+        } else {
+            levelText = nil
+        }
+        difficultyChips = charts.count > 1
+            ? charts.map { DifficultyChip(label: $0.difficultyLabel, level: $0.level) }
+            : []
     }
 
     private var metadataRow: some View {
@@ -59,7 +95,6 @@ struct ServerSongInfoView: View {
                 .foregroundColor(theme.secondary)
             levelLabel
             Spacer()
-            let totalSize = serverSong.charts.reduce(0) { $0 + $1.size }
             Text(formatFileSize(totalSize))
                 .font(.plexMono(11))
                 .foregroundColor(theme.secondary)
@@ -68,26 +103,20 @@ struct ServerSongInfoView: View {
 
     @ViewBuilder
     private var levelLabel: some View {
-        if serverSong.charts.count > 1 {
-            let levels = serverSong.charts.map { String($0.level) }.joined(separator: ", ")
-            Label("Levels \(levels)", systemImage: "chart.bar")
-                .font(.plexMono(11))
-                .foregroundColor(theme.secondary)
-        } else if let chart = serverSong.charts.first {
-            Label("Level \(chart.level)", systemImage: "chart.bar")
+        if let levelText {
+            Label(levelText, systemImage: "chart.bar")
                 .font(.plexMono(11))
                 .foregroundColor(theme.secondary)
         }
     }
 
     @ViewBuilder
-    private var difficultyChips: some View {
-        if serverSong.charts.count > 1 {
+    private var difficultyChipsRow: some View {
+        if !difficultyChips.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
-                    ForEach(serverSong.charts.indices, id: \.self) { index in
-                        let chart = serverSong.charts[index]
-                        Text("\(chart.difficultyLabel) (\(chart.level))")
+                    ForEach(difficultyChips) { chip in
+                        Text("\(chip.label) (\(chip.level))")
                             .font(.plexMono(10, weight: .medium))
                             .tracking(1)
                             .foregroundColor(theme.secondary)
@@ -107,6 +136,17 @@ struct ServerSongInfoView: View {
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
+}
+
+// MARK: - Server Song Display Snapshot
+
+/// Immutable, model-detached chip data resolved from the `ServerSong.charts`
+/// relationship. Holding primitives (not `ServerChart` references) keeps the
+/// render path free of SwiftData relationship faults.
+struct DifficultyChip: Identifiable {
+    let label: String
+    let level: Int
+    var id: String { "\(label)-\(level)" }
 }
 
 // MARK: - Shared Status Section

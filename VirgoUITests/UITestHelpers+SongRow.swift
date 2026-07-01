@@ -11,13 +11,13 @@ import XCTest
 
 extension XCTestCase {
     /// Reveals the difficulty selector for the song matching `songTitle` and
-    /// waits for it to appear. Callers filter the list to this song first
-    /// (`searchField`), so the single matching open/expand control is
-    /// unambiguous and `firstMatch` is safe.
+    /// waits for it to appear. The matching control is song-specific so
+    /// `firstMatch` is safe even when several song cards are visible.
     ///
     /// Layout-aware: wide layouts (macOS / full-screen iPad) render a card grid
-    /// whose tappable open control is a Button carrying the identifier
-    /// `downloadedSongCardOpenButton` and accessibilityLabel "Open <title>".
+    /// whose tappable open control is a Button carrying the accessibilityLabel
+    /// "Open <title>" (its identifier is now unique per song, but the label is
+    /// the song-stable locator used here).
     /// Narrow layouts render a row with a "N charts" expand Button — its count
     /// is seeded to 0 and loaded asynchronously, so the regex requires a
     /// NON-ZERO count to ensure charts have loaded before expanding (tapping too
@@ -36,8 +36,8 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        // Card grid (wide): the open button, by identifier or "Open <title>" label.
-        let openCardById = app.buttons["downloadedSongCardOpenButton"]
+        // Card grid (wide): the song-specific "Open <title>" label is unique per
+        // song, so it locates the intended card without relying on list filtering.
         let openCardByLabel = app.buttons
             .matching(NSPredicate(format: "label == %@", "Open \(songTitle)"))
             .firstMatch
@@ -46,7 +46,7 @@ extension XCTestCase {
         let rowExpandButton = app.buttons.matching(nonZeroChartCount).firstMatch
 
         guard let control = waitForFirstExisting(
-            [openCardById, openCardByLabel, rowExpandButton],
+            [openCardByLabel, rowExpandButton],
             timeout: timeout
         ) else {
             XCTFail(

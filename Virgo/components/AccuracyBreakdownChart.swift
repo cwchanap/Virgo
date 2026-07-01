@@ -22,11 +22,13 @@ struct AccuracyBreakdownChart: View {
     }
 
     private var data: [TierData] {
+        // Distinct base colors per tier (vermillion / chalk / chalkMuted) so the
+        // bars remain distinguishable instead of relying on opacity steps alone.
         [
             TierData(label: "Perfect", count: perfectCount, color: Palette.vermillion),
-            TierData(label: "Great", count: greatCount, color: Palette.chalkMuted),
-            TierData(label: "Good", count: goodCount, color: Palette.chalkMuted.opacity(0.7)),
-            TierData(label: "Miss", count: missCount, color: Palette.chalkMuted.opacity(0.45))
+            TierData(label: "Great", count: greatCount, color: Palette.chalk),
+            TierData(label: "Good", count: goodCount, color: Palette.chalkMuted),
+            TierData(label: "Miss", count: missCount, color: Palette.chalkMuted.opacity(0.4))
         ]
     }
 
