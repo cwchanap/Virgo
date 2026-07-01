@@ -9,7 +9,6 @@ enum AppFonts {
 
     static func registerAll() {
         guard !didRegister else { return }
-        didRegister = true
 
         // Primary: scan Bundle.main (works at app runtime)
         var urls = Bundle.main.urls(forResourcesWithExtension: "ttf", subdirectory: nil) ?? []
@@ -44,5 +43,9 @@ enum AppFonts {
                 }
             }
         }
+
+        // Set after the scan so a partially-failed registration can be retried
+        // rather than permanently short-circuiting subsequent calls.
+        didRegister = true
     }
 }
