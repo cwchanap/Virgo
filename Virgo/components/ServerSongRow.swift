@@ -64,13 +64,13 @@ struct ServerSongInfoView: View {
     }
 
     private func loadDisplayData() {
-        guard !serverSong.isDeleted else {
+        guard SongRelationshipLoader.isModelAvailable(serverSong) else {
             totalSize = 0
             levelText = nil
             difficultyChips = []
             return
         }
-        let charts = serverSong.charts.filter { !$0.isDeleted }
+        let charts = serverSong.charts.filter { SongRelationshipLoader.isModelAvailable($0) }
         totalSize = charts.reduce(0) { $0 + $1.size }
         if charts.count > 1 {
             let levels = charts.map { String($0.level) }.joined(separator: ", ")
