@@ -163,6 +163,16 @@ class SongRelationshipLoader: BaseSwiftDataRelationshipLoader<Song, SongRelation
         return true
     }
 
+    static func isModelAvailable(_ serverSong: ServerSong) -> Bool {
+        guard !isDetachedPersistentModel(serverSong), !serverSong.isDeleted else { return false }
+        return true
+    }
+
+    static func isModelAvailable(_ serverChart: ServerChart) -> Bool {
+        guard !isDetachedPersistentModel(serverChart), !serverChart.isDeleted else { return false }
+        return true
+    }
+
     private static func calculateMeasureCount(from charts: [Chart]) -> Int {
         // Access notes relationships safely - charts are already loaded on main thread
         let allNotes = charts.flatMap { chart in
