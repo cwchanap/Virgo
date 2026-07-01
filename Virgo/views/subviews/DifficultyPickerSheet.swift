@@ -37,7 +37,9 @@ struct DifficultyPickerSheet: View {
     }
 
     private var displayCharts: [Chart] {
-        charts.filter { SongRelationshipLoader.isModelAvailable($0) }
+        // `charts` is populated from `SongRelationshipData.charts`, which the
+        // loader already filters through `isModelAvailable` — no re-filter here.
+        charts
     }
 
     private var header: some View {
