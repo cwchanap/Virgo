@@ -22,7 +22,6 @@ struct VirgoApp: App {
 
     @StateObject private var sharedMetronome = MetronomeEngine()
     @StateObject private var sharedPracticeSettings = PracticeSettingsService()
-    @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -54,25 +53,20 @@ struct VirgoApp: App {
             UIView.setAnimationsEnabled(false)
             #endif
         }
-        #if os(macOS)
-        // Must run before SwiftUI's WindowGroup sets up window restoration.
-        // VirgoApp.init() runs during @main startup, before any scene or window
-        // machinery, so the saved state is gone before restoration begins.
-        if VirgoAppLaunchBehavior.shouldClearWindowRestorationState(
-            arguments: ProcessInfo.processInfo.arguments
-        ) {
-            WindowRestorationStateClearer.clearSavedState()
-        }
-        #endif
     }
 
     @ViewBuilder
     private var rootView: some View {
+        // NOTE: Do not apply .appThemeRoot() or .preferredColorScheme() here.
+        // Modifiers on the WindowGroup content root change the SwiftUI view-type
+        // signature, which macOS uses as the window-restoration identifier. After
+        // rapid launch/terminate cycles (UI tests), the changed signature causes
+        // window state restoration to fail (window=0x0), leaving the app running
+        // with no window. These modifiers are applied inside MainMenuView.body
+        // instead, which keeps the WindowGroup content type stable.
         MainMenuView()
             .environmentObject(sharedMetronome)
             .environmentObject(sharedPracticeSettings)
-            .appThemeRoot()
-            .preferredColorScheme(appearanceMode.preferredColorScheme)
     }
 
     var body: some Scene {
@@ -123,31 +117,6 @@ final class MacSingleWindowDelegate: NSObject, NSApplicationDelegate {
 
         for window in mainWindows.dropFirst() {
             window.close()
-        }
-    }
-}
-
-/// Clears macOS window state restoration data so the next launch creates a
-/// fresh window instead of restoring (potentially corrupted) saved state.
-enum WindowRestorationStateClearer {
-    static func clearSavedState() {
-        let bundleIdentifier = Bundle.main.bundleIdentifier ?? ""
-        guard !bundleIdentifier.isEmpty else { return }
-
-        let fileManager = FileManager.default
-        // applicationSupportDirectory resolves to ~/Library/Application Support
-        // (non-sandboxed) or the container equivalent (sandboxed). The Saved
-        // Application State directory is a sibling under the same Library root.
-        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return
-        }
-        let libraryDir = appSupport.deletingLastPathComponent()
-        let savedStateDir = libraryDir
-            .appendingPathComponent("Saved Application State")
-            .appendingPathComponent("\(bundleIdentifier).savedState")
-
-        if fileManager.fileExists(atPath: savedStateDir.path) {
-            try? fileManager.removeItem(at: savedStateDir)
         }
     }
 }
