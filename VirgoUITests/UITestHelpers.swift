@@ -145,10 +145,18 @@ extension XCTestCase {
         let deadline = Date().addingTimeInterval(timeout)
 
         repeat {
-            if let element = elements.first(where: { $0.exists }) {
-                return element
+            // Use waitForExistence with a short per-check timeout instead of
+            // .exists, which can block for 30+ seconds due to XCUITest's
+            // internal synchronization when the app has continuous animations
+            // (gameplay metronome/playhead) or is in an editing state (search
+            // field focus). The short per-check timeout lets the loop iterate
+            // and respect the overall deadline.
+            for element in elements {
+                if element.waitForExistence(timeout: 0.5) {
+                    return element
+                }
+                if Date() >= deadline { break }
             }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         } while Date() < deadline
 
         return elements.first(where: { $0.exists })

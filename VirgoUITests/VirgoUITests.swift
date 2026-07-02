@@ -64,8 +64,22 @@ final class VirgoUITests: XCTestCase {
         // Verify sample tracks are displayed
         try requireStaticText(containing: "Thunder Beat", in: app, timeout: 5)
         try requireStaticText(containing: "Rock Masters", in: app, timeout: 5)
-        XCTAssertTrue(waitForStaticText(containing: "BPM", in: app, timeout: 5))
-        XCTAssertTrue(waitForStaticText(containing: "Medium", in: app, timeout: 5))
+        // Layout-aware BPM check: row layout shows "N BPM" as a staticText,
+        // card-grid layout wraps tempo info inside the card button (TempoMark
+        // exposes "Tempo N beats per minute" via accessibilityLabel).
+        XCTAssertTrue(
+            waitForStaticText(containing: "BPM", in: app, timeout: 5) ||
+            waitForStaticText(containing: "Tempo", in: app, timeout: 5),
+            "BPM or tempo info should be visible"
+        )
+        // Layout-aware difficulty check: row layout shows difficulty as a
+        // staticText, card-grid layout wraps it in the card button (DifficultyPips
+        // exposes "medium difficulty" via accessibilityLabel).
+        XCTAssertTrue(
+            waitForStaticText(containing: "Medium", in: app, timeout: 5) ||
+            waitForStaticText(containing: "difficulty", in: app, timeout: 5),
+            "Difficulty info should be visible"
+        )
 
         // Verify at least one play button exists
         try requireControl(named: "Play", in: app, timeout: 5)
