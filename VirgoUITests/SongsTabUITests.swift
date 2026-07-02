@@ -177,20 +177,15 @@ final class SongsTabUITests: XCTestCase {
 
         guard hasDownloadedSongs(app: app) else { return }
 
-        // Once songs exist, a control MUST reveal the picker: the grid card's
-        // open button (wide) or the row's "N charts" expand button (narrow).
-        // Failing to find either is a real failure, not a vacuous skip.
-        let openButton = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Open ")
-        ).firstMatch
-        let chartIndicator = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] 'charts'")
-        ).firstMatch
-        guard let control = waitForFirstExisting([openButton, chartIndicator], timeout: 5) else {
-            XCTFail("Expected a card open button or row expand button when downloaded songs exist")
-            return
+        // Once songs exist, the seeded Thunder Beat fixture must be expandable.
+        // This goes through the shared layout-aware helper so grid cards and
+        // list rows are both opened through title-scoped selectors.
+        let searchField = app.textFields["searchField"]
+        if searchField.waitForExistence(timeout: 3) {
+            searchField.clearAndEnterText("Thunder Beat")
+            app.typeKey("\u{1B}", modifierFlags: [])
         }
-        control.tap()
+        try expandSongRow(containing: "Thunder Beat", in: app, timeout: 10)
 
         // The difficulty selector appears (same DifficultyExpansionView in both).
         XCTAssertTrue(waitForStaticText(containing: "Select Difficulty", in: app, timeout: 5))
