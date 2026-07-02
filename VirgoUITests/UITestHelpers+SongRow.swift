@@ -39,13 +39,12 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        // Card grid (wide): the song-specific "Open <title>" label is unique per
-        // song, so it locates the intended card without relying on list filtering.
-        // In grid mode the title Text is wrapped in a Button with an explicit
-        // accessibilityLabel, so the title is NOT exposed as a staticText — the
-        // open button IS the title's accessibility representation.
+        // Card grid (wide): the card button's accessibility label is
+        // auto-generated from its inner content (title, artist, tempo, genre,
+        // difficulty), so we match by CONTAINS on the song title. The title is
+        // unique among test fixtures, so this is unambiguous.
         let openCardByLabel = app.buttons
-            .matching(NSPredicate(format: "label == %@", "Open \(songTitle)"))
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", songTitle))
             .firstMatch
         // Row list (narrow): the "N charts" expand button with a NON-ZERO count.
         let nonZeroChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
