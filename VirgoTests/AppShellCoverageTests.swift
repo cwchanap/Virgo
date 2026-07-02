@@ -166,6 +166,30 @@ struct AppShellCoverageTests {
         #expect(result == false)
     }
 
+    // MARK: - VirgoAppLaunchBehavior.shouldClearWindowRestorationState
+
+    @Test("shouldClearWindowRestorationState returns true when uiTesting argument present")
+    func testShouldClearWindowRestorationStateTrueForUITesting() {
+        let result = VirgoAppLaunchBehavior.shouldClearWindowRestorationState(
+            arguments: [LaunchArguments.uiTesting]
+        )
+        #expect(result == true)
+    }
+
+    @Test("shouldClearWindowRestorationState returns false when arguments are empty")
+    func testShouldClearWindowRestorationStateFalseForEmptyArguments() {
+        let result = VirgoAppLaunchBehavior.shouldClearWindowRestorationState(arguments: [])
+        #expect(result == false)
+    }
+
+    @Test("shouldClearWindowRestorationState returns false when arguments lack uiTesting flag")
+    func testShouldClearWindowRestorationStateFalseForOtherArguments() {
+        let result = VirgoAppLaunchBehavior.shouldClearWindowRestorationState(
+            arguments: [LaunchArguments.resetState]
+        )
+        #expect(result == false)
+    }
+
     // MARK: - ReopenPolicy.shouldAppKitHandleReopen
 
     @Test("shouldAppKitHandleReopen returns false when a visible window exists")

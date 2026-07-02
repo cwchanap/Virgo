@@ -85,6 +85,21 @@ struct VirgoApp: App {
 
 #if os(macOS)
 final class MacSingleWindowDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // UI tests launch and terminate the app in rapid succession. After 2+
+        // cycles, macOS's window state restoration can fail to recreate the
+        // window (returning window=0x0 with no error), leaving the app running
+        // with no visible window and no accessibility tree — causing every
+        // subsequent UI test to fail with "windows=0". Clearing the saved
+        // state before SwiftUI's WindowGroup attempts restoration ensures every
+        // UI-test launch gets a fresh window.
+        if VirgoAppLaunchBehavior.shouldClearWindowRestorationState(
+            arguments: ProcessInfo.processInfo.arguments
+        ) {
+            WindowRestorationStateClearer.clearSavedState()
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         DispatchQueue.main.async {
             self.closeRestoredDuplicateMainWindows()
@@ -113,6 +128,31 @@ final class MacSingleWindowDelegate: NSObject, NSApplicationDelegate {
 
         for window in mainWindows.dropFirst() {
             window.close()
+        }
+    }
+}
+
+/// Clears macOS window state restoration data so the next launch creates a
+/// fresh window instead of restoring (potentially corrupted) saved state.
+enum WindowRestorationStateClearer {
+    static func clearSavedState() {
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? ""
+        guard !bundleIdentifier.isEmpty else { return }
+
+        let fileManager = FileManager.default
+        // applicationSupportDirectory resolves to ~/Library/Application Support
+        // (non-sandboxed) or the container equivalent (sandboxed). The Saved
+        // Application State directory is a sibling under the same Library root.
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let libraryDir = appSupport.deletingLastPathComponent()
+        let savedStateDir = libraryDir
+            .appendingPathComponent("Saved Application State")
+            .appendingPathComponent("\(bundleIdentifier).savedState")
+
+        if fileManager.fileExists(atPath: savedStateDir.path) {
+            try? fileManager.removeItem(at: savedStateDir)
         }
     }
 }

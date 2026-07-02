@@ -41,6 +41,9 @@ extension XCTestCase {
     ) throws {
         // Card grid (wide): the song-specific "Open <title>" label is unique per
         // song, so it locates the intended card without relying on list filtering.
+        // In grid mode the title Text is wrapped in a Button with an explicit
+        // accessibilityLabel, so the title is NOT exposed as a staticText — the
+        // open button IS the title's accessibility representation.
         let openCardByLabel = app.buttons
             .matching(NSPredicate(format: "label == %@", "Open \(songTitle)"))
             .firstMatch
@@ -48,13 +51,15 @@ extension XCTestCase {
         let nonZeroChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
 
         // Wait for the requested title to be mounted before selecting any row
-        // expand control. This confirms the search filter has applied and the
-        // target row is present, so a stale row from the previous list contents
-        // can't be expanded instead.
+        // expand control. In grid mode the title is only exposed as the card
+        // open button's label (not as a staticText), so we accept either form.
+        // This confirms the search filter has applied and the target song is
+        // present, so a stale row from the previous list contents can't be
+        // expanded instead.
         let titleText = app.staticTexts
             .matching(NSPredicate(format: "label == %@", songTitle))
             .firstMatch
-        guard titleText.waitForExistence(timeout: timeout) else {
+        guard waitForFirstExisting([openCardByLabel, titleText], timeout: timeout) != nil else {
             XCTFail(
                 "Expected song title \"\(songTitle)\" to be visible before expanding its row",
                 file: file,
