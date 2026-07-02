@@ -12,6 +12,7 @@ struct LibraryView: View {
     let songs: [Song]
     @ObservedObject var serverSongService: ServerSongService
     @State private var locallyDeletedSongIDs: Set<PersistentIdentifier> = []
+    @Environment(\.theme) private var theme
 
     static func rowViewID(for song: Song) -> String {
         let stableSongID = PersistentIdentifierPersistenceKey.canonicalKey(
@@ -30,8 +31,8 @@ struct LibraryView: View {
         excluding hiddenSongIDs: Set<PersistentIdentifier> = []
     ) -> [Song] {
         songs.filter { song in
-            song.isServerImported &&
-                !song.isDeleted &&
+            SongRelationshipLoader.isModelAvailable(song) &&
+                song.isServerImported &&
                 !hiddenSongIDs.contains(song.persistentModelID)
         }
     }
@@ -39,125 +40,133 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                // Header
-                VStack(spacing: 10) {
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text("Downloaded Songs")
-                                .font(.largeTitle)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                            Text("\(downloadedSongs.count) songs downloaded")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.title2)
-                            .foregroundColor(.white)
+                VStack(spacing: 0) {
+                    headerSection
+                    if downloadedSongs.isEmpty {
+                        emptyState
+                    } else {
+                        songsList
                     }
-                    .padding(.horizontal)
-                    .padding(.top)
-                }
-                .padding(.top, 20)
-                .padding(.bottom, 16)
-
-                // Downloaded Songs List
-                if downloadedSongs.isEmpty {
-                    VStack(spacing: 16) {
-                        Spacer()
-                        Image(systemName: "arrow.down.circle")
-                            .font(.system(size: 64))
-                            .foregroundColor(.white.opacity(0.3))
-
-                        VStack(spacing: 8) {
-                            Text("No Downloaded Songs")
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-
-                            Text("Download songs from the server to see them here")
-                                .font(.body)
-                                .foregroundColor(.gray)
-                                .multilineTextAlignment(.center)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 32)
-                } else {
-                    List {
-                        ForEach(downloadedSongs, id: \.id) { song in
-                            ZStack(alignment: .trailing) {
-                                NavigationLink {
-                                    SongScoresView(song: song)
-                                } label: {
-                                    SavedSongRow(
-                                        song: song,
-                                        isDeleting: serverSongService.isDeleting(song),
-                                        onDelete: nil
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityIdentifier(Self.rowViewID(for: song))
-                                .accessibilityLabel("\(song.title), \(song.artist)")
-
-                                // Delete button sits outside the NavigationLink
-                                // so taps don't trigger both navigation and deletion.
-                                if serverSongService.isDeleting(song) {
-                                    HStack(spacing: 8) {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                        Text("Deleting...")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .padding(.trailing, 24)
-                                } else {
-                                    Button {
-                                        let songID = song.persistentModelID
-                                        locallyDeletedSongIDs.insert(songID)
-                                        Task { @MainActor in
-                                            let success = await serverSongService.deleteLocalSong(song)
-                                            if !success {
-                                                locallyDeletedSongIDs.remove(songID)
-                                            }
-                                        }
-                                    } label: {
-                                        Text("Delete")
-                                            .font(.subheadline)
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 4)
-                                            .background(Color.red.opacity(0.2))
-                                            .foregroundColor(.red)
-                                            .cornerRadius(6)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityIdentifier("libraryDeleteButton")
-                                    .accessibilityLabel("Delete \(song.title)")
-                                    .padding(.trailing, 16)
-                                }
-                            }
-                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                        }
-                    }
-                    .listStyle(PlainListStyle())
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
                 }
             }
+            .appSurface()
         }
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        VStack(spacing: 10) {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Downloaded Songs")
+                        .font(AppType.display)
+                        .foregroundColor(theme.primary)
+                    Text("\(downloadedSongs.count) songs downloaded")
+                        .font(.plexMono(13))
+                        .foregroundColor(theme.secondary)
+                }
+                Spacer()
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(theme.secondary)
+            }
+            .padding(.horizontal)
+            .padding(.top)
         }
+        .padding(.top, 20)
+        .padding(.bottom, 16)
+    }
+
+    // MARK: - Empty State
+
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 64))
+                .foregroundColor(theme.rule)
+
+            VStack(spacing: 8) {
+                Text("No Downloaded Songs")
+                    .font(AppType.headline)
+                    .foregroundColor(theme.primary)
+
+                Text("Download songs from the server to see them here")
+                    .font(.body)
+                    .foregroundColor(theme.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+    }
+
+    // MARK: - Songs List
+
+    private var songsList: some View {
+        List {
+            ForEach(downloadedSongs, id: \.id) { song in
+                ZStack(alignment: .trailing) {
+                    NavigationLink {
+                        SongScoresView(song: song)
+                    } label: {
+                        SavedSongRow(
+                            song: song,
+                            isDeleting: serverSongService.isDeleting(song),
+                            onDelete: nil
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier(Self.rowViewID(for: song))
+                    .accessibilityLabel("\(song.title), \(song.artist)")
+
+                    // Delete button sits outside the NavigationLink
+                    // so taps don't trigger both navigation and deletion.
+                    if serverSongService.isDeleting(song) {
+                        deletingIndicator
+                    } else {
+                        deleteButton(for: song)
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(PlainListStyle())
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
+    }
+
+    private var deletingIndicator: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .scaleEffect(0.8)
+            Text("Deleting...")
+                .font(.caption)
+                .foregroundColor(theme.secondary)
+        }
+        .padding(.trailing, 24)
+    }
+
+    private func deleteButton(for song: Song) -> some View {
+        Button {
+            let songID = song.persistentModelID
+            locallyDeletedSongIDs.insert(songID)
+            Task { @MainActor in
+                let success = await serverSongService.deleteLocalSong(song)
+                if !success {
+                    locallyDeletedSongIDs.remove(songID)
+                }
+            }
+        } label: {
+            Text("Delete")
+        }
+        .buttonStyle(DestructiveCompactButtonStyle())
+        .accessibilityIdentifier("libraryDeleteButton")
+        .accessibilityLabel("Delete \(song.title)")
+        .padding(.trailing, 16)
     }
 }
 
@@ -165,73 +174,86 @@ struct SavedSongRow: View {
     let song: Song
     let isDeleting: Bool
     let onDelete: (() -> Void)?
+    @Environment(\.theme) private var theme
+
+    // Cache relationship-derived display values to avoid faulting SwiftData
+    // relationships (song.availableDifficulties) during view rendering. Matches
+    // the pattern used by SongCard and DownloadedSongRowWithDelete.
+    @State private var availableDifficulties: [Difficulty] = []
 
     var showsDeleteButton: Bool {
         onDelete != nil && !isDeleting
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Song Info
-            VStack(alignment: .leading, spacing: 4) {
-                Text(song.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .foregroundColor(.white)
+        LedgerRow {
+            HStack(spacing: 12) {
+                songInfoSection
+                Spacer()
+                trailingSection
+            }
+        }
+        .loadSongRelationships(for: song) { data in
+            availableDifficulties = data.availableDifficulties
+        }
+    }
 
-                Text(song.artist)
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .lineLimit(1)
+    // MARK: - Song Info
 
-                HStack(spacing: 12) {
-                    let bpmText = song.bpm.truncatingRemainder(dividingBy: 1) == 0 
-                        ? String(format: "%.0f", song.bpm) 
-                        : String(format: "%.2f", song.bpm)
-                    Label("\(bpmText) BPM", systemImage: "metronome")
-                    Label(song.duration, systemImage: "clock")
-                    Label(song.genre, systemImage: "music.quarternote.3")
+    private var songInfoSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(song.title)
+                .font(AppType.headline)
+                .lineLimit(1)
+                .foregroundColor(theme.primary)
+
+            Text(song.artist)
+                .font(.subheadline)
+                .foregroundColor(theme.secondary)
+                .lineLimit(1)
+
+            HStack(spacing: 12) {
+                let bpmText = song.bpm.truncatingRemainder(dividingBy: 1) == 0
+                    ? String(format: "%.0f", song.bpm)
+                    : String(format: "%.2f", song.bpm)
+                Label("\(bpmText) BPM", systemImage: "metronome")
+                Label(song.duration, systemImage: "clock")
+                Label(song.genre, systemImage: "music.quarternote.3")
+            }
+            .font(.plexMono(11))
+            .foregroundColor(theme.secondary)
+        }
+    }
+
+    // MARK: - Trailing Section
+
+    private var trailingSection: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 2) {
+                ForEach(availableDifficulties, id: \.self) { difficulty in
+                    DifficultyPips(difficulty: difficulty, showLabel: false)
                 }
-                .font(.caption)
-                .foregroundColor(.gray)
             }
 
-            Spacer()
-
-            // Available Difficulties
-            VStack(spacing: 8) {
-                HStack(spacing: 2) {
-                    ForEach(song.availableDifficulties, id: \.self) { difficulty in
-                        DifficultyBadge(difficulty: difficulty, size: .small)
+            if let onDelete = onDelete {
+                if isDeleting {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Deleting...")
+                            .font(.caption)
+                            .foregroundColor(theme.secondary)
                     }
-                }
-
-                if let onDelete = onDelete {
-                    if isDeleting {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Deleting...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    } else {
-                        Button(action: onDelete) {
-                            Text("Delete")
-                        }
-                        .accessibilityIdentifier("savedSongDeleteButton")
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .foregroundColor(.red)
-                        .disabled(isDeleting)
+                } else {
+                    Button(action: onDelete) {
+                        Text("Delete")
                     }
+                    .accessibilityIdentifier("savedSongDeleteButton")
+                    .buttonStyle(DestructiveCompactButtonStyle())
+                    .disabled(isDeleting)
                 }
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(Color.white.opacity(0.1))
-        .cornerRadius(12)
     }
 }
 

@@ -163,6 +163,16 @@ class SongRelationshipLoader: BaseSwiftDataRelationshipLoader<Song, SongRelation
         return true
     }
 
+    static func isModelAvailable(_ serverSong: ServerSong) -> Bool {
+        guard !isDetachedPersistentModel(serverSong), !serverSong.isDeleted else { return false }
+        return true
+    }
+
+    static func isModelAvailable(_ serverChart: ServerChart) -> Bool {
+        guard !isDetachedPersistentModel(serverChart), !serverChart.isDeleted else { return false }
+        return true
+    }
+
     private static func calculateMeasureCount(from charts: [Chart]) -> Int {
         // Access notes relationships safely - charts are already loaded on main thread
         let allNotes = charts.flatMap { chart in
@@ -252,6 +262,68 @@ class ChartRelationshipLoader: BaseSwiftDataRelationshipLoader<Chart, ChartRelat
     }
 }
 
+// MARK: - Server Song Relationship Loader
+struct ServerSongRelationshipData {
+    let totalSize: Int
+    let levelText: String?
+    let difficultyChips: [DifficultyChip]
+
+    static let empty = ServerSongRelationshipData(
+        totalSize: 0,
+        levelText: nil,
+        difficultyChips: []
+    )
+}
+
+@MainActor
+class ServerSongRelationshipLoader: BaseSwiftDataRelationshipLoader<ServerSong, ServerSongRelationshipData> {
+    convenience init(serverSong: ServerSong) {
+        // Compute the initial snapshot synchronously so the first render
+        // already carries level/size/chip data (avoids an empty-state flash
+        // and lets synchronous test harnesses observe the populated values).
+        // `relationshipData(for:)` is a MainActor-safe synchronous call.
+        let initial = Self.relationshipData(for: serverSong)
+        self.init(
+            model: serverSong,
+            defaultData: initial,
+            dataLoader: { serverSong in
+                await Self.loadServerSongData(serverSong)
+            }
+        )
+    }
+
+    private static func loadServerSongData(_ serverSong: ServerSong) async -> ServerSongRelationshipData {
+        await MainActor.run {
+            relationshipData(for: serverSong)
+        }
+    }
+
+    static func relationshipData(for serverSong: ServerSong) -> ServerSongRelationshipData {
+        guard SongRelationshipLoader.isModelAvailable(serverSong) else { return .empty }
+
+        let charts = serverSong.charts.filter { SongRelationshipLoader.isModelAvailable($0) }
+        let totalSize = charts.reduce(0) { $0 + $1.size }
+        let levelText: String?
+        if charts.count > 1 {
+            let levels = charts.map { String($0.level) }.joined(separator: ", ")
+            levelText = "Levels \(levels)"
+        } else if let chart = charts.first {
+            levelText = "Level \(chart.level)"
+        } else {
+            levelText = nil
+        }
+        let difficultyChips: [DifficultyChip] = charts.count > 1
+            ? charts.map { DifficultyChip(label: $0.difficultyLabel, level: $0.level) }
+            : []
+
+        return ServerSongRelationshipData(
+            totalSize: totalSize,
+            levelText: levelText,
+            difficultyChips: difficultyChips
+        )
+    }
+}
+
 // MARK: - View Modifier for Relationship Loading
 struct SwiftDataRelationshipModifier<
     Model: PersistentModel,
@@ -300,6 +372,16 @@ extension View {
     ) -> some View {
         modifier(SwiftDataRelationshipModifier(
             loader: ChartRelationshipLoader(chart: chart),
+            onDataLoaded: onDataLoaded
+        ))
+    }
+
+    func loadServerSongRelationships(
+        for serverSong: ServerSong,
+        onDataLoaded: @escaping (ServerSongRelationshipData) -> Void
+    ) -> some View {
+        modifier(SwiftDataRelationshipModifier(
+            loader: ServerSongRelationshipLoader(serverSong: serverSong),
             onDataLoaded: onDataLoaded
         ))
     }

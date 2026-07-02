@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var startupSongsOverride: [Song]?
 
     @State private var databaseService: DatabaseMaintenanceService?
+    @Environment(\.theme) private var theme
 
     var body: some View {
         currentContent
@@ -132,12 +133,10 @@ struct ContentView: View {
     }
 
     private var startupPreparationView: some View {
-        Color.black
-            .ignoresSafeArea()
-            .overlay {
-                ProgressView()
-                    .controlSize(.large)
-            }
+        ProgressView()
+            .controlSize(.large)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .appSurface()
             .accessibilityIdentifier("startupPreparationView")
     }
 
@@ -176,11 +175,10 @@ struct ContentView: View {
                     MetronomeView()
                 } else {
                     // Placeholder view when tab is not active to avoid metronome updates
-                    Color.black
-                        .overlay(
-                            Text("Metronome")
-                                .foregroundColor(.white)
-                        )
+                    Text("Metronome")
+                        .font(AppType.title)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .appSurface()
                 }
             }
             .tabItem {
@@ -214,7 +212,11 @@ struct ContentView: View {
             }
             .tag(4)
         }
-        .tint(.purple)
+        .tint(Palette.vermillion)
+        #if canImport(UIKit)
+        .toolbarBackground(theme.background, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        #endif
         .accessibilityIdentifier("appTabShell")
     }
 

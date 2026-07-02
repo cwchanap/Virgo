@@ -22,6 +22,7 @@ struct SongsTabView: View {
     let onSaveTap: (Song) -> Void
 
     @State private var selectedSubTab = 0
+    @Environment(\.theme) private var theme
 
     // Computed property for filtered songs
     var songs: [Song] {
@@ -49,26 +50,17 @@ struct SongsTabView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
             VStack(spacing: 0) {
                 // Header
                 VStack(spacing: 10) {
                     HStack {
                         VStack(alignment: .leading) {
                             Text("Songs")
-                                .font(.largeTitle)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
+                                .font(AppType.display)
+                                .foregroundColor(theme.primary)
                             Text("\(selectedSubTab == 0 ? songs.count : filteredServerSongs.count) songs available")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
+                                .font(.plexMono(13))
+                                .foregroundColor(theme.secondary)
                         }
                         Spacer()
 
@@ -80,7 +72,7 @@ struct SongsTabView: View {
                             } label: {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.title2)
-                                    .foregroundColor(.white)
+                                    .foregroundColor(theme.primary)
                                     .rotationEffect(.degrees(serverSongService.isRefreshing ? 360 : 0))
                                     .animation(
                                         serverSongService.isRefreshing ?
@@ -97,16 +89,16 @@ struct SongsTabView: View {
                     .padding(.horizontal)
                     .padding(.top)
 
-                    // Search Bar
-                    HStack {
+                    // Search Bar — underlined input, no rounded border
+                    VStack(spacing: 0) {
                         HStack {
                             Image(systemName: "magnifyingglass")
-                                .foregroundColor(.gray)
+                                .foregroundColor(theme.secondary)
                                 .font(.system(size: 16))
 
                             TextField("Search songs or artists...", text: $searchText)
                                 .font(.system(size: 16))
-                                .foregroundColor(.white)
+                                .foregroundColor(theme.primary)
                                 .accessibilityIdentifier("searchField")
 
                             if !searchText.isEmpty {
@@ -114,20 +106,15 @@ struct SongsTabView: View {
                                     searchText = ""
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.gray)
+                                        .foregroundColor(theme.secondary)
                                         .font(.system(size: 16))
                                 }
                                 .accessibilityIdentifier("clearSearchButton")
                             }
                         }
-                        .padding(.horizontal, 12)
                         .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                        )
+
+                        RuleDivider()
                     }
                     .padding(.horizontal)
                 }
@@ -140,6 +127,7 @@ struct SongsTabView: View {
                     Label("Server", systemImage: "cloud").tag(1)
                 }
                 .pickerStyle(SegmentedPickerStyle())
+                .tint(theme.accent)
                 .padding(.horizontal)
                 .padding(.bottom, 16)
 
@@ -163,6 +151,7 @@ struct SongsTabView: View {
                 }
             }
         }
+        .appSurface()
         .alert("Error", isPresented: Binding(
             get: { serverSongService.errorMessage != nil },
             set: { if !$0 { serverSongService.errorMessage = nil } }

@@ -10,19 +10,19 @@ import SwiftUI
 extension InputSettingsView {
     var keyCapturingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.8)
+            Palette.stage.opacity(0.85)
                 .ignoresSafeArea()
-            
+
             VStack(spacing: 20) {
                 Image(systemName: "keyboard.badge.ellipsis")
                     .font(.system(size: 60))
-                    .foregroundColor(.purple)
-                
+                    .foregroundColor(Palette.vermillion)
+
                 Text("Press any key")
                     .font(.title)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                
+                    .foregroundColor(Palette.chalk)
+
                 if let drumType = selectedDrumType {
                     VStack(spacing: 8) {
                         HStack {
@@ -32,18 +32,18 @@ extension InputSettingsView {
                                 .font(.title3)
                                 .fontWeight(.medium)
                         }
-                        .foregroundColor(.white)
-                        
+                        .foregroundColor(Palette.chalk)
+
                         Text("for \(drumType.description)")
                             .font(.body)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Palette.chalkMuted)
                     }
                 }
-                
+
                 Button("Cancel") {
                     cancelKeyCapture()
                 }
-                .foregroundColor(.gray)
+                .foregroundColor(Palette.chalkMuted)
                 .padding(.top)
             }
             .padding()

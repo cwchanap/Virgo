@@ -9,28 +9,20 @@ import SwiftUI
 
 struct MetronomeView: View {
     @EnvironmentObject private var metronome: MetronomeEngine
+    @Environment(\.theme) private var theme
 
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                gradient: Gradient(colors: [Color.black, Color.purple.opacity(0.3)]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
             VStack(spacing: 30) {
                 // Header
                 VStack(spacing: 8) {
                     Text("Metronome")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
+                        .font(AppType.display)
+                        .foregroundColor(theme.primary)
 
                     Text("Perfect your timing with precision beats")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
+                        .font(.plexMono(13))
+                        .foregroundColor(theme.secondary)
                 }
                 .padding(.top, 20)
 
@@ -45,8 +37,8 @@ struct MetronomeView: View {
                 // Practice tips section
                 VStack(spacing: 16) {
                     Text("Practice Tips")
-                        .font(.headline)
-                        .foregroundColor(.white)
+                        .font(AppType.headline)
+                        .foregroundColor(theme.primary)
 
                     VStack(spacing: 12) {
                         PracticeTipRow(
@@ -72,6 +64,7 @@ struct MetronomeView: View {
                 .padding(.bottom, 30)
             }
         }
+        .appSurface()
     }
 }
 
@@ -80,30 +73,32 @@ struct PracticeTipRow: View {
     let title: String
     let description: String
 
+    @Environment(\.theme) private var theme
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundColor(.purple)
+                .foregroundColor(theme.accent)
                 .frame(width: 24)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(theme.primary)
 
                 Text(description)
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(theme.secondary)
             }
 
             Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background(Color.white.opacity(0.1))
-        .cornerRadius(12)
+        .background(theme.raised)
+        .cornerRadius(Radius.md)
     }
 }
 

@@ -170,8 +170,13 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> XCUIElement {
+        // Also check buttons: in the card-grid layout (wide widths), song titles
+        // are wrapped in Buttons with an explicit accessibilityLabel, so they are
+        // not exposed as staticTexts. The button label is the title's accessible
+        // representation in that mode.
         let staticText = app.staticTexts.matching(textContainsPredicate(text)).firstMatch
-        if let element = waitForFirstExisting([staticText], timeout: timeout) {
+        let button = app.buttons.matching(textContainsPredicate(text)).firstMatch
+        if let element = waitForFirstExisting([staticText, button], timeout: timeout) {
             return element
         }
 
@@ -184,7 +189,12 @@ extension XCTestCase {
         in app: XCUIApplication,
         timeout: TimeInterval = 10
     ) -> Bool {
-        app.staticTexts.matching(textContainsPredicate(text)).firstMatch.waitForExistence(timeout: timeout)
+        // Also check buttons: in the card-grid layout (wide widths), song titles
+        // are wrapped in Buttons with an explicit accessibilityLabel, so they are
+        // not exposed as staticTexts.
+        let staticText = app.staticTexts.matching(textContainsPredicate(text)).firstMatch
+        let button = app.buttons.matching(textContainsPredicate(text)).firstMatch
+        return waitForFirstExisting([staticText, button], timeout: timeout) != nil
     }
 
     @discardableResult
@@ -584,11 +594,17 @@ extension XCTestCase {
 
     /// Wait for app to finish loading with data
     func waitForDataLoad(app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
-        // Wait for both UI elements and data to be present
+        // Wait for both UI elements and data to be present.
+        // In card-grid mode the song title is a Button label ("Open Thunder Beat"),
+        // not a StaticText, so check both element types.
         let songsTitle = app.staticTexts["Songs"]
-        let firstTrack = app.staticTexts["Thunder Beat"]
+        let firstTrackText = app.staticTexts["Thunder Beat"]
+        let firstTrackButton = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "Thunder Beat")
+        ).firstMatch
 
-        return waitForElements([songsTitle, firstTrack], timeout: timeout)
+        return waitForElements([songsTitle, firstTrackText], timeout: timeout) ||
+            waitForElements([songsTitle, firstTrackButton], timeout: timeout)
     }
     
     /// Navigate to Songs tab and wait for it to load

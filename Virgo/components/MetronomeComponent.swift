@@ -23,29 +23,31 @@ struct MetronomeComponent: View {
     @StateObject private var beatState = BeatIndicatorState()
     let bpm: Double
     let timeSignature: TimeSignature
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(spacing: 20) {
             // BPM and Time Signature Display
             VStack(spacing: 8) {
                 Text(String(format: "%.2f", bpm))
-                    .font(.system(size: 48, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .font(AppType.numericLarge)
+                    .foregroundColor(theme.primary)
 
                 Text("BPM")
-                    .font(.headline)
-                    .foregroundColor(.gray)
+                    .font(.plexMono(11, weight: .medium))
+                    .tracking(1.5)
+                    .foregroundColor(theme.secondary)
 
                 Text(timeSignature.displayName)
-                    .font(.title2)
-                    .foregroundColor(.gray)
+                    .font(.plexMono(16))
+                    .foregroundColor(theme.secondary)
             }
 
             // Beat Indicator - isolated from main metronome state
             HStack(spacing: 12) {
                 ForEach(1...timeSignature.beatsPerMeasure, id: \.self) { beat in
                     Circle()
-                        .fill(beat == beatState.currentBeat ? Color.purple : Color.gray.opacity(0.3))
+                        .fill(beat == beatState.currentBeat ? theme.accent : theme.secondary.opacity(0.4))
                         .frame(width: 20, height: 20)
                         .scaleEffect(beat == beatState.currentBeat ? 1.2 : 1.0)
                         .animation(.easeInOut(duration: 0.1), value: beatState.currentBeat)
@@ -62,7 +64,7 @@ struct MetronomeComponent: View {
                     label: {
                         Image(systemName: metronome.isEnabled ? "stop.circle.fill" : "play.circle.fill")
                             .font(.system(size: 60))
-                            .foregroundColor(metronome.isEnabled ? .red : .green)
+                            .foregroundColor(theme.accent)
                     }
                 )
                 .buttonStyle(PlainButtonStyle())
@@ -72,27 +74,27 @@ struct MetronomeComponent: View {
             VStack(spacing: 8) {
                 Text("Volume")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(theme.secondary)
 
                 HStack {
                     Image(systemName: "speaker.fill")
-                        .foregroundColor(.gray)
+                        .foregroundColor(theme.secondary)
                         .font(.caption)
 
                     Slider(value: Binding(
                         get: { metronome.volume },
                         set: { metronome.updateVolume($0) }
                     ), in: 0...1)
-                    .accentColor(.purple)
+                    .tint(theme.accent)
 
                     Image(systemName: "speaker.wave.3.fill")
-                        .foregroundColor(.gray)
+                        .foregroundColor(theme.secondary)
                         .font(.caption)
                 }
             }
         }
         .padding()
-        .background(Color.black.opacity(0.3))
+        .background(theme.raised)
         .cornerRadius(20)
         .onReceive(metronome.$currentBeat) { beat in
             beatState.updateBeat(beat)
@@ -110,5 +112,7 @@ struct MetronomeComponent: View {
         bpm: 120.0,
         timeSignature: .fourFour
     )
-    .background(Color.black)
+    // .surface(.ink) sets the dark stage background AND injects the matching
+    // ink theme so theme.primary/secondary resolve to readable chalk colors.
+    .surface(.ink)
 }

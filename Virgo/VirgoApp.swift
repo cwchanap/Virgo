@@ -47,6 +47,7 @@ struct VirgoApp: App {
     }()
 
     init() {
+        AppFonts.registerAll()
         if VirgoAppLaunchBehavior.shouldDisableAnimations(arguments: ProcessInfo.processInfo.arguments) {
             #if canImport(UIKit)
             UIView.setAnimationsEnabled(false)
@@ -56,6 +57,13 @@ struct VirgoApp: App {
 
     @ViewBuilder
     private var rootView: some View {
+        // NOTE: Do not apply .appThemeRoot() or .preferredColorScheme() here.
+        // Modifiers on the WindowGroup content root change the SwiftUI view-type
+        // signature, which macOS uses as the window-restoration identifier. After
+        // rapid launch/terminate cycles (UI tests), the changed signature causes
+        // window state restoration to fail (window=0x0), leaving the app running
+        // with no window. These modifiers are applied inside MainMenuView.body
+        // instead, which keeps the WindowGroup content type stable.
         MainMenuView()
             .environmentObject(sharedMetronome)
             .environmentObject(sharedPracticeSettings)

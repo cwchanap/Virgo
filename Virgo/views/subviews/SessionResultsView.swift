@@ -22,18 +22,16 @@ struct SessionResultsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
-
                 ScrollView {
                     VStack(spacing: 20) {
                         // New high score badge
                         if isNewHighScore {
                             Text("NEW HIGH SCORE!")
                                 .font(.system(.caption, design: .rounded).weight(.bold))
-                                .foregroundColor(.black)
+                                .foregroundColor(Palette.stage)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(Color.yellow)
+                                .background(Palette.vermillion)
                                 .clipShape(Capsule())
                         }
 
@@ -41,10 +39,10 @@ struct SessionResultsView: View {
                         if recordResult == .saveFailed {
                             Text("Score not saved")
                                 .font(.system(.caption, design: .rounded).weight(.semibold))
-                                .foregroundColor(.white)
+                                .foregroundColor(Palette.chalk)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(Color.red.opacity(0.8))
+                                .background(Palette.vermillion.opacity(0.8))
                                 .clipShape(Capsule())
                         }
 
@@ -54,11 +52,12 @@ struct SessionResultsView: View {
 
                             VStack(spacing: 4) {
                                 Text("\(scoreSnapshot.score)")
-                                    .font(.system(size: 44, weight: .bold, design: .monospaced))
-                                    .foregroundColor(.white)
+                                    .font(AppType.numericLarge)
+                                    .foregroundColor(Palette.chalk)
                                 Text("SCORE")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
+                                    .font(.plexMono(10, weight: .medium))
+                                    .tracking(1.5)
+                                    .foregroundColor(Palette.chalkMuted)
                             }
                         }
 
@@ -71,7 +70,7 @@ struct SessionResultsView: View {
                         )
                         .padding(.horizontal)
                         .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.05))
+                        .background(Palette.stageRaised)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .padding(.horizontal)
 
@@ -84,7 +83,7 @@ struct SessionResultsView: View {
                         )
                         .padding(.horizontal)
                         .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.05))
+                        .background(Palette.stageRaised)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .padding(.horizontal)
 
@@ -95,23 +94,15 @@ struct SessionResultsView: View {
                         VStack(spacing: 12) {
                             Button(action: onPlayAgain) {
                                 Text("Play Again")
-                                    .font(.headline)
                                     .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.green)
-                                    .foregroundColor(.black)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
+                            .buttonStyle(VermillionButtonStyle())
 
                             Button(action: onDone) {
                                 Text("Done")
-                                    .font(.headline)
                                     .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.white.opacity(0.15))
-                                    .foregroundColor(.white)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
+                            .buttonStyle(GhostButtonStyle())
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 24)
@@ -119,6 +110,8 @@ struct SessionResultsView: View {
                     .padding(.top, 24)
                 }
             }
+            .surface(.ink)
+            .colorScheme(.dark)
             .navigationTitle("Results")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -129,25 +122,26 @@ struct SessionResultsView: View {
 
     private var statsGrid: some View {
         HStack(spacing: 0) {
-            statCell(label: "MAX COMBO", value: "\(scoreSnapshot.maxCombo)x", color: .orange)
-            statCell(label: "QUALITY", value: scoreSnapshot.timingQualityPercentText, color: .cyan)
-            statCell(label: "BEST SCORE", value: "\(highScore)", color: .purple)
+            statCell(label: "MAX COMBO", value: "\(scoreSnapshot.maxCombo)x")
+            statCell(label: "QUALITY", value: scoreSnapshot.timingQualityPercentText)
+            statCell(label: "BEST SCORE", value: "\(highScore)")
         }
         .padding(.horizontal)
     }
 
-    private func statCell(label: String, value: String, color: Color) -> some View {
+    private func statCell(label: String, value: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(.title2, design: .monospaced).weight(.semibold))
-                .foregroundColor(color)
+                .font(.plexMono(20, weight: .semibold))
+                .foregroundColor(Palette.chalk)
             Text(label)
-                .font(.caption2)
-                .foregroundColor(.gray)
+                .font(.plexMono(10, weight: .medium))
+                .tracking(1)
+                .foregroundColor(Palette.chalkMuted)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(Color.white.opacity(0.05))
+        .background(Palette.stageRaised)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(4)
     }

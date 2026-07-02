@@ -12,6 +12,8 @@ struct SongScoresView: View {
     let song: Song
 
     @State private var charts: [Chart] = []
+    @Environment(\.theme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     @MainActor
     init(song: Song, initialCharts: [Chart] = []) {
@@ -21,36 +23,37 @@ struct SongScoresView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-
             let displayCharts = charts.filter { SongRelationshipLoader.isModelAvailable($0) }
 
             if displayCharts.isEmpty {
                 Text("No charts available")
-                    .foregroundColor(.gray)
+                    .foregroundColor(theme.secondary)
             } else {
                 List(displayCharts, id: \.persistentModelID) { chart in
                     NavigationLink {
                         ChartScoresView(chart: chart)
                     } label: {
                         HStack {
-                            DifficultyBadge(difficulty: chart.difficulty, size: .normal)
+                            DifficultyPips(difficulty: chart.difficulty)
                             Spacer()
                             Text("Best \(chart.bestScore)")
-                                .font(.system(.subheadline, design: .monospaced))
-                                .foregroundColor(.purple)
+                                .font(.plexMono(14))
+                                .foregroundColor(theme.accent)
                         }
                     }
-                    .listRowBackground(Color.white.opacity(0.05))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.visible)
+                    .listRowSeparatorTint(theme.rule)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
         }
+        .appSurface()
         .navigationTitle(song.title)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(colorScheme == .dark ? .dark : .light, for: .navigationBar)
         #endif
         .task {
             guard charts.isEmpty else { return }

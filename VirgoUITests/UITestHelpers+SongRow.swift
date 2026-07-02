@@ -10,27 +10,28 @@
 import XCTest
 
 extension XCTestCase {
-    /// Expands the song row matching `songTitle` and waits for the difficulty
-    /// selector to appear.
+    /// Reveals the difficulty selector for the song matching `songTitle` and
+    /// waits for it to appear.
     ///
-    /// This helper waits for the song title text to appear (proving the search
-    /// filter has applied and the correct song is visible), then waits for an
-    /// expand button with loaded charts to appear, and taps it.
+    /// Layout-aware: wide layouts (macOS / full-screen iPad) render a card grid
+    /// whose tappable open control is a Button carrying the accessibilityLabel
+    /// "Open <title>" (its identifier is now unique per song, but the label is
+    /// the song-stable locator used here).
+    /// Narrow layouts render a row with a "N charts" expand Button — its count
+    /// is seeded to 0 and loaded asynchronously, so the regex requires a
+    /// NON-ZERO count to ensure charts have loaded before expanding (tapping too
+    /// early yields an empty charts array and no difficulty buttons). The "N
+    /// charts" label and `downloadedSongExpandButton` identifier are NOT unique
+    /// per song, so the row expand control is scoped to the cell containing the
+    /// requested title — a global `firstMatch` can resolve to a different song
+    /// while the search filter is still applying or several rows remain visible.
     ///
-    /// On macOS, neither `.accessibilityIdentifier` nor `.accessibilityLabel`
-    /// on inner SwiftUI Buttons are reliably exposed for predicate queries,
-    /// and the row container is exposed as a StaticText (not a Button), making
-    /// frame-based row scoping unreliable. However, since the search filter
-    /// ensures only the matching song is visible, the single expand button
-    /// that appears after filtering must be the correct one.
-    ///
-    /// To handle the async chart loading race (chartCount is seeded to 0 and
-    /// loaded asynchronously), we wait for the title text first (proving the
-    /// filter applied), then wait for an expand button with NON-ZERO chart
-    /// count (proving charts have loaded), tap it, and wait for the difficulty
-    /// selector. Waiting for non-zero charts is critical: if we tap before
-    /// charts load, the expanded view receives an empty charts array and
-    /// renders no difficulty buttons.
+    /// macOS exposes SwiftUI Button accessibility attributes inconsistently
+    /// (sometimes the identifier is hidden, sometimes the label), so — like
+    /// `requireDifficultyButton` — we poll several candidates via
+    /// `waitForFirstExisting` and tap whichever resolves. Both the card open
+    /// button and the row expand button reveal the same `DifficultyExpansionView`
+    /// ("Select Difficulty"), so the post-tap assertion is layout-independent.
     func expandSongRow(
         containing songTitle: String,
         in app: XCUIApplication,
@@ -38,40 +39,67 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        // Wait for the song title text to appear. This proves:
-        // 1. The song data has loaded
-        // 2. The search filter has applied (only matching songs are visible)
-        guard waitForStaticText(containing: songTitle, in: app, timeout: timeout) else {
+        // Card grid (wide): the song-specific "Open <title>" label is unique per
+        // song, so it locates the intended card without relying on list filtering.
+        // In grid mode the title Text is wrapped in a Button with an explicit
+        // accessibilityLabel, so the title is NOT exposed as a staticText — the
+        // open button IS the title's accessibility representation.
+        let openCardByLabel = app.buttons
+            .matching(NSPredicate(format: "label == %@", "Open \(songTitle)"))
+            .firstMatch
+        // Row list (narrow): the "N charts" expand button with a NON-ZERO count.
+        let nonZeroChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
+
+        // Wait for the requested title to be mounted before selecting any row
+        // expand control. In grid mode the title is only exposed as the card
+        // open button's label (not as a staticText), so we accept either form.
+        // This confirms the search filter has applied and the target song is
+        // present, so a stale row from the previous list contents can't be
+        // expanded instead.
+        let titleText = app.staticTexts
+            .matching(NSPredicate(format: "label == %@", songTitle))
+            .firstMatch
+        guard waitForFirstExisting([openCardByLabel, titleText], timeout: timeout) != nil else {
             XCTFail(
-                "Expected song title \"\(songTitle)\" to appear in the list",
+                "Expected song title \"\(songTitle)\" to be visible before expanding its row",
                 file: file,
                 line: line
             )
             throw UITestFailure.elementNotFound("song title \(songTitle)")
         }
 
-        // Wait for an expand button with NON-ZERO chart count to appear.
-        // Chart counts are seeded to 0 and loaded asynchronously. If we tap
-        // the expand button before charts have loaded, the expanded
-        // DifficultyExpansionView receives an empty charts array and renders
-        // no difficulty buttons. Waiting for a non-zero count ensures the
-        // charts array has been populated before we expand.
-        let nonZeroChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
-        let expandButton = app.buttons.matching(nonZeroChartCount).firstMatch
-        guard expandButton.waitForExistence(timeout: timeout) else {
+        // Scope the row expand button to the cell whose aggregated label
+        // contains the requested title (SwiftUI List rows expose as cells in
+        // XCUITest and their label aggregates their children's labels, the same
+        // property `textElementCandidates` relies on).
+        let rowContainingSong = app.cells
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", songTitle))
+            .firstMatch
+        let scopedRowExpandButton = rowContainingSong.buttons.matching(nonZeroChartCount).firstMatch
+
+        // Last-resort fallback for layouts where the row does not expose as a
+        // cell (some macOS configurations). Only reached after the title wait
+        // above has confirmed the target row is present and the search filter
+        // has reduced the visible set, so a global firstMatch is safer here than
+        // it would be unconditionally.
+        let globalRowExpandButton = app.buttons.matching(nonZeroChartCount).firstMatch
+
+        guard let control = waitForFirstExisting(
+            [openCardByLabel, scopedRowExpandButton, globalRowExpandButton],
+            timeout: timeout
+        ) else {
             XCTFail(
-                "Expected expand button for song \"\(songTitle)\" to exist",
+                "Expected a card open button or row expand button for song \"\(songTitle)\"",
                 file: file,
                 line: line
             )
-            throw UITestFailure.elementNotFound("expand button for \(songTitle)")
+            throw UITestFailure.elementNotFound("open/expand control for \(songTitle)")
         }
-
-        expandButton.tap()
+        control.tap()
 
         XCTAssertTrue(
             waitForStaticText(containing: "Select Difficulty", in: app, timeout: timeout),
-            "Difficulty selector should appear after expanding \(songTitle)",
+            "Difficulty selector should appear after opening \(songTitle)",
             file: file, line: line
         )
     }

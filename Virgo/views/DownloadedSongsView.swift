@@ -10,6 +10,7 @@ import SwiftData
 
 // MARK: - Downloaded Songs View
 struct DownloadedSongsView: View {
+    @Environment(\.theme) private var theme
     static let emptyStateViewID = "downloaded-empty-state"
 
     static func rowViewID(for song: Song) -> String {
@@ -28,6 +29,18 @@ struct DownloadedSongsView: View {
     let onChartSelect: (Chart) -> Void
     let onPlayTap: (Song) -> Void
     let onSaveTap: (Song) -> Void
+
+    // Sheet target for the grid's difficulty picker. Identifiable wrapper keeps
+    // `.sheet(item:)` independent of Song's own Identifiable conformance.
+    private struct PickerTarget: Identifiable {
+        let song: Song
+        var id: PersistentIdentifier { song.persistentModelID }
+    }
+    @State private var pickerTarget: PickerTarget?
+
+    // Surfaced to the user when a delete fails (the row is kept visible either
+    // way, but a silent failure is bad UX). `nil` hides the alert.
+    @State private var deleteErrorMessage: String?
 
     // Filter to show only downloaded songs (server-imported)
     var downloadedSongs: [Song] {
@@ -51,6 +64,36 @@ struct DownloadedSongsView: View {
     }
 
     var body: some View {
+        GeometryReader { proxy in
+            layout(for: SongsLayoutMode.forWidth(proxy.size.width))
+        }
+        .sheet(item: $pickerTarget) { target in
+            DifficultyPickerSheet(
+                song: target.song,
+                onChartSelect: onChartSelect,
+                onDismiss: { pickerTarget = nil }
+            )
+        }
+        .alert(
+            "Delete Failed",
+            isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            ),
+            actions: { Button("OK") { deleteErrorMessage = nil } },
+            message: { Text(deleteErrorMessage ?? "") }
+        )
+    }
+
+    @ViewBuilder
+    private func layout(for mode: SongsLayoutMode) -> some View {
+        switch mode {
+        case .grid: downloadedGrid
+        case .rows: downloadedList
+        }
+    }
+
+    private var downloadedList: some View {
         List {
             if !downloadedSongs.isEmpty {
                 ForEach(downloadedSongs, id: \.id) { song in
@@ -63,12 +106,7 @@ struct DownloadedSongsView: View {
                         onChartSelect: onChartSelect,
                         onPlayTap: { onPlayTap(song) },
                         onSaveTap: { onSaveTap(song) },
-                        onDelete: {
-                            Task {
-                                let success = await serverSongService.deleteLocalSong(song)
-                                Logger.debug("Delete downloaded song result: \(success)")
-                            }
-                        }
+                        onDelete: { deleteSong(song) }
                     )
                     .accessibilityIdentifier(Self.rowViewID(for: song))
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
@@ -76,29 +114,73 @@ struct DownloadedSongsView: View {
                     .listRowBackground(Color.clear)
                 }
             } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 50))
-                        .foregroundColor(.secondary)
-
-                    Text("No Downloaded Songs")
-                        .font(.title2)
-                        .foregroundColor(.white)
-
-                    Text("Download songs from the Server tab to see them here")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
-                .listRowBackground(Color.clear)
-                .id(Self.emptyStateViewID)
+                emptyState
+                    .listRowBackground(Color.clear)
+                    .id(Self.emptyStateViewID)
             }
         }
         .listStyle(PlainListStyle())
         .scrollContentBackground(.hidden)
         .background(Color.clear)
+    }
+
+    private var downloadedGrid: some View {
+        Group {
+            if downloadedSongs.isEmpty {
+                emptyState
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .id(Self.emptyStateViewID)
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: SongsGrid.columns, spacing: Spacing.md) {
+                        ForEach(downloadedSongs, id: \.id) { song in
+                            SongCard(
+                                song: song,
+                                isPlaying: isPlaying(song),
+                                isDeleting: serverSongService.isDeleting(song),
+                                onOpen: { pickerTarget = PickerTarget(song: song) },
+                                onPlayTap: { onPlayTap(song) },
+                                onSaveTap: { onSaveTap(song) },
+                                onDelete: { deleteSong(song) }
+                            )
+                        }
+                    }
+                    .padding(Spacing.md)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 50))
+                .foregroundColor(theme.secondary)
+
+            Text("No Downloaded Songs")
+                .font(.title2)
+                .foregroundColor(theme.primary)
+
+            Text("Download songs from the Server tab to see them here")
+                .font(.body)
+                .foregroundColor(theme.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
+
+    private func deleteSong(_ song: Song) {
+        Task {
+            let success = await serverSongService.deleteLocalSong(song)
+            Logger.debug("Delete downloaded song result: \(success)")
+            if !success {
+                // Row is intentionally kept visible (no optimistic removal);
+                // surface the failure so the user knows the delete didn't happen.
+                deleteErrorMessage = "Could not delete \"\(song.title)\". Please try again."
+            }
+        }
     }
 }
 
@@ -113,6 +195,8 @@ struct DownloadedSongRowWithDelete: View {
     let onPlayTap: () -> Void
     let onSaveTap: () -> Void
     let onDelete: () -> Void
+
+    @Environment(\.theme) private var theme
 
     // Cache relationship data to prevent SwiftData concurrency issues
     @State private var chartCount: Int
@@ -173,7 +257,7 @@ struct DownloadedSongRowWithDelete: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .background(isPlaying ? Color.purple.opacity(0.2) : Color.white.opacity(0.1))
+        .background(isPlaying ? theme.accent.opacity(0.12) : theme.raised)
         .cornerRadius(12)
     }
     
@@ -181,7 +265,7 @@ struct DownloadedSongRowWithDelete: View {
         Button(action: onPlayTap) {
             Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                 .font(.system(size: 40))
-                .foregroundColor(isPlaying ? .red : .purple)
+                .foregroundColor(isPlaying ? theme.accent : theme.primary)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -191,11 +275,11 @@ struct DownloadedSongRowWithDelete: View {
             Text(song.title)
                 .font(.headline)
                 .lineLimit(1)
-                .foregroundColor(.white)
+                .foregroundColor(theme.primary)
 
             Text(song.artist)
                 .font(.subheadline)
-                .foregroundColor(.gray)
+                .foregroundColor(theme.secondary)
                 .lineLimit(1)
 
             songMetadataLabels
@@ -214,9 +298,9 @@ struct DownloadedSongRowWithDelete: View {
             Label("\(measureCount) measures", systemImage: "music.note.list")
         }
         .font(.caption)
-        .foregroundColor(.gray)
+        .foregroundColor(theme.secondary)
     }
-    
+
     private var actionsSection: some View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
@@ -232,7 +316,7 @@ struct DownloadedSongRowWithDelete: View {
         Button(action: onSaveTap) {
             Image(systemName: song.isSaved ? "bookmark.fill" : "bookmark")
                 .font(.system(size: 18))
-                .foregroundColor(song.isSaved ? .purple : .gray)
+                .foregroundColor(song.isSaved ? theme.accent : theme.secondary)
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel(song.isSaved ? "Remove bookmark" : "Save song")
@@ -243,7 +327,7 @@ struct DownloadedSongRowWithDelete: View {
     private var difficultyBadges: some View {
         HStack(spacing: 2) {
             ForEach(availableDifficulties, id: \.self) { difficulty in
-                DifficultyBadge(difficulty: difficulty, size: .small)
+                DifficultyPips(difficulty: difficulty, showLabel: false)
             }
         }
     }
@@ -256,16 +340,14 @@ struct DownloadedSongRowWithDelete: View {
                         .scaleEffect(0.8)
                     Text("Deleting...")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(theme.secondary)
                 }
             } else {
                 Button(action: onDelete) {
                     Text("Delete")
                 }
                 .accessibilityIdentifier("downloadedSongDeleteButton")
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .foregroundColor(.red)
+                .buttonStyle(DestructiveCompactButtonStyle())
                 .disabled(isDeleting)
             }
         }
@@ -276,13 +358,13 @@ struct DownloadedSongRowWithDelete: View {
             HStack(spacing: 4) {
                 Image(systemName: "chevron.down")
                     .font(.caption)
-                    .foregroundColor(.gray)
+                    .foregroundColor(theme.secondary)
                     .rotationEffect(.degrees(isExpanded ? 180 : 0))
                     .animation(.easeInOut(duration: 0.3), value: isExpanded)
 
                 Text("\(chartCount) charts")
                     .font(.caption2)
-                    .foregroundColor(.gray)
+                    .foregroundColor(theme.secondary)
             }
         }
         .buttonStyle(PlainButtonStyle())

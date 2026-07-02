@@ -22,7 +22,7 @@ struct FlagView: View {
                           control2: CGPoint(x: GameplayLayout.flagCurveEndControl2X, y: GameplayLayout.flagCurveEndControl2Y))
             path.closeSubpath()
         }
-        .fill(.foreground)
+        .fill(Palette.chalk)
         .frame(width: GameplayLayout.flagWidth, height: GameplayLayout.flagHeight)
         .rotationEffect(stemDirection == .down ? .degrees(180) : .zero)
     }
@@ -31,9 +31,9 @@ struct FlagView: View {
 // Note: these views previously carried an `isActive` parameter intended for
 // beat-boundary highlighting. Highlighting was removed because re-evaluating
 // the notation subviews on every beat forced expensive sheet re-layouts during
-// playback; the quantized purple playhead now provides position feedback
+// playback; the quantized vermillion playhead now provides position feedback
 // without churning the layout tree. The parameter has been deleted so the
-// rendering contract (always white) is explicit.
+// rendering contract (always chalk) is explicit.
 
 struct NotationNoteHeadView: View, Equatable {
     let noteHead: RenderedNoteHead
@@ -41,7 +41,7 @@ struct NotationNoteHeadView: View, Equatable {
     var body: some View {
         Text(noteHead.drumType.symbol)
             .font(.system(size: GameplayLayout.drumSymbolFontSize, weight: .bold))
-            .foregroundColor(.white)
+            .foregroundColor(Palette.chalk)
             .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.drumSymbolFontSize)
             .position(noteHead.position)
     }
@@ -55,7 +55,7 @@ struct NotationStemView: View, Equatable {
             path.move(to: stem.start)
             path.addLine(to: stem.end)
         }
-        .stroke(Color.white, lineWidth: GameplayLayout.stemWidth)
+        .stroke(Palette.chalk, lineWidth: GameplayLayout.stemWidth)
     }
 }
 
@@ -67,7 +67,7 @@ struct NotationBeamView: View, Equatable {
             path.move(to: beam.start)
             path.addLine(to: beam.end)
         }
-        .stroke(Color.white, lineWidth: beam.thickness)
+        .stroke(Palette.chalk, lineWidth: beam.thickness)
     }
 }
 
@@ -79,7 +79,7 @@ struct NotationLedgerLineView: View, Equatable {
             path.move(to: ledgerLine.start)
             path.addLine(to: ledgerLine.end)
         }
-        .stroke(Color.white, lineWidth: GameplayLayout.barLineWidth)
+        .stroke(Palette.chalk, lineWidth: GameplayLayout.barLineWidth)
     }
 }
 
@@ -105,7 +105,7 @@ struct NotationFlagView: View, Equatable {
 
     var body: some View {
         FlagView(flagIndex: flag.flagIndex, stemDirection: flag.stemDirection)
-            .foregroundColor(.white)
+            .foregroundColor(Palette.chalk)
             .position(adjustedCenter)
     }
 }
@@ -125,16 +125,16 @@ struct NotationMeasureBarView: View, Equatable {
             HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
                 Rectangle()
                     .frame(width: GameplayLayout.doubleBarLineWidths.thin, height: GameplayLayout.staffHeight)
-                    .foregroundColor(.white)
+                    .foregroundColor(Palette.chalk)
                 Rectangle()
                     .frame(width: GameplayLayout.doubleBarLineWidths.thick, height: GameplayLayout.staffHeight)
-                    .foregroundColor(.white)
+                    .foregroundColor(Palette.chalk)
             }
             .position(x: measureBar.x - totalWidth / 2, y: centerY)
         } else {
             Rectangle()
                 .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundColor(Palette.chalk.opacity(0.8))
                 .position(x: measureBar.x, y: centerY)
         }
     }
