@@ -87,6 +87,11 @@ final class VirgoUITests: XCTestCase {
         searchField.tap()
         searchField.typeText("Thunder")
 
+        // Unfocus the search field so XCUITest doesn't block on app
+        // synchronization while the TextField is in an editing state.
+        // On macOS, Escape unfocuses the active text field.
+        app.typeKey("\u{1B}", modifierFlags: [])
+
         // Wait for search results to update - Thunder Beat should still be visible
         XCTAssertTrue(waitForStaticText(containing: "Thunder Beat", in: app, timeout: 5))
 
@@ -111,6 +116,7 @@ final class VirgoUITests: XCTestCase {
         // Test search by artist - search for "Smooth" which exists in Jazz Groove
         searchField.tap()
         searchField.typeText("Smooth")
+        app.typeKey("\u{1B}", modifierFlags: [])
 
         // Wait for search to filter results
         XCTAssertTrue(waitForStaticText(containing: "Jazz Groove", in: app, timeout: 5))
