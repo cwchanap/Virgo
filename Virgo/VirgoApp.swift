@@ -54,6 +54,16 @@ struct VirgoApp: App {
             UIView.setAnimationsEnabled(false)
             #endif
         }
+        #if os(macOS)
+        // Must run before SwiftUI's WindowGroup sets up window restoration.
+        // VirgoApp.init() runs during @main startup, before any scene or window
+        // machinery, so the saved state is gone before restoration begins.
+        if VirgoAppLaunchBehavior.shouldClearWindowRestorationState(
+            arguments: ProcessInfo.processInfo.arguments
+        ) {
+            WindowRestorationStateClearer.clearSavedState()
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -85,21 +95,6 @@ struct VirgoApp: App {
 
 #if os(macOS)
 final class MacSingleWindowDelegate: NSObject, NSApplicationDelegate {
-    func applicationWillFinishLaunching(_ notification: Notification) {
-        // UI tests launch and terminate the app in rapid succession. After 2+
-        // cycles, macOS's window state restoration can fail to recreate the
-        // window (returning window=0x0 with no error), leaving the app running
-        // with no visible window and no accessibility tree — causing every
-        // subsequent UI test to fail with "windows=0". Clearing the saved
-        // state before SwiftUI's WindowGroup attempts restoration ensures every
-        // UI-test launch gets a fresh window.
-        if VirgoAppLaunchBehavior.shouldClearWindowRestorationState(
-            arguments: ProcessInfo.processInfo.arguments
-        ) {
-            WindowRestorationStateClearer.clearSavedState()
-        }
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         DispatchQueue.main.async {
             self.closeRestoredDuplicateMainWindows()
