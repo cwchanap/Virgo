@@ -108,7 +108,7 @@ struct SongCard: View {
         .buttonStyle(PlainButtonStyle())
         .disabled(isDeleting)
         .accessibilityIdentifier(Self.cardOpenButtonID(for: song))
-        .accessibilityLabel("Open \(song.title)")
+        .accessibilityLabel("Open \(song.title) by \(song.artist)")
     }
 
     private var difficultyPipsRow: some View {
