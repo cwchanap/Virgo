@@ -12,6 +12,7 @@ struct MainMenuView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.theme) private var theme
     @EnvironmentObject private var sharedMetronome: MetronomeEngine
+    @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
     @State private var logoScale: CGFloat = 0.8
     @State private var musicNoteRotation: Double = 0
     @State private var isAnimating = false
@@ -123,6 +124,13 @@ struct MainMenuView: View {
                 .appSurface()
             }
         }
+        // Applied here (inside MainMenuView.body) rather than on the WindowGroup
+        // content root in VirgoApp to keep the WindowGroup content type signature
+        // stable. Modifiers on the WindowGroup root change the SwiftUI view-type
+        // signature that macOS uses for window state restoration, causing
+        // window=0x0 failures after rapid launch/terminate cycles (UI tests).
+        .appThemeRoot()
+        .preferredColorScheme(appearanceMode.preferredColorScheme)
     }
 
     private func clearDatabase() {
