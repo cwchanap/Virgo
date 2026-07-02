@@ -178,13 +178,7 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> XCUIElement {
-        // Also check buttons: in the card-grid layout (wide widths), song titles
-        // are wrapped in Buttons with an explicit accessibilityLabel, so they are
-        // not exposed as staticTexts. The button label is the title's accessible
-        // representation in that mode.
-        let staticText = app.staticTexts.matching(textContainsPredicate(text)).firstMatch
-        let button = app.buttons.matching(textContainsPredicate(text)).firstMatch
-        if let element = waitForFirstExisting([staticText, button], timeout: timeout) {
+        if let element = waitForFirstExisting(textElementCandidates(containing: text, in: app), timeout: timeout) {
             return element
         }
 
@@ -197,12 +191,7 @@ extension XCTestCase {
         in app: XCUIApplication,
         timeout: TimeInterval = 10
     ) -> Bool {
-        // Also check buttons: in the card-grid layout (wide widths), song titles
-        // are wrapped in Buttons with an explicit accessibilityLabel, so they are
-        // not exposed as staticTexts.
-        let staticText = app.staticTexts.matching(textContainsPredicate(text)).firstMatch
-        let button = app.buttons.matching(textContainsPredicate(text)).firstMatch
-        return waitForFirstExisting([staticText, button], timeout: timeout) != nil
+        waitForFirstExisting(textElementCandidates(containing: text, in: app), timeout: timeout) != nil
     }
 
     @discardableResult
@@ -238,13 +227,41 @@ extension XCTestCase {
         return textElementCandidates(containing: text, in: app).allSatisfy { !$0.exists }
     }
 
-    private func textElementCandidates(containing text: String, in app: XCUIApplication) -> [XCUIElement] {
+    func textElementCandidates(containing text: String, in app: XCUIApplication) -> [XCUIElement] {
         let predicate = textContainsPredicate(text)
         return [
             app.staticTexts.matching(predicate).firstMatch,
-            app.buttons.matching(predicate).firstMatch,
+            downloadedSongCardTextElement(containing: text, in: app),
             app.cells.matching(predicate).firstMatch
         ]
+    }
+
+    func downloadedSongCardTextElement(containing text: String, in app: XCUIApplication) -> XCUIElement {
+        let predicate = NSPredicate(
+            format: "(identifier BEGINSWITH %@ OR identifier BEGINSWITH %@) "
+                + "AND (label CONTAINS[c] %@ OR value CONTAINS[c] %@)",
+            "downloadedSongCardOpenButton-",
+            "downloadedSongCard-",
+            text,
+            text
+        )
+        return app.descendants(matching: .any).matching(predicate).firstMatch
+    }
+
+    func downloadedSongCardOpenButton(containing text: String, in app: XCUIApplication) -> XCUIElement {
+        let predicate = NSPredicate(
+            format: "identifier BEGINSWITH %@ AND (label CONTAINS[c] %@ OR value CONTAINS[c] %@)",
+            "downloadedSongCardOpenButton-",
+            text,
+            text
+        )
+        return app.buttons.matching(predicate).firstMatch
+    }
+
+    func firstDownloadedSongCardOpenButton(in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "downloadedSongCardOpenButton-")
+        ).firstMatch
     }
 
     func controlIsSelected(_ element: XCUIElement) -> Bool {
@@ -603,16 +620,19 @@ extension XCTestCase {
     /// Wait for app to finish loading with data
     func waitForDataLoad(app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
         // Wait for both UI elements and data to be present.
-        // In card-grid mode the song title is a Button label ("Open Thunder Beat"),
-        // not a StaticText, so check both element types.
         let songsTitle = app.staticTexts["Songs"]
-        let firstTrackText = app.staticTexts["Thunder Beat"]
-        let firstTrackButton = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] %@", "Thunder Beat")
-        ).firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
 
-        return waitForElements([songsTitle, firstTrackText], timeout: timeout) ||
-            waitForElements([songsTitle, firstTrackButton], timeout: timeout)
+        repeat {
+            if songsTitle.exists,
+               waitForFirstExisting(textElementCandidates(containing: "Thunder Beat", in: app), timeout: 0.2) != nil {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+
+        return songsTitle.exists &&
+            waitForFirstExisting(textElementCandidates(containing: "Thunder Beat", in: app), timeout: 0.2) != nil
     }
     
     /// Navigate to Songs tab and wait for it to load

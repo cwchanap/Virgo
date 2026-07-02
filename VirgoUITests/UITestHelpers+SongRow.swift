@@ -14,9 +14,8 @@ extension XCTestCase {
     /// waits for it to appear.
     ///
     /// Layout-aware: wide layouts (macOS / full-screen iPad) render a card grid
-    /// whose tappable open control is a Button carrying the accessibilityLabel
-    /// "Open <title>" (its identifier is now unique per song, but the label is
-    /// the song-stable locator used here).
+    /// whose tappable open control is a Button carrying a per-card accessibility
+    /// identifier and an aggregated label containing the song title.
     /// Narrow layouts render a row with a "N charts" expand Button — its count
     /// is seeded to 0 and loaded asynchronously, so the regex requires a
     /// NON-ZERO count to ensure charts have loaded before expanding (tapping too
@@ -39,13 +38,8 @@ extension XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws {
-        // Card grid (wide): the card button's accessibility label is
-        // auto-generated from its inner content (title, artist, tempo, genre,
-        // difficulty), so we match by CONTAINS on the song title. The title is
-        // unique among test fixtures, so this is unambiguous.
-        let openCardByLabel = app.buttons
-            .matching(NSPredicate(format: "label CONTAINS[c] %@", songTitle))
-            .firstMatch
+        let openCard = downloadedSongCardOpenButton(containing: songTitle, in: app)
+        let fallbackOpenCard = firstDownloadedSongCardOpenButton(in: app)
         // Row list (narrow): the "N charts" expand button with a NON-ZERO count.
         let nonZeroChartCount = NSPredicate(format: "label MATCHES[c] %@", ".*[1-9][0-9]* charts.*")
 
@@ -58,7 +52,8 @@ extension XCTestCase {
         let titleText = app.staticTexts
             .matching(NSPredicate(format: "label == %@", songTitle))
             .firstMatch
-        guard waitForFirstExisting([openCardByLabel, titleText], timeout: timeout) != nil else {
+        let titleCard = downloadedSongCardTextElement(containing: songTitle, in: app)
+        guard waitForFirstExisting([openCard, titleText, titleCard], timeout: timeout) != nil else {
             XCTFail(
                 "Expected song title \"\(songTitle)\" to be visible before expanding its row",
                 file: file,
@@ -84,7 +79,7 @@ extension XCTestCase {
         let globalRowExpandButton = app.buttons.matching(nonZeroChartCount).firstMatch
 
         guard let control = waitForFirstExisting(
-            [openCardByLabel, scopedRowExpandButton, globalRowExpandButton],
+            [openCard, scopedRowExpandButton, globalRowExpandButton, fallbackOpenCard],
             timeout: timeout
         ) else {
             XCTFail(
