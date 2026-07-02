@@ -231,17 +231,37 @@ extension XCTestCase {
         let predicate = textContainsPredicate(text)
         return [
             app.staticTexts.matching(predicate).firstMatch,
-            downloadedSongCardTextElement(containing: text, in: app),
+            stableSongElement(containing: text, in: app),
             app.cells.matching(predicate).firstMatch
         ]
     }
 
     func downloadedSongCardTextElement(containing text: String, in app: XCUIApplication) -> XCUIElement {
-        let predicate = NSPredicate(
-            format: "(identifier BEGINSWITH %@ OR identifier BEGINSWITH %@) "
-                + "AND (label CONTAINS[c] %@ OR value CONTAINS[c] %@)",
+        stableSongElement(
+            containing: text,
+            in: app,
+            identifierPrefixes: [
+                "downloadedSongCardOpenButton-",
+                "downloadedSongCard-"
+            ]
+        )
+    }
+
+    func stableSongElement(
+        containing text: String,
+        in app: XCUIApplication,
+        identifierPrefixes: [String] = [
             "downloadedSongCardOpenButton-",
             "downloadedSongCard-",
+            "downloaded-song-row-",
+            "library-song-row-"
+        ]
+    ) -> XCUIElement {
+        let identifierPredicate = identifierPrefixes
+            .map { "identifier BEGINSWITH '\($0)'" }
+            .joined(separator: " OR ")
+        let predicate = NSPredicate(
+            format: "(\(identifierPredicate)) AND (label CONTAINS[c] %@ OR value CONTAINS[c] %@)",
             text,
             text
         )
@@ -250,8 +270,10 @@ extension XCTestCase {
 
     func downloadedSongCardOpenButton(containing text: String, in app: XCUIApplication) -> XCUIElement {
         let predicate = NSPredicate(
-            format: "identifier BEGINSWITH %@ AND (label CONTAINS[c] %@ OR value CONTAINS[c] %@)",
+            format: "(identifier BEGINSWITH %@ OR identifier BEGINSWITH %@) "
+                + "AND (label CONTAINS[c] %@ OR value CONTAINS[c] %@)",
             "downloadedSongCardOpenButton-",
+            "downloadedSongCard-",
             text,
             text
         )
@@ -260,7 +282,11 @@ extension XCTestCase {
 
     func firstDownloadedSongCardOpenButton(in app: XCUIApplication) -> XCUIElement {
         app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "downloadedSongCardOpenButton-")
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ OR identifier BEGINSWITH %@",
+                "downloadedSongCardOpenButton-",
+                "downloadedSongCard-"
+            )
         ).firstMatch
     }
 
