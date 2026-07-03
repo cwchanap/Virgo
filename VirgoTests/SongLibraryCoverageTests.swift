@@ -59,6 +59,9 @@ struct SongLibraryCoverageTests {
             let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
                 ServerSongRow(serverSong: serverSong, isLoading: false, onDownload: {})
             )
+            // ServerSongRow resolves chart-derived level/chip data via an async
+            // relationship loader; wait for it to settle before snapshotting.
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mountedView)
             let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
 
             #expect(texts.contains("Single Chart"), "Expected title; got \(texts)")
@@ -96,8 +99,14 @@ struct SongLibraryCoverageTests {
                 previewDownloaded: true
             )
 
-            SwiftUITestUtilities.assertView(
-                ServerSongRow(serverSong: serverSong, isLoading: false, onDownload: {}),
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                ServerSongRow(serverSong: serverSong, isLoading: false, onDownload: {})
+            )
+            // The "Levels 25, 70" summary is produced by the async relationship
+            // loader; wait for it to settle before snapshotting.
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mountedView)
+            SwiftUITestUtilities.assertRendered(
+                from: mountedView.root,
                 containsStrings: [
                     "Downloaded Anthem",
                     "Levels 25, 70",
