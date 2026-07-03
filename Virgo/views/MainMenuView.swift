@@ -10,9 +10,28 @@ import SwiftData
 
 struct MainMenuView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.theme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var sharedMetronome: MetronomeEngine
     @AppStorage(AppearanceMode.storageKey) private var appearanceMode: AppearanceMode = .system
+
+    /// Resolved locally because `MainMenuView` is the app-root screen: `.appThemeRoot()`
+    /// is applied to this view's own body output (MainMenuView.swift:132) and injects
+    /// `theme` into the NavigationStack's descendants, but `MainMenuView` itself reads
+    /// `@Environment(\.theme)` from its parent (`VirgoApp.rootView`), which injects none
+    /// — so the ambient default (`.paper`) would render primary/secondary text
+    /// dark-on-dark in Dark mode. `.appThemeRoot()`/`.preferredColorScheme()` cannot
+    /// move above `MainMenuView` without changing the WindowGroup content type signature
+    /// and breaking macOS window-state restoration (see VirgoApp.swift:60-66), so the
+    /// menu resolves its world from `appearanceMode` + `colorScheme` directly. This
+    /// matches what `.appThemeRoot()` produces downstream for descendant screens.
+    private var theme: VirgoTheme {
+        switch appearanceMode {
+        case .dark: return .ink
+        case .light: return .paper
+        case .system: return VirgoTheme.resolve(.forColorScheme(colorScheme))
+        }
+    }
+
     @State private var logoScale: CGFloat = 0.8
     @State private var musicNoteRotation: Double = 0
     @State private var isAnimating = false
