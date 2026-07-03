@@ -278,14 +278,13 @@ struct ServerSongRelationshipData {
 @MainActor
 class ServerSongRelationshipLoader: BaseSwiftDataRelationshipLoader<ServerSong, ServerSongRelationshipData> {
     convenience init(serverSong: ServerSong) {
-        // Compute the initial snapshot synchronously so the first render
-        // already carries level/size/chip data (avoids an empty-state flash
-        // and lets synchronous test harnesses observe the populated values).
-        // `relationshipData(for:)` is a MainActor-safe synchronous call.
-        let initial = Self.relationshipData(for: serverSong)
+        // Seed with `.empty` so the initializer does not fault
+        // `serverSong.charts` during view-body evaluation. The async load
+        // (which itself only touches the relationship on MainActor) populates
+        // the snapshot off the render path, matching the sibling loaders.
         self.init(
             model: serverSong,
-            defaultData: initial,
+            defaultData: .empty,
             dataLoader: { serverSong in
                 await Self.loadServerSongData(serverSong)
             }
