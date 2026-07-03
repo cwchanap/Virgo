@@ -306,6 +306,50 @@ struct SwiftUITestUtilities {
         #endif
     }
 
+    /// Pumps the async executor so view state published from `@StateObject`
+    /// relationship loaders (which load via `.onAppear` + `Task`) can settle
+    /// before a test snapshots rendered text. `assertViewWithEnvironment` only
+    /// spins the run loop briefly at mount time, which does not drain Swift
+    /// Concurrency main-actor `Task` hops in a windowless `NSHostingView`.
+    /// Yielding from the test's async context lets the executor run pending
+    /// main-actor tasks; the layout pass then picks up the re-render.
+    static func waitForRenderStabilization(in mountedView: MountedView, iterations: Int = 30) async {
+        #if os(macOS)
+        for _ in 0..<iterations {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 2_000_000)
+            mountedView.hostingView.layoutSubtreeIfNeeded()
+            mountedView.hostingView.displayIfNeeded()
+        }
+        #endif
+    }
+
+    /// Asserts rendered text/symbols from an already-mounted view. Use after
+    /// `waitForRenderStabilization` when the view depends on async-loaded state.
+    static func assertRendered(
+        from root: Any,
+        containsStrings: [String] = [],
+        excludesStrings: [String] = [],
+        containsSymbols: [String] = [],
+        excludesSymbols: [String] = []
+    ) {
+        let texts = renderedTexts(from: root)
+        let symbols = renderedSymbols(from: root)
+
+        for string in containsStrings {
+            #expect(texts.contains(string), "Expected rendered texts to include '\(string)', got \(texts)")
+        }
+        for string in excludesStrings {
+            #expect(!texts.contains(string), "Expected rendered texts to exclude '\(string)', got \(texts)")
+        }
+        for symbol in containsSymbols {
+            #expect(symbols.contains(symbol), "Expected rendered symbols to include '\(symbol)', got \(symbols)")
+        }
+        for symbol in excludesSymbols {
+            #expect(!symbols.contains(symbol), "Expected rendered symbols to exclude '\(symbol)', got \(symbols)")
+        }
+    }
+
     static func assertView<V: View>(
         _ view: V,
         containsStrings: [String],
