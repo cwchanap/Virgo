@@ -159,7 +159,7 @@ extension XCTestCase {
             }
         } while Date() < deadline
 
-        return elements.first(where: { $0.exists })
+        return nil
     }
 
     func textContainsPredicate(_ text: String) -> NSPredicate {
@@ -645,19 +645,21 @@ extension XCTestCase {
 
     /// Wait for app to finish loading with data
     func waitForDataLoad(app: XCUIApplication, timeout: TimeInterval = 10) -> Bool {
-        // Wait for both UI elements and data to be present.
-        let songsTitle = app.staticTexts["Songs"]
+        // Wait for both UI elements and data to be present. Use the same
+        // non-blocking helper pattern as waitForFirstExisting (deadline-based
+        // lookup via waitForExistence) instead of synchronous .exists checks,
+        // which can block during UI transitions.
         let deadline = Date().addingTimeInterval(timeout)
 
         repeat {
-            if songsTitle.exists,
+            if waitForStaticText(containing: "Songs", in: app, timeout: 0.2),
                waitForFirstExisting(textElementCandidates(containing: "Thunder Beat", in: app), timeout: 0.2) != nil {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         } while Date() < deadline
 
-        return songsTitle.exists &&
+        return waitForStaticText(containing: "Songs", in: app, timeout: 0.2) &&
             waitForFirstExisting(textElementCandidates(containing: "Thunder Beat", in: app), timeout: 0.2) != nil
     }
     
