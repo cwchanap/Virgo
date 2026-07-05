@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a compile-only iPad/iOS build job to `.github/workflows/ci.yml` so `#if os(iOS)` code paths are compiled in CI, closing the root-cause gap behind the HPA-91 P1 build break.
+**Goal:** Add a compile-only iPad/iOS build job to `.github/workflows/ci.yml` so `#if os(iOS)` code paths are compiled in CI, closing the root-cause gap (Linear [HPA-90](https://linear.app/cwchanap/issue/HPA-90)) behind the prior P1 build break (whose symptom was fixed in HPA-91).
 
 **Architecture:** One new GitHub Actions job (`build-ios`) added to the existing `ci.yml` workflow, running in parallel with `test` (no `needs:`). It compiles the `Virgo` scheme against `generic/platform=iOS Simulator` in Debug with code signing disabled — no tests, no coverage, no artifacts. The workflow's top-level name changes from `macOS CI` to `CI` since it now spans both platforms. Verification is the regression-probe pattern: temporarily introduce an `#if os(iOS)`-gated reference to a nonexistent symbol, prove the local iOS build fails, revert, then ship the YAML.
 
