@@ -1,4 +1,4 @@
-name: macOS CI
+name: CI
 
 on:
   push:
@@ -169,6 +169,36 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             -allowProvisioningUpdates
+
+  build-ios:
+    name: Build (iPad Simulator)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.1.1'
+
+      - name: Generate ServerEndpoints.env from CI variables
+        env:
+          GRAPHQL_ENDPOINT: ${{ vars.GRAPHQL_ENDPOINT }}
+          R2_BASE_URL: ${{ vars.R2_BASE_URL }}
+        run: bash .github/scripts/generate-endpoints-env.sh
+
+      - name: Build for iPad Simulator
+        run: |
+          xcodebuild build \
+            -project Virgo.xcodeproj \
+            -scheme Virgo \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
   codecov:
     name: Upload Coverage to Codecov
