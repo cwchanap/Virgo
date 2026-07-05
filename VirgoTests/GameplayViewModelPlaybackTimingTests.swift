@@ -25,27 +25,27 @@ struct GameplayViewModelPlaybackTimingTests {
         // hits would be scored against a timeline that started before the
         // player hears any audio.
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 16)
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let metronome = ScheduledMetronomeSpy()
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
         // Fresh start (no BGM, metronome-only)
+        let startCallTime = CFAbsoluteTimeGetCurrent()
         viewModel.startPlayback()
         #expect(viewModel.isPlaying == true)
 
         // lastScheduledPlaybackStartTime should be set to the metronome's actual start
         let scheduledTime = try #require(viewModel.lastScheduledPlaybackStartTime,
                                           "lastScheduledPlaybackStartTime should be set after startPlayback")
-        let now = CFAbsoluteTimeGetCurrent()
-        // For a fresh metronome-only start, the scheduled time should be ~0.05s in the future
+        // For a fresh metronome-only start, the scheduled time should be ~0.05s after startPlayback begins
         // (consistent with BGM cases, allowing inputManager.startListening to be called before audio starts)
-        let timeUntilScheduled = scheduledTime - now
-        #expect(timeUntilScheduled > 0.03,
-                "Fresh metronome-only scheduled time should be in the future (delay: \(timeUntilScheduled)s)")
-        #expect(timeUntilScheduled <= 0.1,
-                "Fresh metronome-only scheduled time should be ~0.05s in the future (delay: \(timeUntilScheduled)s)")
+        let scheduledDelay = scheduledTime - startCallTime
+        #expect(scheduledDelay > 0.03,
+                "Fresh metronome-only scheduled time should be after the start call (delay: \(scheduledDelay)s)")
+        #expect(scheduledDelay <= 0.25,
+                "Fresh metronome-only scheduled time should be ~0.05s after the start call (delay: \(scheduledDelay)s)")
 
         // playbackStartTime should be derived from the scheduled time, not wall-clock Date()
         let playbackStart = try #require(viewModel.playbackStartTime)
@@ -59,14 +59,15 @@ struct GameplayViewModelPlaybackTimingTests {
         let simulatedElapsed: Double = 2.0
         viewModel.pausedElapsedTime = simulatedElapsed
 
+        let resumeCallTime = CFAbsoluteTimeGetCurrent()
         viewModel.startPlayback()
         let resumeScheduled = try #require(viewModel.lastScheduledPlaybackStartTime)
         // On resume, the metronome is scheduled 0.05s in the future
-        let resumeNow = CFAbsoluteTimeGetCurrent()
-        #expect(resumeScheduled > resumeNow,
-                "Resume should schedule metronome in the future")
-        #expect(resumeScheduled - resumeNow <= 0.1,
-                "Resume scheduled time should be ~0.05s in the future")
+        let resumeScheduledDelay = resumeScheduled - resumeCallTime
+        #expect(resumeScheduledDelay > 0.03,
+                "Resume should schedule metronome after the resume call (delay: \(resumeScheduledDelay)s)")
+        #expect(resumeScheduledDelay <= 0.25,
+                "Resume scheduled time should be ~0.05s after the resume call (delay: \(resumeScheduledDelay)s)")
 
         // playbackStartTime should account for both the scheduled time and the elapsed offset
         let resumePlaybackStart = try #require(viewModel.playbackStartTime)

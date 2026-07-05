@@ -172,7 +172,7 @@ jobs:
 
   build-ios:
     name: Build (iPad Simulator)
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - name: Checkout code
