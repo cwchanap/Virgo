@@ -38,8 +38,9 @@ The symptom was fixed in HPA-91 by removing `private`, but the **root cause — 
 
 A new job added to `.github/workflows/ci.yml`, placed after `build-archive` for readability.
 
-- `runs-on: macos-latest`
+- `runs-on: macos-15`
 - **No `needs:`** — runs in parallel with `test`. This gives the fastest feedback on the `#if os(iOS)` regression class. The trade-off is marginally higher runner-minute spend when `test` independently fails, which is acceptable: the iOS build is fast (compile-only) and the regression class it catches is distinct from macOS test failures.
+- `macos-15` is pinned intentionally: `macos-latest` currently resolves to `macos-26`, whose image includes Xcode 26.1.1 but not the matching iOS 26.1 simulator runtime. The `macos-15` image still includes both Xcode 26.1.1 and the iOS 26.1 simulator runtime, so the generic iOS Simulator destination resolves without downloading platforms at CI time.
 
 ### 4.2 Steps
 
@@ -83,7 +84,7 @@ Acceptance criteria from HPA-90, and how each is met:
 |---|---|
 | CI runs a `build-ios` job that compiles for the iOS Simulator SDK | The new job appears in the workflow and runs `xcodebuild build` against `generic/platform=iOS Simulator`. |
 | A deliberately-introduced `#if os(iOS)` compile error fails CI | Local/manual probe before merge: temporarily add `#if os(iOS)\nlet _ = NonexistentType()\n#endif` to a Swift file, run the same `xcodebuild build` command locally against `generic/platform=iOS Simulator`, confirm it fails, then revert. Documented in the implementation plan as a verification step. |
-| Existing macOS test + archive jobs still pass | `test`, `build-archive`, and `codecov` jobs are unchanged; they continue to pass on the PR. |
+| Existing macOS test + archive jobs still pass | `test`, `build-archive`, and `codecov` remain in the workflow. The PR must keep those checks green; a follow-up CI-failure fix hardened one timing assertion surfaced by the macOS test job. |
 | Job does NOT add iPhone targeting | No `TARGETED_DEVICE_FAMILY` change anywhere; destination is iPad-class (`generic/platform=iOS Simulator` respects the project's `TARGETED_DEVICE_FAMILY = 2`). The platform-validation guard in `test` still runs and must pass. |
 
 ## 6. Future Work

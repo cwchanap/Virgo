@@ -4,15 +4,15 @@
 
 **Goal:** Add a compile-only iPad/iOS build job to `.github/workflows/ci.yml` so `#if os(iOS)` code paths are compiled in CI, closing the root-cause gap (Linear [HPA-90](https://linear.app/cwchanap/issue/HPA-90)) behind the prior P1 build break (whose symptom was fixed in HPA-91).
 
-**Architecture:** One new GitHub Actions job (`build-ios`) added to the existing `ci.yml` workflow, running in parallel with `test` (no `needs:`). It compiles the `Virgo` scheme against `generic/platform=iOS Simulator` in Debug with code signing disabled — no tests, no coverage, no artifacts. The workflow's top-level name changes from `macOS CI` to `CI` since it now spans both platforms. Verification is the regression-probe pattern: temporarily introduce an `#if os(iOS)`-gated reference to a nonexistent symbol, prove the local iOS build fails, revert, then ship the YAML.
+**Architecture:** One new GitHub Actions job (`build-ios`) added to the existing `ci.yml` workflow, running in parallel with `test` (no `needs:`). It compiles the `Virgo` scheme against `generic/platform=iOS Simulator` in Debug with code signing disabled — no tests, no coverage, no artifacts. The iOS job pins `macos-15` because the current `macos-latest` image resolves to `macos-26`, which has Xcode 26.1.1 but not the matching iOS 26.1 simulator runtime. The workflow's top-level name changes from `macOS CI` to `CI` since it now spans both platforms. Verification is the regression-probe pattern: temporarily introduce an `#if os(iOS)`-gated reference to a nonexistent symbol, prove the local iOS build fails, revert, then ship the YAML.
 
-**Tech Stack:** GitHub Actions (`actions/checkout@v4`, `maxim-lobanov/setup-xcode@v1`), `xcodebuild`, Xcode 26.1.1, `macos-latest` runner.
+**Tech Stack:** GitHub Actions (`actions/checkout@v4`, `maxim-lobanov/setup-xcode@v1`), `xcodebuild`, Xcode 26.1.1, `macos-15` runner.
 
 ## Global Constraints
 
-- **Single file modified:** `.github/workflows/ci.yml`. No source code changes ship; the `#if os(iOS)` regression probe is temporary and reverted before commit.
+- **Primary workflow change:** `.github/workflows/ci.yml`. The `#if os(iOS)` regression probe is temporary and must be reverted before commit. A follow-up CI-failure fix also hardens `GameplayViewModelPlaybackTimingTests.swift` because the same workflow run exposed a hosted-runner timing assumption in the macOS test job.
 - **No iPhone targeting:** destination must remain iPad-class. `generic/platform=iOS Simulator` respects the project's `TARGETED_DEVICE_FAMILY = 2`. The existing "Validate supported Apple platforms" step in the `test` job (unchanged) independently enforces this and must keep passing.
-- **Xcode version pinned:** `26.1.1` — matches the existing `test` and `build-archive` jobs exactly.
+- **Runner and Xcode pinned:** `macos-15` + Xcode `26.1.1` — `macos-15` carries the matching iOS 26.1 simulator runtime. Do not use `macos-latest` for this job while it resolves to `macos-26` without that runtime.
 - **Endpoints generation:** the new job must run `.github/scripts/generate-endpoints-env.sh` before building, so the iOS build resolves `ServerConfig`. The script degrades gracefully when `GRAPHQL_ENDPOINT`/`R2_BASE_URL` are unset, so the job stays green on forks.
 - **Build command (reused verbatim in the job and in local verification):**
   ```
@@ -25,7 +25,7 @@
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGNING_ALLOWED=NO
   ```
-- **No commits of probe code:** the regression probe is verified locally and reverted; the only commit on this branch for this task is the YAML change (the spec commit already landed during brainstorming).
+- **No commits of probe code:** the regression probe is verified locally and reverted before any commit.
 
 ---
 
@@ -116,7 +116,7 @@ Insert the following job block into `.github/workflows/ci.yml`, placed immediate
 
   build-ios:
     name: Build (iPad Simulator)
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - name: Checkout code
@@ -165,9 +165,10 @@ Run:
 ```bash
 git --no-pager diff .github/workflows/ci.yml
 ```
-Confirm the diff shows exactly two changes:
+Confirm the workflow diff shows:
 1. Line 1: `name: macOS CI` → `name: CI`.
 2. A new top-level `build-ios:` job (2-space indent) sitting between the `build-archive` job and the `codecov` job, with the four steps from Step 7.
+3. The `build-ios` job runs on `macos-15`, not `macos-latest`, so Xcode 26.1.1 has its matching iOS 26.1 simulator runtime.
 
 - [ ] **Step 10: Commit**
 
@@ -188,4 +189,4 @@ On the PR checks, confirm:
 2. The existing `Run Tests on macOS`, `Test Archive Build (macOS)`, and coverage/codecov checks still run and pass.
 3. The "Validate supported Apple platforms" step inside `Run Tests on macOS` still passes (no iPhone targeting introduced).
 
-This satisfies all four HPA-90 acceptance criteria: CI compiles for the iOS Simulator SDK; the probe in Step 3 proved an iOS compile error would fail it; the macOS jobs are untouched; and iPhone targeting is not added.
+This satisfies all four HPA-90 acceptance criteria: CI compiles for the iOS Simulator SDK; the probe in Step 3 proved an iOS compile error would fail it; the existing macOS workflow path remains in place; and iPhone targeting is not added.
