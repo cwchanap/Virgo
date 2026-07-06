@@ -487,6 +487,12 @@ struct DTXFileParserTests {
         #expect(events.count == 3)
         #expect(Set(events.map(\.ticksPerMeasure)) == Set([4]))
         #expect(events.map(\.absoluteTick).sorted() == [4, 6, 7])
+        let tickSources = events.map { event in
+            (laneID: event.laneID, gridPosition: event.gridPosition, absoluteTick: event.absoluteTick)
+        }.sorted { $0.absoluteTick < $1.absoluteTick }
+        #expect((tickSources[0].laneID, tickSources[0].gridPosition, tickSources[0].absoluteTick) == ("13", 0, 4))
+        #expect((tickSources[1].laneID, tickSources[1].gridPosition, tickSources[1].absoluteTick) == ("13", 1, 6))
+        #expect((tickSources[2].laneID, tickSources[2].gridPosition, tickSources[2].absoluteTick) == ("12", 3, 7))
 
         let snare = try #require(events.first { $0.laneID == "12" })
         #expect(snare.gridSize == 4)
@@ -495,7 +501,37 @@ struct DTXFileParserTests {
         #expect(snare.visualDurationCandidate == .quarter)
     }
 
-    @Test("non-power-of-two grids preserve timing and avoid quarter fallback")
+    @Test("power-of-two grids use readable visual duration candidates")
+    func testPowerOfTwoGridUsesQuarterVisualCandidates() throws {
+        let dtxContent = """
+        #TITLE: Four Chip Grid
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00112: 01010101
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+        let events = chartData.normalizedRhythmicEvents()
+
+        #expect(events.count == 4)
+        #expect(events.map(\.gridPosition) == [0, 1, 2, 3])
+        #expect(events.map(\.tickWithinMeasure) == [0, 1, 2, 3])
+        #expect(events.map(\.visualDurationCandidate) == [.quarter, .quarter, .quarter, .quarter])
+
+        let chart = Chart(difficulty: .medium)
+        let notes = chartData.toNotes(for: chart)
+        #expect(notes.count == 4)
+        #expect(notes.map(\.interval) == [.quarter, .quarter, .quarter, .quarter])
+        #expect(notes.map(\.visualDurationCandidate) == [
+            .some(.quarter),
+            .some(.quarter),
+            .some(.quarter),
+            .some(.quarter)
+        ])
+    }
+
+    @Test("non-power-of-two grids preserve timing and do not collapse every note to quarter")
     func testNonPowerOfTwoGridPreservesTicksAndVisualCandidate() throws {
         let dtxContent = """
         #TITLE: Triplet Grid
@@ -512,7 +548,8 @@ struct DTXFileParserTests {
         #expect(Set(events.map(\.ticksPerMeasure)) == Set([12]))
         #expect(events.map(\.tickWithinMeasure) == [0, 1, 2])
         #expect(events.map(\.absoluteTick) == [12, 13, 14])
-        #expect(events.allSatisfy { $0.visualDurationCandidate != .quarter })
+        // Adjacent non-power-of-two spacing stays visually short; the trailing note can fall back to quarter.
+        #expect(events.map(\.visualDurationCandidate) == [.sixteenth, .sixteenth, .quarter])
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
@@ -533,7 +570,9 @@ struct DTXFileParserTests {
         """
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
-        let event = try #require(chartData.normalizedRhythmicEvents().first)
+        let events = chartData.normalizedRhythmicEvents()
+        #expect(events.count == 1)
+        let event = try #require(events.first)
 
         #expect(event.gridSize == 32)
         #expect(event.gridPosition == 31)
