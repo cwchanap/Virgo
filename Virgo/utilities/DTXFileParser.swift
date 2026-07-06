@@ -33,6 +33,10 @@ struct DTXNote {
     let notePosition: Int // Position within the measure (0-based)
     let totalPositions: Int // Total number of positions in this measure
 
+    var measureIndex: Int { measureNumber }
+    var gridPosition: Int { notePosition }
+    var gridSize: Int { totalPositions }
+
     var measureOffset: Double {
         guard totalPositions > 0 else { return 0.0 }
         return Double(notePosition) / Double(totalPositions)
@@ -84,6 +88,65 @@ struct DTXChartData {
     }
 }
 
+struct NormalizedRhythmicEvent: Hashable {
+    let measureIndex: Int
+    let absoluteTick: Int
+    let tickWithinMeasure: Int
+    let ticksPerMeasure: Int
+    let voiceCandidate: NormalizedNotationVoice
+    let laneID: String
+    let noteID: String
+    let gridPosition: Int
+    let gridSize: Int
+    let noteType: NoteType
+    let visualDurationCandidate: NoteInterval
+    let articulationCandidate: NormalizedArticulation
+    let measureOffset: Double
+
+    init?(
+        chip: DTXNote,
+        ticksPerMeasure: Int,
+        visualDurationCandidate: NoteInterval,
+        articulationCandidate: NormalizedArticulation = .none
+    ) {
+        guard
+            let noteType = chip.toNoteType(),
+            chip.gridSize > 0,
+            ticksPerMeasure > 0,
+            ticksPerMeasure % chip.gridSize == 0
+        else {
+            return nil
+        }
+
+        let tickScale = ticksPerMeasure / chip.gridSize
+        let tickWithinMeasure = chip.gridPosition * tickScale
+
+        self.measureIndex = chip.measureIndex
+        self.absoluteTick = chip.measureIndex * ticksPerMeasure + tickWithinMeasure
+        self.tickWithinMeasure = tickWithinMeasure
+        self.ticksPerMeasure = ticksPerMeasure
+        self.voiceCandidate = Self.voiceCandidate(for: noteType)
+        self.laneID = chip.laneID.uppercased()
+        self.noteID = chip.noteID.uppercased()
+        self.gridPosition = chip.gridPosition
+        self.gridSize = chip.gridSize
+        self.noteType = noteType
+        self.visualDurationCandidate = visualDurationCandidate
+        self.articulationCandidate = articulationCandidate
+        self.measureOffset = chip.measureOffset
+    }
+
+    private static func voiceCandidate(for noteType: NoteType) -> NormalizedNotationVoice {
+        switch DrumType.from(noteType: noteType) {
+        case .some(.kick), .some(.hiHatPedal):
+            return .lower
+        case .some(.snare), .some(.hiHat), .some(.crash), .some(.ride),
+             .some(.tom1), .some(.tom2), .some(.tom3), .some(.cowbell), .none:
+            return .upper
+        }
+    }
+}
+
 enum DTXLane: String, CaseIterable {
     case bpm = "08"     // BPM changes (not playable)
     case lc = "1A"      // Left Crash
@@ -122,7 +185,9 @@ enum DTXLane: String, CaseIterable {
             return .ride
         case .lp:
             return .hiHatPedal
-        case .bpm, .bgm, .lb:
+        case .lb:
+            return .bass
+        case .bpm, .bgm:
             return nil // Not playable drum notes
         }
     }
@@ -232,7 +297,7 @@ class DTXFileParser {
 
     private static func isNoteLine(_ line: String) -> Bool {
         // Note line format: #xxxYY: where xxx is measure (000-999) and YY is lane ID (hex)
-        let notePattern = "^#[0-9]{3}[0-9A-F]{2}:"
+        let notePattern = "^#[0-9]{3}[0-9A-Fa-f]{2}:"
         let regex = try? NSRegularExpression(pattern: notePattern, options: [])
         let range = NSRange(location: 0, length: line.count)
         return regex?.firstMatch(in: line, options: [], range: range) != nil
@@ -251,7 +316,7 @@ class DTXFileParser {
         guard headerPart.count == 5 else { return [] }
 
         let measureString = String(headerPart.prefix(3))
-        let laneIDString = String(headerPart.suffix(2))
+        let laneIDString = String(headerPart.suffix(2)).uppercased()
 
         guard let measureNumber = Int(measureString) else { return [] }
 
@@ -265,7 +330,7 @@ class DTXFileParser {
         for i in 0..<noteCount {
             let startIndex = noteArray.index(noteArray.startIndex, offsetBy: i * 2)
             let endIndex = noteArray.index(startIndex, offsetBy: 2)
-            let noteID = String(noteArray[startIndex..<endIndex])
+            let noteID = String(noteArray[startIndex..<endIndex]).uppercased()
 
             // Skip empty notes (00)
             if noteID != "00" {
