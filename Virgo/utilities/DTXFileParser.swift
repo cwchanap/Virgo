@@ -540,15 +540,25 @@ extension DTXChartData {
     }
 
     func toNotes(for chart: Chart) -> [Note] {
-        return notes.compactMap { dtxNote in
-            guard let noteType = dtxNote.toNoteType() else { return nil }
-
-            return Note(
-                interval: dtxNote.toNoteInterval(),
-                noteType: noteType,
-                measureNumber: dtxNote.measureNumber + 1, // Convert to 1-based indexing
-                measureOffset: dtxNote.measureOffset,
-                chart: chart
+        normalizedRhythmicEvents().map { event in
+            Note(
+                interval: event.visualDurationCandidate,
+                noteType: event.noteType,
+                measureNumber: event.measureIndex + 1,
+                measureOffset: event.measureOffset,
+                chart: chart,
+                originKind: .dtx,
+                sourceLaneID: event.laneID,
+                sourceNoteID: event.noteID,
+                sourceGridPosition: event.gridPosition,
+                sourceGridSize: event.gridSize,
+                normalizedMeasureIndex: event.measureIndex,
+                normalizedAbsoluteTick: event.absoluteTick,
+                normalizedTickWithinMeasure: event.tickWithinMeasure,
+                normalizedTicksPerMeasure: event.ticksPerMeasure,
+                notationVoiceCandidate: event.voiceCandidate,
+                visualDurationCandidate: event.visualDurationCandidate,
+                articulationCandidate: event.articulationCandidate
             )
         }
     }
