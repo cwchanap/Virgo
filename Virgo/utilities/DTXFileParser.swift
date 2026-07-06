@@ -363,10 +363,6 @@ extension DTXNote {
         guard let lane = DTXLane(rawValue: laneID.uppercased()) else { return nil }
         return lane.noteType
     }
-
-    func toNoteInterval() -> NoteInterval {
-        DTXChartData.closestVisualIntervalForSingleChip(self)
-    }
 }
 
 extension DTXChartData {
@@ -394,6 +390,10 @@ extension DTXChartData {
     func normalizedRhythmicEvents() -> [NormalizedRhythmicEvent] {
         let playableChips = notes.filter { $0.toNoteType() != nil }
         guard let ticksPerMeasure = Self.sharedTicksPerMeasure(for: playableChips) else {
+            Logger.warning(
+                "DTX normalization failed: shared ticks per measure exceeded \(Self.maximumTicksPerMeasure)"
+                + " for \(playableChips.count) playable chips; chart will import with no notes."
+            )
             return []
         }
         let visualDurationCandidates = Self.visualDurationCandidates(
@@ -412,7 +412,6 @@ extension DTXChartData {
 
     private static func sharedTicksPerMeasure(for chips: [DTXNote]) -> Int? {
         let positiveGridSizes = chips
-            .filter { $0.toNoteType() != nil }
             .map(\.gridSize)
             .filter { $0 > 0 }
 
@@ -470,8 +469,7 @@ extension DTXChartData {
         }
 
         let playableChips = chips.filter { chip in
-            chip.toNoteType() != nil
-                && chip.gridSize > 0
+            chip.gridSize > 0
                 && chip.gridPosition >= 0
                 && chip.gridPosition < chip.gridSize
         }
