@@ -599,4 +599,52 @@ struct DTXFileParserTests {
         #expect(note.interval == .quarter)
         #expect(note.visualDurationCandidate == .quarter)
     }
+
+    @Test("visual duration candidates use the next chip across measure boundaries")
+    func testVisualDurationCandidatesUseNextMeasureChip() throws {
+        let finalEighthChip = String(repeating: "00", count: 7) + "01"
+        let nextMeasureChip = "01" + String(repeating: "00", count: 7)
+        let dtxContent = """
+        #TITLE: Measure Boundary Spacing
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00113: \(finalEighthChip)
+        #00212: \(nextMeasureChip)
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+        let events = chartData.normalizedRhythmicEvents()
+
+        let bass = try #require(events.first { $0.laneID == "13" })
+        let snare = try #require(events.first { $0.laneID == "12" })
+        #expect(bass.absoluteTick == 15)
+        #expect(snare.absoluteTick == 16)
+        #expect(bass.visualDurationCandidate == .eighth)
+
+        let chart = Chart(difficulty: .medium)
+        let notes = chartData.toNotes(for: chart)
+        let bassNote = try #require(notes.first { $0.sourceLaneID == "13" })
+        #expect(bassNote.interval == .eighth)
+        #expect(bassNote.visualDurationCandidate == .eighth)
+    }
+
+    @Test("normalization rejects oversized shared tick scales")
+    func testNormalizedEventsRejectOversizedSharedTickScale() throws {
+        let chartData = DTXChartData(
+            title: "Oversized Tick Scale",
+            artist: "Tester",
+            bpm: 120,
+            difficultyLevel: 50,
+            notes: [
+                DTXNote(measureNumber: 1, laneID: "13", noteID: "01", notePosition: 0, totalPositions: 4_093),
+                DTXNote(measureNumber: 1, laneID: "12", noteID: "01", notePosition: 0, totalPositions: 4_091)
+            ]
+        )
+
+        #expect(chartData.normalizedRhythmicEvents().isEmpty)
+
+        let chart = Chart(difficulty: .medium)
+        #expect(chartData.toNotes(for: chart).isEmpty)
+    }
 }

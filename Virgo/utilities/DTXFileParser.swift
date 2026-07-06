@@ -370,6 +370,8 @@ extension DTXNote {
 }
 
 extension DTXChartData {
+    private static let maximumTicksPerMeasure = 4_096
+
     func toDifficulty() -> Difficulty {
         switch difficultyLevel {
         case 0...30:
@@ -391,7 +393,9 @@ extension DTXChartData {
 
     func normalizedRhythmicEvents() -> [NormalizedRhythmicEvent] {
         let playableChips = notes.filter { $0.toNoteType() != nil }
-        let ticksPerMeasure = Self.sharedTicksPerMeasure(for: playableChips)
+        guard let ticksPerMeasure = Self.sharedTicksPerMeasure(for: playableChips) else {
+            return []
+        }
         let visualDurationCandidates = Self.visualDurationCandidates(
             for: playableChips,
             ticksPerMeasure: ticksPerMeasure
@@ -406,30 +410,42 @@ extension DTXChartData {
         }
     }
 
-    private static func sharedTicksPerMeasure(for chips: [DTXNote]) -> Int {
+    private static func sharedTicksPerMeasure(for chips: [DTXNote]) -> Int? {
         let positiveGridSizes = chips
             .filter { $0.toNoteType() != nil }
             .map(\.gridSize)
             .filter { $0 > 0 }
 
-        guard let firstGridSize = positiveGridSizes.first else {
+        guard !positiveGridSizes.isEmpty else {
             return 1
         }
 
-        return positiveGridSizes
-            .dropFirst()
-            .reduce(firstGridSize) { leastCommonMultiple($0, $1) }
+        var ticksPerMeasure = 1
+        for gridSize in positiveGridSizes {
+            guard let nextTicksPerMeasure = leastCommonMultiple(ticksPerMeasure, gridSize) else {
+                return nil
+            }
+            ticksPerMeasure = nextTicksPerMeasure
+        }
+
+        return ticksPerMeasure
     }
 
-    private static func leastCommonMultiple(_ lhs: Int, _ rhs: Int) -> Int {
+    private static func leastCommonMultiple(_ lhs: Int, _ rhs: Int) -> Int? {
         let lhs = abs(lhs)
         let rhs = abs(rhs)
 
         guard lhs > 0, rhs > 0 else {
-            return max(lhs, rhs)
+            return nil
         }
 
-        return lhs / greatestCommonDivisor(lhs, rhs) * rhs
+        let quotient = lhs / greatestCommonDivisor(lhs, rhs)
+        let product = quotient.multipliedReportingOverflow(by: rhs)
+        guard !product.overflow, product.partialValue <= maximumTicksPerMeasure else {
+            return nil
+        }
+
+        return product.partialValue
     }
 
     private static func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
@@ -442,7 +458,7 @@ extension DTXChartData {
             rhs = remainder
         }
 
-        return lhs
+        return max(lhs, 1)
     }
 
     private static func visualDurationCandidates(
@@ -453,40 +469,50 @@ extension DTXChartData {
             return [:]
         }
 
-        let playableChipsByMeasure = Dictionary(grouping: chips.filter { chip in
-            chip.toNoteType() != nil && chip.gridSize > 0
-        }, by: \.measureIndex)
+        let playableChips = chips.filter { chip in
+            chip.toNoteType() != nil
+                && chip.gridSize > 0
+                && chip.gridPosition >= 0
+                && chip.gridPosition < chip.gridSize
+        }
+        let playableChipsByMeasure = Dictionary(grouping: playableChips, by: \.measureIndex)
+        let fallbackTickSpanByMeasure = playableChipsByMeasure.mapValues { measureChips in
+            let uniqueTicks = Set(measureChips.map {
+                normalizedTick(for: $0, ticksPerMeasure: ticksPerMeasure)
+            })
+
+            return uniqueTicks.count == ticksPerMeasure ? 1 : max(ticksPerMeasure / 4, 1)
+        }
+        let sortedChips = playableChips.sorted { lhs, rhs in
+            let lhsTick = normalizedAbsoluteTick(for: lhs, ticksPerMeasure: ticksPerMeasure)
+            let rhsTick = normalizedAbsoluteTick(for: rhs, ticksPerMeasure: ticksPerMeasure)
+
+            if lhsTick == rhsTick {
+                return chipKey(lhs) < chipKey(rhs)
+            }
+
+            return lhsTick < rhsTick
+        }
+        let uniqueAbsoluteTicks = Array(Set(sortedChips.map {
+            normalizedAbsoluteTick(for: $0, ticksPerMeasure: ticksPerMeasure)
+        })).sorted()
+        var nextAbsoluteTickByTick: [Int: Int] = [:]
+        for index in uniqueAbsoluteTicks.indices.dropLast() {
+            nextAbsoluteTickByTick[uniqueAbsoluteTicks[index]] = uniqueAbsoluteTicks[index + 1]
+        }
 
         var candidates: [String: NoteInterval] = [:]
 
-        for measureChips in playableChipsByMeasure.values {
-            let sortedChips = measureChips.sorted { lhs, rhs in
-                let lhsTick = normalizedTick(for: lhs, ticksPerMeasure: ticksPerMeasure)
-                let rhsTick = normalizedTick(for: rhs, ticksPerMeasure: ticksPerMeasure)
+        for chip in sortedChips {
+            let currentTick = normalizedAbsoluteTick(for: chip, ticksPerMeasure: ticksPerMeasure)
+            let tickSpan = nextAbsoluteTickByTick[currentTick].map { $0 - currentTick }
+                ?? fallbackTickSpanByMeasure[chip.measureIndex]
+                ?? max(ticksPerMeasure / 4, 1)
 
-                if lhsTick == rhsTick {
-                    return chipKey(lhs) < chipKey(rhs)
-                }
-
-                return lhsTick < rhsTick
-            }
-            let sortedTicks = sortedChips.map {
-                normalizedTick(for: $0, ticksPerMeasure: ticksPerMeasure)
-            }
-            let trailingTickSpan = Set(sortedTicks).count == ticksPerMeasure
-                ? 1
-                : max(ticksPerMeasure / 4, 1)
-
-            for chip in sortedChips {
-                let currentTick = normalizedTick(for: chip, ticksPerMeasure: ticksPerMeasure)
-                let nextTick = sortedTicks.first { $0 > currentTick }
-                let tickSpan = nextTick.map { $0 - currentTick } ?? trailingTickSpan
-
-                candidates[chipKey(chip)] = closestInterval(
-                    toTickSpan: tickSpan,
-                    ticksPerMeasure: ticksPerMeasure
-                )
-            }
+            candidates[chipKey(chip)] = closestInterval(
+                toTickSpan: tickSpan,
+                ticksPerMeasure: ticksPerMeasure
+            )
         }
 
         return candidates
@@ -498,6 +524,10 @@ extension DTXChartData {
         }
 
         return chip.gridPosition * (ticksPerMeasure / chip.gridSize)
+    }
+
+    private static func normalizedAbsoluteTick(for chip: DTXNote, ticksPerMeasure: Int) -> Int {
+        chip.measureIndex * ticksPerMeasure + normalizedTick(for: chip, ticksPerMeasure: ticksPerMeasure)
     }
 
     private static func chipKey(_ chip: DTXNote) -> String {
