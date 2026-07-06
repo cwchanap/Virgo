@@ -501,34 +501,43 @@ struct DTXFileParserTests {
         #expect(snare.visualDurationCandidate == .quarter)
     }
 
-    @Test("power-of-two grids use readable visual duration candidates")
-    func testPowerOfTwoGridUsesQuarterVisualCandidates() throws {
+    @Test("power-of-two grids normalize to readable visual duration candidates", arguments: [
+        (1, NoteInterval.full),
+        (2, .half),
+        (4, .quarter),
+        (8, .eighth),
+        (16, .sixteenth),
+        (32, .thirtysecond),
+        (64, .sixtyfourth)
+    ])
+    func testPowerOfTwoGridsNormalizeToReadableVisualCandidates(
+        gridSize: Int,
+        expectedInterval: NoteInterval
+    ) throws {
+        let chips = String(repeating: "01", count: gridSize)
         let dtxContent = """
-        #TITLE: Four Chip Grid
+        #TITLE: Power Of Two Grid
         #ARTIST: Tester
         #BPM: 120
         #DLEVEL: 50
-        #00112: 01010101
+        #00112: \(chips)
         """
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
         let events = chartData.normalizedRhythmicEvents()
 
-        #expect(events.count == 4)
-        #expect(events.map(\.gridPosition) == [0, 1, 2, 3])
-        #expect(events.map(\.tickWithinMeasure) == [0, 1, 2, 3])
-        #expect(events.map(\.visualDurationCandidate) == [.quarter, .quarter, .quarter, .quarter])
+        #expect(events.count == gridSize)
+        #expect(Set(events.map(\.ticksPerMeasure)) == Set([gridSize]))
+        #expect(events.map(\.gridPosition) == Array(0..<gridSize))
+        #expect(events.map(\.tickWithinMeasure) == Array(0..<gridSize))
+        #expect(events.map(\.absoluteTick) == Array(gridSize..<(gridSize * 2)))
+        #expect(events.map(\.visualDurationCandidate) == Array(repeating: expectedInterval, count: gridSize))
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
-        #expect(notes.count == 4)
-        #expect(notes.map(\.interval) == [.quarter, .quarter, .quarter, .quarter])
-        #expect(notes.map(\.visualDurationCandidate) == [
-            .some(.quarter),
-            .some(.quarter),
-            .some(.quarter),
-            .some(.quarter)
-        ])
+        #expect(notes.count == gridSize)
+        #expect(notes.map(\.interval) == Array(repeating: expectedInterval, count: gridSize))
+        #expect(notes.map(\.visualDurationCandidate) == Array(repeating: .some(expectedInterval), count: gridSize))
     }
 
     @Test("non-power-of-two grids preserve timing and do not collapse every note to quarter")
@@ -582,7 +591,9 @@ struct DTXFileParserTests {
         #expect(event.visualDurationCandidate == .quarter)
 
         let chart = Chart(difficulty: .medium)
-        let note = try #require(chartData.toNotes(for: chart).first)
+        let notes = chartData.toNotes(for: chart)
+        #expect(notes.count == 1)
+        let note = try #require(notes.first)
         #expect(note.normalizedTicksPerMeasure == 32)
         #expect(note.normalizedTickWithinMeasure == 31)
         #expect(note.interval == .quarter)
