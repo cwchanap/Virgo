@@ -112,6 +112,8 @@ struct NormalizedRhythmicEvent: Hashable {
         guard
             let noteType = chip.toNoteType(),
             chip.gridSize > 0,
+            chip.gridPosition >= 0,
+            chip.gridPosition < chip.gridSize,
             ticksPerMeasure > 0,
             ticksPerMeasure % chip.gridSize == 0
         else {
