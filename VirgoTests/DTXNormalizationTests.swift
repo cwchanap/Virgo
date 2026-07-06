@@ -46,6 +46,9 @@ struct DTXNormalizationTests {
         #expect(note.normalizedTicksPerMeasure == 4)
         #expect(note.notationVoiceCandidate == .lower)
         #expect(note.visualDurationCandidate == .quarter)
+        // `.some(.none)` = non-nil Optional wrapping `NormalizedArticulation.none` (no articulation),
+        // distinct from `Optional.none` (nil). Written explicitly to document the enum-case/Optional
+        // name collision rather than relying on implicit conversion.
         #expect(note.articulationCandidate == .some(.none))
     }
 

@@ -48,14 +48,15 @@ class ServerSongDownloader {
                 return (false, "Song already exists in database")
             }
             let song = createSong(from: snapshot)
-            try await processCharts(for: song, from: snapshot, in: context)
+            let chartWarnings = try await processCharts(for: song, from: snapshot, in: context)
             await downloadOptionalFiles(for: song, snapshot: snapshot)
             // Track saved file paths so we can clean them up if the database save fails
             if let bgmPath = song.bgmFilePath { savedFilePaths.append(bgmPath) }
             if let previewPath = song.previewFilePath { savedFilePaths.append(previewPath) }
             context.insert(song)
             try context.save()
-            return (true, nil)
+            let warning = chartWarnings.isEmpty ? nil : chartWarnings.joined(separator: " ")
+            return (true, warning)
         } catch {
             context.rollback()
             // Delete any audio files that were written before the database save failed
@@ -123,15 +124,27 @@ class ServerSongDownloader {
     }
 
     @MainActor
-    private func processCharts(for song: Song, from snapshot: ServerSongSnapshot, in context: ModelContext) async throws {
+    private func processCharts(
+        for song: Song,
+        from snapshot: ServerSongSnapshot,
+        in context: ModelContext
+    ) async throws -> [String] {
         var successCount = 0
         var failedCharts: [String] = []
+        var warnings: [String] = []
         let serverDuration = snapshot.durationSeconds
         for (index, chartSnapshot) in snapshot.charts.enumerated() {
             // Throttle chart downloads to avoid overwhelming the server.
             if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
             do {
-                try await processChart(chartSnapshot, for: song, in: context, serverDurationSeconds: serverDuration)
+                if let warning = try await processChart(
+                    chartSnapshot,
+                    for: song,
+                    in: context,
+                    serverDurationSeconds: serverDuration
+                ) {
+                    warnings.append(warning)
+                }
                 successCount += 1
             } catch is CancellationError {
                 throw CancellationError()
@@ -145,6 +158,7 @@ class ServerSongDownloader {
                 reason: "All charts failed: \(failedCharts.joined(separator: ", "))"
             )
         }
+        return warnings
     }
 
     @MainActor
@@ -153,7 +167,7 @@ class ServerSongDownloader {
         for song: Song,
         in context: ModelContext,
         serverDurationSeconds: Int?
-    ) async throws {
+    ) async throws -> String? {
         guard !chartSnapshot.fileURL.isEmpty else {
             throw ServerSongImportError.invalidChartURL("(empty fileURL for \(chartSnapshot.filename))")
         }
@@ -174,8 +188,14 @@ class ServerSongDownloader {
         }
         let difficulty = mapServerDifficultyToApp(chartSnapshot.difficulty)
         let chart = Chart(difficulty: difficulty, level: chartSnapshot.level, song: song)
-        chartData.toNotes(for: chart).forEach { chart.notes.append($0) }
+        let parsedNotes = chartData.toNotes(for: chart)
+        parsedNotes.forEach { chart.notes.append($0) }
         context.insert(chart)
+        if chartData.hasPlayableChips, parsedNotes.isEmpty {
+            return "Chart \(chartSnapshot.filename) imported with no playable notes"
+                + " (normalization failed); it may be unplayable."
+        }
+        return nil
     }
 
     @MainActor

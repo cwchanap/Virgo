@@ -6,6 +6,7 @@ class ServerSongService: ObservableObject {
     @Published var isLoading = false
     @Published var isRefreshing = false
     @Published var errorMessage: String?
+    @Published var warningMessage: String?
     @Published var downloadingSongs: Set<String> = []
     @Published var deletingSongs: Set<PersistentIdentifier> = []
 
@@ -91,6 +92,7 @@ class ServerSongService: ObservableObject {
 
         downloadingSongs.insert(songId)
         errorMessage = nil
+        warningMessage = nil
 
         // Get container for background context
         let container = modelContext?.container
@@ -106,6 +108,8 @@ class ServerSongService: ObservableObject {
         downloadingSongs.remove(songId)
         if !success, let errorMsg = errorMsg {
             errorMessage = errorMsg
+        } else if success, let warning = errorMsg {
+            warningMessage = warning
         }
 
         if success {

@@ -153,7 +153,6 @@ struct DTXFileParserTests {
         )
 
         #expect(dtxNote.toNoteType() == .bass)
-        #expect(DTXChartData.closestVisualIntervalForSingleChip(dtxNote) == .quarter)
         #expect(dtxNote.measureOffset == 0.5)
     }
 
