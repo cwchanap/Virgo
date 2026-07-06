@@ -9,6 +9,20 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+enum NoteOriginKind: String, Codable, CaseIterable {
+    case manual
+    case dtx
+}
+
+enum NormalizedNotationVoice: String, Codable, CaseIterable {
+    case upper
+    case lower
+}
+
+enum NormalizedArticulation: String, Codable, CaseIterable {
+    case none
+}
+
 @Model
 final class Note {
     var interval: NoteInterval
@@ -17,12 +31,55 @@ final class Note {
     var measureOffset: Double
     var chart: Chart?
 
-    init(interval: NoteInterval, noteType: NoteType, measureNumber: Int, measureOffset: Double, chart: Chart? = nil) {
+    var originKind: NoteOriginKind
+    var sourceLaneID: String?
+    var sourceNoteID: String?
+    var sourceGridPosition: Int?
+    var sourceGridSize: Int?
+    var normalizedMeasureIndex: Int?
+    var normalizedAbsoluteTick: Int?
+    var normalizedTickWithinMeasure: Int?
+    var normalizedTicksPerMeasure: Int?
+    var notationVoiceCandidate: NormalizedNotationVoice?
+    var visualDurationCandidate: NoteInterval?
+    var articulationCandidate: NormalizedArticulation?
+
+    init(
+        interval: NoteInterval,
+        noteType: NoteType,
+        measureNumber: Int,
+        measureOffset: Double,
+        chart: Chart? = nil,
+        originKind: NoteOriginKind = .manual,
+        sourceLaneID: String? = nil,
+        sourceNoteID: String? = nil,
+        sourceGridPosition: Int? = nil,
+        sourceGridSize: Int? = nil,
+        normalizedMeasureIndex: Int? = nil,
+        normalizedAbsoluteTick: Int? = nil,
+        normalizedTickWithinMeasure: Int? = nil,
+        normalizedTicksPerMeasure: Int? = nil,
+        notationVoiceCandidate: NormalizedNotationVoice? = nil,
+        visualDurationCandidate: NoteInterval? = nil,
+        articulationCandidate: NormalizedArticulation? = nil
+    ) {
         self.interval = interval
         self.noteType = noteType
         self.measureNumber = measureNumber
         self.measureOffset = measureOffset
         self.chart = chart
+        self.originKind = originKind
+        self.sourceLaneID = sourceLaneID
+        self.sourceNoteID = sourceNoteID
+        self.sourceGridPosition = sourceGridPosition
+        self.sourceGridSize = sourceGridSize
+        self.normalizedMeasureIndex = normalizedMeasureIndex
+        self.normalizedAbsoluteTick = normalizedAbsoluteTick
+        self.normalizedTickWithinMeasure = normalizedTickWithinMeasure
+        self.normalizedTicksPerMeasure = normalizedTicksPerMeasure
+        self.notationVoiceCandidate = notationVoiceCandidate
+        self.visualDurationCandidate = visualDurationCandidate
+        self.articulationCandidate = articulationCandidate
     }
 }
 
@@ -445,7 +502,19 @@ extension Song {
                     noteType: templateNote.noteType,
                     measureNumber: templateNote.measureNumber,
                     measureOffset: templateNote.measureOffset,
-                    chart: chart
+                    chart: chart,
+                    originKind: templateNote.originKind,
+                    sourceLaneID: templateNote.sourceLaneID,
+                    sourceNoteID: templateNote.sourceNoteID,
+                    sourceGridPosition: templateNote.sourceGridPosition,
+                    sourceGridSize: templateNote.sourceGridSize,
+                    normalizedMeasureIndex: templateNote.normalizedMeasureIndex,
+                    normalizedAbsoluteTick: templateNote.normalizedAbsoluteTick,
+                    normalizedTickWithinMeasure: templateNote.normalizedTickWithinMeasure,
+                    normalizedTicksPerMeasure: templateNote.normalizedTicksPerMeasure,
+                    notationVoiceCandidate: templateNote.notationVoiceCandidate,
+                    visualDurationCandidate: templateNote.visualDurationCandidate,
+                    articulationCandidate: templateNote.articulationCandidate
                 )
             }
             return chart
