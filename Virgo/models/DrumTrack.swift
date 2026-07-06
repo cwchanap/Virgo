@@ -31,7 +31,7 @@ final class Note {
     var measureOffset: Double
     var chart: Chart?
 
-    var originKind: NoteOriginKind
+    var originKind: NoteOriginKind = NoteOriginKind.manual
     var sourceLaneID: String?
     var sourceNoteID: String?
     var sourceGridPosition: Int?
