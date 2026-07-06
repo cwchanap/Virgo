@@ -365,26 +365,7 @@ extension DTXNote {
     }
 
     func toNoteInterval() -> NoteInterval {
-        // Calculate note interval based on total positions in measure
-        switch totalPositions {
-        case 1:
-            return .full
-        case 2:
-            return .half
-        case 4:
-            return .quarter
-        case 8:
-            return .eighth
-        case 16:
-            return .sixteenth
-        case 32:
-            return .thirtysecond
-        case 64:
-            return .sixtyfourth
-        default:
-            // For non-standard divisions, use quarter note as fallback
-            return .quarter
-        }
+        DTXChartData.closestVisualIntervalForSingleChip(self)
     }
 }
 
@@ -406,6 +387,156 @@ extension DTXChartData {
 
     func toTimeSignature() -> TimeSignature {
         return .fourFour
+    }
+
+    func normalizedRhythmicEvents() -> [NormalizedRhythmicEvent] {
+        let playableChips = notes.filter { $0.toNoteType() != nil }
+        let ticksPerMeasure = Self.sharedTicksPerMeasure(for: playableChips)
+        let visualDurationCandidates = Self.visualDurationCandidates(
+            for: playableChips,
+            ticksPerMeasure: ticksPerMeasure
+        )
+
+        return playableChips.compactMap { chip in
+            NormalizedRhythmicEvent(
+                chip: chip,
+                ticksPerMeasure: ticksPerMeasure,
+                visualDurationCandidate: visualDurationCandidates[Self.chipKey(chip)] ?? .quarter
+            )
+        }
+    }
+
+    private static func sharedTicksPerMeasure(for chips: [DTXNote]) -> Int {
+        let positiveGridSizes = chips
+            .filter { $0.toNoteType() != nil }
+            .map(\.gridSize)
+            .filter { $0 > 0 }
+
+        guard let firstGridSize = positiveGridSizes.first else {
+            return 1
+        }
+
+        return positiveGridSizes
+            .dropFirst()
+            .reduce(firstGridSize) { leastCommonMultiple($0, $1) }
+    }
+
+    private static func leastCommonMultiple(_ lhs: Int, _ rhs: Int) -> Int {
+        let lhs = abs(lhs)
+        let rhs = abs(rhs)
+
+        guard lhs > 0, rhs > 0 else {
+            return max(lhs, rhs)
+        }
+
+        return lhs / greatestCommonDivisor(lhs, rhs) * rhs
+    }
+
+    private static func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
+        var lhs = abs(lhs)
+        var rhs = abs(rhs)
+
+        while rhs != 0 {
+            let remainder = lhs % rhs
+            lhs = rhs
+            rhs = remainder
+        }
+
+        return lhs
+    }
+
+    private static func visualDurationCandidates(
+        for chips: [DTXNote],
+        ticksPerMeasure: Int
+    ) -> [String: NoteInterval] {
+        guard ticksPerMeasure > 0 else {
+            return [:]
+        }
+
+        let playableChipsByMeasure = Dictionary(grouping: chips.filter { chip in
+            chip.toNoteType() != nil && chip.gridSize > 0
+        }, by: \.measureIndex)
+
+        var candidates: [String: NoteInterval] = [:]
+
+        for measureChips in playableChipsByMeasure.values {
+            let sortedChips = measureChips.sorted { lhs, rhs in
+                let lhsTick = normalizedTick(for: lhs, ticksPerMeasure: ticksPerMeasure)
+                let rhsTick = normalizedTick(for: rhs, ticksPerMeasure: ticksPerMeasure)
+
+                if lhsTick == rhsTick {
+                    return chipKey(lhs) < chipKey(rhs)
+                }
+
+                return lhsTick < rhsTick
+            }
+            let sortedTicks = sortedChips.map {
+                normalizedTick(for: $0, ticksPerMeasure: ticksPerMeasure)
+            }
+            let trailingTickSpan = Set(sortedTicks).count == ticksPerMeasure
+                ? 1
+                : max(ticksPerMeasure / 4, 1)
+
+            for chip in sortedChips {
+                let currentTick = normalizedTick(for: chip, ticksPerMeasure: ticksPerMeasure)
+                let nextTick = sortedTicks.first { $0 > currentTick }
+                let tickSpan = nextTick.map { $0 - currentTick } ?? trailingTickSpan
+
+                candidates[chipKey(chip)] = closestInterval(
+                    toTickSpan: tickSpan,
+                    ticksPerMeasure: ticksPerMeasure
+                )
+            }
+        }
+
+        return candidates
+    }
+
+    private static func normalizedTick(for chip: DTXNote, ticksPerMeasure: Int) -> Int {
+        guard chip.gridSize > 0, ticksPerMeasure > 0 else {
+            return 0
+        }
+
+        return chip.gridPosition * (ticksPerMeasure / chip.gridSize)
+    }
+
+    private static func chipKey(_ chip: DTXNote) -> String {
+        [
+            String(chip.measureIndex),
+            chip.laneID.uppercased(),
+            chip.noteID.uppercased(),
+            String(chip.gridPosition),
+            String(chip.gridSize)
+        ].joined(separator: "|")
+    }
+
+    private static func closestInterval(toTickSpan tickSpan: Int, ticksPerMeasure: Int) -> NoteInterval {
+        guard tickSpan > 0, ticksPerMeasure > 0 else {
+            return .quarter
+        }
+
+        let measureFraction = Double(tickSpan) / Double(ticksPerMeasure)
+        let supportedIntervals: [(interval: NoteInterval, measureFraction: Double)] = [
+            (.full, 1.0),
+            (.half, 0.5),
+            (.quarter, 0.25),
+            (.eighth, 0.125),
+            (.sixteenth, 0.0625),
+            (.thirtysecond, 0.03125),
+            (.sixtyfourth, 0.015625)
+        ]
+
+        return supportedIntervals.min { lhs, rhs in
+            abs(measureFraction - lhs.measureFraction) < abs(measureFraction - rhs.measureFraction)
+        }?.interval ?? .quarter
+    }
+
+    static func closestVisualIntervalForSingleChip(_ chip: DTXNote) -> NoteInterval {
+        guard chip.gridSize > 0 else {
+            return .quarter
+        }
+
+        return closestInterval(toTickSpan: 1, ticksPerMeasure: chip.gridSize)
     }
 
     func toNotes(for chart: Chart) -> [Note] {
