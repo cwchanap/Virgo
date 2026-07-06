@@ -218,13 +218,14 @@ struct DTXFileParserTests {
     }
 
     @Test func testParseEighthNotes() throws {
-        // Test eighth notes: #00211: 0I0J0I0J0I0J0I0J
+        // Test eighth-grid chips: #00211: 0I0J0I0J0I0J0I0J
         let eighthNoteLine = "#00211: 0I0J0I0J0I0J0I0J"
         let eighthNotes = try DTXFileParser.parseNoteLine(eighthNoteLine)
 
         #expect(eighthNotes.count == 8)
         #expect(eighthNotes[0].totalPositions == 8)
-        #expect(eighthNotes[0].toNoteInterval() == .eighth)
+        #expect(eighthNotes[0].gridSize == 8)
+        #expect(eighthNotes[0].gridPosition == 0)
     }
 
     @Test func testDTXNoteConversion() throws {
@@ -243,6 +244,7 @@ struct DTXFileParserTests {
 
     @Test func testDTXLaneMapping() throws {
         #expect(DTXLane.bd.noteType == .bass)
+        #expect(DTXLane.lb.noteType == .bass)
         #expect(DTXLane.sn.noteType == .snare)
         #expect(DTXLane.hhc.noteType == .hiHat)
         #expect(DTXLane.hh.noteType == .openHiHat)
@@ -431,28 +433,120 @@ struct DTXFileParserTests {
         }
     }
 
-    @Test func testDTXNoteIntervalConversions() {
-        let testCases: [(positions: Int, expectedInterval: NoteInterval)] = [
-            (1, .full),
-            (2, .half),
-            (4, .quarter),
-            (8, .eighth),
-            (16, .sixteenth),
-            (32, .thirtysecond),
-            (64, .sixtyfourth),
-            (12, .quarter)
-        ]
+    @Test("lane 1C imports as bass and preserves DTX source identity")
+    func testLane1CImportsAsBassWithSourceIdentity() throws {
+        let dtxContent = """
+        #TITLE: Left Bass
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #0011C: 000A0000
+        """
 
-        for testCase in testCases {
-            let note = DTXNote(
-                measureNumber: 0,
-                laneID: "13",
-                noteID: "01",
-                notePosition: 0,
-                totalPositions: testCase.positions
-            )
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+        let rawChip = try #require(chartData.notes.first)
+        #expect(rawChip.laneID == "1C")
+        #expect(rawChip.noteID == "0A")
+        #expect(rawChip.measureIndex == 1)
+        #expect(rawChip.gridPosition == 1)
+        #expect(rawChip.gridSize == 4)
+        #expect(rawChip.toNoteType() == .bass)
 
-            #expect(note.toNoteInterval() == testCase.expectedInterval)
-        }
+        let chart = Chart(difficulty: .medium)
+        let note = try #require(chartData.toNotes(for: chart).first)
+
+        #expect(note.noteType == .bass)
+        #expect(note.originKind == .dtx)
+        #expect(note.sourceLaneID == "1C")
+        #expect(note.sourceNoteID == "0A")
+        #expect(note.sourceGridPosition == 1)
+        #expect(note.sourceGridSize == 4)
+        #expect(note.normalizedMeasureIndex == 1)
+        #expect(note.normalizedAbsoluteTick == 5)
+        #expect(note.normalizedTickWithinMeasure == 1)
+        #expect(note.normalizedTicksPerMeasure == 4)
+        #expect(note.notationVoiceCandidate == .lower)
+        #expect(note.visualDurationCandidate == .quarter)
+        #expect(note.articulationCandidate == .some(.none))
+    }
+
+    @Test("normalized events use a shared chart-level tick scale across lane grids")
+    func testNormalizedEventsUseSharedChartTickScale() throws {
+        let dtxContent = """
+        #TITLE: Shared Tick Scale
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00113: 0101
+        #00112: 00000001
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+        let events = chartData.normalizedRhythmicEvents()
+
+        #expect(events.count == 3)
+        #expect(Set(events.map(\.ticksPerMeasure)) == Set([4]))
+        #expect(events.map(\.absoluteTick).sorted() == [4, 6, 7])
+
+        let snare = try #require(events.first { $0.laneID == "12" })
+        #expect(snare.gridSize == 4)
+        #expect(snare.gridPosition == 3)
+        #expect(snare.tickWithinMeasure == 3)
+        #expect(snare.visualDurationCandidate == .quarter)
+    }
+
+    @Test("non-power-of-two grids preserve timing and avoid quarter fallback")
+    func testNonPowerOfTwoGridPreservesTicksAndVisualCandidate() throws {
+        let dtxContent = """
+        #TITLE: Triplet Grid
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00112: 010101000000000000000000
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+        let events = chartData.normalizedRhythmicEvents()
+
+        #expect(events.count == 3)
+        #expect(Set(events.map(\.ticksPerMeasure)) == Set([12]))
+        #expect(events.map(\.tickWithinMeasure) == [0, 1, 2])
+        #expect(events.map(\.absoluteTick) == [12, 13, 14])
+        #expect(events.allSatisfy { $0.visualDurationCandidate != .quarter })
+
+        let chart = Chart(difficulty: .medium)
+        let notes = chartData.toNotes(for: chart)
+        #expect(notes.count == 3)
+        #expect(notes.allSatisfy { $0.normalizedTicksPerMeasure == 12 })
+        #expect(notes.map(\.visualDurationCandidate) == [.some(.sixteenth), .some(.sixteenth), .some(.quarter)])
+        #expect(notes.map(\.interval) == [.sixteenth, .sixteenth, .quarter])
+    }
+
+    @Test("sparse high-resolution grid preserves timing without forcing visual 32nd notes")
+    func testSparseHighResolutionGridKeepsTimingButReadableDuration() throws {
+        let dtxContent = """
+        #TITLE: Sparse High Resolution
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00113: 0000000000000000000000000000000000000000000000000000000000000001
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+        let event = try #require(chartData.normalizedRhythmicEvents().first)
+
+        #expect(event.gridSize == 32)
+        #expect(event.gridPosition == 31)
+        #expect(event.ticksPerMeasure == 32)
+        #expect(event.tickWithinMeasure == 31)
+        #expect(event.absoluteTick == 63)
+        #expect(event.visualDurationCandidate == .quarter)
+
+        let chart = Chart(difficulty: .medium)
+        let note = try #require(chartData.toNotes(for: chart).first)
+        #expect(note.normalizedTicksPerMeasure == 32)
+        #expect(note.normalizedTickWithinMeasure == 31)
+        #expect(note.interval == .quarter)
+        #expect(note.visualDurationCandidate == .quarter)
     }
 }
