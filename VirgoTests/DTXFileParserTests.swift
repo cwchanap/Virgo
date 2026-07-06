@@ -570,12 +570,13 @@ struct DTXFileParserTests {
 
     @Test("sparse high-resolution grid preserves timing without forcing visual 32nd notes")
     func testSparseHighResolutionGridKeepsTimingButReadableDuration() throws {
+        let sparseBassChip = String(repeating: "00", count: 31) + "01"
         let dtxContent = """
         #TITLE: Sparse High Resolution
         #ARTIST: Tester
         #BPM: 120
         #DLEVEL: 50
-        #00113: 0000000000000000000000000000000000000000000000000000000000000001
+        #00113: \(sparseBassChip)
         """
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
