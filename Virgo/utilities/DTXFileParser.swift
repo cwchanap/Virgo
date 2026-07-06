@@ -114,8 +114,7 @@ struct NormalizedRhythmicEvent: Hashable {
             chip.gridSize > 0,
             chip.gridPosition >= 0,
             chip.gridPosition < chip.gridSize,
-            ticksPerMeasure > 0,
-            ticksPerMeasure % chip.gridSize == 0
+            ticksPerMeasure > 0
         else {
             return nil
         }
@@ -387,6 +386,10 @@ extension DTXChartData {
         return .fourFour
     }
 
+    var hasPlayableChips: Bool {
+        notes.contains { $0.toNoteType() != nil }
+    }
+
     func normalizedRhythmicEvents() -> [NormalizedRhythmicEvent] {
         let playableChips = notes.filter { $0.toNoteType() != nil }
         guard let ticksPerMeasure = Self.sharedTicksPerMeasure(for: playableChips) else {
@@ -557,14 +560,6 @@ extension DTXChartData {
         return supportedIntervals.min { lhs, rhs in
             abs(measureFraction - lhs.measureFraction) < abs(measureFraction - rhs.measureFraction)
         }?.interval ?? .quarter
-    }
-
-    static func closestVisualIntervalForSingleChip(_ chip: DTXNote) -> NoteInterval {
-        guard chip.gridSize > 0 else {
-            return .quarter
-        }
-
-        return closestInterval(toTickSpan: 1, ticksPerMeasure: chip.gridSize)
     }
 
     func toNotes(for chart: Chart) -> [Note] {

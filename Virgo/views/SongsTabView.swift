@@ -160,5 +160,13 @@ struct SongsTabView: View {
         } message: {
             Text(serverSongService.errorMessage ?? "")
         }
+        .alert("Imported with warnings", isPresented: Binding(
+            get: { serverSongService.warningMessage != nil },
+            set: { if !$0 { serverSongService.warningMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(serverSongService.warningMessage ?? "")
+        }
     }
 }

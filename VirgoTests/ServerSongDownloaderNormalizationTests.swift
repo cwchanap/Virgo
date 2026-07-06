@@ -69,11 +69,12 @@ struct ServerSongDownloaderNormalizationTests {
                 charts: [serverChart], isDownloaded: false
             )
 
-            let (success, errorMessage) = await downloader.downloadAndImportSong(
+            let (success, warning) = await downloader.downloadAndImportSong(
                 serverSong, container: container
             )
-            #expect(success, "Import should not crash when normalization overflows: \(errorMessage ?? "nil")")
-            #expect(errorMessage == nil)
+            #expect(success, "Import should not crash when normalization overflows: \(warning ?? "nil")")
+            #expect(warning != nil, "Overflow should surface a soft warning instead of silent success")
+            #expect(warning?.contains("chart.dtx") == true, "Warning should identify the affected chart")
 
             let verificationContext = ModelContext(container)
             let songs = try verificationContext.fetch(FetchDescriptor<Song>())
