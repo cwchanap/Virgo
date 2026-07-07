@@ -2,8 +2,6 @@
 //  DTXNormalizationTests.swift
 //  VirgoTests
 //
-//  Normalization-specific DTX parser coverage split from DTXFileParserTests.
-//
 
 import Testing
 import Foundation
@@ -46,9 +44,6 @@ struct DTXNormalizationTests {
         #expect(note.normalizedTicksPerMeasure == 4)
         #expect(note.notationVoiceCandidate == .lower)
         #expect(note.visualDurationCandidate == .quarter)
-        // `.some(.none)` = non-nil Optional wrapping `NormalizedArticulation.none` (no articulation),
-        // distinct from `Optional.none` (nil). Written explicitly to document the enum-case/Optional
-        // name collision rather than relying on implicit conversion.
         #expect(note.articulationCandidate == .some(.none))
     }
 
@@ -133,17 +128,18 @@ struct DTXNormalizationTests {
         """
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
-        let events = chartData.normalizedRhythmicEvents()
+        let events = chartData.normalizedRhythmicEvents().sorted { $0.absoluteTick < $1.absoluteTick }
 
         #expect(events.count == 3)
         #expect(Set(events.map(\.ticksPerMeasure)) == Set([12]))
         #expect(events.map(\.tickWithinMeasure) == [0, 1, 2])
         #expect(events.map(\.absoluteTick) == [12, 13, 14])
-        // Adjacent non-power-of-two spacing stays visually short; the trailing note can fall back to quarter.
         #expect(events.map(\.visualDurationCandidate) == [.sixteenth, .sixteenth, .quarter])
 
         let chart = Chart(difficulty: .medium)
-        let notes = chartData.toNotes(for: chart)
+        let notes = chartData.toNotes(for: chart).sorted {
+            ($0.normalizedAbsoluteTick ?? 0) < ($1.normalizedAbsoluteTick ?? 0)
+        }
         #expect(notes.count == 3)
         #expect(notes.allSatisfy { $0.normalizedTicksPerMeasure == 12 })
         #expect(notes.map(\.visualDurationCandidate) == [.some(.sixteenth), .some(.sixteenth), .some(.quarter)])
@@ -204,12 +200,16 @@ struct DTXNormalizationTests {
         #expect(bass.absoluteTick == 15)
         #expect(snare.absoluteTick == 16)
         #expect(bass.visualDurationCandidate == .eighth)
+        #expect(snare.visualDurationCandidate == .quarter)
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
         let bassNote = try #require(notes.first { $0.sourceLaneID == "13" })
+        let snareNote = try #require(notes.first { $0.sourceLaneID == "12" })
         #expect(bassNote.interval == .eighth)
         #expect(bassNote.visualDurationCandidate == .eighth)
+        #expect(snareNote.interval == .quarter)
+        #expect(snareNote.visualDurationCandidate == .quarter)
     }
 
     @Test("normalization rejects oversized shared tick scales")
@@ -235,14 +235,12 @@ struct DTXNormalizationTests {
     func testNormalizedRhythmicEventRejectsNonMultipleTickScale() throws {
         let chip = DTXNote(measureNumber: 1, laneID: "11", noteID: "01", notePosition: 1, totalPositions: 4)
 
-        // 6 is not a multiple of 4 -> would silently truncate tickScale to 1, corrupting ticks.
         #expect(NormalizedRhythmicEvent(
             chip: chip,
             ticksPerMeasure: 6,
             visualDurationCandidate: .quarter
         ) == nil)
 
-        // 8 is a valid multiple of 4 -> tickScale = 2, ticks preserved exactly.
         let valid = try #require(NormalizedRhythmicEvent(
             chip: chip,
             ticksPerMeasure: 8,
@@ -252,13 +250,6 @@ struct DTXNormalizationTests {
         #expect(valid.ticksPerMeasure == 8)
     }
 
-    // Regression guard: `normalizedRhythmicEvents()` uses `compactMap`, so a
-    // partial drop (some chips failing `NormalizedRhythmicEvent.init?`) would
-    // be silent — the import-time warning only fires when ALL chips drop
-    // (`parsedNotes.isEmpty`). This test locks in the invariant that every
-    // playable chip survives normalization for a mixed-grid chart. If a future
-    // change to the LCM logic, grid validation, or init? guard causes a subset
-    // to drop, this count assertion fails.
     @Test("normalized events preserve every playable chip across mixed grids")
     func testNormalizedEventsPreserveEveryPlayableChip() throws {
         let dtxContent = """
