@@ -114,7 +114,8 @@ struct NormalizedRhythmicEvent: Hashable {
             chip.gridSize > 0,
             chip.gridPosition >= 0,
             chip.gridPosition < chip.gridSize,
-            ticksPerMeasure > 0
+            ticksPerMeasure > 0,
+            ticksPerMeasure.isMultiple(of: chip.gridSize)
         else {
             return nil
         }
