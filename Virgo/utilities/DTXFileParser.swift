@@ -101,7 +101,6 @@ struct NormalizedRhythmicEvent: Hashable {
     let noteType: NoteType
     let visualDurationCandidate: NoteInterval
     let articulationCandidate: NormalizedArticulation
-    let measureOffset: Double
 
     init?(
         chip: DTXNote,
@@ -135,7 +134,6 @@ struct NormalizedRhythmicEvent: Hashable {
         self.noteType = noteType
         self.visualDurationCandidate = visualDurationCandidate
         self.articulationCandidate = articulationCandidate
-        self.measureOffset = chip.measureOffset
     }
 
     private static func voiceCandidate(for noteType: NoteType) -> NormalizedNotationVoice {
@@ -507,9 +505,6 @@ extension DTXChartData {
 
         for chip in sortedChips {
             let currentTick = normalizedAbsoluteTick(for: chip, ticksPerMeasure: ticksPerMeasure)
-            // Span to the next chip in the chart, else the per-measure fallback,
-            // else a quarter-note span for the last chip in a measure/chart
-            // (no subsequent chip to derive spacing from).
             let tickSpan = nextAbsoluteTickByTick[currentTick].map { $0 - currentTick }
                 ?? fallbackTickSpanByMeasure[chip.measureIndex]
                 ?? max(ticksPerMeasure / 4, 1)
@@ -572,7 +567,7 @@ extension DTXChartData {
                 interval: event.visualDurationCandidate,
                 noteType: event.noteType,
                 measureNumber: event.measureIndex + 1,
-                measureOffset: event.measureOffset,
+                measureOffset: Double(event.gridPosition) / Double(event.gridSize),
                 chart: chart,
                 originKind: .dtx,
                 sourceLaneID: event.laneID,
