@@ -102,13 +102,15 @@ class ServerSongService: ObservableObject {
             return false
         }
 
-        // Perform download work on background thread
-        let (success, errorMsg) = await downloader.downloadAndImportSong(serverSong, container: container)
+        // Perform download work on background thread.
+        // `statusMessage` carries an error string on failure, or a soft warning
+        // string on success (e.g. normalization dropped all playable chips).
+        let (success, statusMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
 
         downloadingSongs.remove(songId)
-        if !success, let errorMsg = errorMsg {
-            errorMessage = errorMsg
-        } else if success, let warning = errorMsg {
+        if !success, let message = statusMessage {
+            errorMessage = message
+        } else if success, let warning = statusMessage {
             warningMessage = warning
         }
 

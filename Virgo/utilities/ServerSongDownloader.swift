@@ -192,8 +192,7 @@ class ServerSongDownloader {
         parsedNotes.forEach { chart.notes.append($0) }
         context.insert(chart)
         if chartData.hasPlayableChips, parsedNotes.isEmpty {
-            return "Chart \(chartSnapshot.filename) imported with no playable notes"
-                + " (normalization failed); it may be unplayable."
+            return "Chart \(chartSnapshot.filename) imported with no playable notes (normalization failed)."
         }
         return nil
     }

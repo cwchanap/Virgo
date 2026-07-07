@@ -646,6 +646,8 @@ private static func closestInterval(toTickSpan tickSpan: Int, ticksPerMeasure: I
 
 - [ ] **Step 3: Update `DTXNote.toNoteInterval()` to route through the new candidate logic**
 
+> **Implementation note (deviation from original plan):** `DTXNote.toNoteInterval()` was removed entirely rather than kept as a routing stub. The only callers were the deleted `testDTXNoteIntervalConversions()` tests, so no production code depended on the stub. `closestVisualIntervalForSingleChip` was therefore not added either.
+
 Replace `toNoteInterval()` with:
 
 ```swift
