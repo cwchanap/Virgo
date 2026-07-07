@@ -230,4 +230,25 @@ struct DTXNormalizationTests {
         let chart = Chart(difficulty: .medium)
         #expect(chartData.toNotes(for: chart).isEmpty)
     }
+
+    @Test("NormalizedRhythmicEvent rejects tick scales that are not multiples of the chip grid")
+    func testNormalizedRhythmicEventRejectsNonMultipleTickScale() throws {
+        let chip = DTXNote(measureNumber: 1, laneID: "11", noteID: "01", notePosition: 1, totalPositions: 4)
+
+        // 6 is not a multiple of 4 -> would silently truncate tickScale to 1, corrupting ticks.
+        #expect(NormalizedRhythmicEvent(
+            chip: chip,
+            ticksPerMeasure: 6,
+            visualDurationCandidate: .quarter
+        ) == nil)
+
+        // 8 is a valid multiple of 4 -> tickScale = 2, ticks preserved exactly.
+        let valid = try #require(NormalizedRhythmicEvent(
+            chip: chip,
+            ticksPerMeasure: 8,
+            visualDurationCandidate: .quarter
+        ))
+        #expect(valid.tickWithinMeasure == 2)
+        #expect(valid.ticksPerMeasure == 8)
+    }
 }
