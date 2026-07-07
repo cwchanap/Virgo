@@ -349,8 +349,7 @@ struct ServerSongServiceTests {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let downloader = MockServerSongDownloader()
-            downloader.result = (true, "Chart chart.dtx imported with no playable notes"
-                + " (normalization failed); it may be unplayable.")
+            downloader.result = (true, "Chart chart.dtx imported with no playable notes (normalization failed).")
             let statusManager = MockServerSongStatusManager()
             let service = ServerSongService(downloader: downloader, statusManager: statusManager)
             service.setModelContext(context)

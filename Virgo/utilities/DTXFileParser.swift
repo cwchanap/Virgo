@@ -507,6 +507,9 @@ extension DTXChartData {
 
         for chip in sortedChips {
             let currentTick = normalizedAbsoluteTick(for: chip, ticksPerMeasure: ticksPerMeasure)
+            // Span to the next chip in the chart, else the per-measure fallback,
+            // else a quarter-note span for the last chip in a measure/chart
+            // (no subsequent chip to derive spacing from).
             let tickSpan = nextAbsoluteTickByTick[currentTick].map { $0 - currentTick }
                 ?? fallbackTickSpanByMeasure[chip.measureIndex]
                 ?? max(ticksPerMeasure / 4, 1)

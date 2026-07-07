@@ -251,4 +251,32 @@ struct DTXNormalizationTests {
         #expect(valid.tickWithinMeasure == 2)
         #expect(valid.ticksPerMeasure == 8)
     }
+
+    // Regression guard: `normalizedRhythmicEvents()` uses `compactMap`, so a
+    // partial drop (some chips failing `NormalizedRhythmicEvent.init?`) would
+    // be silent — the import-time warning only fires when ALL chips drop
+    // (`parsedNotes.isEmpty`). This test locks in the invariant that every
+    // playable chip survives normalization for a mixed-grid chart. If a future
+    // change to the LCM logic, grid validation, or init? guard causes a subset
+    // to drop, this count assertion fails.
+    @Test("normalized events preserve every playable chip across mixed grids")
+    func testNormalizedEventsPreserveEveryPlayableChip() throws {
+        let dtxContent = """
+        #TITLE: Mixed Grid Preservation
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00113: 0101
+        #00112: 00000001
+        #00111: 0000000000000001
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+        let playableChips = chartData.notes.filter { $0.toNoteType() != nil }
+        let events = chartData.normalizedRhythmicEvents()
+
+        #expect(playableChips.count == 4)
+        #expect(events.count == playableChips.count)
+        #expect(chartData.toNotes(for: Chart(difficulty: .medium)).count == playableChips.count)
+    }
 }
