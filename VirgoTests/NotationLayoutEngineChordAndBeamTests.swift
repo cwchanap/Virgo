@@ -79,13 +79,13 @@ struct NotationLayoutEngineChordAndBeamTests {
                 )
             }
         }
-        let wideStyle = NotationLayoutStyle.gameplayDefault.with(rowWidth: 2000)
+        let wideStyle = NotationLayoutStyle.gameplayDefault.with(rowWidth: 2_500)
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: wideStyle)
         )
 
         let rowCount = (layout.measures.map(\.row).max() ?? 0) + 1
-        #expect(rowCount == 1, "All four 8th-note measures should pack into one row at 2000pt rowWidth")
+        #expect(rowCount == 1, "All four 8th-note measures should pack into one row at 2500pt rowWidth")
     }
 
     @Test("adjacent rows do not vertically overlap with default drum content")

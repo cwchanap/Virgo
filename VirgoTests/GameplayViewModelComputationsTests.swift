@@ -119,7 +119,7 @@ struct GameplayViewModelComputationsTests {
         let beforeMeasure = try #require(vm.cachedNotationLayout.measures.first { $0.measureIndex == 3 })
         #expect(beforeMeasure.row > 0, "Pre-condition: default width should wrap the fourth measure")
 
-        vm.updateRowWidth(2_100)
+        vm.updateRowWidth(2_500)
 
         let after = try #require(vm.cachedBeatPositions[beat.id])
         let afterMeasure = try #require(vm.cachedNotationLayout.measures.first { $0.measureIndex == 3 })
@@ -478,11 +478,14 @@ struct ComputationsVisualUpdatesTests {
         await vm.loadChartData()
         vm.setupGameplay(loadPersistedSpeed: false)
 
-        let maxRow = vm.cachedMeasurePositions.map { $0.row }.max() ?? 0
-        try #require(maxRow >= 1, "Pre-condition: layout must wrap to multiple rows")
-
         // Force the legacy path by clearing the notation layout.
         vm.cachedNotationLayout = .empty
+        vm.measurePositionMap = [
+            0: GameplayLayout.MeasurePosition(row: 0, xOffset: GameplayLayout.leftMargin, measureIndex: 0),
+            1: GameplayLayout.MeasurePosition(row: 1, xOffset: GameplayLayout.leftMargin, measureIndex: 1),
+            2: GameplayLayout.MeasurePosition(row: 2, xOffset: GameplayLayout.leftMargin, measureIndex: 2)
+        ]
+        let maxRow = vm.measurePositionMap.values.map(\.row).max() ?? 0
 
         let measureZeroRow = vm.measurePositionMap[0]?.row ?? 0
         #expect(vm.rowForMeasure(0) == measureZeroRow,

@@ -372,11 +372,12 @@ struct NotationLayoutEngineTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
         let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
+        let expectedQuarterGap = CGFloat(layout.tabGrid.ticksPerMeasure / 4) * layout.tabGrid.tickWidth
 
         #expect(layout.noteHeads.count == 8)
         #expect(uniqueX.count == 8)
         #expect(layout.measures.first?.width == layout.tabGrid.measureWidth)
-        #expect(abs((uniqueX[2] - uniqueX[0]) - GameplayLayout.uniformSpacing) < 0.001)
+        #expect(abs((uniqueX[2] - uniqueX[0]) - expectedQuarterGap) < 0.001)
     }
 
     @Test("above staff crash emits ledger line")
@@ -956,8 +957,14 @@ extension NotationLayoutEngineTests {
                 measureOffset: Double(index % 4) / 4.0
             )
         }
+        let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: 1_400)
         let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 3)
+            input: NotationLayoutInput(
+                notes: notes,
+                timeSignature: .fourFour,
+                minimumMeasureCount: 3,
+                style: style
+            )
         )
 
         let sameRowMeasures = layout.measures.filter { $0.row == 0 }
@@ -1002,8 +1009,14 @@ extension NotationLayoutEngineTests {
                 measureOffset: Double(index % 4) / 4.0
             )
         }
+        let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: 1_400)
         let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 3)
+            input: NotationLayoutInput(
+                notes: notes,
+                timeSignature: .fourFour,
+                minimumMeasureCount: 3,
+                style: style
+            )
         )
 
         let sameRowMeasures = layout.measures.filter { $0.row == 0 }

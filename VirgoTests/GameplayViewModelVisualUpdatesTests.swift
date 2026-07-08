@@ -358,7 +358,7 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.setupGameplay()
 
         // Find the first measure that lives on a row > 0; we need the playhead to land in it.
-        let firstNonZeroRowMeasure = viewModel.cachedMeasurePositions
+        let firstNonZeroRowMeasure = viewModel.cachedNotationLayout.measures
             .first(where: { $0.row > 0 })
         try #require(firstNonZeroRowMeasure != nil)
         let targetMeasure = firstNonZeroRowMeasure!.measureIndex
