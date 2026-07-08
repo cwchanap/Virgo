@@ -97,6 +97,47 @@ struct GameplayViewModelComputationsTests {
         #expect(abs(cached.y - Double(expectedY)) < 0.001)
     }
 
+    @Test("cacheBeatPositions refreshes after row-width rewrap")
+    func testCacheBeatPositionsRefreshesAfterRowWidthRewrap() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        for measureNumber in 1...4 {
+            chart.notes.append(Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: measureNumber,
+                measureOffset: 0.0
+            ))
+        }
+
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+
+        let beat = try #require(vm.cachedDrumBeats.first { abs($0.timePosition - 3.0) < 0.0001 })
+        let before = try #require(vm.cachedBeatPositions[beat.id])
+        let beforeMeasure = try #require(vm.cachedNotationLayout.measures.first { $0.measureIndex == 3 })
+        #expect(beforeMeasure.row > 0, "Pre-condition: default width should wrap the fourth measure")
+
+        vm.updateRowWidth(2_100)
+
+        let after = try #require(vm.cachedBeatPositions[beat.id])
+        let afterMeasure = try #require(vm.cachedNotationLayout.measures.first { $0.measureIndex == 3 })
+        #expect(afterMeasure.row == 0, "Wider row width should pull the fourth measure back onto the first row")
+
+        let tick = vm.cachedNotationLayout.tabGrid.tickIndex(
+            forBeatWithinMeasure: 0.0,
+            beatsPerMeasure: 4
+        )
+        let expectedX = vm.cachedNotationLayout.tabGrid.xPosition(in: afterMeasure, tickIndex: tick)
+        let expectedY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: afterMeasure.row)
+
+        #expect(abs(after.x - Double(expectedX)) < 0.001)
+        #expect(abs(after.y - Double(expectedY)) < 0.001)
+        #expect(abs(after.x - before.x) > 0.001 || abs(after.y - before.y) > 0.001,
+                "Cached beat position should move when the notation layout rewraps")
+    }
+
     // MARK: - calculateTrackDurationInSeconds
 
     @Test("calculateTrackDuration falls back when song.duration is non-numeric")

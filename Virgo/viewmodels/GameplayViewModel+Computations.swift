@@ -121,6 +121,7 @@ extension GameplayViewModel {
         if TestEnvironment.isRunningTests {
             cachedLayoutRowWidth = width
             cacheNotationLayout()
+            cacheBeatPositions()
             return
         }
 
@@ -132,6 +133,7 @@ extension GameplayViewModel {
                 guard let self else { return }
                 self.cachedLayoutRowWidth = width
                 self.cacheNotationLayout()
+                self.cacheBeatPositions()
             }
         }
     }
