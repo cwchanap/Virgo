@@ -248,9 +248,8 @@ struct GameplayViewModelLayoutComputationsTests {
         }
     }
 
-    @Test func testRowForMeasureFollowsLegacyMeasurePositions() async throws {
-        // 8 measures at 4/4 — each measure ~264pt wide; with maxRowWidth 900 and
-        // leftMargin 100 we get ~3 measures per row, so 8 measures spans ≥3 rows.
+    @Test func testRowForMeasureFollowsNotationMeasureRows() async throws {
+        // 8 fixed-grid measures at the default row width wrap to multiple notation rows.
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         for measureNumber in 1...8 {
             chart.notes.append(
@@ -263,13 +262,13 @@ struct GameplayViewModelLayoutComputationsTests {
         viewModel.setupGameplay()
 
         // Sanity: layout actually produced multiple rows.
-        let maxRow = viewModel.cachedMeasurePositions.map { $0.row }.max() ?? 0
+        let maxRow = viewModel.cachedNotationLayout.measures.map { $0.row }.max() ?? 0
         try #require(maxRow >= 1)
 
-        // Each measure index must resolve to the row recorded by the layout engine.
-        for position in viewModel.cachedMeasurePositions {
-            #expect(viewModel.rowForMeasure(position.measureIndex) == position.row,
-                    "rowForMeasure(\(position.measureIndex)) should equal layout row \(position.row)")
+        // Each measure index must resolve to the rendered notation row.
+        for measure in viewModel.cachedNotationLayout.measures {
+            #expect(viewModel.rowForMeasure(measure.measureIndex) == measure.row,
+                    "rowForMeasure(\(measure.measureIndex)) should equal notation row \(measure.row)")
         }
 
         // Out-of-range indices clamp to the last known row instead of snapping to 0.
