@@ -137,6 +137,10 @@ struct NormalizedRhythmicEvent: Hashable {
     }
 
     private static func voiceCandidate(for noteType: NoteType) -> NormalizedNotationVoice {
+        // DTX lanes never produce .china or .splash directly — lc/cy map to
+        // .crash (design doc §4.5 defers china/splash differentiation to
+        // HPA-141/143). DrumType collapses china/splash → .crash, so they are
+        // covered by the .crash arm here without explicit cases.
         switch DrumType.from(noteType: noteType) {
         case .some(.kick), .some(.hiHatPedal):
             return .lower
@@ -398,7 +402,7 @@ extension DTXChartData {
             )
             return []
         }
-        let visualDurationCandidates = Self.visualDurationCandidates(
+        let visualDurationCandidates = VisualDurationLookup.candidates(
             for: playableChips,
             ticksPerMeasure: ticksPerMeasure
         )
@@ -407,7 +411,7 @@ extension DTXChartData {
             NormalizedRhythmicEvent(
                 chip: chip,
                 ticksPerMeasure: ticksPerMeasure,
-                visualDurationCandidate: visualDurationCandidates[Self.chipKey(chip)] ?? .quarter
+                visualDurationCandidate: visualDurationCandidates[VisualDurationLookup.chipKey(chip)] ?? .quarter
             )
         }
     }
@@ -460,105 +464,6 @@ extension DTXChartData {
         }
 
         return max(lhs, 1)
-    }
-
-    private static func visualDurationCandidates(
-        for chips: [DTXNote],
-        ticksPerMeasure: Int
-    ) -> [String: NoteInterval] {
-        guard ticksPerMeasure > 0 else {
-            return [:]
-        }
-
-        let playableChips = chips.filter { chip in
-            chip.gridSize > 0
-                && chip.gridPosition >= 0
-                && chip.gridPosition < chip.gridSize
-        }
-        let playableChipsByMeasure = Dictionary(grouping: playableChips, by: \.measureIndex)
-        let fallbackTickSpanByMeasure = playableChipsByMeasure.mapValues { measureChips in
-            let uniqueTicks = Set(measureChips.map {
-                normalizedTick(for: $0, ticksPerMeasure: ticksPerMeasure)
-            })
-
-            return uniqueTicks.count == ticksPerMeasure ? 1 : max(ticksPerMeasure / 4, 1)
-        }
-        let sortedChips = playableChips.sorted { lhs, rhs in
-            let lhsTick = normalizedAbsoluteTick(for: lhs, ticksPerMeasure: ticksPerMeasure)
-            let rhsTick = normalizedAbsoluteTick(for: rhs, ticksPerMeasure: ticksPerMeasure)
-
-            if lhsTick == rhsTick {
-                return chipKey(lhs) < chipKey(rhs)
-            }
-
-            return lhsTick < rhsTick
-        }
-        let uniqueAbsoluteTicks = Array(Set(sortedChips.map {
-            normalizedAbsoluteTick(for: $0, ticksPerMeasure: ticksPerMeasure)
-        })).sorted()
-        var nextAbsoluteTickByTick: [Int: Int] = [:]
-        for index in uniqueAbsoluteTicks.indices.dropLast() {
-            nextAbsoluteTickByTick[uniqueAbsoluteTicks[index]] = uniqueAbsoluteTicks[index + 1]
-        }
-
-        var candidates: [String: NoteInterval] = [:]
-
-        for chip in sortedChips {
-            let currentTick = normalizedAbsoluteTick(for: chip, ticksPerMeasure: ticksPerMeasure)
-            let tickSpan = nextAbsoluteTickByTick[currentTick].map { $0 - currentTick }
-                ?? fallbackTickSpanByMeasure[chip.measureIndex]
-                ?? max(ticksPerMeasure / 4, 1)
-
-            candidates[chipKey(chip)] = closestInterval(
-                toTickSpan: tickSpan,
-                ticksPerMeasure: ticksPerMeasure
-            )
-        }
-
-        return candidates
-    }
-
-    private static func normalizedTick(for chip: DTXNote, ticksPerMeasure: Int) -> Int {
-        guard chip.gridSize > 0, ticksPerMeasure > 0 else {
-            return 0
-        }
-
-        return chip.gridPosition * (ticksPerMeasure / chip.gridSize)
-    }
-
-    private static func normalizedAbsoluteTick(for chip: DTXNote, ticksPerMeasure: Int) -> Int {
-        chip.measureIndex * ticksPerMeasure + normalizedTick(for: chip, ticksPerMeasure: ticksPerMeasure)
-    }
-
-    private static func chipKey(_ chip: DTXNote) -> String {
-        [
-            String(chip.measureIndex),
-            chip.laneID.uppercased(),
-            chip.noteID.uppercased(),
-            String(chip.gridPosition),
-            String(chip.gridSize)
-        ].joined(separator: "|")
-    }
-
-    private static func closestInterval(toTickSpan tickSpan: Int, ticksPerMeasure: Int) -> NoteInterval {
-        guard tickSpan > 0, ticksPerMeasure > 0 else {
-            return .quarter
-        }
-
-        let measureFraction = Double(tickSpan) / Double(ticksPerMeasure)
-        let supportedIntervals: [(interval: NoteInterval, measureFraction: Double)] = [
-            (.full, 1.0),
-            (.half, 0.5),
-            (.quarter, 0.25),
-            (.eighth, 0.125),
-            (.sixteenth, 0.0625),
-            (.thirtysecond, 0.03125),
-            (.sixtyfourth, 0.015625)
-        ]
-
-        return supportedIntervals.min { lhs, rhs in
-            abs(measureFraction - lhs.measureFraction) < abs(measureFraction - rhs.measureFraction)
-        }?.interval ?? .quarter
     }
 
     func toNotes(for chart: Chart) -> [Note] {

@@ -1,12 +1,21 @@
 import Foundation
 import SwiftData
 
+struct AlertMessage: Identifiable {
+    let id = UUID()
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+}
+
 @MainActor
 class ServerSongService: ObservableObject {
     @Published var isLoading = false
     @Published var isRefreshing = false
-    @Published var errorMessage: String?
-    @Published var warningMessage: String?
+    @Published var errorMessage: AlertMessage?
+    @Published var warningMessage: AlertMessage?
     @Published var downloadingSongs: Set<String> = []
     @Published var deletingSongs: Set<PersistentIdentifier> = []
 
@@ -59,7 +68,7 @@ class ServerSongService: ObservableObject {
         do {
             try await cache.refreshCatalog(modelContext: modelContext)
         } catch {
-            errorMessage = "Failed to refresh server songs: \(error.localizedDescription)"
+            errorMessage = AlertMessage("Failed to refresh server songs: \(error.localizedDescription)")
             Logger.error("Failed to refresh catalog: \(error)")
         }
 
@@ -86,7 +95,7 @@ class ServerSongService: ObservableObject {
         // downloading before refreshing fails on every chart. Reject early
         // with an actionable message.
         if serverSong.charts.contains(where: { $0.fileURL.isEmpty }) {
-            errorMessage = "Please refresh the catalog first — this entry needs updated chart URLs"
+            errorMessage = AlertMessage("Please refresh the catalog first — this entry needs updated chart URLs")
             return false
         }
 
@@ -98,7 +107,7 @@ class ServerSongService: ObservableObject {
         let container = modelContext?.container
         guard let container = container else {
             downloadingSongs.remove(songId)
-            errorMessage = "No model context available"
+            errorMessage = AlertMessage("No model context available")
             return false
         }
 
@@ -107,9 +116,9 @@ class ServerSongService: ObservableObject {
 
         downloadingSongs.remove(songId)
         if !success, let message = statusMessage {
-            errorMessage = message
+            errorMessage = AlertMessage(message)
         } else if success, let warning = statusMessage {
-            warningMessage = warning
+            warningMessage = AlertMessage(warning)
         }
 
         if success {
@@ -135,7 +144,7 @@ class ServerSongService: ObservableObject {
 
         let success = await statusManager.deleteDownloadedSong(serverSong, modelContext: modelContext)
         if !success {
-            errorMessage = "Failed to delete downloaded song"
+            errorMessage = AlertMessage("Failed to delete downloaded song")
         }
         return success
     }
@@ -157,7 +166,7 @@ class ServerSongService: ObservableObject {
         let container = modelContext?.container
         guard let container = container else {
             deletingSongs.remove(songKey)
-            errorMessage = "No model context available"
+            errorMessage = AlertMessage("No model context available")
             return false
         }
 
@@ -166,7 +175,7 @@ class ServerSongService: ObservableObject {
 
         deletingSongs.remove(songKey)
         if !success {
-            errorMessage = "Failed to delete local song"
+            errorMessage = AlertMessage("Failed to delete local song")
         }
 
         return success

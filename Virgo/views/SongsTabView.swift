@@ -152,21 +152,19 @@ struct SongsTabView: View {
             }
         }
         .appSurface()
-        .alert("Error", isPresented: Binding(
-            get: { serverSongService.errorMessage != nil },
-            set: { if !$0 { serverSongService.errorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(serverSongService.errorMessage ?? "")
+        .alert(item: $serverSongService.errorMessage) { message in
+            Alert(
+                title: Text("Error"),
+                message: Text(message.text),
+                dismissButton: .cancel(Text("OK"))
+            )
         }
-        .alert("Imported with warnings", isPresented: Binding(
-            get: { serverSongService.warningMessage != nil },
-            set: { if !$0 { serverSongService.warningMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(serverSongService.warningMessage ?? "")
+        .alert(item: $serverSongService.warningMessage) { message in
+            Alert(
+                title: Text("Imported with warnings"),
+                message: Text(message.text),
+                dismissButton: .cancel(Text("OK"))
+            )
         }
     }
 }

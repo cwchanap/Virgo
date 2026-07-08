@@ -18,18 +18,43 @@ struct NoteModelTests {
     func testNoteInitialization() {
         let context = TestContainer.isolatedContainer().context
         let note = Note(
-            interval: .eighth, 
-            noteType: .bass, 
-            measureNumber: 2, 
+            interval: .eighth,
+            noteType: .bass,
+            measureNumber: 2,
             measureOffset: 0.5
         )
         context.insert(note)
-        
+
         #expect(note.interval == .eighth)
         #expect(note.noteType == .bass)
         #expect(note.measureNumber == 2)
         #expect(note.measureOffset == 0.5)
         #expect(note.chart == nil)
+    }
+
+    @Test("Note default init preserves manual origin and nil source metadata")
+    func testNoteDefaultInitPreservesManualOriginAndNilSourceMetadata() {
+        let context = TestContainer.isolatedContainer().context
+        let note = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0.0
+        )
+        context.insert(note)
+
+        #expect(note.originKind == .manual)
+        #expect(note.sourceLaneID == nil)
+        #expect(note.sourceNoteID == nil)
+        #expect(note.sourceGridPosition == nil)
+        #expect(note.sourceGridSize == nil)
+        #expect(note.normalizedMeasureIndex == nil)
+        #expect(note.normalizedAbsoluteTick == nil)
+        #expect(note.normalizedTickWithinMeasure == nil)
+        #expect(note.normalizedTicksPerMeasure == nil)
+        #expect(note.notationVoiceCandidate == nil)
+        #expect(note.visualDurationCandidate == nil)
+        #expect(note.articulationCandidate == nil)
     }
     
     @Test("Note can be created with chart reference")
