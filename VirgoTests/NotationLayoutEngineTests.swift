@@ -185,6 +185,31 @@ struct NotationLayoutEngineTests {
         #expect(measure0.width == layout.tabGrid.measureWidth)
     }
 
+    @Test("fixed grid wrapping is deterministic across local note density")
+    func fixedGridWrappingIsDeterministicAcrossLocalNoteDensity() throws {
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 0.0),
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 2, measureOffset: 1.0 / 16.0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 2.0 / 16.0),
+            Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.0),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 4, measureOffset: 0.0)
+        ]
+        let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: 620)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(
+                notes: notes,
+                timeSignature: .fourFour,
+                minimumMeasureCount: 4,
+                style: style
+            )
+        )
+
+        let widths = Set(layout.measures.map(\.width))
+        #expect(widths.count == 1)
+        #expect(layout.measures.map(\.row) == [0, 1, 2, 3])
+    }
+
     @Test("sparse high resolution imported notes do not inflate from source resolution alone")
     func sparseHighResolutionImportedNotesDoNotInflateFromSourceResolutionAlone() throws {
         let notes = [
