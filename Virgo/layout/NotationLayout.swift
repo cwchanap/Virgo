@@ -1,6 +1,37 @@
 import CoreGraphics
 import Foundation
 
+struct TabGrid: Equatable {
+    static let fallbackTicksPerMeasure = 960
+
+    let ticksPerMeasure: Int
+    let tickWidth: CGFloat
+    let leftPadding: CGFloat
+    let measureWidth: CGFloat
+
+    static let fallback = TabGrid(
+        ticksPerMeasure: fallbackTicksPerMeasure,
+        tickWidth: GameplayLayout.uniformSpacing / CGFloat(fallbackTicksPerMeasure / 4),
+        leftPadding: GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing,
+        measureWidth: GameplayLayout.barLineWidth
+            + GameplayLayout.uniformSpacing
+            + CGFloat(fallbackTicksPerMeasure) * (
+                GameplayLayout.uniformSpacing / CGFloat(fallbackTicksPerMeasure / 4)
+            )
+    )
+
+    func xPosition(in measure: RenderedMeasure, tickIndex: Int) -> CGFloat {
+        let clampedTick = min(max(tickIndex, 0), ticksPerMeasure)
+        return measure.xOffset + leftPadding + CGFloat(clampedTick) * tickWidth
+    }
+
+    func tickIndex(forBeatWithinMeasure beatWithinMeasure: Double, beatsPerMeasure: Int) -> Int {
+        guard beatWithinMeasure.isFinite, beatsPerMeasure > 0 else { return 0 }
+        let clampedBeat = min(max(beatWithinMeasure, 0), Double(beatsPerMeasure))
+        return Int((clampedBeat / Double(beatsPerMeasure) * Double(ticksPerMeasure)).rounded())
+    }
+}
+
 struct NotationLayoutInput {
     let notes: [Note]
     let timeSignature: TimeSignature
@@ -95,6 +126,7 @@ enum StemDirection: String, Hashable {
 }
 
 struct NotationLayout {
+    var tabGrid: TabGrid
     var measures: [RenderedMeasure]
     var noteHeads: [RenderedNoteHead]
     var stems: [RenderedStem]
@@ -130,6 +162,7 @@ struct NotationLayout {
     }
 
     static let empty = NotationLayout(
+        tabGrid: .fallback,
         measures: [],
         noteHeads: [],
         stems: [],

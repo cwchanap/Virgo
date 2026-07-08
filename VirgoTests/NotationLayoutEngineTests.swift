@@ -29,6 +29,49 @@ struct NotationLayoutEngineTests {
         #expect(!labels.contains("beatLookup"))
     }
 
+    @Test("layout exposes a tab grid built from normalized note metadata")
+    func layoutExposesTabGridFromNormalizedMetadata() throws {
+        let note = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 31.0 / 32.0,
+            originKind: .dtx,
+            normalizedMeasureIndex: 0,
+            normalizedAbsoluteTick: 31,
+            normalizedTickWithinMeasure: 31,
+            normalizedTicksPerMeasure: 32
+        )
+
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.tabGrid.ticksPerMeasure == 32)
+        #expect(layout.tabGrid.leftPadding == GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing)
+        #expect(layout.tabGrid.measureWidth > GameplayLayout.measureWidth(for: .fourFour))
+        #expect(layout.tabGrid.measureWidth < 700)
+    }
+
+    @Test("tab grid maps beat boundaries to deterministic tick columns")
+    func tabGridMapsBeatBoundariesToDeterministicTickColumns() throws {
+        let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+        let measure = try #require(layout.measures.first)
+
+        let startTick = layout.tabGrid.tickIndex(forBeatWithinMeasure: 0.0, beatsPerMeasure: 4)
+        let secondBeatTick = layout.tabGrid.tickIndex(forBeatWithinMeasure: 1.0, beatsPerMeasure: 4)
+        let startX = layout.tabGrid.xPosition(in: measure, tickIndex: startTick)
+        let secondBeatX = layout.tabGrid.xPosition(in: measure, tickIndex: secondBeatTick)
+
+        #expect(startTick == 0)
+        #expect(secondBeatTick == layout.tabGrid.ticksPerMeasure / 4)
+        #expect(abs(startX - (measure.xOffset + layout.tabGrid.leftPadding)) < 0.001)
+        #expect(secondBeatX > startX)
+    }
+
     @Test("drum types map to gameplay voices")
     func drumTypesMapToGameplayVoices() {
         #expect(NotationVoice.voice(for: .kick) == .lower)
@@ -59,8 +102,8 @@ struct NotationLayoutEngineTests {
         #expect(layout.measureBars.contains { $0.id == "bar_3_end" && $0.isFinal })
     }
 
-    @Test("sixteenth notes expand measure width for readable spacing")
-    func sixteenthNotesExpandMeasureWidthForReadableSpacing() {
+    @Test("sixteenth notes use fixed grid spacing for readable columns")
+    func sixteenthNotesUseFixedGridSpacingForReadableColumns() {
         let notes = (0..<16).map { index in
             Note(
                 interval: .sixteenth,
@@ -74,14 +117,70 @@ struct NotationLayoutEngineTests {
         )
         let sortedX = layout.noteHeads.map(\.position.x).sorted()
 
+        #expect(layout.measures.first?.width == layout.tabGrid.measureWidth)
         for index in 1..<sortedX.count {
             #expect(sortedX[index] - sortedX[index - 1] >= 28)
         }
-        #expect(layout.measures.first?.width ?? 0 > GameplayLayout.measureWidth(for: .fourFour))
     }
 
-    @Test("quarter notes keep existing spacing")
-    func quarterNotesKeepExistingSpacing() {
+    @Test("sparse and dense measures share fixed grid width")
+    func sparseAndDenseMeasuresShareFixedGridWidth() throws {
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 2, measureOffset: 0.0),
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 2, measureOffset: 1.0 / 16.0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 2.0 / 16.0),
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 2, measureOffset: 3.0 / 16.0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, minimumMeasureCount: 2)
+        )
+        let measure0 = try #require(layout.measures.first { $0.measureIndex == 0 })
+        let measure1 = try #require(layout.measures.first { $0.measureIndex == 1 })
+
+        #expect(measure0.width == measure1.width)
+        #expect(measure0.width == layout.tabGrid.measureWidth)
+    }
+
+    @Test("sparse high resolution imported notes do not inflate from source resolution alone")
+    func sparseHighResolutionImportedNotesDoNotInflateFromSourceResolutionAlone() throws {
+        let notes = [
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 0,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 64
+            ),
+            Note(
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 1,
+                measureOffset: 63.0 / 64.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 63,
+                normalizedTickWithinMeasure: 63,
+                normalizedTicksPerMeasure: 64
+            )
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let measure = try #require(layout.measures.first)
+        let sortedX = layout.noteHeads.map(\.position.x).sorted()
+
+        #expect(layout.tabGrid.ticksPerMeasure == 64)
+        #expect(measure.width < 700)
+        #expect(sortedX.last ?? 0 > sortedX.first ?? 0)
+    }
+
+    @Test("quarter notes align to fixed grid quarter columns")
+    func quarterNotesAlignToFixedGridQuarterColumns() {
         let notes = (0..<4).map { index in
             Note(
                 interval: .quarter,
@@ -94,13 +193,14 @@ struct NotationLayoutEngineTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
         let sortedX = layout.noteHeads.map(\.position.x).sorted()
+        let expectedGap = CGFloat(layout.tabGrid.ticksPerMeasure / 4) * layout.tabGrid.tickWidth
 
         #expect(sortedX.count == 4)
-        #expect(abs((sortedX[1] - sortedX[0]) - GameplayLayout.uniformSpacing) < 0.001)
+        #expect(abs((sortedX[1] - sortedX[0]) - expectedGap) < 0.001)
     }
 
-    @Test("sparse quarter notes preserve legacy measure width and first column")
-    func sparseQuarterNotesPreserveLegacyMeasureWidthAndFirstColumn() {
+    @Test("sparse quarter notes use fixed grid width and preserve first column")
+    func sparseQuarterNotesUseFixedGridWidthAndPreserveFirstColumn() {
         let notes = (0..<4).map { index in
             Note(
                 interval: .quarter,
@@ -118,12 +218,12 @@ struct NotationLayoutEngineTests {
             + GameplayLayout.barLineWidth
             + GameplayLayout.uniformSpacing
 
-        #expect(measure?.width == GameplayLayout.measureWidth(for: .fourFour))
+        #expect(measure?.width == layout.tabGrid.measureWidth)
         #expect(abs(firstX - expectedFirstX) < 0.001)
     }
 
-    @Test("near identical simultaneous offsets do not expand simple measure")
-    func nearIdenticalSimultaneousOffsetsDoNotExpandSimpleMeasure() {
+    @Test("near identical simultaneous offsets keep fixed grid width")
+    func nearIdenticalSimultaneousOffsetsKeepFixedGridWidth() {
         let notes = [
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0004)
@@ -133,13 +233,13 @@ struct NotationLayoutEngineTests {
         )
         let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
 
-        #expect(layout.measures.first?.width == GameplayLayout.measureWidth(for: .fourFour))
+        #expect(layout.measures.first?.width == layout.tabGrid.measureWidth)
         #expect(uniqueX.count == 2)
         #expect((uniqueX.last ?? 0) - (uniqueX.first ?? 0) >= 16)
     }
 
-    @Test("near identical cross voice offsets split heads without expanding measure")
-    func nearIdenticalCrossVoiceOffsetsSplitHeadsWithoutExpandingMeasure() {
+    @Test("near identical cross voice offsets split heads within fixed grid width")
+    func nearIdenticalCrossVoiceOffsetsSplitHeadsWithinFixedGridWidth() {
         let notes = [
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25),
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.24999999999999997)
@@ -149,7 +249,7 @@ struct NotationLayoutEngineTests {
         )
         let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
 
-        #expect(layout.measures.first?.width == GameplayLayout.measureWidth(for: .fourFour))
+        #expect(layout.measures.first?.width == layout.tabGrid.measureWidth)
         #expect(uniqueX.count == 2)
         #expect((uniqueX.last ?? 0) - (uniqueX.first ?? 0) >= 16)
     }
@@ -182,8 +282,8 @@ struct NotationLayoutEngineTests {
         #expect(secondColumnLeftmostX - firstColumnRightmostX >= style.minimumNoteColumnGap)
     }
 
-    @Test("simultaneous quarter notes split voices without expanding measure")
-    func simultaneousQuarterNotesSplitVoicesWithoutExpandingMeasure() {
+    @Test("simultaneous quarter notes split voices within fixed grid width")
+    func simultaneousQuarterNotesSplitVoicesWithinFixedGridWidth() {
         let notes = (0..<4).flatMap { index in
             [
                 Note(
@@ -207,7 +307,7 @@ struct NotationLayoutEngineTests {
 
         #expect(layout.noteHeads.count == 8)
         #expect(uniqueX.count == 8)
-        #expect((layout.measures.first?.width ?? 0) <= GameplayLayout.measureWidth(for: .fourFour))
+        #expect(layout.measures.first?.width == layout.tabGrid.measureWidth)
         #expect(abs((uniqueX[2] - uniqueX[0]) - GameplayLayout.uniformSpacing) < 0.001)
     }
 

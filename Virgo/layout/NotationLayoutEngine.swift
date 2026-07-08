@@ -35,8 +35,9 @@ struct NotationLayoutEngine {
             ))
         }.max() ?? 0
         let totalMeasures = max(input.minimumMeasureCount, maxNormalizedMeasureIndex + 1, 1)
-        let measures = buildMeasures(totalMeasures: totalMeasures, notes: sortedNotes, input: input)
-        let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, input: input)
+        let tabGrid = buildTabGrid(notes: sortedNotes, input: input)
+        let measures = buildMeasures(totalMeasures: totalMeasures, tabGrid: tabGrid, input: input)
+        let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, tabGrid: tabGrid, input: input)
         let beams = buildBeams(noteHeads: noteHeads, style: input.style)
         let stems = buildStems(noteHeads: noteHeads, beams: beams, style: input.style)
         let flags = buildFlags(noteHeads: noteHeads, beams: beams, stems: stems, style: input.style)
@@ -54,6 +55,7 @@ struct NotationLayoutEngine {
         )
 
         return NotationLayout(
+            tabGrid: tabGrid,
             measures: measures,
             noteHeads: noteHeads,
             stems: stems,
@@ -67,78 +69,107 @@ struct NotationLayoutEngine {
         )
     }
 
+    // MARK: - Tab Grid
+
+    private func buildTabGrid(notes: [Note], input: NotationLayoutInput) -> TabGrid {
+        let ticksPerMeasure = resolvedTicksPerMeasure(for: notes)
+        let requiredGap = requiredGridColumnGap(notes: notes, input: input)
+        let baselineGap = max(ticksPerMeasure / 16, 1)
+        let occupiedTicks = Set(notes.map { tickWithinMeasure(for: $0, ticksPerMeasure: ticksPerMeasure) })
+        let actualSmallestGap = smallestPositiveGap(in: occupiedTicks.sorted())
+        let spacingTickGap = min(actualSmallestGap ?? baselineGap, baselineGap)
+        let tickWidth = requiredGap / CGFloat(max(spacingTickGap, 1))
+        let leftPadding = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
+        let measureWidth = GameplayLayout.barLineWidth + leftPadding + CGFloat(ticksPerMeasure) * tickWidth
+
+        return TabGrid(
+            ticksPerMeasure: ticksPerMeasure,
+            tickWidth: tickWidth,
+            leftPadding: leftPadding,
+            measureWidth: measureWidth
+        )
+    }
+
+    private func resolvedTicksPerMeasure(for notes: [Note]) -> Int {
+        let values = Set(notes.compactMap { note -> Int? in
+            guard let ticks = note.normalizedTicksPerMeasure, ticks > 0 else { return nil }
+            return ticks
+        })
+
+        guard !values.isEmpty else { return TabGrid.fallbackTicksPerMeasure }
+
+        return values.sorted().reduce(1) { partial, value in
+            guard let next = leastCommonMultiple(partial, value), next <= TabGrid.fallbackTicksPerMeasure * 64 else {
+                return TabGrid.fallbackTicksPerMeasure
+            }
+            return next
+        }
+    }
+
+    private func leastCommonMultiple(_ lhs: Int, _ rhs: Int) -> Int? {
+        guard lhs > 0, rhs > 0 else { return nil }
+        let divisor = greatestCommonDivisor(lhs, rhs)
+        let divided = lhs / divisor
+        guard divided <= Int.max / rhs else { return nil }
+        return divided * rhs
+    }
+
+    private func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
+        var a = lhs
+        var b = rhs
+        while b != 0 {
+            let next = a % b
+            a = b
+            b = next
+        }
+        return abs(a)
+    }
+
+    private func requiredGridColumnGap(notes: [Note], input: NotationLayoutInput) -> CGFloat {
+        let hasCollision = notes.contains { note in
+            let measure = normalizedMeasureIndex(for: note)
+            return containsCrossVoiceCollision(measureIndex: measure, notes: notes)
+        }
+
+        return hasCollision
+            ? input.style.minimumNoteColumnGap + 2 * input.style.voiceCollisionOffset
+            : input.style.minimumNoteColumnGap
+    }
+
+    private func smallestPositiveGap(in ticks: [Int]) -> Int? {
+        guard ticks.count > 1 else { return nil }
+        return zip(ticks.dropFirst(), ticks)
+            .map { $0.0 - $0.1 }
+            .filter { $0 > 0 }
+            .min()
+    }
+
     // MARK: - Measure Building
 
     private func buildMeasures(
         totalMeasures: Int,
-        notes: [Note],
+        tabGrid: TabGrid,
         input: NotationLayoutInput
     ) -> [RenderedMeasure] {
         var result: [RenderedMeasure] = []
         var currentRow = 0
         var currentX = GameplayLayout.leftMargin
+
         for measureIndex in 0..<totalMeasures {
-            let width = measureWidth(measureIndex: measureIndex, notes: notes, input: input)
-            if currentX + width > input.style.rowWidth, measureIndex > 0 {
+            if currentX + tabGrid.measureWidth > input.style.rowWidth, measureIndex > 0 {
                 currentRow += 1
                 currentX = GameplayLayout.leftMargin
             }
             result.append(
                 RenderedMeasure(
                     id: measureIndex, measureIndex: measureIndex,
-                    row: currentRow, xOffset: currentX, width: width
+                    row: currentRow, xOffset: currentX, width: tabGrid.measureWidth
                 )
             )
-            currentX += width + GameplayLayout.measureSpacing
+            currentX += tabGrid.measureWidth + GameplayLayout.measureSpacing
         }
 
         return result
-    }
-
-    func measureWidth(
-        measureIndex: Int,
-        notes: [Note],
-        input: NotationLayoutInput
-    ) -> CGFloat {
-        let offsets = columnOffsets(forMeasureIndex: measureIndex, notes: notes)
-        let legacyWidth = GameplayLayout.measureWidth(for: input.timeSignature)
-
-        guard offsets.count > 1 else {
-            return legacyWidth
-        }
-
-        let smallestGap = zip(offsets.dropFirst(), offsets)
-            .map { pair in pair.0 - pair.1 }
-            .min() ?? 0.25
-        let requiredColumnGap = minimumColumnGap(
-            measureIndex: measureIndex,
-            notes: notes,
-            style: input.style
-        )
-        let minimumBeatGap = requiredColumnGap / CGFloat(
-            max(smallestGap * Double(input.timeSignature.beatsPerMeasure), 0.001)
-        )
-        let beatGap = max(
-            input.style.minimumQuarterBeatGap,
-            minimumBeatGap
-        )
-        let adaptiveWidth = GameplayLayout.barLineWidth
-            + GameplayLayout.uniformSpacing
-            + CGFloat(input.timeSignature.beatsPerMeasure) * beatGap
-
-        return max(legacyWidth, adaptiveWidth)
-    }
-
-    private func minimumColumnGap(
-        measureIndex: Int,
-        notes: [Note],
-        style: NotationLayoutStyle
-    ) -> CGFloat {
-        guard containsCrossVoiceCollision(measureIndex: measureIndex, notes: notes) else {
-            return style.minimumNoteColumnGap
-        }
-
-        return style.minimumNoteColumnGap + 2 * style.voiceCollisionOffset
     }
 
     func containsCrossVoiceCollision(measureIndex: Int, notes: [Note]) -> Bool {
@@ -164,6 +195,7 @@ struct NotationLayoutEngine {
     private func buildNoteHeads(
         notes: [Note],
         measures: [RenderedMeasure],
+        tabGrid: TabGrid,
         input: NotationLayoutInput
     ) -> [RenderedNoteHead] {
         var nextID: UInt64 = 0
@@ -179,10 +211,8 @@ struct NotationLayoutEngine {
             let normalizedMeasureIndex = MeasureUtils.measureIndex(from: timePos)
             let normalizedOffset = timePos - Double(normalizedMeasureIndex)
             guard let measure = measuresByIndex[normalizedMeasureIndex] else { continue }
-            let beatGap = beatGap(for: measure, input: input)
-            let beatPosition = quantizedOffset(for: normalizedOffset) * Double(input.timeSignature.beatsPerMeasure)
-            let x = measure.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
-                + CGFloat(beatPosition) * beatGap
+            let tickIndex = tickWithinMeasure(for: note, ticksPerMeasure: tabGrid.ticksPerMeasure)
+            let x = tabGrid.xPosition(in: measure, tickIndex: tickIndex)
             let resolvedPosition = notePosition(for: drumType, overrides: input.notePositionOverrides)
             let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
                 + resolvedPosition.yOffset
@@ -391,20 +421,18 @@ struct NotationLayoutEngine {
 
     // MARK: - Helpers
 
-    private func beatGap(for measure: RenderedMeasure, input: NotationLayoutInput) -> CGFloat {
-        let drawableWidth = measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing
-        return drawableWidth / CGFloat(input.timeSignature.beatsPerMeasure)
-    }
+    private func tickWithinMeasure(for note: Note, ticksPerMeasure: Int) -> Int {
+        if let sourceTick = note.normalizedTickWithinMeasure,
+           let sourceTicksPerMeasure = note.normalizedTicksPerMeasure,
+           sourceTick >= 0,
+           sourceTicksPerMeasure > 0,
+           sourceTick <= sourceTicksPerMeasure,
+           ticksPerMeasure.isMultiple(of: sourceTicksPerMeasure) {
+            return min(sourceTick * (ticksPerMeasure / sourceTicksPerMeasure), ticksPerMeasure)
+        }
 
-    private func columnOffsets(forMeasureIndex measureIndex: Int, notes: [Note]) -> [Double] {
-        Set(notes
-            .filter { normalizedMeasureIndex(for: $0) == measureIndex }
-            .map { quantizedOffset(for: normalizedOffset(for: $0)) })
-            .sorted()
-    }
-
-    private func quantizedOffset(for measureOffset: Double) -> Double {
-        (measureOffset * Self.columnResolution).rounded() / Self.columnResolution
+        let offset = normalizedOffset(for: note)
+        return min(max(Int((offset * Double(ticksPerMeasure)).rounded()), 0), ticksPerMeasure)
     }
 
     private func normalizedMeasureIndex(for note: Note) -> Int {
