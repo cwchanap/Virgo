@@ -80,7 +80,11 @@ struct NotationLayoutEngine {
         let spacingTickGap = min(actualSmallestGap ?? baselineGap, baselineGap)
         let tickWidth = requiredGap / CGFloat(max(spacingTickGap, 1))
         let leftPadding = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
-        let measureWidth = GameplayLayout.barLineWidth + leftPadding + CGFloat(ticksPerMeasure) * tickWidth
+        let measureWidth = TabGrid.measureWidth(
+            ticksPerMeasure: ticksPerMeasure,
+            tickWidth: tickWidth,
+            leftPadding: leftPadding
+        )
 
         return TabGrid(
             ticksPerMeasure: ticksPerMeasure,
@@ -92,7 +96,8 @@ struct NotationLayoutEngine {
 
     private func resolvedTicksPerMeasure(for notes: [Note]) -> Int {
         let values = Set(notes.compactMap { note -> Int? in
-            guard let ticks = note.normalizedTicksPerMeasure, ticks > 0 else { return nil }
+            guard let normalizedGrid = normalizedGridMetadata(for: note) else { return nil }
+            let ticks = normalizedGrid.ticksPerMeasure
             return ticks
         })
 
@@ -421,14 +426,26 @@ struct NotationLayoutEngine {
 
     // MARK: - Helpers
 
+    private func normalizedGridMetadata(for note: Note) -> (tickWithinMeasure: Int, ticksPerMeasure: Int)? {
+        guard let sourceTick = note.normalizedTickWithinMeasure,
+              let sourceTicksPerMeasure = note.normalizedTicksPerMeasure,
+              sourceTick >= 0,
+              sourceTicksPerMeasure > 0,
+              sourceTick <= sourceTicksPerMeasure else {
+            return nil
+        }
+
+        return (sourceTick, sourceTicksPerMeasure)
+    }
+
     private func tickWithinMeasure(for note: Note, ticksPerMeasure: Int) -> Int {
-        if let sourceTick = note.normalizedTickWithinMeasure,
-           let sourceTicksPerMeasure = note.normalizedTicksPerMeasure,
-           sourceTick >= 0,
-           sourceTicksPerMeasure > 0,
-           sourceTick <= sourceTicksPerMeasure,
-           ticksPerMeasure.isMultiple(of: sourceTicksPerMeasure) {
-            return min(sourceTick * (ticksPerMeasure / sourceTicksPerMeasure), ticksPerMeasure)
+        if let normalizedGrid = normalizedGridMetadata(for: note),
+           ticksPerMeasure.isMultiple(of: normalizedGrid.ticksPerMeasure) {
+            return min(
+                normalizedGrid.tickWithinMeasure
+                    * (ticksPerMeasure / normalizedGrid.ticksPerMeasure),
+                ticksPerMeasure
+            )
         }
 
         let offset = normalizedOffset(for: note)
