@@ -147,7 +147,7 @@ Rules:
 - Keep `measureOffset` available as `Double(gridPosition) / Double(gridSize)`.
 - Derive `voiceCandidate` from the playable instrument: lower for kick and hi-hat pedal, upper for the rest.
 - Derive `articulationCandidate` as `.none` or nil unless the parser has explicit stop/choke semantics.
-- Derive `visualDurationCandidate` conservatively from musical spacing when possible, not from raw `gridSize` alone. Dense source grids should preserve timing resolution without forcing every sparse chip in that grid to render as a 32nd or 64th note solely because the lane array is high-resolution.
+- Derive `visualDurationCandidate` conservatively from musical spacing when possible, not from raw `gridSize` alone. Dense source grids should preserve timing resolution without forcing every sparse chip in that grid to render as a 32nd or 64th note solely because the lane array is high-resolution. The implementation sorts all playable chips by absolute tick across the entire chart (not just within a single measure) so that the final chip in one measure can inherit its visual duration from the first chip in the next measure; this is musically more correct than a per-measure-only scan.
 
 The key invariant is that timing precision and visual duration are separate fields.
 

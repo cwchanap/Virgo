@@ -24,7 +24,7 @@ extension ServerSongServiceTests {
             #expect(serverSong.isDownloaded == true)
             #expect(service.errorMessage == nil)
             #expect(service.warningMessage != nil)
-            #expect(service.warningMessage?.contains("chart.dtx") == true)
+            #expect(service.warningMessage?.text.contains("chart.dtx") == true)
             #expect(statusManager.refreshDownloadStatusCalled)
         }
     }

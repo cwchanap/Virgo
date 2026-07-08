@@ -188,8 +188,8 @@ struct ServerSongServiceTests {
 
             #expect(cache.refreshCallCount == 1)
             #expect(service.isRefreshing == false)
-            #expect(service.errorMessage?.contains("Failed to refresh server songs") == true)
-            #expect(service.errorMessage?.contains("boom") == true)
+            #expect(service.errorMessage?.text.contains("Failed to refresh server songs") == true)
+            #expect(service.errorMessage?.text.contains("boom") == true)
         }
     }
 
@@ -216,7 +216,7 @@ struct ServerSongServiceTests {
             let success = await service.deleteDownloadedSong(serverSong)
 
             #expect(success == false)
-            #expect(service.errorMessage == "Failed to delete downloaded song")
+            #expect(service.errorMessage?.text == "Failed to delete downloaded song")
         }
     }
 
@@ -228,7 +228,7 @@ struct ServerSongServiceTests {
         let success = await service.deleteLocalSong(song)
 
         #expect(success == false)
-        #expect(service.errorMessage == "No model context available")
+        #expect(service.errorMessage?.text == "No model context available")
         #expect(service.deletingSongs.isEmpty)
     }
 
@@ -258,7 +258,7 @@ struct ServerSongServiceTests {
             let success = await service.deleteLocalSong(song)
 
             #expect(success == false)
-            #expect(service.errorMessage == "Failed to delete local song")
+            #expect(service.errorMessage?.text == "Failed to delete local song")
             #expect(service.deletingSongs.isEmpty)
         }
     }
@@ -311,7 +311,7 @@ struct ServerSongServiceTests {
             let success = await service.downloadAndImportSong(serverSong)
 
             #expect(success == false)
-            #expect(service.errorMessage == "Synthetic downloader failure")
+            #expect(service.errorMessage?.text == "Synthetic downloader failure")
             #expect(service.downloadingSongs.isEmpty)
             #expect(serverSong.isDownloaded == false)
             #expect(downloader.receivedSongIDs == ["download-fail"])
@@ -398,7 +398,7 @@ struct ServerSongServiceTests {
         let success = await service.downloadAndImportSong(serverSong)
 
         #expect(success == false)
-        #expect(service.errorMessage == "No model context available")
+        #expect(service.errorMessage?.text == "No model context available")
         #expect(service.downloadingSongs.isEmpty)
     }
 
@@ -516,7 +516,7 @@ struct ServerSongServiceTests {
             let success = await service.downloadAndImportSong(serverSong)
 
             #expect(success == false)
-            #expect(service.errorMessage == "Song already exists in database")
+            #expect(service.errorMessage?.text == "Song already exists in database")
             #expect(service.downloadingSongs.isEmpty)
 
             let allSongs = try context.fetch(FetchDescriptor<Song>())
@@ -560,7 +560,7 @@ struct ServerSongServiceTests {
 
             #expect(success == false)
             #expect(service.downloadingSongs.isEmpty)
-            #expect(service.errorMessage?.contains("Import failed") == true)
+            #expect(service.errorMessage?.text.contains("Import failed") == true)
             #expect(serverSong.isDownloaded == false)
 
             let allSongs = try context.fetch(FetchDescriptor<Song>())
@@ -659,7 +659,7 @@ struct ServerSongServiceTests {
             let success = await service.downloadAndImportSong(serverSong)
 
             #expect(success == false)
-            #expect(service.errorMessage?.contains("refresh") == true)
+            #expect(service.errorMessage?.text.contains("refresh") == true)
             #expect(service.downloadingSongs.isEmpty)
         }
     }
