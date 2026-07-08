@@ -212,6 +212,29 @@ struct GameplayViewModelVisualUpdatesTests {
         #expect(abs(position.x - Double(expectedX)) < 0.001)
     }
 
+    @Test func testRowForMeasureUsesRenderedNotationRows() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        for measure in 1...4 {
+            chart.notes.append(
+                Note(interval: .quarter, noteType: .snare, measureNumber: measure, measureOffset: 0.0)
+            )
+        }
+        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.cachedLayoutRowWidth = 620
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let measureRows = Dictionary(
+            uniqueKeysWithValues: viewModel.cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
+        )
+
+        #expect(viewModel.rowForMeasure(0) == measureRows[0])
+        #expect(viewModel.rowForMeasure(1) == measureRows[1])
+        #expect(viewModel.rowForMeasure(3) == measureRows[3])
+    }
+
     @Test func testPurpleBarPositionUsesResumedElapsedTime() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
