@@ -116,6 +116,9 @@ enum VisualDurationLookup {
             (.sixtyfourth, 0.015625)
         ]
 
+        // `min` is stable, so on equal-distance ties it keeps the earlier
+        // element. The array is ordered longest-duration-first, which means
+        // ties resolve to the longer (more legible) interval.
         return supportedIntervals.min { lhs, rhs in
             abs(measureFraction - lhs.measureFraction) < abs(measureFraction - rhs.measureFraction)
         }?.interval ?? .quarter
