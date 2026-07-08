@@ -53,6 +53,49 @@ struct NotationLayoutEngineTests {
         #expect(layout.tabGrid.measureWidth < 700)
     }
 
+    @Test("invalid normalized metadata falls back to deterministic 960 tick grid")
+    func invalidNormalizedMetadataFallsBackToDeterministicGrid() {
+        let notes = [
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.25,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 8,
+                normalizedTickWithinMeasure: nil,
+                normalizedTicksPerMeasure: 32
+            ),
+            Note(
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 1,
+                measureOffset: 0.5,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 48,
+                normalizedTickWithinMeasure: 40,
+                normalizedTicksPerMeasure: 32
+            )
+        ]
+
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.tabGrid.ticksPerMeasure == TabGrid.fallbackTicksPerMeasure)
+    }
+
+    @Test("tab grid fallback measure width uses the shared grid formula")
+    func tabGridFallbackMeasureWidthUsesSharedGridFormula() {
+        #expect(
+            TabGrid.fallback.measureWidth
+                == TabGrid.fallback.leftPadding
+                + CGFloat(TabGrid.fallback.ticksPerMeasure) * TabGrid.fallback.tickWidth
+        )
+    }
+
     @Test("tab grid maps beat boundaries to deterministic tick columns")
     func tabGridMapsBeatBoundariesToDeterministicTickColumns() throws {
         let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
