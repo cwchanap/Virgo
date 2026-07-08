@@ -610,7 +610,7 @@ Expected: commit succeeds.
 
 ---
 
-### Task 3: Route Purple Playhead X Through `TabGrid`
+### Task 2: Route Purple Playhead X Through `TabGrid`
 
 **Files:**
 - Modify: `Virgo/viewmodels/GameplayViewModel+VisualUpdates.swift`
@@ -724,7 +724,7 @@ Expected: commit succeeds.
 
 ---
 
-### Task 4: Use Rendered Notation Rows And Grid For Cached Beat Positions
+### Task 3: Use Rendered Notation Rows And Grid For Cached Beat Positions
 
 **Files:**
 - Modify: `Virgo/viewmodels/GameplayViewModel+Computations.swift`
@@ -880,7 +880,7 @@ Expected: commit succeeds.
 
 ---
 
-### Task 5: Verify Multi-Row Wrapping And Row Auto-Scroll Semantics
+### Task 4: Verify Multi-Row Wrapping And Row Auto-Scroll Semantics
 
 **Files:**
 - Modify: `VirgoTests/NotationLayoutEngineTests.swift`
@@ -991,7 +991,7 @@ Expected: commit succeeds. If implementation files changed in Step 3, include th
 
 ---
 
-### Task 6: Final Verification And Cleanup
+### Task 5: Final Verification And Cleanup
 
 **Files:**
 - Modify: no files expected unless verification reveals a concrete issue
@@ -1041,7 +1041,7 @@ Expected: PASS. If this fails outside the touched layout/view-model/test area, c
 Run:
 
 ```bash
-rtk git diff --stat HEAD~4..HEAD
+rtk git diff --stat d83e23b..HEAD
 rtk git status --short --branch
 ```
 
