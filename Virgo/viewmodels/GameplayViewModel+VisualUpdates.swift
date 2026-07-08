@@ -235,12 +235,11 @@ extension GameplayViewModel {
             return nil
         }
 
-        let drawableWidth = measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing
-        let beatGap = drawableWidth / CGFloat(track.timeSignature.beatsPerMeasure)
-        let indicatorX = measure.xOffset
-            + GameplayLayout.barLineWidth
-            + GameplayLayout.uniformSpacing
-            + CGFloat(beatWithinMeasure) * beatGap
+        let tickIndex = cachedNotationLayout.tabGrid.tickIndex(
+            forBeatWithinMeasure: beatWithinMeasure,
+            beatsPerMeasure: track.timeSignature.beatsPerMeasure
+        )
+        let indicatorX = cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: tickIndex)
         let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
 
         return (x: Double(indicatorX), y: Double(staffCenterY))

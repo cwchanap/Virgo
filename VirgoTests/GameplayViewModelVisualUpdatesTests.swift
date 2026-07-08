@@ -185,13 +185,13 @@ struct GameplayViewModelVisualUpdatesTests {
         #expect(position == nil)
     }
 
-    @Test func testNotationPurpleBarPositionUsesRenderedMeasureWidth() async throws {
+    @Test func testNotationPurpleBarPositionUsesTabGridMapper() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
         )
         chart.notes.append(
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.01)
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 1.0 / 16.0)
         )
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
@@ -203,17 +203,13 @@ struct GameplayViewModelVisualUpdatesTests {
         let position = try #require(
             viewModel.calculateNotationPurpleBarPosition(measureIndex: 0, beatWithinMeasure: 1.0)
         )
-        let beatGap = (measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing) / 4
-        let expectedX = measure.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing + beatGap
-        let legacyPosition = try #require(viewModel.measurePositionMap[0])
-        let legacyX = GameplayLayout.preciseNoteXPosition(
-            measurePosition: legacyPosition,
-            beatPosition: 1.0,
-            timeSignature: .fourFour
+        let tick = viewModel.cachedNotationLayout.tabGrid.tickIndex(
+            forBeatWithinMeasure: 1.0,
+            beatsPerMeasure: 4
         )
+        let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: tick)
 
         #expect(abs(position.x - Double(expectedX)) < 0.001)
-        #expect(abs(position.x - Double(legacyX)) > 0.001)
     }
 
     @Test func testPurpleBarPositionUsesResumedElapsedTime() async throws {
@@ -284,12 +280,8 @@ struct GameplayViewModelVisualUpdatesTests {
             viewModel.calculatePurpleBarPosition(elapsedTime: 2.0)
         )
         let measure = try #require(viewModel.cachedNotationLayout.measures.first)
-        // beatWithinMeasure clamped to 4.0 → bar at the rightmost edge
-        let drawableWidth = measure.width - GameplayLayout.barLineWidth - GameplayLayout.uniformSpacing
-        let expectedX = measure.xOffset
-            + GameplayLayout.barLineWidth
-            + GameplayLayout.uniformSpacing
-            + drawableWidth
+        let endTick = viewModel.cachedNotationLayout.tabGrid.ticksPerMeasure
+        let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: endTick)
 
         #expect(abs(clampedPosition.x - Double(expectedX)) < 0.5)
 
