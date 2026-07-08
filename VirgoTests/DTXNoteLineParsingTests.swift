@@ -79,6 +79,29 @@ struct DTXNoteLineParsingTests {
         #expect(bgmOffset == 0.0)
     }
 
+    @Test("parseChartMetadata accepts lowercase hex lane IDs and note chips")
+    func testParseChartMetadataAcceptsLowercaseHexLaneIDs() throws {
+        // DTX files may use lowercase hex for lane IDs and chip values (e.g. `1c`).
+        // `isNoteLine` must accept these so the chips are parsed (and uppercased)
+        // rather than being silently treated as metadata and dropped.
+        let dtxContent = """
+        #TITLE: Lowercase Lanes
+        #ARTIST: Tester
+        #BPM: 200
+        #DLEVEL: 74
+        #0011c: 000a0000
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+
+        #expect(chartData.notes.count == 1)
+        let note = try #require(chartData.notes.first)
+        #expect(note.laneID == "1C")
+        #expect(note.noteID == "0A")
+        #expect(note.measureNumber == 1)
+        #expect(note.notePosition == 1)
+    }
+
     @Test("parseChartMetadata: no BGM lane yields a nil offset")
     func testParseChartMetadataNoBGMLaneYieldsNilOffset() throws {
         // Charts without any lane-01 notes have no authoritative BGM offset;

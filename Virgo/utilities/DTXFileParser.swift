@@ -301,8 +301,9 @@ class DTXFileParser {
 
     private static func isNoteLine(_ line: String) -> Bool {
         // Note line format: #xxxYY: where xxx is measure (000-999) and YY is lane ID (hex)
+        // Lane IDs are case-insensitive (DTX files may use lowercase hex such as `1c`).
         let notePattern = "^#[0-9]{3}[0-9A-F]{2}:"
-        let regex = try? NSRegularExpression(pattern: notePattern, options: [])
+        let regex = try? NSRegularExpression(pattern: notePattern, options: .caseInsensitive)
         let range = NSRange(location: 0, length: line.count)
         return regex?.firstMatch(in: line, options: [], range: range) != nil
     }
