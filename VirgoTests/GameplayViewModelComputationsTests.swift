@@ -75,6 +75,28 @@ struct GameplayViewModelComputationsTests {
         #expect(vm.cachedBeatPositions.isEmpty, "No beat positions should be cached without a track")
     }
 
+    @Test("cacheBeatPositions uses notation tab grid when notation layout is active")
+    func testCacheBeatPositionsUsesNotationTabGridWhenActive() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes.append(Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0))
+        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.25))
+
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+
+        let beat = try #require(vm.cachedDrumBeats.first { abs($0.timePosition - 0.25) < 0.0001 })
+        let cached = try #require(vm.cachedBeatPositions[beat.id])
+        let measure = try #require(vm.cachedNotationLayout.measures.first { $0.measureIndex == 0 })
+        let tick = vm.cachedNotationLayout.tabGrid.tickIndex(forBeatWithinMeasure: 1.0, beatsPerMeasure: 4)
+        let expectedX = vm.cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: tick)
+        let expectedY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
+
+        #expect(abs(cached.x - Double(expectedX)) < 0.001)
+        #expect(abs(cached.y - Double(expectedY)) < 0.001)
+    }
+
     // MARK: - calculateTrackDurationInSeconds
 
     @Test("calculateTrackDuration falls back when song.duration is non-numeric")

@@ -171,6 +171,18 @@ extension GameplayViewModel {
         cachedMeasureRowMap = Dictionary(
             uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
         )
+        measurePositionMap = Dictionary(
+            uniqueKeysWithValues: cachedNotationLayout.measures.map { measure in
+                (
+                    measure.measureIndex,
+                    GameplayLayout.MeasurePosition(
+                        row: measure.row,
+                        xOffset: measure.xOffset,
+                        measureIndex: measure.measureIndex
+                    )
+                )
+            }
+        )
 
         cacheNotationStaffLinesView()
         logDroppedNotesIfAny()
@@ -230,6 +242,36 @@ extension GameplayViewModel {
 
         cachedBeatPositions = [:]
 
+        if !cachedNotationLayout.noteHeads.isEmpty {
+            cacheNotationBeatPositions(track: track)
+        } else {
+            cacheLegacyBeatPositions(track: track)
+        }
+
+        Logger.debug("Cached \(cachedBeatPositions.count) beat positions for performance optimization")
+    }
+
+    private func cacheNotationBeatPositions(track: DrumTrack) {
+        let measuresByIndex = Dictionary(uniqueKeysWithValues: cachedNotationLayout.measures.map {
+            ($0.measureIndex, $0)
+        })
+
+        for beat in cachedDrumBeats {
+            let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
+            guard let measure = measuresByIndex[measureIndex] else { continue }
+            let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
+            let beatWithinMeasure = beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure)
+            let tick = cachedNotationLayout.tabGrid.tickIndex(
+                forBeatWithinMeasure: beatWithinMeasure,
+                beatsPerMeasure: track.timeSignature.beatsPerMeasure
+            )
+            let beatX = cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: tick)
+            let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
+            cachedBeatPositions[beat.id] = (x: Double(beatX), y: Double(staffCenterY))
+        }
+    }
+
+    private func cacheLegacyBeatPositions(track: DrumTrack) {
         for beat in cachedDrumBeats {
             let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
 
@@ -245,8 +287,6 @@ extension GameplayViewModel {
                 cachedBeatPositions[beat.id] = (x: Double(beatX), y: Double(staffCenterY))
             }
         }
-
-        Logger.debug("Cached \(cachedBeatPositions.count) beat positions for performance optimization")
     }
 
     private func calculateTrackDurationInSeconds(secondsPerMeasure: Double) -> Double {
