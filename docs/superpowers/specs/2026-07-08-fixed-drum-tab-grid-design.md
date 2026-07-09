@@ -79,7 +79,7 @@ Canonical resolution rules:
 - In the normal imported case, HPA-139 should already have produced a chart-level `normalizedTicksPerMeasure`; use it directly.
 - If multiple valid resolutions appear, use a least-common-multiple grid when it remains representable by `Int` and the source ticks scale exactly.
 - Notes without metadata fall back to `960` ticks per measure and derive `tickWithinMeasure` from normalized `measureOffset`.
-- If a chart mixes imported and legacy notes, convert every note into the selected common grid before x mapping.
+- If a chart mixes imported and legacy notes, the legacy `960`-tick resolution is included in the common-grid LCM set alongside the imported resolutions, and every note is converted into the resulting common grid before x mapping. Including `960` guarantees that legacy notes — which only carry a fractional `measureOffset` — land on the same tick boundaries that 960-resolution offset rounding would produce, preserving their placement precision. Converting legacy notes into an arbitrary imported-only LCM grid (e.g. `32`) would coarsen their rounding and shift them off their intended positions. (See `NotationLayoutEngine.resolvedTicksPerMeasure` and `mixedNormalizedAndFallbackNotesUseFallbackGridResolution`.)
 
 Display scale rules:
 
