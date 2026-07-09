@@ -17,16 +17,20 @@ struct TabGrid: Equatable {
         leftPadding + CGFloat(ticksPerMeasure) * tickWidth
     }
 
-    static let fallback = TabGrid(
-        ticksPerMeasure: fallbackTicksPerMeasure,
-        tickWidth: GameplayLayout.uniformSpacing / CGFloat(fallbackTicksPerMeasure / 4),
-        leftPadding: GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing,
-        measureWidth: measureWidth(
+    static let fallback: TabGrid = {
+        let fallbackTickWidth = GameplayLayout.uniformSpacing / CGFloat(fallbackTicksPerMeasure / 4)
+        let fallbackLeftPadding = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
+        return TabGrid(
             ticksPerMeasure: fallbackTicksPerMeasure,
-            tickWidth: GameplayLayout.uniformSpacing / CGFloat(fallbackTicksPerMeasure / 4),
-            leftPadding: GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
+            tickWidth: fallbackTickWidth,
+            leftPadding: fallbackLeftPadding,
+            measureWidth: measureWidth(
+                ticksPerMeasure: fallbackTicksPerMeasure,
+                tickWidth: fallbackTickWidth,
+                leftPadding: fallbackLeftPadding
+            )
         )
-    )
+    }()
 
     func xPosition(in measure: RenderedMeasure, tickIndex: Int) -> CGFloat {
         let clampedTick = min(max(tickIndex, 0), ticksPerMeasure)

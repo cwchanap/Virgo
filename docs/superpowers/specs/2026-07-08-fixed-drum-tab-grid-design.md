@@ -94,8 +94,10 @@ Display scale rules:
 Fixed measure width:
 
 ```swift
-measureWidth = GameplayLayout.barLineWidth + grid.leftPadding + CGFloat(grid.ticksPerMeasure) * grid.tickWidth
+measureWidth = grid.leftPadding + CGFloat(grid.ticksPerMeasure) * grid.tickWidth
 ```
+
+Note: `grid.leftPadding` already includes `GameplayLayout.barLineWidth` (it equals `barLineWidth + uniformSpacing`), so `measureWidth` must not add `barLineWidth` again. The implementation uses `TabGrid.measureWidth(ticksPerMeasure:tickWidth:leftPadding:)` which computes `leftPadding + ticks * tickWidth`.
 
 The first note column stays at:
 

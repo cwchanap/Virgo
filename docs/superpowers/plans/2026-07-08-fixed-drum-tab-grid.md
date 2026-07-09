@@ -260,7 +260,8 @@ private func buildTabGrid(notes: [Note], input: NotationLayoutInput) -> TabGrid 
     let spacingTickGap = min(actualSmallestGap ?? baselineGap, baselineGap)
     let tickWidth = requiredGap / CGFloat(max(spacingTickGap, 1))
     let leftPadding = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
-    let measureWidth = GameplayLayout.barLineWidth + leftPadding + CGFloat(ticksPerMeasure) * tickWidth
+    // leftPadding already includes barLineWidth, so measureWidth does not add it again.
+    let measureWidth = leftPadding + CGFloat(ticksPerMeasure) * tickWidth
 
     return TabGrid(
         ticksPerMeasure: ticksPerMeasure,
