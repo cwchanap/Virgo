@@ -140,9 +140,9 @@ struct NotationLayoutEngine {
     }
 
     private func requiredGridColumnGap(notes: [Note], input: NotationLayoutInput) -> CGFloat {
-        let hasCollision = notes.contains { note in
-            let measure = normalizedMeasureIndex(for: note)
-            return containsCrossVoiceCollision(measureIndex: measure, notes: notes)
+        let uniqueMeasureIndices = Set(notes.map { normalizedMeasureIndex(for: $0) })
+        let hasCollision = uniqueMeasureIndices.contains { measureIndex in
+            containsCrossVoiceCollision(measureIndex: measureIndex, notes: notes)
         }
 
         return hasCollision
