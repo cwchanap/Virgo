@@ -124,6 +124,9 @@ final class GameplayViewModel {
     var cachedNotationLayout = NotationLayout.empty // internal for cross-file extension access
     /// Fast lookup from measure index to row for the notation layout path.
     var cachedMeasureRowMap: [Int: Int] = [:] // internal for cross-file extension access
+    /// Fast lookup from measure index to rendered measure for the notation layout path.
+    /// Replaces per-frame linear `first(where:)` scans in the playhead with O(1) access.
+    var cachedNotationMeasuresByIndex: [Int: RenderedMeasure] = [:] // internal for cross-file extension access
     /// Fast lookup map from rendered note-head ID to rendered position
     var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:] // internal for cross-file extension access
     /// Duration-based measure count shared with both legacy sheet layout and notation layout.
