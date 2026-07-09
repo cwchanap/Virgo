@@ -4,13 +4,12 @@ import Foundation
 /// Core layout engine - handles measure construction and note head placement.
 // swiftlint:disable:next type_body_length
 struct NotationLayoutEngine {
-    private static let columnResolution = 960.0
     private static let topStaffStep = -8
     private static let bottomStaffStep = 0
 
     private struct VoiceCollisionColumn: Hashable {
         let measureIndex: Int
-        let quantizedColumn: Int
+        let tickIndex: Int
     }
     private struct NoteHeadDraft {
         let noteHead: RenderedNoteHead
@@ -97,10 +96,10 @@ struct NotationLayoutEngine {
         return result
     }
 
-    func containsCrossVoiceCollision(measureIndex: Int, notes: [Note]) -> Bool {
+    func containsCrossVoiceCollision(measureIndex: Int, ticksPerMeasure: Int, notes: [Note]) -> Bool {
         Dictionary(
             grouping: notes.filter { normalizedMeasureIndex(for: $0) == measureIndex },
-            by: { quantizedColumn(for: normalizedOffset(for: $0)) }
+            by: { tickWithinMeasure(for: $0, ticksPerMeasure: ticksPerMeasure) }
         )
         .values
         .contains { columnNotes in
@@ -134,7 +133,6 @@ struct NotationLayoutEngine {
                 measureOffset: note.measureOffset
             )
             let normalizedMeasureIndex = MeasureUtils.measureIndex(from: timePos)
-            let normalizedOffset = timePos - Double(normalizedMeasureIndex)
             guard let measure = measuresByIndex[normalizedMeasureIndex] else { continue }
             let tickIndex = tickWithinMeasure(for: note, ticksPerMeasure: tabGrid.ticksPerMeasure)
             let x = tabGrid.xPosition(in: measure, tickIndex: tickIndex)
@@ -161,7 +159,7 @@ struct NotationLayoutEngine {
                     ),
                     collisionColumn: VoiceCollisionColumn(
                         measureIndex: normalizedMeasureIndex,
-                        quantizedColumn: quantizedColumn(for: normalizedOffset)
+                        tickIndex: tickIndex
                     )
                 )
             )
@@ -357,10 +355,6 @@ struct NotationLayoutEngine {
             measureNumber: note.measureNumber, measureOffset: note.measureOffset
         )
         return timePos - Double(MeasureUtils.measureIndex(from: timePos))
-    }
-
-    private func quantizedColumn(for measureOffset: Double) -> Int {
-        Int((measureOffset * Self.columnResolution).rounded())
     }
 
     private func staffStep(for position: GameplayLayout.NotePosition) -> Int {

@@ -10,7 +10,7 @@ extension NotationLayoutEngine {
 
     func buildTabGrid(notes: [Note], input: NotationLayoutInput) -> TabGrid {
         let ticksPerMeasure = resolvedTicksPerMeasure(for: notes)
-        let requiredGap = requiredGridColumnGap(notes: notes, input: input)
+        let requiredGap = requiredGridColumnGap(notes: notes, ticksPerMeasure: ticksPerMeasure, input: input)
         let baselineGap = max(ticksPerMeasure / 16, 1)
         let occupiedTicks = Set(notes.map { tickWithinMeasure(for: $0, ticksPerMeasure: ticksPerMeasure) })
         let actualSmallestGap = smallestPositiveGap(in: occupiedTicks.sorted())
@@ -76,10 +76,10 @@ extension NotationLayoutEngine {
         return abs(a)
     }
 
-    func requiredGridColumnGap(notes: [Note], input: NotationLayoutInput) -> CGFloat {
+    func requiredGridColumnGap(notes: [Note], ticksPerMeasure: Int, input: NotationLayoutInput) -> CGFloat {
         let uniqueMeasureIndices = Set(notes.map { normalizedMeasureIndex(for: $0) })
         let hasCollision = uniqueMeasureIndices.contains { measureIndex in
-            containsCrossVoiceCollision(measureIndex: measureIndex, notes: notes)
+            containsCrossVoiceCollision(measureIndex: measureIndex, ticksPerMeasure: ticksPerMeasure, notes: notes)
         }
 
         return hasCollision
