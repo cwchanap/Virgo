@@ -231,7 +231,7 @@ extension GameplayViewModel {
         beatWithinMeasure: Double
     ) -> (x: Double, y: Double)? {
         guard let track = track, !cachedNotationLayout.noteHeads.isEmpty else { return nil }
-        guard let measure = cachedNotationLayout.measures.first(where: { $0.measureIndex == measureIndex }) else {
+        guard let measure = cachedNotationMeasuresByIndex[measureIndex] else {
             return nil
         }
 

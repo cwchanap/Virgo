@@ -143,6 +143,7 @@ extension GameplayViewModel {
             cachedNotationLayout = .empty
             cachedNotationNoteHeadPositions = [:]
             cachedMeasureRowMap = [:]
+            cachedNotationMeasuresByIndex = [:]
             notationStaffLinesView = nil
             return
         }
@@ -174,20 +175,13 @@ extension GameplayViewModel {
             cachedMeasureRowMap = Dictionary(
                 uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
             )
-            measurePositionMap = Dictionary(
-                uniqueKeysWithValues: cachedNotationLayout.measures.map { measure in
-                    (
-                        measure.measureIndex,
-                        GameplayLayout.MeasurePosition(
-                            row: measure.row,
-                            xOffset: measure.xOffset,
-                            measureIndex: measure.measureIndex
-                        )
-                    )
-                }
+            cachedNotationMeasuresByIndex = Dictionary(
+                uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0) }
             )
+            cacheNotationMeasurePositionMap()
         } else {
             cachedMeasureRowMap = [:]
+            cachedNotationMeasuresByIndex = [:]
         }
 
         cacheNotationStaffLinesView()
@@ -219,6 +213,23 @@ extension GameplayViewModel {
         let contentWidth = cachedNotationLayout.contentWidth
         notationStaffLinesView = AnyView(
             StaffLinesBackgroundView(measurePositions: notationMeasurePositions, width: contentWidth)
+        )
+    }
+
+    /// Rebuilds `measurePositionMap` from the current notation layout's measures.
+    /// Extracted from `cacheNotationLayout()` to keep it under the function-body-length limit.
+    private func cacheNotationMeasurePositionMap() {
+        measurePositionMap = Dictionary(
+            uniqueKeysWithValues: cachedNotationLayout.measures.map { measure in
+                (
+                    measure.measureIndex,
+                    GameplayLayout.MeasurePosition(
+                        row: measure.row,
+                        xOffset: measure.xOffset,
+                        measureIndex: measure.measureIndex
+                    )
+                )
+            }
         )
     }
 
