@@ -61,12 +61,21 @@ extension NotationLayoutEngine {
 
         guard !values.isEmpty else { return TabGrid.fallbackTicksPerMeasure }
 
-        return values.sorted().reduce(1) { partial, value in
-            guard let next = leastCommonMultiple(partial, value), next <= TabGrid.fallbackTicksPerMeasure * 64 else {
+        // Once the running LCM exceeds the cap, short-circuit to the fallback
+        // instead of substituting the fallback into the accumulator and
+        // continuing. A later value could LCM with the fallback back under the
+        // cap (e.g. 960 × 4096 = 61440), yielding a grid that is not divisible
+        // by the resolution that overflowed, which pushes those notes onto
+        // rounded fractional offsets and breaks column alignment.
+        var resolvedTicks = 1
+        for value in values.sorted() {
+            guard let next = leastCommonMultiple(resolvedTicks, value),
+                  next <= TabGrid.fallbackTicksPerMeasure * 64 else {
                 return TabGrid.fallbackTicksPerMeasure
             }
-            return next
+            resolvedTicks = next
         }
+        return resolvedTicks
     }
 
     /// Sixteenth-note tick baseline for a meter: the smallest canonical grid that
