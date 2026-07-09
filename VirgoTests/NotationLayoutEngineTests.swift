@@ -322,6 +322,54 @@ struct NotationLayoutEngineTests {
         #expect(layout.measures.map(\.row) == [0, 1, 2, 3])
     }
 
+    @Test("sparse degenerate imported grid is raised to meter baseline for beat mapping")
+    func sparseDegenerateImportedGridIsRaisedToMeterBaselineForBeatMapping() throws {
+        // A chart where every playable line has one chip produces
+        // `normalizedTicksPerMeasure == 1` from the parser. Without a meter
+        // baseline, the canonical grid would be 1, `measureWidth` would be
+        // roughly one tick wide, and `tickIndex(forBeatWithinMeasure:)` would
+        // collapse every 4/4 beat to tick 0 or 1 — breaking the playhead and
+        // beat cache and packing many tiny measures on one row.
+        let notes = [
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 0,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 1
+            ),
+            Note(
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 2,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 1,
+                normalizedAbsoluteTick: 1,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 1
+            )
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let measure = try #require(layout.measures.first)
+
+        // 4/4 sixteenth baseline = 4 * 16 / 4 = 16.
+        #expect(layout.tabGrid.ticksPerMeasure == 16)
+        #expect(measure.width > GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing)
+
+        // Every beat in 4/4 must map to a distinct tick column.
+        let beatTicks = (0...4).map {
+            layout.tabGrid.tickIndex(forBeatWithinMeasure: Double($0), beatsPerMeasure: 4)
+        }
+        #expect(beatTicks == [0, 4, 8, 12, 16])
+    }
+
     @Test("sparse high resolution imported notes do not inflate from source resolution alone")
     func sparseHighResolutionImportedNotesDoNotInflateFromSourceResolutionAlone() throws {
         let notes = [

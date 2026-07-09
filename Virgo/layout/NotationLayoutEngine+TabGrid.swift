@@ -9,7 +9,7 @@ extension NotationLayoutEngine {
     // MARK: - Tab Grid
 
     func buildTabGrid(notes: [Note], input: NotationLayoutInput) -> TabGrid {
-        let ticksPerMeasure = resolvedTicksPerMeasure(for: notes)
+        let ticksPerMeasure = resolvedTicksPerMeasure(for: notes, timeSignature: input.timeSignature)
         let requiredGap = requiredGridColumnGap(notes: notes, ticksPerMeasure: ticksPerMeasure, input: input)
         let baselineGap = max(ticksPerMeasure / 16, 1)
         let actualSmallestGap = smallestPositiveTickGapAcrossMeasures(
@@ -33,7 +33,7 @@ extension NotationLayoutEngine {
         )
     }
 
-    func resolvedTicksPerMeasure(for notes: [Note]) -> Int {
+    func resolvedTicksPerMeasure(for notes: [Note], timeSignature: TimeSignature) -> Int {
         var values = Set<Int>()
         var needsFallbackResolution = false
 
@@ -49,6 +49,16 @@ extension NotationLayoutEngine {
             values.insert(TabGrid.fallbackTicksPerMeasure)
         }
 
+        // Raise the canonical grid to at least a sixteenth-note baseline for the
+        // meter. A degenerate imported resolution (e.g. `normalizedTicksPerMeasure
+        // == 1` from a chart with one chip per playable line) cannot represent
+        // beat subdivisions, so `tickIndex(forBeatWithinMeasure:)` would collapse
+        // every beat to 0 or 1 and the playhead/beat cache would jump to the
+        // wrong columns. LCM-ing the baseline in (rather than max-ing the final
+        // result) keeps exact tick placement for notes on finer imported grids
+        // while guaranteeing the meter is representable on coarse ones.
+        values.insert(Self.meterBaselineTicksPerMeasure(timeSignature: timeSignature))
+
         guard !values.isEmpty else { return TabGrid.fallbackTicksPerMeasure }
 
         return values.sorted().reduce(1) { partial, value in
@@ -57,6 +67,14 @@ extension NotationLayoutEngine {
             }
             return next
         }
+    }
+
+    /// Sixteenth-note tick baseline for a meter: the smallest canonical grid that
+    /// can place every beat and every sixteenth in the measure.
+    /// `beatsPerMeasure * 16 / noteValue` (e.g. 16 for 4/4, 12 for 6/8).
+    static func meterBaselineTicksPerMeasure(timeSignature: TimeSignature) -> Int {
+        guard timeSignature.noteValue > 0 else { return 16 }
+        return max(timeSignature.beatsPerMeasure * 16 / timeSignature.noteValue, 1)
     }
 
     func leastCommonMultiple(_ lhs: Int, _ rhs: Int) -> Int? {
