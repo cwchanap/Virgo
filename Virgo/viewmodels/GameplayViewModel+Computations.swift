@@ -269,13 +269,9 @@ extension GameplayViewModel {
     }
 
     private func cacheNotationBeatPositions(track: DrumTrack) {
-        let measuresByIndex = Dictionary(uniqueKeysWithValues: cachedNotationLayout.measures.map {
-            ($0.measureIndex, $0)
-        })
-
         for beat in cachedDrumBeats {
             let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
-            guard let measure = measuresByIndex[measureIndex] else { continue }
+            guard let measure = cachedNotationMeasuresByIndex[measureIndex] else { continue }
             let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
             let beatWithinMeasure = beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure)
             let tick = cachedNotationLayout.tabGrid.tickIndex(
