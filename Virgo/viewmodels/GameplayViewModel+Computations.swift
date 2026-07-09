@@ -170,21 +170,25 @@ extension GameplayViewModel {
             notePositionOverrides: notePositionOverrides
         )
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
-        cachedMeasureRowMap = Dictionary(
-            uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
-        )
-        measurePositionMap = Dictionary(
-            uniqueKeysWithValues: cachedNotationLayout.measures.map { measure in
-                (
-                    measure.measureIndex,
-                    GameplayLayout.MeasurePosition(
-                        row: measure.row,
-                        xOffset: measure.xOffset,
-                        measureIndex: measure.measureIndex
+        if !cachedNotationLayout.noteHeads.isEmpty {
+            cachedMeasureRowMap = Dictionary(
+                uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
+            )
+            measurePositionMap = Dictionary(
+                uniqueKeysWithValues: cachedNotationLayout.measures.map { measure in
+                    (
+                        measure.measureIndex,
+                        GameplayLayout.MeasurePosition(
+                            row: measure.row,
+                            xOffset: measure.xOffset,
+                            measureIndex: measure.measureIndex
+                        )
                     )
-                )
-            }
-        )
+                }
+            )
+        } else {
+            cachedMeasureRowMap = [:]
+        }
 
         cacheNotationStaffLinesView()
         logDroppedNotesIfAny()

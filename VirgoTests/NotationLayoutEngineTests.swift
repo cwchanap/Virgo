@@ -87,6 +87,41 @@ struct NotationLayoutEngineTests {
         #expect(layout.tabGrid.ticksPerMeasure == TabGrid.fallbackTicksPerMeasure)
     }
 
+    @Test("mixed normalized and fallback notes use fallback grid resolution")
+    func mixedNormalizedAndFallbackNotesUseFallbackGridResolution() throws {
+        let fallbackNote = Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 1,
+            measureOffset: 0.1
+        )
+        let notes = [
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 0,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 32
+            ),
+            fallbackNote
+        ]
+
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let measure = try #require(layout.measures.first)
+        let fallbackHead = try #require(layout.noteHeads.first { abs($0.timePosition - 0.1) < 0.0001 })
+        let fallbackTick = Int((0.1 * Double(TabGrid.fallbackTicksPerMeasure)).rounded())
+        let expectedX = layout.tabGrid.xPosition(in: measure, tickIndex: fallbackTick)
+
+        #expect(layout.tabGrid.ticksPerMeasure == TabGrid.fallbackTicksPerMeasure)
+        #expect(abs(fallbackHead.position.x - expectedX) < 0.001)
+    }
+
     @Test("tab grid fallback measure width uses the shared grid formula")
     func tabGridFallbackMeasureWidthUsesSharedGridFormula() {
         #expect(

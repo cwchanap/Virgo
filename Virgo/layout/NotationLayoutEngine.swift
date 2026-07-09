@@ -95,11 +95,20 @@ struct NotationLayoutEngine {
     }
 
     private func resolvedTicksPerMeasure(for notes: [Note]) -> Int {
-        let values = Set(notes.compactMap { note -> Int? in
-            guard let normalizedGrid = normalizedGridMetadata(for: note) else { return nil }
-            let ticks = normalizedGrid.ticksPerMeasure
-            return ticks
-        })
+        var values = Set<Int>()
+        var needsFallbackResolution = false
+
+        for note in notes {
+            guard let normalizedGrid = normalizedGridMetadata(for: note) else {
+                needsFallbackResolution = true
+                continue
+            }
+            values.insert(normalizedGrid.ticksPerMeasure)
+        }
+
+        if needsFallbackResolution {
+            values.insert(TabGrid.fallbackTicksPerMeasure)
+        }
 
         guard !values.isEmpty else { return TabGrid.fallbackTicksPerMeasure }
 

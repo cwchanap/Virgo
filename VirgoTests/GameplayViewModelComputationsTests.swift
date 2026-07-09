@@ -138,6 +138,37 @@ struct GameplayViewModelComputationsTests {
                 "Cached beat position should move when the notation layout rewraps")
     }
 
+    @Test("inactive notation layout preserves legacy measure positions")
+    func testInactiveNotationLayoutPreservesLegacyMeasurePositions() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        let song = Song(
+            title: "Empty Chart",
+            artist: "Test",
+            bpm: 120,
+            duration: "0:08",
+            genre: "Test",
+            charts: [chart]
+        )
+        chart.song = song
+
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(vm.cachedNotationLayout.noteHeads.isEmpty)
+        try #require(!vm.cachedMeasurePositions.isEmpty)
+
+        for legacyPosition in vm.cachedMeasurePositions {
+            let cachedPosition = try #require(vm.measurePositionMap[legacyPosition.measureIndex])
+            #expect(cachedPosition.row == legacyPosition.row)
+            #expect(abs(cachedPosition.xOffset - legacyPosition.xOffset) < 0.001)
+        }
+
+        let maxLegacyRow = vm.cachedMeasurePositions.map(\.row).max() ?? 0
+        #expect(vm.rowForMeasure(9_999) == maxLegacyRow)
+    }
+
     // MARK: - calculateTrackDurationInSeconds
 
     @Test("calculateTrackDuration falls back when song.duration is non-numeric")
