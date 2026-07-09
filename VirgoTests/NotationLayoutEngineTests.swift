@@ -131,6 +131,43 @@ struct NotationLayoutEngineTests {
         )
     }
 
+    @Test("tab grid degrades to fallback when LCM of tick resolutions overflows")
+    func tabGridDegradesToFallbackWhenLCMOverflows() {
+        // 256 and 251 are coprime → LCM = 64256, which exceeds the
+        // fallbackTicksPerMeasure * 64 (61440) cap. The engine should
+        // degrade to the fallback 960-tick grid rather than overflow.
+        let notes = [
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 0,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 256
+            ),
+            Note(
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 0,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 251
+            )
+        ]
+
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.tabGrid.ticksPerMeasure == TabGrid.fallbackTicksPerMeasure)
+    }
+
     @Test("tab grid maps beat boundaries to deterministic tick columns")
     func tabGridMapsBeatBoundariesToDeterministicTickColumns() throws {
         let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
