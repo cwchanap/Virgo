@@ -509,6 +509,51 @@ struct NotationLayoutEngineTests {
         #expect(abs(snare.position.x - crash.position.x) < 0.001)
     }
 
+    @Test("fine grid distinct ticks do not receive voice collision offsets")
+    func fineGridDistinctTicksDoNotReceiveVoiceCollisionOffsets() throws {
+        // Imported chart with a 4096-tick normalized grid: snare at tick 0 and
+        // kick at tick 1 occupy distinct tab-grid columns, so they must NOT be
+        // treated as a voice collision. The legacy 960-column quantization rounds
+        // both offsets to column 0, which would wrongly apply collision offsets
+        // and shift the noteheads off their grid/playhead columns.
+        let notes = [
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 0,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 4096
+            ),
+            Note(
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 1,
+                measureOffset: 1.0 / 4096.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 1,
+                normalizedTickWithinMeasure: 1,
+                normalizedTicksPerMeasure: 4096
+            )
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let measure = try #require(layout.measures.first)
+        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
+        let kick = try #require(layout.noteHeads.first { $0.drumType == .kick })
+
+        let snareExpectedX = layout.tabGrid.xPosition(in: measure, tickIndex: 0)
+        let kickExpectedX = layout.tabGrid.xPosition(in: measure, tickIndex: 1)
+
+        #expect(abs(snare.position.x - snareExpectedX) < 0.001)
+        #expect(abs(kick.position.x - kickExpectedX) < 0.001)
+    }
+
     @Test("near identical cross voice offsets split by quantized column")
     func nearIdenticalCrossVoiceOffsetsSplitByQuantizedColumn() throws {
         let notes = [
