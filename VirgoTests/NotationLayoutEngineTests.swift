@@ -168,6 +168,46 @@ struct NotationLayoutEngineTests {
         #expect(layout.tabGrid.ticksPerMeasure == TabGrid.fallbackTicksPerMeasure)
     }
 
+    @Test("tab grid does not inflate from adjacent ticks in different measures")
+    func tabGridDoesNotInflateFromAdjacentTicksInDifferentMeasures() throws {
+        // Two measures on a high-resolution 4096-tick grid, each holding a
+        // single sparse note at adjacent tick columns (tick 0 in measure 0,
+        // tick 1 in measure 1). The per-measure gap is undefined (one note
+        // per measure), so the grid must fall back to the baseline gap rather
+        // than treating the cross-measure tick difference of 1 as the spacing
+        // gap — which would inflate every measure to ~4096 * tickWidth points.
+        let notes = [
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 0,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 4096
+            ),
+            Note(
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 2,
+                measureOffset: 1.0 / 4096.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 1,
+                normalizedAbsoluteTick: 4097,
+                normalizedTickWithinMeasure: 1,
+                normalizedTicksPerMeasure: 4096
+            )
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.tabGrid.ticksPerMeasure == 4096)
+        #expect(layout.tabGrid.measureWidth < 700)
+    }
+
     @Test("tab grid maps beat boundaries to deterministic tick columns")
     func tabGridMapsBeatBoundariesToDeterministicTickColumns() throws {
         let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
