@@ -12,8 +12,10 @@ extension NotationLayoutEngine {
         let ticksPerMeasure = resolvedTicksPerMeasure(for: notes)
         let requiredGap = requiredGridColumnGap(notes: notes, ticksPerMeasure: ticksPerMeasure, input: input)
         let baselineGap = max(ticksPerMeasure / 16, 1)
-        let occupiedTicks = Set(notes.map { tickWithinMeasure(for: $0, ticksPerMeasure: ticksPerMeasure) })
-        let actualSmallestGap = smallestPositiveGap(in: occupiedTicks.sorted())
+        let actualSmallestGap = smallestPositiveTickGapAcrossMeasures(
+            notes: notes,
+            ticksPerMeasure: ticksPerMeasure
+        )
         let spacingTickGap = min(actualSmallestGap ?? baselineGap, baselineGap)
         let tickWidth = requiredGap / CGFloat(max(spacingTickGap, 1))
         let leftPadding = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
@@ -93,6 +95,20 @@ extension NotationLayoutEngine {
             .map { $0.0 - $0.1 }
             .filter { $0 > 0 }
             .min()
+    }
+
+    /// Smallest positive tick gap between notes that share a measure.
+    ///
+    /// Grouping by measure index prevents adjacent tick columns in different
+    /// measures (e.g. tick 0 in measure A, tick 1 in measure B) from being
+    /// treated as a same-measure gap of 1, which would collapse `spacingTickGap`
+    /// to 1 on high-resolution grids and inflate every measure width.
+    func smallestPositiveTickGapAcrossMeasures(notes: [Note], ticksPerMeasure: Int) -> Int? {
+        let measureTicks = Dictionary(grouping: notes) { normalizedMeasureIndex(for: $0) }
+        return measureTicks.values.compactMap { measureNotes -> Int? in
+            let ticks = Set(measureNotes.map { tickWithinMeasure(for: $0, ticksPerMeasure: ticksPerMeasure) }).sorted()
+            return smallestPositiveGap(in: ticks)
+        }.min()
     }
 
     // MARK: - Tick Resolution
