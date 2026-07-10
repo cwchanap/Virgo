@@ -77,7 +77,7 @@ struct NotationLayoutStyle: Equatable {
     let noteHeadHeight: CGFloat
     let stemLength: CGFloat
     let stemWidth: CGFloat
-    let stemXInset: CGFloat
+    let minimumStemExtensionPastChord: CGFloat
     let beamThickness: CGFloat
     let beamLevelSpacing: CGFloat
     let ledgerLineOverhang: CGFloat
@@ -91,7 +91,7 @@ struct NotationLayoutStyle: Equatable {
         noteHeadHeight: GameplayLayout.drumSymbolFontSize,
         stemLength: GameplayLayout.stemHeight,
         stemWidth: GameplayLayout.stemWidth,
-        stemXInset: GameplayLayout.stemXOffset,
+        minimumStemExtensionPastChord: GameplayLayout.staffLineSpacing / 2,
         beamThickness: 4,
         beamLevelSpacing: GameplayLayout.beamLevelSpacing,
         ledgerLineOverhang: 6
@@ -107,7 +107,7 @@ struct NotationLayoutStyle: Equatable {
             noteHeadHeight: noteHeadHeight,
             stemLength: stemLength,
             stemWidth: stemWidth,
-            stemXInset: stemXInset,
+            minimumStemExtensionPastChord: minimumStemExtensionPastChord,
             beamThickness: beamThickness,
             beamLevelSpacing: beamLevelSpacing,
             ledgerLineOverhang: ledgerLineOverhang
