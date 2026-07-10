@@ -177,7 +177,7 @@ extension DrumNoteheadGlyph {
 
 private extension DrumNoteheadGlyph {
     func crossStrokeWidth(in bounds: CGRect) -> CGFloat {
-        max(min(bounds.width, bounds.height) * 0.16, 1)
+        min(bounds.width, bounds.height) * 0.16
     }
 
     func scaledBounds(in rect: CGRect) -> CGRect {
