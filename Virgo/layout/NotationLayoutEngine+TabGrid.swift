@@ -71,6 +71,10 @@ extension NotationLayoutEngine {
         for value in values.sorted() {
             guard let next = leastCommonMultiple(resolvedTicks, value),
                   next <= TabGrid.fallbackTicksPerMeasure * 64 else {
+                Logger.warning(
+                    "Tab grid LCM overflowed cap (\(TabGrid.fallbackTicksPerMeasure * 64)) "
+                        + "at value \(value); falling back to \(TabGrid.fallbackTicksPerMeasure) ticks/measure"
+                )
                 return TabGrid.fallbackTicksPerMeasure
             }
             resolvedTicks = next
