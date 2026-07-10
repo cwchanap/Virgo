@@ -239,18 +239,11 @@ struct GameplayLayout {
 // MARK: - Drum Position Mapping
 extension DrumType {
     var notePosition: GameplayLayout.NotePosition {
-        switch self {
-        case .crash: return .aboveLine5
-        case .hiHat: return .line5
-        case .hiHatPedal: return .belowLine1
-        case .tom1: return .spaceBetween3And4
-        case .snare: return .line3
-        case .tom2: return .spaceBetween2And3
-        case .tom3: return .line2
-        case .kick: return .belowLine2
-        case .ride: return .spaceBetween4And5
-        case .cowbell: return .line4
+        guard let position = DrumNotationCatalog.defaultDefinition(for: self)?.defaultPosition else {
+            assertionFailure("Missing default notation position for \(self)")
+            return .line3
         }
+        return position
     }
 
     func yPosition(for row: Int) -> CGFloat {

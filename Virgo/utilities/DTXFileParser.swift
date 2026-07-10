@@ -137,17 +137,11 @@ struct NormalizedRhythmicEvent: Hashable {
     }
 
     private static func voiceCandidate(for noteType: NoteType) -> NormalizedNotationVoice {
-        // DTX lanes never produce .china or .splash directly — lc/cy map to
-        // .crash (design doc §4.5 defers china/splash differentiation to
-        // HPA-141/143). DrumType collapses china/splash → .crash, so they are
-        // covered by the .crash arm here without explicit cases.
-        switch DrumType.from(noteType: noteType) {
-        case .some(.kick), .some(.hiHatPedal):
-            return .lower
-        case .some(.snare), .some(.hiHat), .some(.crash), .some(.ride),
-             .some(.tom1), .some(.tom2), .some(.tom3), .some(.cowbell), .none:
+        guard let voice = DrumNotationCatalog.definition(for: noteType)?.voice else {
+            assertionFailure("Missing notation voice for \(noteType)")
             return .upper
         }
+        return voice == .lower ? .lower : .upper
     }
 }
 
@@ -168,32 +162,7 @@ enum DTXLane: String, CaseIterable {
     case bgm = "01"     // Background Music (not playable)
 
     var noteType: NoteType? {
-        switch self {
-        case .lc, .cy:
-            return .crash
-        case .hh:
-            return .openHiHat
-        case .hhc:
-            return .hiHat
-        case .sn:
-            return .snare
-        case .ht:
-            return .highTom
-        case .bd:
-            return .bass
-        case .lt:
-            return .midTom
-        case .ft:
-            return .lowTom
-        case .rd:
-            return .ride
-        case .lp:
-            return .hiHatPedal
-        case .lb:
-            return .bass
-        case .bpm, .bgm:
-            return nil // Not playable drum notes
-        }
+        DrumNotationCatalog.noteType(forLaneID: rawValue)
     }
 
     var isPlayable: Bool {

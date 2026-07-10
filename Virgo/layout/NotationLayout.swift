@@ -118,25 +118,6 @@ struct NotationLayoutStyle: Equatable {
     }
 }
 
-enum NotationVoice: String, Hashable {
-    case upper
-    case lower
-
-    static func voice(for drumType: DrumType) -> NotationVoice {
-        switch drumType {
-        case .kick, .hiHatPedal:
-            return .lower
-        case .crash, .hiHat, .tom1, .snare, .tom2, .tom3, .ride, .cowbell:
-            return .upper
-        }
-    }
-}
-
-enum StemDirection: String, Hashable {
-    case up
-    case down
-}
-
 struct NotationLayout {
     var tabGrid: TabGrid
     var measures: [RenderedMeasure]
