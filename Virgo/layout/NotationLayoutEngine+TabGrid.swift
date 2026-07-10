@@ -66,7 +66,7 @@ extension NotationLayoutEngine {
         // while guaranteeing the meter is representable on coarse ones.
         values.insert(Self.meterBaselineTicksPerMeasure(timeSignature: timeSignature))
 
-        guard !values.isEmpty else { return TabGrid.fallbackTicksPerMeasure }
+        guard !values.isEmpty else { return meterCompatibleFallbackTicksPerMeasure(for: timeSignature) }
 
         // Once the running LCM exceeds the cap, short-circuit to the fallback
         // instead of substituting the fallback into the accumulator and
@@ -74,19 +74,37 @@ extension NotationLayoutEngine {
         // cap (e.g. 960 × 4096 = 61440), yielding a grid that is not divisible
         // by the resolution that overflowed, which pushes those notes onto
         // rounded fractional offsets and breaks column alignment.
+        let fallback = meterCompatibleFallbackTicksPerMeasure(for: timeSignature)
         var resolvedTicks = 1
         for value in values.sorted() {
             guard let next = leastCommonMultiple(resolvedTicks, value),
                   next <= TabGrid.fallbackTicksPerMeasure * 64 else {
                 Logger.warning(
                     "Tab grid LCM overflowed cap (\(TabGrid.fallbackTicksPerMeasure * 64)) "
-                        + "at value \(value); falling back to \(TabGrid.fallbackTicksPerMeasure) ticks/measure"
+                        + "at value \(value); falling back to \(fallback) ticks/measure"
                 )
-                return TabGrid.fallbackTicksPerMeasure
+                return fallback
             }
             resolvedTicks = next
         }
         return resolvedTicks
+    }
+
+    /// Fallback tick resolution that preserves the active meter's beat grid.
+    ///
+    /// `TabGrid.fallbackTicksPerMeasure` (960) is divisible by the sixteenth
+    /// baseline of most meters, but not all — 7/8 (baseline 14) and 9/8
+    /// (baseline 18) leave a remainder, so returning 960 directly on overflow
+    /// or empty input pushes beat boundaries onto fractional tick columns and
+    /// drifts the playhead off the beat. LCM-ing the fallback with the meter
+    /// baseline yields a grid divisible by both (e.g. 6720 for 7/8), keeping
+    /// beat alignment for every supported meter.
+    func meterCompatibleFallbackTicksPerMeasure(for timeSignature: TimeSignature) -> Int {
+        let baseline = Self.meterBaselineTicksPerMeasure(timeSignature: timeSignature)
+        guard let lcm = leastCommonMultiple(TabGrid.fallbackTicksPerMeasure, baseline) else {
+            return baseline
+        }
+        return lcm
     }
 
     /// Sixteenth-note tick baseline for a meter: the smallest canonical grid that
