@@ -118,7 +118,9 @@ enum DrumNoteheadGlyph: Hashable {
 
 The renderer scales `normalizedBounds` into the style's notehead size, adds the returned anchor offset to the canonical center, and wraps `makePath(in:)` in a SwiftUI `Path`. Glyph bounds and left/right stem anchors are therefore computed from the same authored vector geometry and are never measured from a rendered font.
 
-The SwiftUI notehead view renders that generated path. Beams, stems, ledger lines, and the view therefore consume one geometry definition.
+`NotationLayout` carries the resolved notehead size from `NotationLayoutStyle` so the SwiftUI view scales the path with the same dimensions used for stems and ledger lines. The SwiftUI notehead view renders that generated path. Beams, stems, ledger lines, and the view therefore consume one geometry definition.
+
+Glyphs whose outline does not intersect the generic side midpoint use authored contact points. In particular, the cross uses a right/lower contact for an up-stem and a left/upper contact for a down-stem, and its stroked diagonal centerlines are inset so the final stroked path remains inside `normalizedBounds`.
 
 ### 5.3 Canonical time-column identity
 
@@ -297,6 +299,8 @@ For an unbeamed down-stem chord:
 - attach the stem at the left anchor of the highest notehead;
 - extend downward past the lowest notehead.
 
+The opposite chord extreme is the authored visible glyph bound, not merely the notehead center, so the minimum extension clears the complete vector silhouette.
+
 Stem length must satisfy both the default length and full chord coverage:
 
 ```text
@@ -314,7 +318,7 @@ HPA-141 does not change which notes beam, how beam levels are selected, or how f
 
 - beam endpoints use the same glyph stem-anchor helper as stems;
 - beamed stems extend to the existing beam geometry;
-- residual flags continue to originate from the final stem tip;
+- residual flags use the actual shared `RenderedStem.start.x` and `RenderedStem.end.y`, then apply the existing flag offsets;
 - current beam grouping remains separated by voice and direction.
 
 HPA-142 may later replace beam grouping and partial-beam behavior without needing to reinterpret notehead geometry.
@@ -365,6 +369,7 @@ Add `VirgoTests/DrumNotationCatalogTests.swift` with a focused `DrumNotationCata
 - `.china` and `.splash` retain their source `NoteType` while sharing `.crash` gameplay identity;
 - catalog gameplay-instrument mappings match existing `DrumType.from(noteType:)` behavior;
 - all glyph bounds and anchors are finite;
+- every generated path stays within its authored bounds and each stem anchor contacts the glyph;
 - up-stem anchors are on the right and down-stem anchors are on the left;
 - known `NoteType` plus unknown lane falls back without losing raw identity.
 
@@ -476,15 +481,20 @@ Open/closed/china/splash identity will be present before all visible marks exist
 
 - `Virgo/constants/DrumNotation.swift` (new canonical catalog and glyph/variant types)
 - `Virgo/constants/Drum.swift` (delegate existing identity mappings)
+- `Virgo/layout/gameplay.swift` (delegate the existing default-position facade)
 - `Virgo/layout/NotationLayout.swift` (time-column and rendered-head contracts)
 - `Virgo/layout/NotationLayoutEngine.swift` (remove offsets; build semantic heads and stems)
 - `Virgo/layout/NotationLayoutEngine+TabGrid.swift` (remove collision padding)
 - `Virgo/views/NotationPrimitiveViews.swift` (vector notehead rendering)
+- `Virgo/views/subviews/GameplaySheetMusicView.swift` (pass resolved notehead size to the vector view)
+- `Virgo/viewmodels/GameplayViewModel+Computations.swift` (follow the rendered source-identity rename)
 - `Virgo/utilities/DTXFileParser.swift` (delegate lane identity without semantic changes)
 - `VirgoTests/DrumNotationCatalogTests.swift` (new catalog/geometry coverage)
 - `VirgoTests/NotationLayoutEngineTests.swift`
 - `VirgoTests/NotationLayoutEngineChordAndBeamTests.swift`
 - `VirgoTests/NotationLayoutNotePositionOverrideTests.swift`
+- `VirgoTests/NotationLayoutOffsetNormalizationTests.swift`
+- `VirgoTests/SwiftUIRenderingCoverageTests.swift`
 - `VirgoTests/DrumTypeExtensionsAndConstantsTests.swift`
 - `VirgoTests/DTXFileParserTests.swift`
 
