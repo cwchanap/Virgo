@@ -155,39 +155,12 @@ enum DrumType: Hashable, CaseIterable {
     }
 
     var symbol: String {
-        switch self {
-        case .kick: return "●"
-        case .snare: return "◆"
-        case .hiHat: return "×"
-        case .hiHatPedal: return "×"
-        case .crash: return "◉"
-        case .ride: return "○"
-        case .tom1: return "◐"
-        case .tom2: return "◑"
-        case .tom3: return "◒"
-        case .cowbell: return "◇"
-        }
+        DrumNotationCatalog.defaultDefinition(for: self)?.glyph.legacySymbol ?? "?"
     }
 
     static func from(noteType: NoteType) -> DrumType? {
-        return noteTypeToDrumTypeMap[noteType]
+        DrumNotationCatalog.definition(for: noteType)?.gameplayInstrument
     }
-    
-    private static let noteTypeToDrumTypeMap: [NoteType: DrumType] = [
-        .bass: .kick,
-        .snare: .snare,
-        .hiHat: .hiHat,
-        .hiHatPedal: .hiHatPedal,
-        .openHiHat: .hiHat,
-        .crash: .crash,
-        .ride: .ride,
-        .highTom: .tom1,
-        .midTom: .tom2,
-        .lowTom: .tom3,
-        .china: .crash,
-        .splash: .crash,
-        .cowbell: .cowbell
-    ]
 }
 
 // MARK: - DrumType Storage Extension
