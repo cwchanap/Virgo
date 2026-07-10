@@ -20,6 +20,12 @@ struct NotationLayoutEngine {
         let fallbackLaneID: String?
     }
 
+    private struct StemGroupKey: Hashable {
+        let timeColumn: NotationTimeColumn
+        let row: Int
+        let voice: NotationVoice
+    }
+
     struct BeamGroupKey: Hashable {
         let measureIndex: Int
         let row: Int
@@ -271,72 +277,41 @@ struct NotationLayoutEngine {
 
         let headsNeedingStems = noteHeads.filter { $0.interval.needsStem }
 
-        // Group note heads that share the same x, voice, and stem direction
-        // (i.e., chord tones) so they share a single stem instead of overlapping.
-        struct StemGroupKey: Hashable {
-            let x: Int // Rounded to avoid floating-point drift
-            let row: Int
-            let measureIndex: Int
-            let voice: NotationVoice
-            let direction: StemDirection
-        }
-
         let grouped = Dictionary(grouping: headsNeedingStems) { head in
             StemGroupKey(
-                x: Int((head.position.x * 1000).rounded()),
+                timeColumn: head.timeColumn,
                 row: head.row,
-                measureIndex: head.measureIndex,
-                voice: head.voice,
-                direction: head.stemDirection
+                voice: head.voice
             )
         }
 
         return grouped.compactMap { key, group in
-            let allIDs = group.map(\.id)
-
-            let representative: RenderedNoteHead
-            switch key.direction {
-            case .up:
-                guard let r = group.max(by: { $0.position.y < $1.position.y }) else {
-                    Logger.error("Stem grouping empty for key \(key) — skipping"); return nil
-                }
-                representative = r
-            case .down:
-                guard let r = group.min(by: { $0.position.y < $1.position.y }) else {
-                    Logger.error("Stem grouping empty for key \(key) — skipping"); return nil
-                }
-                representative = r
+            guard let representative = stemRepresentative(in: group) else {
+                Logger.error("Empty stem group for \(key)")
+                return nil
             }
-
-            let start = stemStart(for: representative, style: style)
-
-            let candidateBeams = group.flatMap { head in
-                beamsByNoteHeadID[head.id] ?? []
-            }
-            let outermostBeam = key.direction == .up
+            let start = stemAnchor(for: representative, style: style)
+            let candidateBeams = group.flatMap { beamsByNoteHeadID[$0.id] ?? [] }
+            let outermostBeam = representative.stemDirection == .up
                 ? candidateBeams.min(by: { $0.start.y < $1.start.y })
                 : candidateBeams.max(by: { $0.start.y < $1.start.y })
-
-            if let beam = outermostBeam,
-               let beamY = beamEndY(for: representative, beam: beam, style: style) {
-                return RenderedStem(
-                    id: "stem_group_\(key.x)_r\(key.row)_m\(key.measureIndex)_\(key.voice.rawValue)_\(key.direction.rawValue)",
-                    noteHeadIDs: allIDs,
-                    direction: key.direction,
-                    start: start,
-                    end: CGPoint(x: start.x, y: beamY)
-                )
-            }
-            // Not beamed — use fixed stem length from the representative head.
-            let endY: CGFloat = switch key.direction {
-            case .up: start.y - style.stemLength
-            case .down: start.y + style.stemLength
+            let endY: CGFloat
+            if let outermostBeam,
+               let beamY = beamEndY(
+                   for: representative,
+                   beam: outermostBeam,
+                   style: style
+               ) {
+                endY = beamY
+            } else {
+                endY = unbeamedStemEndY(for: group, start: start, style: style)
             }
 
             return RenderedStem(
-                id: "stem_group_\(key.x)_r\(key.row)_m\(key.measureIndex)_\(key.voice.rawValue)_\(key.direction.rawValue)",
-                noteHeadIDs: allIDs,
-                direction: key.direction,
+                id: "stem_\(key.timeColumn.absoluteLayoutTick)_r\(key.row)_"
+                    + "\(key.voice.rawValue)_\(representative.stemDirection.rawValue)",
+                noteHeadIDs: group.map(\.id).sorted(),
+                direction: representative.stemDirection,
                 start: start,
                 end: CGPoint(x: start.x, y: endY)
             )
@@ -353,7 +328,7 @@ struct NotationLayoutEngine {
         guard beam.noteHeadIDs.count > 1 else { return nil }
 
         let startX = beam.start.x, endX = beam.end.x
-        let stemX = stemStart(for: noteHead, style: style).x
+        let stemX = stemAnchor(for: noteHead, style: style).x
 
         guard stemX >= min(startX, endX) && stemX <= max(startX, endX) else { return nil }
 
@@ -411,41 +386,26 @@ struct NotationLayoutEngine {
             }
         }
 
-        // Index stems by noteHeadID so flags can look up the beam-adjusted
-        // stem end Y instead of assuming a fixed stem length.
-        var stemEndByNoteHeadID: [UInt64: CGFloat] = [:]
+        var stemByNoteHeadID: [UInt64: RenderedStem] = [:]
         for stem in stems {
             for noteHeadID in stem.noteHeadIDs {
-                stemEndByNoteHeadID[noteHeadID] = stem.end.y
+                stemByNoteHeadID[noteHeadID] = stem
             }
         }
 
-        // Deduplicate: chord notes sharing a stem (same x, row, measure, voice,
-        // direction) must emit flags only once from the representative head that
-        // needs the most flags.  Without this, unified mixed-direction chords
-        // would draw overlapping flags for every note head on the shared stem.
-        struct FlagGroupKey: Hashable {
-            let x: Int
-            let row: Int
-            let measureIndex: Int
-            let voice: NotationVoice
-            let direction: StemDirection
-        }
         let flaggedHeads = noteHeads.filter { $0.interval.needsFlag }
-        // Pick one representative per stem group — the one with the most total flags.
-        var bestByKey: [FlagGroupKey: RenderedNoteHead] = [:]
+        var bestByKey: [StemGroupKey: RenderedNoteHead] = [:]
         for head in flaggedHeads {
-            let key = FlagGroupKey(
-                x: Int((head.position.x * 1000).rounded()),
+            let key = StemGroupKey(
+                timeColumn: head.timeColumn,
                 row: head.row,
-                measureIndex: head.measureIndex,
-                voice: head.voice,
-                direction: head.stemDirection
+                voice: head.voice
             )
-            let existing = bestByKey[key]
-            if existing == nil || head.interval.flagCount > existing!.interval.flagCount {
-                bestByKey[key] = head
+            if let existing = bestByKey[key],
+               existing.interval.flagCount >= head.interval.flagCount {
+                continue
             }
+            bestByKey[key] = head
         }
         let representatives = Set(bestByKey.values.map(\.id))
 
@@ -455,45 +415,28 @@ struct NotationLayoutEngine {
                 let coveredLevels = coveredLevelsByNoteHead[noteHead.id] ?? 0
                 let totalFlags = noteHead.interval.flagCount
                 guard coveredLevels < totalFlags else { return [] }
-
-                let stemBottom = stemStart(for: noteHead, style: style)
-
-                // Use beam-adjusted stem end when available; fall back to
-                // default stem length for unbeamed notes.
-                let stemEndY: CGFloat
-                if let adjustedEndY = stemEndByNoteHeadID[noteHead.id] {
-                    stemEndY = adjustedEndY
-                } else {
-                    stemEndY = noteHead.stemDirection == .up
-                        ? stemBottom.y - style.stemLength
-                        : stemBottom.y + style.stemLength
+                guard let stem = stemByNoteHeadID[noteHead.id] else {
+                    Logger.error("Missing rendered stem for flagged head \(noteHead.id)")
+                    return []
                 }
-
                 let flagOrigin = CGPoint(
-                    x: stemBottom.x + GameplayLayout.flagXOffset,
-                    y: stemEndY
+                    x: stem.start.x + GameplayLayout.flagXOffset,
+                    y: stem.end.y
                 )
 
                 return (coveredLevels..<totalFlags).map { flagIndex in
                     let flagLevel = flagIndex - coveredLevels
-                    // Unbeamed notes: first flag at stem tip (offset 0).
-                    // Beamed notes: remaining flags offset from beam level.
-                    let yMultiplier: CGFloat
-                    if coveredLevels == 0 {
-                        yMultiplier = CGFloat(flagLevel)
-                    } else {
-                        yMultiplier = CGFloat(flagLevel + 1)
-                    }
-                    // Flags stack toward the note head: positive-y (downward) for
-                    // up-stem, negative-y (upward) for down-stem.
-                    let yOffset = noteHead.stemDirection == .up
+                    let yMultiplier = coveredLevels == 0
+                        ? CGFloat(flagLevel)
+                        : CGFloat(flagLevel + 1)
+                    let yOffset = stem.direction == .up
                         ? yMultiplier * GameplayLayout.flagVerticalSpacing
                         : -yMultiplier * GameplayLayout.flagVerticalSpacing
 
                     return RenderedFlag(
                         id: "flag_\(noteHead.id)_\(flagIndex)",
                         noteHeadID: noteHead.id,
-                        stemDirection: noteHead.stemDirection,
+                        stemDirection: stem.direction,
                         flagIndex: flagIndex,
                         origin: CGPoint(x: flagOrigin.x, y: flagOrigin.y + yOffset)
                     )
@@ -624,18 +567,27 @@ struct NotationLayoutEngine {
                     return nil
                 }
 
-                // Horizontal beam: choose the extremum stem-tip Y across the
-                // full run (not just this level's subset) so all beam levels
-                // stack consistently outward from the same reference point.
-                // Using only levelHeads could place a secondary beam between
-                // the primary beam and the noteheads when the subset has
-                // different pitch extremes.
+                let firstColumn = firstHead.timeColumn
+                let lastColumn = lastHead.timeColumn
+                guard firstColumn != lastColumn else {
+                    return nil
+                }
+                let firstChord = noteHeads.filter { $0.timeColumn == firstColumn }
+                let lastChord = noteHeads.filter { $0.timeColumn == lastColumn }
+                guard let firstRepresentative = stemRepresentative(in: firstChord),
+                      let lastRepresentative = stemRepresentative(in: lastChord) else {
+                    return nil
+                }
                 let sharedY = sharedBeamY(for: noteHeads, level: level, style: style)
-                let startX = stemStart(for: firstHead, style: style).x
-                let endX = stemStart(for: lastHead, style: style).x
-                let start = CGPoint(x: startX, y: sharedY)
-                let end = CGPoint(x: endX, y: sharedY)
-                guard hasPositiveBeamSpan(from: firstHead, to: lastHead, start: start, end: end) else {
+                let start = CGPoint(
+                    x: stemAnchor(for: firstRepresentative, style: style).x,
+                    y: sharedY
+                )
+                let end = CGPoint(
+                    x: stemAnchor(for: lastRepresentative, style: style).x,
+                    y: sharedY
+                )
+                guard abs(end.x - start.x) > BeamGroupingConstants.comparisonTolerance else {
                     return nil
                 }
 
@@ -697,28 +649,74 @@ struct NotationLayoutEngine {
         return segments
     }
 
-    private func hasPositiveBeamSpan(
-        from firstHead: RenderedNoteHead,
-        to lastHead: RenderedNoteHead,
-        start: CGPoint,
-        end: CGPoint
-    ) -> Bool {
-        abs(lastHead.timePosition - firstHead.timePosition) > BeamGroupingConstants.comparisonTolerance
-            && abs(end.x - start.x) > BeamGroupingConstants.comparisonTolerance
-    }
-
-    private func stemStart(
+    private func stemAnchor(
         for noteHead: RenderedNoteHead,
         style: NotationLayoutStyle
     ) -> CGPoint {
-        let xOffset = switch noteHead.stemDirection {
-        case .up:
-            style.stemXInset
-        case .down:
-            -style.stemXInset
-        }
+        let offset = noteHead.glyph.stemAnchorOffset(
+            direction: noteHead.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
+        return CGPoint(
+            x: noteHead.position.x + offset.x,
+            y: noteHead.position.y + offset.y
+        )
+    }
 
-        return CGPoint(x: noteHead.position.x + xOffset, y: noteHead.position.y)
+    private func glyphBounds(
+        for noteHead: RenderedNoteHead,
+        style: NotationLayoutStyle
+    ) -> CGRect {
+        noteHead.glyph.bounds(
+            centeredAt: noteHead.position,
+            size: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
+    }
+
+    private func stemRepresentative(
+        in noteHeads: [RenderedNoteHead]
+    ) -> RenderedNoteHead? {
+        guard let direction = noteHeads.first?.stemDirection else {
+            return nil
+        }
+        let ordered = noteHeads.sorted {
+            if $0.position.y != $1.position.y {
+                return $0.position.y < $1.position.y
+            }
+            if $0.catalogOrder != $1.catalogOrder {
+                return $0.catalogOrder < $1.catalogOrder
+            }
+            return $0.id < $1.id
+        }
+        return direction == .up ? ordered.last : ordered.first
+    }
+
+    private func unbeamedStemEndY(
+        for noteHeads: [RenderedNoteHead],
+        start: CGPoint,
+        style: NotationLayoutStyle
+    ) -> CGFloat {
+        guard let direction = noteHeads.first?.stemDirection else {
+            return start.y
+        }
+        switch direction {
+        case .up:
+            let highestVisibleY = noteHeads.map {
+                glyphBounds(for: $0, style: style).minY
+            }.min() ?? start.y
+            return min(
+                start.y - style.stemLength,
+                highestVisibleY - style.minimumStemExtensionPastChord
+            )
+        case .down:
+            let lowestVisibleY = noteHeads.map {
+                glyphBounds(for: $0, style: style).maxY
+            }.max() ?? start.y
+            return max(
+                start.y + style.stemLength,
+                lowestVisibleY + style.minimumStemExtensionPastChord
+            )
+        }
     }
 
     private func ledgerSteps(for staffStep: Int) -> [Int] {

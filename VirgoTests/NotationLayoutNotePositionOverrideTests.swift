@@ -48,25 +48,41 @@ struct NotationLayoutNotePositionOverrideTests {
         #expect(!overriddenLayout.ledgerLines.isEmpty)
     }
 
-    @Test("Override preserves catalog stem direction for upper-voice notes")
-    func overridePreservesCatalogStemDirection() {
-        // Snare uses the catalog-authored .up direction.
-        let snareNote = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
-
-        let defaultLayout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [snareNote], timeSignature: .fourFour)
+    @Test("Position override preserves canonical upper-voice stem direction")
+    func positionOverridePreservesCanonicalStemDirection() throws {
+        let snare = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0
         )
-        #expect(defaultLayout.noteHeads.first?.stemDirection == .up)
-
-        // Position overrides move the head without changing catalog notation identity.
+        let defaultLayout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [snare], timeSignature: .fourFour)
+        )
         let overriddenLayout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(
-                notes: [snareNote],
+                notes: [snare],
                 timeSignature: .fourFour,
-                notePositionOverrides: [.snare: .line5]
+                notePositionOverrides: [.snare: .aboveLine9]
             )
         )
-        #expect(overriddenLayout.noteHeads.first?.stemDirection == .up)
+        let defaultHead = try #require(defaultLayout.noteHeads.first)
+        let head = try #require(overriddenLayout.noteHeads.first)
+
+        #expect(head.position.y != defaultHead.position.y)
+        #expect(head.position.x == defaultHead.position.x)
+        #expect(head.sourceObjectID == defaultHead.sourceObjectID)
+        #expect(head.sourceLaneID == defaultHead.sourceLaneID)
+        #expect(head.sourceChipID == defaultHead.sourceChipID)
+        #expect(head.noteType == defaultHead.noteType)
+        #expect(head.drumType == defaultHead.drumType)
+        #expect(head.glyph == defaultHead.glyph)
+        #expect(head.variant == defaultHead.variant)
+        #expect(head.voice == .upper)
+        #expect(head.voice == defaultHead.voice)
+        #expect(head.stemDirection == .up)
+        #expect(head.stemDirection == defaultHead.stemDirection)
+        #expect(head.position.y == GameplayLayout.NotePosition.aboveLine9.absoluteY(for: 0))
     }
 
     @Test("Drums without overrides keep their default note position")

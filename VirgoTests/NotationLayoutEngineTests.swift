@@ -698,10 +698,18 @@ extension NotationLayoutEngineTests {
         )
         let crash = try #require(layout.noteHeads.first { $0.drumType == .crash })
         let stem = try #require(layout.stems.first)
+        let anchorOffset = crash.glyph.stemAnchorOffset(
+            direction: crash.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
+        let expectedAnchor = CGPoint(
+            x: crash.position.x + anchorOffset.x,
+            y: crash.position.y + anchorOffset.y
+        )
 
         #expect(crash.stemDirection == .up)
         #expect(stem.direction == .up)
-        #expect(abs(stem.start.x - (crash.position.x + style.stemXInset)) < 0.001)
+        #expect(stem.start == expectedAnchor)
         #expect(stem.end.y < stem.start.y)
     }
 
@@ -714,10 +722,18 @@ extension NotationLayoutEngineTests {
         )
         let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
         let stem = try #require(layout.stems.first)
+        let anchorOffset = snare.glyph.stemAnchorOffset(
+            direction: snare.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
+        let expectedAnchor = CGPoint(
+            x: snare.position.x + anchorOffset.x,
+            y: snare.position.y + anchorOffset.y
+        )
 
         #expect(snare.stemDirection == .up)
         #expect(stem.direction == .up)
-        #expect(abs(stem.start.x - (snare.position.x + style.stemXInset)) < 0.001)
+        #expect(stem.start == expectedAnchor)
         #expect(stem.end.y < stem.start.y)
     }
 
@@ -770,17 +786,34 @@ extension NotationLayoutEngineTests {
         let sortedHeads = layout.noteHeads.sorted { $0.timePosition < $1.timePosition }
         let firstHead = try #require(sortedHeads.first)
         let lastHead = try #require(sortedHeads.last)
+        let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
+            direction: firstHead.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
+        let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
+            direction: lastHead.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
+        let expectedFirstAnchor = CGPoint(
+            x: firstHead.position.x + firstAnchorOffset.x,
+            y: firstHead.position.y + firstAnchorOffset.y
+        )
+        let expectedLastAnchor = CGPoint(
+            x: lastHead.position.x + lastAnchorOffset.x,
+            y: lastHead.position.y + lastAnchorOffset.y
+        )
 
         #expect(layout.beams.count == 2)
         #expect(Set(layout.beams.map(\.level)) == [0, 1])
         #expect(layout.beams.allSatisfy { $0.noteHeadIDs.count == 4 })
         #expect(layout.beams.allSatisfy { $0.direction == .up })
-        #expect(layout.beams.allSatisfy { abs($0.start.x - (firstHead.position.x + style.stemXInset)) < 0.001 })
-        #expect(layout.beams.allSatisfy { abs($0.end.x - (lastHead.position.x + style.stemXInset)) < 0.001 })
+        #expect(layout.beams.allSatisfy { $0.start.x == expectedFirstAnchor.x })
+        #expect(layout.beams.allSatisfy { $0.end.x == expectedLastAnchor.x })
     }
 
     @Test("consecutive eighths create one beam level")
     func consecutiveEighthsCreateOneBeamLevel() throws {
+        let style = NotationLayoutStyle.gameplayDefault
         let notes = (0..<2).map { index in
             Note(
                 interval: .eighth,
@@ -790,13 +823,26 @@ extension NotationLayoutEngineTests {
             )
         }
         let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
         )
         let beam = try #require(layout.beams.first)
+        let sortedHeads = layout.noteHeads.sorted { $0.timePosition < $1.timePosition }
+        let firstHead = try #require(sortedHeads.first)
+        let lastHead = try #require(sortedHeads.last)
+        let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
+            direction: firstHead.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
+        let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
+            direction: lastHead.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
 
         #expect(layout.beams.count == 1)
         #expect(beam.level == 0)
         #expect(beam.noteHeadIDs.count == 2)
+        #expect(beam.start.x == firstHead.position.x + firstAnchorOffset.x)
+        #expect(beam.end.x == lastHead.position.x + lastAnchorOffset.x)
     }
 
     @Test("beams do not cross measure boundaries")
@@ -881,9 +927,12 @@ extension NotationLayoutEngineTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
 
-        // Same-time, same-voice note heads share a single stem (chord grouping).
+        let renderedHeadIDs = Set(layout.noteHeads.map(\.id))
+
+        #expect(renderedHeadIDs.count == 2)
+        #expect(Set(layout.noteHeads.map(\.timeColumn)).count == 1)
         #expect(layout.stems.count == 1)
-        #expect(layout.stems.first?.noteHeadIDs.count == 2)
+        #expect(Set(layout.stems.first?.noteHeadIDs ?? []) == renderedHeadIDs)
         #expect(layout.beams.isEmpty)
     }
 
@@ -947,6 +996,9 @@ extension NotationLayoutEngineTests {
         )
 
         #expect(layout.stems.count == 2, "Different-voice notes should get separate stems")
+        let stemMemberships = layout.stems.map { Set($0.noteHeadIDs) }
+        #expect(stemMemberships.count == 2)
+        #expect(stemMemberships[0].isDisjoint(with: stemMemberships[1]))
     }
 
     @Test("down stem beams align to down stem x coordinates")
@@ -963,11 +1015,19 @@ extension NotationLayoutEngineTests {
         let firstHead = try #require(sortedHeads.first)
         let lastHead = try #require(sortedHeads.last)
         let beam = try #require(layout.beams.first)
+        let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
+            direction: firstHead.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
+        let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
+            direction: lastHead.stemDirection,
+            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        )
 
         #expect(layout.beams.count == 1)
         #expect(beam.direction == .down)
-        #expect(abs(beam.start.x - (firstHead.position.x - style.stemXInset)) < 0.001)
-        #expect(abs(beam.end.x - (lastHead.position.x - style.stemXInset)) < 0.001)
+        #expect(beam.start.x == firstHead.position.x + firstAnchorOffset.x)
+        #expect(beam.end.x == lastHead.position.x + lastAnchorOffset.x)
         #expect(beam.start.y > firstHead.position.y)
     }
 
@@ -993,7 +1053,11 @@ extension NotationLayoutEngineTests {
         for noteHeadID in beam.noteHeadIDs {
             let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
-            let stemX = noteHead.position.x + style.stemXInset  // up-stem inset
+            let anchorOffset = noteHead.glyph.stemAnchorOffset(
+                direction: noteHead.stemDirection,
+                in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            )
+            let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - beam.start.x) / (beam.end.x - beam.start.x)
             let expectedY = beam.start.y + t * (beam.end.y - beam.start.y)
             #expect(abs(stem.end.y - expectedY) < 0.5,
@@ -1007,7 +1071,7 @@ extension NotationLayoutEngineTests {
         let notes = (0..<4).map { index in
             Note(
                 interval: .eighth,
-                noteType: .crash,
+                noteType: .bass,
                 measureNumber: 1,
                 measureOffset: Double(index) / 8.0
             )
@@ -1016,11 +1080,18 @@ extension NotationLayoutEngineTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
         )
         let beam = try #require(layout.beams.first { $0.level == 0 })
+        #expect(beam.direction == .down)
 
         for noteHeadID in beam.noteHeadIDs {
             let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
-            let stemX = noteHead.position.x - style.stemXInset  // down-stem inset
+            #expect(noteHead.stemDirection == .down)
+            #expect(stem.direction == .down)
+            let anchorOffset = noteHead.glyph.stemAnchorOffset(
+                direction: noteHead.stemDirection,
+                in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            )
+            let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - beam.start.x) / (beam.end.x - beam.start.x)
             let expectedY = beam.start.y + t * (beam.end.y - beam.start.y)
             #expect(abs(stem.end.y - expectedY) < 0.5,
@@ -1050,7 +1121,11 @@ extension NotationLayoutEngineTests {
         for noteHeadID in outermostBeam.noteHeadIDs {
             let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
-            let stemX = noteHead.position.x + style.stemXInset
+            let anchorOffset = noteHead.glyph.stemAnchorOffset(
+                direction: noteHead.stemDirection,
+                in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            )
+            let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)
             let expectedY = outermostBeam.start.y + t * (outermostBeam.end.y - outermostBeam.start.y)
             #expect(abs(stem.end.y - expectedY) < 0.5,
@@ -1086,7 +1161,13 @@ extension NotationLayoutEngineTests {
         for noteHeadID in outermostBeam.noteHeadIDs {
             let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
-            let stemX = noteHead.position.x - style.stemXInset  // down-stem inset
+            #expect(noteHead.stemDirection == .down)
+            #expect(stem.direction == .down)
+            let anchorOffset = noteHead.glyph.stemAnchorOffset(
+                direction: noteHead.stemDirection,
+                in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            )
+            let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)
             let expectedY = outermostBeam.start.y + t * (outermostBeam.end.y - outermostBeam.start.y)
             #expect(abs(stem.end.y - expectedY) < 0.5)

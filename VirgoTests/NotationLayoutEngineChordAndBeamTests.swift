@@ -2,6 +2,9 @@ import Testing
 import SwiftUI
 @testable import Virgo
 
+// Task-focused geometry coverage intentionally lives with the existing chord/beam suite.
+// swiftlint:disable file_length
+
 @Suite("Notation Layout Engine – Chord & Beam Tests")
 // swiftlint:disable:next type_body_length
 struct NotationLayoutEngineChordAndBeamTests {
@@ -123,8 +126,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         }
     }
 
-    @Test("same-voice chord with one catalog direction shares one stem")
-    func sameVoiceChordWithOneCatalogDirectionSharesOneStem() throws {
+    @Test("canonical upper-voice chord shares one up stem")
+    func canonicalUpperVoiceChordSharesOneUpStem() throws {
         let notes = [
             Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
@@ -133,16 +136,14 @@ struct NotationLayoutEngineChordAndBeamTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
 
-        #expect(
-            layout.stems.count == 1,
-            "Same-direction same-voice chord should share one stem"
-        )
+        #expect(layout.stems.count == 1)
         let stem = try #require(layout.stems.first)
-        #expect(stem.noteHeadIDs.count == 2)
+        #expect(Set(stem.noteHeadIDs) == Set(layout.noteHeads.map(\.id)))
+        #expect(stem.direction == .up)
     }
 
-    @Test("same-voice chord with one catalog direction yields one beam group")
-    func sameVoiceChordWithOneCatalogDirectionYieldsSingleBeamGroup() throws {
+    @Test("canonical upper-voice chord yields a single beam group")
+    func canonicalUpperVoiceChordYieldsSingleBeamGroup() throws {
         let notes = [
             Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
@@ -155,12 +156,12 @@ struct NotationLayoutEngineChordAndBeamTests {
 
         #expect(layout.beams.count == 1, "Same-direction chords should form one beam group")
         #expect(layout.stems.count == 2, "One stem per beat (each shared by both chord notes)")
+        #expect(layout.beams.allSatisfy { $0.direction == .up })
+        #expect(layout.stems.allSatisfy { $0.direction == .up })
     }
 
-    @Test("catalog direction keeps chord and adjacent solo note in one beam run")
-    func catalogDirectionKeepsChordAndAdjacentSoloInOneBeamRun() throws {
-        // Crash and snare share the catalog-authored upper-voice .up direction,
-        // so the chord and adjacent solo snare remain in one beam group.
+    @Test("canonical upper-voice chord and solo form one beam")
+    func canonicalUpperVoiceChordAndSoloFormOneBeam() throws {
         let notes = [
             Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
@@ -175,13 +176,8 @@ struct NotationLayoutEngineChordAndBeamTests {
             "Chord + solo note in same voice should form a single beam, got \(layout.beams.count) beams"
         )
 
-        // All upper-voice note heads preserve their catalog-authored direction.
         let upperHeads = layout.noteHeads.filter { $0.voice == .upper }
-        let directions = Set(upperHeads.map(\.stemDirection))
-        #expect(
-            directions.count == 1,
-            "All upper-voice notes should preserve one catalog direction, got \(directions)"
-        )
+        #expect(upperHeads.allSatisfy { $0.stemDirection == .up })
 
         // Verify the crash note head is part of the beam.
         let beam = try #require(layout.beams.first)
@@ -192,8 +188,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         )
     }
 
-    @Test("beam run preserves catalog-authored upper directions")
-    func beamRunPreservesCatalogAuthoredUpperDirections() throws {
+    @Test("canonical upper voice ignores distance from middle")
+    func canonicalUpperVoiceIgnoresDistanceFromMiddle() throws {
         let notes = [
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125),
@@ -355,8 +351,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         }
     }
 
-    @Test("same-direction chord does not produce duplicate flags")
-    func sameDirectionChordDoesNotProduceDuplicateFlags() throws {
+    @Test("canonical upper-voice chord does not duplicate flags")
+    func canonicalUpperVoiceChordDoesNotDuplicateFlags() throws {
         // Crash and snare share the catalog-authored .up direction and one stem.
         // Both are eighth notes, but only one flag should be emitted for that stem.
         let notes = [
@@ -367,7 +363,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
 
-        // Isolated unbeamed chord: no beams, so each note head would have flags.
+        #expect(layout.stems.count == 1)
         #expect(layout.beams.isEmpty, "Isolated chord notes should not form beams")
         #expect(
             layout.flags.count == 1,
@@ -375,8 +371,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         )
     }
 
-    @Test("stemless note leaves stemmed note catalog direction unchanged")
-    func stemlessNoteLeavesStemmedNoteCatalogDirectionUnchanged() throws {
+    @Test("stemless head is excluded from shared stem membership")
+    func stemlessHeadIsExcludedFromSharedStemMembership() throws {
         let notes = [
             Note(interval: .half, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
@@ -385,14 +381,14 @@ struct NotationLayoutEngineChordAndBeamTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
 
-        let snareHead = try #require(
-            layout.noteHeads.first { $0.drumType == .snare },
-            "Should have a snare note head"
-        )
-        #expect(
-            snareHead.stemDirection == .up,
-            "Snare stem should preserve its catalog-authored .up direction"
-        )
+        let crashHead = try #require(layout.noteHeads.first { $0.drumType == .crash })
+        let snareHead = try #require(layout.noteHeads.first { $0.drumType == .snare })
+        let stem = try #require(layout.stems.first)
+
+        #expect(layout.stems.count == 1)
+        #expect(!stem.noteHeadIDs.contains(crashHead.id))
+        #expect(stem.noteHeadIDs.contains(snareHead.id))
+        #expect(stem.direction == .up)
     }
 
     @Test("unbeamed eighth note flag attaches at stem tip")
@@ -480,17 +476,17 @@ struct NotationLayoutEngineChordAndBeamTests {
 
     @Test("down-stem multi-flag notes stack toward the note head")
     func downStemMultiFlagStacksTowardNoteHead() throws {
-        // Isolated sixteenth bass drum: catalog-authored .down direction.
+        // Isolated lower-voice pedal hi-hat uses the catalog-authored .down direction.
         // The stem tip is below the note head.  Extra flags should stack
         // upward (negative-y in SwiftUI) toward the note head.
-        let note = Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0)
+        let note = Note(interval: .sixteenth, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0)
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
         )
 
-        #expect(layout.flags.count == 2, "Isolated 16th bass drum should have 2 flags")
+        #expect(layout.flags.count == 2, "Isolated 16th pedal hi-hat should have 2 flags")
         let stem = try #require(layout.stems.first)
-        #expect(stem.direction == .down, "Bass drum should have down-stem")
+        #expect(stem.direction == .down, "Pedal hi-hat should have down-stem")
 
         let flag0 = try #require(layout.flags.first { $0.flagIndex == 0 })
         let flag1 = try #require(layout.flags.first { $0.flagIndex == 1 })
@@ -506,6 +502,168 @@ struct NotationLayoutEngineChordAndBeamTests {
             abs(signedOffset + spacing) < 0.001,
             "Flag 1 should be \(spacing) above stem tip (toward note head), got offset \(signedOffset)"
         )
+    }
+
+    @Test("Same-time mixed voices use disjoint stems on opposite glyph sides")
+    func sameTimeMixedVoicesUseDisjointOppositeStems() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let upperHead = try #require(layout.noteHeads.first { $0.voice == .upper })
+        let lowerHead = try #require(layout.noteHeads.first { $0.voice == .lower })
+        let upperStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(upperHead.id) })
+        let lowerStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(lowerHead.id) })
+        let size = CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        let upperOffset = upperHead.glyph.stemAnchorOffset(direction: .up, in: size)
+        let lowerOffset = lowerHead.glyph.stemAnchorOffset(direction: .down, in: size)
+        let expectedUpperStart = CGPoint(
+            x: upperHead.position.x + upperOffset.x,
+            y: upperHead.position.y + upperOffset.y
+        )
+        let expectedLowerStart = CGPoint(
+            x: lowerHead.position.x + lowerOffset.x,
+            y: lowerHead.position.y + lowerOffset.y
+        )
+
+        #expect(upperHead.position.x == lowerHead.position.x)
+        #expect(upperStem.direction == .up)
+        #expect(lowerStem.direction == .down)
+        #expect(Set(upperStem.noteHeadIDs).isDisjoint(with: Set(lowerStem.noteHeadIDs)))
+        #expect(upperStem.start == expectedUpperStart)
+        #expect(lowerStem.start == expectedLowerStart)
+    }
+
+    @Test("Unbeamed stem covers a tall same-voice chord")
+    func unbeamedStemCoversTallSameVoiceChord() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = [
+            Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .lowTom, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(
+                notes: notes,
+                timeSignature: .fourFour,
+                notePositionOverrides: [.crash: .aboveLine9, .tom3: .belowLine6]
+            )
+        )
+        let stem = try #require(layout.stems.first)
+        let highestVisibleY = try #require(
+            layout.noteHeads.map {
+                $0.glyph.bounds(centeredAt: $0.position, size: layout.noteHeadSize).minY
+            }.min()
+        )
+        let lowestHead = try #require(
+            layout.noteHeads.max(by: { $0.position.y < $1.position.y })
+        )
+        let lowestOffset = lowestHead.glyph.stemAnchorOffset(
+            direction: .up,
+            in: layout.noteHeadSize
+        )
+        let expectedStart = CGPoint(
+            x: lowestHead.position.x + lowestOffset.x,
+            y: lowestHead.position.y + lowestOffset.y
+        )
+
+        #expect(layout.stems.count == 1)
+        #expect(stem.direction == .up)
+        #expect(stem.start == expectedStart)
+        #expect(stem.end.y <= highestVisibleY - style.minimumStemExtensionPastChord)
+        #expect(stem.start.y - stem.end.y >= style.stemLength)
+    }
+
+    @Test("Unbeamed lower-voice stem covers a tall chord from the left")
+    func unbeamedLowerVoiceStemCoversTallChordFromLeft() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(
+                notes: notes,
+                timeSignature: .fourFour,
+                notePositionOverrides: [.kick: .aboveLine9, .hiHatPedal: .belowLine6]
+            )
+        )
+        let stem = try #require(layout.stems.first)
+        let lowestVisibleY = try #require(
+            layout.noteHeads.map {
+                $0.glyph.bounds(centeredAt: $0.position, size: layout.noteHeadSize).maxY
+            }.max()
+        )
+        let highestHead = try #require(
+            layout.noteHeads.min(by: { $0.position.y < $1.position.y })
+        )
+        let highestOffset = highestHead.glyph.stemAnchorOffset(
+            direction: .down,
+            in: layout.noteHeadSize
+        )
+        let expectedStart = CGPoint(
+            x: highestHead.position.x + highestOffset.x,
+            y: highestHead.position.y + highestOffset.y
+        )
+
+        #expect(layout.stems.count == 1)
+        #expect(stem.direction == .down)
+        #expect(stem.start == expectedStart)
+        #expect(stem.end.y >= lowestVisibleY + style.minimumStemExtensionPastChord)
+        #expect(stem.end.y - stem.start.y >= style.stemLength)
+    }
+
+    @Test("Shared-chord flags originate from the rendered stem")
+    func sharedChordFlagsOriginateFromRenderedStem() throws {
+        let notes = [
+            Note(interval: .sixteenth, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let stem = try #require(layout.stems.first)
+        let firstFlag = try #require(layout.flags.first { $0.flagIndex == 0 })
+        let secondFlag = try #require(layout.flags.first { $0.flagIndex == 1 })
+
+        #expect(layout.stems.count == 1)
+        #expect(layout.beams.isEmpty)
+        #expect(layout.flags.count == 2)
+        #expect(firstFlag.origin.x == stem.start.x + GameplayLayout.flagXOffset)
+        #expect(firstFlag.origin.y == stem.end.y)
+        #expect(secondFlag.origin.x == firstFlag.origin.x)
+        #expect(secondFlag.origin.y == stem.end.y + GameplayLayout.flagVerticalSpacing)
+    }
+
+    @Test("Beam endpoint uses the shared chord stem anchor")
+    func beamEndpointUsesSharedChordStemAnchor() throws {
+        let notes = [
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let firstColumn = try #require(
+            layout.noteHeads.map(\.timeColumn).min(by: {
+                $0.absoluteLayoutTick < $1.absoluteLayoutTick
+            })
+        )
+        let firstIDs = Set(
+            layout.noteHeads
+                .filter { $0.timeColumn == firstColumn }
+                .map(\.id)
+        )
+        let firstStem = try #require(
+            layout.stems.first { !firstIDs.isDisjoint(with: Set($0.noteHeadIDs)) }
+        )
+        let beam = try #require(layout.beams.first { $0.level == 0 })
+
+        #expect(beam.start.x == firstStem.start.x)
     }
 
     private func rowContentMaxY(layout: NotationLayout, row: Int) -> CGFloat {
@@ -552,3 +710,5 @@ struct NotationLayoutEngineChordAndBeamTests {
         return ys.min() ?? .infinity
     }
 }
+
+// swiftlint:enable file_length

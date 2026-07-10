@@ -130,7 +130,6 @@ struct GameplayLayout {
     static let stemWidth: CGFloat = 2
     static let stemHeight: CGFloat = 75
     static let stemExtension: CGFloat = 35
-    static let stemXOffset: CGFloat = 7
     static let beamYPosition: CGFloat = -60
     static let connectorWidth: CGFloat = 5
     static let connectorHeight: CGFloat = 2
