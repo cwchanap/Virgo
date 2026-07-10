@@ -183,29 +183,19 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
-    @Test("Notation primitive note head renders the expected drum symbol")
-    func testNotationPrimitiveViewsRenderExpectedSymbols() async throws {
+    @Test("Notation primitive mounts every vector notehead")
+    func testNotationPrimitiveMountsEveryVectorNotehead() async throws {
         try await TestSetup.withTestSetup {
-            let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
-            let noteHead = RenderedNoteHead(
-                id: 42,
-                sourceNoteID: ObjectIdentifier(note),
-                drumType: .snare,
-                voice: .upper,
-                timePosition: 0,
-                measureIndex: 0,
-                row: 0,
-                position: CGPoint(x: 40, y: 40),
-                staffStep: -4,
-                stemDirection: .up,
-                interval: .quarter
-            )
-
-            SwiftUITestUtilities.assertView(
-                NotationNoteHeadView(noteHead: noteHead),
-                containsStrings: [DrumType.snare.symbol],
-                size: CGSize(width: 120, height: 120)
-            )
+            for (index, glyph) in DrumNoteheadGlyph.allCases.enumerated() {
+                let noteHead = makeRenderedHead(id: UInt64(index), glyph: glyph)
+                SwiftUITestUtilities.assertViewWithEnvironment(
+                    NotationNoteHeadView(
+                        noteHead: noteHead,
+                        size: CGSize(width: 30, height: 20)
+                    ),
+                    size: CGSize(width: 120, height: 120)
+                )
+            }
         }
     }
 
@@ -213,20 +203,7 @@ struct SwiftUIRenderingCoverageTests {
     func testNotationPrimitivesDoNotRenderYellowHighlighting() async throws {
         #if os(macOS)
         try await TestSetup.withTestSetup {
-            let note = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
-            let noteHead = RenderedNoteHead(
-                id: 42,
-                sourceNoteID: ObjectIdentifier(note),
-                drumType: .snare,
-                voice: .upper,
-                timePosition: 0,
-                measureIndex: 0,
-                row: 0,
-                position: CGPoint(x: 60, y: 70),
-                staffStep: -4,
-                stemDirection: .up,
-                interval: .quarter
-            )
+            let noteHead = makeRenderedHead()
             let stem = RenderedStem(
                 id: "stem-1",
                 noteHeadIDs: [42],
@@ -256,7 +233,10 @@ struct SwiftUIRenderingCoverageTests {
                 NotationBeamView(beam: beam)
                 NotationStemView(stem: stem)
                 NotationFlagView(flag: flag)
-                NotationNoteHeadView(noteHead: noteHead)
+                NotationNoteHeadView(
+                    noteHead: noteHead,
+                    size: CGSize(width: 30, height: 20)
+                )
             }
 
             let yellowPixels = try countYellowPixels(in: view, size: CGSize(width: 140, height: 140))
@@ -402,5 +382,42 @@ struct SwiftUIRenderingCoverageTests {
                     == denseViewModel.cachedNotationLayout.totalHeight
             )
         }
+    }
+}
+
+private extension SwiftUIRenderingCoverageTests {
+    func makeRenderedHead(
+        id: UInt64 = 42,
+        glyph: DrumNoteheadGlyph = .filledDiamond
+    ) -> RenderedNoteHead {
+        let note = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0
+        )
+        return RenderedNoteHead(
+            id: id,
+            sourceObjectID: ObjectIdentifier(note),
+            sourceLaneID: nil,
+            sourceChipID: nil,
+            noteType: .snare,
+            drumType: .snare,
+            glyph: glyph,
+            variant: .standard,
+            voice: .upper,
+            stemDirection: .up,
+            timeColumn: NotationTimeColumn(
+                measureIndex: 0,
+                tickWithinMeasure: 0,
+                absoluteLayoutTick: 0
+            ),
+            timePosition: 0,
+            row: 0,
+            position: CGPoint(x: 60, y: 60),
+            staffStep: -4,
+            interval: .quarter,
+            catalogOrder: 1
+        )
     }
 }

@@ -134,15 +134,12 @@ extension NotationLayoutEngine {
         return abs(a)
     }
 
-    func requiredGridColumnGap(notes: [Note], ticksPerMeasure: Int, input: NotationLayoutInput) -> CGFloat {
-        let uniqueMeasureIndices = Set(notes.map { normalizedMeasureIndex(for: $0) })
-        let hasCollision = uniqueMeasureIndices.contains { measureIndex in
-            containsCrossVoiceCollision(measureIndex: measureIndex, ticksPerMeasure: ticksPerMeasure, notes: notes)
-        }
-
-        return hasCollision
-            ? input.style.minimumNoteColumnGap + 2 * input.style.voiceCollisionOffset
-            : input.style.minimumNoteColumnGap
+    func requiredGridColumnGap(
+        notes: [Note],
+        ticksPerMeasure: Int,
+        input: NotationLayoutInput
+    ) -> CGFloat {
+        input.style.minimumNoteColumnGap
     }
 
     func smallestPositiveGap(in ticks: [Int]) -> Int? {

@@ -271,7 +271,7 @@ extension GameplayView {
             }
 
             ForEach(notationLayout.noteHeads) { noteHead in
-                NotationNoteHeadView(noteHead: noteHead)
+                NotationNoteHeadView(noteHead: noteHead, size: notationLayout.noteHeadSize)
                     .equatable()
             }
         }

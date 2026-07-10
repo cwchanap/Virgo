@@ -7,13 +7,17 @@ struct NotationLayoutEngine {
     private static let topStaffStep = -8
     private static let bottomStaffStep = 0
 
-    private struct VoiceCollisionColumn: Hashable {
-        let measureIndex: Int
-        let tickIndex: Int
+    private struct NoteHeadPlacement {
+        let timeColumn: NotationTimeColumn
+        let timePosition: Double
+        let row: Int
+        let center: CGPoint
+        let staffStep: Int
     }
-    private struct NoteHeadDraft {
-        let noteHead: RenderedNoteHead
-        let collisionColumn: VoiceCollisionColumn
+
+    private struct BuiltNoteHead {
+        let head: RenderedNoteHead
+        let fallbackLaneID: String?
     }
 
     struct BeamGroupKey: Hashable {
@@ -56,6 +60,10 @@ struct NotationLayoutEngine {
         return NotationLayout(
             tabGrid: tabGrid,
             measures: measures,
+            noteHeadSize: CGSize(
+                width: input.style.noteHeadWidth,
+                height: input.style.noteHeadHeight
+            ),
             noteHeads: noteHeads,
             stems: stems,
             beams: beams,
@@ -96,24 +104,6 @@ struct NotationLayoutEngine {
         return result
     }
 
-    func containsCrossVoiceCollision(measureIndex: Int, ticksPerMeasure: Int, notes: [Note]) -> Bool {
-        Dictionary(
-            grouping: notes.filter { normalizedMeasureIndex(for: $0) == measureIndex },
-            by: { tickWithinMeasure(for: $0, ticksPerMeasure: ticksPerMeasure) }
-        )
-        .values
-        .contains { columnNotes in
-            let voices = Set(columnNotes.compactMap { note -> NotationVoice? in
-                guard let drumType = DrumType.from(noteType: note.noteType) else {
-                    return nil
-                }
-                return NotationVoice.voice(for: drumType)
-            })
-
-            return voices.count > 1
-        }
-    }
-
     // MARK: - Note Head Building
 
     private func buildNoteHeads(
@@ -122,223 +112,125 @@ struct NotationLayoutEngine {
         tabGrid: TabGrid,
         input: NotationLayoutInput
     ) -> [RenderedNoteHead] {
-        var nextID: UInt64 = 0
-        let measuresByIndex = Dictionary(uniqueKeysWithValues: measures.map { ($0.measureIndex, $0) })
-        var drafts: [NoteHeadDraft] = []
-
-        for note in notes {
-            guard let drumType = DrumType.from(noteType: note.noteType) else { continue }
-            let timePos = MeasureUtils.timePosition(
-                measureNumber: note.measureNumber,
-                measureOffset: note.measureOffset
-            )
-            let normalizedMeasureIndex = MeasureUtils.measureIndex(from: timePos)
-            guard let measure = measuresByIndex[normalizedMeasureIndex] else { continue }
-            let tickIndex = tickWithinMeasure(for: note, ticksPerMeasure: tabGrid.ticksPerMeasure)
-            let x = tabGrid.xPosition(in: measure, tickIndex: tickIndex)
-            let resolvedPosition = notePosition(for: drumType, overrides: input.notePositionOverrides)
-            let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
-                + resolvedPosition.yOffset
-            let voice = NotationVoice.voice(for: drumType)
-            let direction = stemDirection(for: resolvedPosition, voice: voice)
-            nextID += 1
-            drafts.append(
-                NoteHeadDraft(
-                    noteHead: RenderedNoteHead(
-                        id: nextID - 1,
-                        sourceNoteID: ObjectIdentifier(note),
-                        drumType: drumType,
-                        voice: voice,
-                        timePosition: timePos,
-                        measureIndex: normalizedMeasureIndex,
-                        row: measure.row,
-                        position: CGPoint(x: x, y: y),
-                        staffStep: staffStep(for: resolvedPosition),
-                        stemDirection: direction,
-                        interval: note.interval
-                    ),
-                    collisionColumn: VoiceCollisionColumn(
-                        measureIndex: normalizedMeasureIndex,
-                        tickIndex: tickIndex
-                    )
-                )
-            )
-        }
-
-        return applyVoiceCollisionOffsets(to: drafts, style: input.style)
-    }
-
-    private func applyVoiceCollisionOffsets(
-        to drafts: [NoteHeadDraft],
-        style: NotationLayoutStyle
-    ) -> [RenderedNoteHead] {
-        let collisionColumns = Set(
-            Dictionary(grouping: drafts, by: \.collisionColumn).compactMap { column, drafts in
-                Set(drafts.map(\.noteHead.voice)).count > 1 ? column : nil
-            }
+        let measuresByIndex = Dictionary(
+            uniqueKeysWithValues: measures.map { ($0.measureIndex, $0) }
         )
-
-        let offsetHeads = drafts.map { draft -> RenderedNoteHead in
-            let noteHead = draft.noteHead
-            guard collisionColumns.contains(draft.collisionColumn) else {
-                return noteHead
+        var fallbackLaneIDs: Set<String> = []
+        let heads = notes.enumerated().compactMap { index, note -> RenderedNoteHead? in
+            guard let built = buildNoteHead(
+                index: index,
+                note: note,
+                measuresByIndex: measuresByIndex,
+                tabGrid: tabGrid,
+                input: input
+            ) else { return nil }
+            if let laneID = built.fallbackLaneID {
+                fallbackLaneIDs.insert(laneID)
             }
+            return built.head
+        }
 
-            let xOffset = noteHead.voice == .upper
-                ? style.voiceCollisionOffset
-                : -style.voiceCollisionOffset
-            return RenderedNoteHead(
-                id: noteHead.id,
-                sourceNoteID: noteHead.sourceNoteID,
-                drumType: noteHead.drumType,
-                voice: noteHead.voice,
-                timePosition: noteHead.timePosition,
-                measureIndex: noteHead.measureIndex,
-                row: noteHead.row,
-                position: CGPoint(
-                    x: noteHead.position.x + xOffset,
-                    y: noteHead.position.y
-                ),
-                staffStep: noteHead.staffStep,
-                stemDirection: noteHead.stemDirection,
-                interval: noteHead.interval
+        if !fallbackLaneIDs.isEmpty {
+            Logger.warning(
+                "Drum notation used NoteType fallback for source lanes: "
+                    + fallbackLaneIDs.sorted().joined(separator: ", ")
             )
         }
 
-        let unified = applyChordDirectionUnification(to: offsetHeads)
-        return applyBeamRunDirectionUnification(to: unified)
+        return sortedNoteHeads(heads)
     }
 
-    /// Unifies stemDirection for each same-voice chord (notes that share x, row,
-    /// measureIndex, and voice). Without this, a chord with notes whose individual
-    /// default directions disagree (e.g. crash on aboveLine5 → .down + snare on
-    /// line3 → .up, both upper voice) would be split into two stems on opposite
-    /// sides of the column. The chord adopts the direction of the notehead
-    /// farthest from the middle staff line, matching standard engraving practice.
-    private func applyChordDirectionUnification(
-        to noteHeads: [RenderedNoteHead]
-    ) -> [RenderedNoteHead] {
-        struct ChordKey: Hashable {
-            let x: Int
-            let row: Int
-            let measureIndex: Int
-            let voice: NotationVoice
+    private func buildNoteHead(
+        index: Int,
+        note: Note,
+        measuresByIndex: [Int: RenderedMeasure],
+        tabGrid: TabGrid,
+        input: NotationLayoutInput
+    ) -> BuiltNoteHead? {
+        guard let resolved = DrumNotationCatalog.resolve(
+            noteType: note.noteType,
+            sourceLaneID: note.sourceLaneID
+        ) else {
+            assertionFailure("Missing drum notation definition for \(note.noteType)")
+            Logger.error("Skipping note with missing notation definition: \(note.noteType)")
+            return nil
         }
-        let middleStaffStep = -4  // line3 is at yOffset -40 → staffStep -4
-        let groups = Dictionary(grouping: noteHeads) { head in
-            ChordKey(
-                x: Int((head.position.x * 1000).rounded()),
-                row: head.row,
-                measureIndex: head.measureIndex,
-                voice: head.voice
-            )
-        }
-        var unifiedDirectionByID: [UInt64: StemDirection] = [:]
-        for (_, chord) in groups where chord.count > 1 {
-            // Only consider heads that actually need stems when choosing direction.
-            // Stemless heads (full/half notes) would never render a stem, so they
-            // must not drive the unified direction for stemmed notes.
-            let stemmed = chord.filter { $0.interval.needsStem }
-            guard Set(stemmed.map(\.stemDirection)).count > 1 else { continue }
-            let farthest = stemmed.max {
-                let dist0 = abs($0.staffStep - middleStaffStep)
-                let dist1 = abs($1.staffStep - middleStaffStep)
-                if dist0 != dist1 { return dist0 < dist1 }
-                // Tie-break: prefer higher staffStep (closer to top of staff)
-                return $0.staffStep < $1.staffStep
-            }
-            guard let direction = farthest?.stemDirection else { continue }
-            // Only apply unified direction to heads that actually render stems.
-            for head in stemmed {
-                unifiedDirectionByID[head.id] = direction
-            }
-        }
+        let definition = resolved.definition
+        let drumType = definition.gameplayInstrument
+        let position = input.notePositionOverrides[drumType] ?? definition.defaultPosition
+        guard let placement = noteHeadPlacement(
+            for: note,
+            position: position,
+            measuresByIndex: measuresByIndex,
+            tabGrid: tabGrid
+        ) else { return nil }
 
-        return noteHeads.map { head in
-            guard let newDirection = unifiedDirectionByID[head.id],
-                  newDirection != head.stemDirection else {
-                return head
-            }
-            return RenderedNoteHead(
-                id: head.id,
-                sourceNoteID: head.sourceNoteID,
-                drumType: head.drumType,
-                voice: head.voice,
-                timePosition: head.timePosition,
-                measureIndex: head.measureIndex,
-                row: head.row,
-                position: head.position,
-                staffStep: head.staffStep,
-                stemDirection: newDirection,
-                interval: head.interval
-            )
-        }
+        let head = RenderedNoteHead(
+            id: UInt64(index),
+            sourceObjectID: ObjectIdentifier(note),
+            sourceLaneID: note.sourceLaneID,
+            sourceChipID: note.sourceNoteID,
+            noteType: note.noteType,
+            drumType: drumType,
+            glyph: definition.glyph,
+            variant: resolved.variant,
+            voice: definition.voice,
+            stemDirection: definition.defaultStemDirection,
+            timeColumn: placement.timeColumn,
+            timePosition: placement.timePosition,
+            row: placement.row,
+            position: placement.center,
+            staffStep: placement.staffStep,
+            interval: note.interval,
+            catalogOrder: definition.catalogOrder
+        )
+        let fallbackLaneID = resolved.usedLaneFallback
+            ? note.sourceLaneID?.uppercased()
+            : nil
+        return BuiltNoteHead(head: head, fallbackLaneID: fallbackLaneID)
     }
 
-    /// Unifies stem direction across each beam run (same voice, measure, row)
-    /// so that chord direction unification does not split adjacent beamable
-    /// notes into separate groups. For example, a crash+snare chord at offset 0
-    /// whose direction is unified to `.down` followed by a solo snare at offset
-    /// 0.125 (natural `.up`) would otherwise be keyed into different beam
-    /// groups and render as isolated flags instead of a connected beam.
-    private func applyBeamRunDirectionUnification(
-        to noteHeads: [RenderedNoteHead]
-    ) -> [RenderedNoteHead] {
-        struct RunGroupKey: Hashable {
-            let measureIndex: Int
-            let row: Int
-            let voice: NotationVoice
-        }
+    private func noteHeadPlacement(
+        for note: Note,
+        position: GameplayLayout.NotePosition,
+        measuresByIndex: [Int: RenderedMeasure],
+        tabGrid: TabGrid
+    ) -> NoteHeadPlacement? {
+        let timePosition = MeasureUtils.timePosition(
+            measureNumber: note.measureNumber,
+            measureOffset: note.measureOffset
+        )
+        let measureIndex = MeasureUtils.measureIndex(from: timePosition)
+        guard let measure = measuresByIndex[measureIndex] else { return nil }
+        let tickIndex = tickWithinMeasure(for: note, ticksPerMeasure: tabGrid.ticksPerMeasure)
+        let timeColumn = NotationTimeColumn(
+            measureIndex: measureIndex,
+            tickWithinMeasure: tickIndex,
+            absoluteLayoutTick: measureIndex * tabGrid.ticksPerMeasure + tickIndex
+        )
+        let center = CGPoint(
+            x: tabGrid.xPosition(in: measure, tickIndex: tickIndex),
+            y: GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
+                + position.yOffset
+        )
+        return NoteHeadPlacement(
+            timeColumn: timeColumn,
+            timePosition: timePosition,
+            row: measure.row,
+            center: center,
+            staffStep: staffStep(for: position)
+        )
+    }
 
-        let grouped = Dictionary(grouping: noteHeads) { head in
-            RunGroupKey(measureIndex: head.measureIndex, row: head.row, voice: head.voice)
-        }
-
-        var directionOverrides: [UInt64: StemDirection] = [:]
-        let middleStaffStep = -4
-
-        for (_, heads) in grouped {
-            let beamableHeads = heads.filter { $0.interval.needsFlag }
-            let runs = beamRuns(from: beamableHeads)
-
-            for run in runs where run.count >= 2 {
-                let directions = Set(run.map(\.stemDirection))
-                guard directions.count > 1 else { continue }
-
-                // Pick the direction of the note farthest from the middle
-                // staff line, matching the chord-unification heuristic.
-                let farthest = run.max {
-                    let dist0 = abs($0.staffStep - middleStaffStep)
-                    let dist1 = abs($1.staffStep - middleStaffStep)
-                    if dist0 != dist1 { return dist0 < dist1 }
-                    return $0.staffStep < $1.staffStep
-                }
-                guard let unifiedDir = farthest?.stemDirection else { continue }
-
-                for head in run {
-                    directionOverrides[head.id] = unifiedDir
-                }
+    private func sortedNoteHeads(_ heads: [RenderedNoteHead]) -> [RenderedNoteHead] {
+        heads.sorted {
+            if $0.timeColumn.absoluteLayoutTick != $1.timeColumn.absoluteLayoutTick {
+                return $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick
             }
-        }
-
-        return noteHeads.map { head in
-            guard let newDir = directionOverrides[head.id],
-                  newDir != head.stemDirection else {
-                return head
+            if $0.catalogOrder != $1.catalogOrder {
+                return $0.catalogOrder < $1.catalogOrder
             }
-            return RenderedNoteHead(
-                id: head.id,
-                sourceNoteID: head.sourceNoteID,
-                drumType: head.drumType,
-                voice: head.voice,
-                timePosition: head.timePosition,
-                measureIndex: head.measureIndex,
-                row: head.row,
-                position: head.position,
-                staffStep: head.staffStep,
-                stemDirection: newDir,
-                interval: head.interval
-            )
+            return $0.id < $1.id
         }
     }
 
@@ -359,30 +251,6 @@ struct NotationLayoutEngine {
 
     private func staffStep(for position: GameplayLayout.NotePosition) -> Int {
         Int((position.yOffset / (GameplayLayout.staffLineSpacing / 2)).rounded())
-    }
-
-    private func notePosition(
-        for drumType: DrumType,
-        overrides: [DrumType: GameplayLayout.NotePosition]
-    ) -> GameplayLayout.NotePosition {
-        overrides[drumType] ?? drumType.notePosition
-    }
-
-    private func stemDirection(
-        for position: GameplayLayout.NotePosition,
-        voice: NotationVoice
-    ) -> StemDirection {
-        guard voice == .upper else { return .down }
-
-        switch position {
-        case .aboveLine9, .aboveLine8, .aboveLine7, .aboveLine6, .aboveLine5, .line5:
-            return .down
-        case .spaceBetween4And5, .line4, .spaceBetween3And4, .line3,
-             .spaceBetween2And3, .line2, .spaceBetween1And2, .line1,
-             .spaceBetweenLine1AndBelow, .belowLine1, .belowLine2,
-             .belowLine3, .belowLine4, .belowLine5, .belowLine6:
-            return .up
-        }
     }
 
     // MARK: - Rendering Primitives (delegated to fileprivate extension)
@@ -563,7 +431,7 @@ struct NotationLayoutEngine {
             let voice: NotationVoice
             let direction: StemDirection
         }
-        var flaggedHeads = noteHeads.filter { $0.interval.needsFlag }
+        let flaggedHeads = noteHeads.filter { $0.interval.needsFlag }
         // Pick one representative per stem group — the one with the most total flags.
         var bestByKey: [FlagGroupKey: RenderedNoteHead] = [:]
         for head in flaggedHeads {
@@ -641,13 +509,22 @@ struct NotationLayoutEngine {
             ledgerSteps(for: noteHead.staffStep).map { step in
                 let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: noteHead.row)
                     + CGFloat(step) * (style.staffLineSpacing / 2)
-                let overhang = style.noteHeadWidth / 2 + style.ledgerLineOverhang
+                let glyphBounds = noteHead.glyph.bounds(
+                    centeredAt: noteHead.position,
+                    size: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+                )
 
                 return RenderedLedgerLine(
                     id: "ledger_\(noteHead.id)_\(step)",
                     row: noteHead.row,
-                    start: CGPoint(x: noteHead.position.x - overhang, y: y),
-                    end: CGPoint(x: noteHead.position.x + overhang, y: y)
+                    start: CGPoint(
+                        x: glyphBounds.minX - style.ledgerLineOverhang,
+                        y: y
+                    ),
+                    end: CGPoint(
+                        x: glyphBounds.maxX + style.ledgerLineOverhang,
+                        y: y
+                    )
                 )
             }
         }

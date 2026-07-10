@@ -35,14 +35,28 @@ struct FlagView: View {
 // without churning the layout tree. The parameter has been deleted so the
 // rendering contract (always chalk) is explicit.
 
+private struct DrumNoteheadShape: Shape {
+    let glyph: DrumNoteheadGlyph
+
+    func path(in rect: CGRect) -> Path {
+        Path(glyph.makePath(in: rect))
+    }
+}
+
 struct NotationNoteHeadView: View, Equatable {
     let noteHead: RenderedNoteHead
+    let size: CGSize
 
     var body: some View {
-        Text(noteHead.drumType.symbol)
-            .font(.system(size: GameplayLayout.drumSymbolFontSize, weight: .bold))
-            .foregroundColor(Palette.chalk)
-            .frame(width: GameplayLayout.beatColumnWidth, height: GameplayLayout.drumSymbolFontSize)
+        DrumNoteheadShape(glyph: noteHead.glyph)
+            .fill(
+                Palette.chalk,
+                style: FillStyle(eoFill: noteHead.glyph.usesEvenOddFill)
+            )
+            .frame(
+                width: size.width,
+                height: size.height
+            )
             .position(noteHead.position)
     }
 }
