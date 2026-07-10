@@ -264,4 +264,42 @@ struct DrumNotationCatalogTests {
             #expect(path.contains(CGPoint(x: down.x + 0.01, y: down.y), using: .evenOdd))
         }
     }
+
+    @Test("Cross geometry stays inside authored bounds at small sizes")
+    func crossGeometryStaysInsideAuthoredBoundsAtSmallSizes() {
+        let rect = CGRect(x: 0, y: 0, width: 1, height: 1)
+        let expectedBounds = DrumNoteheadGlyph.cross.bounds(
+            centeredAt: CGPoint(x: rect.midX, y: rect.midY),
+            size: rect.size
+        )
+        let pathBounds = DrumNoteheadGlyph.cross.makePath(in: rect).boundingBoxOfPath
+        let up = DrumNoteheadGlyph.cross.stemAnchorOffset(direction: .up, in: rect.size)
+        let down = DrumNoteheadGlyph.cross.stemAnchorOffset(direction: .down, in: rect.size)
+
+        #expect(abs(pathBounds.minX - expectedBounds.minX) < 0.001)
+        #expect(abs(pathBounds.maxX - expectedBounds.maxX) < 0.001)
+        #expect(abs(pathBounds.minY - expectedBounds.minY) < 0.001)
+        #expect(abs(pathBounds.maxY - expectedBounds.maxY) < 0.001)
+        #expect(up.y > 0)
+        #expect(down.y < 0)
+    }
+
+    @Test("Cross geometry collapses to its center at zero size")
+    func crossGeometryCollapsesToItsCenterAtZeroSize() {
+        let center = CGPoint(x: 7, y: 11)
+        let rect = CGRect(origin: center, size: .zero)
+        let expectedBounds = DrumNoteheadGlyph.cross.bounds(centeredAt: center, size: .zero)
+        let pathBounds = DrumNoteheadGlyph.cross.makePath(in: rect).boundingBoxOfPath
+        let up = DrumNoteheadGlyph.cross.stemAnchorOffset(direction: .up, in: .zero)
+        let down = DrumNoteheadGlyph.cross.stemAnchorOffset(direction: .down, in: .zero)
+
+        if !pathBounds.isNull {
+            #expect(abs(pathBounds.minX - expectedBounds.minX) < 0.001)
+            #expect(abs(pathBounds.maxX - expectedBounds.maxX) < 0.001)
+            #expect(abs(pathBounds.minY - expectedBounds.minY) < 0.001)
+            #expect(abs(pathBounds.maxY - expectedBounds.maxY) < 0.001)
+        }
+        #expect(up == .zero)
+        #expect(down == .zero)
+    }
 }
