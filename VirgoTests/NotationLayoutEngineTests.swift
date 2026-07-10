@@ -1449,3 +1449,56 @@ extension NotationLayoutEngineTests {
     }
 
 }
+
+extension NotationLayoutEngineTests {
+    @Test("2/4 with imported 16-step grid uses meter sixteenth baseline, not 4/4's 16 columns")
+    func twoFourImportedSixteenStepGridUsesMeterBaseline() throws {
+        // A 2/4 chart encoded on a 16-step-per-measure imported grid resolves
+        // to ticksPerMeasure = LCM(meter baseline 8, imported 16) = 16. The
+        // display baseline must derive from the meter (8 sixteenths), not the
+        // hard-coded 4/4 value (16), so a sparse chart spaces at 2-tick
+        // sixteenths and renders 8 columns instead of 16.
+        let notes = [
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.0,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 0,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 16
+            ),
+            Note(
+                interval: .quarter,
+                noteType: .bass,
+                measureNumber: 1,
+                measureOffset: 0.5,
+                originKind: .dtx,
+                normalizedMeasureIndex: 0,
+                normalizedAbsoluteTick: 8,
+                normalizedTickWithinMeasure: 8,
+                normalizedTicksPerMeasure: 16
+            )
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .twoFour)
+        )
+
+        #expect(layout.tabGrid.ticksPerMeasure == 16)
+        // meterBaselineTicksPerMeasure(.twoFour) = 2 * 16 / 4 = 8.
+        let baselineGap = max(16 / NotationLayoutEngine.meterBaselineTicksPerMeasure(timeSignature: .twoFour), 1)
+        #expect(baselineGap == 2)
+        // spacingTickGap is capped at the meter baseline (2), so the measure
+        // spans 8 sixteenth columns, not 16.
+        let expectedColumns = layout.tabGrid.ticksPerMeasure / baselineGap
+        #expect(expectedColumns == 8)
+        // Every 2/4 beat (2 beats) maps to a distinct tick column at the
+        // sixteenth baseline.
+        let beatTicks = (0...2).map {
+            layout.tabGrid.tickIndex(forBeatWithinMeasure: Double($0), beatsPerMeasure: 2)
+        }
+        #expect(beatTicks == [0, 8, 16])
+    }
+}
