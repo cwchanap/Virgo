@@ -195,4 +195,73 @@ struct DrumNotationCatalogTests {
             #expect(DrumType.from(noteType: item.noteType) == item.drumType)
         }
     }
+
+    @Test("Every glyph has finite normalized bounds and a nonempty path")
+    func everyGlyphHasFiniteBoundsAndPath() {
+        let drawingRect = CGRect(x: 0, y: 0, width: 30, height: 20)
+
+        for glyph in DrumNoteheadGlyph.allCases {
+            let bounds = glyph.normalizedBounds
+            #expect(bounds.minX.isFinite)
+            #expect(bounds.minY.isFinite)
+            #expect(bounds.width.isFinite)
+            #expect(bounds.height.isFinite)
+            #expect(bounds.minX >= 0)
+            #expect(bounds.minY >= 0)
+            #expect(bounds.maxX <= 1)
+            #expect(bounds.maxY <= 1)
+            #expect(bounds.width > 0)
+            #expect(bounds.height > 0)
+
+            let path = glyph.makePath(in: drawingRect)
+            let expectedBounds = glyph.bounds(
+                centeredAt: CGPoint(x: drawingRect.midX, y: drawingRect.midY),
+                size: drawingRect.size
+            )
+            let pathBounds = path.boundingBoxOfPath
+            #expect(!path.isEmpty)
+            #expect(!pathBounds.isNull)
+            #expect(abs(pathBounds.minX - expectedBounds.minX) < 0.001)
+            #expect(abs(pathBounds.maxX - expectedBounds.maxX) < 0.001)
+            #expect(abs(pathBounds.minY - expectedBounds.minY) < 0.001)
+            #expect(abs(pathBounds.maxY - expectedBounds.maxY) < 0.001)
+        }
+    }
+
+    @Test("Stem anchors use opposite glyph sides")
+    func stemAnchorsUseOppositeSides() {
+        let center = CGPoint(x: 100, y: 60)
+        let size = CGSize(width: 30, height: 20)
+
+        for glyph in DrumNoteheadGlyph.allCases {
+            let upOffset = glyph.stemAnchorOffset(direction: .up, in: size)
+            let downOffset = glyph.stemAnchorOffset(direction: .down, in: size)
+            let up = CGPoint(x: center.x + upOffset.x, y: center.y + upOffset.y)
+            let down = CGPoint(x: center.x + downOffset.x, y: center.y + downOffset.y)
+            let bounds = glyph.bounds(centeredAt: center, size: size)
+
+            #expect(up.x == bounds.maxX)
+            #expect(down.x == bounds.minX)
+            #expect(up.x > center.x)
+            #expect(down.x < center.x)
+
+            if glyph == .cross {
+                #expect(up.y > bounds.midY)
+                #expect(down.y < bounds.midY)
+            } else {
+                #expect(up.y == bounds.midY)
+                #expect(down.y == bounds.midY)
+            }
+
+            let frame = CGRect(
+                x: center.x - size.width / 2,
+                y: center.y - size.height / 2,
+                width: size.width,
+                height: size.height
+            )
+            let path = glyph.makePath(in: frame)
+            #expect(path.contains(CGPoint(x: up.x - 0.01, y: up.y), using: .evenOdd))
+            #expect(path.contains(CGPoint(x: down.x + 0.01, y: down.y), using: .evenOdd))
+        }
+    }
 }
