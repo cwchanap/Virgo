@@ -34,6 +34,8 @@ struct NotationLayoutOffsetNormalizationTests {
         #expect(snare.measureIndex == 1)
         #expect(kick.measureIndex == 1)
         #expect(abs(snare.timePosition - kick.timePosition) < 0.001)
+        #expect(snare.timeColumn == kick.timeColumn)
+        #expect(snare.position.x == kick.position.x)
     }
 
     @Test("offset-1 note in last measure is not dropped when minimumMeasureCount is tight")

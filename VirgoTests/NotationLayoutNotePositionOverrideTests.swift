@@ -48,9 +48,9 @@ struct NotationLayoutNotePositionOverrideTests {
         #expect(!overriddenLayout.ledgerLines.isEmpty)
     }
 
-    @Test("Override flips stem direction for upper-voice notes pushed above line 5")
-    func overrideFlipsStemDirection() {
-        // Snare is upper voice. Default position .line3 → stem points up.
+    @Test("Override preserves catalog stem direction for upper-voice notes")
+    func overridePreservesCatalogStemDirection() {
+        // Snare uses the catalog-authored .up direction.
         let snareNote = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
 
         let defaultLayout = NotationLayoutEngine().layout(
@@ -58,7 +58,7 @@ struct NotationLayoutNotePositionOverrideTests {
         )
         #expect(defaultLayout.noteHeads.first?.stemDirection == .up)
 
-        // Push the snare to .line5 → stem must now point down.
+        // Position overrides move the head without changing catalog notation identity.
         let overriddenLayout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(
                 notes: [snareNote],
@@ -66,7 +66,7 @@ struct NotationLayoutNotePositionOverrideTests {
                 notePositionOverrides: [.snare: .line5]
             )
         )
-        #expect(overriddenLayout.noteHeads.first?.stemDirection == .down)
+        #expect(overriddenLayout.noteHeads.first?.stemDirection == .up)
     }
 
     @Test("Drums without overrides keep their default note position")

@@ -238,7 +238,7 @@ extension GameplayViewModel {
     /// from `cacheNotationLayout()` to keep it under the function-body-length limit.
     private func logDroppedNotesIfAny() {
         guard cachedNotes.count != cachedNotationLayout.noteHeads.count, !cachedNotes.isEmpty else { return }
-        let renderedSourceIDs = Set(cachedNotationLayout.noteHeads.map { $0.sourceNoteID })
+        let renderedSourceIDs = Set(cachedNotationLayout.noteHeads.map(\.sourceObjectID))
         let droppedNotes = cachedNotes.filter { !renderedSourceIDs.contains(ObjectIdentifier($0)) }
         let droppedReasons = droppedNotes.prefix(5).map { note in
             let drumType = DrumType.from(noteType: note.noteType)

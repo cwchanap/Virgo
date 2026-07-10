@@ -81,7 +81,6 @@ struct NotationLayoutStyle: Equatable {
     let beamThickness: CGFloat
     let beamLevelSpacing: CGFloat
     let ledgerLineOverhang: CGFloat
-    let voiceCollisionOffset: CGFloat
 
     static let gameplayDefault = NotationLayoutStyle(
         minimumNoteColumnGap: 28,
@@ -95,8 +94,7 @@ struct NotationLayoutStyle: Equatable {
         stemXInset: GameplayLayout.stemXOffset,
         beamThickness: 4,
         beamLevelSpacing: GameplayLayout.beamLevelSpacing,
-        ledgerLineOverhang: 6,
-        voiceCollisionOffset: 8
+        ledgerLineOverhang: 6
     )
 
     func with(rowWidth newRowWidth: CGFloat) -> NotationLayoutStyle {
@@ -112,8 +110,7 @@ struct NotationLayoutStyle: Equatable {
             stemXInset: stemXInset,
             beamThickness: beamThickness,
             beamLevelSpacing: beamLevelSpacing,
-            ledgerLineOverhang: ledgerLineOverhang,
-            voiceCollisionOffset: voiceCollisionOffset
+            ledgerLineOverhang: ledgerLineOverhang
         )
     }
 }
@@ -121,6 +118,7 @@ struct NotationLayoutStyle: Equatable {
 struct NotationLayout {
     var tabGrid: TabGrid
     var measures: [RenderedMeasure]
+    var noteHeadSize: CGSize
     var noteHeads: [RenderedNoteHead]
     var stems: [RenderedStem]
     var beams: [RenderedBeam]
@@ -157,6 +155,10 @@ struct NotationLayout {
     static let empty = NotationLayout(
         tabGrid: .fallback,
         measures: [],
+        noteHeadSize: CGSize(
+            width: NotationLayoutStyle.gameplayDefault.noteHeadWidth,
+            height: NotationLayoutStyle.gameplayDefault.noteHeadHeight
+        ),
         noteHeads: [],
         stems: [],
         beams: [],
@@ -177,18 +179,32 @@ struct RenderedMeasure: Identifiable, Hashable {
     let width: CGFloat
 }
 
+struct NotationTimeColumn: Hashable {
+    let measureIndex: Int
+    let tickWithinMeasure: Int
+    let absoluteLayoutTick: Int
+}
+
 struct RenderedNoteHead: Identifiable, Hashable {
     let id: UInt64
-    let sourceNoteID: ObjectIdentifier
+    let sourceObjectID: ObjectIdentifier
+    let sourceLaneID: String?
+    let sourceChipID: String?
+    let noteType: NoteType
     let drumType: DrumType
+    let glyph: DrumNoteheadGlyph
+    let variant: DrumNotationVariant
     let voice: NotationVoice
+    let stemDirection: StemDirection
+    let timeColumn: NotationTimeColumn
     let timePosition: Double
-    let measureIndex: Int
     let row: Int
     let position: CGPoint
     let staffStep: Int
-    let stemDirection: StemDirection
     let interval: NoteInterval
+    let catalogOrder: Int
+
+    var measureIndex: Int { timeColumn.measureIndex }
 }
 
 struct RenderedStem: Identifiable, Hashable {

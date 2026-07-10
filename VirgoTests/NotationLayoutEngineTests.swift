@@ -413,94 +413,104 @@ struct NotationLayoutEngineTests {
         #expect(abs(firstX - expectedFirstX) < 0.001)
     }
 
-    @Test("near identical simultaneous offsets keep fixed grid width")
-    func nearIdenticalSimultaneousOffsetsKeepFixedGridWidth() {
+    @Test("same-time kick snare and hi-hat share the exact grid column")
+    func sameTimeKickSnareAndHiHatShareExactGridColumn() throws {
         let notes = [
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0004)
-        ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
-        let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
-
-        #expect(layout.measures.first?.width == layout.tabGrid.measureWidth)
-        #expect(uniqueX.count == 2)
-        #expect((uniqueX.last ?? 0) - (uniqueX.first ?? 0) >= 16)
-    }
-
-    @Test("near identical cross voice offsets split heads within fixed grid width")
-    func nearIdenticalCrossVoiceOffsetsSplitHeadsWithinFixedGridWidth() {
-        let notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25),
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.24999999999999997)
+            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25)
         ]
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
-        let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
+        let heads = layout.noteHeads
+        let firstHead = try #require(heads.first)
+        let measure = try #require(
+            layout.measures.first { $0.measureIndex == firstHead.timeColumn.measureIndex }
+        )
+        let expectedX = layout.tabGrid.xPosition(
+            in: measure,
+            tickIndex: firstHead.timeColumn.tickWithinMeasure
+        )
 
-        #expect(layout.measures.first?.width == layout.tabGrid.measureWidth)
-        #expect(uniqueX.count == 2)
-        #expect((uniqueX.last ?? 0) - (uniqueX.first ?? 0) >= 16)
+        #expect(heads.count == 3)
+        #expect(heads.allSatisfy { $0.timeColumn == firstHead.timeColumn })
+        #expect(heads.allSatisfy { $0.position.x == expectedX })
+        #expect(Set(heads.map(\.position.x)).count == 1)
     }
 
-    @Test("dense adjacent cross voice columns preserve readable final gap")
-    func denseAdjacentCrossVoiceColumnsPreserveReadableFinalGap() throws {
-        let style = NotationLayoutStyle.gameplayDefault
+    @Test("near-equal offsets resolving to one tick share x")
+    func nearEqualOffsetsResolvingToOneTickShareX() throws {
         let notes = [
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0),
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 1.0 / 16.0),
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0)
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.249_999_999_999_999_97
+            )
         ]
         let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
-        let firstColumnRightmostX = try #require(
-            layout.noteHeads
-                .filter { $0.timePosition == 0.0 }
-                .map(\.position.x)
-                .max()
-        )
-        let secondColumnLeftmostX = try #require(
-            layout.noteHeads
-                .filter { $0.timePosition == 0.0625 }
-                .map(\.position.x)
-                .min()
-        )
+        let kick = try #require(layout.noteHeads.first { $0.drumType == .kick })
+        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
 
-        #expect(secondColumnLeftmostX - firstColumnRightmostX >= style.minimumNoteColumnGap)
+        #expect(kick.timeColumn == snare.timeColumn)
+        #expect(kick.position.x == snare.position.x)
     }
 
-    @Test("simultaneous quarter notes split voices within fixed grid width")
-    func simultaneousQuarterNotesSplitVoicesWithinFixedGridWidth() {
+    @Test("simultaneous quarter pairs produce four time columns")
+    func simultaneousQuarterPairsProduceFourTimeColumns() {
         let notes = (0..<4).flatMap { index in
             [
                 Note(
                     interval: .quarter,
                     noteType: .snare,
                     measureNumber: 1,
-                    measureOffset: Double(index) / 4.0
+                    measureOffset: Double(index) / 4
                 ),
                 Note(
                     interval: .quarter,
                     noteType: .bass,
                     measureNumber: 1,
-                    measureOffset: Double(index) / 4.0
+                    measureOffset: Double(index) / 4
                 )
             ]
         }
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
-        let uniqueX = Array(Set(layout.noteHeads.map(\.position.x))).sorted()
-        let expectedQuarterGap = CGFloat(layout.tabGrid.ticksPerMeasure / 4) * layout.tabGrid.tickWidth
 
         #expect(layout.noteHeads.count == 8)
-        #expect(uniqueX.count == 8)
-        #expect(layout.measures.first?.width == layout.tabGrid.measureWidth)
-        #expect(abs((uniqueX[2] - uniqueX[0]) - expectedQuarterGap) < 0.001)
+        #expect(Set(layout.noteHeads.map(\.timeColumn)).count == 4)
+        #expect(Set(layout.noteHeads.map(\.position.x)).count == 4)
+    }
+
+    @Test("cross-voice chords do not inflate fixed-grid metrics")
+    func crossVoiceChordsDoNotInflateFixedGridMetrics() {
+        let style = NotationLayoutStyle.gameplayDefault
+        let singleVoice = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625)
+        ]
+        let mixedVoice = singleVoice + [
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0),
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0625)
+        ]
+
+        let singleLayout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: singleVoice, timeSignature: .fourFour, style: style)
+        )
+        let mixedLayout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: mixedVoice, timeSignature: .fourFour, style: style)
+        )
+        let columns = Array(Set(mixedLayout.noteHeads.map(\.position.x))).sorted()
+
+        #expect(mixedLayout.tabGrid.tickWidth == singleLayout.tabGrid.tickWidth)
+        #expect(mixedLayout.tabGrid.measureWidth == singleLayout.tabGrid.measureWidth)
+        #expect(columns.count == 2)
+        #expect(columns[1] - columns[0] >= style.minimumNoteColumnGap)
     }
 
     @Test("above staff crash emits ledger line")
@@ -525,22 +535,93 @@ struct NotationLayoutEngineTests {
         #expect(layout.ledgerLines.allSatisfy { $0.end.x > $0.start.x })
     }
 
-    @Test("kick and snare at same time get separate voices")
-    func kickAndSnareAtSameTimeGetSeparateVoices() throws {
+    @Test("rendered head preserves source and notation identity")
+    func renderedHeadPreservesSourceAndNotationIdentity() throws {
+        let note = Note(
+            interval: .quarter,
+            noteType: .openHiHat,
+            measureNumber: 1,
+            measureOffset: 0,
+            originKind: .dtx,
+            sourceLaneID: "18",
+            sourceNoteID: "A1"
+        )
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+        let head = try #require(layout.noteHeads.first)
+
+        #expect(head.sourceObjectID == ObjectIdentifier(note))
+        #expect(head.sourceLaneID == "18")
+        #expect(head.sourceChipID == "A1")
+        #expect(head.noteType == .openHiHat)
+        #expect(head.drumType == .hiHat)
+        #expect(head.glyph == .cross)
+        #expect(head.variant == .openHiHat)
+        #expect(head.voice == .upper)
+        #expect(head.stemDirection == .up)
+    }
+
+    @Test("unknown lane fallback preserves raw rendered identity")
+    func unknownLaneFallbackPreservesRawRenderedIdentity() throws {
+        let note = Note(
+            interval: .quarter,
+            noteType: .ride,
+            measureNumber: 1,
+            measureOffset: 0,
+            originKind: .dtx,
+            sourceLaneID: "AA",
+            sourceNoteID: "7F"
+        )
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+        let head = try #require(layout.noteHeads.first)
+
+        #expect(head.sourceObjectID == ObjectIdentifier(note))
+        #expect(head.sourceLaneID == "AA")
+        #expect(head.sourceChipID == "7F")
+        #expect(head.noteType == .ride)
+        #expect(head.drumType == .ride)
+        #expect(head.variant == .ride)
+    }
+
+    @Test("identical heads retain distinct identities and lookup entries")
+    func identicalHeadsRetainDistinctIdentitiesAndLookupEntries() {
         let notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25)
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
         ]
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
-        let kick = try #require(layout.noteHeads.first { $0.drumType == .kick })
-        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
+        let heads = layout.noteHeads
+        let renderedIDs = Set(heads.map(\.id))
+        let timeKey = NotationLayout.timePositionKey(0)
 
-        #expect(kick.voice == .lower)
-        #expect(snare.voice == .upper)
-        #expect(abs(snare.position.x - kick.position.x) >= 16)
-        #expect(kick.position.x < snare.position.x)
+        #expect(heads.count == 2)
+        #expect(renderedIDs.count == 2)
+        #expect(Set(heads.map(\.sourceObjectID)).count == 2)
+        #expect(layout.noteHeadPositionsByID.count == 2)
+        #expect(layout.noteHeadIDsByTimePosition[timeKey] == renderedIDs)
+    }
+
+    @Test("ledger width follows authored glyph bounds")
+    func ledgerWidthFollowsAuthoredGlyphBounds() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let note = Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour, style: style)
+        )
+        let head = try #require(layout.noteHeads.first)
+        let ledger = try #require(layout.ledgerLines.first)
+        let glyphBounds = head.glyph.bounds(
+            centeredAt: head.position,
+            size: layout.noteHeadSize
+        )
+
+        #expect(ledger.start.x == glyphBounds.minX - style.ledgerLineOverhang)
+        #expect(ledger.end.x == glyphBounds.maxX + style.ledgerLineOverhang)
     }
 
     @Test("same voice simultaneous notes do not split")
@@ -605,26 +686,11 @@ struct NotationLayoutEngineTests {
         #expect(abs(kick.position.x - kickExpectedX) < 0.001)
     }
 
-    @Test("near identical cross voice offsets split by quantized column")
-    func nearIdenticalCrossVoiceOffsetsSplitByQuantizedColumn() throws {
-        let notes = [
-            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.24999999999999997)
-        ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
-        let kick = try #require(layout.noteHeads.first { $0.drumType == .kick })
-        let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
-
-        #expect(kick.position.x < snare.position.x)
-        #expect(abs(snare.position.x - kick.position.x) >= 16)
-    }
 }
 
 extension NotationLayoutEngineTests {
-    @Test("high crash stem points down")
-    func highCrashStemPointsDown() throws {
+    @Test("crash stem uses catalog up direction")
+    func crashStemUsesCatalogUpDirection() throws {
         let style = NotationLayoutStyle.gameplayDefault
         let note = Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0)
         let layout = NotationLayoutEngine().layout(
@@ -633,10 +699,10 @@ extension NotationLayoutEngineTests {
         let crash = try #require(layout.noteHeads.first { $0.drumType == .crash })
         let stem = try #require(layout.stems.first)
 
-        #expect(crash.stemDirection == .down)
-        #expect(stem.direction == .down)
-        #expect(abs(stem.start.x - (crash.position.x - style.stemXInset)) < 0.001)
-        #expect(stem.end.y > stem.start.y)
+        #expect(crash.stemDirection == .up)
+        #expect(stem.direction == .up)
+        #expect(abs(stem.start.x - (crash.position.x + style.stemXInset)) < 0.001)
+        #expect(stem.end.y < stem.start.y)
     }
 
     @Test("snare stem points up")
@@ -887,8 +953,8 @@ extension NotationLayoutEngineTests {
     func downStemBeamsAlignToDownStemXCoordinates() throws {
         let style = NotationLayoutStyle.gameplayDefault
         let notes = [
-            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0),
-            Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0.125)
+            Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.125)
         ]
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
@@ -998,7 +1064,7 @@ extension NotationLayoutEngineTests {
         let notes = (0..<4).map { index in
             Note(
                 interval: .sixteenth,
-                noteType: .crash,
+                noteType: .bass,
                 measureNumber: 1,
                 measureOffset: Double(index) / 16.0
             )
@@ -1007,7 +1073,7 @@ extension NotationLayoutEngineTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
         )
 
-        // Crash notes have down-stems; verify two beam levels exist
+        // Bass drum notes have catalog-authored down-stems; verify two beam levels exist.
         #expect(layout.beams.count == 2)
         #expect(Set(layout.beams.map(\.level)) == [0, 1])
 
@@ -1102,9 +1168,9 @@ extension NotationLayoutEngineTests {
         #expect(flag.noteHeadID == isolatedHead.id)
     }
 
-    @Test("down stem crash flag has down direction")
-    func downStemCrashFlagHasDownDirection() throws {
-        let note = Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0)
+    @Test("down stem bass flag has down direction")
+    func downStemBassFlagHasDownDirection() throws {
+        let note = Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0)
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
         )
