@@ -11,7 +11,14 @@ extension NotationLayoutEngine {
     func buildTabGrid(notes: [Note], input: NotationLayoutInput) -> TabGrid {
         let ticksPerMeasure = resolvedTicksPerMeasure(for: notes, timeSignature: input.timeSignature)
         let requiredGap = requiredGridColumnGap(notes: notes, ticksPerMeasure: ticksPerMeasure, input: input)
-        let baselineGap = max(ticksPerMeasure / 16, 1)
+        // Derive the display baseline from the active meter's sixteenth-note
+        // count rather than a hard-coded 16, so sparse meters (2/4, 3/4, 5/4,
+        // /8) get the correct column count when `ticksPerMeasure` is raised
+        // above the meter baseline by imported grid resolution or LCM folding.
+        let baselineGap = max(
+            ticksPerMeasure / Self.meterBaselineTicksPerMeasure(timeSignature: input.timeSignature),
+            1
+        )
         let actualSmallestGap = smallestPositiveTickGapAcrossMeasures(
             notes: notes,
             ticksPerMeasure: ticksPerMeasure
