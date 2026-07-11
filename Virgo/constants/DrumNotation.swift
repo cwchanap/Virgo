@@ -61,10 +61,7 @@ extension DrumNoteheadGlyph {
         switch self {
         case .cross:
             return CGRect(x: 0.12, y: 0.12, width: 0.76, height: 0.76)
-        case .filledDiamond, .hollowDiamond:
-            return CGRect(x: 0.10, y: 0.10, width: 0.80, height: 0.80)
-        case .filledCircle, .bullseye, .openCircle,
-             .leftHalfCircle, .rightHalfCircle, .lowerHalfCircle:
+        default:
             return CGRect(x: 0.10, y: 0.10, width: 0.80, height: 0.80)
         }
     }
