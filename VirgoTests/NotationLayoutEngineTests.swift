@@ -597,13 +597,13 @@ struct NotationLayoutEngineTests {
         )
         let heads = layout.noteHeads
         let renderedIDs = Set(heads.map(\.id))
-        let timeKey = NotationLayout.timePositionKey(0)
+        let tickKey = 0
 
         #expect(heads.count == 2)
         #expect(renderedIDs.count == 2)
         #expect(Set(heads.map(\.sourceObjectID)).count == 2)
         #expect(layout.noteHeadPositionsByID.count == 2)
-        #expect(layout.noteHeadIDsByTimePosition[timeKey] == renderedIDs)
+        #expect(layout.noteHeadIDsByTimePosition[tickKey] == renderedIDs)
     }
 
     @Test("ledger width follows authored glyph bounds")

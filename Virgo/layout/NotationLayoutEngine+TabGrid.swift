@@ -135,8 +135,8 @@ extension NotationLayoutEngine {
     }
 
     func requiredGridColumnGap(
-        notes: [Note],
-        ticksPerMeasure: Int,
+        notes _: [Note],
+        ticksPerMeasure _: Int,
         input: NotationLayoutInput
     ) -> CGFloat {
         // notes and ticksPerMeasure are intentionally unused; reserved for
