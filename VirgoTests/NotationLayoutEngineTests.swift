@@ -954,13 +954,31 @@ extension NotationLayoutEngineTests {
         #expect(stem.direction == .up)
     }
 
-    @Test("equidistant chord notes from middle line resolve deterministically")
-    func equidistantChordNotesResolveDeterministically() throws {
-        // Override crash to line4 (staffStep -6, distance 2, down-stem) and
-        // highTom to line2 (staffStep -2, distance 2, up-stem).  Both are upper
-        // voice, equidistant from middleStaffStep (-4), but different stem
-        // directions.  The tie-break must deterministically pick the higher
-        // staffStep (line2 → up-stem).
+    @Test("same-type simultaneous hits share a single stem")
+    func sameTypeSimultaneousHitsShareSingleStem() throws {
+        // Two crash cymbal hits at the same time should share one stem.
+        // Same drum type → same voice → same stem direction → one stem.
+        let notes = [
+            Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.stems.count == 1, "Same-type simultaneous hits should share one stem")
+        let stem = try #require(layout.stems.first)
+        #expect(stem.noteHeadIDs.count == 2, "Shared stem should reference both note head IDs")
+        #expect(stem.direction == .up)
+    }
+
+    @Test("same-voice chord notes share unified stem direction regardless of position")
+    func sameVoiceChordNotesShareUnifiedStemDirection() throws {
+        // Override crash to line4 (staffStep -6) and highTom to line2
+        // (staffStep -2).  Both are upper-voice drums with up-stems.
+        // Stem direction is voice-first, not position-dependent, so both
+        // resolve to up-stem and share a single stem regardless of their
+        // distance from the middle staff line.
         let notes = [
             Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .quarter, noteType: .highTom, measureNumber: 1, measureOffset: 0)
@@ -974,11 +992,10 @@ extension NotationLayoutEngineTests {
         )
 
         // Both notes should share a single stem with unified direction.
-        // Tie-break prefers higher staffStep (line2, step -2 > line4, step -6)
-        // so the chord unifies to up-stem.
-        #expect(layout.stems.count == 1, "Equidistant chord should share one stem")
+        // Voice-first stem direction resolves both to up-stem.
+        #expect(layout.stems.count == 1, "Same-voice chord should share one stem")
         let stem = try #require(layout.stems.first)
-        #expect(stem.direction == .up, "Tie-break should prefer higher staffStep (up)")
+        #expect(stem.direction == .up, "Upper-voice notes should have up-stem")
         let heads = layout.noteHeads.sorted { $0.staffStep < $1.staffStep }
         #expect(heads.allSatisfy { $0.stemDirection == .up })
     }

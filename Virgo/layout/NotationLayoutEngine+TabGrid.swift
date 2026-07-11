@@ -139,6 +139,8 @@ extension NotationLayoutEngine {
         ticksPerMeasure: Int,
         input: NotationLayoutInput
     ) -> CGFloat {
+        // notes and ticksPerMeasure are intentionally unused; reserved for
+        // future density-aware gap calculations per the HPA-141 plan.
         input.style.minimumNoteColumnGap
     }
 

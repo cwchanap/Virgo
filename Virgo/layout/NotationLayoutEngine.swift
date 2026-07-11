@@ -320,7 +320,7 @@ struct NotationLayoutEngine {
         for noteHead: RenderedNoteHead,
         beam: RenderedBeam,
         style: NotationLayoutStyle
-    ) -> Double? {
+    ) -> CGFloat? {
         // Only extend to beam if beam has multiple note heads.
         guard beam.noteHeadIDs.count > 1 else { return nil }
 
@@ -590,8 +590,14 @@ struct NotationLayoutEngine {
                     row: lastHead.row,
                     voice: lastHead.voice
                 )
-                let firstChord = chordLookup[firstKey] ?? [firstHead]
-                let lastChord = chordLookup[lastKey] ?? [lastHead]
+                let firstChord = chordLookup[firstKey] ?? {
+                    Logger.warning("Beam chordLookup miss for firstKey \(firstKey); using singleton fallback")
+                    return [firstHead]
+                }()
+                let lastChord = chordLookup[lastKey] ?? {
+                    Logger.warning("Beam chordLookup miss for lastKey \(lastKey); using singleton fallback")
+                    return [lastHead]
+                }()
                 guard let firstRepresentative = stemRepresentative(in: firstChord),
                       let lastRepresentative = stemRepresentative(in: lastChord) else {
                     return nil
