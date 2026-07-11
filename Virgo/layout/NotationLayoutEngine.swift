@@ -66,10 +66,7 @@ struct NotationLayoutEngine {
         return NotationLayout(
             tabGrid: tabGrid,
             measures: measures,
-            noteHeadSize: CGSize(
-                width: input.style.noteHeadWidth,
-                height: input.style.noteHeadHeight
-            ),
+            noteHeadSize: input.style.noteHeadSize,
             noteHeads: noteHeads,
             stems: stems,
             beams: beams,
@@ -346,6 +343,16 @@ struct NotationLayoutEngine {
         noteHeads: [RenderedNoteHead],
         style: NotationLayoutStyle
     ) -> [RenderedBeam] {
+        let chordByStemGroupKey = Dictionary(
+            grouping: noteHeads.filter { $0.interval.needsStem }
+        ) {
+            StemGroupKey(
+                timeColumn: $0.timeColumn,
+                row: $0.row,
+                voice: $0.voice
+            )
+        }
+
         let groupedHeads = Dictionary(grouping: noteHeads) {
             BeamGroupKey(
                 measureIndex: $0.measureIndex,
@@ -358,7 +365,7 @@ struct NotationLayoutEngine {
         return groupedHeads.values
             .flatMap { heads in
                 beamRuns(from: Array(heads)).flatMap { run in
-                    beams(for: run, style: style)
+                    beams(for: run, chordLookup: chordByStemGroupKey, style: style)
                 }
             }
             .sorted {
@@ -454,7 +461,7 @@ struct NotationLayoutEngine {
                     + CGFloat(step) * (style.staffLineSpacing / 2)
                 let glyphBounds = noteHead.glyph.bounds(
                     centeredAt: noteHead.position,
-                    size: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+                    size: style.noteHeadSize
                 )
 
                 return RenderedLedgerLine(
@@ -555,6 +562,7 @@ struct NotationLayoutEngine {
 
     private func beams(
         for noteHeads: [RenderedNoteHead],
+        chordLookup: [StemGroupKey: [RenderedNoteHead]],
         style: NotationLayoutStyle
     ) -> [RenderedBeam] {
         let maxFlagCount = noteHeads.map(\.interval.flagCount).max() ?? 0
@@ -572,8 +580,18 @@ struct NotationLayoutEngine {
                 guard firstColumn != lastColumn else {
                     return nil
                 }
-                let firstChord = noteHeads.filter { $0.timeColumn == firstColumn }
-                let lastChord = noteHeads.filter { $0.timeColumn == lastColumn }
+                let firstKey = StemGroupKey(
+                    timeColumn: firstColumn,
+                    row: firstHead.row,
+                    voice: firstHead.voice
+                )
+                let lastKey = StemGroupKey(
+                    timeColumn: lastColumn,
+                    row: lastHead.row,
+                    voice: lastHead.voice
+                )
+                let firstChord = chordLookup[firstKey] ?? [firstHead]
+                let lastChord = chordLookup[lastKey] ?? [lastHead]
                 guard let firstRepresentative = stemRepresentative(in: firstChord),
                       let lastRepresentative = stemRepresentative(in: lastChord) else {
                     return nil
@@ -655,7 +673,7 @@ struct NotationLayoutEngine {
     ) -> CGPoint {
         let offset = noteHead.glyph.stemAnchorOffset(
             direction: noteHead.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
         return CGPoint(
             x: noteHead.position.x + offset.x,
@@ -669,7 +687,7 @@ struct NotationLayoutEngine {
     ) -> CGRect {
         noteHead.glyph.bounds(
             centeredAt: noteHead.position,
-            size: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            size: style.noteHeadSize
         )
     }
 

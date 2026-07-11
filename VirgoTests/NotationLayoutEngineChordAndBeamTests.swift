@@ -518,7 +518,7 @@ struct NotationLayoutEngineChordAndBeamTests {
         let lowerHead = try #require(layout.noteHeads.first { $0.voice == .lower })
         let upperStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(upperHead.id) })
         let lowerStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(lowerHead.id) })
-        let size = CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+        let size = style.noteHeadSize
         let upperOffset = upperHead.glyph.stemAnchorOffset(direction: .up, in: size)
         let lowerOffset = lowerHead.glyph.stemAnchorOffset(direction: .down, in: size)
         let expectedUpperStart = CGPoint(
@@ -664,6 +664,67 @@ struct NotationLayoutEngineChordAndBeamTests {
         let beam = try #require(layout.beams.first { $0.level == 0 })
 
         #expect(beam.start.x == firstStem.start.x)
+    }
+
+    @Test("Mixed quarter/eighth chord beam anchor matches stem anchor")
+    func mixedQuarterEighthChordBeamAnchorMatchesStemAnchor() throws {
+        // Quarter snare (.filledDiamond, line3) + eighth hi-hat (.cross, line5)
+        // share a stem at column 0.  The eighth hi-hat beams to an eighth snare
+        // at column 1.  Before the fix, buildStems picked the representative from
+        // the full chord (snare, highest Y for .up) while beams(for:) picked it
+        // from only the flagged subset (hi-hat), producing different glyph anchor
+        // X values and a visible stem/beam misalignment.
+        let notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let snareQuarterOpt = layout.noteHeads.first { $0.drumType == .snare && $0.interval == .quarter }
+        let snareQuarter = try #require(snareQuarterOpt)
+        let hiHatEighthOpt = layout.noteHeads.first { $0.drumType == .hiHat && $0.interval == .eighth }
+        let hiHatEighth = try #require(hiHatEighthOpt)
+
+        // Both heads at column 0 share one stem.
+        let firstStemOpt = layout.stems.first { stem in
+            stem.noteHeadIDs.contains(snareQuarter.id)
+        }
+        let firstStem = try #require(firstStemOpt)
+        #expect(
+            firstStem.noteHeadIDs.contains(hiHatEighth.id),
+            "Quarter snare and eighth hi-hat at the same column should share a stem"
+        )
+
+        // The beam must exist and its start X must match the stem start X.
+        let beam = try #require(layout.beams.first { $0.level == 0 })
+        let beamDelta = abs(beam.start.x - firstStem.start.x)
+        #expect(
+            beamDelta < 0.001,
+            "Beam start X must match stem start X (delta=\(beamDelta)) — same chord representative glyph"
+        )
+
+        // The representative should be the snare (highest Y for up-stems),
+        // not the hi-hat.  Verify by computing the expected anchor from the
+        // snare's glyph and confirming it matches.
+        let style = NotationLayoutStyle.gameplayDefault
+        let snareAnchor = snareQuarter.glyph.stemAnchorOffset(
+            direction: StemDirection.up,
+            in: style.noteHeadSize
+        )
+        let expectedX = snareQuarter.position.x + snareAnchor.x
+        let stemDelta = abs(firstStem.start.x - expectedX)
+        #expect(
+            stemDelta < 0.001,
+            "Stem should be anchored on the snare (.filledDiamond) representative (delta=\(stemDelta))"
+        )
+        let beamRepDelta = abs(beam.start.x - expectedX)
+        #expect(
+            beamRepDelta < 0.001,
+            "Beam should be anchored on the same snare representative as the stem (delta=\(beamRepDelta))"
+        )
     }
 
     private func rowContentMaxY(layout: NotationLayout, row: Int) -> CGFloat {
