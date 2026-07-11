@@ -30,4 +30,50 @@ struct NotationLayoutDefensiveGuardTests {
         }
     }
 
+    @Test("beamEndY returns nil when stem X is outside the beam's horizontal span")
+    func beamEndYReturnsNilWhenStemXOutsideBeamRange() {
+        let note = Note(
+            interval: .sixteenth,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0
+        )
+        let noteHead = RenderedNoteHead(
+            id: 1,
+            sourceObjectID: ObjectIdentifier(note),
+            sourceLaneID: nil,
+            sourceChipID: nil,
+            noteType: .snare,
+            drumType: .snare,
+            glyph: .filledDiamond,
+            variant: .standard,
+            voice: .upper,
+            stemDirection: .up,
+            timeColumn: NotationTimeColumn(measureIndex: 0, tickWithinMeasure: 0, absoluteLayoutTick: 0),
+            timePosition: 0,
+            row: 0,
+            position: CGPoint(x: 500, y: 100),
+            staffStep: -4,
+            interval: .sixteenth,
+            catalogOrder: 1
+        )
+        let beam = RenderedBeam(
+            id: "beam-defensive-test",
+            noteHeadIDs: [1, 2],
+            direction: .up,
+            level: 0,
+            start: CGPoint(x: 10, y: 50),
+            end: CGPoint(x: 20, y: 50),
+            thickness: 4
+        )
+
+        let result = NotationLayoutEngine().beamEndY(
+            for: noteHead,
+            beam: beam,
+            style: .gameplayDefault
+        )
+
+        #expect(result == nil, "beamEndY must return nil when stem X is outside the beam span")
+    }
+
 }

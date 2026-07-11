@@ -316,7 +316,7 @@ struct NotationLayoutEngine {
     }
 
     /// Computes stem end Y from beam geometry if noteHead is beamed.
-    private func beamEndY(
+    func beamEndY(
         for noteHead: RenderedNoteHead,
         beam: RenderedBeam,
         style: NotationLayoutStyle
