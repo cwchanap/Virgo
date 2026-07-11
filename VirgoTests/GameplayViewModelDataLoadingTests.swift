@@ -162,7 +162,7 @@ struct GameplayViewModelDataLoadingTests {
         #expect(NotationLayout.empty.ledgerLines.isEmpty)
         #expect(NotationLayout.empty.measureBars.isEmpty)
         #expect(NotationLayout.empty.noteHeadPositionsByID.isEmpty)
-        #expect(NotationLayout.empty.noteHeadIDsByTimePosition.isEmpty)
+        #expect(NotationLayout.empty.noteHeadIDsByLayoutTick.isEmpty)
         #expect(NotationLayout.empty.totalHeight == 0)
     }
 

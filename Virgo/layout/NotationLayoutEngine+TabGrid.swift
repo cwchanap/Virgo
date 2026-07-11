@@ -10,7 +10,7 @@ extension NotationLayoutEngine {
 
     func buildTabGrid(notes: [Note], input: NotationLayoutInput) -> TabGrid {
         let ticksPerMeasure = resolvedTicksPerMeasure(for: notes, timeSignature: input.timeSignature)
-        let requiredGap = requiredGridColumnGap(notes: notes, ticksPerMeasure: ticksPerMeasure, input: input)
+        let requiredGap = requiredGridColumnGap(input: input)
         // Derive the display baseline from the active meter's sixteenth-note
         // count rather than a hard-coded 16, so sparse meters (2/4, 3/4, 5/4,
         // /8) get the correct column count when `ticksPerMeasure` is raised
@@ -134,13 +134,7 @@ extension NotationLayoutEngine {
         return abs(a)
     }
 
-    func requiredGridColumnGap(
-        notes _: [Note],
-        ticksPerMeasure _: Int,
-        input: NotationLayoutInput
-    ) -> CGFloat {
-        // notes and ticksPerMeasure are intentionally unused; reserved for
-        // future density-aware gap calculations per the HPA-141 plan.
+    func requiredGridColumnGap(input: NotationLayoutInput) -> CGFloat {
         input.style.minimumNoteColumnGap
     }
 

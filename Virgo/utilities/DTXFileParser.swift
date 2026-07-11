@@ -155,7 +155,7 @@ enum DTXLane: String, CaseIterable {
     case sn = "12"      // Snare
     case ht = "14"      // High Tom
     case bd = "13"      // Bass Drum
-    case lt = "15"      // Low Tom
+    case lt = "15"      // Mid Tom (DTX "lt"; maps to .midTom in DrumNotationCatalog)
     case ft = "17"      // Floor Tom
     case cy = "16"      // Crash Cymbal
     case rd = "19"      // Ride Cymbal

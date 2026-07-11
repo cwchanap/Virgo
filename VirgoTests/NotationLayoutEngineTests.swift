@@ -603,7 +603,7 @@ struct NotationLayoutEngineTests {
         #expect(renderedIDs.count == 2)
         #expect(Set(heads.map(\.sourceObjectID)).count == 2)
         #expect(layout.noteHeadPositionsByID.count == 2)
-        #expect(layout.noteHeadIDsByTimePosition[tickKey] == renderedIDs)
+        #expect(layout.noteHeadIDsByLayoutTick[tickKey] == renderedIDs)
     }
 
     @Test("ledger width follows authored glyph bounds")

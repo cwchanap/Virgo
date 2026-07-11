@@ -39,7 +39,7 @@ struct NotationLayoutEngine {
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
         let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
-        let noteHeadIDsByTimePosition = Dictionary(
+        let noteHeadIDsByLayoutTick = Dictionary(
             grouping: noteHeads,
             by: { $0.timeColumn.absoluteLayoutTick }
         ).mapValues { Set($0.map(\.id)) }
@@ -60,7 +60,7 @@ struct NotationLayoutEngine {
             ledgerLines: ledgerLines,
             measureBars: measureBars,
             noteHeadPositionsByID: noteHeadPositionsByID,
-            noteHeadIDsByTimePosition: noteHeadIDsByTimePosition,
+            noteHeadIDsByLayoutTick: noteHeadIDsByLayoutTick,
             totalHeight: totalHeight
         )
     }
@@ -212,6 +212,10 @@ struct NotationLayoutEngine {
     }
 
     private func sortedNoteHeads(_ heads: [RenderedNoteHead]) -> [RenderedNoteHead] {
+        // Sort by layout tick for deterministic column ordering. This differs
+        // from stemRepresentative (in +Beams), which sorts by position.y to pick
+        // the visually outermost note head for stem length — the two orderings
+        // serve different purposes and intentionally use different primary keys.
         heads.sorted {
             if $0.timeColumn.absoluteLayoutTick != $1.timeColumn.absoluteLayoutTick {
                 return $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick
