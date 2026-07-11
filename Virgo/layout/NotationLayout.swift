@@ -133,10 +133,6 @@ struct NotationLayout {
     var noteHeadIDsByTimePosition: [Int: Set<UInt64>]
     var totalHeight: CGFloat
 
-    static func timePositionKey(_ timePosition: Double) -> Int {
-        Int((timePosition * 1_000_000).rounded())
-    }
-
     /// Minimum content width needed to contain all rendered primitives.
     var contentWidth: CGFloat {
         let primitiveMaxX = [

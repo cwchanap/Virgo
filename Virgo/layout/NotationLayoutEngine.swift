@@ -41,7 +41,7 @@ struct NotationLayoutEngine {
         let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
         let noteHeadIDsByTimePosition = Dictionary(
             grouping: noteHeads,
-            by: { NotationLayout.timePositionKey($0.timePosition) }
+            by: { $0.timeColumn.absoluteLayoutTick }
         ).mapValues { Set($0.map(\.id)) }
         let totalHeight = GameplayLayout.totalHeight(
             for: measures.map {

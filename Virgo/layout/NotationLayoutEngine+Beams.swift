@@ -5,13 +5,13 @@ import Foundation
 /// NotationLayoutEngine to keep the main engine file under the SwiftLint
 /// type-body limit.
 extension NotationLayoutEngine {
-    struct StemGroupKey: Hashable {
+    fileprivate struct StemGroupKey: Hashable {
         let timeColumn: NotationTimeColumn
         let row: Int
         let voice: NotationVoice
     }
 
-    struct BeamGroupKey: Hashable {
+    fileprivate struct BeamGroupKey: Hashable {
         let measureIndex: Int
         let row: Int
         let voice: NotationVoice
@@ -281,7 +281,7 @@ extension NotationLayoutEngine {
         return runs
     }
 
-    func beams(
+    fileprivate func beams(
         for noteHeads: [RenderedNoteHead],
         chordLookup: [StemGroupKey: [RenderedNoteHead]],
         style: NotationLayoutStyle
