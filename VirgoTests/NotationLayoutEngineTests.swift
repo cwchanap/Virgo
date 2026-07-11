@@ -700,7 +700,7 @@ extension NotationLayoutEngineTests {
         let stem = try #require(layout.stems.first)
         let anchorOffset = crash.glyph.stemAnchorOffset(
             direction: crash.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
         let expectedAnchor = CGPoint(
             x: crash.position.x + anchorOffset.x,
@@ -724,7 +724,7 @@ extension NotationLayoutEngineTests {
         let stem = try #require(layout.stems.first)
         let anchorOffset = snare.glyph.stemAnchorOffset(
             direction: snare.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
         let expectedAnchor = CGPoint(
             x: snare.position.x + anchorOffset.x,
@@ -788,11 +788,11 @@ extension NotationLayoutEngineTests {
         let lastHead = try #require(sortedHeads.last)
         let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
             direction: firstHead.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
         let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
             direction: lastHead.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
         let expectedFirstAnchor = CGPoint(
             x: firstHead.position.x + firstAnchorOffset.x,
@@ -831,11 +831,11 @@ extension NotationLayoutEngineTests {
         let lastHead = try #require(sortedHeads.last)
         let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
             direction: firstHead.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
         let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
             direction: lastHead.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
 
         #expect(layout.beams.count == 1)
@@ -1017,11 +1017,11 @@ extension NotationLayoutEngineTests {
         let beam = try #require(layout.beams.first)
         let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
             direction: firstHead.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
         let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
             direction: lastHead.stemDirection,
-            in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+            in: style.noteHeadSize
         )
 
         #expect(layout.beams.count == 1)
@@ -1055,7 +1055,7 @@ extension NotationLayoutEngineTests {
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
             let anchorOffset = noteHead.glyph.stemAnchorOffset(
                 direction: noteHead.stemDirection,
-                in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+                in: style.noteHeadSize
             )
             let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - beam.start.x) / (beam.end.x - beam.start.x)
@@ -1089,7 +1089,7 @@ extension NotationLayoutEngineTests {
             #expect(stem.direction == .down)
             let anchorOffset = noteHead.glyph.stemAnchorOffset(
                 direction: noteHead.stemDirection,
-                in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+                in: style.noteHeadSize
             )
             let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - beam.start.x) / (beam.end.x - beam.start.x)
@@ -1123,7 +1123,7 @@ extension NotationLayoutEngineTests {
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
             let anchorOffset = noteHead.glyph.stemAnchorOffset(
                 direction: noteHead.stemDirection,
-                in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+                in: style.noteHeadSize
             )
             let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)
@@ -1165,7 +1165,7 @@ extension NotationLayoutEngineTests {
             #expect(stem.direction == .down)
             let anchorOffset = noteHead.glyph.stemAnchorOffset(
                 direction: noteHead.stemDirection,
-                in: CGSize(width: style.noteHeadWidth, height: style.noteHeadHeight)
+                in: style.noteHeadSize
             )
             let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)

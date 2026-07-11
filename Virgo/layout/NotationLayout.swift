@@ -82,6 +82,10 @@ struct NotationLayoutStyle: Equatable {
     let beamLevelSpacing: CGFloat
     let ledgerLineOverhang: CGFloat
 
+    var noteHeadSize: CGSize {
+        CGSize(width: noteHeadWidth, height: noteHeadHeight)
+    }
+
     static let gameplayDefault = NotationLayoutStyle(
         minimumNoteColumnGap: 28,
         minimumQuarterBeatGap: GameplayLayout.uniformSpacing,
