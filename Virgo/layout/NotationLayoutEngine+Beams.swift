@@ -77,6 +77,8 @@ extension NotationLayoutEngine {
     }
 
     /// Computes stem end Y from beam geometry if noteHead is beamed.
+    /// Internal because `NotationLayoutDefensiveGuardTests` exercises it
+    /// directly; `@testable import` does not expose `fileprivate` members.
     func beamEndY(
         for noteHead: RenderedNoteHead,
         beam: RenderedBeam,

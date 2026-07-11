@@ -130,7 +130,7 @@ struct NotationLayout {
     var ledgerLines: [RenderedLedgerLine]
     var measureBars: [RenderedMeasureBar]
     var noteHeadPositionsByID: [UInt64: CGPoint]
-    var noteHeadIDsByTimePosition: [Int: Set<UInt64>]
+    var noteHeadIDsByLayoutTick: [Int: Set<UInt64>]
     var totalHeight: CGFloat
 
     /// Minimum content width needed to contain all rendered primitives.
@@ -166,7 +166,7 @@ struct NotationLayout {
         ledgerLines: [],
         measureBars: [],
         noteHeadPositionsByID: [:],
-        noteHeadIDsByTimePosition: [:],
+        noteHeadIDsByLayoutTick: [:],
         totalHeight: 0
     )
 }

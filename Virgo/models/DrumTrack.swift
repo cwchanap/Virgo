@@ -40,6 +40,10 @@ final class Note {
     var normalizedAbsoluteTick: Int?
     var normalizedTickWithinMeasure: Int?
     var normalizedTicksPerMeasure: Int?
+    /// Notation voice hint captured from the DTX source during import.
+    /// Currently unused by the rendering pipeline — `DrumNotationCatalog`
+    /// resolves voice from the lane definition. Retained on the model for
+    /// future per-note voice overrides and diagnostic tooling.
     var notationVoiceCandidate: NormalizedNotationVoice?
     var visualDurationCandidate: NoteInterval?
     var articulationCandidate: NormalizedArticulation?
