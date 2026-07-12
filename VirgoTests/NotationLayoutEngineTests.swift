@@ -909,8 +909,8 @@ extension NotationLayoutEngineTests {
         #expect(layout.beams.isEmpty)
     }
 
-    @Test("higher beam level does not span intervening lower duration note")
-    func higherBeamLevelDoesNotSpanInterveningLowerDurationNote() {
+    @Test("higher beam level uses hooks around intervening lower duration note")
+    func higherBeamLevelUsesHooksAroundInterveningLowerDurationNote() {
         let notes = [
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
@@ -924,7 +924,9 @@ extension NotationLayoutEngineTests {
 
         #expect(levelZeroBeams.count == 1)
         #expect(levelZeroBeams.first?.noteHeadIDs.count == 3)
-        #expect(levelOneBeams.isEmpty)
+        #expect(levelOneBeams.count == 2)
+        #expect(Set(levelOneBeams.map(\.kind)) == [.forwardHook, .backwardHook])
+        #expect(levelOneBeams.allSatisfy { $0.noteHeadIDs.count == 1 })
     }
 
     @Test("same time same voice duplicate eighths do not create zero length beam")
@@ -1424,12 +1426,10 @@ extension NotationLayoutEngineTests {
 
     // MARK: - Mixed-Duration Beam Flag Tests
 
-    @Test("sixteenth in mixed sixteenth-eighth beam run produces one flag for uncovered level")
-    func sixteenthInMixedBeamRunProducesFlagForUncoveredLevel() throws {
+    @Test("sixteenth in mixed sixteenth-eighth beam run produces a hook")
+    func sixteenthInMixedBeamRunProducesHook() throws {
         // sixteenth (flagCount=2) + eighth (flagCount=1) in the same beam run.
-        // Level-0 beam covers both notes; level-1 has only the sixteenth
-        // (< 2 notes, so no beam emitted).  The sixteenth needs a flag at
-        // index 1 to represent the uncovered second level.
+        // Level 0 covers both notes; the lone level-1 owner gets a forward hook.
         let notes = [
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625)
@@ -1443,27 +1443,25 @@ extension NotationLayoutEngineTests {
         #expect(levelZeroBeams.count == 1)
         #expect(levelZeroBeams.first?.noteHeadIDs.count == 2)
 
-        // No level-1 beam (only one sixteenth qualifies, < 2 minimum)
+        // The single eligible sixteenth owns a forward hook at level 1.
         let levelOneBeams = layout.beams.filter { $0.level == 1 }
-        #expect(levelOneBeams.isEmpty)
+        #expect(levelOneBeams.count == 1)
+        #expect(levelOneBeams.first?.kind == .forwardHook)
 
-        // The sixteenth should have one flag (for the uncovered level 1)
-        // The eighth should have no flags (fully covered by level-0 beam)
+        // Both notes are fully covered by beam topology.
         let sixteenthHead = try #require(layout.noteHeads.first { $0.interval == .sixteenth })
         let eighthHead = try #require(layout.noteHeads.first { $0.interval == .eighth })
         let sixteenthFlags = layout.flags.filter { $0.noteHeadID == sixteenthHead.id }
         let eighthFlags = layout.flags.filter { $0.noteHeadID == eighthHead.id }
 
-        #expect(sixteenthFlags.count == 1)
-        #expect(sixteenthFlags.first?.flagIndex == 1)
+        #expect(sixteenthFlags.isEmpty)
         #expect(eighthFlags.isEmpty)
     }
 
-    @Test("thirty-second in mixed beam run produces flags for all uncovered levels")
-    func thirtySecondInMixedBeamRunProducesFlagsForAllUncoveredLevels() throws {
+    @Test("thirty-second in mixed beam run produces hooks for higher levels")
+    func thirtySecondInMixedBeamRunProducesHigherLevelHooks() throws {
         // thirty-second (flagCount=3) + eighth (flagCount=1).
-        // Level-0 beam covers both; levels 1-2 have only the thirty-second.
-        // Two flags should be emitted for the thirty-second (indices 1 and 2).
+        // Level 0 covers both; the lone owner gets hooks at levels 1 and 2.
         let notes = [
             Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.03125)
@@ -1477,9 +1475,11 @@ extension NotationLayoutEngineTests {
         let thirtySecondFlags = layout.flags.filter { $0.noteHeadID == thirtySecondHead.id }
         let eighthFlags = layout.flags.filter { $0.noteHeadID == eighthHead.id }
 
-        #expect(thirtySecondFlags.count == 2)
-        let flagIndices = Set(thirtySecondFlags.map(\.flagIndex))
-        #expect(flagIndices == [1, 2])
+        let higherLevelBeams = layout.beams.filter { $0.level > 0 }
+        #expect(higherLevelBeams.count == 2)
+        #expect(higherLevelBeams.allSatisfy { $0.kind == .forwardHook })
+        #expect(higherLevelBeams.allSatisfy { $0.noteHeadIDs == [thirtySecondHead.id] })
+        #expect(thirtySecondFlags.isEmpty)
         #expect(eighthFlags.isEmpty)
     }
 

@@ -1,6 +1,12 @@
 import CoreGraphics
 import Foundation
 
+struct BeamBuildResult {
+    let events: [BeamTimelineEvent]
+    let topology: BeamTopologyResult
+    let beams: [RenderedBeam]
+}
+
 /// Beam, stem, flag, and ledger line construction extracted from
 /// NotationLayoutEngine to keep the main engine file under the SwiftLint
 /// type-body limit.
@@ -9,12 +15,7 @@ extension NotationLayoutEngine {
         let timeColumn: NotationTimeColumn
         let row: Int
         let voice: NotationVoice
-    }
-
-    fileprivate struct BeamGroupKey: Hashable {
-        let measureIndex: Int
-        let row: Int
-        let voice: NotationVoice
+        let stemDirection: StemDirection
     }
 
     // MARK: - Rendering Primitives
@@ -39,7 +40,8 @@ extension NotationLayoutEngine {
             StemGroupKey(
                 timeColumn: head.timeColumn,
                 row: head.row,
-                voice: head.voice
+                voice: head.voice,
+                stemDirection: head.stemDirection
             )
         }
 
@@ -84,8 +86,7 @@ extension NotationLayoutEngine {
         beam: RenderedBeam,
         style: NotationLayoutStyle
     ) -> CGFloat? {
-        // Only extend to beam if beam has multiple note heads.
-        guard beam.noteHeadIDs.count > 1 else { return nil }
+        guard beam.kind != .full || beam.noteHeadIDs.count > 1 else { return nil }
 
         let startX = beam.start.x, endX = beam.end.x
         let stemX = stemAnchor(for: noteHead, style: style).x
@@ -94,120 +95,93 @@ extension NotationLayoutEngine {
 
         guard endX != startX else { return nil }
 
-        // Beams are always horizontal (start.y == end.y, see sharedBeamY in
-        // beams(for:chordLookup:style:)), so no interpolation is needed.
+        // Beams are always horizontal, so no interpolation is needed.
         return beam.start.y
     }
 
     func buildBeams(
         noteHeads: [RenderedNoteHead],
+        tabGrid: TabGrid,
+        timeSignature: TimeSignature,
         style: NotationLayoutStyle
-    ) -> [RenderedBeam] {
-        let chordByStemGroupKey = Dictionary(
-            grouping: noteHeads.filter { $0.interval.needsStem }
-        ) {
-            StemGroupKey(
-                timeColumn: $0.timeColumn,
-                row: $0.row,
-                voice: $0.voice
-            )
-        }
+    ) -> BeamBuildResult {
+        let events = buildTimelineEvents(
+            noteHeads: noteHeads,
+            ticksPerMeasure: tabGrid.ticksPerMeasure
+        )
+        let topology = NotationBeamTopologyBuilder().build(
+            events: events,
+            ticksPerMeasure: tabGrid.ticksPerMeasure,
+            timeSignature: timeSignature
+        )
+        let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
 
-        let groupedHeads = Dictionary(grouping: noteHeads) {
-            BeamGroupKey(
-                measureIndex: $0.measureIndex,
-                row: $0.row,
-                voice: $0.voice
+        let beams = topology.primaryGroups.flatMap { group -> [RenderedBeam] in
+            let representatives = group.eventIndices.compactMap { index in
+                stemRepresentative(
+                    in: events[index].noteHeadIDs.compactMap { headsByID[$0] }
+                )
+            }
+            guard let direction = representatives.first?.stemDirection else { return [] }
+            let baseY = sharedBeamBaseY(
+                for: representatives,
+                direction: direction,
+                style: style
             )
+            return group.segments.compactMap { segment in
+                renderedBeam(
+                    segment: segment,
+                    group: group,
+                    events: events,
+                    headsByID: headsByID,
+                    baseY: baseY,
+                    style: style
+                )
+            }
         }
+        .sorted(by: renderedBeamComesBefore)
 
-        return groupedHeads.values
-            .flatMap { heads in
-                beamRuns(from: Array(heads)).flatMap { run in
-                    beams(for: run, chordLookup: chordByStemGroupKey, style: style)
-                }
-            }
-            .sorted {
-                if $0.start.y != $1.start.y {
-                    return $0.start.y < $1.start.y
-                }
-                if $0.start.x != $1.start.x {
-                    return $0.start.x < $1.start.x
-                }
-                return $0.level < $1.level
-            }
+        return BeamBuildResult(events: events, topology: topology, beams: beams)
     }
 
     func buildFlags(
         noteHeads: [RenderedNoteHead],
-        beams: [RenderedBeam],
+        beamBuild: BeamBuildResult,
         stems: [RenderedStem],
         style: NotationLayoutStyle
     ) -> [RenderedFlag] {
-        var coveredLevelsByNoteHead: [UInt64: Int] = [:]
-        for beam in beams {
-            for noteHeadID in beam.noteHeadIDs {
-                let current = coveredLevelsByNoteHead[noteHeadID] ?? 0
-                coveredLevelsByNoteHead[noteHeadID] = max(current, beam.level + 1)
+        let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
+        let stemsByNoteHeadID = Dictionary(
+            uniqueKeysWithValues: stems.flatMap { stem in
+                stem.noteHeadIDs.map { ($0, stem) }
             }
-        }
+        )
 
-        var stemByNoteHeadID: [UInt64: RenderedStem] = [:]
-        for stem in stems {
-            for noteHeadID in stem.noteHeadIDs {
-                stemByNoteHeadID[noteHeadID] = stem
-            }
-        }
+        return beamBuild.events.enumerated().flatMap { index, event -> [RenderedFlag] in
+            guard case let .beamable(requiredLevels, _) = event.role else { return [] }
+            let eventHeads = event.noteHeadIDs.compactMap { headsByID[$0] }
+            guard let representative = flagRepresentative(in: eventHeads),
+            let stem = stemsByNoteHeadID[representative.id] else { return [] }
 
-        let flaggedHeads = noteHeads.filter { $0.interval.needsFlag }
-        var bestByKey: [StemGroupKey: RenderedNoteHead] = [:]
-        for head in flaggedHeads {
-            let key = StemGroupKey(
-                timeColumn: head.timeColumn,
-                row: head.row,
-                voice: head.voice
+            let covered = beamBuild.topology.coveredLevelsByEventIndex[index] ?? []
+            let flagOrigin = CGPoint(
+                x: stem.start.x + GameplayLayout.flagXOffset,
+                y: stem.end.y
             )
-            if let existing = bestByKey[key],
-               existing.interval.flagCount >= head.interval.flagCount {
-                continue
-            }
-            bestByKey[key] = head
-        }
-        let representatives = Set(bestByKey.values.map(\.id))
-
-        return flaggedHeads
-            .filter { representatives.contains($0.id) }
-            .flatMap { noteHead -> [RenderedFlag] in
-                let coveredLevels = coveredLevelsByNoteHead[noteHead.id] ?? 0
-                let totalFlags = noteHead.interval.flagCount
-                guard coveredLevels < totalFlags else { return [] }
-                guard let stem = stemByNoteHeadID[noteHead.id] else {
-                    Logger.error("Missing rendered stem for flagged head \(noteHead.id)")
-                    return []
-                }
-                let flagOrigin = CGPoint(
-                    x: stem.start.x + GameplayLayout.flagXOffset,
-                    y: stem.end.y
+            return (0..<requiredLevels).compactMap { level in
+                guard !covered.contains(level) else { return nil }
+                let yOffset = stem.direction == .up
+                    ? CGFloat(level) * GameplayLayout.flagVerticalSpacing
+                    : -CGFloat(level) * GameplayLayout.flagVerticalSpacing
+                return RenderedFlag(
+                    id: "flag_\(representative.id)_\(level)",
+                    noteHeadID: representative.id,
+                    stemDirection: stem.direction,
+                    flagIndex: level,
+                    origin: CGPoint(x: flagOrigin.x, y: flagOrigin.y + yOffset)
                 )
-
-                return (coveredLevels..<totalFlags).map { flagIndex in
-                    let flagLevel = flagIndex - coveredLevels
-                    let yMultiplier = coveredLevels == 0
-                        ? CGFloat(flagLevel)
-                        : CGFloat(flagLevel + 1)
-                    let yOffset = stem.direction == .up
-                        ? yMultiplier * GameplayLayout.flagVerticalSpacing
-                        : -yMultiplier * GameplayLayout.flagVerticalSpacing
-
-                    return RenderedFlag(
-                        id: "flag_\(noteHead.id)_\(flagIndex)",
-                        noteHeadID: noteHead.id,
-                        stemDirection: stem.direction,
-                        flagIndex: flagIndex,
-                        origin: CGPoint(x: flagOrigin.x, y: flagOrigin.y + yOffset)
-                    )
-                }
             }
+        }
     }
 
     func buildLedgerLines(
@@ -241,160 +215,207 @@ extension NotationLayoutEngine {
 
     // MARK: - Beam Helpers
 
-    func beamRuns(from noteHeads: [RenderedNoteHead]) -> [[RenderedNoteHead]] {
-        let sortedHeads = noteHeads.sorted {
-            if abs($0.timePosition - $1.timePosition) > BeamGroupingConstants.comparisonTolerance {
-                return $0.timePosition < $1.timePosition
+    func buildTimelineEvents(
+        noteHeads: [RenderedNoteHead],
+        ticksPerMeasure: Int
+    ) -> [BeamTimelineEvent] {
+        Dictionary(grouping: noteHeads) {
+            StemGroupKey(
+                timeColumn: $0.timeColumn,
+                row: $0.row,
+                voice: $0.voice,
+                stemDirection: $0.stemDirection
+            )
+        }
+        .values
+        .map { group in
+            guard let representative = flagRepresentative(in: group) else {
+                preconditionFailure("Dictionary grouping unexpectedly produced an empty group")
+            }
+            let maximumLevels = group.map(\.interval.flagCount).max() ?? 0
+            let role: BeamTimelineEventRole = maximumLevels == 0
+                ? .boundary
+                : .beamable(
+                    requiredBeamLevels: maximumLevels,
+                    durationTicks: durationTicks(
+                        for: representative.interval,
+                        ticksPerMeasure: ticksPerMeasure
+                    )
+                )
+            return BeamTimelineEvent(
+                timeColumn: representative.timeColumn,
+                row: representative.row,
+                voice: representative.voice,
+                stemDirection: representative.stemDirection,
+                noteHeadIDs: group.map(\.id).sorted(),
+                role: role
+            )
+        }
+        .sorted(by: timelineEventComesBefore)
+    }
+
+    func durationTicks(
+        for interval: NoteInterval,
+        ticksPerMeasure: Int
+    ) -> Int? {
+        let denominator: Int
+        switch interval {
+        case .eighth: denominator = 8
+        case .sixteenth: denominator = 16
+        case .thirtysecond: denominator = 32
+        case .sixtyfourth: denominator = 64
+        case .full, .half, .quarter: return nil
+        }
+        guard ticksPerMeasure.isMultiple(of: denominator) else { return nil }
+        return ticksPerMeasure / denominator
+    }
+
+    private func timelineEventComesBefore(
+        _ lhs: BeamTimelineEvent,
+        _ rhs: BeamTimelineEvent
+    ) -> Bool {
+        if lhs.timeColumn.measureIndex != rhs.timeColumn.measureIndex {
+            return lhs.timeColumn.measureIndex < rhs.timeColumn.measureIndex
+        }
+        if lhs.timeColumn.absoluteLayoutTick != rhs.timeColumn.absoluteLayoutTick {
+            return lhs.timeColumn.absoluteLayoutTick < rhs.timeColumn.absoluteLayoutTick
+        }
+        if lhs.row != rhs.row { return lhs.row < rhs.row }
+        if lhs.voice.rawValue != rhs.voice.rawValue {
+            return lhs.voice.rawValue < rhs.voice.rawValue
+        }
+        if lhs.stemDirection.rawValue != rhs.stemDirection.rawValue {
+            return lhs.stemDirection.rawValue < rhs.stemDirection.rawValue
+        }
+        return lhs.noteHeadIDs.lexicographicallyPrecedes(rhs.noteHeadIDs)
+    }
+
+    private func flagRepresentative(
+        in noteHeads: [RenderedNoteHead]
+    ) -> RenderedNoteHead? {
+        noteHeads.min {
+            if $0.interval.flagCount != $1.interval.flagCount {
+                return $0.interval.flagCount > $1.interval.flagCount
+            }
+            if $0.catalogOrder != $1.catalogOrder {
+                return $0.catalogOrder < $1.catalogOrder
             }
             return $0.id < $1.id
         }
-        var runs: [[RenderedNoteHead]] = []
-        var currentRun: [RenderedNoteHead] = []
-
-        for noteHead in sortedHeads {
-            guard noteHead.interval.needsFlag else {
-                if currentRun.count >= 2 {
-                    runs.append(currentRun)
-                }
-                currentRun = []
-                continue
-            }
-
-            if let previousHead = currentRun.last {
-                let timeDifference = abs(noteHead.timePosition - previousHead.timePosition)
-                if timeDifference <= BeamGroupingConstants.maxConsecutiveInterval
-                    + BeamGroupingConstants.comparisonTolerance {
-                    currentRun.append(noteHead)
-                } else {
-                    if currentRun.count >= 2 {
-                        runs.append(currentRun)
-                    }
-                    currentRun = [noteHead]
-                }
-            } else {
-                currentRun = [noteHead]
-            }
-        }
-
-        if currentRun.count >= 2 {
-            runs.append(currentRun)
-        }
-
-        return runs
     }
 
-    fileprivate func beams(
-        for noteHeads: [RenderedNoteHead],
-        chordLookup: [StemGroupKey: [RenderedNoteHead]],
+    private func renderedBeam(
+        segment: BeamTopologySegment,
+        group: BeamPrimaryGroup,
+        events: [BeamTimelineEvent],
+        headsByID: [UInt64: RenderedNoteHead],
+        baseY: CGFloat,
         style: NotationLayoutStyle
-    ) -> [RenderedBeam] {
-        let maxFlagCount = noteHeads.map(\.interval.flagCount).max() ?? 0
+    ) -> RenderedBeam? {
+        guard let ownerIndex = segment.eventIndices.first,
+              let owner = representative(
+                  for: events[ownerIndex],
+                  headsByID: headsByID
+              ) else { return nil }
 
-        return (0..<maxFlagCount).flatMap { level in
-            beamSegments(for: noteHeads, level: level).compactMap { levelHeads in
-                guard let firstHead = levelHeads.first,
-                      let lastHead = levelHeads.last,
-                      levelHeads.count >= 2 else {
-                    return nil
-                }
-
-                let firstColumn = firstHead.timeColumn
-                let lastColumn = lastHead.timeColumn
-                guard firstColumn != lastColumn else {
-                    return nil
-                }
-                let firstKey = StemGroupKey(
-                    timeColumn: firstColumn,
-                    row: firstHead.row,
-                    voice: firstHead.voice
-                )
-                let lastKey = StemGroupKey(
-                    timeColumn: lastColumn,
-                    row: lastHead.row,
-                    voice: lastHead.voice
-                )
-                let firstChord = chordLookup[firstKey] ?? {
-                    Logger.warning("Beam chordLookup miss for firstKey \(firstKey); using singleton fallback")
-                    return [firstHead]
-                }()
-                let lastChord = chordLookup[lastKey] ?? {
-                    Logger.warning("Beam chordLookup miss for lastKey \(lastKey); using singleton fallback")
-                    return [lastHead]
-                }()
-                guard let firstRepresentative = stemRepresentative(in: firstChord),
-                      let lastRepresentative = stemRepresentative(in: lastChord) else {
-                    return nil
-                }
-                let sharedY = sharedBeamY(for: noteHeads, level: level, style: style)
-                let start = CGPoint(
-                    x: stemAnchor(for: firstRepresentative, style: style).x,
-                    y: sharedY
-                )
-                let end = CGPoint(
-                    x: stemAnchor(for: lastRepresentative, style: style).x,
-                    y: sharedY
-                )
-                guard abs(end.x - start.x) > BeamGroupingConstants.comparisonTolerance else {
-                    return nil
-                }
-
-                return RenderedBeam(
-                    id: "beam_\(firstHead.measureIndex)_\(firstHead.row)_\(firstHead.voice.rawValue)_"
-                        + "\(firstHead.stemDirection.rawValue)_\(level)_\(firstHead.id)_\(lastHead.id)",
-                    noteHeadIDs: levelHeads.map(\.id),
-                    direction: firstHead.stemDirection,
-                    level: level,
-                    kind: .full,
-                    start: start,
-                    end: end,
-                    thickness: style.beamThickness
-                )
-            }
+        let start = stemAnchor(for: owner, style: style)
+        let endX: CGFloat
+        let terminalIndex: Int
+        switch segment.kind {
+        case .full:
+            guard let lastIndex = segment.eventIndices.last,
+                  let last = representative(
+                      for: events[lastIndex],
+                      headsByID: headsByID
+                  ) else { return nil }
+            endX = stemAnchor(for: last, style: style).x
+            terminalIndex = lastIndex
+        case .forwardHook, .backwardHook:
+            guard let neighborIndex = segment.hookNeighborIndex,
+                  let neighbor = representative(
+                      for: events[neighborIndex],
+                      headsByID: headsByID
+                  ) else { return nil }
+            let neighborX = stemAnchor(for: neighbor, style: style).x
+            let length = min(style.beamHookLength, abs(neighborX - start.x) / 2)
+            guard length > 0 else { return nil }
+            endX = start.x + (neighborX > start.x ? length : -length)
+            terminalIndex = neighborIndex
         }
+        guard endX != start.x else { return nil }
+
+        let direction = group.id.stemDirection
+        let levelOffset = CGFloat(segment.level) * style.beamLevelSpacing
+        let y = direction == .up ? baseY - levelOffset : baseY + levelOffset
+        let noteHeadIDs: [UInt64]
+        if segment.kind == .full {
+            noteHeadIDs = Array(Set(segment.eventIndices.flatMap {
+                events[$0].noteHeadIDs
+            })).sorted()
+        } else {
+            noteHeadIDs = events[ownerIndex].noteHeadIDs.sorted()
+        }
+
+        return RenderedBeam(
+            id: renderedBeamID(
+                group: group,
+                segment: segment,
+                firstTick: events[ownerIndex].timeColumn.absoluteLayoutTick,
+                lastTick: events[terminalIndex].timeColumn.absoluteLayoutTick
+            ),
+            noteHeadIDs: noteHeadIDs,
+            direction: direction,
+            level: segment.level,
+            kind: segment.kind,
+            start: CGPoint(x: start.x, y: y),
+            end: CGPoint(x: endX, y: y),
+            thickness: style.beamThickness
+        )
     }
 
-    func sharedBeamY(
-        for noteHeads: [RenderedNoteHead],
-        level: Int,
+    private func representative(
+        for event: BeamTimelineEvent,
+        headsByID: [UInt64: RenderedNoteHead]
+    ) -> RenderedNoteHead? {
+        stemRepresentative(in: event.noteHeadIDs.compactMap { headsByID[$0] })
+    }
+
+    private func sharedBeamBaseY(
+        for representatives: [RenderedNoteHead],
+        direction: StemDirection,
         style: NotationLayoutStyle
     ) -> CGFloat {
-        let direction = noteHeads.first?.stemDirection ?? .up
-        let levelOffset = CGFloat(level) * style.beamLevelSpacing
-        let candidates = noteHeads.map { head -> CGFloat in
-            switch direction {
-            case .up: return head.position.y - style.stemLength - levelOffset
-            case .down: return head.position.y + style.stemLength + levelOffset
-            }
+        let candidates = representatives.map {
+            let anchorY = stemAnchor(for: $0, style: style).y
+            return direction == .up
+                ? anchorY - style.stemLength
+                : anchorY + style.stemLength
         }
-        switch direction {
-        case .up: return candidates.min() ?? 0
-        case .down: return candidates.max() ?? 0
-        }
+        return direction == .up
+            ? candidates.min() ?? 0
+            : candidates.max() ?? 0
     }
 
-    func beamSegments(
-        for noteHeads: [RenderedNoteHead],
-        level: Int
-    ) -> [[RenderedNoteHead]] {
-        var segments: [[RenderedNoteHead]] = []
-        var currentSegment: [RenderedNoteHead] = []
+    private func renderedBeamID(
+        group: BeamPrimaryGroup,
+        segment: BeamTopologySegment,
+        firstTick: Int,
+        lastTick: Int
+    ) -> String {
+        let id = group.id
+        return "beam_m\(id.measureIndex)_r\(id.row)_b\(id.beatGroupIndex)_"
+            + "v\(id.voice.rawValue)_d\(id.stemDirection.rawValue)_"
+            + "l\(segment.level)_\(segment.kind.rawValue)_\(firstTick)_\(lastTick)"
+    }
 
-        for noteHead in noteHeads {
-            if noteHead.interval.flagCount > level {
-                currentSegment.append(noteHead)
-            } else {
-                if currentSegment.count >= 2 {
-                    segments.append(currentSegment)
-                }
-                currentSegment = []
-            }
-        }
-
-        if currentSegment.count >= 2 {
-            segments.append(currentSegment)
-        }
-
-        return segments
+    private func renderedBeamComesBefore(
+        _ lhs: RenderedBeam,
+        _ rhs: RenderedBeam
+    ) -> Bool {
+        if lhs.start.y != rhs.start.y { return lhs.start.y < rhs.start.y }
+        if lhs.start.x != rhs.start.x { return lhs.start.x < rhs.start.x }
+        if lhs.level != rhs.level { return lhs.level < rhs.level }
+        return lhs.id < rhs.id
     }
 
     func stemAnchor(

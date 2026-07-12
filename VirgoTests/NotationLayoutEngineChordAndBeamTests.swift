@@ -293,7 +293,7 @@ struct NotationLayoutEngineChordAndBeamTests {
         // Bass notes use the catalog-authored down-stem direction.
         let notes = [
             Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0),
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.125)
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0625)
         ]
         let layout = NotationLayoutEngine().layout(
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
@@ -447,10 +447,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         )
     }
 
-    @Test("beamed residual flag is offset from beam, not at stem tip")
-    func beamedResidualFlagIsOffsetFromBeam() throws {
-        // 16th + 32nd + 16th — the 32nd gets covered at levels 0 and 1 but has
-        // 3 total flags → 1 remaining flag that must be offset from the beam.
+    @Test("beamed higher-level singleton uses a hook instead of a residual flag")
+    func beamedHigherLevelSingletonUsesHook() throws {
         let notes = [
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
@@ -460,18 +458,15 @@ struct NotationLayoutEngineChordAndBeamTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
 
-        let flag = try #require(layout.flags.first, "Should have 1 remaining flag")
-        let stem = try #require(
-            layout.stems.first { $0.noteHeadIDs.contains(flag.noteHeadID) }
+        let thirtySecond = try #require(
+            layout.noteHeads.first { $0.interval == .thirtysecond }
+        )
+        let hook = try #require(
+            layout.beams.first { $0.level == 2 && $0.noteHeadIDs == [thirtySecond.id] }
         )
 
-        // The beamed residual flag should NOT be at the stem tip — it must be
-        // offset by at least flagVerticalSpacing from the beam level.
-        let distance = abs(flag.origin.y - stem.end.y)
-        #expect(
-            distance >= GameplayLayout.flagVerticalSpacing - 0.001,
-            "Beamed residual flag should be offset from stem end, distance=\(distance)"
-        )
+        #expect(hook.kind == .backwardHook)
+        #expect(layout.flags.allSatisfy { $0.noteHeadID != thirtySecond.id })
     }
 
     @Test("down-stem multi-flag notes stack toward the note head")
@@ -725,6 +720,58 @@ struct NotationLayoutEngineChordAndBeamTests {
             beamRepDelta < 0.001,
             "Beam should be anchored on the same snare representative as the stem (delta=\(beamRepDelta))"
         )
+    }
+
+    @Test("full 4/4 sixteenth run creates four two-level beat groups")
+    func fullSixteenthRunIsBeatScoped() {
+        let notes = (0..<16).map {
+            Note(
+                interval: .sixteenth,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double($0) / 16.0
+            )
+        }
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.beams.filter { $0.level == 0 && $0.kind == .full }.count == 4)
+        #expect(layout.beams.filter { $0.level == 1 && $0.kind == .full }.count == 4)
+        #expect(layout.flags.isEmpty)
+    }
+
+    @Test("mixed sixteenth and eighth use a forward hook without flags")
+    func mixedDurationsRenderForwardHook() throws {
+        let notes = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        let hook = try #require(layout.beams.first { $0.level == 1 })
+        #expect(hook.kind == .forwardHook)
+        #expect(hook.noteHeadIDs.count == 1)
+        #expect(hook.end.x > hook.start.x)
+        #expect(hook.end.x - hook.start.x <= 12)
+        #expect(layout.flags.isEmpty)
+    }
+
+    @Test("stemless boundary prevents adjacent flagged notes from beaming")
+    func stemlessBoundaryBreaksLayoutRun() {
+        let notes = [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .half, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 32.0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+
+        #expect(layout.beams.isEmpty)
+        #expect(layout.flags.count == 4)
     }
 
     private func rowContentMaxY(layout: NotationLayout, row: Int) -> CGFloat {
