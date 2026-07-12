@@ -33,9 +33,23 @@ struct NotationLayoutEngine {
         let tabGrid = buildTabGrid(notes: sortedNotes, input: input)
         let measures = buildMeasures(totalMeasures: totalMeasures, tabGrid: tabGrid, input: input)
         let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, tabGrid: tabGrid, input: input)
-        let beams = buildBeams(noteHeads: noteHeads, style: input.style)
-        let stems = buildStems(noteHeads: noteHeads, beams: beams, style: input.style)
-        let flags = buildFlags(noteHeads: noteHeads, beams: beams, stems: stems, style: input.style)
+        let beamBuild = buildBeams(
+            noteHeads: noteHeads,
+            tabGrid: tabGrid,
+            timeSignature: input.timeSignature,
+            style: input.style
+        )
+        let stems = buildStems(
+            noteHeads: noteHeads,
+            beams: beamBuild.beams,
+            style: input.style
+        )
+        let flags = buildFlags(
+            noteHeads: noteHeads,
+            beamBuild: beamBuild,
+            stems: stems,
+            style: input.style
+        )
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
         let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
@@ -55,7 +69,7 @@ struct NotationLayoutEngine {
             noteHeadSize: input.style.noteHeadSize,
             noteHeads: noteHeads,
             stems: stems,
-            beams: beams,
+            beams: beamBuild.beams,
             flags: flags,
             ledgerLines: ledgerLines,
             measureBars: measureBars,
