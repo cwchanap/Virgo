@@ -40,11 +40,11 @@ The current mixed-duration fallback also renders curved flags for uncovered beam
 
 ## 4. Approved Approach
 
-Insert a pure, stem-level topology stage between rendered noteheads and rendered geometry:
+Insert a pure, timeline-event topology stage between rendered noteheads and rendered geometry:
 
 ```text
 RenderedNoteHead
-  -> BeamStemEvent
+  -> BeamTimelineEvent
   -> beat-scoped BeamTopology
   -> RenderedBeam / RenderedFlag
   -> existing SwiftUI primitive views
@@ -58,23 +58,27 @@ This replaces notehead proximity grouping without reopening HPA-141's stem and g
 
 Add `Virgo/layout/NotationBeamTopology.swift` for internal, geometry-free beam decisions.
 
-The input event represents one semantic stem:
+The input event represents one semantic timeline position and direction. It can be a beamable stem or an explicit non-beamable boundary:
 
 ```swift
-struct BeamStemEvent: Hashable {
+enum BeamTimelineEventRole: Hashable {
+    case beamable(requiredBeamLevels: Int, durationTicks: Int?)
+    case boundary
+}
+
+struct BeamTimelineEvent: Hashable {
     let timeColumn: NotationTimeColumn
     let row: Int
     let voice: NotationVoice
     let stemDirection: StemDirection
     let noteHeadIDs: [UInt64]
-    let requiredBeamLevels: Int
-    let durationTicks: Int?
+    let role: BeamTimelineEventRole
 }
 ```
 
-`noteHeadIDs` contains every source head sharing the HPA-141 stem key. `requiredBeamLevels` is the maximum `NoteInterval.flagCount` among those heads. This preserves every required tail if same-time, same-voice source notes disagree about duration.
+`noteHeadIDs` contains every source head sharing canonical time, row, voice, and stem direction. A beamable role uses the maximum `NoteInterval.flagCount` among those heads and the corresponding shortest duration. This preserves every required tail if same-time source notes disagree about duration. A boundary role has no rendered beam membership and exists only to prevent neighboring beamable events from joining across a quarter, half, or full note.
 
-The topology output expresses drawable membership without points:
+The topology output associates drawable segments, coverage, and the primary run that owns their shared baseline:
 
 ```swift
 enum BeamSegmentKind: String, Hashable {
@@ -86,16 +90,37 @@ enum BeamSegmentKind: String, Hashable {
 struct BeamTopologySegment: Hashable {
     let level: Int
     let kind: BeamSegmentKind
-    let stemEventIndices: [Int]
+    let eventIndices: [Int]
     let hookNeighborIndex: Int?
+}
+
+struct BeamPrimaryGroupID: Hashable {
+    let measureIndex: Int
+    let row: Int
+    let voice: NotationVoice
+    let stemDirection: StemDirection
+    let beatGroupIndex: Int
+    let firstAbsoluteTick: Int
+    let lastAbsoluteTick: Int
+}
+
+struct BeamPrimaryGroup: Hashable {
+    let id: BeamPrimaryGroupID
+    let eventIndices: [Int]
+    let segments: [BeamTopologySegment]
+}
+
+struct BeamTopologyResult: Equatable {
+    let primaryGroups: [BeamPrimaryGroup]
+    let coveredLevelsByEventIndex: [Int: Set<Int>]
 }
 ```
 
-Full segments contain at least two stem events. Hooks contain one owning stem event and the adjacent primary-group event toward which the hook points.
+Indices refer to the builder's ordered input array. Full segments contain at least two beamable events. Hooks contain one owning event and the adjacent primary-group event toward which the hook points. Segments are nested under `BeamPrimaryGroup`, so layout can compute one baseline from `eventIndices` before materializing every segment in that run. `coveredLevelsByEventIndex` is the authoritative flag-suppression contract; boundary and isolated events have no covered levels.
 
 ### 5.2 Topology builder
 
-`NotationBeamTopologyBuilder` is a pure value type. It accepts ordered `BeamStemEvent` values, `ticksPerMeasure`, and the time signature. It returns topology segments plus the set of beam levels covered for each stem event.
+`NotationBeamTopologyBuilder` is a pure value type. It accepts ordered `BeamTimelineEvent` values, `ticksPerMeasure`, and the time signature. It returns one `BeamTopologyResult` with ordered primary groups and exact per-event level coverage.
 
 The builder does not depend on SwiftUI, Core Graphics, SwiftData, logging, or view state. Unsupported or invalid input produces fewer beams and more isolated flags, never guessed cross-note topology.
 
@@ -103,13 +128,13 @@ The builder does not depend on SwiftUI, Core Graphics, SwiftData, logging, or vi
 
 `NotationLayoutEngine+Beams.swift` will:
 
-1. Collapse rendered noteheads by the existing semantic stem key.
-2. Convert exact `NoteInterval` values into canonical duration ticks.
+1. Form timeline events from every rendered notehead, including stemless half/full boundary notes, using canonical time, row, voice, and direction.
+2. Convert beamable `NoteInterval` values into canonical duration ticks and encode quarter/half/full notes as explicit boundary roles.
 3. Ask the topology builder for beam and hook membership using the layout's `TabGrid` resolution and time signature.
-4. Resolve one shared flat base y-coordinate from the full primary group, then offset each beam level from that baseline.
-5. Materialize `RenderedBeam` segments from existing HPA-141 stem anchors.
+4. Iterate `result.primaryGroups`, resolve one shared flat base y-coordinate from each group's complete `eventIndices`, then offset each beam level from that baseline.
+5. Materialize each group's `RenderedBeam` segments from existing HPA-141 stem anchors.
 6. Build stems against the outermost full beam or hook that covers each stem, including single-notehead hook owners.
-7. Add flags only for levels that topology did not cover.
+7. Add flags only for required levels absent from `result.coveredLevelsByEventIndex`.
 
 `RenderedBeam` gains a `kind: BeamSegmentKind` field. Its existing `level`, `direction`, endpoints, thickness, and `noteHeadIDs` remain the rendering contract.
 
@@ -140,27 +165,29 @@ The existing horizontal-span and zero-span guards still apply. A valid hook begi
 
 Views must not infer beat groups, hook direction, beam coverage, or flag suppression.
 
-## 6. Stem Event Formation
+## 6. Timeline Event Formation
 
-Build one `BeamStemEvent` for every unique combination of:
+Build one `BeamTimelineEvent` for every unique combination of:
 
 - `NotationTimeColumn`
 - rendered row
 - `NotationVoice`
+- `StemDirection`
 
-HPA-141 already guarantees a single catalog-authored direction per voice. The event still stores `stemDirection`, and direction remains part of the later group key, so inconsistent future input cannot be joined accidentally.
+HPA-141 currently supplies one catalog-authored direction per voice, but direction is still an explicit formation and grouping boundary. Add `stemDirection` to the existing semantic `StemGroupKey` used by stem, flag, and topology formation. If future or malformed input assigns different directions at the same time, row, and voice, it forms separate events and separate stems rather than being silently collapsed.
 
-Within a stem event:
+Within a timeline event:
 
 - Sort `noteHeadIDs` for deterministic output.
-- Use the maximum flag count as `requiredBeamLevels`.
-- Convert the corresponding shortest interval into canonical duration ticks.
-- Keep non-beamable quarter, half, and full events in the ordered timeline as run boundaries, even though they never become beam members.
+- If any head is flagged, create `.beamable` using the maximum flag count and the corresponding shortest interval converted into canonical duration ticks.
+- If every head is quarter, half, or full, create `.boundary`.
+- Create events from all rendered noteheads before applying the `needsStem` filter used by `buildStems`; this keeps stemless half/full notes in the topology timeline.
+- Only `.beamable` events may enter primary groups or produce rendered beam geometry.
 
-The builder distinguishes the two reasons `durationTicks` can be `nil`:
+The role distinguishes non-beamable notation from invalid beamable timing:
 
-- `requiredBeamLevels == 0` means an intentional non-beamable quarter, half, or full boundary.
-- `requiredBeamLevels > 0` means a flagged interval could not be represented exactly; that event is isolated and receives its normal flags.
+- `.boundary` intentionally carries no duration and always breaks a run.
+- `.beamable(requiredBeamLevels:durationTicks: nil)` means the flagged interval could not be represented exactly; it is isolated and receives its normal flags.
 
 Neither case permits neighboring events to beam across it.
 
@@ -189,13 +216,15 @@ The grouping key contains:
 
 No beam may cross any of those boundaries.
 
-Within a key, events are sorted by `absoluteLayoutTick`, then deterministic stem identity. Repeated source heads at the same stem event do not create duplicate topology members.
+After formation, events are canonically sorted by measure, absolute tick, row, voice, direction, and sorted notehead IDs before being passed to the builder. Builder indices therefore refer to the same ordered event array regardless of source-note input order.
+
+Within a grouping key, events are sorted by `absoluteLayoutTick`, then deterministic event identity. Repeated source heads at the same timeline event do not create duplicate topology members.
 
 ## 8. Rhythmic Continuity
 
 Beat membership alone is insufficient: beams must not span an unknown rest or timing gap.
 
-Two successive flagged stem events are rhythmically contiguous only when:
+Two successive beamable timeline events are rhythmically contiguous only when:
 
 ```swift
 next.absoluteLayoutTick == current.absoluteLayoutTick + current.durationTicks
@@ -212,19 +241,19 @@ Duration conversion for 4/4 uses the interval's measure denominator:
 
 Conversion succeeds only when `ticksPerMeasure` is evenly divisible by the denominator. Quarter, half, and full notes are non-beamable boundaries. A missing or non-integral duration ends the current run and leaves the affected stem isolated.
 
-A primary run requires at least two contiguous flagged stem events. A single flagged event has no primary beam and receives flags for all required levels.
+A primary run requires at least two contiguous beamable timeline events. A single beamable event has no primary beam and receives flags for all required levels.
 
 ## 9. Beam Levels and Hooks
 
 ### 9.1 Primary level
 
-Level 0 joins every stem event in a valid primary run. It produces one full segment from the first stem anchor to the last stem anchor and covers level 0 for every member.
+Level 0 joins every beamable event in a valid primary run. It produces one full segment from the first stem anchor to the last stem anchor and covers level 0 for every member.
 
 ### 9.2 Secondary levels
 
 For each level from 1 through the run's maximum required level minus one:
 
-1. Select stem events whose `requiredBeamLevels` exceeds the level.
+1. Select beamable events whose `requiredBeamLevels` exceeds the level.
 2. Partition selected events into consecutive subsequences within the primary run.
 3. Emit a full segment for every subsequence containing two or more events.
 4. Emit one hook for every singleton subsequence.
@@ -265,15 +294,15 @@ Every level offsets from that common baseline by `NotationLayoutStyle.beamLevelS
 
 This changes the current `sharedBeamY` semantics. Today it receives the per-level filtered notehead subset, which can move secondary levels when their members differ from the primary group. The revised helper derives the base y from the complete primary group once; segment levels apply only the signed `beamLevelSpacing` offset.
 
-Full beams list all notehead IDs belonging to their covered stem events. Hooks list all notehead IDs belonging to their owning stem event. `buildStems` treats either kind as beam coverage and extends the stem to its outermost covered level.
+Full beams list all notehead IDs belonging to their covered beamable events. Hooks list all notehead IDs belonging to their owning beamable event. `buildStems` treats either kind as beam coverage and extends the stem to its outermost covered level.
 
 ## 11. Flag Behavior
 
-Beam coverage is tracked per stem event and beam level.
+Beam coverage is tracked per beamable timeline event and beam level.
 
 - A full beam covers its level for every member stem.
 - A hook covers its level for its owner.
-- A stem outside a primary group has no covered levels.
+- A beamable event outside a primary group has no covered levels.
 - `buildFlags` emits one flag for every required level not covered by topology.
 
 Consequences:
@@ -288,7 +317,7 @@ This intentionally replaces the current behavior that mixes a primary beam with 
 
 ## 12. Determinism
 
-Topology events, groups, levels, segments, and source IDs are sorted before rendered primitives are created.
+Topology events, primary groups, levels, segments, and source IDs are sorted before rendered primitives are created. Shuffling source-note input must produce an equal `BeamTopologyResult` and equal rendered beam IDs/order.
 
 Rendered beam IDs include:
 
@@ -303,7 +332,7 @@ Rendered beam IDs include:
 
 Hook IDs use the owner's tick plus the selected neighbor tick. IDs never depend on dictionary iteration order, floating x values, or source-array order.
 
-Final rendered beams retain the existing stable sort by y, x, level, and then ID as the tie-breaker.
+The current rendered-beam comparator stops after y, x, and level. Replace it with an explicit total order: compare start y, start x, level, and finally `id`. The ID comparison is a new required tie-breaker, not existing behavior.
 
 ## 13. Conservative Fallbacks
 
@@ -323,7 +352,7 @@ HPA-145 may later supply meter-aware beat groups and richer duration semantics t
 
 ## 14. Error Handling
 
-The pure topology builder returns an empty segment list for unsupported or invalid grouping input. This is an expected fallback, not a runtime error.
+The pure topology builder returns an empty `BeamTopologyResult`—no primary groups and no covered levels—for unsupported or invalid grouping input. This is an expected fallback, not a runtime error.
 
 Layout integration must continue producing stems and flags when topology is empty. Existing defensive guards remain in place when a stem anchor or representative cannot be resolved. Such a malformed event is excluded from beams and retains normal unbeamed stem behavior where possible.
 
@@ -344,11 +373,14 @@ Add `VirgoTests/NotationBeamTopologyTests.swift` using Swift Testing. Cover:
 - a gap within a beat producing isolated events;
 - exact quarter-beat boundary separation;
 - measure, row, voice, and direction separation;
+- direction-conflicting same-time input forming separate events;
+- explicit quarter and stemless half/full boundary events breaking neighboring runs;
 - same-time chord collapse without duplicate topology members;
 - conflicting chord intervals using the maximum level;
 - unsupported meter fallback;
 - invalid, non-positive, and non-integral tick fallback;
-- deterministic segment ordering.
+- primary-group ownership and `coveredLevelsByEventIndex` consistency;
+- deterministic segment ordering and equal results after shuffled input.
 
 ### 15.2 Layout integration tests
 
@@ -362,7 +394,7 @@ Update focused coverage in `NotationLayoutEngineChordAndBeamTests.swift` and `No
 - isolated eighth through 64th notes retain one through four flags;
 - four beats of sixteenth notes do not become one measure-wide beam;
 - beams do not cross row, measure, voice, direction, or beat boundaries;
-- rendered beam IDs and final ordering are stable.
+- rendered beam IDs and final ordering are stable after shuffled source-note input.
 
 Replace the existing mixed-duration expectations that require secondary curved flags with hook expectations. This is not always a mechanical assertion change: existing fixtures whose offsets are not contiguous under `current.durationTicks` must either use corrected contiguous offsets or explicitly assert the newly split primary runs and isolated flags. In particular, the existing sixteenth/32nd/sixteenth fixture at offsets `0`, `0.0625`, and `0.125` contains a 32nd-note gap before its final event and must be reviewed intentionally.
 
@@ -374,6 +406,8 @@ Extend `NotationLayoutDefensiveGuardTests.swift` to verify that:
 
 Remove the obsolete `BeamGroupingConstants` threshold test from `DrumTypeExtensionsAndConstantsTests.swift`. Retain existing HPA-141 chord-anchor, voice-first stem, defensive beam-end, and SwiftUI primitive coverage.
 
+`RenderedBeam.kind` has no default: every constructor must state whether it represents `.full`, `.forwardHook`, or `.backwardHook`. Update direct constructors in `NotationLayoutDefensiveGuardTests.swift` and both direct constructors in `SwiftUIRenderingCoverageTests.swift`. The one-notehead rendering probe uses a hook kind; the two-notehead probe uses `.full`. This keeps tests semantically explicit while preserving the unchanged line-rendering view.
+
 ### 15.3 Verification ladder
 
 Run sequentially with parallel testing disabled:
@@ -381,10 +415,11 @@ Run sequentially with parallel testing disabled:
 1. `NotationBeamTopologyTests`
 2. `NotationLayoutEngineChordAndBeamTests`
 3. `NotationLayoutEngineTests`
-4. Full `VirgoTests`
-5. SwiftLint
-6. macOS build
-7. iPad simulator-compatible build using an available iPad destination
+4. `SwiftUIRenderingCoverageTests`
+5. Full `VirgoTests`
+6. SwiftLint
+7. macOS build
+8. iPad simulator-compatible build using an available iPad destination
 
 The focused tests provide the primary semantic proof. HPA-144 remains responsible for dense-row and multi-row golden or deterministic render fixtures after all renderer semantics land.
 
@@ -401,6 +436,7 @@ The focused tests provide the primary semantic proof. HPA-144 remains responsibl
 - `VirgoTests/NotationLayoutEngineTests.swift`
 - `VirgoTests/NotationLayoutDefensiveGuardTests.swift`
 - `VirgoTests/DrumTypeExtensionsAndConstantsTests.swift`
+- `VirgoTests/SwiftUIRenderingCoverageTests.swift`
 
 ## 17. Acceptance Criteria Mapping
 
@@ -409,8 +445,9 @@ The focused tests provide the primary semantic proof. HPA-144 remains responsibl
 - Secondary beams never pass through a stem that does not require that level.
 - Isolated eighth, sixteenth, 32nd, and 64th notes render visible tails.
 - Beams never cross measure, row, voice, direction, or quarter-beat boundaries.
-- Same-time chords contribute one semantic stem event while preserving all notehead identities.
+- Same-time chords with the same direction contribute one semantic beamable event while preserving all notehead identities.
+- Timeline positions containing only quarter, half, or full notes contribute explicit boundary events even when their notes do not render stems.
 - Down- and up-stem geometry remains connected to the HPA-141 authored anchors.
 - Unsupported or unrepresentable timing renders conservatively with flags.
 - No proximity threshold remains in grouping behavior.
-- Pure and integration tests deterministically cover topology, hooks, geometry, flags, and fallbacks.
+- Pure and integration tests deterministically cover primary-group ownership, coverage, topology, hooks, geometry, flags, shuffled input, and fallbacks.
