@@ -105,13 +105,34 @@ The builder does not depend on SwiftUI, Core Graphics, SwiftData, logging, or vi
 
 1. Collapse rendered noteheads by the existing semantic stem key.
 2. Convert exact `NoteInterval` values into canonical duration ticks.
-3. Ask the topology builder for beam and hook membership.
-4. Resolve one shared flat beam y-coordinate per primary group and level.
+3. Ask the topology builder for beam and hook membership using the layout's `TabGrid` resolution and time signature.
+4. Resolve one shared flat base y-coordinate from the full primary group, then offset each beam level from that baseline.
 5. Materialize `RenderedBeam` segments from existing HPA-141 stem anchors.
-6. Build stems against the outermost full beam or hook that covers each stem.
+6. Build stems against the outermost full beam or hook that covers each stem, including single-notehead hook owners.
 7. Add flags only for levels that topology did not cover.
 
 `RenderedBeam` gains a `kind: BeamSegmentKind` field. Its existing `level`, `direction`, endpoints, thickness, and `noteHeadIDs` remain the rendering contract.
+
+The current `buildBeams(noteHeads:style:)` entry point does not receive meter or grid data. Change it to:
+
+```swift
+buildBeams(
+    noteHeads: noteHeads,
+    tabGrid: tabGrid,
+    timeSignature: input.timeSignature,
+    style: input.style
+)
+```
+
+`NotationLayoutEngine.layout(input:)` owns both required values and is the only current caller, so it threads them into beam construction directly.
+
+`beamEndY` currently rejects every beam containing only one notehead. Preserve that defensive rule for `.full` segments, but allow hooks to reach their owner stem:
+
+```swift
+guard beam.kind != .full || beam.noteHeadIDs.count > 1 else { return nil }
+```
+
+The existing horizontal-span and zero-span guards still apply. A valid hook begins at its owner's stem x-coordinate, so the range check succeeds and the stem reaches the hook y-coordinate instead of falling back to its unbeamed length.
 
 ### 5.4 SwiftUI rendering
 
@@ -135,6 +156,13 @@ Within a stem event:
 - Use the maximum flag count as `requiredBeamLevels`.
 - Convert the corresponding shortest interval into canonical duration ticks.
 - Keep non-beamable quarter, half, and full events in the ordered timeline as run boundaries, even though they never become beam members.
+
+The builder distinguishes the two reasons `durationTicks` can be `nil`:
+
+- `requiredBeamLevels == 0` means an intentional non-beamable quarter, half, or full boundary.
+- `requiredBeamLevels > 0` means a flagged interval could not be represented exactly; that event is isolated and receives its normal flags.
+
+Neither case permits neighboring events to beam across it.
 
 ## 7. Four-Four Beat Groups
 
@@ -216,7 +244,7 @@ The chosen adjacent primary member is stored as `hookNeighborIndex`.
 
 ### 9.4 Hook geometry
 
-`NotationLayoutStyle` gains `beamHookLength`, with a gameplay default of 12 points.
+`NotationLayoutStyle` gains `beamHookLength`, with a gameplay default of 12 points. Both `NotationLayoutStyle.gameplayDefault` and the hand-copying `with(rowWidth:)` builder must initialize or preserve this field. The live gameplay path rebuilds the style through `with(rowWidth:)`, so omitting the copy would lose hook geometry or fail compilation.
 
 A hook begins at its owner's stem anchor and extends horizontally toward the selected neighbor. Its length is:
 
@@ -234,6 +262,8 @@ Virgo retains flat beams. Each primary group resolves one base y-coordinate usin
 - Down-stem groups use the lowest required endpoint.
 
 Every level offsets from that common baseline by `NotationLayoutStyle.beamLevelSpacing`. Full segments and hooks at the same level therefore align vertically even when they cover different subsets.
+
+This changes the current `sharedBeamY` semantics. Today it receives the per-level filtered notehead subset, which can move secondary levels when their members differ from the primary group. The revised helper derives the base y from the complete primary group once; segment levels apply only the signed `beamLevelSpacing` offset.
 
 Full beams list all notehead IDs belonging to their covered stem events. Hooks list all notehead IDs belonging to their owning stem event. `buildStems` treats either kind as beam coverage and extends the stem to its outermost covered level.
 
@@ -287,7 +317,7 @@ The renderer must prefer incomplete but honest notation over a confident wrong b
 - Measure, row, voice, direction, or beat changes always break the group.
 - Conflicting intervals inside one semantic chord use the maximum required level so no tail disappears.
 
-The old `BeamGroupingConstants.maxConsecutiveInterval` and its threshold test are removed. There is no floating-time, visual-distance, or proximity fallback.
+The complete `BeamGroupingConstants` type is removed. Both `maxConsecutiveInterval` and `comparisonTolerance` are used only by the proximity-era run/segment implementation that this topology replaces. Remove the constants test from `DrumTypeExtensionsAndConstantsTests.swift` as well. There is no floating-time, visual-distance, tolerance, or proximity fallback.
 
 HPA-145 may later supply meter-aware beat groups and richer duration semantics through the same topology boundary without changing `RenderedBeam` or the SwiftUI views.
 
@@ -334,7 +364,15 @@ Update focused coverage in `NotationLayoutEngineChordAndBeamTests.swift` and `No
 - beams do not cross row, measure, voice, direction, or beat boundaries;
 - rendered beam IDs and final ordering are stable.
 
-Replace the existing mixed-duration expectations that require secondary curved flags with hook expectations. Retain existing HPA-141 chord-anchor, voice-first stem, defensive beam-end, and SwiftUI primitive coverage.
+Replace the existing mixed-duration expectations that require secondary curved flags with hook expectations. This is not always a mechanical assertion change: existing fixtures whose offsets are not contiguous under `current.durationTicks` must either use corrected contiguous offsets or explicitly assert the newly split primary runs and isolated flags. In particular, the existing sixteenth/32nd/sixteenth fixture at offsets `0`, `0.0625`, and `0.125` contains a 32nd-note gap before its final event and must be reviewed intentionally.
+
+Extend `NotationLayoutDefensiveGuardTests.swift` to verify that:
+
+- a single-notehead hook owner resolves `beamEndY` to the hook y-coordinate;
+- a malformed single-notehead `.full` segment is still rejected;
+- the existing out-of-horizontal-span and zero-span guards remain effective.
+
+Remove the obsolete `BeamGroupingConstants` threshold test from `DrumTypeExtensionsAndConstantsTests.swift`. Retain existing HPA-141 chord-anchor, voice-first stem, defensive beam-end, and SwiftUI primitive coverage.
 
 ### 15.3 Verification ladder
 
@@ -354,12 +392,14 @@ The focused tests provide the primary semantic proof. HPA-144 remains responsibl
 
 - `Virgo/layout/NotationBeamTopology.swift` (new)
 - `Virgo/layout/NotationLayout.swift`
+- `Virgo/layout/NotationLayoutEngine.swift`
 - `Virgo/layout/NotationLayoutEngine+Beams.swift`
 - `Virgo/views/NotationPrimitiveViews.swift` (only if the new metadata requires conformance updates)
 - `Virgo/constants/Drum.swift`
 - `VirgoTests/NotationBeamTopologyTests.swift` (new)
 - `VirgoTests/NotationLayoutEngineChordAndBeamTests.swift`
 - `VirgoTests/NotationLayoutEngineTests.swift`
+- `VirgoTests/NotationLayoutDefensiveGuardTests.swift`
 - `VirgoTests/DrumTypeExtensionsAndConstantsTests.swift`
 
 ## 17. Acceptance Criteria Mapping
