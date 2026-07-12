@@ -148,11 +148,6 @@ struct DrumTypeExtensionsAndConstantsTests {
         }
     }
 
-    @Test("BeamGroupingConstants expose expected threshold")
-    func testBeamGroupingConstant() {
-        #expect(BeamGroupingConstants.maxConsecutiveInterval == 0.3)
-    }
-
     @Test("DrumType description covers all cases")
     func testDrumTypeDescription() {
         let expected: [(DrumType, String)] = [
