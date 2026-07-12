@@ -315,12 +315,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         )
     }
 
-    @Test("remaining flags for beamed notes originate at beam-adjusted stem end")
-    func remainingFlagsOriginateAtBeamAdjustedStemEnd() throws {
-        // 16th + 32nd + 16th — the single 32nd note can't form a level 2 beam
-        // segment (needs ≥ 2 consecutive 32nd notes). It gets covered at levels
-        // 0 and 1, but has 3 total flags → 1 remaining flag that must be positioned
-        // at the beam-adjusted stem end, not the default stem length.
+    @Test("implicit gap splits mixed-duration run and leaves final sixteenth isolated")
+    func implicitGapSplitsMixedDurationRun() throws {
         let notes = [
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
@@ -330,25 +326,11 @@ struct NotationLayoutEngineChordAndBeamTests {
             input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
         )
 
-        let flags = layout.flags
-        #expect(
-            !flags.isEmpty,
-            "Isolated 32nd note should have 1 remaining flag beyond beams — beams: \(layout.beams.map { "L\($0.level)(\($0.noteHeadIDs.count))" })"
+        let finalHead = try #require(
+            layout.noteHeads.first { abs($0.timePosition - 0.125) < 0.000_001 }
         )
-
-        for flag in flags {
-            let head = layout.noteHeads.first { $0.id == flag.noteHeadID }
-            let stem = layout.stems.first { $0.noteHeadIDs.contains(flag.noteHeadID) }
-            if let head = head, let stem = stem {
-                // The flag origin should be near the beam-adjusted stem end, not at
-                // the default stem-length position.
-                let distance = abs(flag.origin.y - stem.end.y)
-                #expect(
-                    distance < GameplayLayout.flagHeight * 5,
-                    "Flag at Y=\(flag.origin.y) should be near stem end Y=\(stem.end.y) (distance=\(distance))"
-                )
-            }
-        }
+        #expect(layout.beams.contains { $0.kind == .backwardHook && $0.level == 2 })
+        #expect(layout.flags.filter { $0.noteHeadID == finalHead.id }.count == 2)
     }
 
     @Test("canonical upper-voice chord does not duplicate flags")
@@ -756,6 +738,22 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(hook.noteHeadIDs.count == 1)
         #expect(hook.end.x > hook.start.x)
         #expect(hook.end.x - hook.start.x <= 12)
+        #expect(layout.flags.isEmpty)
+    }
+
+    @Test("eighth followed by sixteenth uses a backward hook without flags")
+    func mixedDurationsRenderBackwardHook() throws {
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 8.0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let hook = try #require(layout.beams.first { $0.level == 1 })
+        #expect(hook.kind == .backwardHook)
+        #expect(hook.noteHeadIDs.count == 1)
+        #expect(hook.end.x < hook.start.x)
         #expect(layout.flags.isEmpty)
     }
 

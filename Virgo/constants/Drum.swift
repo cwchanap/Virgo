@@ -196,9 +196,3 @@ extension DrumType {
         }
     }
 }
-
-// MARK: - Beam Grouping Constants
-struct BeamGroupingConstants {
-    static let maxConsecutiveInterval: Double = 0.3
-    static let comparisonTolerance: Double = 1e-9
-}

@@ -153,4 +153,77 @@ struct NotationBeamTopologyTests {
 
         #expect(result == BeamTopologyResult.empty)
     }
+
+    @Test("isolated invalid beamable event has no coverage")
+    func invalidDurationIsIsolated() {
+        let events = [
+            event(tick: 0, levels: 2, durationTicks: nil, noteHeadID: 1),
+            event(tick: 60, levels: 2, durationTicks: 60, noteHeadID: 2)
+        ]
+        let result = builder.build(
+            events: events,
+            ticksPerMeasure: 960,
+            timeSignature: .fourFour
+        )
+        #expect(result == .empty)
+    }
+
+    @Test("thirty-second and sixty-fourth levels are completely covered")
+    func deepBeamLevelsAreCovered() throws {
+        let events = [
+            event(tick: 0, levels: 4, durationTicks: 15, noteHeadID: 1),
+            event(tick: 15, levels: 1, durationTicks: 120, noteHeadID: 2)
+        ]
+        let result = builder.build(
+            events: events,
+            ticksPerMeasure: 960,
+            timeSignature: .fourFour
+        )
+        let segments = try #require(result.primaryGroups.first?.segments)
+        #expect(segments.map(\.level) == [0, 1, 2, 3])
+        #expect(segments.dropFirst().allSatisfy { $0.kind == .forwardHook })
+        #expect(result.coveredLevelsByEventIndex[0] == [0, 1, 2, 3])
+    }
+
+    @Test(
+        "equal-distance interior hooks point toward the beat center",
+        arguments: [
+            (ownerTick: 60, expected: BeamSegmentKind.forwardHook),
+            (ownerTick: 180, expected: BeamSegmentKind.backwardHook)
+        ]
+    )
+    func equalDistanceHooksUseBeatMidpoint(
+        ownerTick: Int,
+        expected: BeamSegmentKind
+    ) throws {
+        let events = [
+            event(
+                tick: ownerTick - 30,
+                levels: 1,
+                durationTicks: 30,
+                noteHeadID: 1
+            ),
+            event(
+                tick: ownerTick,
+                levels: 2,
+                durationTicks: 30,
+                noteHeadID: 2
+            ),
+            event(
+                tick: ownerTick + 30,
+                levels: 1,
+                durationTicks: 30,
+                noteHeadID: 3
+            )
+        ]
+        let result = builder.build(
+            events: events,
+            ticksPerMeasure: 960,
+            timeSignature: .fourFour
+        )
+        let hook = try #require(
+            result.primaryGroups.first?.segments.first { $0.level == 1 }
+        )
+        #expect(hook.kind == expected)
+    }
 }

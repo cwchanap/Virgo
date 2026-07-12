@@ -1548,6 +1548,41 @@ extension NotationLayoutEngineTests {
 }
 
 extension NotationLayoutEngineTests {
+    @Test("unsupported meter renders isolated flags without beams")
+    func unsupportedMeterUsesConservativeFlags() {
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .sixEight)
+        )
+        #expect(layout.beams.isEmpty)
+        #expect(layout.flags.count == 2)
+    }
+
+    @Test("shuffled source notes preserve rendered beam IDs and order")
+    func shuffledInputIsDeterministic() {
+        let notes = (0..<8).map {
+            Note(
+                interval: .sixteenth,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: Double($0) / 16.0
+            )
+        }
+        let forward = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let reversed = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(
+                notes: Array(notes.reversed()),
+                timeSignature: .fourFour
+            )
+        )
+        #expect(forward.beams.map(\.id) == reversed.beams.map(\.id))
+    }
+
     @Test("2/4 with imported 16-step grid uses meter sixteenth baseline, not 4/4's 16 columns")
     func twoFourImportedSixteenStepGridUsesMeterBaseline() throws {
         // A 2/4 chart encoded on a 16-step-per-measure imported grid resolves
