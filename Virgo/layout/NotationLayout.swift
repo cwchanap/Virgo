@@ -80,6 +80,7 @@ struct NotationLayoutStyle: Equatable {
     let minimumStemExtensionPastChord: CGFloat
     let beamThickness: CGFloat
     let beamLevelSpacing: CGFloat
+    let beamHookLength: CGFloat
     let ledgerLineOverhang: CGFloat
 
     var noteHeadSize: CGSize {
@@ -98,6 +99,7 @@ struct NotationLayoutStyle: Equatable {
         minimumStemExtensionPastChord: GameplayLayout.staffLineSpacing / 2,
         beamThickness: 4,
         beamLevelSpacing: GameplayLayout.beamLevelSpacing,
+        beamHookLength: 12,
         ledgerLineOverhang: 6
     )
 
@@ -114,6 +116,7 @@ struct NotationLayoutStyle: Equatable {
             minimumStemExtensionPastChord: minimumStemExtensionPastChord,
             beamThickness: beamThickness,
             beamLevelSpacing: beamLevelSpacing,
+            beamHookLength: beamHookLength,
             ledgerLineOverhang: ledgerLineOverhang
         )
     }
@@ -220,6 +223,7 @@ struct RenderedBeam: Identifiable, Hashable {
     let noteHeadIDs: [UInt64]
     let direction: StemDirection
     let level: Int
+    let kind: BeamSegmentKind
     let start: CGPoint
     let end: CGPoint
     let thickness: CGFloat

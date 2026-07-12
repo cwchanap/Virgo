@@ -344,6 +344,7 @@ extension NotationLayoutEngine {
                     noteHeadIDs: levelHeads.map(\.id),
                     direction: firstHead.stemDirection,
                     level: level,
+                    kind: .full,
                     start: start,
                     end: end,
                     thickness: style.beamThickness

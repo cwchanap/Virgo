@@ -1,7 +1,7 @@
 import Testing
 import SwiftUI
 @testable import Virgo
-// swiftlint:disable file_length
+// swiftlint:disable file_length type_body_length
 
 @Suite("Notation Layout Engine Tests")
 struct NotationLayoutEngineTests {
@@ -12,6 +12,16 @@ struct NotationLayoutEngineTests {
         #expect(style.minimumNoteColumnGap == 28)
         #expect(style.minimumQuarterBeatGap == GameplayLayout.uniformSpacing)
         #expect(style.noteHeadWidth == GameplayLayout.beatColumnWidth)
+    }
+
+    @Test("row-width style copy preserves hook length")
+    func rowWidthStyleCopyPreservesHookLength() {
+        let style = NotationLayoutStyle.gameplayDefault
+        let resized = style.with(rowWidth: 2_000)
+
+        #expect(style.beamHookLength == 12)
+        #expect(resized.beamHookLength == style.beamHookLength)
+        #expect(resized.rowWidth == 2_000)
     }
 
     @Test("notation layout style omits unused measure padding API")

@@ -216,6 +216,7 @@ struct SwiftUIRenderingCoverageTests {
                 noteHeadIDs: [42],
                 direction: .up,
                 level: 0,
+                kind: .forwardHook,
                 start: CGPoint(x: 35, y: 25),
                 end: CGPoint(x: 95, y: 25),
                 thickness: 4
@@ -335,6 +336,7 @@ struct SwiftUIRenderingCoverageTests {
                 noteHeadIDs: [42, 43],
                 direction: .up,
                 level: 0,
+                kind: .full,
                 start: CGPoint(x: 20, y: 30),
                 end: CGPoint(x: 80, y: 30),
                 thickness: 3.0

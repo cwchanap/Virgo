@@ -62,6 +62,7 @@ struct NotationLayoutDefensiveGuardTests {
             noteHeadIDs: [1, 2],
             direction: .up,
             level: 0,
+            kind: .full,
             start: CGPoint(x: 10, y: 50),
             end: CGPoint(x: 20, y: 50),
             thickness: 4
