@@ -75,13 +75,19 @@ struct NotationBeamTopologyBuilder {
         ticksPerMeasure: Int,
         timeSignature: TimeSignature
     ) -> BeamTopologyResult {
-        guard timeSignature == .fourFour,
+        // Simple X/4 meters (4/4, 3/4, 2/4, 5/4) share quarter-note beats, so
+        // beat scoping generalizes trivially: one beat = ticksPerMeasure /
+        // beatsPerMeasure. Compound meters (6/8, 12/8, …) use dotted-quarter
+        // beats and a different grouping; they are intentionally deferred here
+        // and fall back to flags-only rendering until a compound beat grouper
+        // is added.
+        guard timeSignature.noteValue == 4,
               ticksPerMeasure > 0,
-              ticksPerMeasure.isMultiple(of: 4) else {
+              ticksPerMeasure.isMultiple(of: timeSignature.beatsPerMeasure) else {
             return .empty
         }
 
-        let beatTicks = ticksPerMeasure / 4
+        let beatTicks = ticksPerMeasure / timeSignature.beatsPerMeasure
         var grouped: [GroupKey: [Int]] = [:]
         for (index, event) in events.enumerated() {
             let tick = event.timeColumn.tickWithinMeasure
