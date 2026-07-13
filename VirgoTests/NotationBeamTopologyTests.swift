@@ -473,7 +473,7 @@ extension NotationBeamTopologyTests {
             event(tick: 15, levels: 1, durationTicks: 120, noteHeadID: 2),
             event(tick: 240, levels: 2, durationTicks: 60, noteHeadID: 3),
             event(tick: 300, levels: 2, durationTicks: 60, noteHeadID: 4),
-            event(tick: 500, levels: 1, durationTicks: 120, noteHeadID: 5)
+            event(tick: 480, levels: 1, durationTicks: 120, noteHeadID: 5)
         ]
         let result = build(events)
         var expectedCoverage: [Int: Set<Int>] = [:]
@@ -497,8 +497,8 @@ extension NotationBeamTopologyTests {
         #expect(result.coveredLevelsByEventIndex[4] == nil)
     }
 
-    @Test("Canonicalized shuffled source input produces deterministic topology")
-    func canonicalizedShuffledInputIsDeterministic() {
+    @Test("Shuffled source input produces deterministic structural topology")
+    func shuffledInputProducesDeterministicStructuralTopology() {
         let source = [
             event(tick: 240, levels: 2, durationTicks: 60, noteHeadID: 30),
             event(tick: 60, levels: 1, durationTicks: 120, noteHeadID: 20),
@@ -506,24 +506,43 @@ extension NotationBeamTopologyTests {
             event(tick: 0, levels: 2, durationTicks: 60, noteHeadID: 10)
         ]
         let shuffled = [source[2], source[0], source[3], source[1]]
-        let canonicalize: ([BeamTimelineEvent]) -> [BeamTimelineEvent] = { events in
-            events.sorted {
-                if $0.timeColumn.measureIndex != $1.timeColumn.measureIndex {
-                    return $0.timeColumn.measureIndex < $1.timeColumn.measureIndex
+
+        let orderedResult = build(source)
+        let shuffledResult = build(shuffled)
+
+        // build() sorts internally by group key and event comparator, so the
+        // structural shape must match regardless of input ordering. Event
+        // indices differ (they reference input positions), so compare
+        // order-independent properties: beat group indices, segment kinds,
+        // and coverage remapped by noteHeadID.
+        #expect(
+            shuffledResult.primaryGroups.map(\.id.beatGroupIndex)
+                == orderedResult.primaryGroups.map(\.id.beatGroupIndex)
+        )
+        #expect(
+            shuffledResult.primaryGroups.flatMap(\.segments).map(\.kind)
+                == orderedResult.primaryGroups.flatMap(\.segments).map(\.kind)
+        )
+
+        func coverageByNoteHeadID(
+            _ result: BeamTopologyResult,
+            events: [BeamTimelineEvent]
+        ) -> [UInt64: Set<Int>] {
+            var map: [UInt64: Set<Int>] = [:]
+            for (index, levels) in result.coveredLevelsByEventIndex {
+                guard index < events.count else { continue }
+                for id in events[index].noteHeadIDs {
+                    map[id, default: []].formUnion(levels)
                 }
-                if $0.timeColumn.absoluteLayoutTick != $1.timeColumn.absoluteLayoutTick {
-                    return $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick
-                }
-                return $0.noteHeadIDs.lexicographicallyPrecedes($1.noteHeadIDs)
             }
+            return map
         }
 
-        let orderedResult = build(canonicalize(source))
-        let shuffledResult = build(canonicalize(shuffled))
-
-        #expect(shuffledResult == orderedResult)
+        #expect(
+            coverageByNoteHeadID(shuffledResult, events: shuffled)
+                == coverageByNoteHeadID(orderedResult, events: source)
+        )
         #expect(orderedResult.primaryGroups.map(\.id.beatGroupIndex) == [0, 1])
-        #expect(orderedResult.primaryGroups.map(\.eventIndices) == [[0, 1], [2, 3]])
         #expect(orderedResult.primaryGroups.flatMap(\.segments).map(\.kind) == [
             .full, .forwardHook, .full, .full
         ])

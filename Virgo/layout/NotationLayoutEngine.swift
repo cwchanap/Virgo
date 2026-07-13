@@ -33,6 +33,51 @@ struct NotationLayoutEngine {
         let tabGrid = buildTabGrid(notes: sortedNotes, input: input)
         let measures = buildMeasures(totalMeasures: totalMeasures, tabGrid: tabGrid, input: input)
         let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, tabGrid: tabGrid, input: input)
+        let derived = buildDerivedArtifacts(noteHeads: noteHeads, measures: measures, tabGrid: tabGrid, input: input)
+        let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
+        let noteHeadIDsByLayoutTick = Dictionary(
+            grouping: noteHeads,
+            by: { $0.timeColumn.absoluteLayoutTick }
+        ).mapValues { Set($0.map(\.id)) }
+        let totalHeight = GameplayLayout.totalHeight(
+            for: measures.map {
+                GameplayLayout.MeasurePosition(row: $0.row, xOffset: $0.xOffset, measureIndex: $0.measureIndex)
+            }
+        )
+
+        return NotationLayout(
+            tabGrid: tabGrid,
+            measures: measures,
+            noteHeadSize: input.style.noteHeadSize,
+            noteHeads: noteHeads,
+            stems: derived.stems,
+            beams: derived.beams,
+            flags: derived.flags,
+            ledgerLines: derived.ledgerLines,
+            measureBars: derived.measureBars,
+            noteHeadPositionsByID: noteHeadPositionsByID,
+            noteHeadIDsByLayoutTick: noteHeadIDsByLayoutTick,
+            totalHeight: totalHeight
+        )
+    }
+
+    private struct BuiltDerivedArtifacts {
+        let beams: [RenderedBeam]
+        let stems: [RenderedStem]
+        let flags: [RenderedFlag]
+        let ledgerLines: [RenderedLedgerLine]
+        let measureBars: [RenderedMeasureBar]
+    }
+
+    /// Builds beams, stems, flags, ledger lines, and measure bars from the
+    /// placed note heads. Extracted from ``layout(input:)`` to keep that
+    /// function under SwiftLint's function-body-length warn limit.
+    private func buildDerivedArtifacts(
+        noteHeads: [RenderedNoteHead],
+        measures: [RenderedMeasure],
+        tabGrid: TabGrid,
+        input: NotationLayoutInput
+    ) -> BuiltDerivedArtifacts {
         let beamBuild = buildBeams(
             noteHeads: noteHeads,
             tabGrid: tabGrid,
@@ -52,30 +97,12 @@ struct NotationLayoutEngine {
         )
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
         let measureBars = buildMeasureBars(measures: measures)
-        let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
-        let noteHeadIDsByLayoutTick = Dictionary(
-            grouping: noteHeads,
-            by: { $0.timeColumn.absoluteLayoutTick }
-        ).mapValues { Set($0.map(\.id)) }
-        let totalHeight = GameplayLayout.totalHeight(
-            for: measures.map {
-                GameplayLayout.MeasurePosition(row: $0.row, xOffset: $0.xOffset, measureIndex: $0.measureIndex)
-            }
-        )
-
-        return NotationLayout(
-            tabGrid: tabGrid,
-            measures: measures,
-            noteHeadSize: input.style.noteHeadSize,
-            noteHeads: noteHeads,
-            stems: stems,
+        return BuiltDerivedArtifacts(
             beams: beamBuild.beams,
+            stems: stems,
             flags: flags,
             ledgerLines: ledgerLines,
-            measureBars: measureBars,
-            noteHeadPositionsByID: noteHeadPositionsByID,
-            noteHeadIDsByLayoutTick: noteHeadIDsByLayoutTick,
-            totalHeight: totalHeight
+            measureBars: measureBars
         )
     }
 

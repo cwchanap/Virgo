@@ -373,6 +373,60 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(stem.direction == .up)
     }
 
+    @Test("stemless note sharing a beam run time column does not hijack beam endpoint X")
+    func stemlessNoteInBeamRunDoesNotHijackEndpointX() throws {
+        // Two snare eighths form a beam run. A hiHat half sits at the same
+        // time column as the first eighth. hiHat uses a .cross glyph (different
+        // stem anchor X than snare's .filledDiamond), and its position is
+        // overridden to line1 (below snare's line3) so that without the
+        // needsStem filter, stemRepresentative would pick the half note as the
+        // beam owner (largest y for up-stems), misaligning beam start.x from
+        // the stem start.x that buildStems computes (it filters to needsStem).
+        let notes = [
+            Note(interval: .half, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(
+                notes: notes,
+                timeSignature: .fourFour,
+                notePositionOverrides: [.hiHat: .line1]
+            )
+        )
+
+        let halfHead = try #require(layout.noteHeads.first { $0.drumType == .hiHat })
+        let snareHeads = layout.noteHeads.filter { $0.drumType == .snare }
+        let firstSnare = try #require(snareHeads.min { $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick })
+
+        // Sanity: the half and first eighth share the same time column, and
+        // the half is positioned lower (larger y) so it would be picked as
+        // representative for an up-stem without the needsStem filter.
+        #expect(halfHead.timeColumn == firstSnare.timeColumn)
+        #expect(halfHead.position.y > firstSnare.position.y)
+
+        // A beam run should form.
+        let beam = try #require(layout.beams.first { $0.kind == .full && $0.level == 0 })
+
+        // The stem for the first snare's stem group.
+        let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(firstSnare.id) })
+
+        // The beam start.x must match the stem start.x — not the half note's
+        // stem anchor x. Without the needsStem filter this would fail because
+        // the half note (lower position, largest y for up-stem, .cross glyph)
+        // would be picked as the beam owner.
+        let style = NotationLayoutStyle.gameplayDefault
+        let halfAnchorX = NotationLayoutEngine().stemAnchor(for: halfHead, style: style).x
+        #expect(
+            abs(beam.start.x - stem.start.x) < 0.001,
+            "Beam start.x (\(beam.start.x)) should match stem start.x (\(stem.start.x))"
+        )
+        #expect(
+            abs(beam.start.x - halfAnchorX) > 0.001,
+            "Beam start.x should not coincide with the stemless half note's stem anchor (\(halfAnchorX))"
+        )
+    }
+
     @Test("unbeamed eighth note flag attaches at stem tip")
     func unbeamedEighthNoteFlagAttachesAtStemTip() throws {
         let note = Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
