@@ -70,6 +70,13 @@ struct NotationBeamTopologyBuilder {
         let beatGroupIndex: Int
     }
 
+    /// Builds beat-scoped beam topology from timeline events.
+    ///
+    /// Events are grouped by measure, row, voice, stem direction, and beat
+    /// group index. Consecutive beamable events within a beat group form
+    /// primary runs, which are then segmented into full beams and hooks.
+    /// Compound meters (X/8) are intentionally unsupported and return
+    /// ``BeamTopologyResult/empty``.
     func build(
         events: [BeamTimelineEvent],
         ticksPerMeasure: Int,

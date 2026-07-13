@@ -467,10 +467,16 @@ extension NotationLayoutEngine {
     func stemRepresentative(
         in noteHeads: [RenderedNoteHead]
     ) -> RenderedNoteHead? {
-        guard let direction = noteHeads.first?.stemDirection else {
+        // Filter to notes that actually need a stem so stemless half/full
+        // notes sharing a time column with beamed notes cannot be picked as
+        // the beam endpoint representative (which would misalign beam X from
+        // stem X). buildStems pre-filters its input, but beam rendering calls
+        // this with the full chord, so the filter must live here.
+        let candidates = noteHeads.filter { $0.interval.needsStem }
+        guard let direction = candidates.first?.stemDirection else {
             return nil
         }
-        let ordered = noteHeads.sorted {
+        let ordered = candidates.sorted {
             if $0.position.y != $1.position.y {
                 return $0.position.y < $1.position.y
             }
