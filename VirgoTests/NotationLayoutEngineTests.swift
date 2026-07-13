@@ -1,9 +1,10 @@
 import Testing
 import SwiftUI
 @testable import Virgo
-// swiftlint:disable file_length type_body_length
+// swiftlint:disable file_length
 
 @Suite("Notation Layout Engine Tests")
+// swiftlint:disable:next type_body_length
 struct NotationLayoutEngineTests {
     @Test("default gameplay style preserves current low-density quarter spacing")
     func defaultStylePreservesQuarterSpacing() {
