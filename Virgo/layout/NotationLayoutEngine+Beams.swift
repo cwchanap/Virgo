@@ -18,6 +18,15 @@ extension NotationLayoutEngine {
         let stemDirection: StemDirection
     }
 
+    /// Bundles the immutable inputs shared across beam-segment rendering so
+    /// `renderedBeam` stays under SwiftLint's parameter-count limit.
+    fileprivate struct RenderedBeamContext {
+        let group: BeamPrimaryGroup
+        let events: [BeamTimelineEvent]
+        let headsByID: [UInt64: RenderedNoteHead]
+        let style: NotationLayoutStyle
+    }
+
     // MARK: - Rendering Primitives
 
     func buildStems(
@@ -128,14 +137,17 @@ extension NotationLayoutEngine {
                 direction: direction,
                 style: style
             )
+            let context = RenderedBeamContext(
+                group: group,
+                events: events,
+                headsByID: headsByID,
+                style: style
+            )
             return group.segments.compactMap { segment in
                 renderedBeam(
                     segment: segment,
-                    group: group,
-                    events: events,
-                    headsByID: headsByID,
-                    baseY: baseY,
-                    style: style
+                    context: context,
+                    baseY: baseY
                 )
             }
         }
@@ -306,71 +318,81 @@ extension NotationLayoutEngine {
 
     private func renderedBeam(
         segment: BeamTopologySegment,
-        group: BeamPrimaryGroup,
-        events: [BeamTimelineEvent],
-        headsByID: [UInt64: RenderedNoteHead],
-        baseY: CGFloat,
-        style: NotationLayoutStyle
+        context: RenderedBeamContext,
+        baseY: CGFloat
     ) -> RenderedBeam? {
         guard let ownerIndex = segment.eventIndices.first,
               let owner = representative(
-                  for: events[ownerIndex],
-                  headsByID: headsByID
+                  for: context.events[ownerIndex],
+                  headsByID: context.headsByID
               ) else { return nil }
 
-        let start = stemAnchor(for: owner, style: style)
-        let endX: CGFloat
-        let terminalIndex: Int
-        switch segment.kind {
-        case .full:
-            guard let lastIndex = segment.eventIndices.last,
-                  let last = representative(
-                      for: events[lastIndex],
-                      headsByID: headsByID
-                  ) else { return nil }
-            endX = stemAnchor(for: last, style: style).x
-            terminalIndex = lastIndex
-        case .forwardHook, .backwardHook:
-            guard let neighborIndex = segment.hookNeighborIndex,
-                  let neighbor = representative(
-                      for: events[neighborIndex],
-                      headsByID: headsByID
-                  ) else { return nil }
-            let neighborX = stemAnchor(for: neighbor, style: style).x
-            let length = min(style.beamHookLength, abs(neighborX - start.x) / 2)
-            guard length > 0 else { return nil }
-            endX = start.x + (neighborX > start.x ? length : -length)
-            terminalIndex = neighborIndex
-        }
-        guard endX != start.x else { return nil }
+        let start = stemAnchor(for: owner, style: context.style)
+        guard let endpoint = beamEndpoint(
+            segment: segment,
+            owner: owner,
+            ownerIndex: ownerIndex,
+            startX: start.x,
+            context: context
+        ) else { return nil }
+        guard endpoint.endX != start.x else { return nil }
 
-        let direction = group.id.stemDirection
-        let levelOffset = CGFloat(segment.level) * style.beamLevelSpacing
+        let direction = context.group.id.stemDirection
+        let levelOffset = CGFloat(segment.level) * context.style.beamLevelSpacing
         let y = direction == .up ? baseY - levelOffset : baseY + levelOffset
         let noteHeadIDs: [UInt64]
         if segment.kind == .full {
             noteHeadIDs = Array(Set(segment.eventIndices.flatMap {
-                events[$0].noteHeadIDs
+                context.events[$0].noteHeadIDs
             })).sorted()
         } else {
-            noteHeadIDs = events[ownerIndex].noteHeadIDs.sorted()
+            noteHeadIDs = context.events[ownerIndex].noteHeadIDs.sorted()
         }
 
         return RenderedBeam(
             id: renderedBeamID(
-                group: group,
+                group: context.group,
                 segment: segment,
-                firstTick: events[ownerIndex].timeColumn.absoluteLayoutTick,
-                lastTick: events[terminalIndex].timeColumn.absoluteLayoutTick
+                firstTick: context.events[ownerIndex].timeColumn.absoluteLayoutTick,
+                lastTick: context.events[endpoint.terminalIndex].timeColumn.absoluteLayoutTick
             ),
             noteHeadIDs: noteHeadIDs,
             direction: direction,
             level: segment.level,
             kind: segment.kind,
             start: CGPoint(x: start.x, y: y),
-            end: CGPoint(x: endX, y: y),
-            thickness: style.beamThickness
+            end: CGPoint(x: endpoint.endX, y: y),
+            thickness: context.style.beamThickness
         )
+    }
+
+    private func beamEndpoint(
+        segment: BeamTopologySegment,
+        owner: RenderedNoteHead,
+        ownerIndex: Int,
+        startX: CGFloat,
+        context: RenderedBeamContext
+    ) -> (endX: CGFloat, terminalIndex: Int)? {
+        switch segment.kind {
+        case .full:
+            guard let lastIndex = segment.eventIndices.last,
+                  let last = representative(
+                      for: context.events[lastIndex],
+                      headsByID: context.headsByID
+                  ) else { return nil }
+            return (stemAnchor(for: last, style: context.style).x, lastIndex)
+        case .forwardHook, .backwardHook:
+            guard let neighborIndex = segment.hookNeighborIndex,
+                  let neighbor = representative(
+                      for: context.events[neighborIndex],
+                      headsByID: context.headsByID
+                  ) else { return nil }
+            let neighborX = stemAnchor(for: neighbor, style: context.style).x
+            let length = min(context.style.beamHookLength, abs(neighborX - startX) / 2)
+            guard length > 0 else { return nil }
+            let endX = startX + (neighborX > startX ? length : -length)
+            return (endX, neighborIndex)
+        }
     }
 
     private func representative(
