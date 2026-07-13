@@ -172,6 +172,10 @@ struct NotationBeamTopologyBuilder {
         indices: [Int],
         events: [BeamTimelineEvent]
     ) -> [[Int]] {
+        // Adjacency is exact tick-to-tick based on each event's duration.
+        // Tuplets (which subdivide a beat into non-power-of-two parts) are not
+        // supported: their compressed durations would not satisfy the strict
+        // equality below and would break runs prematurely.
         var runs: [[Int]] = []
         var current: [Int] = []
 

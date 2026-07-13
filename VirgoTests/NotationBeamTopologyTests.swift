@@ -110,6 +110,21 @@ struct NotationBeamTopologyTests {
         }
     }
 
+    @Test("Single eighth alone in a beat produces no beam group (flag, not zero-length beam)")
+    func singleEighthAloneProducesNoBeam() {
+        let loneEvent = event(
+            tick: 0,
+            levels: 1,
+            durationTicks: 120,
+            noteHeadID: 1
+        )
+
+        let result = build([loneEvent])
+
+        #expect(result.primaryGroups.isEmpty, "A lone beamable note must not form a beam group")
+        #expect(result.coveredLevelsByEventIndex.isEmpty, "No coverage so the note receives flags")
+    }
+
     @Test("Four contiguous sixteenths create one two-level primary group")
     func fourSixteenthsCreateTwoLevels() throws {
         let events = (0..<4).map {

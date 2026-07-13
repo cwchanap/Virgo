@@ -311,7 +311,10 @@ struct NotationLayoutEngineChordAndBeamTests {
         // For down-stems: higher Y = lower on screen; secondary beam must be below primary.
         #expect(
             level1Beam.start.y > level0Beam.start.y + 0.001,
-            "Secondary beam Y (\(level1Beam.start.y)) must be below primary beam Y (\(level0Beam.start.y)) for down-stems"
+            """
+            Secondary beam Y (\(level1Beam.start.y)) must be below primary beam \
+            Y (\(level0Beam.start.y)) for down-stems
+            """
         )
     }
 
@@ -397,7 +400,9 @@ struct NotationLayoutEngineChordAndBeamTests {
 
         let halfHead = try #require(layout.noteHeads.first { $0.drumType == .hiHat })
         let snareHeads = layout.noteHeads.filter { $0.drumType == .snare }
-        let firstSnare = try #require(snareHeads.min { $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick })
+        let firstSnare = try #require(
+            snareHeads.min { $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick }
+        )
 
         // Sanity: the half and first eighth share the same time column, and
         // the half is positioned lower (larger y) so it would be picked as
