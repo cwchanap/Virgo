@@ -808,6 +808,7 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(hook.kind == .backwardHook)
         #expect(hook.noteHeadIDs.count == 1)
         #expect(hook.end.x < hook.start.x)
+        #expect(hook.start.x - hook.end.x <= 12)
         #expect(layout.flags.isEmpty)
     }
 
