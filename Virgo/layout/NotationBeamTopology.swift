@@ -95,6 +95,28 @@ struct NotationBeamTopologyBuilder {
         }
 
         let beatTicks = ticksPerMeasure / timeSignature.beatsPerMeasure
+        let grouped = groupEventsByBeat(
+            events: events,
+            ticksPerMeasure: ticksPerMeasure,
+            beatTicks: beatTicks
+        )
+        let (primaryGroups, coverage) = buildPrimaryGroups(
+            grouped: grouped,
+            events: events,
+            beatTicks: beatTicks
+        )
+
+        return BeamTopologyResult(
+            primaryGroups: primaryGroups,
+            coveredLevelsByEventIndex: coverage
+        )
+    }
+
+    private func groupEventsByBeat(
+        events: [BeamTimelineEvent],
+        ticksPerMeasure: Int,
+        beatTicks: Int
+    ) -> [GroupKey: [Int]] {
         var grouped: [GroupKey: [Int]] = [:]
         for (index, event) in events.enumerated() {
             let tick = event.timeColumn.tickWithinMeasure
@@ -108,7 +130,14 @@ struct NotationBeamTopologyBuilder {
             )
             grouped[key, default: []].append(index)
         }
+        return grouped
+    }
 
+    private func buildPrimaryGroups(
+        grouped: [GroupKey: [Int]],
+        events: [BeamTimelineEvent],
+        beatTicks: Int
+    ) -> (primaryGroups: [BeamPrimaryGroup], coverage: [Int: Set<Int>]) {
         let orderedKeys = grouped.keys.sorted(by: groupKeyComesBefore)
         var primaryGroups: [BeamPrimaryGroup] = []
         var coverage: [Int: Set<Int>] = [:]
@@ -136,10 +165,7 @@ struct NotationBeamTopologyBuilder {
             }
         }
 
-        return BeamTopologyResult(
-            primaryGroups: primaryGroups,
-            coveredLevelsByEventIndex: coverage
-        )
+        return (primaryGroups, coverage)
     }
 
     private func primaryRuns(
@@ -278,6 +304,7 @@ struct NotationBeamTopologyBuilder {
         key: GroupKey,
         beatTicks: Int
     ) -> Int {
+        precondition(run.count >= 2, "hookNeighborPosition requires a primary run of at least 2 events")
         if ownerPosition == run.startIndex { return ownerPosition + 1 }
         if ownerPosition == run.index(before: run.endIndex) { return ownerPosition - 1 }
 
