@@ -184,52 +184,14 @@ struct NotationBeamTopologyBuilder {
         )]
         let maximumLevel = run.map { events[$0].role.requiredBeamLevels }.max() ?? 1
 
-        if maximumLevel > 1 {
-            for level in 1..<maximumLevel {
-                var eligiblePositions: [Int] = []
-                func flushEligible() {
-                    guard !eligiblePositions.isEmpty else { return }
-                    let eligibleIndices = eligiblePositions.map { run[$0] }
-                    if eligibleIndices.count >= 2 {
-                        segments.append(BeamTopologySegment(
-                            level: level,
-                            kind: .full,
-                            eventIndices: eligibleIndices,
-                            hookNeighborIndex: nil
-                        ))
-                    } else if let position = eligiblePositions.first {
-                        let neighborPosition = hookNeighborPosition(
-                            ownerPosition: position,
-                            run: run,
-                            events: events,
-                            key: key,
-                            beatTicks: beatTicks
-                        )
-                        let ownerIndex = run[position]
-                        let neighborIndex = run[neighborPosition]
-                        let kind: BeamSegmentKind = events[neighborIndex]
-                            .timeColumn.absoluteLayoutTick
-                            > events[ownerIndex].timeColumn.absoluteLayoutTick
-                            ? .forwardHook : .backwardHook
-                        segments.append(BeamTopologySegment(
-                            level: level,
-                            kind: kind,
-                            eventIndices: [ownerIndex],
-                            hookNeighborIndex: neighborIndex
-                        ))
-                    }
-                    eligiblePositions = []
-                }
-
-                for position in run.indices {
-                    if events[run[position]].role.requiredBeamLevels > level {
-                        eligiblePositions.append(position)
-                    } else {
-                        flushEligible()
-                    }
-                }
-                flushEligible()
-            }
+        for level in 1..<maximumLevel {
+            segments.append(contentsOf: secondarySegments(
+                level: level,
+                run: run,
+                events: events,
+                key: key,
+                beatTicks: beatTicks
+            ))
         }
 
         return BeamPrimaryGroup(
@@ -245,6 +207,61 @@ struct NotationBeamTopologyBuilder {
             eventIndices: run,
             segments: segments
         )
+    }
+
+    private func secondarySegments(
+        level: Int,
+        run: [Int],
+        events: [BeamTimelineEvent],
+        key: GroupKey,
+        beatTicks: Int
+    ) -> [BeamTopologySegment] {
+        var eligiblePositions: [Int] = []
+        var segments: [BeamTopologySegment] = []
+
+        func flushEligible() {
+            guard !eligiblePositions.isEmpty else { return }
+            let eligibleIndices = eligiblePositions.map { run[$0] }
+            if eligibleIndices.count >= 2 {
+                segments.append(BeamTopologySegment(
+                    level: level,
+                    kind: .full,
+                    eventIndices: eligibleIndices,
+                    hookNeighborIndex: nil
+                ))
+            } else if let position = eligiblePositions.first {
+                let neighborPosition = hookNeighborPosition(
+                    ownerPosition: position,
+                    run: run,
+                    events: events,
+                    key: key,
+                    beatTicks: beatTicks
+                )
+                let ownerIndex = run[position]
+                let neighborIndex = run[neighborPosition]
+                let kind: BeamSegmentKind = events[neighborIndex]
+                    .timeColumn.absoluteLayoutTick
+                    > events[ownerIndex].timeColumn.absoluteLayoutTick
+                    ? .forwardHook : .backwardHook
+                segments.append(BeamTopologySegment(
+                    level: level,
+                    kind: kind,
+                    eventIndices: [ownerIndex],
+                    hookNeighborIndex: neighborIndex
+                ))
+            }
+            eligiblePositions = []
+        }
+
+        for position in run.indices {
+            if events[run[position]].role.requiredBeamLevels > level {
+                eligiblePositions.append(position)
+            } else {
+                flushEligible()
+            }
+        }
+        flushEligible()
+        return segments
     }
 
     private func hookNeighborPosition(
