@@ -772,6 +772,43 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(layout.flags.count == 4)
     }
 
+    @Test("adjacent measures never share a beam across the bar line")
+    func adjacentMeasuresDoNotShareBeam() {
+        // Eighth notes straddle the boundary between measure 1 and measure 2.
+        // The last eighth of m1 (offset 0.875) is contiguous in absolute time
+        // with the first eighth of m2 (offset 0), so a measure-agnostic beamer
+        // would wrongly join them. Beat-scoped topology must keep each measure's
+        // beams self-contained.
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.625),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.75),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.875),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 2, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 2, measureOffset: 0.125),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 2, measureOffset: 0.25)
+        ]
+        let wideStyle = NotationLayoutStyle.gameplayDefault.with(rowWidth: 2_500)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: wideStyle)
+        )
+
+        let headByID = Dictionary(uniqueKeysWithValues: layout.noteHeads.map { ($0.id, $0) })
+
+        // Sanity: both measures are present and beaming is active.
+        let measureIndices = Set(layout.noteHeads.map(\.measureIndex))
+        #expect(measureIndices == [0, 1], "Both measures should be rendered")
+        #expect(!layout.beams.isEmpty, "Eighth runs within each measure should beam")
+
+        // No beam may contain note heads from more than one measure.
+        for beam in layout.beams {
+            let beamMeasures = Set(beam.noteHeadIDs.compactMap { headByID[$0]?.measureIndex })
+            #expect(
+                beamMeasures.count <= 1,
+                "Beam \(beam.id) spans measures \(beamMeasures); must stay within one measure"
+            )
+        }
+    }
+
     private func rowContentMaxY(layout: NotationLayout, row: Int) -> CGFloat {
         let heads = layout.noteHeads.filter { $0.row == row }
         let headIDs = Set(heads.map(\.id))
