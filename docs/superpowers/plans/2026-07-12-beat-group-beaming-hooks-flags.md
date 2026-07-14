@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Implement rhythm-aware grouping only for 4/4; unsupported meters render individual flags and remain HPA-145 scope.
+- Implement rhythm-aware grouping only for simple X/4 meters (2/4, 3/4, 4/4, 5/4); unsupported meters (compound X/8, etc.) render individual flags and remain HPA-145 scope.
 - Never beam across a quarter-beat, measure, row, voice, stem-direction, non-beamable boundary, invalid duration, or rhythmic gap.
 - Keep beams flat; do not add sloped, feathered, cross-staff, tremolo, rest-aware, tuplet, dotted, swing, or variable-measure behavior.
 - Use canonical integer `NotationTimeColumn` ticks only; remove every floating-time proximity and tolerance decision.
