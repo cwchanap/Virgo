@@ -191,18 +191,20 @@ The role distinguishes non-beamable notation from invalid beamable timing:
 
 Neither case permits neighboring events to beam across it.
 
-## 7. Four-Four Beat Groups
+## 7. Simple X/4 Beat Groups
 
 Rhythm-aware grouping is enabled only when:
 
-- the time signature is 4/4;
+- the time signature is a simple X/4 meter (2/4, 3/4, 4/4, 5/4);
 - `ticksPerMeasure` is positive; and
-- `ticksPerMeasure` is divisible by four.
+- `ticksPerMeasure` is divisible by `beatsPerMeasure`.
+
+Simple X/4 meters share quarter-note beats, so beat scoping generalizes trivially across them. Compound meters (6/8, 12/8, …) use dotted-quarter beats and a different grouping; they are intentionally deferred and fall back to flags-only rendering.
 
 The quarter-beat size and beat index are:
 
 ```swift
-beatTicks = ticksPerMeasure / 4
+beatTicks = ticksPerMeasure / beatsPerMeasure
 beatGroupIndex = tickWithinMeasure / beatTicks
 ```
 
