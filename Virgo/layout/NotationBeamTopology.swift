@@ -112,6 +112,14 @@ struct NotationBeamTopologyBuilder {
         )
     }
 
+    /// Groups beamable event indices by their containing beat.
+    ///
+    /// Events whose `tickWithinMeasure` falls outside `[0, ticksPerMeasure)` are
+    /// intentionally skipped: such ticks arise only from malformed input or
+    /// partial-measure/pickup columns that beat-scoped topology does not model.
+    /// Dropping them keeps the grouper total without manufacturing a beat index
+    /// from an out-of-range tick. The skip is silent by design — callers that
+    /// need to detect malformed input should validate upstream.
     private func groupEventsByBeat(
         events: [BeamTimelineEvent],
         ticksPerMeasure: Int,
