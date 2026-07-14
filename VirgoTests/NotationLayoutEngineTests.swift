@@ -1664,4 +1664,24 @@ extension NotationLayoutEngineTests {
         }
         #expect(beatTicks == [0, 8, 16])
     }
+
+    @Test("3/4 adjacent eighth-note pair forms a beam, not isolated flags")
+    func threeFourAdjacentEighthsFormBeam() {
+        // 3/4 has 6 eighths per measure; offsets 0 and 1/6 are adjacent
+        // eighths spanning 160 ticks on the 960-tick grid (one beat = 320
+        // ticks, an eighth = 160). The subdivision duration must be scaled
+        // to the whole note (1280 ticks / 8 = 160), not the measure
+        // (960 / 8 = 120), or the run is rejected and the notes render as
+        // isolated flags.
+        let notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 6.0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .threeFour)
+        )
+
+        #expect(!layout.beams.isEmpty, "3/4 adjacent eighths should form a beam")
+        #expect(layout.flags.isEmpty, "3/4 adjacent eighths should not render isolated flags")
+    }
 }

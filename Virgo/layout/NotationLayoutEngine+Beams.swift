@@ -116,7 +116,8 @@ extension NotationLayoutEngine {
     ) -> BeamBuildResult {
         let events = buildTimelineEvents(
             noteHeads: noteHeads,
-            ticksPerMeasure: tabGrid.ticksPerMeasure
+            ticksPerMeasure: tabGrid.ticksPerMeasure,
+            timeSignature: timeSignature
         )
         let topology = NotationBeamTopologyBuilder().build(
             events: events,
@@ -233,7 +234,8 @@ extension NotationLayoutEngine {
 
     func buildTimelineEvents(
         noteHeads: [RenderedNoteHead],
-        ticksPerMeasure: Int
+        ticksPerMeasure: Int,
+        timeSignature: TimeSignature
     ) -> [BeamTimelineEvent] {
         Dictionary(grouping: noteHeads) {
             StemGroupKey(
@@ -260,7 +262,8 @@ extension NotationLayoutEngine {
                     requiredBeamLevels: maximumLevels,
                     durationTicks: durationTicks(
                         for: representative.interval,
-                        ticksPerMeasure: ticksPerMeasure
+                        ticksPerMeasure: ticksPerMeasure,
+                        timeSignature: timeSignature
                     )
                 )
             return BeamTimelineEvent(
@@ -277,7 +280,8 @@ extension NotationLayoutEngine {
 
     func durationTicks(
         for interval: NoteInterval,
-        ticksPerMeasure: Int
+        ticksPerMeasure: Int,
+        timeSignature: TimeSignature
     ) -> Int? {
         let denominator: Int
         switch interval {
@@ -287,8 +291,22 @@ extension NotationLayoutEngine {
         case .sixtyfourth: denominator = 64
         case .full, .half, .quarter: return nil
         }
-        guard ticksPerMeasure.isMultiple(of: denominator) else { return nil }
-        return ticksPerMeasure / denominator
+        // Subdivision denominators are fractions of a whole note, not of a
+        // measure. In simple X/4 meters the measure is shorter than a whole
+        // note (e.g. 3/4 spans 3/4 of a whole), so dividing ticksPerMeasure
+        // by the denominator under-counts each note's true duration and
+        // breaks run adjacency in the topology builder. Convert to
+        // whole-note ticks first: a measure holds beatsPerMeasure / noteValue
+        // whole notes, so ticksPerWhole = ticksPerMeasure * noteValue /
+        // beatsPerMeasure.
+        guard timeSignature.beatsPerMeasure > 0,
+              (ticksPerMeasure * timeSignature.noteValue)
+                .isMultiple(of: timeSignature.beatsPerMeasure) else {
+            return nil
+        }
+        let ticksPerWholeNote = ticksPerMeasure * timeSignature.noteValue / timeSignature.beatsPerMeasure
+        guard ticksPerWholeNote > 0, ticksPerWholeNote.isMultiple(of: denominator) else { return nil }
+        return ticksPerWholeNote / denominator
     }
 
     private func timelineEventComesBefore(
