@@ -374,6 +374,60 @@ extension NotationBeamTopologyTests {
 
         #expect(result == .empty)
     }
+
+    @Test("Independent groups in adjacent measures form separate primary groups")
+    func adjacentMeasuresFormIndependentGroups() throws {
+        let events = [
+            event(
+                tick: 0,
+                levels: 1,
+                durationTicks: 120,
+                measure: 0,
+                absoluteTick: 0,
+                noteHeadID: 1
+            ),
+            event(
+                tick: 120,
+                levels: 1,
+                durationTicks: 120,
+                measure: 0,
+                absoluteTick: 120,
+                noteHeadID: 2
+            ),
+            event(
+                tick: 0,
+                levels: 1,
+                durationTicks: 120,
+                measure: 1,
+                absoluteTick: 960,
+                noteHeadID: 3
+            ),
+            event(
+                tick: 120,
+                levels: 1,
+                durationTicks: 120,
+                measure: 1,
+                absoluteTick: 1080,
+                noteHeadID: 4
+            )
+        ]
+
+        let result = build(events)
+
+        #expect(result.primaryGroups.count == 2)
+        #expect(result.primaryGroups.map(\.id.measureIndex) == [0, 1])
+        #expect(result.primaryGroups.map(\.eventIndices) == [[0, 1], [2, 3]])
+        #expect(result.primaryGroups.map(\.id.firstAbsoluteTick) == [0, 960])
+        #expect(result.primaryGroups.map(\.id.lastAbsoluteTick) == [120, 1080])
+        for group in result.primaryGroups {
+            #expect(group.segments.count == 1)
+            #expect(group.segments.first?.level == 0)
+            #expect(group.segments.first?.kind == .full)
+        }
+        #expect(result.coveredLevelsByEventIndex == [
+            0: [0], 1: [0], 2: [0], 3: [0]
+        ])
+    }
 }
 
 extension NotationBeamTopologyTests {

@@ -163,6 +163,10 @@ extension NotationLayoutEngine {
         style: NotationLayoutStyle
     ) -> [RenderedFlag] {
         let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
+        // Each noteHeadID maps to exactly one stem because buildStems groups
+        // by StemGroupKey(timeColumn, row, voice, stemDirection) and every
+        // noteHead has exactly one value for each key component. The
+        // uniqueKeysWithValues initializer would trap if this invariant broke.
         let stemsByNoteHeadID = Dictionary(
             uniqueKeysWithValues: stems.flatMap { stem in
                 stem.noteHeadIDs.map { ($0, stem) }
@@ -240,11 +244,15 @@ extension NotationLayoutEngine {
             )
         }
         .values
-        .map { group in
+        .compactMap { group in
             // Dictionary(grouping:) never yields an empty group, so
             // flagRepresentative (which delegates to Array.min) is guaranteed
-            // to return a non-nil representative here.
-            let representative = flagRepresentative(in: group)!
+            // to return a non-nil representative here. The guard + assertion
+            // catches any future call-site change that breaks this invariant.
+            guard let representative = flagRepresentative(in: group) else {
+                assertionFailure("Dictionary(grouping:) yielded an empty group")
+                return nil
+            }
             let maximumLevels = group.map(\.interval.flagCount).max() ?? 0
             let role: BeamTimelineEventRole = maximumLevels == 0
                 ? .boundary
