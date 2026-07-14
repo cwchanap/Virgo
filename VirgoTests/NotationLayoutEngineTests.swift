@@ -1232,6 +1232,36 @@ extension NotationLayoutEngineTests {
         #expect(indices == [0, 1])
     }
 
+    @Test("isolated thirty-second note produces three flags")
+    func isolatedThirtySecondNoteProducesThreeFlags() throws {
+        let note = Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.beams.isEmpty, "Isolated 32nd note must not form a beam")
+        #expect(layout.flags.count == 3, "Isolated 32nd should have 3 flags")
+        let indices = Set(layout.flags.map(\.flagIndex))
+        #expect(indices == [0, 1, 2])
+        let stem = try #require(layout.stems.first)
+        #expect(stem.direction == .up)
+    }
+
+    @Test("isolated sixty-fourth note produces four flags")
+    func isolatedSixtyFourthNoteProducesFourFlags() throws {
+        let note = Note(interval: .sixtyfourth, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
+        )
+
+        #expect(layout.beams.isEmpty, "Isolated 64th note must not form a beam")
+        #expect(layout.flags.count == 4, "Isolated 64th should have 4 flags")
+        let indices = Set(layout.flags.map(\.flagIndex))
+        #expect(indices == [0, 1, 2, 3])
+        let stem = try #require(layout.stems.first)
+        #expect(stem.direction == .up)
+    }
+
     @Test("beamed eighth notes produce no flags")
     func beamedEighthNotesProduceNoFlags() {
         let notes = (0..<2).map { index in

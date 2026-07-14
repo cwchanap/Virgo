@@ -241,9 +241,10 @@ extension NotationLayoutEngine {
         }
         .values
         .map { group in
-            guard let representative = flagRepresentative(in: group) else {
-                preconditionFailure("Dictionary grouping unexpectedly produced an empty group")
-            }
+            // Dictionary(grouping:) never yields an empty group, so
+            // flagRepresentative (which delegates to Array.min) is guaranteed
+            // to return a non-nil representative here.
+            let representative = flagRepresentative(in: group)!
             let maximumLevels = group.map(\.interval.flagCount).max() ?? 0
             let role: BeamTimelineEventRole = maximumLevels == 0
                 ? .boundary
@@ -302,6 +303,17 @@ extension NotationLayoutEngine {
         return lhs.noteHeadIDs.lexicographicallyPrecedes(rhs.noteHeadIDs)
     }
 
+    /// Returns the note head that governs beam-level/flag-count decisions for a
+    /// chord, picking the head with the most flags (then by catalog order, then
+    /// ID for determinism).
+    ///
+    /// Distinct from ``stemRepresentative(in:)``, which picks the head that
+    /// determines stem length and beam endpoint X: `stemRepresentative` filters
+    /// to `needsStem` candidates and sorts by vertical position, whereas this
+    /// helper keeps every head (including stemless ones, which contribute a
+    /// `flagCount` of 0 and so never win) and sorts by flag count. Use this
+    /// representative only when computing `requiredBeamLevels` or
+    /// `durationTicks` for a beam timeline event.
     private func flagRepresentative(
         in noteHeads: [RenderedNoteHead]
     ) -> RenderedNoteHead? {
