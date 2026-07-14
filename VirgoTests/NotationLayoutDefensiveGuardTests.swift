@@ -102,6 +102,11 @@ struct NotationLayoutDefensiveGuardTests {
         id: UInt64,
         x: CGFloat
     ) -> RenderedNoteHead {
+        // The plan specified position.x = x directly, but beam geometry
+        // (beamEndY, stemAnchor) operates on the stem anchor X, not the
+        // notehead center. Subtracting the stem offset here means the `x`
+        // parameter represents the stem anchor X, so test beam start/end
+        // coordinates align with what beamEndY actually compares against.
         let glyph = DrumNoteheadGlyph.filledDiamond
         let stemOffset = glyph.stemAnchorOffset(
             direction: .up,
