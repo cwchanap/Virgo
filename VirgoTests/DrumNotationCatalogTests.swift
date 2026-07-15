@@ -15,6 +15,18 @@ struct DrumNotationCatalogTests {
         let order: Int
     }
 
+    @Test("Target lane resolution preserves definition and display name")
+    func targetLaneResolutionPreservesDefinitionAndDisplayName() throws {
+        let target = try #require(DrumNotationCatalog.resolveTarget(laneID: "1A"))
+        let lowercaseTarget = try #require(DrumNotationCatalog.resolveTarget(laneID: "1a"))
+
+        #expect(target.definition == DrumNotationCatalog.definition(for: .crash))
+        #expect(target.laneID == "1A")
+        #expect(target.displayName == "Crash")
+        #expect(lowercaseTarget == target)
+        #expect(DrumNotationCatalog.resolveTarget(laneID: "ZZ") == nil)
+    }
+
     @Test("Every NoteType has exactly one default definition")
     func everyNoteTypeHasExactlyOneDefinition() throws {
         #expect(DrumNotationCatalog.definitions.count == NoteType.allCases.count)
