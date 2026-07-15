@@ -537,8 +537,8 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
-    @Test("Gameplay sheet auto-scroll requires playable notation")
-    func testGameplaySheetAutoScrollRequiresPlayableNotation() async throws {
+    @Test("Gameplay sheet auto-scroll preserves legacy empty layout without scrolling notation-only content")
+    func testGameplaySheetAutoScrollPolicy() async throws {
         try await TestSetup.withTestSetup {
             let restOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium),
@@ -562,10 +562,16 @@ struct SwiftUIRenderingCoverageTests {
             await playableViewModel.loadChartData()
             playableViewModel.setupGameplay(loadPersistedSpeed: false)
 
+            let legacyEmptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 0)
+            await legacyEmptyViewModel.loadChartData()
+            legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)
+            legacyEmptyViewModel.cachedNotationLayout = .empty
+
             let gameplayView = GameplayView(chart: playableViewModel.chart, metronome: playableViewModel.metronome)
             #expect(!gameplayView.shouldAutoScrollSheet(viewModel: restOnlyViewModel, isPlaying: true))
             #expect(!gameplayView.shouldAutoScrollSheet(viewModel: controlOnlyViewModel, isPlaying: true))
             #expect(gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: true))
+            #expect(gameplayView.shouldAutoScrollSheet(viewModel: legacyEmptyViewModel, isPlaying: true))
             #expect(!gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: false))
         }
     }

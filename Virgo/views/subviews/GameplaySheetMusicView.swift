@@ -62,7 +62,10 @@ extension GameplayView {
     }
 
     func shouldAutoScrollSheet(viewModel: GameplayViewModel, isPlaying: Bool) -> Bool {
-        isPlaying && viewModel.cachedNotationLayout.hasPlayableContent
+        isPlaying && (
+            viewModel.cachedNotationLayout.hasPlayableContent
+                || !viewModel.cachedNotationLayout.hasRenderableContent
+        )
     }
 
     func staticSheetMusicContent(
