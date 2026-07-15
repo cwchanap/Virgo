@@ -6,6 +6,199 @@ import SwiftUI
 @Suite("Notation Layout Engine Tests")
 // swiftlint:disable:next type_body_length
 struct NotationLayoutEngineTests {
+    @Test("layout input defaults to no control events")
+    func layoutInputDefaultsToNoControls() {
+        let input = NotationLayoutInput(notes: [], timeSignature: .fourFour)
+
+        #expect(input.controlEvents.isEmpty)
+    }
+
+    @Test("row-width copy preserves all HPA-143 metrics")
+    func rowWidthCopyPreservesRestAndControlMetrics() {
+        let style = NotationLayoutStyle.gameplayDefault
+        let resized = style.with(rowWidth: 2_000)
+
+        #expect(resized.restSymbolWidth == style.restSymbolWidth)
+        #expect(resized.restSymbolHeight == style.restSymbolHeight)
+        #expect(resized.fullMeasureRestWidth == style.fullMeasureRestWidth)
+        #expect(resized.fullMeasureRestHeight == style.fullMeasureRestHeight)
+        #expect(resized.upperVoiceRestOffset == style.upperVoiceRestOffset)
+        #expect(resized.lowerVoiceRestOffset == style.lowerVoiceRestOffset)
+        #expect(resized.stopMarkSize == style.stopMarkSize)
+        #expect(resized.stopMarkStrokeWidth == style.stopMarkStrokeWidth)
+        #expect(resized.stopMarkVerticalOffset == style.stopMarkVerticalOffset)
+        #expect(resized.articulationDiameter == style.articulationDiameter)
+        #expect(resized.articulationStrokeWidth == style.articulationStrokeWidth)
+        #expect(resized.articulationVerticalOffset == style.articulationVerticalOffset)
+    }
+
+    @Test("content predicates distinguish playable and renderable primitives")
+    func contentPredicatesDistinguishPlayableAndRenderablePrimitives() throws {
+        let hiddenRest = makeRenderedRest(visibility: .hiddenSpacing)
+        let printedRest = makeRenderedRest(visibility: .printed)
+        let stop = makeRenderedStopNote()
+        let articulation = makeRenderedArticulation()
+        let renderedHead = try #require(
+            NotationLayoutEngine().layout(
+                input: NotationLayoutInput(
+                    notes: [Note(
+                        interval: .quarter,
+                        noteType: .snare,
+                        measureNumber: 1,
+                        measureOffset: 0
+                    )],
+                    timeSignature: .fourFour
+                )
+            ).noteHeads.first
+        )
+
+        var hiddenOnly = NotationLayout.empty
+        hiddenOnly.rests = [hiddenRest]
+        var noteheadOnly = NotationLayout.empty
+        noteheadOnly.noteHeads = [renderedHead]
+        var printedRestOnly = NotationLayout.empty
+        printedRestOnly.rests = [printedRest]
+        var stopOnly = NotationLayout.empty
+        stopOnly.stopNotes = [stop]
+        var articulationOnly = NotationLayout.empty
+        articulationOnly.articulations = [articulation]
+
+        #expect(!NotationLayout.empty.hasPlayableContent)
+        #expect(!NotationLayout.empty.hasRenderableContent)
+        #expect(!hiddenOnly.hasPlayableContent)
+        #expect(!hiddenOnly.hasRenderableContent)
+        #expect(noteheadOnly.hasPlayableContent)
+        #expect(noteheadOnly.hasRenderableContent)
+        #expect(!printedRestOnly.hasPlayableContent)
+        #expect(printedRestOnly.hasRenderableContent)
+        #expect(!stopOnly.hasPlayableContent)
+        #expect(stopOnly.hasRenderableContent)
+        #expect(!articulationOnly.hasPlayableContent)
+        #expect(!articulationOnly.hasRenderableContent)
+    }
+
+    @Test("render contracts expose semantic accessibility labels")
+    func renderContractsExposeSemanticAccessibilityLabels() throws {
+        let upperQuarterRest = makeRenderedRest(
+            voice: .upper,
+            duration: .quarter,
+            visibility: .printed
+        )
+        let lowerFullMeasureRest = makeRenderedRest(
+            voice: .lower,
+            duration: .fullMeasure,
+            visibility: .printed
+        )
+        let notes = [
+            Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
+            Note(interval: .quarter, noteType: .openHiHat, measureNumber: 1, measureOffset: 0.25),
+            Note(interval: .quarter, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0.5)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
+        )
+        let closedHiHat = try #require(layout.noteHeads.first { $0.variant == .closedHiHat })
+        let openHiHat = try #require(layout.noteHeads.first { $0.variant == .openHiHat })
+        let pedalHiHat = try #require(layout.noteHeads.first { $0.variant == .pedalHiHat })
+
+        #expect(upperQuarterRest.accessibilityLabel == "Upper voice quarter rest")
+        #expect(lowerFullMeasureRest.accessibilityLabel == "Lower voice full-measure rest")
+        #expect(makeRenderedStopNote().accessibilityLabel == "Choke Crash")
+        #expect(closedHiHat.accessibilityLabel == "Closed hi-hat")
+        #expect(openHiHat.accessibilityLabel == "Open hi-hat")
+        #expect(pedalHiHat.accessibilityLabel == "Pedal hi-hat")
+    }
+
+    @Test("exact rescaling accepts divisible grids and rejects rounding")
+    func exactRescalingDoesNotRound() {
+        let engine = NotationLayoutEngine()
+
+        #expect(engine.exactRescaledTick(
+            sourceTick: 1,
+            sourceTicksPerMeasure: 4,
+            targetTicksPerMeasure: 960
+        ) == 240)
+        #expect(engine.exactRescaledTick(
+            sourceTick: 1,
+            sourceTicksPerMeasure: 7,
+            targetTicksPerMeasure: 960
+        ) == nil)
+        #expect(engine.exactRescaledTick(
+            sourceTick: -1,
+            sourceTicksPerMeasure: 4,
+            targetTicksPerMeasure: 960
+        ) == nil)
+        #expect(engine.exactRescaledTick(
+            sourceTick: 5,
+            sourceTicksPerMeasure: 4,
+            targetTicksPerMeasure: 960
+        ) == nil)
+    }
+
+    @Test("notes retain rounded fallback when exact rescaling fails")
+    func notesRetainRoundedFallback() {
+        let note = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 1.0 / 7.0,
+            normalizedTickWithinMeasure: 1,
+            normalizedTicksPerMeasure: 7
+        )
+
+        #expect(NotationLayoutEngine().tickWithinMeasure(for: note, ticksPerMeasure: 960) == 137)
+    }
+
+    private func makeRenderedRest(
+        voice: NotationVoice = .upper,
+        duration: NotationRestDuration = .quarter,
+        visibility: NotationRestVisibility
+    ) -> RenderedRest {
+        RenderedRest(
+            id: "rest-0-upper-quarter",
+            timeColumn: NotationTimeColumn(
+                measureIndex: 0,
+                tickWithinMeasure: 0,
+                absoluteLayoutTick: 0
+            ),
+            measureIndex: 0,
+            row: 0,
+            voice: voice,
+            durationTicks: 240,
+            duration: duration,
+            visibility: visibility,
+            position: .zero
+        )
+    }
+
+    private func makeRenderedStopNote() -> RenderedStopNote {
+        RenderedStopNote(
+            id: "control-0-choke-1A",
+            kind: .choke,
+            sourceLaneID: "2A",
+            sourceNoteID: "01",
+            targetLaneID: "1A",
+            targetDisplayName: "Crash",
+            timeColumn: NotationTimeColumn(
+                measureIndex: 0,
+                tickWithinMeasure: 0,
+                absoluteLayoutTick: 0
+            ),
+            row: 0,
+            position: .zero
+        )
+    }
+
+    private func makeRenderedArticulation() -> RenderedArticulation {
+        RenderedArticulation(
+            id: "articulation-1-open-hi-hat",
+            kind: .openHiHat,
+            sourceNoteHeadID: 1,
+            row: 0,
+            position: .zero
+        )
+    }
+
     @Test("default gameplay style preserves current low-density quarter spacing")
     func defaultStylePreservesQuarterSpacing() {
         let style = NotationLayoutStyle.gameplayDefault

@@ -292,6 +292,12 @@ struct ResolvedDrumNotation: Hashable {
     let usedLaneFallback: Bool
 }
 
+struct ResolvedDrumNotationTarget: Hashable {
+    let definition: DrumNotationDefinition
+    let laneID: String
+    let displayName: String
+}
+
 enum DrumNotationCatalog {
     static let definitions: [DrumNotationDefinition] = [
         DrumNotationDefinition(
@@ -490,5 +496,17 @@ enum DrumNotationCatalog {
         return definitions.first {
             $0.lanes.contains(where: { $0.id == normalizedLaneID })
         }?.noteType
+    }
+
+    static func resolveTarget(laneID: String) -> ResolvedDrumNotationTarget? {
+        let normalizedLaneID = laneID.uppercased()
+        guard let definition = definitions.first(where: {
+            $0.lanes.contains(where: { $0.id == normalizedLaneID })
+        }) else { return nil }
+        return ResolvedDrumNotationTarget(
+            definition: definition,
+            laneID: normalizedLaneID,
+            displayName: definition.noteType.rawValue
+        )
     }
 }
