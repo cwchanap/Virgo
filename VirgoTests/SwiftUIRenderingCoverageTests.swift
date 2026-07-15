@@ -306,7 +306,7 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
-    @Test("highest open hi-hat articulation center stays inside the existing top margin")
+    @Test("highest open hi-hat articulation bounds stay inside the sheet origin")
     func testHighestOpenHiHatArticulationStaysInsideTopMargin() throws {
         let style = NotationLayoutStyle.gameplayDefault
         let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
@@ -324,8 +324,16 @@ struct SwiftUIRenderingCoverageTests {
         let articulation = try #require(layout.articulations.first)
         let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: head.row)
         let existingTopMargin = (line5Y - head.position.y) + GameplayLayout.staffLineSpacing
+        let topEdge = articulation.position.y - style.articulationDiameter / 2
+        let sheetOriginY: CGFloat = 0
+        let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: Chart(difficulty: .medium))
+        viewModel.cachedNotationLayout = layout
+        let gameplayView = GameplayView(chart: viewModel.chart, metronome: viewModel.metronome)
+        let contentTopInset = gameplayView.sheetContentTopInset(viewModel: viewModel)
 
         #expect(line5Y - articulation.position.y <= existingTopMargin)
+        #expect(topEdge + contentTopInset >= sheetOriginY)
+        #expect(gameplayView.sheetContentHeight(viewModel: viewModel) == layout.totalHeight + contentTopInset)
     }
 
     @Test("Notation primitives never render yellow highlighting")

@@ -15,6 +15,7 @@ extension GameplayView {
             let measurePositions = sheetMeasurePositions(viewModel: viewModel)
             let contentWidth = sheetContentWidth(viewModel: viewModel)
             let contentHeight = sheetContentHeight(viewModel: viewModel)
+            let contentTopInset = sheetContentTopInset(viewModel: viewModel)
             let rowCount = sheetRowCount(measurePositions: measurePositions)
 
             ScrollViewReader { proxy in
@@ -28,6 +29,7 @@ extension GameplayView {
                             viewModel: viewModel
                         )
                         GameplayPlayheadBarView(viewModel: viewModel)
+                            .offset(y: contentTopInset)
                     }
                     .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
                 }
@@ -76,25 +78,28 @@ extension GameplayView {
         viewModel: GameplayViewModel
     ) -> some View {
         ZStack(alignment: .topLeading) {
-            // Use cached static staff lines view - created only once
-            if usesNotationLayout {
-                if let cachedNotationView = viewModel.notationStaffLinesView {
-                    cachedNotationView
+            ZStack(alignment: .topLeading) {
+                // Use cached static staff lines view - created only once
+                if usesNotationLayout {
+                    if let cachedNotationView = viewModel.notationStaffLinesView {
+                        cachedNotationView
+                    } else {
+                        staffLinesView(measurePositions: measurePositions, width: contentWidth)
+                    }
+                } else if let staticView = viewModel.staticStaffLinesView {
+                    staticView
                 } else {
+                    // Fallback: render dynamic staff lines when static view is not available
                     staffLinesView(measurePositions: measurePositions, width: contentWidth)
                 }
-            } else if let staticView = viewModel.staticStaffLinesView {
-                staticView
-            } else {
-                // Fallback: render dynamic staff lines when static view is not available
-                staffLinesView(measurePositions: measurePositions, width: contentWidth)
-            }
 
-            ZStack(alignment: .topLeading) {
-                barLinesView(measurePositions: measurePositions, viewModel: viewModel)
-                clefsAndTimeSignaturesView(measurePositions: measurePositions, viewModel: viewModel)
-                drumNotationView(viewModel: viewModel)
+                ZStack(alignment: .topLeading) {
+                    barLinesView(measurePositions: measurePositions, viewModel: viewModel)
+                    clefsAndTimeSignaturesView(measurePositions: measurePositions, viewModel: viewModel)
+                    drumNotationView(viewModel: viewModel)
+                }
             }
+            .offset(y: sheetContentTopInset(viewModel: viewModel))
 
             // Invisible per-row anchor column. Each anchor occupies the exact
             // vertical span of its row so ScrollViewReader resolves row anchors.
@@ -328,7 +333,12 @@ extension GameplayView {
             return GameplayLayout.totalHeight(for: viewModel.cachedMeasurePositions)
         }
 
-        return viewModel.cachedNotationLayout.totalHeight
+        return viewModel.cachedNotationLayout.totalHeight + sheetContentTopInset(viewModel: viewModel)
+    }
+
+    func sheetContentTopInset(viewModel: GameplayViewModel) -> CGFloat {
+        guard usesNotationLayout(viewModel: viewModel) else { return 0 }
+        return viewModel.cachedNotationLayout.topContentInset(style: .gameplayDefault)
     }
 
     func sheetContentWidth(viewModel: GameplayViewModel) -> CGFloat {

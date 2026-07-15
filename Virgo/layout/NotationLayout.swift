@@ -184,6 +184,16 @@ struct NotationLayout {
         hasPlayableContent || rests.contains(where: \.isPrinted) || !stopNotes.isEmpty
     }
 
+    /// Vertical translation needed to keep notation overlays inside the sheet's
+    /// zero-based render bounds. Primitive coordinates remain staff-relative;
+    /// the sheet applies this inset to the complete notation coordinate system.
+    func topContentInset(style: NotationLayoutStyle) -> CGFloat {
+        let minimumArticulationY = articulations
+            .map { $0.position.y - style.articulationDiameter / 2 }
+            .min() ?? 0
+        return max(0, -minimumArticulationY)
+    }
+
     /// Minimum content width needed to contain all rendered primitives.
     var contentWidth: CGFloat {
         let primitiveMaxX = [

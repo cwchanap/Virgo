@@ -318,6 +318,54 @@ extension NotationLayoutRestAndControlTests {
         #expect(result.stopNotes.isEmpty)
     }
 
+    @Test("normalized controls reject overflowing and resource-exhausting measure indices")
+    func normalizedTimingRejectsUnrenderableMeasureIndices() {
+        let engine = NotationLayoutEngine()
+        let controls = [
+            control(
+                originKind: .dtx,
+                normalizedMeasureIndex: Int.max,
+                normalizedAbsoluteTick: Int.max,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 1
+            ),
+            control(
+                originKind: .dtx,
+                normalizedMeasureIndex: 4_096,
+                normalizedAbsoluteTick: 4_096,
+                normalizedTickWithinMeasure: 0,
+                normalizedTicksPerMeasure: 1
+            )
+        ]
+
+        let resolution = engine.resolveControlTimings(controls)
+
+        #expect(resolution.controls.isEmpty)
+        #expect(resolution.invalidReasons == ["control measure exceeds renderable limit (4096)"])
+    }
+
+    @Test("manual controls reject resource-exhausting measure indices")
+    func manualTimingRejectsUnrenderableMeasureIndices() {
+        let resolution = NotationLayoutEngine().resolveControlTimings([
+            control(measureNumber: 4_097, measureOffset: 0),
+            control(measureNumber: 4_096, measureOffset: 1)
+        ])
+
+        #expect(resolution.controls.isEmpty)
+        #expect(resolution.invalidReasons == ["control measure exceeds renderable limit (4096)"])
+    }
+
+    @Test("measure count is capped at the renderable resource limit")
+    func measureCountIsResourceBounded() {
+        let engine = NotationLayoutEngine()
+
+        #expect(engine.totalMeasureCount(
+            notes: [],
+            controls: [],
+            minimumMeasureCount: Int.max
+        ) == 4_096)
+    }
+
     @Test("a partial normalized tuple is invalid instead of using manual fallback")
     func partialNormalizedTimingIsRejected() {
         let partials = [
@@ -597,16 +645,16 @@ extension NotationLayoutRestAndControlTests {
         #expect(ordered.map(\.sourceLaneID) == ["Z", "A", "A", "A", "A", "B", "B", "B", "B", "Z"])
         #expect(ordered.map(\.sourceNoteID) == ["Z", "A", "A", "A", "A", "A", "B", "B", "B", "Z"])
         #expect(ordered.map(\.id) == [
-            "control-m0-t0-kstop-target1A-sourceZ-idZ-gp9-gs9-duplicate-0",
-            "control-m0-t240-kchoke-target11-sourceA-idA-gp0-gs4-duplicate-0",
-            "control-m0-t240-kdamp-target11-sourceA-idA-gp0-gs4-duplicate-0",
-            "control-m0-t240-kstop-target11-sourceA-idA-gp0-gs4-duplicate-0",
-            "control-m0-t240-kstop-target1A-sourceA-idA-gp0-gs4-duplicate-0",
-            "control-m0-t240-kstop-target1A-sourceB-idA-gp0-gs4-duplicate-0",
-            "control-m0-t240-kstop-target1A-sourceB-idB-gp0-gs4-duplicate-0",
-            "control-m0-t240-kstop-target1A-sourceB-idB-gp1-gs4-duplicate-0",
-            "control-m0-t240-kstop-target1A-sourceB-idB-gp1-gs8-duplicate-0",
-            "control-m1-t0-kstop-target1A-sourceZ-idZ-gp9-gs9-duplicate-0"
+            "control-m0-t0-kstop-target1A-source=s1:Z-id=s1:Z-gp=i9-gs=i9-duplicate-0",
+            "control-m0-t240-kchoke-target11-source=s1:A-id=s1:A-gp=i0-gs=i4-duplicate-0",
+            "control-m0-t240-kdamp-target11-source=s1:A-id=s1:A-gp=i0-gs=i4-duplicate-0",
+            "control-m0-t240-kstop-target11-source=s1:A-id=s1:A-gp=i0-gs=i4-duplicate-0",
+            "control-m0-t240-kstop-target1A-source=s1:A-id=s1:A-gp=i0-gs=i4-duplicate-0",
+            "control-m0-t240-kstop-target1A-source=s1:B-id=s1:A-gp=i0-gs=i4-duplicate-0",
+            "control-m0-t240-kstop-target1A-source=s1:B-id=s1:B-gp=i0-gs=i4-duplicate-0",
+            "control-m0-t240-kstop-target1A-source=s1:B-id=s1:B-gp=i1-gs=i4-duplicate-0",
+            "control-m0-t240-kstop-target1A-source=s1:B-id=s1:B-gp=i1-gs=i8-duplicate-0",
+            "control-m1-t0-kstop-target1A-source=s1:Z-id=s1:Z-gp=i9-gs=i9-duplicate-0"
         ])
     }
 
@@ -629,8 +677,30 @@ extension NotationLayoutRestAndControlTests {
 
         #expect(first == second)
         #expect(first.map(\.id) == [
-            "control-m0-t240-kchoke-target1A-source55-id0A-gp1-gs4-duplicate-0",
-            "control-m0-t240-kchoke-target1A-source55-id0A-gp1-gs4-duplicate-1"
+            "control-m0-t240-kchoke-target1A-source=s2:55-id=s2:0A-gp=i1-gs=i4-duplicate-0",
+            "control-m0-t240-kchoke-target1A-source=s2:55-id=s2:0A-gp=i1-gs=i4-duplicate-1"
+        ])
+    }
+
+    @Test("control IDs canonically distinguish nil literals and embedded delimiters")
+    func controlIDsUseCollisionFreeOptionalStringEncoding() {
+        let events = [
+            control(sourceLaneID: nil, sourceNoteID: "nil"),
+            control(sourceLaneID: "nil", sourceNoteID: nil),
+            control(sourceLaneID: "A-idB", sourceNoteID: "C"),
+            control(sourceLaneID: "A", sourceNoteID: "B-idC")
+        ]
+
+        let ordered = layout(notes: [fallbackGridNote()], controls: events).stopNotes
+        let shuffled = layout(notes: [fallbackGridNote()], controls: Array(events.reversed())).stopNotes
+
+        #expect(ordered == shuffled)
+        #expect(Set(ordered.map(\.id)).count == events.count)
+        #expect(ordered.map(\.id) == [
+            "control-m0-t0-kstop-target1A-source=n-id=s3:nil-gp=n-gs=n-duplicate-0",
+            "control-m0-t0-kstop-target1A-source=s1:A-id=s5:B-idC-gp=n-gs=n-duplicate-0",
+            "control-m0-t0-kstop-target1A-source=s5:A-idB-id=s1:C-gp=n-gs=n-duplicate-0",
+            "control-m0-t0-kstop-target1A-source=s3:nil-id=n-gp=n-gs=n-duplicate-0"
         ])
     }
 
