@@ -165,13 +165,14 @@ extension GameplayViewModel {
         let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: resolvedRowWidth)
         let input = NotationLayoutInput(
             notes: cachedNotes,
+            controlEvents: cachedControlEvents,
             timeSignature: track.timeSignature,
             minimumMeasureCount: cachedLayoutMeasureCount,
             style: style,
             notePositionOverrides: notePositionOverrides
         )
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
-        if !cachedNotationLayout.noteHeads.isEmpty {
+        if cachedNotationLayout.hasRenderableContent {
             cachedMeasureRowMap = Dictionary(
                 uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
             )
@@ -195,11 +196,11 @@ extension GameplayViewModel {
     }
 
     /// Builds (or clears) the cached staff-lines background view. Only populated
-    /// when the layout produced note heads, since an empty layout has nothing to
+    /// when the layout produced renderable notation, since a malformed empty layout has nothing to
     /// underlay. Extracted from `cacheNotationLayout()` to keep it under the
     /// function-body-length limit.
     private func cacheNotationStaffLinesView() {
-        guard !cachedNotationLayout.noteHeads.isEmpty else {
+        guard cachedNotationLayout.hasRenderableContent else {
             notationStaffLinesView = nil
             return
         }
@@ -259,9 +260,9 @@ extension GameplayViewModel {
 
         cachedBeatPositions = [:]
 
-        if !cachedNotationLayout.noteHeads.isEmpty {
+        if cachedNotationLayout.hasPlayableContent {
             cacheNotationBeatPositions(track: track)
-        } else {
+        } else if !cachedNotationLayout.hasRenderableContent {
             cacheLegacyBeatPositions(track: track)
         }
 

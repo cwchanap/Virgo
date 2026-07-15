@@ -14,6 +14,9 @@ import AppKit
 #endif
 @testable import Virgo
 
+// Task-focused primitive rendering coverage intentionally lives with the existing SwiftUI suite.
+// swiftlint:disable file_length
+
 private enum RenderProbeError: Error {
     case missingCGImage
     case missingPixelBuffer
@@ -67,6 +70,7 @@ private func countYellowPixels<V: View>(in view: V, size: CGSize) throws -> Int 
 
 @Suite("SwiftUI Rendering Coverage Tests", .serialized)
 @MainActor
+// swiftlint:disable:next type_body_length
 struct SwiftUIRenderingCoverageTests {
     private let drumNotationSettingsKey = "DrumNotationSettings"
 
@@ -197,6 +201,131 @@ struct SwiftUIRenderingCoverageTests {
                 )
             }
         }
+    }
+
+    @Test("Notation rest primitives mount every printed duration with semantic labels")
+    func testNotationRestPrimitivesMountEveryPrintedDuration() async throws {
+        try await TestSetup.withTestSetup {
+            for (index, duration) in NotationRestDuration.allCases.enumerated() {
+                let rest = makeRenderedRest(
+                    id: "rest-\(index)",
+                    duration: duration,
+                    visibility: .printed
+                )
+                let view = NotationRestView(rest: rest, style: .gameplayDefault)
+                SwiftUITestUtilities.assertViewWithEnvironment(
+                    view,
+                    size: CGSize(width: 120, height: 120)
+                )
+                #expect(SwiftUITestUtilities.renderedTexts(from: view.body).contains(rest.accessibilityLabel))
+            }
+        }
+    }
+
+    @Test("Notation sheet filters hidden rests before constructing rest views")
+    func testNotationSheetFiltersHiddenRestsBeforeConstruction() async throws {
+        try await TestSetup.withTestSetup {
+            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+                chart: Chart(difficulty: .medium),
+                noteCount: 0
+            )
+            await viewModel.loadChartData()
+            viewModel.setupGameplay(loadPersistedSpeed: false)
+            guard let printed = viewModel.cachedNotationLayout.rests.first(where: \.isPrinted),
+                  let hidden = viewModel.cachedNotationLayout.rests.first(where: { !$0.isPrinted }) else {
+                Issue.record("Expected one printed and one hidden full-measure rest")
+                return
+            }
+            let gameplayView = GameplayView(chart: viewModel.chart, metronome: viewModel.metronome)
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                gameplayView.drumNotationView(viewModel: viewModel),
+                size: CGSize(width: 1_024, height: 768)
+            )
+            #expect(gameplayView.printedNotationRests(viewModel: viewModel) == [printed])
+            #expect(!gameplayView.printedNotationRests(viewModel: viewModel).contains(hidden))
+        }
+    }
+
+    @Test("Notation stop primitives mount every semantic control kind")
+    func testNotationStopPrimitivesMountEveryControlKind() async throws {
+        try await TestSetup.withTestSetup {
+            for (index, kind) in NotationControlEventKind.allCases.enumerated() {
+                let stop = makeRenderedStop(id: "stop-\(index)", kind: kind)
+                let view = NotationStopNoteView(stopNote: stop, style: .gameplayDefault)
+                SwiftUITestUtilities.assertViewWithEnvironment(
+                    view,
+                    size: CGSize(width: 120, height: 120)
+                )
+                #expect(SwiftUITestUtilities.renderedTexts(from: view.body).contains(stop.accessibilityLabel))
+            }
+        }
+    }
+
+    @Test("Hi-hat noteheads own distinct labels while the open circle is hidden")
+    func testHiHatAccessibilityOwnership() async throws {
+        try await TestSetup.withTestSetup {
+            let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+                notes: [
+                    Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
+                    Note(interval: .quarter, noteType: .openHiHat, measureNumber: 1, measureOffset: 0.25),
+                    Note(interval: .quarter, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0.5)
+                ],
+                timeSignature: .fourFour
+            ))
+            guard let openCircle = layout.articulations.first else {
+                Issue.record("Expected an open hi-hat articulation")
+                return
+            }
+            let noteHeadViews = ZStack {
+                ForEach(layout.noteHeads) { noteHead in
+                    NotationNoteHeadView(noteHead: noteHead, size: layout.noteHeadSize)
+                }
+            }
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                noteHeadViews,
+                size: CGSize(width: 1_024, height: 768)
+            )
+            let noteHeadLabels = layout.noteHeads.flatMap { noteHead in
+                SwiftUITestUtilities.renderedTexts(from: NotationNoteHeadView(
+                    noteHead: noteHead,
+                    size: layout.noteHeadSize
+                ).body)
+            }
+            #expect(Set(noteHeadLabels).isSuperset(of: ["Closed hi-hat", "Open hi-hat", "Pedal hi-hat"]))
+            let articulationView = NotationArticulationView(
+                articulation: openCircle,
+                style: .gameplayDefault
+            )
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                articulationView,
+                size: CGSize(width: 120, height: 120)
+            )
+            #expect(accessibilityVisibilityRawValues(in: articulationView.body).contains(4))
+        }
+    }
+
+    @Test("highest open hi-hat articulation center stays inside the existing top margin")
+    func testHighestOpenHiHatArticulationStaysInsideTopMargin() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+            notes: [Note(
+                interval: .quarter,
+                noteType: .openHiHat,
+                measureNumber: 1,
+                measureOffset: 0
+            )],
+            timeSignature: .fourFour,
+            style: style,
+            notePositionOverrides: [.hiHat: .aboveLine9]
+        ))
+        let head = try #require(layout.noteHeads.first)
+        let articulation = try #require(layout.articulations.first)
+        let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: head.row)
+        let existingTopMargin = (line5Y - head.position.y) + GameplayLayout.staffLineSpacing
+
+        #expect(line5Y - articulation.position.y <= existingTopMargin)
     }
 
     @Test("Notation primitives never render yellow highlighting")
@@ -347,8 +476,9 @@ struct SwiftUIRenderingCoverageTests {
         }
     }
 
-    @Test("Gameplay sheet sizing uses notation width only when note heads are active")
-    func testGameplaySheetSizingUsesNotationWidthOnlyWhenActive() async throws {
+    @Test("Gameplay sheet sizing uses renderable notation and reserves legacy fallback for malformed empty layout")
+    // swiftlint:disable:next function_body_length
+    func testGameplaySheetSizingUsesRenderableNotation() async throws {
         try await TestSetup.withTestSetup {
             let emptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium),
@@ -358,9 +488,30 @@ struct SwiftUIRenderingCoverageTests {
             emptyViewModel.setupGameplay()
 
             let gameplayView = GameplayView(chart: emptyViewModel.chart, metronome: emptyViewModel.metronome)
-            #expect(!gameplayView.usesNotationLayout(viewModel: emptyViewModel))
+            #expect(gameplayView.usesNotationLayout(viewModel: emptyViewModel))
+            #expect(emptyViewModel.cachedNotationLayout.hasRenderableContent)
+            #expect(!emptyViewModel.cachedNotationLayout.hasPlayableContent)
             #expect(emptyViewModel.cachedNotationLayout.measureBars.count >= 1)
+            #expect(
+                gameplayView.sheetMeasurePositions(viewModel: emptyViewModel).count
+                    == emptyViewModel.cachedNotationLayout.measures.count
+            )
+            #expect(
+                gameplayView.sheetContentWidth(viewModel: emptyViewModel)
+                    == emptyViewModel.cachedNotationLayout.contentWidth
+            )
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: emptyViewModel)
+                    == emptyViewModel.cachedNotationLayout.totalHeight
+            )
+
+            emptyViewModel.cachedNotationLayout = .empty
+            #expect(!gameplayView.usesNotationLayout(viewModel: emptyViewModel))
             #expect(gameplayView.sheetContentWidth(viewModel: emptyViewModel) == GameplayLayout.maxRowWidth)
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: emptyViewModel)
+                    == GameplayLayout.totalHeight(for: emptyViewModel.cachedMeasurePositions)
+            )
 
             let denseChart = Chart(difficulty: .medium)
             for index in 0..<32 {
@@ -388,6 +539,71 @@ struct SwiftUIRenderingCoverageTests {
 }
 
 private extension SwiftUIRenderingCoverageTests {
+    func makeRenderedRest(
+        id: String,
+        duration: NotationRestDuration,
+        visibility: NotationRestVisibility
+    ) -> RenderedRest {
+        RenderedRest(
+            id: id,
+            timeColumn: NotationTimeColumn(
+                measureIndex: 0,
+                tickWithinMeasure: 0,
+                absoluteLayoutTick: 0
+            ),
+            measureIndex: 0,
+            row: 0,
+            voice: .upper,
+            durationTicks: 960,
+            duration: duration,
+            visibility: visibility,
+            position: CGPoint(x: 60, y: 60)
+        )
+    }
+
+    func makeRenderedStop(id: String, kind: NotationControlEventKind) -> RenderedStopNote {
+        RenderedStopNote(
+            id: id,
+            kind: kind,
+            sourceLaneID: "55",
+            sourceNoteID: "0A",
+            targetLaneID: "1A",
+            targetDisplayName: "Crash",
+            timeColumn: NotationTimeColumn(
+                measureIndex: 0,
+                tickWithinMeasure: 0,
+                absoluteLayoutTick: 0
+            ),
+            row: 0,
+            position: CGPoint(x: 60, y: 60)
+        )
+    }
+
+    func accessibilityVisibilityRawValues(
+        in value: Any,
+        path: [String] = [],
+        depth: Int = 0
+    ) -> [UInt32] {
+        guard depth < 16 else { return [] }
+        let mirror = Mirror(reflecting: value)
+        var values: [UInt32] = []
+        for child in mirror.children {
+            let label = child.label ?? ""
+            let childPath = path + [label]
+            if label == "rawValue",
+               childPath.contains("visibility"),
+               let rawValue = child.value as? UInt32 {
+                values.append(rawValue)
+            }
+            values.append(contentsOf: accessibilityVisibilityRawValues(
+                in: child.value,
+                path: childPath,
+                depth: depth + 1
+            ))
+        }
+        return values
+    }
+
     func makeRenderedHead(
         id: UInt64 = 42,
         glyph: DrumNoteheadGlyph = .filledDiamond

@@ -12,6 +12,7 @@ import SwiftUI
 
 @Suite("Visual Updates", .serialized)
 @MainActor
+// swiftlint:disable:next type_body_length
 struct GameplayViewModelVisualUpdatesTests {
 
     @Test("updateVisualElementsFromMetronome updates playback progress and indicators while playing")
@@ -339,6 +340,65 @@ struct GameplayViewModelVisualUpdatesTests {
             + GameplayLayout.uniformSpacing
 
         #expect(abs(position.x - Double(expectedX)) < 0.5)
+    }
+
+    @Test("renderable rest-only notation does not move playhead or current row")
+    func testRestOnlyNotationDoesNotMovePlayheadOrCurrentRow() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        let song = Song(
+            title: "Silent Practice",
+            artist: "Test",
+            bpm: 120,
+            duration: "0:20",
+            genre: "Test",
+            charts: [chart]
+        )
+        chart.song = song
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+        viewModel.currentRow = 2
+
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(viewModel.rowForMeasure(8) == 2)
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 18)
+
+        #expect(viewModel.currentRow == 2)
+        #expect(viewModel.purpleBarPosition == nil)
+    }
+
+    @Test("renderable control-only notation does not move playhead or current row")
+    func testControlOnlyNotationDoesNotMovePlayheadOrCurrentRow() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.controlEvents.append(ChartControlEvent(
+            kind: .damp,
+            measureNumber: 4,
+            measureOffset: 0.5,
+            targetLaneID: "1A"
+        ))
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+        viewModel.currentRow = 1
+
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(viewModel.rowForMeasure(3) == 1)
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 6)
+
+        #expect(viewModel.currentRow == 1)
+        #expect(viewModel.purpleBarPosition == nil)
     }
 
     // MARK: - currentRow / Auto-scroll

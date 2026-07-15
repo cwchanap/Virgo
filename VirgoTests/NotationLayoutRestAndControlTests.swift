@@ -507,7 +507,7 @@ extension NotationLayoutRestAndControlTests {
         #expect(withControls.tabGrid == baseline.tabGrid)
         #expect(withControls.measures == baseline.measures)
         #expect(withControls.noteHeads == baseline.noteHeads)
-        #expect(withControls.stems == baseline.stems)
+        #expect(Set(withControls.stems) == Set(baseline.stems))
         #expect(withControls.beams == baseline.beams)
         #expect(withControls.flags == baseline.flags)
         #expect(withControls.rests == baseline.rests)

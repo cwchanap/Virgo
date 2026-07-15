@@ -138,8 +138,35 @@ struct GameplayViewModelComputationsTests {
                 "Cached beat position should move when the notation layout rewraps")
     }
 
-    @Test("inactive notation layout preserves legacy measure positions")
-    func testInactiveNotationLayoutPreservesLegacyMeasurePositions() async throws {
+    @Test("renderable non-playable notation never falls back to legacy beat positions")
+    func testRenderableNonPlayableNotationSkipsLegacyBeatPositions() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.controlEvents.append(ChartControlEvent(
+            kind: .choke,
+            measureNumber: 1,
+            measureOffset: 0,
+            targetLaneID: "1A"
+        ))
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+        vm.cachedDrumBeats = [DrumBeat(
+            id: 9_999,
+            drums: [.snare],
+            timePosition: 0,
+            interval: .quarter
+        )]
+
+        vm.cacheBeatPositions()
+
+        #expect(vm.cachedNotationLayout.hasRenderableContent)
+        #expect(!vm.cachedNotationLayout.hasPlayableContent)
+        #expect(vm.cachedBeatPositions.isEmpty)
+    }
+
+    @Test("renderable rest layout replaces legacy measure positions without becoming playable")
+    func testRenderableRestLayoutUsesNotationMeasurePositions() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         let song = Song(
             title: "Empty Chart",
@@ -156,17 +183,18 @@ struct GameplayViewModelComputationsTests {
         await vm.loadChartData()
         vm.setupGameplay(loadPersistedSpeed: false)
 
-        #expect(vm.cachedNotationLayout.noteHeads.isEmpty)
-        try #require(!vm.cachedMeasurePositions.isEmpty)
+        #expect(vm.cachedNotationLayout.hasRenderableContent)
+        #expect(!vm.cachedNotationLayout.hasPlayableContent)
+        try #require(!vm.cachedNotationLayout.measures.isEmpty)
 
-        for legacyPosition in vm.cachedMeasurePositions {
-            let cachedPosition = try #require(vm.measurePositionMap[legacyPosition.measureIndex])
-            #expect(cachedPosition.row == legacyPosition.row)
-            #expect(abs(cachedPosition.xOffset - legacyPosition.xOffset) < 0.001)
+        for notationMeasure in vm.cachedNotationLayout.measures {
+            let cachedPosition = try #require(vm.measurePositionMap[notationMeasure.measureIndex])
+            #expect(cachedPosition.row == notationMeasure.row)
+            #expect(abs(cachedPosition.xOffset - notationMeasure.xOffset) < 0.001)
         }
 
-        let maxLegacyRow = vm.cachedMeasurePositions.map(\.row).max() ?? 0
-        #expect(vm.rowForMeasure(9_999) == maxLegacyRow)
+        vm.currentRow = 2
+        #expect(vm.rowForMeasure(9_999) == 2)
     }
 
     // MARK: - calculateTrackDurationInSeconds
@@ -493,6 +521,27 @@ struct ComputationsVisualUpdatesTests {
         let position = vm.calculateNotationPurpleBarPosition(measureIndex: 0, beatWithinMeasure: 0.0)
 
         #expect(position == nil, "Must return nil when track is nil / layout has no note heads")
+    }
+
+    @Test("renderable non-playable notation has no notation or fallback playhead")
+    func testRenderableNonPlayableNotationHasNoPlayhead() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.controlEvents.append(ChartControlEvent(
+            kind: .stop,
+            measureNumber: 1,
+            measureOffset: 0,
+            targetLaneID: "1A"
+        ))
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+        vm.isPlaying = true
+
+        #expect(vm.cachedNotationLayout.hasRenderableContent)
+        #expect(!vm.cachedNotationLayout.hasPlayableContent)
+        #expect(vm.calculateNotationPurpleBarPosition(measureIndex: 0, beatWithinMeasure: 0) == nil)
+        #expect(vm.calculatePurpleBarPosition(elapsedTime: 0) == nil)
     }
 
     // MARK: - rowForMeasure

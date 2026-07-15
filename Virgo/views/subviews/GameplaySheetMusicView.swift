@@ -248,10 +248,17 @@ extension GameplayView {
 
     func drumNotationView(viewModel: GameplayViewModel) -> some View {
         let notationLayout = viewModel.cachedNotationLayout
+        let printedRests = printedNotationRests(viewModel: viewModel)
+        let style = NotationLayoutStyle.gameplayDefault
 
         return ZStack {
             ForEach(notationLayout.ledgerLines) { ledgerLine in
                 NotationLedgerLineView(ledgerLine: ledgerLine)
+                    .equatable()
+            }
+
+            ForEach(printedRests) { rest in
+                NotationRestView(rest: rest, style: style)
                     .equatable()
             }
 
@@ -274,11 +281,25 @@ extension GameplayView {
                 NotationNoteHeadView(noteHead: noteHead, size: notationLayout.noteHeadSize)
                     .equatable()
             }
+
+            ForEach(notationLayout.articulations) { articulation in
+                NotationArticulationView(articulation: articulation, style: style)
+                    .equatable()
+            }
+
+            ForEach(notationLayout.stopNotes) { stopNote in
+                NotationStopNoteView(stopNote: stopNote, style: style)
+                    .equatable()
+            }
         }
     }
 
+    func printedNotationRests(viewModel: GameplayViewModel) -> [RenderedRest] {
+        viewModel.cachedNotationLayout.rests.filter(\.isPrinted)
+    }
+
     func usesNotationLayout(viewModel: GameplayViewModel) -> Bool {
-        !viewModel.cachedNotationLayout.noteHeads.isEmpty
+        viewModel.cachedNotationLayout.hasRenderableContent
     }
 
     func sheetMeasurePositions(viewModel: GameplayViewModel) -> [GameplayLayout.MeasurePosition] {

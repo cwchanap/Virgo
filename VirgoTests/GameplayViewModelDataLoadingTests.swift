@@ -42,6 +42,37 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.track != nil)
     }
 
+    @Test("loadChartData snapshots control events independently from SwiftData models")
+    func testLoadChartDataSnapshotsControlEvents() async throws {
+        let chart = Chart(difficulty: .medium)
+        let control = ChartControlEvent(
+            kind: .choke,
+            measureNumber: 2,
+            measureOffset: 0.25,
+            sourceLaneID: "55",
+            sourceNoteID: "0A",
+            targetLaneID: "1A"
+        )
+        chart.controlEvents.append(control)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+
+        await viewModel.loadChartData()
+        let snapshot = try #require(viewModel.cachedControlEvents.first)
+        control.kind = .damp
+        control.measureNumber = 9
+        control.targetLaneID = "11"
+
+        #expect(snapshot.kind == .choke)
+        #expect(snapshot.measureNumber == 2)
+        #expect(snapshot.measureOffset == 0.25)
+        #expect(snapshot.sourceLaneID == "55")
+        #expect(snapshot.sourceNoteID == "0A")
+        #expect(snapshot.targetLaneID == "1A")
+    }
+
     @Test func testSetupGameplay() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
@@ -81,9 +112,64 @@ struct GameplayViewModelDataLoadingTests {
         let beat = try #require(viewModel.cachedDrumBeats.first)
 
         #expect(viewModel.cachedDrumBeats.count == 1)
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(viewModel.cachedNotationLayout.hasPlayableContent)
         #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)
         #expect(!viewModel.cachedNotationLayout.stems.isEmpty)
+        #expect(!viewModel.cachedBeatPositions.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadPositions.count == viewModel.cachedNotationLayout.noteHeads.count)
+    }
+
+    @Test("empty chart prepares renderable rests without playable caches")
+    func testEmptyChartPreparesRenderableRestsWithoutPlayableCaches() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(!viewModel.cachedNotationLayout.measures.isEmpty)
+        #expect(!viewModel.cachedNotationLayout.rests.filter(\.isPrinted).isEmpty)
+        #expect(!viewModel.cachedMeasureRowMap.isEmpty)
+        #expect(!viewModel.cachedNotationMeasuresByIndex.isEmpty)
+        #expect(viewModel.notationStaffLinesView != nil)
+        #expect(viewModel.cachedDrumBeats.isEmpty)
+        #expect(viewModel.cachedBeatPositions.isEmpty)
+        #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
+    }
+
+    @Test("control-only chart prepares renderable controls without playable caches")
+    func testControlOnlyChartPreparesRenderableControlsWithoutPlayableCaches() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.controlEvents.append(ChartControlEvent(
+            kind: .damp,
+            measureNumber: 1,
+            measureOffset: 0.5,
+            targetLaneID: "1A"
+        ))
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(viewModel.cachedControlEvents.count == 1)
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(viewModel.cachedNotationLayout.stopNotes.count == 1)
+        #expect(!viewModel.cachedMeasureRowMap.isEmpty)
+        #expect(!viewModel.cachedNotationMeasuresByIndex.isEmpty)
+        #expect(viewModel.notationStaffLinesView != nil)
+        #expect(viewModel.cachedDrumBeats.isEmpty)
+        #expect(viewModel.cachedBeatPositions.isEmpty)
+        #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
     }
 
     @Test func testNotationLayoutCachesClearWithoutTrack() async throws {
@@ -140,7 +226,7 @@ struct GameplayViewModelDataLoadingTests {
                "notationStaffLinesView should be cached when layout has noteHeads")
     }
 
-    @Test func testNotationStaffLinesViewNilWhenNoNotes() async throws {
+    @Test func testNotationStaffLinesViewCachedForRenderableRests() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
@@ -149,8 +235,9 @@ struct GameplayViewModelDataLoadingTests {
         viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
-        #expect(viewModel.notationStaffLinesView == nil,
-               "notationStaffLinesView should be nil when layout has no noteHeads")
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(viewModel.notationStaffLinesView != nil,
+               "notationStaffLinesView should be cached when layout has printed rests")
     }
 
     @Test func testEmptyNotationLayoutHasNoRenderedContent() {
