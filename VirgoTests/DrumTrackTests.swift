@@ -17,7 +17,10 @@ struct DrumTrackTests {
     static let testContainer: ModelContainer = {
         do {
             let config = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try ModelContainer(for: Song.self, Chart.self, Note.self, configurations: config)
+            return try ModelContainer(
+                for: Song.self, Chart.self, Note.self, ChartControlEvent.self,
+                configurations: config
+            )
         } catch {
             fatalError("Failed to create test container: \(error)")
         }

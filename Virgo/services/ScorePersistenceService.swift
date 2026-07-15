@@ -207,7 +207,7 @@ extension ScorePersistenceService {
     /// that do not assert on cross-launch persistence.
     static func makeInMemory() -> ScorePersistenceService {
         let schema = Schema([
-            Song.self, Chart.self, Note.self,
+            Song.self, Chart.self, Note.self, ChartControlEvent.self,
             ServerSong.self, ServerChart.self, ScoreRecord.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, allowsSave: true)

@@ -21,7 +21,7 @@ struct ChartComputedPropertyTests {
     static let container: ModelContainer = {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         // swiftlint:disable:next force_try
-        return try! ModelContainer(for: Song.self, Chart.self, Note.self,
+        return try! ModelContainer(for: Song.self, Chart.self, Note.self, ChartControlEvent.self,
                                    ServerSong.self, ServerChart.self,
                                    configurations: config)
     }()
@@ -184,6 +184,21 @@ struct ChartComputedPropertyTests {
     func testSafeNotesEmpty() {
         let chart = Chart(difficulty: .easy)
         #expect(chart.safeNotes.isEmpty)
+    }
+
+    @Test("Chart control events default to empty")
+    func testControlEventsDefaultEmpty() {
+        let chart = Chart(difficulty: .easy)
+        #expect(chart.controlEvents.isEmpty)
+        #expect(chart.safeControlEvents.isEmpty)
+    }
+
+    @Test("Chart.safeControlEvents returns attached non-deleted events")
+    func testSafeControlEventsNoDeleted() {
+        let event = ChartControlEvent(kind: .stop, measureNumber: 1, measureOffset: 0.5)
+        let chart = Chart(difficulty: .medium, controlEvents: [event])
+        #expect(chart.safeControlEvents.count == 1)
+        #expect(chart.safeControlEvents.first === event)
     }
 }
 
