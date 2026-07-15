@@ -206,7 +206,7 @@ struct SwiftUIRenderingCoverageTests {
     @Test("Notation rest primitives mount every printed duration with semantic labels")
     func testNotationRestPrimitivesMountEveryPrintedDuration() async throws {
         try await TestSetup.withTestSetup {
-            for (index, duration) in NotationRestDuration.allCases.enumerated() {
+            for (index, duration) in NotationRestDuration.allCases.filter({ $0 != .indeterminate }).enumerated() {
                 let rest = makeRenderedRest(
                     id: "rest-\(index)",
                     duration: duration,

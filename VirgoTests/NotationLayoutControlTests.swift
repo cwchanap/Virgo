@@ -106,6 +106,55 @@ struct NotationLayoutControlTests {
         ) == 4_096)
     }
 
+    @Test("normalized control at the maximum renderable measure index is accepted")
+    func normalizedTimingAcceptsMaximumRenderableMeasureIndex() throws {
+        let engine = NotationLayoutEngine()
+        let control = support.control(
+            originKind: .dtx,
+            normalizedMeasureIndex: 4_095,
+            normalizedAbsoluteTick: 16_380,
+            normalizedTickWithinMeasure: 0,
+            normalizedTicksPerMeasure: 4
+        )
+
+        let resolution = engine.resolveControlTimings([control])
+
+        #expect(resolution.controls.count == 1)
+        #expect(resolution.controls.first?.measureIndex == 4_095)
+        #expect(resolution.invalidReasons.isEmpty)
+    }
+
+    @Test("manual control at the maximum renderable measure number is accepted")
+    func manualTimingAcceptsMaximumRenderableMeasureNumber() throws {
+        let engine = NotationLayoutEngine()
+        let control = support.control(measureNumber: 4_096, measureOffset: 0)
+
+        let resolution = engine.resolveControlTimings([control])
+
+        #expect(resolution.controls.count == 1)
+        #expect(resolution.controls.first?.measureIndex == 4_095)
+        #expect(resolution.invalidReasons.isEmpty)
+    }
+
+    @Test("total measure count reaches but does not exceed the limit from content")
+    func totalMeasureCountSaturatesAtRenderableLimitFromContent() {
+        let engine = NotationLayoutEngine()
+        let control = support.control(
+            originKind: .dtx,
+            normalizedMeasureIndex: 4_095,
+            normalizedAbsoluteTick: 16_380,
+            normalizedTickWithinMeasure: 0,
+            normalizedTicksPerMeasure: 4
+        )
+        let resolution = engine.resolveControlTimings([control])
+
+        #expect(engine.totalMeasureCount(
+            notes: [],
+            controls: resolution.controls,
+            minimumMeasureCount: 1
+        ) == 4_096)
+    }
+
     @Test("a partial normalized tuple is invalid instead of using manual fallback")
     func partialNormalizedTimingIsRejected() {
         let partials = [

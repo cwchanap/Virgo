@@ -89,6 +89,8 @@ struct NotationRestView: View, Equatable {
                         Palette.chalk,
                         style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
                     )
+            case .indeterminate:
+                EmptyView()
             }
         }
         .accessibilityLabel(rest.accessibilityLabel)
@@ -132,7 +134,7 @@ struct NotationRestView: View, Equatable {
         case .sixteenth: return 2
         case .thirtySecond: return 3
         case .sixtyFourth: return 4
-        case .fullMeasure, .half, .quarter: return 0
+        case .fullMeasure, .half, .quarter, .indeterminate: return 0
         }
     }
 }

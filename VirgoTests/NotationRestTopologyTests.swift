@@ -112,7 +112,7 @@ struct NotationRestTopologyTests {
         ])
     }
 
-    @Test("rest durations are a closed seven-case set without an ordinary full rest")
+    @Test("rest durations are a closed eight-case set without an ordinary full rest")
     func restDurationsAreClosed() {
         #expect(Set(NotationRestDuration.allCases) == [
             .fullMeasure,
@@ -121,7 +121,8 @@ struct NotationRestTopologyTests {
             .eighth,
             .sixteenth,
             .thirtySecond,
-            .sixtyFourth
+            .sixtyFourth,
+            .indeterminate
         ])
         #expect(NotationRestDuration.allCases.allSatisfy { $0.rawValue != "full" })
     }
@@ -158,9 +159,9 @@ struct NotationRestTopologyTests {
         let noteDurations = NoteInterval.allCases.map {
             builder.noteDurationTicks(for: $0, ticksPerMeasure: 960, timeSignature: signature)
         }
-        let restDurations = NotationRestDuration.allCases.dropFirst().map {
-            builder.restDurationTicks(for: $0, ticksPerMeasure: 960, timeSignature: signature)
-        }
+        let restDurations = NotationRestDuration.allCases
+            .filter { $0 != .fullMeasure && $0 != .indeterminate }
+            .map { builder.restDurationTicks(for: $0, ticksPerMeasure: 960, timeSignature: signature) }
 
         #expect(noteDurations == expected.map(Optional.some))
         #expect(restDurations == expected.dropFirst().map(Optional.some))
@@ -257,7 +258,7 @@ extension NotationRestTopologyTests {
                 voice: .upper,
                 start: 0,
                 ticks: 10,
-                duration: .sixtyFourth,
+                duration: .indeterminate,
                 visibility: .hiddenSpacing
             )
         ])
@@ -276,7 +277,7 @@ extension NotationRestTopologyTests {
                 voice: .upper,
                 start: 90,
                 ticks: 10,
-                duration: .sixtyFourth,
+                duration: .indeterminate,
                 visibility: .hiddenSpacing
             )
         ])
@@ -313,7 +314,7 @@ extension NotationRestTopologyTests {
                 voice: .upper,
                 start: 240,
                 ticks: 720,
-                duration: .sixtyFourth,
+                duration: .indeterminate,
                 visibility: .hiddenSpacing
             )
         ])
@@ -349,14 +350,14 @@ extension NotationRestTopologyTests {
                 voice: .upper,
                 start: 0,
                 ticks: 120,
-                duration: .sixtyFourth,
+                duration: .indeterminate,
                 visibility: .hiddenSpacing
             ),
             event(
                 voice: .upper,
                 start: 240,
                 ticks: 720,
-                duration: .sixtyFourth,
+                duration: .indeterminate,
                 visibility: .hiddenSpacing
             ),
             event(voice: .lower, start: 0, ticks: 960, duration: .fullMeasure)
