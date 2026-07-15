@@ -163,6 +163,7 @@ struct NotationControlEvent: Hashable {
     let kind: NotationControlEventKind
     let measureNumber: Int
     let measureOffset: Double
+    let originKind: NoteOriginKind
     let sourceLaneID: String?
     let sourceNoteID: String?
     let sourceGridPosition: Int?
@@ -176,7 +177,9 @@ struct NotationControlEvent: Hashable {
 ```
 
 `NotationLayoutInput` gains `controlEvents: [NotationControlEvent]` with an empty default so existing call sites remain
-source-compatible. The snapshot contains no SwiftData reference or rendering geometry.
+source-compatible. The snapshot contains no SwiftData reference or rendering geometry. It retains `originKind` because
+the layout contract allows exact `measureNumber`/`measureOffset` fallback only for explicitly manual events; DTX-origin
+events require complete normalized timing and must not be inferred from missing fields.
 
 `ChartRelationshipData` and `ChartRelationshipLoader` remain unchanged. Their contract is specifically
 `notesCount`/`notes`/`measureCount`, they have no production consumer, and gameplay already bypasses them. Adding an
