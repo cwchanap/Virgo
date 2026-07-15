@@ -327,7 +327,7 @@ struct LocalDTXFixtureImporterErrorPathTests {
 
     private func makeStore() throws -> TestStore {
         let schema = Schema([
-            Song.self, Chart.self, Note.self,
+            Song.self, Chart.self, Note.self, ChartControlEvent.self,
             ServerSong.self, ServerChart.self, ScoreRecord.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

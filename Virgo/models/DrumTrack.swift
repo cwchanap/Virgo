@@ -95,6 +95,8 @@ final class Chart {
     var song: Song?
     @Relationship(deleteRule: .cascade, inverse: \Note.chart)
     var notes: [Note]
+    @Relationship(deleteRule: .cascade, inverse: \ChartControlEvent.chart)
+    var controlEvents: [ChartControlEvent]
     var bestScore: Int = 0
     @Relationship(deleteRule: .cascade, inverse: \ScoreRecord.chart)
     var scoreRecords: [ScoreRecord] = []
@@ -137,13 +139,25 @@ final class Chart {
         return notes.filter { !$0.isDeleted }
     }
 
-    init(difficulty: Difficulty, level: Int? = nil, timeSignature: TimeSignature? = nil,
-         notes: [Note] = [], song: Song? = nil) {
+    var safeControlEvents: [ChartControlEvent] {
+        guard !isDeleted else { return [] }
+        return controlEvents.filter { !$0.isDeleted }
+    }
+
+    init(
+        difficulty: Difficulty,
+        level: Int? = nil,
+        timeSignature: TimeSignature? = nil,
+        notes: [Note] = [],
+        controlEvents: [ChartControlEvent] = [],
+        song: Song? = nil
+    ) {
         self.difficulty = difficulty
         // If no level provided, assign based on difficulty
         self.level = level ?? difficulty.defaultLevel
         self._timeSignature = timeSignature
         self.notes = notes
+        self.controlEvents = controlEvents
         self.song = song
     }
 }
@@ -519,6 +533,24 @@ extension Song {
                     notationVoiceCandidate: templateNote.notationVoiceCandidate,
                     visualDurationCandidate: templateNote.visualDurationCandidate,
                     articulationCandidate: templateNote.articulationCandidate
+                )
+            }
+            chart.controlEvents = templateChart.safeControlEvents.map { templateControl in
+                ChartControlEvent(
+                    kind: templateControl.kind,
+                    measureNumber: templateControl.measureNumber,
+                    measureOffset: templateControl.measureOffset,
+                    chart: chart,
+                    originKind: templateControl.originKind,
+                    sourceLaneID: templateControl.sourceLaneID,
+                    sourceNoteID: templateControl.sourceNoteID,
+                    sourceGridPosition: templateControl.sourceGridPosition,
+                    sourceGridSize: templateControl.sourceGridSize,
+                    normalizedMeasureIndex: templateControl.normalizedMeasureIndex,
+                    normalizedAbsoluteTick: templateControl.normalizedAbsoluteTick,
+                    normalizedTickWithinMeasure: templateControl.normalizedTickWithinMeasure,
+                    normalizedTicksPerMeasure: templateControl.normalizedTicksPerMeasure,
+                    targetLaneID: templateControl.targetLaneID
                 )
             }
             return chart

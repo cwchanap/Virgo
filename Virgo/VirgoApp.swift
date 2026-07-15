@@ -28,6 +28,7 @@ struct VirgoApp: App {
             Song.self,
             Chart.self,
             Note.self,
+            ChartControlEvent.self,
             ServerSong.self,
             ServerChart.self,
             ScoreRecord.self

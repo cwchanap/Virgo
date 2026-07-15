@@ -76,6 +76,7 @@ class TestContainer {
             Song.self,
             Chart.self,
             Note.self,
+            ChartControlEvent.self,
             ServerSong.self,
             ServerChart.self,
             ScoreRecord.self
@@ -139,6 +140,9 @@ class TestContainer {
             // (e.g. Charts/Notes/ServerCharts inserted directly by tests)
             let charts = try context.fetch(FetchDescriptor<Chart>())
             charts.forEach { context.delete($0) }
+
+            let controlEvents = try context.fetch(FetchDescriptor<ChartControlEvent>())
+            controlEvents.forEach { context.delete($0) }
 
             let notes = try context.fetch(FetchDescriptor<Note>())
             notes.forEach { context.delete($0) }
