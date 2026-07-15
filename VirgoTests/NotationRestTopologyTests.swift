@@ -301,6 +301,24 @@ extension NotationRestTopologyTests {
         ])
     }
 
+    @Test("a final nil duration reserves through measure end as hidden spacing")
+    func finalUncertainDurationReservesThroughMeasureEnd() {
+        let result = build([
+            note(tick: 240, voice: .upper, durationTicks: nil)
+        ])
+
+        #expect(result.filter { $0.voice == .upper } == [
+            event(voice: .upper, start: 0, ticks: 240, duration: .quarter),
+            event(
+                voice: .upper,
+                start: 240,
+                ticks: 720,
+                duration: .sixtyFourth,
+                visibility: .hiddenSpacing
+            )
+        ])
+    }
+
     @Test("one uncertain member makes its entire same-time chord uncertain")
     func uncertainChordMemberControlsOccupancy() {
         let result = build([
