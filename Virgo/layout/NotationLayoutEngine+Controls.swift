@@ -1,6 +1,11 @@
 import CoreGraphics
 
 extension NotationLayoutEngine {
+    /// DTX's three-digit measure address tops out at 1,000 measures. Allow a
+    /// generous multiple for manual charts while bounding per-measure arrays,
+    /// synthesized rests, and row geometry from malformed persisted values.
+    static let maximumRenderableMeasureCount = 4_096
+
     struct ControlTimingResolution {
         let controls: [SemanticallyTimedControl]
         let invalidReasons: Set<String>
@@ -34,7 +39,13 @@ extension NotationLayoutEngine {
             ))
         }.max() ?? 0
         let maxControlMeasureIndex = controls.map(\.measureIndex).max() ?? 0
-        return max(minimumMeasureCount, max(maxNoteMeasureIndex, maxControlMeasureIndex) + 1, 1)
+        let maximumMeasureIndex = max(maxNoteMeasureIndex, maxControlMeasureIndex)
+        let (measureCount, overflow) = maximumMeasureIndex.addingReportingOverflow(1)
+        let contentMeasureCount = overflow ? Self.maximumRenderableMeasureCount : measureCount
+        return min(
+            max(minimumMeasureCount, contentMeasureCount, 1),
+            Self.maximumRenderableMeasureCount
+        )
     }
 
     func resolveControlTimings(_ events: [NotationControlEvent]) -> ControlTimingResolution {
@@ -163,8 +174,8 @@ private struct StopNoteCandidate {
         let event = control.event
         return "control-m\(timeColumn.measureIndex)-t\(timeColumn.tickWithinMeasure)"
             + "-k\(event.kind.rawValue)-target\(target.laneID)"
-            + "-source\(idComponent(event.sourceLaneID))-id\(idComponent(event.sourceNoteID))"
-            + "-gp\(idComponent(event.sourceGridPosition))-gs\(idComponent(event.sourceGridSize))"
+            + "-source=\(idComponent(event.sourceLaneID))-id=\(idComponent(event.sourceNoteID))"
+            + "-gp=\(idComponent(event.sourceGridPosition))-gs=\(idComponent(event.sourceGridSize))"
     }
 }
 
@@ -205,6 +216,11 @@ private extension NotationLayoutEngine {
             return .failure(.invalid("partial normalized tuple"))
         }
         guard measureIndex >= 0 else { return .failure(.invalid("negative normalized measure index")) }
+        guard measureIndex < Self.maximumRenderableMeasureCount else {
+            return .failure(.invalid(
+                "control measure exceeds renderable limit (\(Self.maximumRenderableMeasureCount))"
+            ))
+        }
         guard absoluteTick >= 0 else { return .failure(.invalid("negative normalized absolute tick")) }
         guard tick >= 0 else { return .failure(.invalid("negative normalized measure tick")) }
         guard resolution > 0 else { return .failure(.invalid("nonpositive normalized source resolution")) }
@@ -233,9 +249,15 @@ private extension NotationLayoutEngine {
             return .failure(.invalid("manual measure offset outside zero through one"))
         }
         let reachesNextMeasure = event.measureOffset == 1
+        let measureIndex = reachesNextMeasure ? event.measureNumber : event.measureNumber - 1
+        guard measureIndex < Self.maximumRenderableMeasureCount else {
+            return .failure(.invalid(
+                "control measure exceeds renderable limit (\(Self.maximumRenderableMeasureCount))"
+            ))
+        }
         return .success(SemanticallyTimedControl(
             event: event,
-            measureIndex: reachesNextMeasure ? event.measureNumber : event.measureNumber - 1,
+            measureIndex: measureIndex,
             projection: .manual(offset: reachesNextMeasure ? 0 : event.measureOffset)
         ))
     }
@@ -353,9 +375,10 @@ private func optionalIntComesBefore(_ lhs: Int?, _ rhs: Int?) -> Bool {
 }
 
 private func idComponent(_ value: String?) -> String {
-    value ?? "nil"
+    guard let value else { return "n" }
+    return "s\(value.utf8.count):\(value)"
 }
 
 private func idComponent(_ value: Int?) -> String {
-    value.map(String.init) ?? "nil"
+    value.map { "i\($0)" } ?? "n"
 }
