@@ -58,6 +58,112 @@ struct NotationNoteHeadView: View, Equatable {
                 height: size.height
             )
             .position(noteHead.position)
+            .accessibilityLabel(noteHead.accessibilityLabel)
+    }
+}
+
+struct NotationRestView: View, Equatable {
+    let rest: RenderedRest
+    let style: NotationLayoutStyle
+
+    var body: some View {
+        ZStack {
+            switch rest.duration {
+            case .fullMeasure, .half:
+                Rectangle()
+                    .fill(Palette.chalk)
+                    .frame(
+                        width: style.fullMeasureRestWidth,
+                        height: style.fullMeasureRestHeight
+                    )
+                    .position(rest.position)
+            case .quarter:
+                quarterRestPath
+                    .stroke(
+                        Palette.chalk,
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+            case .eighth, .sixteenth, .thirtySecond, .sixtyFourth:
+                hookedRestPath
+                    .stroke(
+                        Palette.chalk,
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+                    )
+            }
+        }
+        .accessibilityLabel(rest.accessibilityLabel)
+    }
+
+    private var quarterRestPath: Path {
+        let halfWidth = style.restSymbolWidth / 2
+        let halfHeight = style.restSymbolHeight / 2
+        var path = Path()
+        path.move(to: CGPoint(x: rest.position.x + halfWidth * 0.45, y: rest.position.y - halfHeight))
+        path.addLine(to: CGPoint(x: rest.position.x - halfWidth * 0.35, y: rest.position.y - halfHeight * 0.2))
+        path.addLine(to: CGPoint(x: rest.position.x + halfWidth * 0.25, y: rest.position.y + halfHeight * 0.15))
+        path.addLine(to: CGPoint(x: rest.position.x - halfWidth * 0.4, y: rest.position.y + halfHeight * 0.55))
+        path.addLine(to: CGPoint(x: rest.position.x + halfWidth * 0.35, y: rest.position.y + halfHeight))
+        return path
+    }
+
+    private var hookedRestPath: Path {
+        let halfHeight = style.restSymbolHeight / 2
+        let stemX = rest.position.x - style.restSymbolWidth * 0.2
+        let stemTop = rest.position.y - halfHeight
+        let hookSpacing = style.restSymbolHeight / 5
+        var path = Path()
+        path.move(to: CGPoint(x: stemX, y: stemTop))
+        path.addLine(to: CGPoint(x: stemX, y: rest.position.y + halfHeight))
+        for index in 0..<hookCount {
+            let hookY = stemTop + CGFloat(index) * hookSpacing
+            path.move(to: CGPoint(x: stemX, y: hookY))
+            path.addCurve(
+                to: CGPoint(x: stemX + style.restSymbolWidth * 0.7, y: hookY + hookSpacing * 0.8),
+                control1: CGPoint(x: stemX + style.restSymbolWidth * 0.35, y: hookY),
+                control2: CGPoint(x: stemX + style.restSymbolWidth * 0.7, y: hookY + hookSpacing * 0.3)
+            )
+        }
+        return path
+    }
+
+    private var hookCount: Int {
+        switch rest.duration {
+        case .eighth: return 1
+        case .sixteenth: return 2
+        case .thirtySecond: return 3
+        case .sixtyFourth: return 4
+        case .fullMeasure, .half, .quarter: return 0
+        }
+    }
+}
+
+struct NotationStopNoteView: View, Equatable {
+    let stopNote: RenderedStopNote
+    let style: NotationLayoutStyle
+
+    var body: some View {
+        let halfSize = style.stopMarkSize / 2
+        Path { path in
+            path.move(to: CGPoint(x: stopNote.position.x - halfSize, y: stopNote.position.y))
+            path.addLine(to: CGPoint(x: stopNote.position.x + halfSize, y: stopNote.position.y))
+            path.move(to: CGPoint(x: stopNote.position.x, y: stopNote.position.y - halfSize))
+            path.addLine(to: CGPoint(x: stopNote.position.x, y: stopNote.position.y + halfSize))
+        }
+        .stroke(Palette.chalk, lineWidth: style.stopMarkStrokeWidth)
+        .accessibilityLabel(stopNote.accessibilityLabel)
+    }
+}
+
+struct NotationArticulationView: View, Equatable {
+    let articulation: RenderedArticulation
+    let style: NotationLayoutStyle
+
+    var body: some View {
+        Circle()
+            .stroke(Palette.chalk, lineWidth: style.articulationStrokeWidth)
+            .frame(width: style.articulationDiameter, height: style.articulationDiameter)
+            .position(articulation.position)
+            .accessibilityHidden(true)
     }
 }
 

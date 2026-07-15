@@ -77,9 +77,11 @@ extension GameplayViewModel {
 
         // Track which row the playhead is on so the view can auto-scroll. Only
         // assign on change to avoid spurious observer churn at 30 Hz.
-        let newRow = rowForMeasure(continuousMeasureIdx)
-        if newRow != currentRow {
-            currentRow = newRow
+        if cachedNotationLayout.hasPlayableContent || !cachedNotationLayout.hasRenderableContent {
+            let newRow = rowForMeasure(continuousMeasureIdx)
+            if newRow != currentRow {
+                currentRow = newRow
+            }
         }
 
         updatePlaybackProgress(elapsedTime: elapsedTime)
@@ -139,8 +141,8 @@ extension GameplayViewModel {
     /// indices clamp to the last valid measure so the cursor stays on the final row
     /// after the song ends instead of snapping back to row 0.
     func rowForMeasure(_ measureIndex: Int) -> Int {
-        let isNotationLayoutActive = !cachedNotationLayout.noteHeads.isEmpty
-        if isNotationLayoutActive {
+        if cachedNotationLayout.hasRenderableContent {
+            guard cachedNotationLayout.hasPlayableContent else { return currentRow }
             guard !cachedNotationLayout.measures.isEmpty else { return 0 }
             let clamped = min(max(measureIndex, 0), cachedNotationLayout.measures.count - 1)
             return cachedMeasureRowMap[clamped] ?? 0
@@ -170,13 +172,14 @@ extension GameplayViewModel {
         let measureIndex = Int(continuousMeasureFraction)
         let beatWithinMeasure = totalBeatsElapsed - Double(measureIndex * beatsPerMeasure)
 
-        let isNotationLayoutActive = !cachedNotationLayout.noteHeads.isEmpty
+        let hasRenderableNotation = cachedNotationLayout.hasRenderableContent
+        let hasPlayableNotation = cachedNotationLayout.hasPlayableContent
         // Clamp measureIndex to valid range for notation layout lookup.
         // Also clamp beatWithinMeasure so the purple bar stays at the end
         // of the final measure instead of jumping back to beat 0.
         var clampedMeasureIndex = measureIndex
         var clampedBeatWithinMeasure = beatWithinMeasure
-        if isNotationLayoutActive && measureIndex >= cachedNotationLayout.measures.count {
+        if hasPlayableNotation && measureIndex >= cachedNotationLayout.measures.count {
             clampedMeasureIndex = cachedNotationLayout.measures.count - 1
             clampedBeatWithinMeasure = Double(beatsPerMeasure)
         }
@@ -186,7 +189,7 @@ extension GameplayViewModel {
         ) {
             return notationPosition
         }
-        if isNotationLayoutActive {
+        if hasRenderableNotation {
             return nil
         }
 
@@ -230,7 +233,7 @@ extension GameplayViewModel {
         measureIndex: Int,
         beatWithinMeasure: Double
     ) -> (x: Double, y: Double)? {
-        guard let track = track, !cachedNotationLayout.noteHeads.isEmpty else { return nil }
+        guard let track = track, cachedNotationLayout.hasPlayableContent else { return nil }
         guard let measure = cachedNotationMeasuresByIndex[measureIndex] else {
             return nil
         }

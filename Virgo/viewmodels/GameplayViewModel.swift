@@ -54,6 +54,8 @@ final class GameplayViewModel {
     var cachedSong: Song?
     /// Cached notes array to avoid relationship access during rendering
     var cachedNotes: [Note] = []
+    /// Immutable control snapshots; views/layout never traverse the SwiftData relationship.
+    var cachedControlEvents: [NotationControlEvent] = []
     /// Flag indicating whether async data loading is complete
     var isDataLoaded = false
     /// Flag indicating whether gameplay-derived layout/audio state has been prepared.
@@ -307,6 +309,7 @@ final class GameplayViewModel {
         isGameplayPrepared = false
         cachedSong = chart.song
         cachedNotes = chart.notes.map { $0 }
+        cachedControlEvents = chart.controlEvents.map(NotationControlEvent.init)
         // Pre-sort notes by time position once so scanForMissedNotes can advance
         // a forward-only cursor instead of re-walking the full list each tick.
         sortedNotesByTimePosition = cachedNotes.sorted {
