@@ -112,7 +112,7 @@ struct NotationRestTopologyTests {
         ])
     }
 
-    @Test("rest durations are a closed eight-case set without an ordinary full rest")
+    @Test("rest vocabulary is seven printed cases plus an indeterminate sentinel, with no ordinary full rest")
     func restDurationsAreClosed() {
         #expect(Set(NotationRestDuration.allCases) == [
             .fullMeasure,
@@ -124,6 +124,11 @@ struct NotationRestTopologyTests {
             .sixtyFourth,
             .indeterminate
         ])
+        // The seven printed cases form the closed rest vocabulary.
+        let printedCases: Set<NotationRestDuration> = [
+            .fullMeasure, .half, .quarter, .eighth, .sixteenth, .thirtySecond, .sixtyFourth
+        ]
+        #expect(printedCases.isDisjoint(with: [.indeterminate]))
         #expect(NotationRestDuration.allCases.allSatisfy { $0.rawValue != "full" })
     }
 

@@ -14,6 +14,11 @@ import SwiftData
 
 // MARK: - Chart Computed Properties
 
+// Schema note: These tests create Chart/ChartControlEvent instances without
+// a ModelContainer. If persistence-dependent tests are added here, use
+// TestContainer.shared (which includes ChartControlEvent.self in its schema)
+// or add ChartControlEvent.self to any local Schema registration.
+
 @Suite("Chart Computed Property Tests")
 struct ChartComputedPropertyTests {
 
