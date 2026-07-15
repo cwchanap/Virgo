@@ -13,6 +13,11 @@ import SwiftData
 
 struct NavigationTests {
 
+    // Schema note: This suite relies on TestContainer.shared for its
+    // ModelContainer, which includes ChartControlEvent.self in its schema.
+    // If a local container is reintroduced here, add ChartControlEvent.self
+    // to its Schema registration.
+
     @Test func testChartSelectionTriggersNavigation() async throws {
         try await TestSetup.withTestSetup {
             let context = await TestContainer.shared.context

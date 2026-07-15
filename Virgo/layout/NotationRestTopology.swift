@@ -4,6 +4,13 @@ struct RestTimelineNote: Hashable {
     let durationTicks: Int?
 }
 
+/// Rest duration vocabulary.
+///
+/// The seven printed cases (`fullMeasure` … `sixtyFourth`) form the closed
+/// rest vocabulary specified in the implementation plan. `indeterminate` is
+/// an internal-only sentinel for hidden spacing spans that do not align to
+/// any vocabulary case; it is never paired with `.printed` visibility and
+/// is never rendered as a rest symbol.
 enum NotationRestDuration: String, CaseIterable, Hashable {
     case fullMeasure
     case half
@@ -340,18 +347,18 @@ private extension NotationRestTopologyBuilder {
 
         var cursor = startTick
         while cursor < endTick {
-            guard let candidate = decompositionOrder.first(where: { duration in
+            var candidateTicks: Int?
+            let candidate = decompositionOrder.first { duration in
                 guard let ticks = restDurationTicks(
                     for: duration,
                     ticksPerMeasure: measure.ticksPerMeasure,
                     timeSignature: measure.timeSignature
                 ) else { return false }
-                return ticks > 0 && ticks <= endTick - cursor && cursor.isMultiple(of: ticks)
-            }), let candidateTicks = restDurationTicks(
-                for: candidate,
-                ticksPerMeasure: measure.ticksPerMeasure,
-                timeSignature: measure.timeSignature
-            ) else {
+                guard ticks > 0, ticks <= endTick - cursor, cursor.isMultiple(of: ticks) else { return false }
+                candidateTicks = ticks
+                return true
+            }
+            guard let candidate, let ticks = candidateTicks else {
                 events.append(RestTopologyEvent(
                     measureIndex: measure.measureIndex,
                     voice: context.voice,
@@ -367,11 +374,11 @@ private extension NotationRestTopologyBuilder {
                 measureIndex: measure.measureIndex,
                 voice: context.voice,
                 startTick: cursor,
-                durationTicks: candidateTicks,
+                durationTicks: ticks,
                 duration: candidate,
                 visibility: .printed
             ))
-            cursor += candidateTicks
+            cursor += ticks
         }
     }
 
