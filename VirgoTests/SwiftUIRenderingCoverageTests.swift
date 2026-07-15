@@ -536,6 +536,39 @@ struct SwiftUIRenderingCoverageTests {
             )
         }
     }
+
+    @Test("Gameplay sheet auto-scroll requires playable notation")
+    func testGameplaySheetAutoScrollRequiresPlayableNotation() async throws {
+        try await TestSetup.withTestSetup {
+            let restOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+                chart: Chart(difficulty: .medium),
+                noteCount: 0
+            )
+            await restOnlyViewModel.loadChartData()
+            restOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let controlOnlyChart = Chart(difficulty: .medium)
+            controlOnlyChart.controlEvents.append(ChartControlEvent(
+                kind: .choke,
+                measureNumber: 1,
+                measureOffset: 0,
+                targetLaneID: "1A"
+            ))
+            let controlOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: controlOnlyChart)
+            await controlOnlyViewModel.loadChartData()
+            controlOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let playableViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+            await playableViewModel.loadChartData()
+            playableViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let gameplayView = GameplayView(chart: playableViewModel.chart, metronome: playableViewModel.metronome)
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: restOnlyViewModel, isPlaying: true))
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: controlOnlyViewModel, isPlaying: true))
+            #expect(gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: true))
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: false))
+        }
+    }
 }
 
 private extension SwiftUIRenderingCoverageTests {

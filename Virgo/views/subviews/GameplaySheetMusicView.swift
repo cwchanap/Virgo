@@ -33,13 +33,19 @@ extension GameplayView {
                 }
                 .background(Palette.stage)
                 .onChange(of: viewModel.currentRow) { _, newRow in
-                    guard viewModel.isPlaying else { return }
+                    guard shouldAutoScrollSheet(
+                        viewModel: viewModel,
+                        isPlaying: viewModel.isPlaying
+                    ) else { return }
                     withAnimation(.easeInOut(duration: 0.25)) {
                         proxy.scrollTo("row_\(newRow)", anchor: .top)
                     }
                 }
                 .onChange(of: viewModel.isPlaying) { _, nowPlaying in
-                    guard nowPlaying else { return }
+                    guard shouldAutoScrollSheet(
+                        viewModel: viewModel,
+                        isPlaying: nowPlaying
+                    ) else { return }
                     withAnimation(.easeInOut(duration: 0.25)) {
                         proxy.scrollTo("row_\(viewModel.currentRow)", anchor: .top)
                     }
@@ -53,6 +59,10 @@ extension GameplayView {
             Palette.stage
                 .overlay(Text("Loading...").foregroundColor(Palette.chalk))
         }
+    }
+
+    func shouldAutoScrollSheet(viewModel: GameplayViewModel, isPlaying: Bool) -> Bool {
+        isPlaying && viewModel.cachedNotationLayout.hasPlayableContent
     }
 
     func staticSheetMusicContent(
