@@ -17,15 +17,6 @@ import SwiftData
 @Suite("Chart Computed Property Tests")
 struct ChartComputedPropertyTests {
 
-    // A shared in-memory container so we can insert models when needed.
-    static let container: ModelContainer = {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        // swiftlint:disable:next force_try
-        return try! ModelContainer(for: Song.self, Chart.self, Note.self, ChartControlEvent.self,
-                                   ServerSong.self, ServerChart.self,
-                                   configurations: config)
-    }()
-
     // MARK: - Defaults when song == nil
 
     @Test("Chart.title returns 'Unknown Song' when song is nil")
