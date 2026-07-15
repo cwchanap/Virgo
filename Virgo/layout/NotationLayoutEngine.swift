@@ -22,19 +22,26 @@ struct NotationLayoutEngine {
     func layout(input: NotationLayoutInput) -> NotationLayout {
         let sortedNotes = input.notes.sorted {
             MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
-            < MeasureUtils.timePosition(measureNumber: $1.measureNumber, measureOffset: $1.measureOffset)
+                < MeasureUtils.timePosition(measureNumber: $1.measureNumber, measureOffset: $1.measureOffset)
         }
-        let maxNormalizedMeasureIndex = sortedNotes.map { note in
-            MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
-                measureNumber: note.measureNumber, measureOffset: note.measureOffset
-            ))
-        }.max() ?? 0
-        let totalMeasures = max(input.minimumMeasureCount, maxNormalizedMeasureIndex + 1, 1)
+        let controlTiming = resolveControlTimings(input.controlEvents)
+        let totalMeasures = totalMeasureCount(
+            notes: sortedNotes,
+            controls: controlTiming.controls,
+            minimumMeasureCount: input.minimumMeasureCount
+        )
         let tabGrid = buildTabGrid(notes: sortedNotes, input: input)
         let measures = buildMeasures(totalMeasures: totalMeasures, tabGrid: tabGrid, input: input)
         let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, tabGrid: tabGrid, input: input)
         let derived = buildDerivedArtifacts(noteHeads: noteHeads, measures: measures, tabGrid: tabGrid, input: input)
         let rests = buildRests(noteHeads: noteHeads, measures: measures, tabGrid: tabGrid, input: input)
+        let renderedControls = buildStopNotes(
+            controls: controlTiming.controls,
+            measures: measures,
+            tabGrid: tabGrid,
+            input: input
+        )
+        let articulations = buildArticulations(noteHeads: noteHeads, style: input.style)
         let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
         let noteHeadIDsByLayoutTick = Dictionary(
             grouping: noteHeads,
@@ -45,6 +52,7 @@ struct NotationLayoutEngine {
                 GameplayLayout.MeasurePosition(row: $0.row, xOffset: $0.xOffset, measureIndex: $0.measureIndex)
             }
         )
+        logControlDiagnostics(timing: controlTiming, rendering: renderedControls)
 
         return NotationLayout(
             tabGrid: tabGrid,
@@ -52,8 +60,8 @@ struct NotationLayoutEngine {
             noteHeadSize: input.style.noteHeadSize,
             noteHeads: noteHeads,
             rests: rests,
-            stopNotes: [],
-            articulations: [],
+            stopNotes: renderedControls.stopNotes,
+            articulations: articulations,
             stems: derived.stems,
             beams: derived.beams,
             flags: derived.flags,
@@ -287,7 +295,7 @@ struct NotationLayoutEngine {
         return timePos - Double(MeasureUtils.measureIndex(from: timePos))
     }
 
-    private func staffStep(for position: GameplayLayout.NotePosition) -> Int {
+    func staffStep(for position: GameplayLayout.NotePosition) -> Int {
         Int((position.yOffset / (GameplayLayout.staffLineSpacing / 2)).rounded())
     }
 
