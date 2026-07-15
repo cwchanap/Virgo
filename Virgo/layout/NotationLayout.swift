@@ -189,9 +189,20 @@ struct NotationLayout {
     /// the sheet applies this inset to the complete notation coordinate system.
     func topContentInset(style: NotationLayoutStyle) -> CGFloat {
         let minimumArticulationY = articulations
-            .map { $0.position.y - style.articulationDiameter / 2 }
+            .map {
+                $0.position.y
+                    - style.articulationDiameter / 2
+                    - style.articulationStrokeWidth / 2
+            }
             .min() ?? 0
-        return max(0, -minimumArticulationY)
+        let minimumStopY = stopNotes
+            .map {
+                $0.position.y
+                    - style.stopMarkSize / 2
+                    - style.stopMarkStrokeWidth / 2
+            }
+            .min() ?? 0
+        return max(0, -min(minimumArticulationY, minimumStopY))
     }
 
     /// Minimum content width needed to contain all rendered primitives.

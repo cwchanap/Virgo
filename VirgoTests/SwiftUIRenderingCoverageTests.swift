@@ -324,7 +324,9 @@ struct SwiftUIRenderingCoverageTests {
         let articulation = try #require(layout.articulations.first)
         let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: head.row)
         let existingTopMargin = (line5Y - head.position.y) + GameplayLayout.staffLineSpacing
-        let topEdge = articulation.position.y - style.articulationDiameter / 2
+        let topEdge = articulation.position.y
+            - style.articulationDiameter / 2
+            - style.articulationStrokeWidth / 2
         let sheetOriginY: CGFloat = 0
         let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: Chart(difficulty: .medium))
         viewModel.cachedNotationLayout = layout
@@ -333,6 +335,35 @@ struct SwiftUIRenderingCoverageTests {
 
         #expect(line5Y - articulation.position.y <= existingTopMargin)
         #expect(topEdge + contentTopInset >= sheetOriginY)
+        #expect(gameplayView.sheetContentHeight(viewModel: viewModel) == layout.totalHeight + contentTopInset)
+    }
+
+    @Test("highest control-only stop mark painted bounds stay inside the sheet origin")
+    func testHighestControlOnlyStopMarkStaysInsideSheetOrigin() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let event = NotationControlEvent(ChartControlEvent(
+            kind: .stop,
+            measureNumber: 1,
+            measureOffset: 0,
+            targetLaneID: "1A"
+        ))
+        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+            notes: [],
+            controlEvents: [event],
+            timeSignature: .fourFour,
+            style: style,
+            notePositionOverrides: [.crash: .aboveLine9]
+        ))
+        let stop = try #require(layout.stopNotes.first)
+        let paintedTopEdge = stop.position.y - style.stopMarkSize / 2 - style.stopMarkStrokeWidth / 2
+        let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: Chart(difficulty: .medium))
+        viewModel.cachedNotationLayout = layout
+        let gameplayView = GameplayView(chart: viewModel.chart, metronome: viewModel.metronome)
+        let contentTopInset = gameplayView.sheetContentTopInset(viewModel: viewModel)
+
+        #expect(!layout.hasPlayableContent)
+        #expect(layout.hasRenderableContent)
+        #expect(paintedTopEdge + contentTopInset >= 0)
         #expect(gameplayView.sheetContentHeight(viewModel: viewModel) == layout.totalHeight + contentTopInset)
     }
 
