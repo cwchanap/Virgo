@@ -34,6 +34,7 @@ struct NotationLayoutEngine {
         let measures = buildMeasures(totalMeasures: totalMeasures, tabGrid: tabGrid, input: input)
         let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, tabGrid: tabGrid, input: input)
         let derived = buildDerivedArtifacts(noteHeads: noteHeads, measures: measures, tabGrid: tabGrid, input: input)
+        let rests = buildRests(noteHeads: noteHeads, measures: measures, tabGrid: tabGrid, input: input)
         let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
         let noteHeadIDsByLayoutTick = Dictionary(
             grouping: noteHeads,
@@ -50,6 +51,9 @@ struct NotationLayoutEngine {
             measures: measures,
             noteHeadSize: input.style.noteHeadSize,
             noteHeads: noteHeads,
+            rests: rests,
+            stopNotes: [],
+            articulations: [],
             stems: derived.stems,
             beams: derived.beams,
             flags: derived.flags,
