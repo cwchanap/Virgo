@@ -5,15 +5,6 @@ import Testing
 @Suite("Chart Control Event Tests", .serialized)
 @MainActor
 struct ChartControlEventTests {
-    private func makeContainer() throws -> ModelContainer {
-        let schema = Schema([
-            Song.self, Chart.self, Note.self, ChartControlEvent.self,
-            ServerSong.self, ServerChart.self, ScoreRecord.self
-        ])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: [configuration])
-    }
-
     @Test("control kinds preserve stable raw values")
     func kindRawValuesAreStable() {
         #expect(NotationControlEventKind.stop.rawValue == "stop")
@@ -52,27 +43,28 @@ struct ChartControlEventTests {
     }
 
     @Test("control persists and Chart deletion cascades")
-    func persistenceAndCascade() throws {
-        let container = try makeContainer()
-        let context = container.mainContext
-        let chart = Chart(difficulty: .medium)
-        let event = ChartControlEvent(
-            kind: .stop,
-            measureNumber: 1,
-            measureOffset: 0.5,
-            chart: chart,
-            targetLaneID: "18"
-        )
-        chart.controlEvents = [event]
-        context.insert(chart)
-        try context.save()
+    func persistenceAndCascade() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let chart = Chart(difficulty: .medium)
+            let event = ChartControlEvent(
+                kind: .stop,
+                measureNumber: 1,
+                measureOffset: 0.5,
+                chart: chart,
+                targetLaneID: "18"
+            )
+            chart.controlEvents = [event]
+            context.insert(chart)
+            try context.save()
 
-        #expect(try context.fetch(FetchDescriptor<ChartControlEvent>()).count == 1)
+            #expect(try context.fetch(FetchDescriptor<ChartControlEvent>()).count == 1)
 
-        context.delete(chart)
-        try context.save()
+            context.delete(chart)
+            try context.save()
 
-        #expect(try context.fetch(FetchDescriptor<ChartControlEvent>()).isEmpty)
+            #expect(try context.fetch(FetchDescriptor<ChartControlEvent>()).isEmpty)
+        }
     }
 
     @Test("fixture copy preserves controls separately from notes")

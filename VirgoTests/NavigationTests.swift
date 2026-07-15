@@ -12,34 +12,23 @@ import SwiftData
 @testable import Virgo
 
 struct NavigationTests {
-    
-    // Create a test model container for SwiftData models
-    static let testContainer: ModelContainer = {
-        do {
-            let config = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try ModelContainer(
-                for: Song.self, Chart.self, Note.self, ChartControlEvent.self,
-                configurations: config
-            )
-        } catch {
-            fatalError("Failed to create test container: \(error)")
-        }
-    }()
 
     @Test func testChartSelectionTriggersNavigation() async throws {
-        let context = ModelContext(Self.testContainer)
-        let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
-        let chart = Chart(difficulty: .medium, song: song)
-        context.insert(song)
-        context.insert(chart)
+        try await TestSetup.withTestSetup {
+            let context = await TestContainer.shared.context
+            let song = Song(title: "Test Song", artist: "Test Artist", bpm: 120, duration: "3:00", genre: "Rock")
+            let chart = Chart(difficulty: .medium, song: song)
+            context.insert(song)
+            context.insert(chart)
 
-        var navigation = GameplayNavigationState()
+            var navigation = GameplayNavigationState()
 
-        navigation.openGameplay(with: chart)
+            navigation.openGameplay(with: chart)
 
-        #expect(navigation.selectedChart != nil)
-        #expect(navigation.selectedChart?.difficulty == .medium)
-        #expect(navigation.isShowingGameplay)
+            #expect(navigation.selectedChart != nil)
+            #expect(navigation.selectedChart?.difficulty == .medium)
+            #expect(navigation.isShowingGameplay)
+        }
     }
 
     @Test func testNavigationStateInitialization() async throws {

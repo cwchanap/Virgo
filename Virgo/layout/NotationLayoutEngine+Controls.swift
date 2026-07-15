@@ -25,6 +25,7 @@ extension NotationLayoutEngine {
     struct StopNoteBuildResult {
         let stopNotes: [RenderedStopNote]
         let inexactSourceResolutions: Set<Int>
+        let inexactManualOffsets: Set<Double>
         let unresolvedTargetLaneIDs: Set<String>
     }
 
@@ -71,6 +72,7 @@ extension NotationLayoutEngine {
         let measuresByIndex = Dictionary(uniqueKeysWithValues: measures.map { ($0.measureIndex, $0) })
         var candidates: [StopNoteCandidate] = []
         var inexactSourceResolutions: Set<Int> = []
+        var inexactManualOffsets: Set<Double> = []
         var unresolvedTargetLaneIDs: Set<String> = []
 
         for control in controls {
@@ -82,12 +84,16 @@ extension NotationLayoutEngine {
                 unresolvedTargetLaneIDs.insert(control.event.targetLaneID?.uppercased() ?? "<missing>")
                 target = nil
             }
-            let targetTick = projectedTick(
+            // Project the tick only after the target is resolved so that
+            // unresolved-target controls are not also recorded as projection
+            // failures (a separate, conflated diagnostic).
+            guard let target else { continue }
+            guard let targetTick = projectedTick(
                 for: control,
                 targetTicksPerMeasure: tabGrid.ticksPerMeasure,
-                inexactSourceResolutions: &inexactSourceResolutions
-            )
-            guard let target, let targetTick, let measure = measuresByIndex[control.measureIndex] else { continue }
+                inexactSourceResolutions: &inexactSourceResolutions,
+                inexactManualOffsets: &inexactManualOffsets
+            ), let measure = measuresByIndex[control.measureIndex] else { continue }
             candidates.append(stopNoteCandidate(
                 control: control,
                 target: target,
@@ -103,6 +109,7 @@ extension NotationLayoutEngine {
         return StopNoteBuildResult(
             stopNotes: materializeStopNotes(candidates.sorted(by: stopCandidateComesBefore)),
             inexactSourceResolutions: inexactSourceResolutions,
+            inexactManualOffsets: inexactManualOffsets,
             unresolvedTargetLaneIDs: unresolvedTargetLaneIDs
         )
     }
@@ -142,6 +149,12 @@ extension NotationLayoutEngine {
             Logger.warning(
                 "Notation controls skipped for inexact target-grid projection from resolutions: "
                     + rendering.inexactSourceResolutions.sorted().map(String.init).joined(separator: ", ")
+            )
+        }
+        if !rendering.inexactManualOffsets.isEmpty {
+            Logger.warning(
+                "Notation controls skipped for off-grid manual measure offsets: "
+                    + rendering.inexactManualOffsets.sorted().map { String($0) }.joined(separator: ", ")
             )
         }
         if !rendering.unresolvedTargetLaneIDs.isEmpty {
@@ -265,7 +278,8 @@ private extension NotationLayoutEngine {
     func projectedTick(
         for control: SemanticallyTimedControl,
         targetTicksPerMeasure: Int,
-        inexactSourceResolutions: inout Set<Int>
+        inexactSourceResolutions: inout Set<Int>,
+        inexactManualOffsets: inout Set<Double>
     ) -> Int? {
         switch control.projection {
         case let .normalized(sourceTick, sourceTicksPerMeasure):
@@ -280,7 +294,10 @@ private extension NotationLayoutEngine {
             return tick
         case let .manual(offset):
             let scaled = offset * Double(targetTicksPerMeasure)
-            guard scaled.isFinite, scaled.rounded() == scaled else { return nil }
+            guard scaled.isFinite, scaled.rounded() == scaled else {
+                inexactManualOffsets.insert(offset)
+                return nil
+            }
             return Int(scaled)
         }
     }
