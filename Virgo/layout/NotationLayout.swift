@@ -360,6 +360,7 @@ private extension NotationRestDuration {
         case .sixteenth: return "sixteenth"
         case .thirtySecond: return "thirty-second"
         case .sixtyFourth: return "sixty-fourth"
+        case .indeterminate: return "indeterminate"
         }
     }
 }

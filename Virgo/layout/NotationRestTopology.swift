@@ -12,6 +12,7 @@ enum NotationRestDuration: String, CaseIterable, Hashable {
     case sixteenth
     case thirtySecond
     case sixtyFourth
+    case indeterminate
 }
 
 enum NotationRestVisibility: String, Hashable {
@@ -98,7 +99,7 @@ struct NotationRestTopologyBuilder {
     ) -> Int? {
         let ratio: (numerator: Int, denominator: Int)
         switch duration {
-        case .fullMeasure:
+        case .fullMeasure, .indeterminate:
             return nil
         case .half: ratio = (2, 1)
         case .quarter: ratio = (1, 1)
@@ -356,7 +357,7 @@ private extension NotationRestTopologyBuilder {
                     voice: context.voice,
                     startTick: cursor,
                     durationTicks: endTick - cursor,
-                    duration: .sixtyFourth,
+                    duration: .indeterminate,
                     visibility: .hiddenSpacing
                 ))
                 break
@@ -393,7 +394,7 @@ private extension NotationRestTopologyBuilder {
             voice: context.voice,
             startTick: span.startTick,
             durationTicks: ticks,
-            duration: exactDuration ?? .sixtyFourth,
+            duration: exactDuration ?? .indeterminate,
             visibility: .hiddenSpacing
         )
     }
@@ -419,6 +420,7 @@ private extension NotationRestTopologyBuilder {
         case .sixteenth: return 4
         case .thirtySecond: return 5
         case .sixtyFourth: return 6
+        case .indeterminate: return 7
         }
     }
 

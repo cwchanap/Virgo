@@ -4,9 +4,10 @@ extension NotationLayoutEngine {
     func buildRestTimelineNotes(
         noteHeads: [RenderedNoteHead],
         tabGrid: TabGrid,
-        timeSignature: TimeSignature
+        timeSignature: TimeSignature,
+        topologyBuilder: NotationRestTopologyBuilder
     ) -> [RestTimelineNote] {
-        let builder = NotationRestTopologyBuilder()
+        let builder = topologyBuilder
         return noteHeads.map { head in
             RestTimelineNote(
                 timeColumn: head.timeColumn,
@@ -26,12 +27,14 @@ extension NotationLayoutEngine {
         tabGrid: TabGrid,
         input: NotationLayoutInput
     ) -> [RenderedRest] {
+        let topologyBuilder = NotationRestTopologyBuilder()
         let timelineNotes = buildRestTimelineNotes(
             noteHeads: noteHeads,
             tabGrid: tabGrid,
-            timeSignature: input.timeSignature
+            timeSignature: input.timeSignature,
+            topologyBuilder: topologyBuilder
         )
-        let events = NotationRestTopologyBuilder().build(
+        let events = topologyBuilder.build(
             notes: timelineNotes,
             totalMeasureCount: measures.count,
             ticksPerMeasure: tabGrid.ticksPerMeasure,
@@ -147,6 +150,7 @@ private func restDurationOrder(_ duration: NotationRestDuration) -> Int {
     case .sixteenth: return 4
     case .thirtySecond: return 5
     case .sixtyFourth: return 6
+    case .indeterminate: return 7
     }
 }
 
