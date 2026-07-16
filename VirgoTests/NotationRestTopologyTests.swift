@@ -368,6 +368,31 @@ extension NotationRestTopologyTests {
             event(voice: .lower, start: 0, ticks: 960, duration: .fullMeasure)
         ])
     }
+
+    @Test("compound meter with uncertain duration extends note span to measure end")
+    func compoundMeterUncertainDurationExtendsToMeasureEnd() {
+        let result = build([
+            note(tick: 120, voice: .upper, durationTicks: nil)
+        ], signature: .sixEight)
+
+        #expect(result == [
+            event(
+                voice: .upper,
+                start: 0,
+                ticks: 120,
+                duration: .indeterminate,
+                visibility: .hiddenSpacing
+            ),
+            event(
+                voice: .upper,
+                start: 120,
+                ticks: 840,
+                duration: .indeterminate,
+                visibility: .hiddenSpacing
+            ),
+            event(voice: .lower, start: 0, ticks: 960, duration: .fullMeasure)
+        ])
+    }
 }
 
 extension NotationRestTopologyTests {
