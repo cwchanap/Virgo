@@ -117,13 +117,13 @@ extension NotationLayoutEngine {
 
     func leastCommonMultiple(_ lhs: Int, _ rhs: Int) -> Int? {
         guard lhs > 0, rhs > 0 else { return nil }
-        let divisor = greatestCommonDivisor(lhs, rhs)
+        let divisor = Self.greatestCommonDivisor(lhs, rhs)
         let divided = lhs / divisor
         guard divided <= Int.max / rhs else { return nil }
         return divided * rhs
     }
 
-    func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
+    static func greatestCommonDivisor(_ lhs: Int, _ rhs: Int) -> Int {
         var a = lhs
         var b = rhs
         while b != 0 {
@@ -196,10 +196,22 @@ extension NotationLayoutEngine {
         guard sourceTick >= 0,
               sourceTicksPerMeasure > 0,
               targetTicksPerMeasure > 0,
-              sourceTick <= sourceTicksPerMeasure,
-              targetTicksPerMeasure.isMultiple(of: sourceTicksPerMeasure) else {
+              sourceTick <= sourceTicksPerMeasure else {
             return nil
         }
-        return sourceTick * (targetTicksPerMeasure / sourceTicksPerMeasure)
+        // Reduce the source fraction by its GCD before checking divisibility.
+        // A position like 2/4 is mathematically 1/2, so a target grid that is a
+        // multiple of the reduced denominator (e.g. 6) places it exactly even
+        // though it is not a multiple of the original denominator. Zero-tick is
+        // always placeable because GCD(0, n) == n reduces it to 0/1. Genuinely
+        // fractional positions (e.g. 1/7 against 960) remain rejected because
+        // the reduced denominator still does not divide the target.
+        let divisor = greatestCommonDivisor(sourceTick, sourceTicksPerMeasure)
+        let reducedTick = sourceTick / divisor
+        let reducedDenominator = sourceTicksPerMeasure / divisor
+        guard targetTicksPerMeasure.isMultiple(of: reducedDenominator) else {
+            return nil
+        }
+        return reducedTick * (targetTicksPerMeasure / reducedDenominator)
     }
 }
