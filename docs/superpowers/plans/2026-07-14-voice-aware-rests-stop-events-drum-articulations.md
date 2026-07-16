@@ -17,7 +17,7 @@
 - Use normalized control timing only when it is complete, internally consistent, and exactly rescalable. Manual controls may use an exact `measureOffset` fallback; controls never use the playable-note rounding fallback.
 - Synthesize rest occupancy independently for upper and lower voices. Controls never occupy a voice or split a rest.
 - Support internal rest decomposition only for simple X/4 meters (2/4, 3/4, 4/4, 5/4). `/8` meters retain full-measure visibility policy but hide active-voice internal complements until HPA-145.
-- Use the closed rest vocabulary `fullMeasure`, `half`, `quarter`, `eighth`, `sixteenth`, `thirtySecond`, and `sixtyFourth`; there is no ordinary `full` case.
+- Use the closed rest vocabulary `fullMeasure`, `half`, `quarter`, `eighth`, `sixteenth`, `thirtySecond`, and `sixtyFourth`; there is no ordinary `full` case. An internal-only `.indeterminate` sentinel is approved for hidden spacing spans that do not align to any vocabulary case; it is never paired with `.printed` visibility and is never rendered as a rest symbol.
 - Do not add dotted rests, tuplets, compound-meter grouping, sloped/cross-staff notation, audio choking, or new scoring/input targets.
 - Keep `ChartRelationshipData` and `ChartRelationshipLoader` unchanged; their note/count snapshot has no production caller and is not the gameplay control-event cache.
 - Update the seven explicit model-container registrations listed in Task 1. Song/Chart-rooted SwiftUI previews continue to discover related models through their root schema and do not become an eighth hand-maintained registration list.
@@ -443,7 +443,7 @@ struct NotationRestTopologyTests {
 In the same suite, add explicit tests for all of these cases; compare complete event arrays rather than counts where possible:
 
 - half, quarter, eighth, sixteenth, thirty-second, and sixty-fourth gaps on aligned columns;
-- `Set(NotationRestDuration.allCases)` equals the seven closed cases and cannot contain an ordinary `.full` value;
+- `Set(NotationRestDuration.allCases)` equals the seven closed printed cases plus the internal-only `.indeterminate` sentinel, and cannot contain an ordinary `.full` value;
 - exact duration conversion in 2/4, 3/4, 4/4, and 5/4;
 - longest exact same-time chord member controls occupancy;
 - an onset clips the prior duration, including a next onset near the barline;
@@ -506,6 +506,9 @@ enum NotationRestDuration: String, CaseIterable, Hashable {
     case sixteenth
     case thirtySecond
     case sixtyFourth
+    /// Internal-only sentinel for hidden spacing spans that do not align to
+    /// any vocabulary case; never paired with `.printed` visibility.
+    case indeterminate
 }
 
 enum NotationRestVisibility: String, Hashable {
@@ -1115,7 +1118,7 @@ Construct and mount:
 - one stop/choke/damp mark each;
 - one open-hi-hat articulation circle.
 
-Assert hidden rests are filtered before `NotationRestView` construction. Assert rendered semantic labels, distinct head labels, and `NotationArticulationView`'s accessibility-hidden contract. Add a geometry assertion that the highest supported open-hi-hat overlay remains inside `spacingAboveLine5(for:)`'s existing extra one-spacing margin.
+Assert hidden rests are filtered before `NotationRestView` construction. Assert rendered semantic labels, distinct head labels, and `NotationArticulationView`'s accessibility-hidden contract. Add a geometry assertion that the highest supported open-hi-hat overlay stays within the sheet origin after `NotationLayout.topContentInset(style:)` is applied (the open circle's painted top edge exceeds the one-spacing margin on its own, so `topContentInset` is the approved containment mechanism).
 
 - [ ] **Step 4: Run gameplay/rendering suites and verify RED**
 
@@ -1170,7 +1173,7 @@ Keep these views geometry-only: no occupancy, tick, target-lane, catalog, or vis
 
 - [ ] **Step 8: Update sheet selection and layer order**
 
-Change `usesNotationLayout(viewModel:)` to `cachedNotationLayout.hasRenderableContent`. Keep `spacingAboveLine5(for:)` notehead-specific and verify its existing one-spacing margin contains the open circle.
+Change `usesNotationLayout(viewModel:)` to `cachedNotationLayout.hasRenderableContent`. Keep `spacingAboveLine5(for:)` notehead-specific. The open-hi-hat overlay's painted top edge exceeds the one-spacing margin on its own; `NotationLayout.topContentInset(style:)` is the approved containment mechanism that shifts the notation coordinate system down so the overlay stays within the sheet origin.
 
 In `drumNotationView`, use this order inside its ZStack:
 

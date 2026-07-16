@@ -1749,6 +1749,47 @@ extension NotationLayoutEngineTests {
         #expect(layout.contentWidth >= GameplayLayout.maxRowWidth)
     }
 
+    // MARK: - Top Content Inset
+
+    @Test("topContentInset is zero without articulations or stop notes")
+    func topContentInsetIsZeroWithoutOverlays() {
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(
+                notes: [Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)],
+                timeSignature: .fourFour
+            )
+        )
+        #expect(layout.topContentInset(style: .gameplayDefault) == 0)
+    }
+
+    @Test("topContentInset contains the highest open-hi-hat overlay inside the sheet origin")
+    func topContentInsetContainsHighestOpenHiHatOverlay() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+            notes: [Note(
+                interval: .quarter,
+                noteType: .openHiHat,
+                measureNumber: 1,
+                measureOffset: 0
+            )],
+            timeSignature: .fourFour,
+            style: style,
+            notePositionOverrides: [.hiHat: .aboveLine9]
+        ))
+        let articulation = try #require(layout.articulations.first)
+        let paintedTopEdge = articulation.position.y
+            - style.articulationDiameter / 2
+            - style.articulationStrokeWidth / 2
+        let inset = layout.topContentInset(style: style)
+
+        // The overlay exceeds the sheet origin on its own (paintedTopEdge < 0).
+        #expect(paintedTopEdge < 0)
+        // topContentInset is positive to compensate.
+        #expect(inset > 0)
+        // After applying the inset, the painted top edge stays within the sheet origin.
+        #expect(paintedTopEdge + inset >= 0)
+    }
+
     @Test("notes in different rows get separate stems even at same x position")
     func notesInDifferentRowsGetSeparateStems() throws {
         let notes = [
