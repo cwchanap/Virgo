@@ -116,6 +116,23 @@ struct NotationLayoutEngineTests {
             sourceTicksPerMeasure: 4,
             targetTicksPerMeasure: 960
         ) == 240)
+        // Reducible fraction: 2/4 == 1/2, and 6 is a multiple of the reduced
+        // denominator 2, so the position places exactly at 3 even though 6 is
+        // not a multiple of the original denominator 4.
+        #expect(NotationLayoutEngine.exactRescaledTick(
+            sourceTick: 2,
+            sourceTicksPerMeasure: 4,
+            targetTicksPerMeasure: 6
+        ) == 3)
+        // Zero-tick is always exactly placeable regardless of grid divisibility:
+        // GCD(0, 7) == 7 reduces 0/7 to 0/1, and every target is a multiple of 1.
+        #expect(NotationLayoutEngine.exactRescaledTick(
+            sourceTick: 0,
+            sourceTicksPerMeasure: 7,
+            targetTicksPerMeasure: 960
+        ) == 0)
+        // Non-reducible fractional position: 1/7 cannot reduce, and 960 is not a
+        // multiple of 7, so the position is genuinely fractional and rejected.
         #expect(NotationLayoutEngine.exactRescaledTick(
             sourceTick: 1,
             sourceTicksPerMeasure: 7,
