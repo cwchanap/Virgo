@@ -209,9 +209,6 @@ struct NotationLayout {
     var contentWidth: CGFloat {
         let primitiveMaxX = [
             noteHeads.map(\.position.x),
-            rests.map(\.position.x),
-            stopNotes.map(\.position.x),
-            articulations.map(\.position.x),
             measureBars.map(\.x),
             beams.flatMap { [$0.start.x, $0.end.x] },
             ledgerLines.flatMap { [$0.start.x, $0.end.x] },
