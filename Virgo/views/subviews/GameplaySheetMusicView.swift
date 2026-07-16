@@ -11,11 +11,10 @@ extension GameplayView {
     @ViewBuilder
     func sheetMusicView(geometry: GeometryProxy) -> some View {
         if let viewModel = viewModel, viewModel.isGameplayPrepared {
-            let usesNotationLayout = usesNotationLayout(viewModel: viewModel)
             let measurePositions = sheetMeasurePositions(viewModel: viewModel)
             let contentWidth = sheetContentWidth(viewModel: viewModel)
-            let contentHeight = sheetContentHeight(viewModel: viewModel)
             let contentTopInset = sheetContentTopInset(viewModel: viewModel)
+            let contentHeight = sheetContentHeight(viewModel: viewModel, contentTopInset: contentTopInset)
             let rowCount = sheetRowCount(measurePositions: measurePositions)
 
             ScrollViewReader { proxy in
@@ -24,8 +23,8 @@ extension GameplayView {
                         staticSheetMusicContent(
                             measurePositions: measurePositions,
                             contentWidth: contentWidth,
+                            contentTopInset: contentTopInset,
                             rowCount: rowCount,
-                            usesNotationLayout: usesNotationLayout,
                             viewModel: viewModel
                         )
                         GameplayPlayheadBarView(viewModel: viewModel)
@@ -73,11 +72,12 @@ extension GameplayView {
     func staticSheetMusicContent(
         measurePositions: [GameplayLayout.MeasurePosition],
         contentWidth: CGFloat,
+        contentTopInset: CGFloat,
         rowCount: Int,
-        usesNotationLayout: Bool,
         viewModel: GameplayViewModel
     ) -> some View {
-        ZStack(alignment: .topLeading) {
+        let usesNotationLayout = usesNotationLayout(viewModel: viewModel)
+        return ZStack(alignment: .topLeading) {
             ZStack(alignment: .topLeading) {
                 // Use cached static staff lines view - created only once
                 if usesNotationLayout {
@@ -99,14 +99,14 @@ extension GameplayView {
                     drumNotationView(viewModel: viewModel)
                 }
             }
-            .offset(y: sheetContentTopInset(viewModel: viewModel))
+            .offset(y: contentTopInset)
 
             // Invisible per-row anchor column. Each anchor occupies the exact
             // vertical span of its row so ScrollViewReader resolves row anchors.
             // Offset by the same top inset as the notation content so anchors
             // align with their rendered rows when overlays extend above the staff.
             rowAnchorColumn(rowCount: rowCount, viewModel: viewModel)
-                .offset(y: sheetContentTopInset(viewModel: viewModel))
+                .offset(y: contentTopInset)
         }
     }
 
@@ -331,12 +331,13 @@ extension GameplayView {
         return measurePositions(from: viewModel.cachedNotationLayout)
     }
 
-    func sheetContentHeight(viewModel: GameplayViewModel) -> CGFloat {
+    func sheetContentHeight(viewModel: GameplayViewModel, contentTopInset: CGFloat? = nil) -> CGFloat {
         guard usesNotationLayout(viewModel: viewModel) else {
             return GameplayLayout.totalHeight(for: viewModel.cachedMeasurePositions)
         }
 
-        return viewModel.cachedNotationLayout.totalHeight + sheetContentTopInset(viewModel: viewModel)
+        let inset = contentTopInset ?? sheetContentTopInset(viewModel: viewModel)
+        return viewModel.cachedNotationLayout.totalHeight + inset
     }
 
     func sheetContentTopInset(viewModel: GameplayViewModel) -> CGFloat {

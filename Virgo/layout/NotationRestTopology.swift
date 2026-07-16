@@ -20,12 +20,35 @@ enum NotationRestDuration: String, CaseIterable, Hashable {
     case thirtySecond
     case sixtyFourth
     case indeterminate
+
+    /// Stable ordering used by rest sort comparators.
+    var sortOrder: Int {
+        switch self {
+        case .fullMeasure: return 0
+        case .half: return 1
+        case .quarter: return 2
+        case .eighth: return 3
+        case .sixteenth: return 4
+        case .thirtySecond: return 5
+        case .sixtyFourth: return 6
+        case .indeterminate: return 7
+        }
+    }
 }
 
 enum NotationRestVisibility: String, Hashable {
     case printed
     case hiddenSpacing
     case hiddenDuplicate
+
+    /// Stable ordering used by rest sort comparators.
+    var sortOrder: Int {
+        switch self {
+        case .printed: return 0
+        case .hiddenSpacing: return 1
+        case .hiddenDuplicate: return 2
+        }
+    }
 }
 
 struct RestTopologyEvent: Hashable {
@@ -412,30 +435,9 @@ private extension NotationRestTopologyBuilder {
         let rhsVoice = rhs.voice == .upper ? 0 : 1
         if lhsVoice != rhsVoice { return lhsVoice < rhsVoice }
         if lhs.startTick != rhs.startTick { return lhs.startTick < rhs.startTick }
-        let lhsDuration = durationOrder(lhs.duration)
-        let rhsDuration = durationOrder(rhs.duration)
-        if lhsDuration != rhsDuration { return lhsDuration < rhsDuration }
-        return visibilityOrder(lhs.visibility) < visibilityOrder(rhs.visibility)
-    }
-
-    private func durationOrder(_ duration: NotationRestDuration) -> Int {
-        switch duration {
-        case .fullMeasure: return 0
-        case .half: return 1
-        case .quarter: return 2
-        case .eighth: return 3
-        case .sixteenth: return 4
-        case .thirtySecond: return 5
-        case .sixtyFourth: return 6
-        case .indeterminate: return 7
+        if lhs.duration.sortOrder != rhs.duration.sortOrder {
+            return lhs.duration.sortOrder < rhs.duration.sortOrder
         }
-    }
-
-    private func visibilityOrder(_ visibility: NotationRestVisibility) -> Int {
-        switch visibility {
-        case .printed: return 0
-        case .hiddenSpacing: return 1
-        case .hiddenDuplicate: return 2
-        }
+        return lhs.visibility.sortOrder < rhs.visibility.sortOrder
     }
 }
