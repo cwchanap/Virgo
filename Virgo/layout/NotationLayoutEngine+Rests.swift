@@ -4,10 +4,9 @@ extension NotationLayoutEngine {
     func buildRestTimelineNotes(
         noteHeads: [RenderedNoteHead],
         tabGrid: TabGrid,
-        timeSignature: TimeSignature,
-        topologyBuilder: NotationRestTopologyBuilder
+        timeSignature: TimeSignature
     ) -> [RestTimelineNote] {
-        let builder = topologyBuilder
+        let builder = NotationRestTopologyBuilder()
         return noteHeads.map { head in
             RestTimelineNote(
                 timeColumn: head.timeColumn,
@@ -31,8 +30,7 @@ extension NotationLayoutEngine {
         let timelineNotes = buildRestTimelineNotes(
             noteHeads: noteHeads,
             tabGrid: tabGrid,
-            timeSignature: input.timeSignature,
-            topologyBuilder: topologyBuilder
+            timeSignature: input.timeSignature
         )
         let events = topologyBuilder.build(
             notes: timelineNotes,
