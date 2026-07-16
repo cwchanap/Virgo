@@ -4,14 +4,14 @@ extension NotationLayoutEngine {
     func buildRestTimelineNotes(
         noteHeads: [RenderedNoteHead],
         tabGrid: TabGrid,
-        timeSignature: TimeSignature
+        timeSignature: TimeSignature,
+        topologyBuilder: NotationRestTopologyBuilder
     ) -> [RestTimelineNote] {
-        let builder = NotationRestTopologyBuilder()
-        return noteHeads.map { head in
+        noteHeads.map { head in
             RestTimelineNote(
                 timeColumn: head.timeColumn,
                 voice: head.voice,
-                durationTicks: builder.noteDurationTicks(
+                durationTicks: topologyBuilder.noteDurationTicks(
                     for: head.interval,
                     ticksPerMeasure: tabGrid.ticksPerMeasure,
                     timeSignature: timeSignature
@@ -30,7 +30,8 @@ extension NotationLayoutEngine {
         let timelineNotes = buildRestTimelineNotes(
             noteHeads: noteHeads,
             tabGrid: tabGrid,
-            timeSignature: input.timeSignature
+            timeSignature: input.timeSignature,
+            topologyBuilder: topologyBuilder
         )
         let events = topologyBuilder.build(
             notes: timelineNotes,
@@ -133,29 +134,8 @@ private func restCandidateComesBefore(_ lhs: RestLayoutCandidate, _ rhs: RestLay
     if left.voice != right.voice { return left.voice == .upper }
     if left.startTick != right.startTick { return left.startTick < right.startTick }
     if left.durationTicks != right.durationTicks { return left.durationTicks < right.durationTicks }
-    let leftDuration = restDurationOrder(left.duration)
-    let rightDuration = restDurationOrder(right.duration)
-    if leftDuration != rightDuration { return leftDuration < rightDuration }
-    return restVisibilityOrder(left.visibility) < restVisibilityOrder(right.visibility)
-}
-
-private func restDurationOrder(_ duration: NotationRestDuration) -> Int {
-    switch duration {
-    case .fullMeasure: return 0
-    case .half: return 1
-    case .quarter: return 2
-    case .eighth: return 3
-    case .sixteenth: return 4
-    case .thirtySecond: return 5
-    case .sixtyFourth: return 6
-    case .indeterminate: return 7
+    if left.duration.sortOrder != right.duration.sortOrder {
+        return left.duration.sortOrder < right.duration.sortOrder
     }
-}
-
-private func restVisibilityOrder(_ visibility: NotationRestVisibility) -> Int {
-    switch visibility {
-    case .printed: return 0
-    case .hiddenSpacing: return 1
-    case .hiddenDuplicate: return 2
-    }
+    return left.visibility.sortOrder < right.visibility.sortOrder
 }

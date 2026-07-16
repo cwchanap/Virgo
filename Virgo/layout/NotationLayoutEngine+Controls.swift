@@ -283,7 +283,7 @@ private extension NotationLayoutEngine {
     ) -> Int? {
         switch control.projection {
         case let .normalized(sourceTick, sourceTicksPerMeasure):
-            guard let tick = exactRescaledTick(
+            guard let tick = Self.exactRescaledTick(
                 sourceTick: sourceTick,
                 sourceTicksPerMeasure: sourceTicksPerMeasure,
                 targetTicksPerMeasure: targetTicksPerMeasure

@@ -176,7 +176,7 @@ extension NotationLayoutEngine {
 
     func tickWithinMeasure(for note: Note, ticksPerMeasure: Int) -> Int {
         if let normalizedGrid = normalizedGridMetadata(for: note),
-           let exactTick = exactRescaledTick(
+           let exactTick = Self.exactRescaledTick(
                 sourceTick: normalizedGrid.tickWithinMeasure,
                 sourceTicksPerMeasure: normalizedGrid.ticksPerMeasure,
                 targetTicksPerMeasure: ticksPerMeasure
@@ -188,7 +188,7 @@ extension NotationLayoutEngine {
         return min(max(Int((offset * Double(ticksPerMeasure)).rounded()), 0), ticksPerMeasure)
     }
 
-    func exactRescaledTick(
+    static func exactRescaledTick(
         sourceTick: Int,
         sourceTicksPerMeasure: Int,
         targetTicksPerMeasure: Int

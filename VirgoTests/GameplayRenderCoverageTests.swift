@@ -143,9 +143,9 @@ struct GameplayRenderCoverageTests {
             vm.updatePurpleBarPosition(elapsedTime: 0.01)
 
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
-            let usesNotationLayout = view.usesNotationLayout(viewModel: vm)
             let measurePositions = view.sheetMeasurePositions(viewModel: vm)
             let contentWidth = view.sheetContentWidth(viewModel: vm)
+            let contentTopInset = view.sheetContentTopInset(viewModel: vm)
             let rowCount = view.sheetRowCount(measurePositions: measurePositions)
 
             var didInvalidate = false
@@ -153,8 +153,8 @@ struct GameplayRenderCoverageTests {
                 _ = view.staticSheetMusicContent(
                     measurePositions: measurePositions,
                     contentWidth: contentWidth,
+                    contentTopInset: contentTopInset,
                     rowCount: rowCount,
-                    usesNotationLayout: usesNotationLayout,
                     viewModel: vm
                 )
             } onChange: {

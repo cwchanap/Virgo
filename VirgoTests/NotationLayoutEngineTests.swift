@@ -111,24 +111,22 @@ struct NotationLayoutEngineTests {
 
     @Test("exact rescaling accepts divisible grids and rejects rounding")
     func exactRescalingDoesNotRound() {
-        let engine = NotationLayoutEngine()
-
-        #expect(engine.exactRescaledTick(
+        #expect(NotationLayoutEngine.exactRescaledTick(
             sourceTick: 1,
             sourceTicksPerMeasure: 4,
             targetTicksPerMeasure: 960
         ) == 240)
-        #expect(engine.exactRescaledTick(
+        #expect(NotationLayoutEngine.exactRescaledTick(
             sourceTick: 1,
             sourceTicksPerMeasure: 7,
             targetTicksPerMeasure: 960
         ) == nil)
-        #expect(engine.exactRescaledTick(
+        #expect(NotationLayoutEngine.exactRescaledTick(
             sourceTick: -1,
             sourceTicksPerMeasure: 4,
             targetTicksPerMeasure: 960
         ) == nil)
-        #expect(engine.exactRescaledTick(
+        #expect(NotationLayoutEngine.exactRescaledTick(
             sourceTick: 5,
             sourceTicksPerMeasure: 4,
             targetTicksPerMeasure: 960
