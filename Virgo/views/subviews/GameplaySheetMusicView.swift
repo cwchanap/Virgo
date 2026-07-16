@@ -103,7 +103,10 @@ extension GameplayView {
 
             // Invisible per-row anchor column. Each anchor occupies the exact
             // vertical span of its row so ScrollViewReader resolves row anchors.
+            // Offset by the same top inset as the notation content so anchors
+            // align with their rendered rows when overlays extend above the staff.
             rowAnchorColumn(rowCount: rowCount, viewModel: viewModel)
+                .offset(y: sheetContentTopInset(viewModel: viewModel))
         }
     }
 
