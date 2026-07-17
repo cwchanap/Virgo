@@ -346,4 +346,152 @@ struct DTXFileParserTests {
             #expect(notes.isEmpty)
         }
     }
+
+    // MARK: - Control Event Parsing
+
+    @Test("header absent produces no control events even with lane-22 chips")
+    func controlEventsEmptyWithoutHeader() throws {
+        let dtx = """
+        #TITLE: No Control
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00022: 16000000
+        """
+        let data = try DTXFileParser.parseChartMetadata(from: dtx)
+        let chart = Chart(difficulty: .medium)
+        #expect(data.controlLaneKinds.isEmpty)
+        #expect(data.toControlEvents(for: chart).isEmpty)
+    }
+
+    @Test("guitar-channel chips on lane 22 are ignored without VIRGO_CONTROL header")
+    func guitarChannelsIgnoredWithoutHeader() throws {
+        let dtx = """
+        #TITLE: Guitar Song
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00022: 0A0B0C0D
+        """
+        let data = try DTXFileParser.parseChartMetadata(from: dtx)
+        let chart = Chart(difficulty: .medium)
+        #expect(data.toControlEvents(for: chart).isEmpty)
+    }
+
+    @Test("header present parses stop chip targeting crash lane 16")
+    func controlEventsParseStopChip() throws {
+        let dtx = """
+        #TITLE: Stop Test
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00021: 16000000
+        """
+        let data = try DTXFileParser.parseChartMetadata(from: dtx)
+        let chart = Chart(difficulty: .medium)
+        let controls = data.toControlEvents(for: chart)
+
+        #expect(controls.count == 1)
+        let control = try #require(controls.first)
+        #expect(control.kind == .stop)
+        #expect(control.targetLaneID == "16")
+        #expect(control.measureNumber == 1)
+        #expect(control.originKind == .dtx)
+        #expect(control.sourceLaneID == "21")
+        #expect(control.sourceNoteID == "16")
+        #expect(control.sourceGridPosition == 0)
+        #expect(control.sourceGridSize == 4)
+        #expect(control.normalizedMeasureIndex == 0)
+        #expect(control.normalizedTickWithinMeasure == 0)
+        #expect(control.normalizedTicksPerMeasure == 4)
+        #expect(control.normalizedAbsoluteTick == 0)
+        #expect(control.chart === chart)
+    }
+
+    @Test("choke and damp chips produce correct kinds")
+    func controlEventsParseChokeAndDamp() throws {
+        let dtx = """
+        #TITLE: Choke Damp
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00022: 16000000
+        #00023: 12000000
+        """
+        let data = try DTXFileParser.parseChartMetadata(from: dtx)
+        let chart = Chart(difficulty: .medium)
+        let controls = data.toControlEvents(for: chart)
+
+        #expect(controls.count == 2)
+        #expect(controls.contains { $0.kind == .choke && $0.targetLaneID == "16" })
+        #expect(controls.contains { $0.kind == .damp && $0.targetLaneID == "12" })
+    }
+
+    @Test("control chips are excluded from toNotes and playable chips from toControlEvents")
+    func bidirectionalExclusion() throws {
+        let dtx = """
+        #TITLE: Mixed
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00012: 01000000
+        #00022: 16000000
+        """
+        let data = try DTXFileParser.parseChartMetadata(from: dtx)
+        let chart = Chart(difficulty: .medium)
+
+        let notes = data.toNotes(for: chart)
+        let controls = data.toControlEvents(for: chart)
+
+        #expect(notes.count == 1)
+        #expect(notes.first?.noteType == .snare)
+        #expect(controls.count == 1)
+        #expect(controls.first?.kind == .choke)
+    }
+
+    @Test("incommensurate control chip is preserved with native grid tuple")
+    func incommensurateControlPreserved() throws {
+        let dtx = """
+        #TITLE: Seven Grid
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00021: 00010000000000
+        """
+        let data = try DTXFileParser.parseChartMetadata(from: dtx)
+        let chart = Chart(difficulty: .medium)
+        let controls = data.toControlEvents(for: chart)
+
+        #expect(controls.count == 1)
+        let control = try #require(controls.first)
+        #expect(control.normalizedTicksPerMeasure == 7)
+        #expect(control.normalizedTickWithinMeasure == 1)
+        #expect(control.normalizedAbsoluteTick == 1)
+    }
+
+    @Test("malformed chip with zero grid size is skipped without crash")
+    func malformedChipSkipped() {
+        let chart = Chart(difficulty: .medium)
+        let data = DTXChartData(
+            title: "T", artist: "A", bpm: 120, difficultyLevel: 50,
+            notes: [DTXNote(measureNumber: 0, laneID: "22", noteID: "16", notePosition: 0, totalPositions: 0)],
+            controlLaneKinds: ["22": .choke]
+        )
+        #expect(data.toControlEvents(for: chart).isEmpty)
+    }
+
+    @Test("DTXChartData initializer without controlLaneKinds defaults to empty")
+    func initializerDefaultsControlLaneKinds() {
+        let data = DTXChartData(
+            title: "T",
+            artist: "A",
+            bpm: 120,
+            difficultyLevel: 50
+        )
+        #expect(data.controlLaneKinds.isEmpty)
+    }
 }

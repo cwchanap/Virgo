@@ -16,6 +16,7 @@ struct DTXMetadata {
     var preview: String?
     var previewImage: String?
     var stageFile: String?
+    var virgoControlEnabled: Bool = false
 }
 
 enum DTXParseError: Error {
@@ -53,6 +54,7 @@ struct DTXChartData {
     let stageFile: String?
     let notes: [DTXNote]
     let bgmStartTimePosition: Double?
+    let controlLaneKinds: [String: NotationControlEventKind]
 
     init(
         title: String,
@@ -63,7 +65,8 @@ struct DTXChartData {
         previewImage: String? = nil,
         stageFile: String? = nil,
         notes: [DTXNote] = [],
-        bgmStartTimePosition: Double? = nil
+        bgmStartTimePosition: Double? = nil,
+        controlLaneKinds: [String: NotationControlEventKind] = [:]
     ) {
         self.title = title
         self.artist = artist
@@ -74,6 +77,7 @@ struct DTXChartData {
         self.stageFile = stageFile
         self.notes = notes
         self.bgmStartTimePosition = bgmStartTimePosition
+        self.controlLaneKinds = controlLaneKinds
     }
 
     /// `nil` when the chart has no BGM lane-01 notes (no authoritative offset).
@@ -206,6 +210,10 @@ class DTXFileParser {
 
         try validateRequiredFields(metadata)
 
+        let controlLaneKinds: [String: NotationControlEventKind] = metadata.virgoControlEnabled
+            ? ["21": .stop, "22": .choke, "23": .damp]
+            : [:]
+
         return DTXChartData(
             title: metadata.title!,
             artist: metadata.artist!,
@@ -215,7 +223,8 @@ class DTXFileParser {
             previewImage: metadata.previewImage,
             stageFile: metadata.stageFile,
             notes: notes,
-            bgmStartTimePosition: Self.bgmStartTimePosition(from: notes)
+            bgmStartTimePosition: Self.bgmStartTimePosition(from: notes),
+            controlLaneKinds: controlLaneKinds
         )
     }
 
@@ -242,6 +251,8 @@ class DTXFileParser {
             metadata.previewImage = extractValue(from: line, prefix: "#PREIMAGE:")
         } else if line.hasPrefix("#STAGEFILE:") {
             metadata.stageFile = extractValue(from: line, prefix: "#STAGEFILE:")
+        } else if line.hasPrefix("#VIRGO_CONTROL:") {
+            metadata.virgoControlEnabled = extractValue(from: line, prefix: "#VIRGO_CONTROL:") == "1"
         }
     }
 
@@ -456,6 +467,38 @@ extension DTXChartData {
                 notationVoiceCandidate: event.voiceCandidate,
                 visualDurationCandidate: event.visualDurationCandidate,
                 articulationCandidate: event.articulationCandidate
+            )
+        }
+    }
+
+    func toControlEvents(for chart: Chart) -> [ChartControlEvent] {
+        guard !controlLaneKinds.isEmpty else { return [] }
+        return notes.compactMap { chip -> ChartControlEvent? in
+            guard let kind = controlLaneKinds[chip.laneID.uppercased()] else { return nil }
+            guard chip.gridSize > 0,
+                  chip.gridPosition >= 0,
+                  chip.gridPosition < chip.gridSize else {
+                Logger.warning(
+                    "DTX control chip skipped — malformed grid: lane \(chip.laneID), "
+                    + "measure \(chip.measureNumber), position \(chip.gridPosition)/\(chip.gridSize)"
+                )
+                return nil
+            }
+            return ChartControlEvent(
+                kind: kind,
+                measureNumber: chip.measureIndex + 1,
+                measureOffset: Double(chip.gridPosition) / Double(chip.gridSize),
+                chart: chart,
+                originKind: .dtx,
+                sourceLaneID: chip.laneID.uppercased(),
+                sourceNoteID: chip.noteID.uppercased(),
+                sourceGridPosition: chip.gridPosition,
+                sourceGridSize: chip.gridSize,
+                normalizedMeasureIndex: chip.measureIndex,
+                normalizedAbsoluteTick: chip.measureIndex * chip.gridSize + chip.gridPosition,
+                normalizedTickWithinMeasure: chip.gridPosition,
+                normalizedTicksPerMeasure: chip.gridSize,
+                targetLaneID: chip.noteID.uppercased()
             )
         }
     }
