@@ -3,7 +3,7 @@
 **Linear issue:** [HPA-214](https://linear.app/cwchanap/issue/HPA-214/wire-dtx-import-to-populate-chartcontrolevent)
 **Parent:** HPA-143 (PR #45) — added the `ChartControlEvent` model, `safeControlEvents` accessor, rest/stop-note rendering, and authored fixture copy, but left the DTX importer intentionally unwired.
 **Date:** 2026-07-16
-**Revision:** 2 — addresses P1/P2 code-review findings (guitar-channel collision, server import path, GCD-reduced resolution, backfill strategy).
+**Revision:** 3 — addresses all code-review findings (native-grid preservation per HPA-143 contract, difficulty-keyed backfill, producer contract, parser-to-render integration test, initializer compatibility).
 
 ## Problem
 
@@ -22,7 +22,9 @@ Populate `ChartControlEvent` from DTX lane/note identity during import so stop/c
 
 ## Approach: Parallel Parsing Path with Header-Gated Control Lanes
 
-Add a control-event parsing path that produces the same drop behavior as the existing `toNotes(for:)` pipeline, keeping the note path byte-for-byte unchanged. Control-lane interpretation is gated behind a `#VIRGO_CONTROL: 1` header so standard DTX channels (including guitar lanes 21–26) are never misinterpreted in third-party files. Both import paths (local fixture and server download) are wired.
+Add a control-event parsing path that produces `ChartControlEvent` rows from DTX control chips, keeping the note path byte-for-byte unchanged. Control-lane interpretation is gated behind a `#VIRGO_CONTROL: 1` header so standard DTX channels (including guitar lanes 21–26) are never misinterpreted in third-party files. Both import paths (local fixture and server download) are wired.
+
+**Key principle (HPA-143 contract):** The importer stores every control chip's **native grid tuple** as its normalized timing. It never drops, rounds, or pre-projects controls. The layout engine decides rendering: if `exactRescaledTick` can project the native fraction onto the tab grid, the mark renders; otherwise the event is preserved (it contributes to measure count) but its visual mark is omitted with a diagnostic. This matches HPA-143's design: "preserve the event, omit its visual mark, and log a diagnostic rather than raising grid resolution or rounding the event."
 
 ## Design
 
@@ -79,11 +81,13 @@ var virgoControlEnabled: Bool = false
 }
 ```
 
-**3c. `DTXChartData` gains a `controlLaneKinds` dictionary** populated from the header:
+**3c. `DTXChartData` gains `controlLaneKinds`** with a defaulted initializer parameter:
 
 ```swift
 let controlLaneKinds: [String: NotationControlEventKind]
 ```
+
+The initializer gains `controlLaneKinds: [String: NotationControlEventKind] = [:]` as a trailing defaulted parameter. This preserves compatibility with all existing call sites (including `DTXFileParserTests.swift:115` which constructs `DTXChartData` without it).
 
 In `parseChartMetadata`, when constructing the return value:
 
@@ -93,21 +97,17 @@ let controlLaneKinds: [String: NotationControlEventKind] = metadata.virgoControl
     : [:]
 ```
 
-This dictionary is the single source of truth for which lanes are control lanes in this chart. When empty (header absent), `toControlEvents(for:)` returns `[]` immediately.
-
-**3d. `DTXChartData.toControlEvents(for:)`** — produces the same drop behavior as `toNotes(for:)`, but without a `NormalizedRhythmicEvent`-style intermediate type. Validation is inline:
+**3d. `DTXChartData.toControlEvents(for:)`** — stores every control chip's native grid tuple. No dropping, no projection, no `sharedTicksPerMeasure`:
 
 1. If `controlLaneKinds` is empty, return `[]`.
-2. Compute `sharedTicksPerMeasure` from **playable chips only** — same `private static` method (`Self.sharedTicksPerMeasure(for:)`), same value the notes use. Since Swift 4, `private` is file-scoped; `toControlEvents(for:)` in the same file accesses it with no visibility change. If it returns `nil` (LCM exceeds `maximumTicksPerMeasure`), return `[]` — the same guard `normalizedRhythmicEvents()` uses.
-3. Filter chips where `controlLaneKinds[chip.laneID.uppercased()] != nil`.
-4. For each control chip, validate tick alignment using **GCD-reduced fraction validation** (matching `exactRescaledTick`'s logic in `NotationLayoutEngine+TabGrid.swift`):
-   - Reduce `chip.gridPosition / chip.gridSize` by `gcd(gridPosition, gridSize)`.
-   - Check `ticksPerMeasure.isMultiple(of: reducedDenominator)`.
-   - If it fails, skip with `Logger.warning`.
-   - Compute `tickWithinMeasure = reducedTick * (ticksPerMeasure / reducedDenominator)`.
+2. Filter chips where `controlLaneKinds[chip.laneID.uppercased()] != nil`.
+3. For each control chip, apply basic sanity guards (matching `NormalizedRhythmicEvent.init?`):
+   - `chip.gridSize > 0`
+   - `chip.gridPosition >= 0`
+   - `chip.gridPosition < chip.gridSize`
    
-   This ensures a control at position `2/8` against a 4-tick grid is accepted (reduces to `1/4`), matching what the layout engine's `exactRescaledTick` will do at render time.
-5. Build `ChartControlEvent` with:
+   If any guard fails, skip with `Logger.warning` (malformed chip, not an incommensurate grid).
+4. Build `ChartControlEvent` storing the chip's **native grid tuple** as normalized timing:
    - `kind`: from `controlLaneKinds[chip.laneID]`
    - `targetLaneID`: `chip.noteID.uppercased()`
    - `originKind`: `.dtx`
@@ -117,11 +117,18 @@ This dictionary is the single source of truth for which lanes are control lanes 
    - `sourceNoteID`: `chip.noteID.uppercased()`
    - `sourceGridPosition` / `sourceGridSize`: from chip
    - `normalizedMeasureIndex`: `chip.measureIndex`
-   - `normalizedAbsoluteTick`: `chip.measureIndex * ticksPerMeasure + tickWithinMeasure`
-   - `normalizedTickWithinMeasure`: the GCD-reduced tick value
-   - `normalizedTicksPerMeasure`: the shared value
+   - `normalizedTickWithinMeasure`: `chip.gridPosition` (native)
+   - `normalizedTicksPerMeasure`: `chip.gridSize` (native)
+   - `normalizedAbsoluteTick`: `chip.measureIndex * chip.gridSize + chip.gridPosition` (native)
 
-Because control chips use the same `sharedTicksPerMeasure` as the notes and the GCD-reduced validation matches `exactRescaledTick`, the layout engine's tick projection always succeeds for accepted controls.
+This is the same pattern `NormalizedRhythmicEvent` uses — each chip carries its own resolution. The layout engine's semantic timing validation (`NotationLayoutEngine+Controls.swift:222-251`) accepts this because:
+- `measureIndex >= 0` ✓
+- `tick >= 0` ✓ (gridPosition >= 0)
+- `resolution > 0` ✓ (gridSize > 0)
+- `tick <= resolution` ✓ (gridPosition < gridSize)
+- `absolute == measureIndex * resolution + tick` ✓ (by construction)
+
+At render time, `exactRescaledTick(sourceTick: gridPosition, sourceTicksPerMeasure: gridSize, targetTicksPerMeasure: tabGrid.ticksPerMeasure)` does GCD reduction and projects. A control at 2/8 reduces to 1/4 and renders on a 960-tick grid at tick 240. A control at 1/7 fails projection (7 does not divide 960) — the mark is omitted but the event is preserved for its measure contribution. This is the HPA-143 contract.
 
 ### 4. Importer Wiring
 
@@ -162,13 +169,16 @@ if let existingSong = try existingSong(with: songId, in: context) {
 }
 ```
 
-`refreshControlEventsIfMissing` logic:
-1. Load imported charts from the folder (same `loadImportedCharts` used by the fresh-import path).
-2. For each existing chart, if `chart.controlEvents` is non-empty, skip (idempotent).
-3. If empty, populate from `importedChart.data.toControlEvents(for: chart)` and insert into context.
-4. Save only if changes were made.
+`refreshControlEventsIfMissing` matches charts by **difficulty** (the stable identity key), not array order:
 
-This runs on every launch for the bundled Soukyuu fixture (which has no control lanes → `toControlEvents` returns `[]` → no-op). For charts with controls, it backfills on the first launch after upgrade.
+1. Decode `SET.def` and call `loadImportedCharts(from:folderURL:setList:)` — this parses each difficulty's DTX file separately, producing one `ImportedChart` per difficulty with its own `DTXChartData`.
+2. For each `ImportedChart`, find the existing `Chart` in `existingSong.charts` where `chart.difficulty == importedChart.difficulty`.
+3. If no matching chart exists, skip.
+4. If the matched chart already has non-empty `safeControlEvents`, skip (idempotent).
+5. If empty, populate from `importedChart.data.toControlEvents(for: chart)`, insert each into context, and set `chart.controlEvents`.
+6. Save only if at least one chart was updated.
+
+This correctly handles multi-difficulty imports: each difficulty's controls come from its own DTX file, never from another difficulty's file. The bundled Soukyuu fixture has no `#VIRGO_CONTROL` header → all `controlLaneKinds` are empty → `toControlEvents` returns `[]` → no-op.
 
 **Server songs:** `ServerSongDownloader` rejects duplicate downloads (dedup by `serverSongId`). Existing server-imported charts cannot be backfilled without delete-and-reimport. This is documented as the expected upgrade path for server songs.
 
@@ -177,23 +187,39 @@ This runs on every launch for the bundled Soukyuu fixture (which has no control 
 - `Song.fixtureCopy` already copies `controlEvents` via `copiedControlEvents` (HPA-143).
 - Bundled Soukyuu fixtures contain no `#VIRGO_CONTROL` header → `controlLaneKinds` is empty → `toControlEvents(for:)` returns `[]` → no rendering change.
 
-### 5. Edge Cases & Diagnostics
+### 5. Producer Contract
+
+Chart authors activate control events by adding one line to their DTX file:
+
+```
+#VIRGO_CONTROL: 1
+```
+
+Then placing chips on lanes 21 (stop), 22 (choke), or 23 (damp), where the 2-char chip value is the target drum's lane ID. The header can appear anywhere in the file before or after note lines (it is processed by `processLine` alongside other metadata).
+
+**Server path:** The server serves raw DTX file content. The `#VIRGO_CONTROL` header is naturally preserved — `ServerSongDownloader.processChart` downloads the file, decodes it, and passes the raw string to `DTXFileParser.parseChartMetadata(from:)`, which processes the header. No server-side changes are needed. A server chart author simply includes the header in their DTX file before uploading.
+
+**Test fixtures:** Tests use inline DTX strings containing the header (no bundled fixture file is modified). This provides end-to-end coverage of the header → parse → populate path without touching production assets.
+
+### 6. Edge Cases & Diagnostics
 
 | Case | Behavior |
 |------|----------|
 | `#VIRGO_CONTROL` header absent | `controlLaneKinds` is empty; `toControlEvents(for:)` returns `[]`; lanes 21/22/23 ignored (including standard guitar chips) |
-| Control chip grid position reduces exactly (e.g. 2/8 → 1/4 against 4-tick grid) | Accepted; GCD-reduced validation matches `exactRescaledTick` |
-| Control chip grid genuinely incommensurate (e.g. 1/7 against 4-tick grid) | Chip dropped, `Logger.warning` with lane/measure/grid info |
+| Control chip on native grid (e.g. 0/4, 2/8, 1/7) | All preserved with native tuple; layout engine projects at render time |
+| Native fraction projectable (e.g. 2/8 → 1/4 on 960-tick grid) | Mark renders at projected tick; layout engine handles GCD reduction |
+| Native fraction incommensurate (e.g. 1/7 on 960-tick grid) | Event preserved (measure contribution retained); mark omitted; layout engine logs diagnostic |
+| Malformed chip (gridSize ≤ 0, gridPosition out of range) | Chip skipped at import with `Logger.warning` |
 | `targetLaneID` doesn't resolve in `DrumNotationCatalog` | Stored as-is; layout engine drops geometry + logs (existing behavior) |
-| Chart has controls but no playable chips | `sharedTicksPerMeasure` = 1; most control grids won't reduce to divide 1 → dropped. Acceptable: a control-only chart with no notes is malformed |
+| Chart has controls but no playable chips | Controls preserved with native tuples; layout engine may or may not project depending on tab grid (which defaults to sixteenth-note baseline) |
 | Duplicate control at same time/target | Both stored; layout engine assigns deterministic `-duplicate-N` suffixes (existing behavior) |
 | Existing Soukyuu fixtures (no header) | `toControlEvents` returns `[]`, zero rendering change |
 | Existing local import without controls | `refreshControlEventsIfMissing` backfills on next launch if DTX file has `#VIRGO_CONTROL` header |
 | Existing server import without controls | Not backfilled; requires delete-and-reimport |
 
-No new validation layer. The layout engine's two-phase timing validation (`NotationLayoutEngine+Controls.swift`) already handles all rendering-side decisions. The importer populates data faithfully; the engine renders or drops with diagnostics.
+No new validation layer at render time. The layout engine's two-phase timing validation (`NotationLayoutEngine+Controls.swift`) already handles all rendering-side decisions — semantic validation passes by construction, and `exactRescaledTick` decides projection. The importer populates data faithfully; the engine renders or drops with diagnostics.
 
-### 6. Testing Strategy
+### 7. Testing Strategy
 
 All tests use **Swift Testing** (`import Testing`), in-memory `TestContainer`, `-parallel-testing-enabled NO`.
 
@@ -201,23 +227,27 @@ All tests use **Swift Testing** (`import Testing`), in-memory `TestContainer`, `
 
 - `#VIRGO_CONTROL: 1` header absent → `toControlEvents(for:)` returns `[]` even if lanes 21/22/23 contain chips
 - `#VIRGO_CONTROL: 1` header absent → guitar-channel chips (lane 22) do NOT produce control events (collision regression test)
-- `#VIRGO_CONTROL: 1` header present → `toControlEvents(for:)` parses one stop chip targeting crash (lane 16) — asserts kind, targetLaneID, measureNumber, all normalized timing fields, `originKind == .dtx`
+- `#VIRGO_CONTROL: 1` header present → `toControlEvents(for:)` parses one stop chip targeting crash (lane 16) — asserts kind, targetLaneID, measureNumber, `originKind == .dtx`, `normalizedTickWithinMeasure`, `normalizedTicksPerMeasure` equal the chip's native gridPosition/gridSize
 - Choke (lane 22) + damp (lane 23) chips produce correct kinds
 - Control chip excluded from `toNotes` output (no `Note` created for lane 22 — already guaranteed by `toNoteType()` returning nil)
 - Playable chip excluded from `toControlEvents` output (no `ChartControlEvent` for lane 12)
-- GCD-reduced grid: control at position 2/8 against playable 4-tick grid is accepted (not dropped)
-- Genuinely incommensurate grid: control at 1/7 against 4-tick grid dropped with no crash
+- Incommensurate control (1/7 grid) is preserved, not dropped — assert it appears in the output with `normalizedTicksPerMeasure == 7`
+- Malformed chip (gridSize 0) skipped with no crash
+- `DTXChartData` initializer without `controlLaneKinds` still compiles and defaults to `[:]`
 
-**Local importer test in `LocalDTXFixtureImporterTests.swift`:**
+**Local importer tests in `LocalDTXFixtureImporterTests.swift`:**
 
-- Import a chart whose DTX data contains `#VIRGO_CONTROL: 1` and a control-lane chip; assert `chart.controlEvents.count == 1` and the event is populated without a fixture-copy step
+- Import a chart whose DTX data contains `#VIRGO_CONTROL: 1` and a control-lane chip; assert `chart.controlEvents.count == 1`
 - `refreshControlEventsIfMissing` backfills an existing chart that has zero controls when the DTX file has the header; idempotent on second call
+- Multi-difficulty backfill: two difficulties (easy + hard), each with its own DTX file; assert controls from easy's file don't appear on hard's chart (difficulty-keyed matching)
 
 **Server importer test:**
 
 - Download path populates `chart.controlEvents` from a DTX string containing `#VIRGO_CONTROL: 1` and a control chip; assert `chart.controlEvents.count == 1`
 
-> **Note on acceptance criterion 2 ("render"):** The importer tests verify the data pipeline (parse → populate → persist). Rendering correctness — stop marks appearing on the notation staff — relies on HPA-143's `NotationLayoutRestAndControlTests` / `NotationLayoutControlTests`, which exercise the same `ChartControlEvent` model through the same layout engine. Since this issue changes only how `ChartControlEvent` rows are *produced* (not how they're *rendered*), those engine tests remain the rendering authority.
+**Parser-to-render integration test** (in `NotationLayoutControlTests.swift` or a new integration test file):
+
+- Parse a DTX string with `#VIRGO_CONTROL: 1` and a choke chip targeting crash → build `ChartControlEvent` → construct `NotationLayoutInput` with the control event → call `NotationLayoutEngine().layout(input:)` → assert `layout.stopNotes` contains one `RenderedStopNote` with the correct kind and target. This covers acceptance criterion 2's render path end-to-end through the real parser and layout engine.
 
 **Regression guard:**
 
@@ -228,10 +258,11 @@ All tests use **Swift Testing** (`import Testing`), in-memory `TestContainer`, `
 - Do not infer stop/choke/damp events from sample IDs, unknown lanes, or neighboring cymbals — only lanes declared via `#VIRGO_CONTROL: 1` produce control events.
 - Do not change parser semantics for playable notes — control chips are parsed by the existing `parseNoteLine` into `DTXNote` values; the new code only filters them by `controlLaneKinds` lookup.
 - Controls never enter `buildTabGrid` or `buildRests` — the layout engine already guarantees this.
+- **Preserve every valid control chip** — store native grid tuples; never drop for incommensurate grids. The layout engine decides rendering (HPA-143 contract: "preserve the event, omit its visual mark").
 - Use Swift Testing, not XCTest.
 - Run `xcodebuild test` with `-parallel-testing-enabled NO`.
 - iPad-only for iOS builds (`TARGETED_DEVICE_FAMILY = 2`); never target iPhone.
-- **SwiftLint watch:** `DTXFileParser.swift` is 462 lines (file limit: 600 warn / 1000 error). `toControlEvents(for:)` with its 12-field construction + filter + GCD validate may approach the 50-line function-body warn limit. If it does, extract the per-chip mapping into a private helper to stay under the limit.
+- **SwiftLint watch:** `DTXFileParser.swift` is 462 lines (file limit: 600 warn / 1000 error). `toControlEvents(for:)` with its 12-field construction + filter + guards may approach the 50-line function-body warn limit. If it does, extract the per-chip mapping into a private helper to stay under the limit.
 
 ## Out of Scope
 
