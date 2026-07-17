@@ -37,6 +37,8 @@ Standard DTX/DTXCreator has no native drum-stop lane. Virgo defines three dedica
 
 These lanes return `nil` from `noteType` (non-playable, same as `bgm`/`bpm`), so `normalizedRhythmicEvents()` — which filters on `toNoteType() != nil` — automatically excludes them. No change to note filtering logic.
 
+**Collision note:** Lanes 21/22/23 are a Virgo-specific convention. Some non-Virgo DTX format variants (DTXmania BGA extensions, certain BMS-derived formats) use 2x lanes for background-animation or lane-extension channels. A third-party DTX file using lane 22 for a BGA channel would be misinterpreted as a choke. This is acceptable for Virgo's authored/fixtures pipeline (all Virgo chart authors know the convention), but the risk should be documented. If third-party DTX import is added later, the parser should gate control-lane interpretation behind an explicit opt-in or validate against a BGA-lane denylist.
+
 ### 2. Target Encoding: Chip Value = Target Lane
 
 The 2-char chip value on a control lane encodes the target drum lane ID. Control lanes carry no WAV audio, so the chip value is free to encode the target rather than referencing a sample.
@@ -84,7 +86,7 @@ func toControlEventKind() -> NotationControlEventKind? {
 }
 ```
 
-**3d. `DTXChartData.toControlEvents(for:)`** — mirrors `toNotes(for:)`:
+**3d. `DTXChartData.toControlEvents(for:)`** — produces the same drop behavior as `toNotes(for:)`, but without a `NormalizedRhythmicEvent`-style intermediate type (adding one just for controls would be over-engineering). Instead, validation is inline:
 
 1. Compute `sharedTicksPerMeasure` from **playable chips only** — same private static method (`Self.sharedTicksPerMeasure(for:)`), same value the notes use.
 2. Filter chips where `toControlEventKind() != nil`.
@@ -105,7 +107,7 @@ func toControlEventKind() -> NotationControlEventKind? {
 
 Because control chips use the same `sharedTicksPerMeasure` as the notes, the layout engine's `exactRescaledTick` always succeeds for aligned controls — `sourceTicksPerMeasure` divides evenly into the tab grid by construction.
 
-The `sharedTicksPerMeasure(for:)` static method is currently `private`. It will be made `internal` so `toControlEvents(for:)` can call it without recomputing. If it returns `nil` (LCM exceeds `maximumTicksPerMeasure`), `toControlEvents(for:)` returns `[]` — the same guard `normalizedRhythmicEvents()` uses to drop all notes in that case.
+The `sharedTicksPerMeasure(for:)` static method is `private` in `extension DTXChartData`. Since Swift 4, `private` is file-scoped — `toControlEvents(for:)`, added to the same extension in the same file, calls `Self.sharedTicksPerMeasure(for:)` with no visibility change. If it returns `nil` (LCM exceeds `maximumTicksPerMeasure`), `toControlEvents(for:)` returns `[]` — the same guard `normalizedRhythmicEvents()` uses to drop all notes in that case.
 
 ### 4. Importer Wiring
 
@@ -153,6 +155,8 @@ All tests use **Swift Testing** (`import Testing`), in-memory `TestContainer`, `
 
 - Import a chart whose DTX data contains a control-lane chip; assert `chart.controlEvents.count == 1` and the event is populated without a fixture-copy step
 
+> **Note on acceptance criterion 2 ("render"):** The importer test verifies the data pipeline (parse → populate → persist). Rendering correctness — stop marks appearing on the notation staff — relies on HPA-143's `NotationLayoutRestAndControlTests` / `NotationLayoutControlTests`, which exercise the same `ChartControlEvent` model through the same layout engine. Since this issue changes only how `ChartControlEvent` rows are *produced* (not how they're *rendered*), those engine tests remain the rendering authority. No new import→render end-to-end test is added; it would duplicate HPA-143's engine coverage.
+
 **Regression guard:**
 
 - Run existing `DTXFileParserTests`, `DTXNormalizationTests`, `DTXNoteLineParsingTests` unchanged — confirms the note path is byte-for-byte unaffected
@@ -165,6 +169,7 @@ All tests use **Swift Testing** (`import Testing`), in-memory `TestContainer`, `
 - Use Swift Testing, not XCTest.
 - Run `xcodebuild test` with `-parallel-testing-enabled NO`.
 - iPad-only for iOS builds (`TARGETED_DEVICE_FAMILY = 2`); never target iPhone.
+- **SwiftLint watch:** `DTXFileParser.swift` is 462 lines (file limit: 600 warn / 1000 error). `toControlEvents(for:)` with its 12-field construction + filter + validate may approach the 50-line function-body warn limit. If it does, extract the per-chip mapping into a private helper to stay under the limit.
 
 ## Out of Scope
 
