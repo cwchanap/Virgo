@@ -41,6 +41,7 @@ enum LocalDTXFixtureImporter {
             try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
             try refreshBGMStartOffsetIfMissing(for: existingSong, from: folderURL, in: context)
             try refreshDurationIfStale(for: existingSong, from: folderURL, in: context)
+            try refreshControlEventsIfMissing(for: existingSong, from: folderURL, in: context)
             return existingSong
         }
 
@@ -83,9 +84,13 @@ enum LocalDTXFixtureImporter {
                 song: song
             )
             chart.notes = importedChart.data.toNotes(for: chart)
+            chart.controlEvents = importedChart.data.toControlEvents(for: chart)
             context.insert(chart)
             for note in chart.notes {
                 context.insert(note)
+            }
+            for control in chart.controlEvents {
+                context.insert(control)
             }
             return chart
         }
@@ -310,6 +315,40 @@ enum LocalDTXFixtureImporter {
         guard song.duration != recomputed else { return }
         song.duration = recomputed
         try context.save()
+    }
+
+    /// Backfills control events on existing charts that were imported before
+    /// the control-event feature. Idempotent — skips charts that already have
+    /// controls. Matches charts by difficulty so multi-difficulty imports
+    /// receive controls from the correct DTX file.
+    @MainActor
+    private static func refreshControlEventsIfMissing(
+        for song: Song,
+        from folderURL: URL,
+        in context: ModelContext
+    ) throws {
+        guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else { return }
+        let setList = SETList(content: setContent)
+        let importedCharts = try loadImportedCharts(from: folderURL, setList: setList)
+
+        var didChange = false
+        for importedChart in importedCharts {
+            guard let existingChart = song.charts.first(where: {
+                $0.difficulty == importedChart.difficulty && !$0.isDeleted
+            }) else { continue }
+            guard existingChart.safeControlEvents.isEmpty else { continue }
+
+            let controls = importedChart.data.toControlEvents(for: existingChart)
+            guard !controls.isEmpty else { continue }
+
+            controls.forEach { context.insert($0) }
+            existingChart.controlEvents = controls
+            didChange = true
+        }
+
+        if didChange {
+            try context.save()
+        }
     }
 
     private static func decodeSETFile(at url: URL) -> String? {

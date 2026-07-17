@@ -336,6 +336,138 @@ struct LocalDTXFixtureImporterTests {
         )
     }
 
+    // MARK: - Control Event Import
+
+    @Test("fresh import populates controlEvents when DTX has VIRGO_CONTROL header")
+    func freshImportPopulatesControlEvents() throws {
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+
+        let setDef = """
+        #TITLE: Control Song
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let chartContent = """
+        #TITLE: Control Song
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00012: 01000000
+        #00022: 16000000
+        """
+        try chartContent.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
+
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+
+        let chart = try #require(song.charts.first)
+        #expect(chart.notes.count == 1)
+        #expect(chart.controlEvents.count == 1)
+        let control = try #require(chart.controlEvents.first)
+        #expect(control.kind == .choke)
+        #expect(control.targetLaneID == "16")
+    }
+
+    @Test("refreshControlEventsIfMissing backfills controls on existing import")
+    func refreshBackfillsControls() throws {
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+
+        let setDef = """
+        #TITLE: Backfill Song
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let chartWithControls = """
+        #TITLE: Backfill Song
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00022: 16000000
+        """
+        try chartWithControls.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
+
+        // First import WITH header but the chart has no controls yet — simulate
+        // a pre-feature import by manually creating the song/chart without controls.
+        let song = Song(
+            title: "Backfill Song", artist: "Tester", bpm: 120, duration: "1:00",
+            genre: "DTX Import", timeSignature: .fourFour,
+            isServerImported: true, serverSongId: tempDir.lastPathComponent
+        )
+        let chart = Chart(difficulty: .easy, level: 50, song: song)
+        chart.notes = [Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0, chart: chart)]
+        song.charts = [chart]
+        context.insert(song)
+        context.insert(chart)
+        try context.save()
+
+        #expect(chart.controlEvents.isEmpty)
+
+        // Re-import triggers refreshControlEventsIfMissing
+        _ = try LocalDTXFixtureImporter.importSong(
+            from: tempDir, songId: tempDir.lastPathComponent, into: context
+        )
+
+        #expect(chart.controlEvents.count == 1)
+        #expect(chart.controlEvents.first?.kind == .choke)
+
+        // Idempotent: second re-import does not duplicate
+        _ = try LocalDTXFixtureImporter.importSong(
+            from: tempDir, songId: tempDir.lastPathComponent, into: context
+        )
+        #expect(chart.controlEvents.count == 1)
+    }
+
+    @Test("multi-difficulty backfill routes controls to the correct chart")
+    func multiDifficultyBackfillRoutesCorrectly() throws {
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+
+        let setDef = """
+        #TITLE: Multi Diff
+        #L1LABEL: BASIC
+        #L1FILE: easy.dtx
+        #L2LABEL: ADVANCED
+        #L2FILE: adv.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let easyChart = """
+        #TITLE: Multi Diff
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 30
+        #VIRGO_CONTROL: 1
+        #00021: 16000000
+        """
+        try easyChart.write(to: tempDir.appendingPathComponent("easy.dtx"), atomically: true, encoding: .utf8)
+        let advChart = """
+        #TITLE: Multi Diff
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 60
+        #VIRGO_CONTROL: 1
+        #00022: 12000000
+        """
+        try advChart.write(to: tempDir.appendingPathComponent("adv.dtx"), atomically: true, encoding: .utf8)
+
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+
+        let easy = song.charts.first { $0.difficulty == .easy }
+        let adv = song.charts.first { $0.difficulty == .medium }
+
+        #expect(easy?.controlEvents.count == 1)
+        #expect(easy?.controlEvents.first?.kind == .stop)
+        #expect(adv?.controlEvents.count == 1)
+        #expect(adv?.controlEvents.first?.kind == .choke)
+        // Controls from easy do not leak to adv and vice versa
+        #expect(easy?.controlEvents.first?.targetLaneID == "16")
+        #expect(adv?.controlEvents.first?.targetLaneID == "12")
+    }
+
     @discardableResult
     private func importSyntheticFixture(
         bpm: Double, label: String, into context: ModelContext
