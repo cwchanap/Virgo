@@ -90,4 +90,52 @@ struct ServerSongDownloaderNormalizationTests {
             )
         }
     }
+
+    @Test("downloadAndImportSong populates controlEvents when DTX has VIRGO_CONTROL header")
+    func testPopulatesControlEventsWithHeader() async throws {
+        let mock = MockFileDownloader()
+        let dtxContent = """
+        #TITLE: Control Download
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00012: 01000000
+        #00022: 16000000
+        """
+        let dtx = dtxContent.data(using: .shiftJIS) ?? Data(dtxContent.utf8)
+        mock.responses["\(r2Base)/control/chart.dtx"] = dtx
+        let config = makeConfig("ServerSongDownloaderNorm.control.\(UUID().uuidString)")
+        let downloader = ServerSongDownloader(
+            downloader: mock,
+            fileManager: ServerSongFileManager(),
+            config: config
+        )
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let serverChart = ServerChart(
+                difficulty: "easy", difficultyLabel: "Easy", level: 10,
+                filename: "chart.dtx", size: 100,
+                fileURL: "\(r2Base)/control/chart.dtx", fileEncoding: "SHIFT_JIS"
+            )
+            let serverSong = ServerSong(
+                songId: "control-test", title: "Control Download", artist: "Tester", bpm: 120.0,
+                charts: [serverChart], isDownloaded: false
+            )
+
+            let (success, _) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success)
+
+            let verificationContext = ModelContext(container)
+            let songs = try verificationContext.fetch(FetchDescriptor<Song>())
+            let song = try #require(songs.first)
+            let chart = try #require(song.charts.first)
+            #expect(chart.notes.count == 1)
+            #expect(chart.controlEvents.count == 1)
+            let control = try #require(chart.controlEvents.first)
+            #expect(control.kind == .choke)
+            #expect(control.targetLaneID == "16")
+        }
+    }
 }

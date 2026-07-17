@@ -190,6 +190,8 @@ class ServerSongDownloader {
         let chart = Chart(difficulty: difficulty, level: chartSnapshot.level, song: song)
         let parsedNotes = chartData.toNotes(for: chart)
         parsedNotes.forEach { chart.notes.append($0) }
+        let parsedControls = chartData.toControlEvents(for: chart)
+        parsedControls.forEach { context.insert($0); chart.controlEvents.append($0) }
         context.insert(chart)
         if chartData.hasPlayableChips, parsedNotes.isEmpty {
             return "Chart \(chartSnapshot.filename) imported with no playable notes (normalization failed)."
