@@ -234,17 +234,9 @@ class DTXFileParser {
         } else if line.hasPrefix("#ARTIST:") {
             metadata.artist = extractValue(from: line, prefix: "#ARTIST:")
         } else if line.hasPrefix("#BPM:") {
-            let bpmString = extractValue(from: line, prefix: "#BPM:")
-            guard let bpmValue = Double(bpmString) else {
-                throw DTXParseError.invalidBPM
-            }
-            metadata.bpm = bpmValue
+            metadata.bpm = try parseBPM(from: line)
         } else if line.hasPrefix("#DLEVEL:") {
-            let levelString = extractValue(from: line, prefix: "#DLEVEL:")
-            guard let levelValue = Int(levelString) else {
-                throw DTXParseError.invalidDifficultyLevel
-            }
-            metadata.difficultyLevel = levelValue
+            metadata.difficultyLevel = try parseDifficultyLevel(from: line)
         } else if line.hasPrefix("#PREVIEW:") {
             metadata.preview = extractValue(from: line, prefix: "#PREVIEW:")
         } else if line.hasPrefix("#PREIMAGE:") {
@@ -259,6 +251,22 @@ class DTXFileParser {
                 Logger.info("Ignoring #VIRGO_CONTROL: \(value), expected \"1\"")
             }
         }
+    }
+
+    private static func parseBPM(from line: String) throws -> Double {
+        let bpmString = extractValue(from: line, prefix: "#BPM:")
+        guard let bpmValue = Double(bpmString) else {
+            throw DTXParseError.invalidBPM
+        }
+        return bpmValue
+    }
+
+    private static func parseDifficultyLevel(from line: String) throws -> Int {
+        let levelString = extractValue(from: line, prefix: "#DLEVEL:")
+        guard let levelValue = Int(levelString) else {
+            throw DTXParseError.invalidDifficultyLevel
+        }
+        return levelValue
     }
 
     private static func validateRequiredFields(_ metadata: DTXMetadata) throws {
@@ -500,6 +508,13 @@ extension DTXChartData {
                 sourceGridPosition: chip.gridPosition,
                 sourceGridSize: chip.gridSize,
                 normalizedMeasureIndex: chip.measureIndex,
+                // Invariant: unlike Note.normalizedAbsoluteTick (which uses the
+                // shared LCM ticks-per-measure across all playable chips), this
+                // value uses the chip's NATIVE gridSize as its resolution. It is
+                // self-consistent with normalizedTicksPerMeasure (also gridSize)
+                // but is NOT comparable across control chips with different grid
+                // sizes. The layout engine rescales per-control via
+                // exactRescaledTick before any cross-control ordering.
                 normalizedAbsoluteTick: chip.measureIndex * chip.gridSize + chip.gridPosition,
                 normalizedTickWithinMeasure: chip.gridPosition,
                 normalizedTicksPerMeasure: chip.gridSize,

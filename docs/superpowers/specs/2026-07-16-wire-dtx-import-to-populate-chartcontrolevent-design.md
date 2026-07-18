@@ -239,6 +239,7 @@ All tests use **Swift Testing** (`import Testing`), in-memory `TestContainer`, `
 
 - Import a chart whose DTX data contains `#VIRGO_CONTROL: 1` and a control-lane chip; assert `chart.controlEvents.count == 1`
 - `refreshControlEventsIfMissing` backfills an existing chart that has zero controls when the DTX file has the header; idempotent on second call
+- `refreshControlEventsIfMissing` is first-wins: editing a DTX file's control lanes after the initial backfill does not propagate to an existing chart that already has controls (pinned by `refreshControlsFirstWinsOnEditedDTX`)
 - Multi-difficulty backfill: two difficulties (easy + hard), each with its own DTX file; assert controls from easy's file don't appear on hard's chart (difficulty-keyed matching)
 
 **Server importer test:**
@@ -272,4 +273,5 @@ All tests use **Swift Testing** (`import Testing`), in-memory `TestContainer`, `
 - Modifying the bundled Soukyuu fixtures to include control chips.
 - GUI/editor support for placing control chips in DTXCreator — this is a parser/importer change only.
 - Server-song backfill without delete-and-reimport — server dedup rejects duplicates; a future migration/versioning pass could address this.
+- Edited local control lanes do not propagate on re-import — `refreshControlEventsIfMissing` is first-wins: once a chart has controls, subsequent re-imports skip it, so adding/removing/changing control lanes in a local DTX file after the initial backfill has no effect. The upgrade path is delete-and-reimport. A diff-and-replace migration is a future enhancement. Pinned by `refreshControlsFirstWinsOnEditedDTX`.
 - Custom lane mappings beyond the default 21/22/23 → stop/choke/damp (the header is boolean, not a mapping table; a future `#VIRGO_CONTROL_LANES:` directive could enable per-file customization).
