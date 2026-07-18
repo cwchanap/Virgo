@@ -76,7 +76,19 @@ enum LocalDTXFixtureImporter {
         importedCharts.forEach { song.setBGMStartOffsetIfUnset($0.data.bgmStartOffsetSeconds) }
 
         context.insert(song)
-        song.charts = importedCharts.map { importedChart in
+        song.charts = try buildCharts(from: importedCharts, for: song, into: context)
+
+        try context.save()
+        return song
+    }
+
+    @MainActor
+    private static func buildCharts(
+        from importedCharts: [ImportedChart],
+        for song: Song,
+        into context: ModelContext
+    ) throws -> [Chart] {
+        try importedCharts.map { importedChart in
             let chart = Chart(
                 difficulty: importedChart.difficulty,
                 level: importedChart.data.difficultyLevel,
@@ -94,9 +106,6 @@ enum LocalDTXFixtureImporter {
             }
             return chart
         }
-
-        try context.save()
-        return song
     }
 
     @MainActor
@@ -327,14 +336,23 @@ enum LocalDTXFixtureImporter {
         from folderURL: URL,
         in context: ModelContext
     ) throws {
+        // Cheap early-out: if every existing chart already has controls, no
+        // backfill can happen (the per-chart guard below is first-wins), so skip
+        // re-parsing every DTX file in the fixture. This avoids the parse cost on
+        // the steady-state re-import path where controls were already populated.
+        let liveCharts = song.charts.filter { !$0.isDeleted }
+        if !liveCharts.isEmpty, liveCharts.allSatisfy({ !$0.safeControlEvents.isEmpty }) {
+            return
+        }
+
         guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else { return }
         let setList = SETList(content: setContent)
         let importedCharts = try loadImportedCharts(from: folderURL, setList: setList)
 
         var didChange = false
         for importedChart in importedCharts {
-            guard let existingChart = song.charts.first(where: {
-                $0.difficulty == importedChart.difficulty && !$0.isDeleted
+            guard let existingChart = liveCharts.first(where: {
+                $0.difficulty == importedChart.difficulty
             }) else { continue }
             guard existingChart.safeControlEvents.isEmpty else { continue }
 

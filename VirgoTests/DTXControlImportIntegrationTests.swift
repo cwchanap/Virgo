@@ -49,6 +49,12 @@ struct DTXControlImportIntegrationTests {
 
     @Test("parsed incommensurate control preserves measure but omits mark")
     func parsedIncommensurateControlPreservesMeasure() throws {
+        // The control chip targets lane 16 (Crash) — a resolvable target — so the
+        // only reason the stop mark is omitted is that position 1/7 does not project
+        // exactly onto the 960-tick fallback grid (960 is not a multiple of 7). An
+        // earlier version of this test used noteID 01 (BGM, unresolvable target) at
+        // position 0, which passed for the wrong reason: the layout engine bailed at
+        // target resolution before ever checking tick projection.
         let dtx = """
         #TITLE: Incommensurate
         #ARTIST: Tester
@@ -56,7 +62,7 @@ struct DTXControlImportIntegrationTests {
         #DLEVEL: 50
         #VIRGO_CONTROL: 1
         #00012: 01000000
-        #00221: 01000000000000
+        #00221: 00160000000000
         """
         let data = try DTXFileParser.parseChartMetadata(from: dtx)
         let chart = Chart(difficulty: .medium)
