@@ -422,8 +422,8 @@ struct LocalDTXFixtureImporterTests {
         #expect(chart.controlEvents.count == 1)
     }
 
-    @Test("multi-difficulty backfill routes controls to the correct chart")
-    func multiDifficultyBackfillRoutesCorrectly() throws {
+    @Test("multi-difficulty fresh import routes controls to the correct chart")
+    func multiDifficultyFreshImportRoutesCorrectly() throws {
         let context = TestContainer.isolatedContainer().context
         let tempDir = try makeTempDirectory()
 
@@ -466,6 +466,77 @@ struct LocalDTXFixtureImporterTests {
         // Controls from easy do not leak to adv and vice versa
         #expect(easy?.controlEvents.first?.targetLaneID == "16")
         #expect(adv?.controlEvents.first?.targetLaneID == "12")
+    }
+
+    @Test("multi-difficulty backfill routes controls to the correct existing chart")
+    func multiDifficultyBackfillRoutesCorrectly() throws {
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+
+        let setDef = """
+        #TITLE: Multi Diff
+        #L1LABEL: BASIC
+        #L1FILE: easy.dtx
+        #L2LABEL: ADVANCED
+        #L2FILE: adv.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let easyChart = """
+        #TITLE: Multi Diff
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 30
+        #VIRGO_CONTROL: 1
+        #00021: 16000000
+        """
+        try easyChart.write(to: tempDir.appendingPathComponent("easy.dtx"), atomically: true, encoding: .utf8)
+        let advChart = """
+        #TITLE: Multi Diff
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 60
+        #VIRGO_CONTROL: 1
+        #00022: 12000000
+        """
+        try advChart.write(to: tempDir.appendingPathComponent("adv.dtx"), atomically: true, encoding: .utf8)
+
+        // Pre-seed an existing song with two charts that have notes but NO controlEvents,
+        // simulating a legacy import created before VIRGO_CONTROL parsing existed. The
+        // songId matches tempDir.lastPathComponent so the importer finds this song and
+        // takes the backfill branch (refreshControlEventsIfMissing) rather than the
+        // fresh-import branch.
+        let song = Song(
+            title: "Multi Diff", artist: "Tester", bpm: 120, duration: "1:00",
+            genre: "DTX Import", timeSignature: .fourFour,
+            isServerImported: true, serverSongId: tempDir.lastPathComponent
+        )
+        let easy = Chart(difficulty: .easy, level: 30, song: song)
+        easy.notes = [Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0, chart: easy)]
+        let medium = Chart(difficulty: .medium, level: 60, song: song)
+        medium.notes = [Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0, chart: medium)]
+        song.charts = [easy, medium]
+        context.insert(song)
+        context.insert(easy)
+        context.insert(medium)
+        try context.save()
+
+        #expect(easy.controlEvents.isEmpty)
+        #expect(medium.controlEvents.isEmpty)
+
+        // Re-import triggers refreshControlEventsIfMissing, which re-parses each DTX
+        // file and routes controls to the existing chart matching by difficulty.
+        _ = try LocalDTXFixtureImporter.importSong(
+            from: tempDir, songId: tempDir.lastPathComponent, into: context
+        )
+
+        // easy.dtx lane 21 → stop control targeting crash (lane 16)
+        #expect(easy.controlEvents.count == 1)
+        #expect(easy.controlEvents.first?.kind == .stop)
+        #expect(easy.controlEvents.first?.targetLaneID == "16")
+        // adv.dtx lane 22 → choke control targeting hi-hat (lane 12)
+        #expect(medium.controlEvents.count == 1)
+        #expect(medium.controlEvents.first?.kind == .choke)
+        #expect(medium.controlEvents.first?.targetLaneID == "12")
     }
 
     @discardableResult

@@ -252,7 +252,12 @@ class DTXFileParser {
         } else if line.hasPrefix("#STAGEFILE:") {
             metadata.stageFile = extractValue(from: line, prefix: "#STAGEFILE:")
         } else if line.hasPrefix("#VIRGO_CONTROL:") {
-            metadata.virgoControlEnabled = extractValue(from: line, prefix: "#VIRGO_CONTROL:") == "1"
+            let value = extractValue(from: line, prefix: "#VIRGO_CONTROL:")
+            if value == "1" {
+                metadata.virgoControlEnabled = true
+            } else if !value.isEmpty {
+                Logger.info("Ignoring #VIRGO_CONTROL: \(value), expected \"1\"")
+            }
         }
     }
 
