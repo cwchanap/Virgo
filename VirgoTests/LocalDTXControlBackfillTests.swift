@@ -284,6 +284,90 @@ struct LocalDTXControlBackfillTests {
         #expect(medium.controlEvents.first?.targetLaneID == "12")
     }
 
+    @Test("backfill routes MASTER and REAL to distinct expert charts")
+    // swiftlint:disable:next function_body_length
+    func backfillRoutesDualExpertSlotsToDistinctCharts() throws {
+        // MASTER and REAL both map to `.expert` (see SETChartReference.difficulty).
+        // A SET containing both produces two imported charts at `.expert` and the
+        // fresh-import path creates two distinct `Chart` records at `.expert`. The
+        // backfill path must consume one existing chart per imported entry —
+        // otherwise `first(where: { $0.difficulty == .expert })` re-selects the
+        // first expert chart on every iteration, backfilling only it and starving
+        // the second (REAL) chart. This mirrors the bundled Soukyuu fixture layout
+        // (MASTER slot 4 + REAL slot 5).
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+
+        let setDef = """
+        #TITLE: Dual Expert
+        #L4LABEL: MASTER
+        #L4FILE: mas.dtx
+        #L5LABEL: REAL
+        #L5FILE: real.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let masContent = """
+        #TITLE: Dual Expert
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 90
+        #VIRGO_CONTROL: 1
+        #00021: 16000000
+        """
+        try masContent.write(to: tempDir.appendingPathComponent("mas.dtx"), atomically: true, encoding: .utf8)
+        let realContent = """
+        #TITLE: Dual Expert
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 99
+        #VIRGO_CONTROL: 1
+        #00022: 12000000
+        """
+        try realContent.write(to: tempDir.appendingPathComponent("real.dtx"), atomically: true, encoding: .utf8)
+
+        // Pre-seed an existing song with two `.expert` charts (no controls),
+        // simulating a legacy import created before VIRGO_CONTROL parsing. The
+        // charts carry distinct DLEVELs (90 / 99) matching the DTX files, which
+        // is the deterministic key the backfill uses to route each DTX file to
+        // its own chart regardless of SwiftData relationship ordering.
+        let song = Song(
+            title: "Dual Expert", artist: "Tester", bpm: 120, duration: "1:00",
+            genre: "DTX Import", timeSignature: .fourFour,
+            isServerImported: true, serverSongId: tempDir.lastPathComponent
+        )
+        let masChart = Chart(difficulty: .expert, level: 90, song: song)
+        masChart.notes = [Note(
+            interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0, chart: masChart
+        )]
+        let realChart = Chart(difficulty: .expert, level: 99, song: song)
+        realChart.notes = [Note(
+            interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0, chart: realChart
+        )]
+        song.charts = [masChart, realChart]
+        context.insert(song)
+        context.insert(masChart)
+        context.insert(realChart)
+        try context.save()
+
+        #expect(masChart.controlEvents.isEmpty)
+        #expect(realChart.controlEvents.isEmpty)
+
+        // Re-import triggers refreshControlEventsIfMissing.
+        _ = try LocalDTXFixtureImporter.importSong(
+            from: tempDir, songId: tempDir.lastPathComponent, into: context
+        )
+
+        // Both expert charts must receive controls from their own DTX file:
+        // mas.dtx lane 21 → stop targeting crash (lane 16)
+        #expect(masChart.controlEvents.count == 1)
+        #expect(masChart.controlEvents.first?.kind == .stop)
+        #expect(masChart.controlEvents.first?.targetLaneID == "16")
+        // real.dtx lane 22 → choke targeting hi-hat (lane 12)
+        #expect(realChart.controlEvents.count == 1)
+        #expect(realChart.controlEvents.first?.kind == .choke)
+        #expect(realChart.controlEvents.first?.targetLaneID == "12")
+    }
+
     private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("virgo-dtx-test-\(UUID().uuidString)", isDirectory: true)

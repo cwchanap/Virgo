@@ -328,8 +328,13 @@ enum LocalDTXFixtureImporter {
 
     /// Backfills control events on existing charts that were imported before
     /// the control-event feature. Idempotent — skips charts that already have
-    /// controls. Matches charts by difficulty so multi-difficulty imports
-    /// receive controls from the correct DTX file.
+    /// controls. Matches each imported DTX file to a distinct existing chart by
+    /// `difficulty` AND `level` (DLEVEL), consuming one chart per entry, so
+    /// multi-difficulty imports — and the MASTER+REAL dual-`.expert` case (which
+    /// `first(where: difficulty)` would starve and SwiftData's unordered
+    /// relationships would misroute) — each receive controls from their own DTX
+    /// file. Charts whose persisted `level` no longer matches the DTX (edited
+    /// DLEVEL) are skipped; the upgrade path is delete-and-reimport.
     @MainActor
     private static func refreshControlEventsIfMissing(
         for song: Song,
@@ -349,12 +354,37 @@ enum LocalDTXFixtureImporter {
         let setList = SETList(content: setContent)
         let importedCharts = try loadImportedCharts(from: folderURL, setList: setList)
 
+        // Match each imported DTX file to a DISTINCT existing chart. Two
+        // complications make `first(where: { $0.difficulty == ... })` wrong:
+        //
+        // 1. Starvation: when a SET has two entries that map to the same
+        //    `Difficulty` (MASTER and REAL both → `.expert`), `first(where:)`
+        //    re-selects the first expert chart on every iteration, backfilling
+        //    only it and leaving the second expert chart without controls.
+        // 2. Misrouting: SwiftData `@Relationship` arrays are not insertion-
+        //    ordered, so "consume one per imported entry in pool order" can
+        //    assign MASTER's controls to the REAL chart and vice-versa.
+        //
+        // Matching by `difficulty` AND `level` (DLEVEL) is deterministic:
+        // `buildCharts` sets `chart.level = importedChart.data.difficultyLevel`,
+        // and MASTER/REAL charts carry distinct DLEVELs. `firstIndex` + `remove`
+        // consumes one chart per imported entry so a same-difficulty, same-level
+        // pair (degenerate) still backfills both. Charts that already have
+        // controls are excluded, preserving the first-wins contract (edited
+        // control lanes do not propagate — see refreshControlsFirstWinsOnEditedDTX).
+        var remainingCharts = liveCharts
         var didChange = false
         for importedChart in importedCharts {
-            guard let existingChart = liveCharts.first(where: {
+            guard let matchIndex = remainingCharts.firstIndex(where: {
                 $0.difficulty == importedChart.difficulty
+                    && $0.level == importedChart.data.difficultyLevel
+                    && $0.safeControlEvents.isEmpty
             }) else { continue }
-            guard existingChart.safeControlEvents.isEmpty else { continue }
+            // Claim this chart for the current imported entry even if its DTX
+            // turns out to have no controls — otherwise a later same-difficulty
+            // entry would claim it and the level-keyed correspondence would be
+            // lost.
+            let existingChart = remainingCharts.remove(at: matchIndex)
 
             let controls = importedChart.data.toControlEvents(for: existingChart)
             guard !controls.isEmpty else { continue }
