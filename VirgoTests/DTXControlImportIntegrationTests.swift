@@ -61,6 +61,7 @@ struct DTXControlImportIntegrationTests {
         let data = try DTXFileParser.parseChartMetadata(from: dtx)
         let chart = Chart(difficulty: .medium)
         let controls = data.toControlEvents(for: chart)
+        #expect(controls.count == 1)
         let notationControls = controls.map { NotationControlEvent($0) }
 
         let result = support.layout(

@@ -378,6 +378,21 @@ struct DTXFileParserTests {
         #expect(data.toControlEvents(for: chart).isEmpty)
     }
 
+    @Test("lanes 21 and 23 are ignored without VIRGO_CONTROL header")
+    func lanes21And23IgnoredWithoutHeader() throws {
+        let dtx = """
+        #TITLE: No Control 21 23
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00021: 16000000
+        #00023: 12000000
+        """
+        let data = try DTXFileParser.parseChartMetadata(from: dtx)
+        let chart = Chart(difficulty: .medium)
+        #expect(data.toControlEvents(for: chart).isEmpty)
+    }
+
     @Test("header present parses stop chip targeting crash lane 16")
     func controlEventsParseStopChip() throws {
         let dtx = """
@@ -425,8 +440,10 @@ struct DTXFileParserTests {
         let controls = data.toControlEvents(for: chart)
 
         #expect(controls.count == 2)
-        #expect(controls.contains { $0.kind == .choke && $0.targetLaneID == "16" })
-        #expect(controls.contains { $0.kind == .damp && $0.targetLaneID == "12" })
+        #expect(controls[0].kind == .choke)
+        #expect(controls[0].targetLaneID == "16")
+        #expect(controls[1].kind == .damp)
+        #expect(controls[1].targetLaneID == "12")
     }
 
     @Test("control chips are excluded from toNotes and playable chips from toControlEvents")
