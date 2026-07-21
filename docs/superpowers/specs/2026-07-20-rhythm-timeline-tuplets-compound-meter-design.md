@@ -133,6 +133,7 @@ enum RhythmDiagnosticCode: String, Codable, CaseIterable, Hashable {
     case arithmeticOverflow
     case resolutionLimitExceeded
     case measureLimitExceeded
+    case rhythmMaterializationLimitExceeded
     case inexactGridProjection
     case inconsistentPersistedTiming
 
@@ -399,6 +400,16 @@ builder allocates per-measure arrays. DTX's three-digit addresses naturally rema
 persisted overrides cannot force millions of empty measures. `NotationLayoutEngine.maximumRenderableMeasureCount`
 reuses the shared limit rather than defining a divergent value. A fresh source outside the limit emits timing-fatal
 `measureLimitExceeded`; an out-of-range decoded persisted value fails its invariant as `inconsistentPersistedTiming`.
+
+Materialized rhythm collections have a separate chart-wide resource limit:
+`RhythmLimits.maximumMaterializedRhythmUnitCount = 49_152`, equal to 4,096 nominal 12/8 measures times twelve
+eighth-note pulses. The limit applies independently to each eagerly materialized collection, including the timeline's
+beat groups and the metronome schedule's pulse offsets. Before allocating either collection, its producer computes the
+exact total count with checked arithmetic and rejects a count above the limit with timing-fatal
+`rhythmMaterializationLimitExceeded`. This preserves ordinary charts at the maximum measure count while preventing a
+single hostile extended measure—whose tick duration may legally approach the exact-`Double` bound—from attempting to
+allocate quadrillions of groups or pulses. No producer partially materializes a prefix, and no consumer retries with
+an invented coarser grouping.
 
 ### 7.2 Manual-offset rationalization
 
@@ -992,6 +1003,9 @@ emit repeated logs for the same persisted condition.
 - Cover compound 6/8, 9/8, and 12/8 dotted-quarter grouping.
 - Cover residual groups in pickup and extended measures.
 - Reject overflow, cap breach, inexact projection, and invalid metadata versions.
+- Reject beat-group or metronome-pulse counts above 49,152 before allocation; prove a hostile near-`2^53` simple-meter
+  measure fails with `rhythmMaterializationLimitExceeded`, while the cumulative exact-`Double` boundary is tested
+  through a bounded-group fixture.
 - Decode hostile persisted ratios/overrides/diagnostics through validating initializers; reject zero denominators,
   negative indices, duplicate overrides, mismatched code/severity pairs, and `.valid` metadata missing meter or feel;
   allow fatal metadata to omit only the rejected semantic fields.

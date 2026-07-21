@@ -14,7 +14,7 @@
 - A chart has exactly one cached timing selection: `.valid`, `.legacy`, or `.fatal`. No downstream subsystem may independently infer timing mode from note origins or normalized-field tuples.
 - `rhythmMetadataData == nil` is the only missing-metadata state. Every non-`nil` payload that fails version or invariant validation is `.invalid` and resolves to `.fatal`.
 - Exact rational and integer arithmetic is mandatory until the `RhythmTimeline` seconds/playhead conversion boundary. Never round an event to a neighboring tick.
-- Enforce `RhythmTimelineBuilder.maximumTicksPerWholeNote == 4_096`, `RhythmLimits.maximumMeasureCount == 4_096`, and cumulative ticks `<= 2^53 - 1`.
+- Enforce `RhythmTimelineBuilder.maximumTicksPerWholeNote == 4_096`, `RhythmLimits.maximumMeasureCount == 4_096`, `RhythmLimits.maximumMaterializedRhythmUnitCount == 49_152` per eager collection, and cumulative ticks `<= 2^53 - 1`.
 - Treat DTX `#BPM` as quarter notes per minute in every meter. Channel `02` changes measure duration; it never changes BPM or infers meter.
 - Fresh parser results are timing-valid or timing-fatal, never legacy. Base DTX identity failures still throw; recognized rhythm failures return persistable fatal chart data.
 - `Note.interval == .quarter` may remain a compatibility placeholder for an indeterminate or fatal DTX note, but timeline semantic analysis must use the optional `visualDurationCandidate`, never that placeholder.
@@ -301,6 +301,7 @@ rtk git commit -m "feat: parse exact DTX rhythm metadata"
 ### Task 3: Canonical Timeline Builder, Resolver, and Event Identity
 
 **Files:**
+- Modify: `Virgo/models/RhythmMetadata.swift`
 - Create: `Virgo/utilities/RhythmTimeline.swift`
 - Create: `Virgo/utilities/RhythmTimelineBuilder.swift`
 - Create: `Virgo/utilities/RhythmTimelineResolver.swift`
@@ -310,7 +311,7 @@ rtk git commit -m "feat: parse exact DTX rhythm metadata"
 
 **Interfaces:**
 - Produces: `RhythmMeasure`, `RhythmBeatGroup`, `RhythmEventPosition`, `RhythmTimeline`, `RhythmEventID`, immutable source-event inputs, `ResolvedChartRhythm`.
-- Produces: `RhythmTimelineBuilder.maximumTicksPerWholeNote == 4_096` and shared `RhythmLimits.maximumMeasureCount` use.
+- Produces: `RhythmTimelineBuilder.maximumTicksPerWholeNote == 4_096` and shared `RhythmLimits.maximumMeasureCount` / `maximumMaterializedRhythmUnitCount` use.
 - Consumes: validated metadata and immutable source coordinates, never SwiftData inside the pure builder.
 
 - [ ] **Step 1: Write failing resolution and conversion tests**
@@ -341,6 +342,11 @@ guard resolution <= Self.maximumTicksPerWholeNote else {
 ```
 
 Include manual-fraction and beat-group denominators; reject overflow, inexact division, out-of-range measures, and cumulative ticks beyond `RhythmLimits.maximumExactDoubleInteger`.
+
+Before allocating beat groups, compute their exact chart-wide count with checked arithmetic. Reject counts above
+`RhythmLimits.maximumMaterializedRhythmUnitCount` using `RhythmTimelineBuildError.materializationLimitExceeded`, mapped
+to timing-fatal `RhythmDiagnosticCode.rhythmMaterializationLimitExceeded`. Never materialize a prefix or coarsen the
+semantic grouping.
 
 - [ ] **Step 3: Materialize measures, beat groups, and event positions**
 
@@ -401,7 +407,7 @@ Add a pure `CanonicalRhythmProjection` mapping source event IDs to event positio
 
 - [ ] **Step 8: Test hostile limits and selector precedence**
 
-Cover override/source/manual indices `4095` and `4096`, a final `measureOffset == 1`, resolution `4032` accepted, resolution beyond `4096` rejected, checked multiplication/cumulative overflow, corrupt payload never legacy, missing mixed DTX/manual remaining legacy, and valid metadata plus one inadmissible manual event becoming fatal.
+Cover override/source/manual indices `4095` and `4096`, a final `measureOffset == 1`, resolution `4032` accepted, resolution beyond `4096` rejected, checked multiplication/cumulative overflow, a hostile simple-meter group count rejected before allocation, corrupt payload never legacy, missing mixed DTX/manual remaining legacy, and valid metadata plus one inadmissible manual event becoming fatal. Test the `2^53 - 1` cumulative boundary with a bounded-group fixture so the proof itself cannot allocate unbounded rhythm units.
 
 - [ ] **Step 9: Run timeline suites**
 
@@ -413,7 +419,7 @@ rtk git diff --check
 - [ ] **Step 10: Commit the timing authority**
 
 ```bash
-rtk git add Virgo/utilities/RhythmTimeline.swift Virgo/utilities/RhythmTimelineBuilder.swift Virgo/utilities/RhythmTimelineResolver.swift VirgoTests/RhythmTimelineBuilderTests.swift VirgoTests/RhythmTimelineResolverTests.swift VirgoTests/NotationLayoutEngineTabGridOverflowTests.swift
+rtk git add Virgo/models/RhythmMetadata.swift Virgo/utilities/RhythmTimeline.swift Virgo/utilities/RhythmTimelineBuilder.swift Virgo/utilities/RhythmTimelineResolver.swift VirgoTests/RhythmTimelineBuilderTests.swift VirgoTests/RhythmTimelineResolverTests.swift VirgoTests/NotationLayoutEngineTabGridOverflowTests.swift
 rtk git commit -m "feat: add canonical rhythm timeline"
 ```
 
@@ -770,6 +776,8 @@ rtk git commit -m "feat: score immutable rhythm targets"
 - [ ] **Step 1: Write failing pulse-policy and cursor-race tests**
 
 Cover quarter pulses/accented group starts for X/4; eighth pulses/dotted-quarter accents for 6/8, 9/8, and 12/8; only downbeat accent in 7/8; residual group accents in shortened/extended bars; and no pulse outside a measure's duration. Cover cancellation between lookup and callback and reseating immediately before/after a shortened barline.
+Also prove an exact pulse count of 49,152 is accepted and 49,153 is rejected before allocation with
+`rhythmMaterializationLimitExceeded`.
 
 - [ ] **Step 2: Implement immutable schedule and locked cursor**
 
@@ -784,6 +792,10 @@ final class RhythmScheduleCursor: @unchecked Sendable {
     private var nextPulseIndex: Int
 }
 ```
+
+Preflight the chart-wide pulse count with checked arithmetic before constructing the array. Apply
+`RhythmLimits.maximumMaterializedRhythmUnitCount` independently from the already-materialized beat-group count; never
+emit a truncated schedule.
 
 Only the serial timer queue consumes next pulses. MainActor cancellation/reseat uses lock-guarded methods. Every callback captures the playback token and cursor generation so cancelled work cannot advance a replacement.
 
@@ -1023,5 +1035,5 @@ Expected: the commit contains only HPA-145 production/test changes and leaves th
 - **BGM/duration:** Task 8 resolves the raw chart anchor and makes timeline end authoritative; Task 9 removes fixed-4/4 parser seconds.
 - **Painted extents:** Task 6 makes every primitive report bounds and derives all layout extents from one union.
 - **Terminal provenance:** Task 2 removes `?? .quarter`; Task 4 distinguishes trusted candidate from indeterminate onset.
-- **Resource/boundary safety:** Tasks 1 and 3 validate 4,096 limits, checked arithmetic, exact-Double bounds, and `measureOffset == 1.0` rollover.
+- **Resource/boundary safety:** Tasks 1, 3, and 8 validate 4,096 limits, the 49,152 per-collection materialization cap, checked arithmetic, exact-Double bounds, and `measureOffset == 1.0` rollover.
 - **Legacy compatibility:** Tasks 3, 5, 7, 8, and 10 retain and explicitly test the existing fixed-measure path.
