@@ -1,10 +1,9 @@
 import CoreGraphics
 
 extension NotationLayoutEngine {
-    /// DTX's three-digit measure address tops out at 1,000 measures. Allow a
-    /// generous multiple for manual charts while bounding per-measure arrays,
-    /// synthesized rests, and row geometry from malformed persisted values.
-    static let maximumRenderableMeasureCount = 4_096
+    /// Bound per-measure arrays, synthesized rests, and row geometry with the
+    /// same chart-wide limit used by canonical rhythm validation.
+    static let maximumRenderableMeasureCount = RhythmLimits.maximumMeasureCount
 
     struct ControlTimingResolution {
         let controls: [SemanticallyTimedControl]

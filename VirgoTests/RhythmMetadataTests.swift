@@ -72,14 +72,27 @@ struct RhythmMetadataTests {
     @Test("diagnostics accept only their declared severity")
     func diagnosticSeverityAgreement() throws {
         let fatal = try PersistedRhythmDiagnostic(code: .malformedFeel, severity: .timingFatal)
+        let materializationLimit = try PersistedRhythmDiagnostic(
+            code: .rhythmMaterializationLimitExceeded,
+            severity: .timingFatal
+        )
         let engraving = try PersistedRhythmDiagnostic(code: .unsupportedDotCount, severity: .engravingOnly)
         #expect(fatal.severity == .timingFatal)
+        #expect(materializationLimit.code.rawValue == "rhythmMaterializationLimitExceeded")
+        #expect(materializationLimit.severity == .timingFatal)
+        #expect(RhythmLimits.maximumMaterializedRhythmUnitCount == 49_152)
         #expect(engraving.severity == .engravingOnly)
         #expect(throws: RhythmMetadataValidationError.self) {
             _ = try PersistedRhythmDiagnostic(code: .malformedFeel, severity: .engravingOnly)
         }
         #expect(throws: RhythmMetadataValidationError.self) {
             _ = try PersistedRhythmDiagnostic(code: .unsupportedDotCount, severity: .timingFatal)
+        }
+        #expect(throws: RhythmMetadataValidationError.self) {
+            _ = try PersistedRhythmDiagnostic(
+                code: .rhythmMaterializationLimitExceeded,
+                severity: .engravingOnly
+            )
         }
     }
 

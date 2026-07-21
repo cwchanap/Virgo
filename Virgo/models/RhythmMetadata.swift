@@ -7,6 +7,7 @@ import Foundation
 
 enum RhythmLimits {
     static let maximumMeasureCount = 4_096
+    static let maximumMaterializedRhythmUnitCount = 49_152
     static let maximumExactDoubleInteger = 9_007_199_254_740_991
 }
 
@@ -221,6 +222,7 @@ enum RhythmDiagnosticCode: String, Codable, CaseIterable, Hashable, Sendable {
     case arithmeticOverflow
     case resolutionLimitExceeded
     case measureLimitExceeded
+    case rhythmMaterializationLimitExceeded
     case inexactGridProjection
     case inconsistentPersistedTiming
     case unsupportedTupletRatio
