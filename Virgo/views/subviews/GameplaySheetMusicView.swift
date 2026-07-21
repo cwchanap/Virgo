@@ -10,7 +10,9 @@ import SwiftUI
 extension GameplayView {
     @ViewBuilder
     func sheetMusicView(geometry: GeometryProxy) -> some View {
-        if let viewModel = viewModel, viewModel.isGameplayPrepared {
+        if let viewModel, viewModel.hasFatalRhythmTiming {
+            rhythmFatalSheet(message: viewModel.rhythmFatalMessage)
+        } else if let viewModel = viewModel, viewModel.isGameplayPrepared {
             let measurePositions = sheetMeasurePositions(viewModel: viewModel)
             let contentWidth = sheetContentWidth(viewModel: viewModel)
             let contentTopInset = sheetContentTopInset(viewModel: viewModel)
@@ -60,6 +62,28 @@ extension GameplayView {
             Palette.stage
                 .overlay(Text("Loading...").foregroundColor(Palette.chalk))
         }
+    }
+
+    func rhythmFatalSheet(message: String) -> some View {
+        Palette.stage
+            .overlay {
+                VStack(spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundColor(Palette.vermillion)
+                    Text("Practice unavailable")
+                        .font(.headline)
+                        .foregroundColor(Palette.chalk)
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundColor(Palette.chalkMuted)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
+                }
+                .padding(24)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("rhythmFatalPracticeMessage")
+            }
     }
 
     func shouldAutoScrollSheet(viewModel: GameplayViewModel, isPlaying: Bool) -> Bool {

@@ -162,8 +162,6 @@ class InputManager: ObservableObject {
     #endif
     
     // Timing calculation cache
-    private var secondsPerBeat: Double = 0.5
-    private var secondsPerMeasure: Double = 2.0
     private var inputTimingMatcher: InputTimingMatcher?
     private var hostTimeElapsedOffset: Double = 0.0
     
@@ -472,8 +470,6 @@ extension InputManager {
             self.bpm = bpm
             self.timeSignature = timeSignature
             self.notes = notes
-            self.secondsPerBeat = 60 / bpm
-            self.secondsPerMeasure = self.secondsPerBeat * Double(timeSignature.beatsPerMeasure)
         case let .timeline(_, timeline, _):
             self.notes = []
             if let timeSignature = timeline.measures.first?.timeSignature {
@@ -481,8 +477,6 @@ extension InputManager {
             }
             if let matcherBPM = prepared.bpm {
                 self.bpm = matcherBPM
-                self.secondsPerBeat = 60 / matcherBPM
-                self.secondsPerMeasure = self.secondsPerBeat * Double(self.timeSignature.beatsPerMeasure)
             }
         }
         inputTimingMatcher = prepared.matcher

@@ -305,7 +305,7 @@ struct GameplayViewModelBGMCoverageTests {
 
         vm.startBGMPlayback(track: vm.track!)
 
-        #expect(spy.startAtTimeCalls.count == 1)
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
         #expect(vm.lastScheduledPlaybackStartTime != nil)
     }
 
@@ -320,8 +320,8 @@ struct GameplayViewModelBGMCoverageTests {
         vm.pausedElapsedTime = 2.0
         vm.startBGMPlayback(track: vm.track!)
 
-        #expect(spy.startAtTimeCalls.count == 1)
-        #expect((spy.startAtTimeCalls.first?.totalBeatsElapsed ?? 0) > 0)
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect((spy.timelineStartAtTimeCalls.first?.elapsedTime ?? 0) > 0)
         #expect(vm.lastScheduledPlaybackStartTime != nil)
     }
 
@@ -339,7 +339,7 @@ struct GameplayViewModelBGMCoverageTests {
         player.currentTime = 1.0
         vm.startBGMPlayback(track: vm.track!)
 
-        #expect(spy.startAtTimeCalls.count == 1)
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
         #expect(vm.lastScheduledPlaybackStartTime != nil)
     }
 
@@ -358,7 +358,7 @@ struct GameplayViewModelBGMCoverageTests {
         vm.pausedElapsedTime = 1.0
         vm.startBGMPlayback(track: vm.track!)
 
-        #expect(spy.startAtTimeCalls.count == 1)
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
         #expect(vm.lastScheduledPlaybackStartTime != nil)
     }
 
@@ -376,7 +376,7 @@ struct GameplayViewModelBGMCoverageTests {
         vm.bgmOffsetSeconds = 0.5
         vm.startBGMPlayback(track: vm.track!)
 
-        #expect(spy.startAtTimeCalls.count == 1)
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
         #expect(vm.lastScheduledPlaybackStartTime != nil)
     }
 

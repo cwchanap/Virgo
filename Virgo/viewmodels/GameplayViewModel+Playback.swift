@@ -11,6 +11,11 @@ extension GameplayViewModel {
     func togglePlayback() {
         Logger.audioPlayback("🎮 togglePlayback called - current isPlaying: \(isPlaying)")
 
+        guard !hasFatalRhythmTiming else {
+            Logger.error("Cannot toggle playback for timing-fatal chart")
+            return
+        }
+
         // Guard: Cannot start playback if data not loaded or track not ready
         if !isPlaying {
             guard isDataLoaded else {
@@ -32,6 +37,11 @@ extension GameplayViewModel {
 
     func startPlayback() {
         Logger.audioPlayback("🎮 startPlayback() called")
+
+        guard !hasFatalRhythmTiming else {
+            Logger.error("Cannot start playback for timing-fatal chart")
+            return
+        }
 
         let isResuming = pausedElapsedTime > 0.0
 
@@ -75,7 +85,9 @@ extension GameplayViewModel {
             // For BGM sessions, use BGM position as source of truth
             // For metronome-only sessions, use pausedElapsedTime
             let actualElapsedTime: Double
-            if let bgmPlayer = bgmPlayer, bgmPlayer.currentTime > 0 {
+            if let bgmPlayer = bgmPlayer,
+               bgmPlayer.currentTime > 0,
+               !shouldYieldBGMClockToTimeline(bgmPlayer) {
                 Logger.audioPlayback("🎮 Resuming BGM playback from \(bgmPlayer.currentTime)s")
                 // Convert audio time to timeline position (accounting for speed + BGM offset)
                 actualElapsedTime = bgmTimelineElapsedTime(for: bgmPlayer.currentTime)
@@ -254,6 +266,42 @@ extension GameplayViewModel {
     /// high-level call. `actualElapsedTime` is the speed-adjusted timeline position
     /// to resume from (BGM-clock-derived for BGM sessions, pausedElapsedTime otherwise).
     private func restoreResumeState(actualElapsedTime: Double, track: DrumTrack) {
+        let elapsedTime = clampedTimelinePlaybackElapsed(actualElapsedTime)
+        if let resolved = resolvedTimelinePlaybackPosition(elapsedTime: elapsedTime) {
+            restoreTimelineResumePosition(resolved, elapsedTime: elapsedTime)
+        } else {
+            restoreLegacyResumePosition(actualElapsedTime: elapsedTime, track: track)
+        }
+
+        if cachedTrackDuration > 0 {
+            playbackProgress = elapsedTime / cachedTrackDuration
+        } else {
+            Logger.warning("⚠️ Cannot calculate playback progress: cachedTrackDuration is zero")
+            playbackProgress = 0.0
+        }
+        pausedElapsedTime = elapsedTime
+        if !Self.isFullSpeed(practiceSettings.speedMultiplier) {
+            sessionAtFullSpeed = false
+        }
+    }
+
+    private func restoreTimelineResumePosition(
+        _ resolved: ResolvedTimelinePlaybackPosition,
+        elapsedTime: Double
+    ) {
+        currentMeasureIndex = resolved.measure.measureIndex
+        currentBeatPosition = resolved.localTick / Double(resolved.measure.durationTicks)
+        rawBeatPosition = currentBeatPosition
+        currentQuarterNotePosition = resolved.absoluteTick / Double(resolved.timeline.ticksPerWholeNote) * 4
+        let pulseIndex = timelinePulseIndex(atOneXSeconds: elapsedTime * practiceSettings.speedMultiplier)
+        totalBeatsElapsed = pulseIndex
+        currentBeat = closestRhythmTargetIndex(atAbsoluteTick: resolved.absoluteTick)
+        lastMetronomeBeat = pulseIndex
+        lastDiscreteBeat = pulseIndex
+        lastBeatUpdate = pulseIndex
+    }
+
+    private func restoreLegacyResumePosition(actualElapsedTime: Double, track: DrumTrack) {
         // Use effective BPM for beat calculation during speed-adjusted playback
         let secondsPerBeat = 60.0 / effectiveBPM()
         let elapsedBeats = actualElapsedTime / secondsPerBeat
@@ -265,29 +313,11 @@ extension GameplayViewModel {
         currentBeatPosition = beatWithinMeasure / Double(track.timeSignature.beatsPerMeasure)
         currentMeasureIndex = discreteBeats / track.timeSignature.beatsPerMeasure
 
-        // Guard against zero duration to prevent division by zero
-        if cachedTrackDuration > 0 {
-            playbackProgress = actualElapsedTime / cachedTrackDuration
-        } else {
-            Logger.warning("⚠️ Cannot calculate playback progress: cachedTrackDuration is zero")
-            playbackProgress = 0.0
-        }
-
         // Update derived state
         currentBeat = findClosestBeatIndex(measureIndex: currentMeasureIndex, beatPosition: currentBeatPosition)
         lastMetronomeBeat = totalBeatsElapsed
         lastDiscreteBeat = discreteBeats
         lastBeatUpdate = discreteBeats
-
-        // Preserve elapsed offset as base time for this playback session
-        pausedElapsedTime = actualElapsedTime
-
-        // A speed change applied while paused is not cleared by applySpeedChangeInternal
-        // (which only acts while playing). Re-evaluate on resume so a run slowed at any
-        // point cannot set an all-time best. One-way latch: only ever clears.
-        if !Self.isFullSpeed(practiceSettings.speedMultiplier) {
-            sessionAtFullSpeed = false
-        }
     }
 
     func cleanup() {

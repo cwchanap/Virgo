@@ -365,7 +365,7 @@ struct GameplayViewModelSpeedTests {
 
         vm.updateSpeed(0.5)
 
-        #expect(vm.pausedElapsedTime >= 8)
+        #expect(abs(vm.pausedElapsedTime - vm.cachedTrackDuration) < 0.001)
     }
 
     @Test("BGM speed change captures media time with the previous one-X offset")
@@ -383,7 +383,8 @@ struct GameplayViewModelSpeedTests {
             interval: .quarter,
             noteType: .bass,
             measureNumber: 1,
-            measureOffset: 0
+            measureOffset: 0,
+            originKind: .dtx
         ))
         let settings = GameplayViewModelCoverageTestSupport.makeSettings()
         let vm = GameplayViewModel(

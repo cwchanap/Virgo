@@ -293,7 +293,7 @@ private extension RhythmTimelineBuilder {
         for ratio in measureRatios {
             resolution = try includeGridFactor(gridSize: 1, ratio: ratio, resolution: resolution)
         }
-        resolution = try includeBeatGroupFactor(timeSignature: timeSignature, resolution: resolution)
+        resolution = try includeMeterProjectionFactor(timeSignature: timeSignature, resolution: resolution)
         for event in events {
             let ratio = measureRatios[event.measureIndex]
             switch event.coordinate {
@@ -339,12 +339,10 @@ private extension RhythmTimelineBuilder {
         return try include(factor: denominatorProduct / divisor, in: resolution)
     }
 
-    func includeBeatGroupFactor(timeSignature: TimeSignature, resolution: Int) throws -> Int {
+    func includeMeterProjectionFactor(timeSignature: TimeSignature, resolution: Int) throws -> Int {
         switch timeSignature {
-        case .sixEight, .nineEight, .twelveEight:
+        case .sixEight, .sevenEight, .nineEight, .twelveEight:
             return try include(factor: 8, in: resolution)
-        case .sevenEight:
-            return resolution
         case .twoFour, .threeFour, .fourFour, .fiveFour:
             return try include(factor: 4, in: resolution)
         }

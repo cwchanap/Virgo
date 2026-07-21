@@ -58,7 +58,9 @@ struct GameplayViewModelCoverageAdditionsTests {
 
     @Test("calculateTrackDuration uses MM:SS song.duration when available")
     func testCalculateTrackDurationUsesSongDurationMMSS() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: 2)
+        chart.notes.forEach { $0.originKind = .dtx }
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
         vm.setupGameplay()

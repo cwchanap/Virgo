@@ -37,7 +37,7 @@ extension GameplayViewModel {
     /// Returns the clamped speed if BGM is present and speed is below minimum, nil otherwise.
     /// Returns value instead of calling setSpeed directly, preventing .onChange re-entry.
     func enforceBGMMinimumSpeedIfNeeded() -> Double? { // internal for cross-file extension access
-        guard bgmPlayer != nil else { return nil }
+        guard let bgmPlayer, !shouldYieldBGMClockToTimeline(bgmPlayer) else { return nil }
         let minimumSpeed = 0.5
         if practiceSettings.speedMultiplier < minimumSpeed {
             Logger.warning("BGM enabled - clamping speed to 50% to keep audio in sync")
@@ -47,6 +47,10 @@ extension GameplayViewModel {
     }
 
     func startBGMPlayback(track: DrumTrack) { // internal for cross-file extension access
+        guard !hasFatalRhythmTiming else {
+            Logger.error("Cannot start BGM or metronome for timing-fatal chart")
+            return
+        }
         let currentEffectiveBPM = effectiveBPM()
         let currentSpeedMultiplier = practiceSettings.speedMultiplier
 
@@ -56,7 +60,12 @@ extension GameplayViewModel {
 
             let isResuming = pausedElapsedTime > 0.0
 
-            if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
+            if shouldYieldBGMClockToTimeline(bgmPlayer) {
+                lastScheduledPlaybackStartTime = startMetronomeOnlyPlayback(
+                    track: track,
+                    effectiveBPM: currentEffectiveBPM
+                )
+            } else if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
                 lastScheduledPlaybackStartTime = resumeBGMFromPosition(track: track, bgmPlayer: bgmPlayer, effectiveBPM: currentEffectiveBPM)
             } else if isResuming {
                 lastScheduledPlaybackStartTime = resumeBGMDuringOffset(track: track, bgmPlayer: bgmPlayer, effectiveBPM: currentEffectiveBPM)
@@ -75,11 +84,10 @@ extension GameplayViewModel {
         let capturedHostTime = mach_absolute_time()
         lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-        metronome.startAtTime(
-            bpm: effectiveBPM,
-            timeSignature: track.timeSignature,
-            startTime: commonStartTime,
-            totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
+        startMetronomeAtSharedTime(
+            commonStartTime,
+            track: track,
+            effectiveBPM: effectiveBPM
         )
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
         if !bgmPlayer.play(atTime: bgmDeviceTime) {
@@ -97,11 +105,10 @@ extension GameplayViewModel {
         lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
 
-        metronome.startAtTime(
-            bpm: effectiveBPM,
-            timeSignature: track.timeSignature,
-            startTime: commonStartTime,
-            totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
+        startMetronomeAtSharedTime(
+            commonStartTime,
+            track: track,
+            effectiveBPM: effectiveBPM
         )
 
         let remainingOffset = remainingBGMOffset()
@@ -121,10 +128,10 @@ extension GameplayViewModel {
         let capturedHostTime = mach_absolute_time()
         lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-        metronome.startAtTime(
-            bpm: effectiveBPM,
-            timeSignature: track.timeSignature,
-            startTime: commonStartTime
+        startMetronomeAtSharedTime(
+            commonStartTime,
+            track: track,
+            effectiveBPM: effectiveBPM
         )
 
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
@@ -143,11 +150,10 @@ extension GameplayViewModel {
             let capturedHostTime = mach_absolute_time()
             lastScheduledPlaybackHostTime = capturedHostTime
             let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-            metronome.startAtTime(
-                bpm: effectiveBPM,
-                timeSignature: track.timeSignature,
-                startTime: commonStartTime,
-                totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
+            startMetronomeAtSharedTime(
+                commonStartTime,
+                track: track,
+                effectiveBPM: effectiveBPM
             )
             return commonStartTime
         } else {
@@ -158,12 +164,34 @@ extension GameplayViewModel {
             let capturedHostTime = mach_absolute_time()
             lastScheduledPlaybackHostTime = capturedHostTime
             let startTime = CFAbsoluteTimeGetCurrent() + setupTime
+            startMetronomeAtSharedTime(
+                startTime,
+                track: track,
+                effectiveBPM: effectiveBPM
+            )
+            return startTime
+        }
+    }
+
+    private func startMetronomeAtSharedTime(
+        _ startTime: CFAbsoluteTime,
+        track: DrumTrack,
+        effectiveBPM: Double
+    ) {
+        if let schedule = cachedRhythmRuntime.metronomeSchedule {
+            metronome.startAtTime(
+                schedule: schedule,
+                speed: practiceSettings.speedMultiplier,
+                startTime: startTime,
+                elapsedTime: pausedElapsedTime
+            )
+        } else {
             metronome.startAtTime(
                 bpm: effectiveBPM,
                 timeSignature: track.timeSignature,
-                startTime: startTime
+                startTime: startTime,
+                totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
             )
-            return startTime
         }
     }
 
@@ -184,6 +212,7 @@ extension GameplayViewModel {
     // MARK: - BGM Setup
 
     func setupBGMPlayer() {
+        guard !hasFatalRhythmTiming else { return }
         guard let song = cachedSong,
               let bgmFilePath = song.bgmFilePath,
               !bgmFilePath.isEmpty else {

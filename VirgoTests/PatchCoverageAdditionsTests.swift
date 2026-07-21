@@ -60,8 +60,8 @@ struct GameplayViewModelPatchCoverageTests {
         #expect(vm.playbackProgress == 1.0, "Completion tick should clamp progress to 1.0")
     }
 
-    @Test("updatePurpleBarPosition does not republish an unchanged beat-boundary position")
-    func testPurpleBarPositionStableAcrossSameBeat() async throws {
+    @Test("updatePurpleBarPosition follows continuous timeline progress")
+    func testPurpleBarPositionMovesAcrossSubBeatTicks() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         vm.setupGameplay()
@@ -71,15 +71,15 @@ struct GameplayViewModelPatchCoverageTests {
         vm.updatePurpleBarPosition(elapsedTime: 0.05)
         let firstPosition = vm.purpleBarPosition
 
-        // Same beat boundary (quantized) should not change the published position.
         vm.updatePurpleBarPosition(elapsedTime: 0.06)
-        #expect(Self.samePosition(vm.purpleBarPosition, firstPosition),
-                "Quantized beat-boundary position must remain stable across sub-beat ticks")
+        #expect(!Self.samePosition(vm.purpleBarPosition, firstPosition))
     }
 
     @Test("calculateBGMOffset uses persisted DTX bgmStartOffsetSeconds scaled by speed")
     func testCalculateBGMOffsetUsesDTXStartOffset() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4)
+        chart.notes.forEach { $0.originKind = .dtx }
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
         vm.setupGameplay()
         defer { vm.cleanup() }
@@ -118,10 +118,7 @@ struct GameplayViewModelPatchCoverageTests {
         vm.setupGameplay()
         defer { vm.cleanup() }
 
-        guard let player = Self.makeSilentPlayer() else {
-            Issue.record("Failed to construct a silent AVAudioPlayer fixture")
-            return
-        }
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 5)
         _ = player.prepareToPlay()
         player.currentTime = 1.0
         vm.bgmPlayer = player
