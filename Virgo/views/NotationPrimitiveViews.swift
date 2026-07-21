@@ -261,3 +261,94 @@ struct NotationMeasureBarView: View, Equatable {
         }
     }
 }
+
+struct NotationRhythmDotView: View, Equatable {
+    let dot: RenderedRhythmDot
+    let style: NotationLayoutStyle
+
+    var body: some View {
+        Circle()
+            .fill(Palette.chalk)
+            .frame(width: style.rhythmDotRadius * 2, height: style.rhythmDotRadius * 2)
+            .position(dot.position)
+            .accessibilityLabel(dot.accessibilityLabel)
+    }
+}
+
+private struct TupletThreeShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + rect.width * 0.18, y: rect.minY + rect.height * 0.14))
+        path.addCurve(
+            to: CGPoint(x: rect.minX + rect.width * 0.52, y: rect.midY),
+            control1: CGPoint(x: rect.maxX, y: rect.minY),
+            control2: CGPoint(x: rect.maxX, y: rect.midY * 0.8)
+        )
+        path.addCurve(
+            to: CGPoint(x: rect.minX + rect.width * 0.12, y: rect.maxY - rect.height * 0.12),
+            control1: CGPoint(x: rect.maxX, y: rect.midY),
+            control2: CGPoint(x: rect.maxX, y: rect.maxY)
+        )
+        return path
+    }
+}
+
+struct NotationTupletView: View, Equatable {
+    let tuplet: RenderedTuplet
+    let style: NotationLayoutStyle
+
+    var body: some View {
+        ZStack {
+            if tuplet.isBracketVisible, tuplet.bracketPoints.count == 6 {
+                Path { path in
+                    path.move(to: tuplet.bracketPoints[0])
+                    path.addLine(to: tuplet.bracketPoints[1])
+                    path.addLine(to: tuplet.bracketPoints[2])
+                    path.move(to: tuplet.bracketPoints[3])
+                    path.addLine(to: tuplet.bracketPoints[4])
+                    path.addLine(to: tuplet.bracketPoints[5])
+                }
+                .stroke(Palette.chalk, lineWidth: style.tupletLineWidth)
+            }
+
+            TupletThreeShape()
+                .stroke(
+                    Palette.chalk,
+                    style: StrokeStyle(lineWidth: style.tupletLineWidth, lineCap: .round, lineJoin: .round)
+                )
+                .frame(width: style.tupletLabelSize.width, height: style.tupletLabelSize.height)
+                .position(tuplet.labelPosition)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(tuplet.accessibilityLabel)
+    }
+}
+
+struct NotationFeelMarkView: View, Equatable {
+    let feelMark: RenderedFeelMark
+    let style: NotationLayoutStyle
+
+    var body: some View {
+        Text(feelMark.feel.rawValue.capitalized)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Palette.chalk)
+            .frame(width: feelMark.size.width, height: feelMark.size.height)
+            .position(feelMark.position)
+            .accessibilityLabel(feelMark.accessibilityLabel)
+    }
+}
+
+struct NotationRhythmWarningView: View, Equatable {
+    let warning: RenderedRhythmWarning
+    let style: NotationLayoutStyle
+
+    var body: some View {
+        Text(warning.title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Palette.vermillion)
+            .lineLimit(1)
+            .frame(width: warning.size.width, height: warning.size.height, alignment: .leading)
+            .position(warning.position)
+            .accessibilityLabel(warning.accessibilityLabel)
+    }
+}

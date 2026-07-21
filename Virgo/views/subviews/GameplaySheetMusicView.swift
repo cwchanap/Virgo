@@ -303,6 +303,11 @@ extension GameplayView {
                     .equatable()
             }
 
+            ForEach(notationLayout.rhythmDots) { dot in
+                NotationRhythmDotView(dot: dot, style: style)
+                    .equatable()
+            }
+
             ForEach(notationLayout.articulations) { articulation in
                 NotationArticulationView(articulation: articulation, style: style)
                     .equatable()
@@ -310,6 +315,21 @@ extension GameplayView {
 
             ForEach(notationLayout.stopNotes) { stopNote in
                 NotationStopNoteView(stopNote: stopNote, style: style)
+                    .equatable()
+            }
+
+            ForEach(notationLayout.tuplets) { tuplet in
+                NotationTupletView(tuplet: tuplet, style: style)
+                    .equatable()
+            }
+
+            ForEach(notationLayout.feelMarks) { feelMark in
+                NotationFeelMarkView(feelMark: feelMark, style: style)
+                    .equatable()
+            }
+
+            ForEach(notationLayout.rhythmWarnings) { warning in
+                NotationRhythmWarningView(warning: warning, style: style)
                     .equatable()
             }
         }
