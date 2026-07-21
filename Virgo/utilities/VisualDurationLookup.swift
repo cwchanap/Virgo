@@ -7,8 +7,9 @@
 
 import Foundation
 
-/// Pure lookup helper that maps DTX chips to readable `NoteInterval` visual
-/// duration candidates based on musical spacing in a shared tick space.
+/// Pure lookup helper that maps DTX chips with a later onset to readable
+/// `NoteInterval` visual duration candidates in a shared tick space. Terminal
+/// chips are deliberately absent because the source contains no duration evidence.
 ///
 /// The lookup sorts every playable chip by absolute tick across all measures
 /// (not just within a single measure) so that the final chip in one measure
@@ -32,14 +33,6 @@ enum VisualDurationLookup {
                 && chip.gridPosition >= 0
                 && chip.gridPosition < chip.gridSize
         }
-        let playableChipsByMeasure = Dictionary(grouping: playableChips, by: \.measureIndex)
-        let fallbackTickSpanByMeasure = playableChipsByMeasure.mapValues { measureChips in
-            let uniqueTicks = Set(measureChips.map {
-                normalizedTick(for: $0, ticksPerMeasure: ticksPerMeasure)
-            })
-
-            return uniqueTicks.count == ticksPerMeasure ? 1 : max(ticksPerMeasure / 4, 1)
-        }
         let sortedChips = playableChips.sorted { lhs, rhs in
             let lhsTick = normalizedAbsoluteTick(for: lhs, ticksPerMeasure: ticksPerMeasure)
             let rhsTick = normalizedAbsoluteTick(for: rhs, ticksPerMeasure: ticksPerMeasure)
@@ -62,9 +55,10 @@ enum VisualDurationLookup {
 
         for chip in sortedChips {
             let currentTick = normalizedAbsoluteTick(for: chip, ticksPerMeasure: ticksPerMeasure)
-            let tickSpan = nextAbsoluteTickByTick[currentTick].map { $0 - currentTick }
-                ?? fallbackTickSpanByMeasure[chip.measureIndex]
-                ?? max(ticksPerMeasure / 4, 1)
+            guard let nextAbsoluteTick = nextAbsoluteTickByTick[currentTick] else {
+                continue
+            }
+            let tickSpan = nextAbsoluteTick - currentTick
 
             candidates[chipKey(chip)] = closestInterval(
                 toTickSpan: tickSpan,
