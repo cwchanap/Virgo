@@ -1,12 +1,13 @@
 # Rhythm Timeline, Tuplets, Compound Meter, and Variable Measure Design
 
 - **Date:** 2026-07-20
-- **Status:** Design approved; awaiting written-spec review
+- **Status:** Design approved; revised after review and awaiting written-spec re-approval
 - **Scope:** Give imported and manual charts one timing authority for non-power-of-two grids, dotted rhythms,
   triplets, compound meter, and variable DTX measure lengths, then derive notation, playback, and scoring from it.
 - **Linear:** [HPA-145](https://linear.app/cwchanap/issue/HPA-145/handle-tuplets-dotted-rhythms-compound-meter-and-dtx-measure-length)
 - **Parent:** [HPA-97](https://linear.app/cwchanap/issue/HPA-97/fix-drum-tab-rendering-spacing-beams-flags-rests-and-stop-note)
 - **Blocks:** [HPA-144](https://linear.app/cwchanap/issue/HPA-144/add-drum-tab-rendering-regression-fixtures-and-golden-coverage)
+  (HPA-145 is the upstream Linear dependency.)
 
 ## 1. Context
 
@@ -22,7 +23,7 @@ The current implementation has four gaps:
    thirty-second, or sixty-fourth interval. A triplet or dotted duration can therefore acquire a different musical
    meaning.
 3. `NotationBeamTopologyBuilder` intentionally returns no beam topology for `/8` meters, while rest topology hides
-   internal `/8` rests. Compound meter is deterministic in position but incomplete in engraving.
+   every generated `/8` gap. Compound meter is deterministic in position but incomplete in engraving.
 4. `GameplayViewModel` converts elapsed time through one chart-wide `beatsPerMeasure` value. Variable measure lengths,
    compound primary pulses, visual x-position, and scoring targets do not share one timing authority.
 
@@ -100,6 +101,57 @@ enum RhythmTimingStatus: String, Codable, Hashable {
     case fatal
 }
 
+enum RhythmTimelineAvailability: Hashable {
+    case valid
+    case legacy
+    case fatal
+}
+
+enum RhythmDiagnosticSeverity: String, Codable, Hashable {
+    case timingFatal
+    case engravingOnly
+}
+
+enum RhythmDiagnosticCode: String, Codable, CaseIterable, Hashable {
+    // Timing-fatal
+    case malformedMeasureLength
+    case nonpositiveMeasureLength
+    case conflictingTimeSignature
+    case conflictingFeel
+    case conflictingMeasureLength
+    case unsupportedMetadataVersion
+    case arithmeticOverflow
+    case resolutionLimitExceeded
+    case inexactGridProjection
+    case inconsistentPersistedTiming
+
+    // Engraving-only
+    case unsupportedTupletRatio
+    case unsupportedDotCount
+    case incompleteTuplet
+    case ambiguousBeatGrouping
+    case indeterminateTerminalDuration
+    case manualTimelineUnavailable
+}
+
+struct PersistedRhythmDiagnostic: Codable, Hashable {
+    let code: RhythmDiagnosticCode
+    let severity: RhythmDiagnosticSeverity
+    let sourceMeasureIndex: Int?
+    let sourceLineNumber: Int?
+}
+
+enum RhythmSemanticSupport: Hashable {
+    case supported
+    case indeterminate(RhythmDiagnosticCode)
+    case unsupported(RhythmDiagnosticCode)
+}
+
+enum RhythmEngravingSupport: Hashable {
+    case supported
+    case unsupported([RhythmDiagnosticCode])
+}
+
 struct ChartRhythmMetadata: Codable, Hashable {
     let version: Int
     let timeSignature: TimeSignature
@@ -110,8 +162,14 @@ struct ChartRhythmMetadata: Codable, Hashable {
 }
 ```
 
+`RhythmTimingStatus` is persisted only when a metadata payload exists. `RhythmTimelineAvailability.legacy` represents
+the absence of a payload or a manual chart that cannot enter the synthesized exact path; it is never encoded as
+corrupt metadata.
+
 `RhythmRatio` requires positive values, reduces them with an overflow-safe greatest common divisor, and performs
 checked multiplication and division. It does not accept zero, negative, non-finite, or unreduced external state.
+Checked arithmetic uses `Int.multipliedReportingOverflow(by:)` and `Int.dividedReportingOverflow(by:)`; addition and
+subtraction use their reporting-overflow counterparts.
 
 `MeasureLengthOverride` uses zero-based measure indices to match normalized DTX timing. The collection is sorted and
 unique by measure index before persistence so encoding and equality remain deterministic.
@@ -121,6 +179,10 @@ unique by measure index before persistence so encoding and equality remain deter
 `Chart` gains one optional persisted `Data` property, `rhythmMetadataData`. A computed `rhythmMetadata` accessor
 encodes and decodes the versioned value, including stable diagnostic codes and their source measure/line context. This
 avoids a new relationship graph for a small chart-owned configuration that is always loaded as a unit.
+
+Encoding and decoding live in a pure, non-`@MainActor` `ChartRhythmMetadataCodec`. SwiftData mutation calls the codec
+before assignment; SwiftUI views receive decoded immutable snapshots and never invoke the encoder. Codec tests make
+that separation explicit without relying on actor state.
 
 The property is optional for additive compatibility:
 
@@ -160,8 +222,8 @@ case-insensitively after whitespace trimming.
 
 The timing rules are:
 
-1. A channel `02` value is an absolute measure duration relative to a 4/4 whole-note measure. `0.75` is three quarter
-   notes, `1.0` four, and `1.5` six.
+1. A channel `02` value is an absolute measure duration relative to one whole note, meaning four quarter notes.
+   `0.75` is three quarter notes, `1.0` four, and `1.5` six.
 2. Without channel `02`, an explicit Virgo meter supplies nominal duration: numerator divided by denominator of a
    whole note. Therefore 6/8 defaults to `3/4` of a whole note.
 3. Without either input, the chart remains 4/4 with one whole-note measure.
@@ -169,6 +231,13 @@ The timing rules are:
    not coerced to nominal meter length.
 5. A `0.75` duration without explicit meter remains a shortened 4/4 measure. It is never guessed to be 3/4 or 6/8.
 6. Triplet-like spacing under `STRAIGHT` is literal triplet material. `SWING` or `SHUFFLE` must be explicit.
+7. DTX `#BPM` is always quarter-notes per minute, regardless of semantic meter. In 6/8, 120 BPM therefore makes an
+   eighth note 0.25 seconds, a dotted quarter 0.75 seconds, and a nominal measure 1.5 seconds.
+
+The three `mmm` digits in `#mmm02` are the DTX zero-based measure index: `#00002` targets the first DTX measure and
+`#01202` targets index 12. `MeasureLengthOverride.measureIndex` stores that integer unchanged, matching
+`DTXNote.measureIndex`. Persisted/user-facing `Note.measureNumber` and diagnostic labels remain one-based, so the UI
+adds one only at presentation boundaries.
 
 Identical duplicate declarations are accepted. Conflicting duplicate meter, feel, or per-measure length declarations
 produce a timing-fatal diagnostic rather than relying on file order.
@@ -184,6 +253,9 @@ produce a timing-fatal diagnostic rather than relying on file order.
 Playable chips and control chips remain present even when timing metadata is fatal so the import can report what was
 rejected. A fatal chart does not silently import an empty note array as if the file had no playable content.
 
+`DTXRhythmDiagnostic` is the parser-local form of a diagnostic. It carries the stable code and severity plus the raw
+source line for logs. Persistence drops raw chart text and stores only `PersistedRhythmDiagnostic` source coordinates.
+
 ## 7. Canonical Rhythm Timeline
 
 ### 7.1 Resolution
@@ -198,12 +270,31 @@ The builder computes one `ticksPerWholeNote` quantum capable of representing exa
 - every time-signature beat-group boundary;
 - every manual fractional offset admitted by the exact-conversion path.
 
-It uses checked least-common-multiple operations and caps `ticksPerWholeNote` at 4,096. This reuses the current numeric
-normalization guard as a chart-wide quantum cap; it does not reinterpret the old per-measure field. An extended
-measure may therefore contain more than 4,096 ticks, but its duration and every cumulative addition remain checked.
-Any overflow or cap breach is fatal. The builder never rounds an event onto a neighboring tick.
+It uses checked least-common-multiple operations and a new
+`RhythmTimelineBuilder.maximumTicksPerWholeNote = 4_096` constant. This is a deliberate unit-semantic break from
+`DTXChartData.maximumTicksPerMeasure`; the old symbol is not reused. Mixed ordinary and triplet 64th-note positions
+require `lcm(64, 96) = 192` ticks per whole note, so 4,096 provides more than 21 times that supported-grid requirement
+while still bounding hostile denominators. An extended measure may contain more than 4,096 ticks, but its duration
+and every cumulative addition remain checked. Any overflow or cap breach is fatal. The builder never rounds an event
+onto a neighboring tick.
 
-### 7.2 Measure values
+### 7.2 Manual-offset rationalization
+
+Metadata-free manual charts attempt a deterministic exact-conversion path before receiving a synthesized timeline:
+
+1. Require every `Note.measureOffset` to be finite and inside `0...1`.
+2. Search reduced fractions in ascending denominator order through 4,096.
+3. Accept the first fraction whose `Double` value differs from the source by at most `1e-9`; ties use the smaller
+   numerator.
+4. Feed every accepted denominator into the same bounded timeline-resolution calculation.
+5. If any offset has no candidate or the combined resolution exceeds the cap, keep the entire chart on the existing
+   legacy manual timing path. Do not partially project it or disable an otherwise playable legacy chart.
+
+This admits common authored values such as `0.1` and approximated `0.333333333333` deterministically. For manual
+notes, the stored `Note.interval` is authoritative engraving data. A sparse or terminal manual onset therefore does
+not become indeterminate merely because no later onset exists.
+
+### 7.3 Measure values
 
 Each `RhythmMeasure` contains:
 
@@ -233,7 +324,7 @@ New DTX imports persist these resolved values on `Note` and `ChartControlEvent` 
 `sourceGridPosition` and `sourceGridSize` unchanged. Existing records without rhythm metadata retain their current
 normalized-field interpretation.
 
-### 7.3 Beat groups
+### 7.4 Beat groups
 
 Beat groups are semantic ranges in measure-local ticks:
 
@@ -245,7 +336,7 @@ Beat groups are semantic ranges in measure-local ticks:
 
 Residual and ambiguous groups never borrow events from an adjacent measure.
 
-### 7.4 Conversion API
+### 7.5 Conversion API
 
 `RhythmTimeline` is the only new-code boundary for:
 
@@ -290,14 +381,16 @@ never uses another voice's onset to shorten a note.
 The analyzer forms occupied and silent slots from onset streams:
 
 1. Same-time notes in one voice form one chord onset.
-2. Consecutive onsets in that voice define candidate rhythmic spans.
-3. A terminal onset may use the existing quarter fallback only when one exact quarter fits before its beat-group or
-   measure boundary. Otherwise its duration is indeterminate.
-4. Exact binary spans map to the existing base intervals.
-5. A span exactly `3/2` of a supported base maps to one dotted duration.
-6. Three equal slots occupying the duration of two corresponding binary values form one `3:2` tuplet.
-7. A triplet group may contain note or rest slots; the three-slot group remains explicit even when one slot is silent.
-8. Incomplete, overlapping, or non-`3:2` tuplets are engraving-unsupported but keep exact onset positions.
+2. A manual note's stored `Note.interval` is authoritative; source onsets determine its position, not its base
+   duration.
+3. Consecutive DTX onsets in that voice define candidate rhythmic spans.
+4. A terminal DTX onset may use the existing quarter fallback only when one exact quarter fits before its beat-group
+   or measure boundary. Otherwise its duration is indeterminate.
+5. Exact binary spans map to the existing base intervals.
+6. A span exactly `3/2` of a supported base maps to one dotted duration.
+7. Three equal slots occupying the duration of two corresponding binary values form one `3:2` tuplet.
+8. A triplet group may contain note or rest slots; the three-slot group remains explicit even when one slot is silent.
+9. Incomplete, overlapping, or non-`3:2` tuplets are engraving-unsupported but keep exact onset positions.
 
 The analysis output supplies both note rhythm and rest topology. HPA-143's rest builder is adapted to measure-local
 durations and semantic rhythm values instead of separately rejecting `/8` meters.
@@ -312,8 +405,23 @@ For `.swing` and `.shuffle`:
 - a long-short `2:1` pair occupying one notated beat is treated as the declared feel and does not receive a triplet
   bracket;
 - one chart-level feel mark is rendered above the first visible staff;
-- a complete three-equal-slot `3:2` group remains a literal triplet and may still receive a bracket;
+- a complete three-equal-slot `3:2` group does not match the feel pair and always receives a literal triplet bracket;
 - no feel is inferred when metadata is absent.
+
+### 8.4 Rest decomposition
+
+Rest synthesis no longer uses one greedy power-of-two-only `decompositionOrder`. It processes each voice and resolved
+beat group in two phases:
+
+1. Reserve recognized tuplet groups first. Every silent slot inside a reserved `3:2` group becomes a tuplet-associated
+   rest with the same group identifier and slot duration as its neighboring notes.
+2. Decompose remaining silence with a deterministic dynamic-programming sweep whose tokens are supported binary and
+   single-dotted rests. A token cannot cross a beat-group or measure boundary. The selected path minimizes printed
+   symbols, then prefers longer values, then prefers an undotted value on an exact tie.
+
+A dotted token is eligible only when its exact tick duration fits and its start is aligned to that duration's
+notational subdivision. Silence that has no supported decomposition becomes hidden spacing plus the measure's
+`Unsupported rhythm` annotation; it is never greedily rewritten as several rests with a different grouping.
 
 ## 9. Layout and Engraving
 
@@ -331,6 +439,13 @@ For `.swing` and `.shuffle`:
 The layout chooses a tick width that preserves existing minimum note-column and quarter-beat gaps. Dense measures may
 expand, but the engine never compresses distinct exact ticks onto the same x-coordinate.
 
+Row capacity remains a pixel budget equal to `NotationLayoutStyle.rowWidth` (with the existing 900-point floor), not
+a count of measure-equivalent slots. A measure's claim is its fixed bar/padding geometry plus
+`durationTicks * tickWidth`; a `1.5` measure therefore consumes 1.5 times the timeline span of a `1.0` measure and can
+cause the row to pack fewer measures. Timeline-enabled layout derives its measure count from the highest resolved
+timeline measure plus the configured minimum. `cachedLayoutMeasureCount` remains a legacy fallback and is not
+estimated from track-duration seconds for a valid timeline.
+
 ### 9.2 Render primitives
 
 `NotationLayout` gains:
@@ -343,6 +458,10 @@ expand, but the engine never compresses distinct exact ticks onto the same x-coo
 Dots and tuplet marks are vector-based. Tuplet placement follows voice and stem direction, uses beam geometry when a
 group is beamed, and otherwise draws a bracket. Geometry accounts for painted extents in `topContentInset` and
 `contentWidth`.
+
+Persisted diagnostics store stable codes, never English display text. A `RhythmDiagnosticPresentation` maps each code
+to a `String(localized:)` user-facing label and accessibility description. Logs include the stable code plus source
+coordinates; views render the localized presentation and one-based measure number.
 
 ### 9.3 Beams, flags, and rests
 
@@ -398,15 +517,48 @@ semantics, combo tiers, and persistence remain unchanged.
 
 ### 10.3 Metronome and BGM
 
-DTX BPM is quarter-note based. Primary metronome accents follow `RhythmBeatGroup` starts:
+DTX `#BPM` remains quarter-notes per minute in every meter. The existing `MetronomeBeatSchedule` computes
+`origin + beatNumber * beatInterval` and cannot represent variable measure boundaries or semantic accent groups.
+Timeline-enabled gameplay therefore adds a `RhythmMetronomeSchedule` containing ordered pulse offsets and accent
+levels derived from the resolved timeline. The timer consumes a schedule cursor rather than reconstructing time from
+one `beatInterval`; the existing schedule remains the legacy path.
 
-- 4/4 yields four quarter groups;
-- 6/8 yields two dotted-quarter groups;
-- 12/8 yields four dotted-quarter groups;
-- a shortened or extended measure follows its complete and residual groups.
+Pulse policy is deterministic:
+
+- X/4 meters pulse on quarter-note units and accent each resolved group start, with the measure downbeat strongest;
+- 6/8, 9/8, and 12/8 pulse on eighth-note units and accent dotted-quarter group starts;
+- shortened or extended measures emit only pulses inside their resolved duration and accent complete/residual group
+  starts;
+- ambiguous 7/8 emits seven isochronous eighth-note pulses with only the measure downbeat accented. Virgo does not
+  claim a `2+2+3`, `3+2+2`, or `2+3+2` grouping.
+
+This keeps 7/8 timing valid while making its grouping limitation audible and visible without inventing unequal
+accents. The offset-table design also supports future explicit asymmetric grouping without another scheduler rewrite.
 
 BGM and metronome retain the existing shared scheduled start time. The timeline changes event scheduling, not the
 common clock or `CFAbsoluteTime` synchronization strategy.
+
+### 10.4 Fixed-measure call-site audit
+
+Implementation must migrate every current `beatsPerMeasure`, `secondsPerMeasure`, and fixed `beatInterval` reader for
+timeline-enabled charts:
+
+- setup-time `secondsPerMeasure`, `trackDurationInSeconds`, and `cachedLayoutMeasureCount` calculations resolve from
+  timeline duration and measure count;
+- `cacheNotationBeatPositions` uses each cached beat's absolute timeline tick, while `cacheLegacyBeatPositions`
+  remains unchanged;
+- `calculateTrackDurationInSeconds` falls back to the final timeline end second rather than measure count times one
+  duration;
+- `calculateBGMOffset` converts the authoritative BGM source position or earliest note through the timeline;
+- `recordHit` and `scanForMissedNotes` compare target seconds, and the late window remains milliseconds rather than a
+  measure fraction;
+- `restoreResumeState` resolves measure, measure-local tick, pulse index, closest beat, and row from elapsed seconds;
+- continuous visual updates and purple-bar calculations resolve the same elapsed-seconds position;
+- `MetronomeBeatCounter`, `MetronomeBeatSchedule`, current-beat wrapping, and pause/resume offsets use the rhythm
+  schedule cursor and offset table.
+
+The legacy branches retain their current formulas. Tests must enumerate this audit so a remaining fixed-measure
+reader cannot silently diverge from the timeline.
 
 ## 11. Import and Backfill
 
@@ -424,6 +576,12 @@ The bundled/local fixture importer gains an idempotent backfill analogous to con
 missing rhythm metadata and an available original DTX file, it reparses and rewrites rhythm metadata plus normalized
 note/control timing together. It skips a chart that already has valid metadata and does not overwrite user-authored
 manual metadata.
+
+The backfill runs from the existing `ContentView.seedLocalDTXFixtures()` app-launch import path after the bundled song
+is found or created. An injectable `RhythmBackfillVersionStore` uses a versioned `UserDefaults` key. The importer skips
+all DTX reparsing when the stored version equals the current backfill version, and records that version only after the
+complete chart scan and `ModelContext.save()` succeed. A failed or interrupted pass retries on the next launch. Tests
+use an isolated store rather than the developer's standard defaults.
 
 Existing server charts are updated on a fresh download. HPA-145 does not invent a background network migration for
 server charts whose source file is unavailable locally.
@@ -443,10 +601,17 @@ Examples:
 - inexact grid projection;
 - inconsistent cumulative persisted timing.
 
+`RhythmTimelineBuilder` performs consistency validation at three boundaries: before a fresh import is persisted,
+during source-backed backfill, and whenever gameplay data loading builds a cached timeline from a persisted chart. On
+load it recomputes canonical fields from metadata plus source grid coordinates and compares every present
+`normalizedMeasureIndex`, `normalizedTickWithinMeasure`, `normalizedTicksPerMeasure`, and `normalizedAbsoluteTick`.
+A partial or mismatched tuple is `inconsistentPersistedTiming`. The check is not repeated during SwiftUI rendering or
+every visual timer tick.
+
 The chart remains identifiable in the library, but its sheet is replaced by a fatal timing panel and practice is
-disabled. The gameplay entry point presents a concise reason such as
-`Unsupported chart timing: measure 12 length is invalid`. No notation primitives, scoring session, metronome, or BGM
-playback start from placeholder note intervals.
+disabled. The gameplay entry point presents a localized concise reason such as
+`Unsupported chart timing: measure 13 length is invalid` for zero-based source index 12. No notation primitives,
+scoring session, metronome, or BGM playback start from placeholder note intervals.
 
 ### 12.2 Engraving-only
 
@@ -471,19 +636,26 @@ emit repeated logs for the same persisted condition.
 - Parse straight, swing, and shuffle case-insensitively.
 - Parse `#mmm02` before chip arrays and reduce decimal ratios exactly.
 - Reject zero, negative, malformed, oversized, and conflicting values.
+- Assert `#00002` maps to measure index 0 and user-facing measure 1 without an off-by-one conversion.
 - Preserve raw lane, chip ID, grid position, and grid size.
 - Keep a 12-grid chart nonempty and deterministic.
+- Round-trip `ChartRhythmMetadataCodec` outside SwiftUI and actor-dependent state.
 
 ### 13.2 Timeline
 
 - Build cumulative ticks for ordinary, `0.75`, `1.0`, and `1.5` measures.
 - Convert event tick to seconds and back at representative BPM and speed values.
+- Pin compound tempo semantics: at DTX 120 BPM, a nominal 6/8 measure is 1.5 seconds, an eighth-note pulse is
+  0.25 seconds, and a dotted-quarter group is 0.75 seconds.
 - Prove a note after a short measure has the expected earlier target time.
 - Cover simple 2/4, 3/4, 4/4, and 5/4 grouping.
 - Cover compound 6/8, 9/8, and 12/8 dotted-quarter grouping.
 - Cover residual groups in pickup and extended measures.
 - Reject overflow, cap breach, inexact projection, and invalid metadata versions.
 - Prove missing metadata preserves the legacy fixed-measure result.
+- Rationalize manual `0.1` and approximated one-third offsets deterministically, preserve authoritative manual
+  intervals for terminal notes, and retain the whole legacy path when one manual offset is inadmissible.
+- Detect a persisted canonical-field mismatch when gameplay data loading rebuilds the timeline.
 
 ### 13.3 Rhythm semantics and topology
 
@@ -493,12 +665,16 @@ emit repeated logs for the same persisted condition.
 - Recognize a triplet containing a rest.
 - Keep simultaneous upper/lower voice rhythms independent.
 - Suppress feel-derived triplet brackets under swing and shuffle.
+- Always bracket a complete three-equal-slot literal triplet under swing or shuffle.
+- Prove the two-phase rest algorithm reserves tuplet rests before dotted/binary dynamic-programming decomposition.
 - Mark quintuplets, double dots, incomplete triplets, and ambiguous 7/8 groups unsupported.
 - Preserve HPA-142 beam/hook matrices and HPA-143 rest visibility behavior.
 
 ### 13.4 Layout and SwiftUI
 
 - Assert proportional short, normal, and extended measure widths.
+- Assert a `1.5` measure consumes 1.5 times the timeline span of a `1.0` measure and can reduce measures per row under
+  the same pixel budget.
 - Assert identical width for equal-duration measures.
 - Assert note, control, rest, and playhead x-alignment at shared ticks.
 - Assert compound beams remain inside dotted-quarter groups.
@@ -512,9 +688,13 @@ emit repeated logs for the same persisted condition.
 - Match hits on both sides of a variable-length measure using unchanged accuracy windows.
 - Scale BGM, metronome, playhead, and target times consistently at practice speed.
 - Accent compound primary beats at the resolved group boundaries.
+- Drive 7/8 with seven isochronous eighth-note pulses and only a downbeat accent.
+- Exercise every fixed-measure call site listed in Section 10.4 through timeline and legacy branches.
 - Persist fresh local and server rhythm metadata and canonical note/control timing.
-- Backfill a legacy local fixture once and prove a second pass is a no-op.
+- Trigger app-launch backfill once, set the version only after a successful save, prove a second launch skips DTX
+  parsing, and prove a failed pass retries.
 - Disable practice for timing-fatal charts while allowing engraving-only fallback charts.
+- Prove a timing-fatal chart remains visible in the library with a localized reason and disabled practice control.
 
 ### 13.6 Verification ladder
 
@@ -531,12 +711,16 @@ Xcode build and test commands that share a derived-data path run sequentially.
 
 The implementation should remain reviewable in these semantic slices:
 
-1. persisted metadata, exact ratios, and parser diagnostics;
-2. canonical timeline and variable-measure normalization;
-3. dotted/triplet/compound semantic topology;
-4. variable-width layout and vector primitives;
-5. playback, playhead, metronome, and scoring integration;
-6. import/backfill integration and final regression coverage.
+1. persisted metadata, exact ratios, codec, and parser diagnostics;
+2. canonical timeline, manual rationalization, validation, and variable-measure normalization;
+3. dotted/triplet/compound note and rest topology;
+4. variable-width grid, row packing, beam integration, and render geometry;
+5. SwiftUI dot, tuplet, feel, warning, fatal-panel, localization, and accessibility views;
+6. playback, playhead, offset-table metronome, scoring, and fixed-measure call-site migration;
+7. import/backfill integration and final regression coverage.
+
+The new SwiftUI primitives should live in a focused `NotationRhythmPrimitiveViews.swift` (or comparably scoped
+files), rather than pushing the existing `NotationPrimitiveViews.swift` across SwiftLint size limits.
 
 Each slice receives focused tests before the next integration boundary. A final whole-branch review and fresh full
 verification run occur after all review fixes, not before them.
