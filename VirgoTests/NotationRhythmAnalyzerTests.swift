@@ -6,14 +6,17 @@ struct NotationRhythmAnalyzerTests {
     private let analyzer = NotationRhythmAnalyzer()
 
     private func measure(
+        index: Int = 0,
+        startTick: Int = 0,
         duration: Int = 960,
+        timeSignature: TimeSignature = .fourFour,
         groups: [RhythmBeatGroup]? = nil
     ) -> RhythmMeasure {
         RhythmMeasure(
-            measureIndex: 0,
-            startTick: 0,
+            measureIndex: index,
+            startTick: startTick,
             durationTicks: duration,
-            timeSignature: .fourFour,
+            timeSignature: timeSignature,
             beatGroups: groups ?? (0..<4).map {
                 RhythmBeatGroup(groupIndex: $0, startTick: $0 * 240, durationTicks: 240, isResidual: false)
             },
@@ -24,6 +27,8 @@ struct NotationRhythmAnalyzerTests {
     private func event(
         _ id: Int,
         tick: Int,
+        measureIndex: Int = 0,
+        measureStartTick: Int = 0,
         voice: NotationVoice = .upper,
         origin: ResolvedRhythmEventOrigin = .manual,
         interval: NoteInterval = .eighth,
@@ -32,7 +37,11 @@ struct NotationRhythmAnalyzerTests {
         RhythmAnalysisEvent(
             eventID: RhythmEventID(rawValue: id),
             origin: origin,
-            position: RhythmEventPosition(measureIndex: 0, localTick: tick, absoluteTick: tick),
+            position: RhythmEventPosition(
+                measureIndex: measureIndex,
+                localTick: tick,
+                absoluteTick: measureStartTick + tick
+            ),
             voice: voice,
             storedInterval: interval,
             visualDurationCandidate: candidate
@@ -42,11 +51,12 @@ struct NotationRhythmAnalyzerTests {
     private func analyze(
         _ events: [RhythmAnalysisEvent],
         feel: RhythmicFeel = .straight,
-        rhythmMeasure: RhythmMeasure? = nil
+        rhythmMeasure: RhythmMeasure? = nil,
+        measures: [RhythmMeasure]? = nil
     ) -> NotationRhythmAnalysis {
         analyzer.analyze(
             events: events,
-            measures: [rhythmMeasure ?? measure()],
+            measures: measures ?? [rhythmMeasure ?? measure()],
             ticksPerWholeNote: 960,
             feel: feel
         )
@@ -102,6 +112,70 @@ struct NotationRhythmAnalyzerTests {
             $0.durationTicks == 80
                 && $0.rhythm.tuplet == TupletRatio(actual: 3, normal: 2)
         })
+    }
+
+    @Test("ordinary eighths in a compound beat are not inferred as triplets")
+    func compoundBeatOrdinaryEighths() {
+        let compoundMeasure = measure(
+            duration: 720,
+            timeSignature: .sixEight,
+            groups: [
+                RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 360, isResidual: false),
+                RhythmBeatGroup(groupIndex: 1, startTick: 360, durationTicks: 360, isResidual: false)
+            ]
+        )
+        let analysis = analyze([
+            event(1, tick: 0),
+            event(2, tick: 120),
+            event(3, tick: 240)
+        ], rhythmMeasure: compoundMeasure)
+
+        #expect(analysis.tuplets.isEmpty)
+        #expect(analysis.warnings.isEmpty)
+        #expect(analysis.notes.allSatisfy {
+            $0.durationTicks == 120
+                && $0.rhythm == NotationRhythm(baseInterval: .eighth)
+                && $0.tupletID == nil
+        })
+    }
+
+    @Test("four ordinary sixteenths do not produce an unsupported tuplet warning")
+    func ordinarySixteenthsRemainBinary() {
+        let analysis = analyze([
+            event(1, tick: 0, interval: .sixteenth),
+            event(2, tick: 60, interval: .sixteenth),
+            event(3, tick: 120, interval: .sixteenth),
+            event(4, tick: 180, interval: .sixteenth)
+        ])
+
+        #expect(analysis.tuplets.isEmpty)
+        #expect(analysis.warnings.isEmpty)
+        #expect(analysis.notes.allSatisfy {
+            $0.durationTicks == 60 && $0.rhythm == NotationRhythm(baseInterval: .sixteenth)
+        })
+    }
+
+    @Test("a true triplet subgroup is recognized inside a compound beat")
+    func compoundBeatTripletSubgroup() {
+        let compoundMeasure = measure(
+            duration: 720,
+            timeSignature: .sixEight,
+            groups: [
+                RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 360, isResidual: false),
+                RhythmBeatGroup(groupIndex: 1, startTick: 360, durationTicks: 360, isResidual: false)
+            ]
+        )
+        let analysis = analyze([
+            event(1, tick: 0, interval: .eighth),
+            event(2, tick: 80, interval: .eighth),
+            event(3, tick: 160, interval: .eighth),
+            event(4, tick: 240, interval: .eighth)
+        ], rhythmMeasure: compoundMeasure)
+
+        #expect(analysis.tuplets.count == 1)
+        #expect(analysis.notes.filter { $0.tupletID != nil }.map(\.position.localTick) == [0, 80, 160])
+        #expect(analysis.notes.first { $0.position.localTick == 240 }?.tupletID == nil)
+        #expect(analysis.notes.first { $0.position.localTick == 240 }?.rhythm == NotationRhythm(baseInterval: .eighth))
     }
 
     @Test("analysis includes an exact dotted rest complement")
@@ -176,13 +250,49 @@ struct NotationRhythmAnalyzerTests {
         let absent = try #require(analyze([
             event(2, tick: 120, origin: .dtx, interval: .sixtyfourth)
         ]).notes.first)
-        #expect(absent.durationTicks == 840)
-        #expect(absent.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(absent.durationTicks == 120)
+        #expect(absent.rhythm.support == .unsupported(.indeterminateTerminalDuration))
 
         let crossing = try #require(analyze([
             event(3, tick: 120, origin: .dtx, candidate: .quarter)
         ]).notes.first)
-        #expect(crossing.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(crossing.rhythm.support == .unsupported(.indeterminateTerminalDuration))
+    }
+
+    @Test("DTX onset inference never crosses a simple-meter beat-group boundary")
+    func simpleMeterDTXBoundary() throws {
+        let analysis = analyze([
+            event(1, tick: 120, origin: .dtx, interval: .sixtyfourth, candidate: .eighth),
+            event(2, tick: 300, origin: .dtx, interval: .sixtyfourth, candidate: .eighth)
+        ])
+        let first = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
+
+        #expect(first.beatGroupIndex == 0)
+        #expect(first.durationTicks == 120)
+        #expect(first.rhythm == NotationRhythm(baseInterval: .eighth))
+        #expect(analysis.warnings.isEmpty)
+    }
+
+    @Test("DTX onset inference never crosses a compound-meter beat-group boundary")
+    func compoundMeterDTXBoundary() throws {
+        let compoundMeasure = measure(
+            duration: 720,
+            timeSignature: .sixEight,
+            groups: [
+                RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 360, isResidual: false),
+                RhythmBeatGroup(groupIndex: 1, startTick: 360, durationTicks: 360, isResidual: false)
+            ]
+        )
+        let analysis = analyze([
+            event(1, tick: 240, origin: .dtx, interval: .sixtyfourth, candidate: .eighth),
+            event(2, tick: 420, origin: .dtx, interval: .sixtyfourth, candidate: .eighth)
+        ], rhythmMeasure: compoundMeasure)
+        let first = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
+
+        #expect(first.beatGroupIndex == 0)
+        #expect(first.durationTicks == 120)
+        #expect(first.rhythm == NotationRhythm(baseInterval: .eighth))
+        #expect(analysis.warnings.isEmpty)
     }
 
     @Test("same-time same-voice events share one chord rhythm")
@@ -195,6 +305,39 @@ struct NotationRhythmAnalyzerTests {
 
         #expect(analysis.notes.filter { $0.position.localTick == 0 }.count == 2)
         #expect(Set(analysis.notes.filter { $0.position.localTick == 0 }.map(\.rhythm)).count == 1)
+    }
+
+    @Test("manual chord members retain their own notated durations")
+    func mixedDurationManualChord() throws {
+        let analysis = analyze([
+            event(1, tick: 0, interval: .quarter),
+            event(2, tick: 0, interval: .eighth)
+        ])
+        let quarter = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
+        let eighth = try #require(analysis.notes.first { $0.eventID.rawValue == 2 })
+
+        #expect(quarter.durationTicks == 240)
+        #expect(quarter.rhythm == NotationRhythm(baseInterval: .quarter))
+        #expect(eighth.durationTicks == 120)
+        #expect(eighth.rhythm == NotationRhythm(baseInterval: .eighth))
+        #expect(analysis.warnings.isEmpty)
+    }
+
+    @Test("a DTX chord member uses only DTX onset evidence while a manual member keeps its interval")
+    func mixedManualAndDTXChord() throws {
+        let analysis = analyze([
+            event(1, tick: 0, origin: .manual, interval: .quarter),
+            event(2, tick: 0, origin: .dtx, interval: .sixtyfourth),
+            event(3, tick: 120, origin: .dtx, interval: .sixtyfourth, candidate: .eighth)
+        ])
+        let manual = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
+        let dtx = try #require(analysis.notes.first { $0.eventID.rawValue == 2 })
+
+        #expect(manual.durationTicks == 240)
+        #expect(manual.rhythm == NotationRhythm(baseInterval: .quarter))
+        #expect(dtx.durationTicks == 120)
+        #expect(dtx.rhythm == NotationRhythm(baseInterval: .eighth))
+        #expect(analysis.warnings.isEmpty)
     }
 
     @Test("another voice never shortens a manual note")
@@ -223,6 +366,74 @@ struct NotationRhythmAnalyzerTests {
         })
         #expect(quintuplet.notes.map(\.position.localTick) == [0, 48, 96, 144, 192])
         #expect(quintuplet.warnings.first?.codes.contains(.unsupportedTupletRatio) == true)
+    }
+
+    @Test("one unsupported group forces conservative rhythm fallback for its whole measure")
+    func analyzerFailureFallsBackForWholeMeasure() {
+        let analysis = analyze([
+            event(1, tick: 0, origin: .dtx),
+            event(2, tick: 48, origin: .dtx),
+            event(3, tick: 96, origin: .dtx),
+            event(4, tick: 144, origin: .dtx),
+            event(5, tick: 192, origin: .dtx, candidate: .sixtyfourth),
+            event(6, tick: 240, interval: .eighth),
+            event(7, tick: 320, interval: .eighth),
+            event(8, tick: 400, interval: .eighth),
+            event(9, tick: 480, origin: .dtx),
+            event(10, tick: 660, origin: .dtx, candidate: .sixteenth)
+        ])
+
+        #expect(analysis.notes.map(\.position.localTick) == [0, 48, 96, 144, 192, 240, 320, 400, 480, 660])
+        #expect(analysis.notes.allSatisfy {
+            if case .unsupported = $0.rhythm.support {
+                return $0.rhythm.dotCount == 0 && $0.rhythm.tuplet == nil && $0.tupletID == nil
+            }
+            return false
+        })
+        #expect(analysis.tuplets.isEmpty)
+        #expect(analysis.rests.filter { $0.voice == .upper && $0.visibility == .printed }.isEmpty)
+        #expect(analysis.warnings.count == 1)
+        #expect(analysis.warnings.first?.codes.contains(.unsupportedTupletRatio) == true)
+    }
+
+    @Test("tuplet ordering and identity are stable across measures, voices, equal starts, and shuffled input")
+    func deterministicTupletOrdering() {
+        let source = [
+            event(31, tick: 0, measureIndex: 1, measureStartTick: 240, voice: .upper),
+            event(11, tick: 0, voice: .upper),
+            event(23, tick: 160, voice: .lower),
+            event(33, tick: 160, measureIndex: 1, measureStartTick: 240, voice: .upper),
+            event(21, tick: 0, voice: .lower),
+            event(13, tick: 160, voice: .upper),
+            event(22, tick: 80, voice: .lower),
+            event(32, tick: 80, measureIndex: 1, measureStartTick: 240, voice: .upper),
+            event(12, tick: 80, voice: .upper)
+        ]
+        let rhythmMeasures = [
+            measure(
+                index: 0,
+                duration: 240,
+                groups: [RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 240, isResidual: false)]
+            ),
+            measure(
+                index: 1,
+                startTick: 240,
+                duration: 240,
+                groups: [RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 240, isResidual: false)]
+            )
+        ]
+        let forward = analyze(source, measures: rhythmMeasures)
+        let shuffled = analyze(source.reversed(), measures: rhythmMeasures)
+
+        #expect(forward.tuplets == shuffled.tuplets)
+        #expect(forward.notes == shuffled.notes)
+        #expect(forward.tuplets.map {
+            "\($0.id.measureIndex):\($0.id.startTick):\($0.id.voice)"
+        } == [
+            "0:0:lower",
+            "0:0:upper",
+            "1:0:upper"
+        ])
     }
 
     @Test("overlapping triplet members remain engraving-unsupported")

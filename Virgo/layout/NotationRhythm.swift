@@ -28,6 +28,23 @@ struct RhythmTupletID: Hashable, Sendable {
     let beatGroupIndex: Int
     let startTick: Int
     let durationTicks: Int
+    let stableMemberEventID: RhythmEventID
+
+    init(
+        measureIndex: Int,
+        voice: NotationVoice,
+        beatGroupIndex: Int,
+        startTick: Int,
+        durationTicks: Int,
+        stableMemberEventID: RhythmEventID = RhythmEventID(rawValue: -1)
+    ) {
+        self.measureIndex = measureIndex
+        self.voice = voice
+        self.beatGroupIndex = beatGroupIndex
+        self.startTick = startTick
+        self.durationTicks = durationTicks
+        self.stableMemberEventID = stableMemberEventID
+    }
 }
 
 enum TupletBracketVisibility: Hashable, Sendable {

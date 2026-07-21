@@ -1,23 +1,35 @@
 struct NotationRhythmAnalyzer: Sendable {
-    struct VoiceKey: Hashable {
+    struct StreamKey: Hashable {
         let measureIndex: Int
         let voice: NotationVoice
+        let beatGroupIndex: Int
     }
 
-    struct Chord {
-        let position: RhythmEventPosition
-        let voice: NotationVoice
-        let events: [RhythmAnalysisEvent]
-    }
-
-    struct ChordResolution {
-        let chord: Chord
+    struct LocatedEvent {
+        let event: RhythmAnalysisEvent
         let beatGroup: RhythmBeatGroup
+    }
+
+    struct EventResolution {
+        let event: RhythmAnalysisEvent
+        let beatGroup: RhythmBeatGroup
+        let hasFollowingDTXOnset: Bool
         var durationTicks: Int
         var rhythm: NotationRhythm
         var tupletID: RhythmTupletID?
     }
 
+    struct TupletCandidate {
+        let startTick: Int
+        let slotTicks: Int
+        let memberIndices: [Int]
+        let occupiedSlots: Set<Int>
+        let isFeelPair: Bool
+
+        var durationTicks: Int { slotTicks * 3 }
+    }
+
+    /// Explicit musical order. Never derive semantic fallback from Set iteration.
     private static let intervalsByDescendingDuration: [NoteInterval] = [
         .full, .half, .quarter, .eighth, .sixteenth, .thirtysecond, .sixtyfourth
     ]
@@ -55,93 +67,528 @@ struct NotationRhythmAnalyzer: Sendable {
                 && event.position.localTick < measure.durationTicks
                 && event.position.absoluteTick == measure.startTick + event.position.localTick
         }
-        let chordsByVoice = groupedChords(events: validEvents)
-        var resolutions: [ChordResolution] = []
+        var warningCodes = metadataWarningCodes(measures: measures)
+        let streams = groupedStreams(
+            events: validEvents,
+            measuresByIndex: measuresByIndex,
+            warningCodes: &warningCodes
+        )
+        var resolutions: [EventResolution] = []
         var tuplets: [AnalyzedRhythmTuplet] = []
-        var tupletRests: [AnalyzedRhythmRest] = []
-        var warningCodes: [Int: Set<RhythmDiagnosticCode>] = [:]
+        var reservedTupletRests: [AnalyzedRhythmRest] = []
 
-        for key in chordsByVoice.keys.sorted(by: voiceKeyComesBefore) {
+        for key in streams.keys.sorted(by: streamKeyComesBefore) {
             guard let measure = measuresByIndex[key.measureIndex] else { continue }
-            let chords = chordsByVoice[key, default: []]
-            var voiceResolutions = resolveChords(
-                chords,
+            var streamResolutions = resolveStream(
+                streams[key, default: []],
                 measure: measure,
-                ticksPerWholeNote: ticksPerWholeNote,
-                warningCodes: &warningCodes
+                ticksPerWholeNote: ticksPerWholeNote
             )
-            switch measure.engravingSupport {
-            case .supported:
+            if case .supported = measure.engravingSupport {
                 recognizeTuplets(
-                    resolutions: &voiceResolutions,
+                    resolutions: &streamResolutions,
                     measure: measure,
                     ticksPerWholeNote: ticksPerWholeNote,
                     feel: feel,
                     tuplets: &tuplets,
-                    rests: &tupletRests,
+                    rests: &reservedTupletRests
+                )
+                diagnoseUnrecognizedStructure(
+                    resolutions: streamResolutions,
+                    measure: measure,
                     warningCodes: &warningCodes
                 )
-            case let .unsupported(codes):
-                let code = codes.first ?? .ambiguousBeatGrouping
-                warningCodes[measure.measureIndex, default: []].formUnion(codes)
-                for index in voiceResolutions.indices {
-                    let rhythm = voiceResolutions[index].rhythm
-                    voiceResolutions[index].rhythm = NotationRhythm(
-                        baseInterval: rhythm.baseInterval,
-                        dotCount: rhythm.dotCount,
-                        support: .unsupported(code)
-                    )
-                }
             }
-            for index in voiceResolutions.indices
-            where voiceResolutions[index].rhythm.support
-                == .indeterminate(.indeterminateTerminalDuration) {
-                let start = voiceResolutions[index].chord.position.localTick
-                voiceResolutions[index].durationTicks = max(measure.durationTicks - start, 1)
-                warningCodes[measure.measureIndex, default: []].insert(.indeterminateTerminalDuration)
-            }
-            resolutions.append(contentsOf: voiceResolutions)
+            finalizeIndeterminateDurations(
+                resolutions: &streamResolutions,
+                warningCodes: &warningCodes
+            )
+            resolutions.append(contentsOf: streamResolutions)
         }
 
-        let notes = analyzedNotes(from: resolutions)
-        let analyzedRests = analyzedRests(
+        applyConservativeFallback(
+            resolutions: &resolutions,
+            tuplets: &tuplets,
+            rests: &reservedTupletRests,
+            warningCodes: warningCodes
+        )
+        var notes = analyzedNotes(from: resolutions)
+        var effectiveMeasures = measuresWithFallback(measures, warningCodes: warningCodes)
+        var restsOutput = analyzedRests(
             from: resolutions,
-            measures: measures,
-            reservedTupletRests: tupletRests,
+            measures: effectiveMeasures,
+            reservedTupletRests: reservedTupletRests,
             ticksPerWholeNote: ticksPerWholeNote,
             warningCodes: &warningCodes
         )
+
+        let newlyUnsupported = Set(warningCodes.keys).subtracting(
+            Set(effectiveMeasures.compactMap { measure in
+                if case .unsupported = measure.engravingSupport { return measure.measureIndex }
+                return nil
+            })
+        )
+        if !newlyUnsupported.isEmpty {
+            applyConservativeFallback(
+                resolutions: &resolutions,
+                tuplets: &tuplets,
+                rests: &reservedTupletRests,
+                warningCodes: warningCodes
+            )
+            notes = analyzedNotes(from: resolutions)
+            effectiveMeasures = measuresWithFallback(measures, warningCodes: warningCodes)
+            restsOutput = analyzedRests(
+                from: resolutions,
+                measures: effectiveMeasures,
+                reservedTupletRests: reservedTupletRests,
+                ticksPerWholeNote: ticksPerWholeNote,
+                warningCodes: &warningCodes
+            )
+        }
+
         let warnings = warningCodes.keys.sorted().map {
             RhythmMeasureWarning(measureIndex: $0, codes: warningCodes[$0, default: []])
         }
         return NotationRhythmAnalysis(
             notes: notes,
-            rests: analyzedRests.sorted(by: analyzedRestComesBefore),
-            tuplets: tuplets.sorted { $0.id.startTick < $1.id.startTick },
+            rests: restsOutput.sorted(by: analyzedRestComesBefore),
+            tuplets: tuplets.sorted(by: analyzedTupletComesBefore),
             warnings: warnings
         )
     }
 }
 
 private extension NotationRhythmAnalyzer {
-    func analyzedNotes(from resolutions: [ChordResolution]) -> [AnalyzedRhythmNote] {
-        resolutions.flatMap { resolution in
-            resolution.chord.events.map { event in
-                AnalyzedRhythmNote(
-                    eventID: event.eventID,
-                    position: event.position,
-                    voice: event.voice,
-                    beatGroupIndex: resolution.beatGroup.groupIndex,
-                    durationTicks: resolution.durationTicks,
-                    rhythm: resolution.rhythm,
-                    tupletID: resolution.tupletID
+    func metadataWarningCodes(measures: [RhythmMeasure]) -> [Int: Set<RhythmDiagnosticCode>] {
+        var result: [Int: Set<RhythmDiagnosticCode>] = [:]
+        for measure in measures {
+            if case let .unsupported(codes) = measure.engravingSupport {
+                result[measure.measureIndex, default: []].formUnion(codes)
+            }
+        }
+        return result
+    }
+
+    func groupedStreams(
+        events: [RhythmAnalysisEvent],
+        measuresByIndex: [Int: RhythmMeasure],
+        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
+    ) -> [StreamKey: [LocatedEvent]] {
+        var streams: [StreamKey: [LocatedEvent]] = [:]
+        for event in events {
+            guard let measure = measuresByIndex[event.position.measureIndex],
+                  let group = measure.beatGroups.first(where: {
+                      event.position.localTick >= $0.startTick && event.position.localTick < $0.endTick
+                  }) else {
+                warningCodes[event.position.measureIndex, default: []].insert(.ambiguousBeatGrouping)
+                continue
+            }
+            let key = StreamKey(
+                measureIndex: event.position.measureIndex,
+                voice: event.voice,
+                beatGroupIndex: group.groupIndex
+            )
+            streams[key, default: []].append(LocatedEvent(event: event, beatGroup: group))
+        }
+        return streams.mapValues {
+            $0.sorted {
+                $0.event.position.localTick != $1.event.position.localTick
+                    ? $0.event.position.localTick < $1.event.position.localTick
+                    : $0.event.eventID.rawValue < $1.event.eventID.rawValue
+            }
+        }
+    }
+
+    func resolveStream(
+        _ locatedEvents: [LocatedEvent],
+        measure: RhythmMeasure,
+        ticksPerWholeNote: Int
+    ) -> [EventResolution] {
+        let dtxOnsets = Set(locatedEvents.compactMap {
+            $0.event.origin == .dtx ? $0.event.position.localTick : nil
+        }).sorted()
+        return locatedEvents.map { located in
+            let event = located.event
+            if event.origin == .manual {
+                let duration = durationTicks(
+                    for: event.storedInterval,
+                    ticksPerWholeNote: ticksPerWholeNote
+                ) ?? 1
+                return EventResolution(
+                    event: event,
+                    beatGroup: located.beatGroup,
+                    hasFollowingDTXOnset: false,
+                    durationTicks: duration,
+                    rhythm: NotationRhythm(baseInterval: event.storedInterval),
+                    tupletID: nil
                 )
             }
+            let nextDTXOnset = dtxOnsets.first { $0 > event.position.localTick }
+            if let nextDTXOnset {
+                let span = max(nextDTXOnset - event.position.localTick, 1)
+                return EventResolution(
+                    event: event,
+                    beatGroup: located.beatGroup,
+                    hasFollowingDTXOnset: true,
+                    durationTicks: span,
+                    rhythm: classify(spanTicks: span, ticksPerWholeNote: ticksPerWholeNote),
+                    tupletID: nil
+                )
+            }
+            return terminalDTXResolution(
+                event: event,
+                beatGroup: located.beatGroup,
+                measure: measure,
+                ticksPerWholeNote: ticksPerWholeNote
+            )
+        }
+    }
+
+    func terminalDTXResolution(
+        event: RhythmAnalysisEvent,
+        beatGroup: RhythmBeatGroup,
+        measure: RhythmMeasure,
+        ticksPerWholeNote: Int
+    ) -> EventResolution {
+        let boundary = min(beatGroup.endTick, measure.durationTicks)
+        if let interval = event.visualDurationCandidate,
+           let duration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
+           event.position.localTick + duration <= boundary {
+            return EventResolution(
+                event: event,
+                beatGroup: beatGroup,
+                hasFollowingDTXOnset: false,
+                durationTicks: duration,
+                rhythm: NotationRhythm(baseInterval: interval),
+                tupletID: nil
+            )
+        }
+        if let interval = event.visualDurationCandidate,
+           let baseDuration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
+           let compressedDuration = tripletPerformedTicks(baseTicks: baseDuration),
+           event.position.localTick + compressedDuration <= boundary {
+            return EventResolution(
+                event: event,
+                beatGroup: beatGroup,
+                hasFollowingDTXOnset: false,
+                durationTicks: compressedDuration,
+                rhythm: NotationRhythm(
+                    baseInterval: interval,
+                    support: .indeterminate(.indeterminateTerminalDuration)
+                ),
+                tupletID: nil
+            )
+        }
+        return EventResolution(
+            event: event,
+            beatGroup: beatGroup,
+            hasFollowingDTXOnset: false,
+            durationTicks: max(boundary - event.position.localTick, 1),
+            rhythm: NotationRhythm(
+                baseInterval: event.visualDurationCandidate ?? event.storedInterval,
+                support: .indeterminate(.indeterminateTerminalDuration)
+            ),
+            tupletID: nil
+        )
+    }
+}
+
+private extension NotationRhythmAnalyzer {
+    func recognizeTuplets(
+        resolutions: inout [EventResolution],
+        measure: RhythmMeasure,
+        ticksPerWholeNote: Int,
+        feel: RhythmicFeel,
+        tuplets: inout [AnalyzedRhythmTuplet],
+        rests: inout [AnalyzedRhythmRest]
+    ) {
+        guard let group = resolutions.first?.beatGroup else { return }
+        let candidates = tripletCandidates(
+            resolutions: resolutions,
+            group: group,
+            ticksPerWholeNote: ticksPerWholeNote
+        )
+        var claimedMembers: Set<Int> = []
+        var claimedRanges: [Range<Int>] = []
+        for candidate in candidates {
+            let range = candidate.startTick..<(candidate.startTick + candidate.durationTicks)
+            guard candidate.memberIndices.allSatisfy({ !claimedMembers.contains($0) }),
+                  claimedRanges.allSatisfy({ $0.overlaps(range) == false }) else { continue }
+            let memberIDs = candidate.memberIndices.map { resolutions[$0].event.eventID }
+            guard let stableMemberID = memberIDs.min(by: { $0.rawValue < $1.rawValue }) else { continue }
+            let voice = resolutions[candidate.memberIndices[0]].event.voice
+            let tupletID = RhythmTupletID(
+                measureIndex: measure.measureIndex,
+                voice: voice,
+                beatGroupIndex: group.groupIndex,
+                startTick: candidate.startTick,
+                durationTicks: candidate.durationTicks,
+                stableMemberEventID: stableMemberID
+            )
+            tuplets.append(AnalyzedRhythmTuplet(
+                id: tupletID,
+                ratio: TupletRatio(actual: 3, normal: 2),
+                bracketVisibility: feel != .straight && candidate.isFeelPair
+                    ? .suppressedForFeel : .shown
+            ))
+            for index in candidate.memberIndices {
+                guard let interval = tripletBaseInterval(
+                    for: resolutions[index],
+                    ticksPerWholeNote: ticksPerWholeNote
+                ), let baseTicks = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
+                      let performedTicks = tripletPerformedTicks(baseTicks: baseTicks) else { continue }
+                resolutions[index].durationTicks = performedTicks
+                resolutions[index].rhythm = NotationRhythm(
+                    baseInterval: interval,
+                    tuplet: TupletRatio(actual: 3, normal: 2)
+                )
+                resolutions[index].tupletID = tupletID
+                claimedMembers.insert(index)
+            }
+            claimedRanges.append(range)
+            appendSilentTupletRests(
+                candidate: candidate,
+                tupletID: tupletID,
+                measureIndex: measure.measureIndex,
+                voice: voice,
+                ticksPerWholeNote: ticksPerWholeNote,
+                rests: &rests
+            )
+        }
+    }
+
+    func tripletCandidates(
+        resolutions: [EventResolution],
+        group: RhythmBeatGroup,
+        ticksPerWholeNote: Int
+    ) -> [TupletCandidate] {
+        let performedByIndex = Dictionary(uniqueKeysWithValues: resolutions.indices.compactMap { index in
+            tripletPerformedDuration(for: resolutions[index], ticksPerWholeNote: ticksPerWholeNote)
+                .map { (index, $0) }
+        })
+        let slotTicks = Set(performedByIndex.values).sorted()
+        var candidates: [TupletCandidate] = []
+        for slot in slotTicks where slot > 0 {
+            let subgroupDuration = slot.multipliedReportingOverflow(by: 3)
+            guard !subgroupDuration.overflow, subgroupDuration.partialValue <= group.durationTicks else { continue }
+            let starts = Set(resolutions.flatMap { resolution in
+                (0..<3).map { resolution.event.position.localTick - $0 * slot }
+            }).sorted()
+            for start in starts where start >= group.startTick
+                && start + subgroupDuration.partialValue <= group.endTick
+                && (start - group.startTick).isMultiple(of: slot) {
+                if let candidate = tripletCandidate(
+                    startTick: start,
+                    slotTicks: slot,
+                    resolutions: resolutions,
+                    performedByIndex: performedByIndex
+                ) {
+                    candidates.append(candidate)
+                }
+            }
+        }
+        return candidates.sorted {
+            if $0.memberIndices.count != $1.memberIndices.count {
+                return $0.memberIndices.count > $1.memberIndices.count
+            }
+            if $0.occupiedSlots.count != $1.occupiedSlots.count {
+                return $0.occupiedSlots.count > $1.occupiedSlots.count
+            }
+            if $0.startTick != $1.startTick { return $0.startTick < $1.startTick }
+            return $0.slotTicks > $1.slotTicks
+        }
+    }
+
+    func tripletCandidate(
+        startTick: Int,
+        slotTicks: Int,
+        resolutions: [EventResolution],
+        performedByIndex: [Int: Int]
+    ) -> TupletCandidate? {
+        let endTick = startTick + slotTicks * 3
+        let indicesInRange = resolutions.indices.filter {
+            let tick = resolutions[$0].event.position.localTick
+            return tick >= startTick && tick < endTick
+        }
+        guard !indicesInRange.isEmpty, indicesInRange.allSatisfy({ index in
+            (resolutions[index].event.position.localTick - startTick).isMultiple(of: slotTicks)
+        }) else { return nil }
+
+        let equalMembers = indicesInRange.filter { performedByIndex[$0] == slotTicks }
+        let equalSlots = Set(equalMembers.map {
+            (resolutions[$0].event.position.localTick - startTick) / slotTicks
+        })
+        let allOnsetSlots = Set(indicesInRange.map {
+            (resolutions[$0].event.position.localTick - startTick) / slotTicks
+        })
+        if equalSlots.count >= 2, equalSlots == allOnsetSlots {
+            return TupletCandidate(
+                startTick: startTick,
+                slotTicks: slotTicks,
+                memberIndices: equalMembers,
+                occupiedSlots: equalSlots,
+                isFeelPair: false
+            )
+        }
+
+        guard allOnsetSlots == [0, 2] else { return nil }
+        let feelMembers = indicesInRange.filter { index in
+            let slot = (resolutions[index].event.position.localTick - startTick) / slotTicks
+            return slot == 0 ? performedByIndex[index] == slotTicks * 2
+                : performedByIndex[index] == slotTicks
+        }
+        let feelSlots = Set(feelMembers.map {
+            (resolutions[$0].event.position.localTick - startTick) / slotTicks
+        })
+        guard feelSlots == [0, 2] else { return nil }
+        return TupletCandidate(
+            startTick: startTick,
+            slotTicks: slotTicks,
+            memberIndices: feelMembers,
+            occupiedSlots: feelSlots,
+            isFeelPair: true
+        )
+    }
+
+    func appendSilentTupletRests(
+        candidate: TupletCandidate,
+        tupletID: RhythmTupletID,
+        measureIndex: Int,
+        voice: NotationVoice,
+        ticksPerWholeNote: Int,
+        rests: inout [AnalyzedRhythmRest]
+    ) {
+        guard !candidate.isFeelPair,
+              let baseInterval = tripletBaseInterval(
+                  performedTicks: candidate.slotTicks,
+                  ticksPerWholeNote: ticksPerWholeNote
+              ) else { return }
+        for slot in 0..<3 where !candidate.occupiedSlots.contains(slot) {
+            rests.append(AnalyzedRhythmRest(
+                measureIndex: measureIndex,
+                voice: voice,
+                startTick: candidate.startTick + slot * candidate.slotTicks,
+                durationTicks: candidate.slotTicks,
+                rhythm: NotationRhythm(
+                    baseInterval: baseInterval,
+                    tuplet: TupletRatio(actual: 3, normal: 2)
+                ),
+                tupletID: tupletID,
+                visibility: .printed
+            ))
+        }
+    }
+}
+
+private extension NotationRhythmAnalyzer {
+    func diagnoseUnrecognizedStructure(
+        resolutions: [EventResolution],
+        measure: RhythmMeasure,
+        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
+    ) {
+        let unresolved = resolutions.filter { $0.tupletID == nil }
+        let unsupportedSpan = unresolved.contains {
+            if case .unsupported = $0.rhythm.support { return true }
+            return false
+        }
+        let onsetTicks = Set(unresolved.map { $0.event.position.localTick }).sorted()
+        let distances = zip(onsetTicks, onsetTicks.dropFirst()).map { $1 - $0 }
+        if unsupportedSpan, onsetTicks.count >= 4,
+           let distance = distances.first, distance > 0,
+           distances.allSatisfy({ $0 == distance }) {
+            warningCodes[measure.measureIndex, default: []].insert(.unsupportedTupletRatio)
+        } else if unsupportedSpan {
+            warningCodes[measure.measureIndex, default: []].insert(.incompleteTuplet)
+        }
+
+        guard let group = resolutions.first?.beatGroup,
+              group.durationTicks.isMultiple(of: 3) else { return }
+        let slot = group.durationTicks / 3
+        let exactThirdOnsets = [group.startTick, group.startTick + slot, group.startTick + slot * 2]
+        guard exactThirdOnsets.allSatisfy(onsetTicks.contains) else { return }
+        let overlapping = unresolved.contains { resolution in
+            guard exactThirdOnsets.contains(resolution.event.position.localTick),
+                  resolution.event.origin == .manual,
+                  let baseTicks = durationTicks(
+                      for: resolution.event.storedInterval,
+                      ticksPerWholeNote: measure.durationTicks * 4 / max(measure.timeSignature.beatsPerMeasure, 1)
+                  ), let performed = tripletPerformedTicks(baseTicks: baseTicks) else { return false }
+            return performed > slot
+        }
+        if overlapping {
+            warningCodes[measure.measureIndex, default: []].insert(.incompleteTuplet)
+        }
+    }
+
+    func finalizeIndeterminateDurations(
+        resolutions: inout [EventResolution],
+        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
+    ) {
+        for index in resolutions.indices where resolutions[index].tupletID == nil {
+            if case .indeterminate(.indeterminateTerminalDuration) = resolutions[index].rhythm.support {
+                warningCodes[resolutions[index].event.position.measureIndex, default: []]
+                    .insert(.indeterminateTerminalDuration)
+            }
+        }
+    }
+
+    func applyConservativeFallback(
+        resolutions: inout [EventResolution],
+        tuplets: inout [AnalyzedRhythmTuplet],
+        rests: inout [AnalyzedRhythmRest],
+        warningCodes: [Int: Set<RhythmDiagnosticCode>]
+    ) {
+        let unsupportedMeasures = Set(warningCodes.keys)
+        guard !unsupportedMeasures.isEmpty else { return }
+        for index in resolutions.indices {
+            let measureIndex = resolutions[index].event.position.measureIndex
+            guard unsupportedMeasures.contains(measureIndex) else { continue }
+            let code = primaryCode(in: warningCodes[measureIndex, default: []])
+            resolutions[index].rhythm = NotationRhythm(
+                baseInterval: resolutions[index].rhythm.baseInterval,
+                support: .unsupported(code)
+            )
+            resolutions[index].tupletID = nil
+        }
+        tuplets.removeAll { unsupportedMeasures.contains($0.id.measureIndex) }
+        rests.removeAll { unsupportedMeasures.contains($0.measureIndex) }
+    }
+
+    func measuresWithFallback(
+        _ measures: [RhythmMeasure],
+        warningCodes: [Int: Set<RhythmDiagnosticCode>]
+    ) -> [RhythmMeasure] {
+        measures.map { measure in
+            guard let codes = warningCodes[measure.measureIndex], !codes.isEmpty else { return measure }
+            return RhythmMeasure(
+                measureIndex: measure.measureIndex,
+                startTick: measure.startTick,
+                durationTicks: measure.durationTicks,
+                timeSignature: measure.timeSignature,
+                beatGroups: measure.beatGroups,
+                engravingSupport: .unsupported(stableCodes(codes))
+            )
+        }
+    }
+}
+
+private extension NotationRhythmAnalyzer {
+    func analyzedNotes(from resolutions: [EventResolution]) -> [AnalyzedRhythmNote] {
+        resolutions.map { resolution in
+            AnalyzedRhythmNote(
+                eventID: resolution.event.eventID,
+                position: resolution.event.position,
+                voice: resolution.event.voice,
+                beatGroupIndex: resolution.beatGroup.groupIndex,
+                durationTicks: resolution.durationTicks,
+                rhythm: resolution.rhythm,
+                tupletID: resolution.tupletID
+            )
         }.sorted(by: analyzedNoteComesBefore)
     }
 
     func analyzedRests(
-        from resolutions: [ChordResolution],
+        from resolutions: [EventResolution],
         measures: [RhythmMeasure],
         reservedTupletRests: [AnalyzedRhythmRest],
         ticksPerWholeNote: Int,
@@ -149,8 +596,8 @@ private extension NotationRhythmAnalyzer {
     ) -> [AnalyzedRhythmRest] {
         let restNotes = resolutions.map { resolution in
             RestTimelineNote(
-                position: resolution.chord.position,
-                voice: resolution.chord.voice,
+                position: resolution.event.position,
+                voice: resolution.event.voice,
                 durationTicks: resolution.rhythm.support == .supported
                     ? resolution.durationTicks : nil,
                 rhythm: resolution.rhythm,
@@ -178,294 +625,50 @@ private extension NotationRhythmAnalyzer {
             )
         }
     }
-
-    func groupedChords(events: [RhythmAnalysisEvent]) -> [VoiceKey: [Chord]] {
-        let byVoice = Dictionary(grouping: events) {
-            VoiceKey(measureIndex: $0.position.measureIndex, voice: $0.voice)
-        }
-        return byVoice.mapValues { voiceEvents in
-            Dictionary(grouping: voiceEvents, by: { $0.position.localTick })
-                .keys.sorted()
-                .map { tick in
-                    let members = voiceEvents.filter { $0.position.localTick == tick }.sorted {
-                        $0.eventID.rawValue < $1.eventID.rawValue
-                    }
-                    return Chord(position: members[0].position, voice: members[0].voice, events: members)
-                }
-        }
-    }
-
-    func resolveChords(
-        _ chords: [Chord],
-        measure: RhythmMeasure,
-        ticksPerWholeNote: Int,
-        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
-    ) -> [ChordResolution] {
-        chords.indices.compactMap { index in
-            let chord = chords[index]
-            guard let beatGroup = measure.beatGroups.first(where: {
-                chord.position.localTick >= $0.startTick && chord.position.localTick < $0.endTick
-            }) else {
-                warningCodes[measure.measureIndex, default: []].insert(.ambiguousBeatGrouping)
-                return nil
-            }
-            let allManual = chord.events.allSatisfy { $0.origin == .manual }
-            if allManual {
-                let intervals = Set(chord.events.map(\.storedInterval))
-                guard intervals.count == 1, let interval = intervals.first,
-                      let duration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote) else {
-                    warningCodes[measure.measureIndex, default: []].insert(.ambiguousBeatGrouping)
-                    return ChordResolution(
-                        chord: chord,
-                        beatGroup: beatGroup,
-                        durationTicks: max(measure.durationTicks - chord.position.localTick, 1),
-                        rhythm: unsupportedRhythm(.ambiguousBeatGrouping),
-                        tupletID: nil
-                    )
-                }
-                return ChordResolution(
-                    chord: chord,
-                    beatGroup: beatGroup,
-                    durationTicks: duration,
-                    rhythm: NotationRhythm(baseInterval: interval),
-                    tupletID: nil
-                )
-            }
-
-            if index + 1 < chords.count {
-                let span = chords[index + 1].position.localTick - chord.position.localTick
-                let rhythm = classify(spanTicks: span, ticksPerWholeNote: ticksPerWholeNote)
-                if rhythm.support != .supported {
-                    warningCodes[measure.measureIndex, default: []].insert(.ambiguousBeatGrouping)
-                }
-                return ChordResolution(
-                    chord: chord,
-                    beatGroup: beatGroup,
-                    durationTicks: max(span, 1),
-                    rhythm: rhythm,
-                    tupletID: nil
-                )
-            }
-
-            let candidates = Set(chord.events.compactMap(\.visualDurationCandidate))
-            if candidates.count == 1, let interval = candidates.first,
-               let duration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
-               chord.position.localTick + duration <= min(beatGroup.endTick, measure.durationTicks) {
-                return ChordResolution(
-                    chord: chord,
-                    beatGroup: beatGroup,
-                    durationTicks: duration,
-                    rhythm: NotationRhythm(baseInterval: interval),
-                    tupletID: nil
-                )
-            }
-
-            if candidates.count == 1, let interval = candidates.first,
-               let duration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote) {
-                let compressed = duration.multipliedReportingOverflow(by: 2)
-                if !compressed.overflow, compressed.partialValue.isMultiple(of: 3) {
-                    let compressedDuration = compressed.partialValue / 3
-                    if chord.position.localTick + compressedDuration
-                        <= min(beatGroup.endTick, measure.durationTicks) {
-                        return ChordResolution(
-                            chord: chord,
-                            beatGroup: beatGroup,
-                            durationTicks: compressedDuration,
-                            rhythm: NotationRhythm(
-                                baseInterval: interval,
-                                support: .indeterminate(.indeterminateTerminalDuration)
-                            ),
-                            tupletID: nil
-                        )
-                    }
-                }
-            }
-
-            warningCodes[measure.measureIndex, default: []].insert(.indeterminateTerminalDuration)
-            return ChordResolution(
-                chord: chord,
-                beatGroup: beatGroup,
-                durationTicks: max(measure.durationTicks - chord.position.localTick, 1),
-                rhythm: NotationRhythm(
-                    baseInterval: candidates.first ?? .quarter,
-                    support: .indeterminate(.indeterminateTerminalDuration)
-                ),
-                tupletID: nil
-            )
-        }
-    }
 }
 
 private extension NotationRhythmAnalyzer {
-    func recognizeTuplets(
-        resolutions: inout [ChordResolution],
-        measure: RhythmMeasure,
-        ticksPerWholeNote: Int,
-        feel: RhythmicFeel,
-        tuplets: inout [AnalyzedRhythmTuplet],
-        rests: inout [AnalyzedRhythmRest],
-        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
-    ) {
-        for group in measure.beatGroups where group.durationTicks > 0 && group.durationTicks.isMultiple(of: 3) {
-            let indices = resolutions.indices.filter { resolutions[$0].beatGroup.groupIndex == group.groupIndex }
-            guard !indices.isEmpty else { continue }
-            let slotTicks = group.durationTicks / 3
-            let slotByIndex = Dictionary(uniqueKeysWithValues: indices.compactMap { index -> (Int, Int)? in
-                let offset = resolutions[index].chord.position.localTick - group.startTick
-                guard offset >= 0, offset.isMultiple(of: slotTicks), offset / slotTicks < 3 else { return nil }
-                return (index, offset / slotTicks)
-            })
-
-            if indices.count >= 4, equallyDivides(group: group, resolutions: resolutions, indices: indices) {
-                warningCodes[measure.measureIndex, default: []].insert(.unsupportedTupletRatio)
-                continue
-            }
-            guard slotByIndex.count == indices.count, Set(slotByIndex.values).count >= 2 else { continue }
-
-            guard let tripletRhythms = tripletRhythms(
-                resolutions: resolutions,
-                indices: indices,
-                group: group,
-                ticksPerWholeNote: ticksPerWholeNote
-            ) else {
-                warningCodes[measure.measureIndex, default: []].insert(.incompleteTuplet)
-                continue
-            }
-
-            let firstVoice = resolutions[indices[0]].chord.voice
-            let tupletID = RhythmTupletID(
-                measureIndex: measure.measureIndex,
-                voice: firstVoice,
-                beatGroupIndex: group.groupIndex,
-                startTick: group.startTick,
-                durationTicks: group.durationTicks
-            )
-            let occupiedSlots = Set(slotByIndex.values)
-            let durations = indices.compactMap { index -> Int? in
-                guard let interval = tripletRhythms[index]?.baseInterval,
-                      let baseTicks = durationTicks(
-                        for: interval,
-                        ticksPerWholeNote: ticksPerWholeNote
-                      ) else { return nil }
-                return baseTicks * 2 / 3
-            }
-            let isFeelPair = indices.count == 2
-                && occupiedSlots == [0, 2]
-                && durations.count == 2
-                && durations[0] == durations[1] * 2
-            let visibility: TupletBracketVisibility = feel != .straight && isFeelPair
-                ? .suppressedForFeel : .shown
-            tuplets.append(AnalyzedRhythmTuplet(
-                id: tupletID,
-                ratio: TupletRatio(actual: 3, normal: 2),
-                bracketVisibility: visibility
-            ))
-
-            for index in indices {
-                guard let rhythm = tripletRhythms[index],
-                      let baseTicks = durationTicks(
-                        for: rhythm.baseInterval,
-                        ticksPerWholeNote: ticksPerWholeNote
-                      ) else {
-                    continue
-                }
-                resolutions[index].rhythm = rhythm
-                resolutions[index].durationTicks = baseTicks * 2 / 3
-                resolutions[index].tupletID = tupletID
-            }
-            if !isFeelPair, let noteRhythm = tripletRhythms[indices[0]] {
-                for slot in 0..<3 where !occupiedSlots.contains(slot) {
-                    rests.append(AnalyzedRhythmRest(
-                        measureIndex: measure.measureIndex,
-                        voice: firstVoice,
-                        startTick: group.startTick + slot * slotTicks,
-                        durationTicks: slotTicks,
-                        rhythm: NotationRhythm(
-                            baseInterval: noteRhythm.baseInterval,
-                            tuplet: TupletRatio(actual: 3, normal: 2)
-                        ),
-                        tupletID: tupletID,
-                        visibility: .printed
-                    ))
-                }
-            }
-        }
-    }
-
-    func tripletRhythms(
-        resolutions: [ChordResolution],
-        indices: [Int],
-        group: RhythmBeatGroup,
+    func tripletPerformedDuration(
+        for resolution: EventResolution,
         ticksPerWholeNote: Int
-    ) -> [Int: NotationRhythm]? {
-        var result: [Int: NotationRhythm] = [:]
-        let ordered = indices.sorted {
-            resolutions[$0].chord.position.localTick < resolutions[$1].chord.position.localTick
+    ) -> Int? {
+        guard let interval = tripletBaseInterval(
+            for: resolution,
+            ticksPerWholeNote: ticksPerWholeNote
+        ), let baseTicks = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote) else {
+            return nil
         }
-        for (position, index) in ordered.enumerated() {
-            let resolution = resolutions[index]
-            let baseInterval: NoteInterval?
-            if resolution.chord.events.allSatisfy({ $0.origin == .manual }) {
-                let intervals = Set(resolution.chord.events.map(\.storedInterval))
-                baseInterval = intervals.count == 1 ? intervals.first : nil
-            } else {
-                baseInterval = tripletBaseInterval(
-                    resolution: resolution,
-                    ticksPerWholeNote: ticksPerWholeNote
-                )
-            }
-            guard let baseInterval,
-                  let baseTicks = durationTicks(
-                    for: baseInterval,
-                    ticksPerWholeNote: ticksPerWholeNote
-                  ) else { return nil }
-            let compressed = baseTicks.multipliedReportingOverflow(by: 2)
-            guard !compressed.overflow, compressed.partialValue.isMultiple(of: 3) else { return nil }
-            let duration = compressed.partialValue / 3
-            let nextStart = position + 1 < ordered.count
-                ? resolutions[ordered[position + 1]].chord.position.localTick
-                : group.endTick
-            guard duration <= nextStart - resolution.chord.position.localTick else { return nil }
-            result[index] = NotationRhythm(
-                baseInterval: baseInterval,
-                tuplet: TupletRatio(actual: 3, normal: 2)
-            )
-        }
-        return result
+        return tripletPerformedTicks(baseTicks: baseTicks)
     }
 
     func tripletBaseInterval(
-        resolution: ChordResolution,
+        for resolution: EventResolution,
         ticksPerWholeNote: Int
     ) -> NoteInterval? {
-        let terminalCandidates = Set(
-            resolution.chord.events.compactMap(\.visualDurationCandidate)
-        )
-        if terminalCandidates.count == 1 { return terminalCandidates.first }
-        let tripletBase = resolution.durationTicks.multipliedReportingOverflow(by: 3)
-        guard !tripletBase.overflow, tripletBase.partialValue.isMultiple(of: 2) else { return nil }
-        return binaryInterval(
-            for: tripletBase.partialValue / 2,
+        if resolution.event.origin == .manual {
+            return resolution.event.storedInterval
+        }
+        if !resolution.hasFollowingDTXOnset {
+            return resolution.event.visualDurationCandidate
+        }
+        return tripletBaseInterval(
+            performedTicks: resolution.durationTicks,
             ticksPerWholeNote: ticksPerWholeNote
         )
     }
 
-    func equallyDivides(
-        group: RhythmBeatGroup,
-        resolutions: [ChordResolution],
-        indices: [Int]
-    ) -> Bool {
-        let ticks = indices.map { resolutions[$0].chord.position.localTick }.sorted()
-        guard ticks.count > 3 else { return false }
-        let distances = zip(ticks, ticks.dropFirst()).map { $1 - $0 }
-        guard let first = distances.first, first > 0, distances.allSatisfy({ $0 == first }) else {
-            return false
-        }
-        return group.durationTicks.isMultiple(of: first)
+    func tripletBaseInterval(performedTicks: Int, ticksPerWholeNote: Int) -> NoteInterval? {
+        let product = performedTicks.multipliedReportingOverflow(by: 3)
+        guard !product.overflow, product.partialValue.isMultiple(of: 2) else { return nil }
+        return binaryInterval(for: product.partialValue / 2, ticksPerWholeNote: ticksPerWholeNote)
     }
-}
 
-private extension NotationRhythmAnalyzer {
+    func tripletPerformedTicks(baseTicks: Int) -> Int? {
+        let product = baseTicks.multipliedReportingOverflow(by: 2)
+        guard !product.overflow, product.partialValue.isMultiple(of: 3) else { return nil }
+        return product.partialValue / 3
+    }
+
     func durationTicks(for interval: NoteInterval, ticksPerWholeNote: Int) -> Int? {
         let divisor: Int
         switch interval {
@@ -491,10 +694,20 @@ private extension NotationRhythmAnalyzer {
         NotationRhythm(baseInterval: .quarter, support: .unsupported(code))
     }
 
-    func voiceKeyComesBefore(_ lhs: VoiceKey, _ rhs: VoiceKey) -> Bool {
-        lhs.measureIndex != rhs.measureIndex
-            ? lhs.measureIndex < rhs.measureIndex
-            : lhs.voice.rawValue < rhs.voice.rawValue
+    func stableCodes(_ codes: Set<RhythmDiagnosticCode>) -> [RhythmDiagnosticCode] {
+        RhythmDiagnosticCode.allCases.filter(codes.contains)
+    }
+
+    func primaryCode(in codes: Set<RhythmDiagnosticCode>) -> RhythmDiagnosticCode {
+        stableCodes(codes).first ?? .ambiguousBeatGrouping
+    }
+}
+
+private extension NotationRhythmAnalyzer {
+    func streamKeyComesBefore(_ lhs: StreamKey, _ rhs: StreamKey) -> Bool {
+        if lhs.measureIndex != rhs.measureIndex { return lhs.measureIndex < rhs.measureIndex }
+        if lhs.voice != rhs.voice { return lhs.voice.rawValue < rhs.voice.rawValue }
+        return lhs.beatGroupIndex < rhs.beatGroupIndex
     }
 
     func analyzedNoteComesBefore(_ lhs: AnalyzedRhythmNote, _ rhs: AnalyzedRhythmNote) -> Bool {
@@ -506,6 +719,20 @@ private extension NotationRhythmAnalyzer {
     func analyzedRestComesBefore(_ lhs: AnalyzedRhythmRest, _ rhs: AnalyzedRhythmRest) -> Bool {
         if lhs.measureIndex != rhs.measureIndex { return lhs.measureIndex < rhs.measureIndex }
         if lhs.voice != rhs.voice { return lhs.voice == .upper }
-        return lhs.startTick < rhs.startTick
+        if lhs.startTick != rhs.startTick { return lhs.startTick < rhs.startTick }
+        return lhs.durationTicks > rhs.durationTicks
+    }
+
+    func analyzedTupletComesBefore(_ lhs: AnalyzedRhythmTuplet, _ rhs: AnalyzedRhythmTuplet) -> Bool {
+        if lhs.id.measureIndex != rhs.id.measureIndex { return lhs.id.measureIndex < rhs.id.measureIndex }
+        if lhs.id.startTick != rhs.id.startTick { return lhs.id.startTick < rhs.id.startTick }
+        if lhs.id.voice != rhs.id.voice { return lhs.id.voice.rawValue < rhs.id.voice.rawValue }
+        if lhs.id.stableMemberEventID != rhs.id.stableMemberEventID {
+            return lhs.id.stableMemberEventID.rawValue < rhs.id.stableMemberEventID.rawValue
+        }
+        if lhs.id.beatGroupIndex != rhs.id.beatGroupIndex {
+            return lhs.id.beatGroupIndex < rhs.id.beatGroupIndex
+        }
+        return lhs.id.durationTicks < rhs.id.durationTicks
     }
 }
