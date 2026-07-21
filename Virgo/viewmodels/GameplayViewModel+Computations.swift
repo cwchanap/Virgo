@@ -17,6 +17,7 @@ extension GameplayViewModel {
                 noteTargets: [],
                 metronomeSchedule: nil,
                 noteByEventID: [:],
+                controlByEventID: [:],
                 positionByNoteObjectID: [:],
                 diagnostics: resolvedRhythm.runtimeDiagnostics
             )
@@ -54,6 +55,7 @@ extension GameplayViewModel {
                 noteTargets: noteTargets,
                 metronomeSchedule: schedule,
                 noteByEventID: resolvedRhythm.noteByEventID,
+                controlByEventID: resolvedRhythm.controlByEventID,
                 positionByNoteObjectID: notePositionMap(for: resolvedRhythm),
                 diagnostics: resolvedRhythm.runtimeDiagnostics
             )
@@ -120,12 +122,10 @@ extension GameplayViewModel {
             )
         }
         let controls = resolvedRhythm.orderedEvents.compactMap { event -> RhythmLayoutControl? in
-            guard event.sourceKind == .control else { return nil }
-            let controlIndex = event.stableOrdinal - cachedNotes.count
-            guard cachedControlEvents.indices.contains(controlIndex) else { return nil }
+            guard let control = resolvedRhythm.controlByEventID[event.eventID] else { return nil }
             return RhythmLayoutControl(
                 eventID: event.eventID,
-                event: cachedControlEvents[controlIndex],
+                event: control,
                 position: event.position
             )
         }
@@ -197,6 +197,7 @@ extension GameplayViewModel {
             noteTargets: [],
             metronomeSchedule: nil,
             noteByEventID: [:],
+            controlByEventID: [:],
             positionByNoteObjectID: [:],
             diagnostics: diagnostics + [diagnostic]
         )

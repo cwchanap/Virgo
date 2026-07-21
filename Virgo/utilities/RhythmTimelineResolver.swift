@@ -32,6 +32,7 @@ struct ResolvedChartRhythm {
     let timeline: RhythmTimeline?
     let orderedEvents: [ResolvedRhythmEvent]
     let noteByEventID: [RhythmEventID: Note]
+    let controlByEventID: [RhythmEventID: NotationControlEvent]
     let runtimeDiagnostics: [PersistedRhythmDiagnostic]
     let canonicalProjection: CanonicalRhythmProjection?
 }
@@ -67,6 +68,7 @@ private extension RhythmTimelineResolver {
         let sourceIdentityKey: String
         let stableOrdinal: Int
         let note: Note?
+        let control: NotationControlEvent?
     }
 
     func resolveMissing(chart: Chart) -> ResolvedChartRhythm {
@@ -136,6 +138,7 @@ private extension RhythmTimelineResolver {
         }
         var orderedEvents: [ResolvedRhythmEvent] = []
         var noteByEventID: [RhythmEventID: Note] = [:]
+        var controlByEventID: [RhythmEventID: NotationControlEvent] = [:]
         orderedEvents.reserveCapacity(sortedEnvelopes.count)
 
         for (rawID, envelope) in sortedEnvelopes.enumerated() {
@@ -155,6 +158,9 @@ private extension RhythmTimelineResolver {
             if let note = envelope.note {
                 noteByEventID[eventID] = note
             }
+            if let control = envelope.control {
+                controlByEventID[eventID] = control
+            }
         }
 
         return ResolvedChartRhythm(
@@ -162,6 +168,7 @@ private extension RhythmTimelineResolver {
             timeline: timeline,
             orderedEvents: orderedEvents,
             noteByEventID: noteByEventID,
+            controlByEventID: controlByEventID,
             runtimeDiagnostics: diagnostics,
             canonicalProjection: CanonicalRhythmProjection(timeline: timeline)
         )
@@ -220,7 +227,8 @@ private extension RhythmTimelineResolver {
             origin: resolvedOrigin(note.originKind),
             sourceIdentityKey: sourceIdentityKey(event: event),
             stableOrdinal: stableOrdinal,
-            note: note
+            note: note,
+            control: nil
         )
     }
 
@@ -250,7 +258,8 @@ private extension RhythmTimelineResolver {
             origin: resolvedOrigin(control.originKind),
             sourceIdentityKey: sourceIdentityKey(event: event),
             stableOrdinal: stableOrdinal,
-            note: nil
+            note: nil,
+            control: NotationControlEvent(control)
         )
     }
 }
@@ -323,6 +332,7 @@ private extension RhythmTimelineResolver {
             timeline: nil,
             orderedEvents: [],
             noteByEventID: [:],
+            controlByEventID: [:],
             runtimeDiagnostics: diagnostics,
             canonicalProjection: nil
         )

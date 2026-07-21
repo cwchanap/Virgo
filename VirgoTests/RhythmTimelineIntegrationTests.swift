@@ -185,6 +185,59 @@ struct RhythmTimelineIntegrationTests {
         viewModel.cleanup()
     }
 
+    @Test("runtime controls retain resolver identity when relationship snapshots reorder")
+    func runtimeControlsRetainResolverIdentityAcrossRelationshipReordering() throws {
+        let chart = makeControlIdentityChart()
+        let resolved = RhythmTimelineResolver().resolve(chart: chart)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        viewModel.track = DrumTrack(chart: chart)
+        viewModel.cachedNotes = chart.safeNotes
+        viewModel.cachedControlEvents = chart.safeControlEvents.reversed().map(NotationControlEvent.init)
+
+        let runtime = viewModel.makeRhythmRuntime(resolvedRhythm: resolved)
+        let controls = try #require(runtime.layoutSnapshot?.controls)
+        let controlsBySourceID = Dictionary(uniqueKeysWithValues: controls.compactMap { control in
+            control.event.sourceNoteID.map { ($0, control) }
+        })
+
+        #expect(controls.count == 2)
+        #expect(controlsBySourceID["A"]?.event.kind == .stop)
+        #expect(controlsBySourceID["A"]?.position.localTick == 1)
+        #expect(controlsBySourceID["B"]?.event.kind == .damp)
+        #expect(controlsBySourceID["B"]?.position.localTick == 3)
+    }
+
+    @Test("runtime control lookup ignores a lingering deleted-note relationship count")
+    func runtimeControlLookupIgnoresLingeringDeletedNoteCount() throws {
+        let chart = makeControlIdentityChart()
+        let resolved = RhythmTimelineResolver().resolve(chart: chart)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        viewModel.track = DrumTrack(chart: chart)
+        // `loadChartData` snapshots `chart.notes`, while the resolver deliberately
+        // uses `safeNotes`. ModelContext deletion can leave that relationship
+        // array one element longer until SwiftData finishes reconciliation.
+        viewModel.cachedNotes = chart.safeNotes + [Note(
+            interval: .quarter,
+            noteType: .highTom,
+            measureNumber: 99,
+            measureOffset: 0
+        )]
+        viewModel.cachedControlEvents = chart.safeControlEvents.map(NotationControlEvent.init)
+
+        let runtime = viewModel.makeRhythmRuntime(resolvedRhythm: resolved)
+        let controls = try #require(runtime.layoutSnapshot?.controls)
+
+        #expect(controls.count == 2)
+        #expect(controls.map(\.event.sourceNoteID) == ["A", "B"])
+        #expect(controls.map(\.position.localTick) == [1, 3])
+    }
+
     @Test("timing-fatal runtime disables layout scoring metronome and BGM starters")
     func fatalRuntimeDisablesGameplay() async throws {
         let chart = Chart(difficulty: .medium)
@@ -216,6 +269,40 @@ struct RhythmTimelineIntegrationTests {
 }
 
 private extension RhythmTimelineIntegrationTests {
+    func makeControlIdentityChart() -> Chart {
+        let song = Song(
+            title: "Control Identity",
+            artist: "Tester",
+            bpm: 120,
+            duration: "0:02",
+            genre: "Test"
+        )
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour, song: song)
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0
+        ))
+        chart.controlEvents = [
+            ChartControlEvent(
+                kind: .stop,
+                measureNumber: 1,
+                measureOffset: 0.25,
+                sourceNoteID: "A",
+                targetLaneID: "1A"
+            ),
+            ChartControlEvent(
+                kind: .damp,
+                measureNumber: 1,
+                measureOffset: 0.75,
+                sourceNoteID: "B",
+                targetLaneID: "12"
+            )
+        ]
+        return chart
+    }
+
     func makeVariableMeasureChart() throws -> Chart {
         let song = Song(
             title: "Variable Runtime",

@@ -13,7 +13,7 @@ import os.log
 // fires on `timerQueue` (see `startTimer` / `startTimerAtTime`). All mutable
 // state is lock-guarded; `@unchecked Sendable` documents this manual contract
 // and keeps the type consistent with `MetronomeAudioEngine`'s Sendable story.
-private final class MetronomePlaybackToken: @unchecked Sendable {
+final class MetronomePlaybackToken: @unchecked Sendable {
     private let lock = NSLock()
     private var active = true
 
@@ -27,6 +27,15 @@ private final class MetronomePlaybackToken: @unchecked Sendable {
         lock.lock()
         active = false
         lock.unlock()
+    }
+
+    @discardableResult
+    func performIfActive(_ action: () -> Void) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard active else { return false }
+        action()
+        return true
     }
 }
 
@@ -373,7 +382,9 @@ class MetronomeTimingEngine: ObservableObject {
             let idealBeatTime = schedule.audioTargetTime(forBeatNumber: firedBeatNumber)
             let beatToPlay = Self.beatInMeasure(forFiredBeatNumber: firedBeatNumber, timeSignature: timeSignature)
             let preciseAudioTime = Self.audioTime(forIdealBeatTime: idealBeatTime)
-            audioBeatHandler?(beatToPlay, beatToPlay == 1, preciseAudioTime)
+            guard token.performIfActive({
+                audioBeatHandler?(beatToPlay, beatToPlay == 1, preciseAudioTime)
+            }) else { return }
 
             Task { @MainActor in
                 guard let self = self, token.isActive else { return }
@@ -440,7 +451,9 @@ class MetronomeTimingEngine: ObservableObject {
 
             let idealTime = playbackOriginTime + pulse.offsetSecondsAtOneX / speed
             let preciseAudioTime = Self.audioTime(forIdealBeatTime: idealTime)
-            audioBeatHandler?(pulse.beatInMeasure, pulse.isAccented, preciseAudioTime)
+            guard token.performIfActive({
+                audioBeatHandler?(pulse.beatInMeasure, pulse.isAccented, preciseAudioTime)
+            }) else { return }
 
             Task { @MainActor in
                 guard let self, token.isActive else { return }
