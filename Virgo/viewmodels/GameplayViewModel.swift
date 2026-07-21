@@ -22,6 +22,32 @@ typealias GameplayCompletionScheduler = @MainActor (
     @escaping @MainActor () -> Void
 ) -> AnyCancellable
 
+/// One immutable, chart-scoped runtime selection shared by layout, input,
+/// playback, metronome, BGM, and diagnostics. It is replaced atomically after
+/// relationship loading; consumers never repeat metadata-origin selection.
+@MainActor
+struct GameplayRhythmRuntime {
+    let availability: RhythmTimelineAvailability
+    let timeline: RhythmTimeline?
+    let layoutSnapshot: RhythmLayoutSnapshot?
+    let noteTargets: [RhythmNoteTarget]
+    let metronomeSchedule: RhythmMetronomeSchedule?
+    let noteByEventID: [RhythmEventID: Note]
+    let positionByNoteObjectID: [ObjectIdentifier: RhythmEventPosition]
+    let diagnostics: [PersistedRhythmDiagnostic]
+
+    static let legacy = GameplayRhythmRuntime(
+        availability: .legacy,
+        timeline: nil,
+        layoutSnapshot: nil,
+        noteTargets: [],
+        metronomeSchedule: nil,
+        noteByEventID: [:],
+        positionByNoteObjectID: [:],
+        diagnostics: []
+    )
+}
+
 /// ViewModel for GameplayView that consolidates state management
 /// and provides a clean separation between UI and business logic.
 @Observable
@@ -56,12 +82,22 @@ final class GameplayViewModel {
     var cachedNotes: [Note] = []
     /// Immutable control snapshots; views/layout never traverse the SwiftData relationship.
     var cachedControlEvents: [NotationControlEvent] = []
-    /// Immutable timeline selected once while chart relationships are on the MainActor.
-    var cachedRhythmTimeline: RhythmTimeline?
-    /// Model-free input snapshots, sorted by stable timeline identity.
-    var cachedRhythmNoteTargets: [RhythmNoteTarget] = []
-    /// MainActor-only bridge from immutable event identity back to SwiftData notes for UI use.
-    var cachedNoteByRhythmEventID: [RhythmEventID: Note] = [:]
+    /// Atomically cached runtime selected once while chart relationships are on the MainActor.
+    var cachedRhythmRuntime = GameplayRhythmRuntime.legacy
+    var cachedRhythmTimeline: RhythmTimeline? { cachedRhythmRuntime.timeline }
+    var cachedRhythmNoteTargets: [RhythmNoteTarget] { cachedRhythmRuntime.noteTargets }
+    var cachedNoteByRhythmEventID: [RhythmEventID: Note] { cachedRhythmRuntime.noteByEventID }
+    var hasFatalRhythmTiming: Bool { cachedRhythmRuntime.availability == .fatal }
+    var rhythmFatalMessage: String {
+        guard let diagnostic = cachedRhythmRuntime.diagnostics.first else {
+            return String(localized: "Unsupported chart timing")
+        }
+        let presentation = RhythmDiagnosticPresentation(code: diagnostic.code)
+        if let measureIndex = diagnostic.sourceMeasureIndex {
+            return String(localized: "\(presentation.title): measure \(measureIndex + 1) \(presentation.description)")
+        }
+        return String(localized: "\(presentation.title): \(presentation.description)")
+    }
     /// Flag indicating whether async data loading is complete
     var isDataLoaded = false
     /// Flag indicating whether gameplay-derived layout/audio state has been prepared.
@@ -137,7 +173,7 @@ final class GameplayViewModel {
     var cachedNotationMeasuresByIndex: [Int: RenderedMeasure] = [:] // internal for cross-file extension access
     /// Fast lookup map from rendered note-head ID to rendered position
     var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:] // internal for cross-file extension access
-    /// Duration-based measure count shared with both legacy sheet layout and notation layout.
+    /// Duration-based measure count shared with legacy and notation layouts.
     var cachedLayoutMeasureCount = 1 // internal for cross-file extension access
     /// Available row width, fed from the sheet music view's GeometryProxy. Falls back
     /// to the legacy 900pt cap so layouts built before any geometry is observed behave
@@ -321,8 +357,6 @@ final class GameplayViewModel {
         cachedNotes = chart.notes.map { $0 }
         cachedControlEvents = chart.safeControlEvents.map(NotationControlEvent.init)
         let resolvedRhythm = RhythmTimelineResolver().resolve(chart: chart)
-        cachedRhythmTimeline = resolvedRhythm.timeline
-        cachedNoteByRhythmEventID = resolvedRhythm.noteByEventID
         // Pre-sort notes by time position once so scanForMissedNotes can advance
         // a forward-only cursor instead of re-walking the full list each tick.
         sortedNotesByTimePosition = cachedNotes.sorted {
@@ -334,11 +368,13 @@ final class GameplayViewModel {
             Logger.error("loadChartData: chart.song relationship returned nil")
         }
         if cachedNotes.isEmpty {
-            Logger.warning("loadChartData: chart.notes returned empty array - chart may have no notes or relationship failed to load")
+            Logger.warning(
+                "loadChartData: chart.notes returned empty array - chart may have no notes or relationship failed to load"
+            )
         }
 
         track = DrumTrack(chart: chart)
-        cacheRhythmInputTargets(resolvedRhythm: resolvedRhythm)
+        cachedRhythmRuntime = makeRhythmRuntime(resolvedRhythm: resolvedRhythm)
         isDataLoaded = true
     }
 
@@ -352,6 +388,20 @@ final class GameplayViewModel {
         isGameplayPrepared = false
         guard let track = track else {
             Logger.error("setupGameplay() called but track is nil - data not loaded yet")
+            return
+        }
+        guard !hasFatalRhythmTiming else {
+            cachedNotationLayout = .empty
+            cachedNotationNoteHeadPositions = [:]
+            cachedMeasureRowMap = [:]
+            cachedNotationMeasuresByIndex = [:]
+            cachedTrackDuration = 0
+            bgmOffsetSeconds = 0
+            metronome.stop()
+            bgmPlayer?.stop()
+            bgmPlayer = nil
+            inputManager.stopListening()
+            Logger.error(rhythmFatalMessage)
             return
         }
 

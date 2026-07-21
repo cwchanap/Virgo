@@ -210,6 +210,33 @@ class MetronomeEngine: ObservableObject {
         Logger.audioPlayback("🎵 MetronomeEngine.startAtTime() completed - isEnabled: \(isEnabled)")
     }
 
+    func startAtTime(
+        schedule: RhythmMetronomeSchedule,
+        speed: Double,
+        startTime: TimeInterval,
+        elapsedTime: TimeInterval
+    ) {
+        guard speed.isFinite, speed > 0,
+              elapsedTime.isFinite, elapsedTime >= 0 else {
+            Logger.error("Invalid rhythm metronome speed or elapsed time")
+            return
+        }
+
+        if timingEngine.isPlaying {
+            Logger.audioPlayback("🎵 Flushing active metronome before timeline rebase")
+            timingEngine.stop()
+            audioDriver.stop()
+        }
+
+        audioDriver.resume()
+        timingEngine.startAtTime(
+            startTime: startTime,
+            schedule: schedule,
+            speed: speed,
+            elapsedTime: elapsedTime
+        )
+    }
+
     func stop() {
         timingEngine.stop()
         audioDriver.stop()

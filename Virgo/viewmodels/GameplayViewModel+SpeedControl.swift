@@ -183,7 +183,7 @@ extension GameplayViewModel {
     /// Internal for unit testing.
     @discardableResult
     func rescheduleBGMForSpeedChange(commonStartTime: CFAbsoluteTime) -> Bool {
-        guard let bgmPlayer = bgmPlayer else {
+        guard let bgmPlayer = bgmPlayer, !shouldYieldBGMClockToTimeline(bgmPlayer) else {
             return false
         }
 
@@ -261,19 +261,29 @@ extension GameplayViewModel {
         previousSpeed: Double
     ) -> (elapsed: Double, hasMetronomeTime: Bool) {
         let metronomeTime = metronome.getCurrentPlaybackTime()
-        if let bgmPlayer, bgmPlayer.currentTime > 0, previousSpeed > 0 {
+        if let bgmPlayer,
+           bgmPlayer.currentTime > 0,
+           !shouldYieldBGMClockToTimeline(bgmPlayer),
+           previousSpeed > 0 {
             return (
-                elapsed: (bgmPlayer.currentTime / previousSpeed) + bgmOffsetSeconds,
+                elapsed: clampedTimelinePlaybackElapsed(
+                    (bgmPlayer.currentTime / previousSpeed) + bgmOffsetSeconds
+                ),
                 hasMetronomeTime: metronomeTime != nil
             )
         }
         if let metronomeTime {
-            return (pausedElapsedTime + metronomeTime, true)
+            return (clampedTimelinePlaybackElapsed(pausedElapsedTime + metronomeTime), true)
         }
         if let playbackStartTime {
-            return (max(pausedElapsedTime, Date().timeIntervalSince(playbackStartTime)), false)
+            return (
+                clampedTimelinePlaybackElapsed(
+                    max(pausedElapsedTime, Date().timeIntervalSince(playbackStartTime))
+                ),
+                false
+            )
         }
-        return (pausedElapsedTime, false)
+        return (clampedTimelinePlaybackElapsed(pausedElapsedTime), false)
     }
 
     /// Stops and restarts the metronome at a scheduled future time for a live speed
@@ -292,12 +302,21 @@ extension GameplayViewModel {
         lastScheduledPlaybackHostTime = capturedHostTime
         let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
         lastScheduledPlaybackStartTime = scheduledStartTime
-        metronome.startAtTime(
-            bpm: effectiveBPM,
-            timeSignature: track?.timeSignature ?? .fourFour,
-            startTime: scheduledStartTime,
-            totalBeatsElapsed: elapsedBeats
-        )
+        if let schedule = cachedRhythmRuntime.metronomeSchedule {
+            metronome.startAtTime(
+                schedule: schedule,
+                speed: practiceSettings.speedMultiplier,
+                startTime: scheduledStartTime,
+                elapsedTime: pausedElapsedTime
+            )
+        } else {
+            metronome.startAtTime(
+                bpm: effectiveBPM,
+                timeSignature: track?.timeSignature ?? .fourFour,
+                startTime: scheduledStartTime,
+                totalBeatsElapsed: elapsedBeats
+            )
+        }
         rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
         return scheduledStartTime
     }

@@ -396,6 +396,53 @@ struct MetronomeEngineTests {
         #expect(driver.resumeCallCount == 2)
         engine.stop()
     }
+
+    @Test("MetronomeEngine timeline start scales immutable pulse offsets with practice speed")
+    func testTimelineStartScalesPulseOffsets() throws {
+        let driver = RecordingAudioDriver()
+        let timingEngine = MetronomeTimingEngine(isTestEnvironment: false)
+        let engine = MetronomeEngine(audioDriver: driver, timingEngine: timingEngine)
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 4,
+            timeSignature: .fourFour,
+            beatGroups: (0..<4).map {
+                RhythmBeatGroup(groupIndex: $0, startTick: $0, durationTicks: 1, isResidual: false)
+            },
+            engravingSupport: .supported
+        )
+        let schedule = try RhythmMetronomeSchedule(
+            timeline: RhythmTimeline(
+                ticksPerWholeNote: 4,
+                measures: [measure],
+                eventPositions: [:],
+                bgmStartPosition: nil
+            ),
+            bpm: 300
+        )
+
+        engine.startAtTime(
+            schedule: schedule,
+            speed: 2,
+            startTime: CFAbsoluteTimeGetCurrent() + 0.08,
+            elapsedTime: 0
+        )
+        let receivedAllTicks = driver.waitForTicks(count: 4, timeout: 1)
+        engine.stop()
+
+        #expect(receivedAllTicks)
+        let ticks = driver.playedTicksSnapshot
+        let scheduledTimes = driver.scheduledAudioTimesSnapshot.compactMap { $0 }
+        let accentStates = Array(ticks.prefix(4)).map(\.isAccented)
+        #expect(accentStates == [true, true, true, true])
+        #expect(scheduledTimes.count >= 4)
+        for index in 1..<min(4, scheduledTimes.count) {
+            let previous = AVAudioTime.seconds(forHostTime: scheduledTimes[index - 1].hostTime)
+            let current = AVAudioTime.seconds(forHostTime: scheduledTimes[index].hostTime)
+            #expect(abs((current - previous) - 0.1) < 0.015)
+        }
+    }
 }
 
 @Suite("Metronome Audio Engine Tests", .serialized)

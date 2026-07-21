@@ -308,7 +308,9 @@ struct GameplayViewModelPlaybackCoverageTests {
 
     @Test("calculateElapsedTime fallback does not double-count pausedElapsedTime in backdated startTime")
     func testCalculateElapsedTimeFallbackNoDoubleCount() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4)
+        chart.notes.forEach { $0.originKind = .dtx }
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
         vm.setupGameplay()
         defer { vm.cleanup() }

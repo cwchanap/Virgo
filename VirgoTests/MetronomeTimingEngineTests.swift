@@ -54,6 +54,70 @@ private func timingEngineOriginState(_ timingEngine: MetronomeTimingEngine) -> T
 @MainActor
 struct MetronomeTimingEngineTests {
 
+    @Test("timeline schedule seats at the first pulse after elapsed musical time")
+    func timelineScheduleSeatsFromElapsedTime() async throws {
+        let timingEngine = MetronomeTimingEngine()
+        let schedule = try timingTestVariableBarSchedule()
+        var receivedBeat: Int?
+        var receivedAccent: Bool?
+        timingEngine.onBeat = { beat, isAccented, _ in
+            receivedBeat = beat
+            receivedAccent = isAccented
+        }
+
+        timingEngine.startAtTime(
+            startTime: 100,
+            schedule: schedule,
+            speed: 1,
+            elapsedTime: 1.501
+        )
+        await Task.yield()
+
+        #expect(receivedBeat == 2)
+        #expect(receivedAccent == true)
+        #expect(timingEngine.currentBeat == 2)
+        timingEngine.stop()
+    }
+
+    @Test("timeline restart suppresses delayed visual pulse from the cancelled generation")
+    func timelineRestartSuppressesCancelledVisualPulse() async throws {
+        let timingEngine = MetronomeTimingEngine(isTestEnvironment: false)
+        let schedule = try timingTestVariableBarSchedule()
+        var receivedBeats: [(beat: Int, timestamp: CFAbsoluteTime)] = []
+        timingEngine.onBeat = { beat, _, _ in
+            receivedBeats.append((beat, CFAbsoluteTimeGetCurrent()))
+        }
+
+        timingEngine.startAtTime(
+            startTime: CFAbsoluteTimeGetCurrent() + 0.20,
+            schedule: schedule,
+            speed: 1,
+            elapsedTime: 0
+        )
+        try await Task.sleep(nanoseconds: 180_000_000)
+
+        let replacementStart = CFAbsoluteTimeGetCurrent() + 0.20
+        timingEngine.startAtTime(
+            startTime: replacementStart,
+            schedule: schedule,
+            speed: 1,
+            elapsedTime: 1.501
+        )
+        defer { timingEngine.stop() }
+
+        try await Task.sleep(nanoseconds: 120_000_000)
+        #expect(receivedBeats.isEmpty)
+        let receivedReplacement = await TestHelpers.waitFor(
+            condition: { !receivedBeats.isEmpty },
+            timeout: 1,
+            checkInterval: 0.02
+        )
+        #expect(receivedReplacement)
+        let first = try #require(receivedBeats.first)
+        #expect(first.timestamp >= replacementStart)
+        #expect(first.beat == 2)
+    }
+
     @Test("MetronomeTimingEngine initializes with default values")
     func testTimingEngineInitialization() {
         let timingEngine = MetronomeTimingEngine()
@@ -463,4 +527,36 @@ struct MetronomeTimingEngineTests {
 
         #expect(result == 0, "A past target that underflows must clamp to 0")
     }
+}
+
+private func timingTestVariableBarSchedule() throws -> RhythmMetronomeSchedule {
+    let first = RhythmMeasure(
+        measureIndex: 0,
+        startTick: 0,
+        durationTicks: 6,
+        timeSignature: .fourFour,
+        beatGroups: [0, 2, 4].enumerated().map { index, start in
+            RhythmBeatGroup(groupIndex: index, startTick: start, durationTicks: 2, isResidual: false)
+        },
+        engravingSupport: .supported
+    )
+    let second = RhythmMeasure(
+        measureIndex: 1,
+        startTick: 6,
+        durationTicks: 8,
+        timeSignature: .fourFour,
+        beatGroups: [0, 2, 4, 6].enumerated().map { index, start in
+            RhythmBeatGroup(groupIndex: index, startTick: start, durationTicks: 2, isResidual: false)
+        },
+        engravingSupport: .supported
+    )
+    return try RhythmMetronomeSchedule(
+        timeline: RhythmTimeline(
+            ticksPerWholeNote: 8,
+            measures: [first, second],
+            eventPositions: [:],
+            bgmStartPosition: nil
+        ),
+        bpm: 120
+    )
 }

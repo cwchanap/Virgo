@@ -86,16 +86,16 @@ struct RhythmTimelineBuilderTests {
         #expect(timeline.seconds(forAbsoluteTick: 1, bpm: 0, speed: 1) == nil)
     }
 
-    @Test("seconds conversion does not require a quantum divisible by four")
-    func secondsConversionWithNonQuarterQuantum() throws {
+    @Test("seconds conversion preserves meter projection in the canonical quantum")
+    func secondsConversionWithMeterProjectionQuantum() throws {
         let override = try MeasureLengthOverride(
             measureIndex: 0,
             ratioToWholeNote: .init(numerator: 1, denominator: 3)
         )
         let timeline = try build(metadata: metadata(.sevenEight, overrides: [override]), events: [])
 
-        #expect(timeline.ticksPerWholeNote == 3)
-        #expect(timeline.seconds(forAbsoluteTick: 1, bpm: 60, speed: 1) == 4.0 / 3.0)
+        #expect(timeline.ticksPerWholeNote == 24)
+        #expect(timeline.seconds(forAbsoluteTick: 8, bpm: 60, speed: 1) == 4.0 / 3.0)
     }
 
     @Test("inclusive measure ends canonicalize to the following measure")
@@ -332,20 +332,21 @@ extension RhythmTimelineBuilderTests {
 
     @Test("the final cumulative tick is an exact Double integer")
     func exactDoubleTickBound() throws {
+        let largestProjectedTick = RhythmLimits.maximumExactDoubleInteger / 8 * 8
         let acceptedOverride = try MeasureLengthOverride(
             measureIndex: 0,
-            ratioToWholeNote: .init(numerator: RhythmLimits.maximumExactDoubleInteger, denominator: 1)
+            ratioToWholeNote: .init(numerator: RhythmLimits.maximumExactDoubleInteger / 8, denominator: 1)
         )
         let rejectedOverride = try MeasureLengthOverride(
             measureIndex: 0,
-            ratioToWholeNote: .init(numerator: RhythmLimits.maximumExactDoubleInteger + 1, denominator: 1)
+            ratioToWholeNote: .init(numerator: RhythmLimits.maximumExactDoubleInteger / 8 + 1, denominator: 1)
         )
 
-        // Ambiguous 7/8 intentionally materializes one beat group regardless of
-        // duration, so this arithmetic boundary proof cannot allocate per tick.
+        // Ambiguous 7/8 materializes one beat group while its canonical quantum
+        // includes denominator 8 for exact pulse projection.
         let accepted = try build(metadata: metadata(.sevenEight, overrides: [acceptedOverride]), events: [])
-        #expect(accepted.endTick == RhythmLimits.maximumExactDoubleInteger)
-        #expect(Double(accepted.endTick) == Double(RhythmLimits.maximumExactDoubleInteger))
+        #expect(accepted.endTick == largestProjectedTick)
+        #expect(Double(accepted.endTick) == Double(largestProjectedTick))
         #expect(throws: RhythmTimelineBuildError.cumulativeTickLimitExceeded) {
             _ = try build(metadata: metadata(.sevenEight, overrides: [rejectedOverride]), events: [])
         }

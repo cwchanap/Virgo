@@ -80,7 +80,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test func testUpdateSpeedWhilePlayingRescalesElapsedTimeWhenMetronomeTimeUnavailable() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let metronome = ScheduledMetronomeSpy()
         let practiceSettings = GameplayViewModelTestHarness.createTestPracticeSettings()
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
@@ -101,14 +101,7 @@ struct GameplayViewModelBGMTimelineTests {
             abs(viewModel.pausedElapsedTime - 4.0) < 0.001,
             "Elapsed timeline should rescale in fallback path when metronome playback time is unavailable"
         )
-        #expect(
-            abs(metronome.bpm - viewModel.effectiveBPM()) < 0.001,
-            "Metronome BPM should still be updated in fallback path"
-        )
-        #expect(
-            metronome.isEnabled == true,
-            "Fallback speed change should reschedule the metronome instead of only updating BPM"
-        )
+        #expect(metronome.timelineStartAtTimeCalls.last?.speed == 0.5)
 
         viewModel.cleanup()
     }
@@ -223,14 +216,20 @@ struct GameplayViewModelBGMTimelineTests {
 
         viewModel.updateVisualElementsFromMetronome()
 
-        let expectedElapsedTime = 45.0 / 0.75 + (0.9 / 0.75)
-        let expectedTotalBeats = Int(expectedElapsedTime / (60.0 / viewModel.effectiveBPM()))
-        let expectedMeasureIndex = expectedTotalBeats / chart.timeSignature.beatsPerMeasure
-        let expectedBeatPosition = Double(expectedTotalBeats % chart.timeSignature.beatsPerMeasure)
-            / Double(chart.timeSignature.beatsPerMeasure)
+        let expectedElapsedTime = 45.0 / 0.75 + viewModel.bgmOffsetSeconds
+        let timeline = try #require(viewModel.cachedRhythmTimeline)
+        let expectedTick = try #require(timeline.continuousTick(
+            forSeconds: expectedElapsedTime,
+            bpm: chart.bpm,
+            speed: 0.75
+        ))
+        let expectedMeasure = try #require(timeline.measure(containingAbsoluteTick: Int(expectedTick)))
+        let expectedTotalBeats = Int(expectedTick / Double(timeline.ticksPerWholeNote / 4))
+        let expectedBeatPosition = (expectedTick - Double(expectedMeasure.startTick))
+            / Double(expectedMeasure.durationTicks)
 
         #expect(viewModel.totalBeatsElapsed == expectedTotalBeats)
-        #expect(viewModel.currentMeasureIndex == expectedMeasureIndex)
+        #expect(viewModel.currentMeasureIndex == expectedMeasure.measureIndex)
         #expect(abs(viewModel.currentBeatPosition - expectedBeatPosition) < 0.0001)
         #expect(viewModel.purpleBarPosition != nil)
 
@@ -323,7 +322,13 @@ struct GameplayViewModelBGMTimelineTests {
             bgmStartOffsetSeconds: 0.9
         )
         let chart = Chart(difficulty: .medium, song: song)
-        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 0.625))
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 2,
+            measureOffset: 0.625,
+            originKind: .dtx
+        ))
 
         let viewModel = GameplayViewModel(chart: chart, metronome: GameplayViewModelTestHarness.createTestMetronome())
         await viewModel.loadChartData()
@@ -351,7 +356,13 @@ struct GameplayViewModelBGMTimelineTests {
         )
         let chart = Chart(difficulty: .medium, song: song)
         // First drum note in measure 3 — well after the BGM start.
-        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.0))
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 3,
+            measureOffset: 0.0,
+            originKind: .dtx
+        ))
 
         let viewModel = GameplayViewModel(
             chart: chart,

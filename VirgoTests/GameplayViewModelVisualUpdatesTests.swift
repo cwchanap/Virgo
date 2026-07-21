@@ -45,7 +45,9 @@ struct GameplayViewModelVisualUpdatesTests {
         #expect(viewModel.currentMeasureIndex == viewModel.totalBeatsElapsed / 4)
         #expect(viewModel.currentBeatPosition >= 0.0)
         #expect(viewModel.currentBeatPosition < 1.0)
-        #expect(abs(viewModel.currentBeatPosition - (Double(viewModel.totalBeatsElapsed % 4) / 4.0)) < 0.0001)
+        let expectedMeasureFraction = viewModel.currentQuarterNotePosition / 4
+            - Double(viewModel.currentMeasureIndex)
+        #expect(abs(viewModel.currentBeatPosition - expectedMeasureFraction) < 0.0001)
         #expect(viewModel.totalBeatsElapsed >= 1)
         #expect(viewModel.purpleBarPosition != nil)
 
@@ -76,8 +78,8 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.cleanup()
     }
 
-    @Test("purple bar jumps on beat boundaries within each measure")
-    func testPurpleBarJumpsOnBeatBoundariesWithinMeasure() async throws {
+    @Test("timeline purple bar moves continuously within each measure")
+    func testTimelinePurpleBarMovesContinuouslyWithinMeasure() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
 
@@ -103,11 +105,11 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.updatePurpleBarPosition(elapsedTime: 1.01)
         let positionAtThirdBeat = try #require(viewModel.purpleBarPosition)
 
-        #expect(abs(positionAtStart.x - positionBeforeSecondBeat.x) < 0.0001)
+        #expect(positionBeforeSecondBeat.x > positionAtStart.x)
         #expect(abs(positionAtStart.y - positionBeforeSecondBeat.y) < 0.0001)
-        #expect(abs(positionAtSecondBeat.x - positionAtStart.x) > 0.0001)
-        #expect(abs(positionAtSecondBeat.x - positionBeforeThirdBeat.x) < 0.0001)
-        #expect(abs(positionAtThirdBeat.x - positionAtSecondBeat.x) > 0.0001)
+        #expect(positionAtSecondBeat.x > positionBeforeSecondBeat.x)
+        #expect(positionBeforeThirdBeat.x > positionAtSecondBeat.x)
+        #expect(positionAtThirdBeat.x > positionBeforeThirdBeat.x)
 
         viewModel.cleanup()
     }
@@ -316,10 +318,7 @@ struct GameplayViewModelVisualUpdatesTests {
         #expect(abs(clampedPosition.x - Double(startX)) > 1.0)
     }
 
-    @Test func testPurpleBarHoldsBeatBoundaryPositionForSubBeatNotes() async throws {
-        // Sub-beat notes should still be highlighted by active-note timing, but the
-        // purple marker itself should stay on beat boundaries and should not move
-        // to sixteenth-note positions inside the measure.
+    @Test func testTimelinePurpleBarUsesExactSubBeatPosition() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0625)
@@ -335,9 +334,7 @@ struct GameplayViewModelVisualUpdatesTests {
             viewModel.calculatePurpleBarPosition(elapsedTime: 0.125)
         )
         let measure = try #require(viewModel.cachedNotationLayout.measures.first)
-        let expectedX = measure.xOffset
-            + GameplayLayout.barLineWidth
-            + GameplayLayout.uniformSpacing
+        let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: 1)
 
         #expect(abs(position.x - Double(expectedX)) < 0.5)
     }
