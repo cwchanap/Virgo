@@ -56,6 +56,12 @@ final class GameplayViewModel {
     var cachedNotes: [Note] = []
     /// Immutable control snapshots; views/layout never traverse the SwiftData relationship.
     var cachedControlEvents: [NotationControlEvent] = []
+    /// Immutable timeline selected once while chart relationships are on the MainActor.
+    var cachedRhythmTimeline: RhythmTimeline?
+    /// Model-free input snapshots, sorted by stable timeline identity.
+    var cachedRhythmNoteTargets: [RhythmNoteTarget] = []
+    /// MainActor-only bridge from immutable event identity back to SwiftData notes for UI use.
+    var cachedNoteByRhythmEventID: [RhythmEventID: Note] = [:]
     /// Flag indicating whether async data loading is complete
     var isDataLoaded = false
     /// Flag indicating whether gameplay-derived layout/audio state has been prepared.
@@ -200,6 +206,8 @@ final class GameplayViewModel {
     var comboBreakFeedbackTask: Task<Void, Never>? // internal for cross-file extension access
     /// Notes already scored via explicit hit — skipped by missed-note scan
     var scoredNoteIDs: Set<ObjectIdentifier> = [] // internal for cross-file extension access
+    /// Timeline events already scored or auto-missed. Stable across matcher speed changes.
+    var scoredRhythmEventIDs: Set<RhythmEventID> = [] // internal for cross-file extension access
     /// Notes sorted by ascending time position; built once after data load.
     /// Enables the missed-note scan to walk forward without re-scanning the full list.
     var sortedNotesByTimePosition: [Note] = [] // internal for cross-file extension access
@@ -208,6 +216,8 @@ final class GameplayViewModel {
     var missedNoteScanCursor: Int = 0 // internal for cross-file extension access
     /// High-water mark for missed-note scan (timePosition units)
     var lastScannedTimePosition: Double = 0.0 // internal for cross-file extension access
+    /// High-water mark for timeline missed-note scans (effective song seconds).
+    var lastScannedRhythmTargetSeconds: Double = -.infinity // internal for cross-file extension access
 
     // MARK: - Completion Scheduling
     /// Whether playback completion has been scheduled (prevents double-scheduling during grace period)
@@ -310,6 +320,9 @@ final class GameplayViewModel {
         cachedSong = chart.song
         cachedNotes = chart.notes.map { $0 }
         cachedControlEvents = chart.safeControlEvents.map(NotationControlEvent.init)
+        let resolvedRhythm = RhythmTimelineResolver().resolve(chart: chart)
+        cachedRhythmTimeline = resolvedRhythm.timeline
+        cachedNoteByRhythmEventID = resolvedRhythm.noteByEventID
         // Pre-sort notes by time position once so scanForMissedNotes can advance
         // a forward-only cursor instead of re-walking the full list each tick.
         sortedNotesByTimePosition = cachedNotes.sorted {
@@ -325,6 +338,7 @@ final class GameplayViewModel {
         }
 
         track = DrumTrack(chart: chart)
+        cacheRhythmInputTargets(resolvedRhythm: resolvedRhythm)
         isDataLoaded = true
     }
 
@@ -372,8 +386,7 @@ final class GameplayViewModel {
         refreshTimingCaches()
         // Use effective BPM (base × speed multiplier) for metronome
         metronome.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature)
-        // InputManager should use effective BPM so scoring matches playback speed
-        inputManager.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature, notes: cachedNotes)
+        configureInputTiming(speed: practiceSettings.speedMultiplier)
         setupInterruptionHandling()
         isGameplayPrepared = true
     }

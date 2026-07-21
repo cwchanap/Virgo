@@ -25,9 +25,40 @@ struct NoteMatchResult {
     let hitInput: InputHit
     let matchedNote: Note?
     let timingAccuracy: TimingAccuracy
-    let measureNumber: Int
-    let measureOffset: Double
+    let measureNumber: Int?
+    let measureOffset: Double?
     let timingError: Double? // in milliseconds, positive = late, negative = early; nil when no note matched
+    let matchedEventID: RhythmEventID?
+    let matchedTargetPosition: RhythmEventPosition?
+    let matchedTargetSeconds: Double?
+    let hitSongSeconds: Double?
+    let hitPosition: RhythmEventPosition?
+
+    init(
+        hitInput: InputHit,
+        matchedNote: Note? = nil,
+        timingAccuracy: TimingAccuracy,
+        measureNumber: Int? = nil,
+        measureOffset: Double? = nil,
+        timingError: Double?,
+        matchedEventID: RhythmEventID? = nil,
+        matchedTargetPosition: RhythmEventPosition? = nil,
+        matchedTargetSeconds: Double? = nil,
+        hitSongSeconds: Double? = nil,
+        hitPosition: RhythmEventPosition? = nil
+    ) {
+        self.hitInput = hitInput
+        self.matchedNote = matchedNote
+        self.timingAccuracy = timingAccuracy
+        self.measureNumber = measureNumber
+        self.measureOffset = measureOffset
+        self.timingError = timingError
+        self.matchedEventID = matchedEventID
+        self.matchedTargetPosition = matchedTargetPosition
+        self.matchedTargetSeconds = matchedTargetSeconds
+        self.hitSongSeconds = hitSongSeconds
+        self.hitPosition = hitPosition
+    }
 }
 
 enum TimingAccuracy: Sendable {
@@ -311,29 +342,63 @@ class InputManager: ObservableObject {
 
 extension InputManager {
     func configure(bpm: Double, timeSignature: TimeSignature, notes: [Note]) {
-        // Validate BPM range to prevent division by zero and unrealistic values
-        guard bpm > 0.1 && bpm <= 1000.0 else {
-            preconditionFailure("BPM must be between 0.1 and 1000.0, got: \(bpm)")
+        configure(.legacy(bpm: bpm, timeSignature: timeSignature, notes: notes))
+    }
+
+    func configure(_ configuration: InputTimingConfiguration, elapsedOffset: Double = 0) {
+        precondition(
+            elapsedOffset.isFinite && elapsedOffset >= 0,
+            "Input elapsed offset must be finite and nonnegative"
+        )
+        let normalizedConfiguration: InputTimingConfiguration
+        switch configuration {
+        case let .legacy(bpm, timeSignature, notes):
+            guard bpm > 0.1 && bpm <= 1000.0 else {
+                preconditionFailure("BPM must be between 0.1 and 1000.0, got: \(bpm)")
+            }
+            guard timeSignature.beatsPerMeasure > 0 else {
+                preconditionFailure(
+                    "Time signature beats per measure must be positive, got: \(timeSignature.beatsPerMeasure)"
+                )
+            }
+            let sortedNotes = notes.sorted {
+                $0.measureNumber < $1.measureNumber
+                    || ($0.measureNumber == $1.measureNumber && $0.measureOffset < $1.measureOffset)
+            }
+            normalizedConfiguration = .legacy(
+                bpm: bpm,
+                timeSignature: timeSignature,
+                notes: sortedNotes
+            )
+        case .timeline:
+            normalizedConfiguration = configuration
         }
-        
-        // Validate time signature
-        guard timeSignature.beatsPerMeasure > 0 else {
-            preconditionFailure("Time signature beats per measure must be positive, got: \(timeSignature.beatsPerMeasure)")
-        }
-        
-        let sortedNotes = notes.sorted { $0.measureNumber < $1.measureNumber ||
-            ($0.measureNumber == $1.measureNumber && $0.measureOffset < $1.measureOffset) }
-        let secondsPerBeat = 60.0 / bpm
-        let secondsPerMeasure = secondsPerBeat * Double(timeSignature.beatsPerMeasure)
-        let timingMatcher = InputTimingMatcher(bpm: bpm, timeSignature: timeSignature, notes: sortedNotes)
+
+        // Construct outside runtimeStateQueue so callbacks never observe a partially built matcher.
+        let timingMatcher = InputTimingMatcher(configuration: normalizedConfiguration)
+        let matcherBPM = timingMatcher.effectiveBPM
 
         updateRuntimeState {
-            self.bpm = bpm
-            self.timeSignature = timeSignature
-            self.notes = sortedNotes
-            self.secondsPerBeat = secondsPerBeat
-            self.secondsPerMeasure = secondsPerMeasure
+            switch normalizedConfiguration {
+            case let .legacy(bpm, timeSignature, notes):
+                self.bpm = bpm
+                self.timeSignature = timeSignature
+                self.notes = notes
+                self.secondsPerBeat = 60 / bpm
+                self.secondsPerMeasure = self.secondsPerBeat * Double(timeSignature.beatsPerMeasure)
+            case let .timeline(_, timeline, _):
+                self.notes = []
+                if let timeSignature = timeline.measures.first?.timeSignature {
+                    self.timeSignature = timeSignature
+                }
+                if let matcherBPM {
+                    self.bpm = matcherBPM
+                    self.secondsPerBeat = 60 / matcherBPM
+                    self.secondsPerMeasure = self.secondsPerBeat * Double(self.timeSignature.beatsPerMeasure)
+                }
+            }
             self.inputTimingMatcher = timingMatcher
+            self.hostTimeElapsedOffset = elapsedOffset
         }
     }
     

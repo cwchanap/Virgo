@@ -43,7 +43,8 @@ struct InputTimingMatcherTests {
 
         #expect(result.matchedNote === targetKick)
         #expect(result.measureNumber == 1)
-        #expect(abs(result.measureOffset - 0.505) < 0.0001)
+        #expect(result.measureOffset != nil)
+        #expect(abs((result.measureOffset ?? 0) - 0.505) < 0.0001)
         #expect(result.timingAccuracy == .perfect)
         #expect(abs((result.timingError ?? 0) - 10.0) < 0.0001)
     }
@@ -68,7 +69,8 @@ struct InputTimingMatcherTests {
         #expect(result.timingAccuracy == .miss)
         #expect(result.timingError == nil)
         #expect(result.measureNumber == 1)
-        #expect(abs(result.measureOffset - 0.4) < 0.0001)
+        #expect(result.measureOffset != nil)
+        #expect(abs((result.measureOffset ?? 0) - 0.4) < 0.0001)
     }
 
     @Test("calculateNoteMatch classifies great and good timing windows")
@@ -140,7 +142,8 @@ struct InputTimingMatcherTests {
 
         #expect(result.matchedNote === laterKick)
         #expect(result.measureNumber == 2)
-        #expect(abs(result.measureOffset - 0.21) < 0.0001)
+        #expect(result.measureOffset != nil)
+        #expect(abs((result.measureOffset ?? 0) - 0.21) < 0.0001)
         #expect(result.timingAccuracy == .good)
         #expect(abs((result.timingError ?? 0) + 80.0) < 0.0001)
     }

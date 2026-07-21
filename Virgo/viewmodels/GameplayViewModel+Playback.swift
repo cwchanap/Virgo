@@ -219,7 +219,7 @@ extension GameplayViewModel {
         Logger.audioPlayback("Skipped to end for track: \(track?.title ?? "Unknown")")
         // Process all remaining unscored notes as misses before saving the score,
         // so the saved record reflects a complete run rather than a partial one.
-        scanForMissedNotes(upToTimePosition: .infinity)
+        scanForAllMissedNotes()
         // Capture the full position snapshot BEFORE handlePlaybackCompletion()
         // calls resetPlaybackState(), which zeros every field. Restoring all of
         // them keeps the frozen-at-end UI consistent (progress bar, purple bar,

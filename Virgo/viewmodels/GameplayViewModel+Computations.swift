@@ -6,6 +6,49 @@
 import Foundation
 
 extension GameplayViewModel {
+    func cacheRhythmInputTargets(resolvedRhythm: ResolvedChartRhythm) {
+        guard let timeline = resolvedRhythm.timeline,
+              let track else {
+            cachedRhythmNoteTargets = []
+            return
+        }
+
+        cachedRhythmNoteTargets = resolvedRhythm.orderedEvents.compactMap { event in
+            guard let note = resolvedRhythm.noteByEventID[event.eventID],
+                  let drumType = DrumType.from(noteType: note.noteType),
+                  let targetSeconds = timeline.seconds(for: event.position, bpm: track.bpm, speed: 1) else {
+                return nil
+            }
+            return RhythmNoteTarget(
+                eventID: event.eventID,
+                drumType: drumType,
+                position: event.position,
+                targetSecondsAtOneX: targetSeconds
+            )
+        }.sorted {
+            if $0.targetSecondsAtOneX != $1.targetSecondsAtOneX {
+                return $0.targetSecondsAtOneX < $1.targetSecondsAtOneX
+            }
+            return $0.eventID.rawValue < $1.eventID.rawValue
+        }
+    }
+
+    func configureInputTiming(speed: Double, elapsedOffset: Double = 0) {
+        if let timeline = cachedRhythmTimeline {
+            inputManager.configure(.timeline(
+                targets: cachedRhythmNoteTargets,
+                timeline: timeline,
+                speed: speed
+            ), elapsedOffset: elapsedOffset)
+        } else if let track {
+            inputManager.configure(.legacy(
+                bpm: track.bpm * speed,
+                timeSignature: track.timeSignature,
+                notes: cachedNotes
+            ), elapsedOffset: elapsedOffset)
+        }
+    }
+
     // MARK: - Unique ID Generation
 
     /// Generate a unique ID for a DrumBeat
@@ -382,15 +425,22 @@ extension GameplayViewModel {
 
         // Flush any notes that were missed before this hit so combo state is correct
         // when processHit runs (handles 8th/16th notes within the same beat).
-        let hitTimePos = MeasureUtils.timePosition(
-            measureNumber: result.measureNumber,
-            measureOffset: result.measureOffset
-        )
-        scanForMissedNotes(upToTimePosition: hitTimePos)
+        if let hitSongSeconds = result.hitSongSeconds {
+            scanForMissedNotes(upToSeconds: hitSongSeconds)
+        } else if let measureNumber = result.measureNumber,
+           let measureOffset = result.measureOffset {
+            let hitTimePos = MeasureUtils.timePosition(
+                measureNumber: measureNumber,
+                measureOffset: measureOffset
+            )
+            scanForMissedNotes(upToTimePosition: hitTimePos)
+        }
 
         // Prevent duplicate scoring: if this note was already scored (e.g. double-tap
         // within InputManager's search window), discard the repeated result entirely.
-        if let note = result.matchedNote {
+        if let eventID = result.matchedEventID {
+            guard scoredRhythmEventIDs.insert(eventID).inserted else { return }
+        } else if let note = result.matchedNote {
             let noteID = ObjectIdentifier(note)
             guard scoredNoteIDs.insert(noteID).inserted else { return }
         }
@@ -458,6 +508,42 @@ extension GameplayViewModel {
         }
     }
 
+    /// Scan immutable timeline targets by effective target seconds.
+    func scanForMissedNotes(upToSeconds playheadSeconds: Double) {
+        guard isPlaying || playheadSeconds.isInfinite else { return }
+        guard cachedRhythmTimeline != nil else { return }
+
+        let lateWindowSeconds = TimingAccuracy.good.toleranceMs / 1_000
+        let scanBoundary = playheadSeconds - lateWindowSeconds
+        guard scanBoundary > lastScannedRhythmTargetSeconds else { return }
+        let speed = practiceSettings.speedMultiplier
+        guard speed.isFinite, speed > 0 else { return }
+        let previousCombo = scoreEngine.combo
+
+        while missedNoteScanCursor < cachedRhythmNoteTargets.count {
+            let target = cachedRhythmNoteTargets[missedNoteScanCursor]
+            let targetSeconds = target.targetSecondsAtOneX / speed
+            if targetSeconds > scanBoundary + 1e-12 { break }
+            if scoredRhythmEventIDs.insert(target.eventID).inserted {
+                scoreEngine.processMissedNote()
+            }
+            missedNoteScanCursor += 1
+        }
+        lastScannedRhythmTargetSeconds = scanBoundary
+
+        if previousCombo > 0 && scoreEngine.combo == 0 {
+            triggerComboBreakFeedback()
+        }
+    }
+
+    func scanForAllMissedNotes() {
+        if cachedRhythmTimeline != nil {
+            scanForMissedNotes(upToSeconds: .infinity)
+        } else {
+            scanForMissedNotes(upToTimePosition: .infinity)
+        }
+    }
+
     /// Resets all scoring state. Called by resetPlaybackState() on restart and completion.
     func resetScoring() {
         scoreEngine.reset()
@@ -467,8 +553,10 @@ extension GameplayViewModel {
         showMilestoneAnimation = false
         showComboBreakFeedback = false
         scoredNoteIDs = []
+        scoredRhythmEventIDs = []
         missedNoteScanCursor = 0
         lastScannedTimePosition = 0.0
+        lastScannedRhythmTargetSeconds = -.infinity
         // Cancel any in-flight feedback reset tasks so they cannot clear flags on
         // the fresh session that is about to start.
         milestoneAnimationTask?.cancel()
