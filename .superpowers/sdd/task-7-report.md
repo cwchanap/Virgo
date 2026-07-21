@@ -120,3 +120,60 @@ Additional checks:
 - `GameplayViewModel+Computations.swift` now crosses SwiftLint's warning-level 600-line threshold, and the repository
   retains other warning-level size/line findings. SwiftLint reports no serious violations.
 - Progress ledger unchanged as required.
+
+## Review Correction Wave
+
+Final review rejected the initial Task 7 commit at `1ab24469fe47df7ce1de111664f6815da47c0b1b` with three timing
+findings. Each correction was implemented through a focused RED/GREEN cycle without entering Task 8 ownership.
+
+### RED/GREEN 1: atomic matcher and listening-clock transition
+
+The deterministic race test first failed to compile on the wished-for `configureAndStartListening` API and injected
+critical-section seam. The new API prepares the matcher outside `runtimeStateQueue`, then commits configuration
+mirrors, matcher, wall/host origins, and elapsed offset in one queue mutation. The no-sleep regression holds that
+mutation with semaphores, starts a concurrent MIDI callback, proves the callback cannot escape the transaction, and
+then verifies it observes the complete new-speed target/hit-seconds pair. Both live speed-transition branches now use
+this atomic API; paused/setup configuration and ordinary playback start retain their existing responsibilities.
+
+### RED/GREEN 2: explicit 100 ms miss boundary
+
+Zero-origin timeline and legacy regressions both failed because `0.0 -> 0.1` produced exactly `100` milliseconds and
+was classified Good. The Good upper bound is now explicitly exclusive. Perfect/Great thresholds, early/late error
+sign, wider target search, and all other scoring semantics are unchanged.
+
+### RED/GREEN 3: metronome-unavailable live position
+
+The fallback regression set a live playback clock four seconds ahead of a deliberately stale 0.25-second paused
+offset; the old implementation jumped backward by scaling the stale value. Speed changes now capture old-speed
+elapsed position before changing playback rate, preferring BGM file-time ownership, then metronome time, then the
+backdated playback clock. The captured position is scaled once for the new speed before the shared restart.
+
+### Correction Verification
+
+Final focused six-suite matrix, parallel testing disabled:
+
+```text
+Result: Passed
+Total tests: 96
+Failed: 0
+Skipped: 0
+xcresult: DerivedData/Logs/Test/Test-Virgo-2026.07.21_13-21-43--0700.xcresult
+```
+
+Full nonparallel unit suite with code coverage:
+
+```text
+Result: Passed
+Total tests: 1784
+Failed: 0
+Skipped: 0
+Device-expanded runs: 1824 (dynamic parameters)
+xcresult: DerivedData/Logs/Test/Test-Virgo-2026.07.21_13-22-16--0700.xcresult
+```
+
+Additional correction checks:
+
+- `rtk swiftlint lint --no-cache`: 160 warnings and 0 serious violations across 291 files.
+- `rtk git diff --check`: passed.
+- Live speed-transition caller audit found no playing path that separately installs a matcher and listening origin.
+- Progress ledger unchanged; no Task 8 metronome schedule, BGM anchor, playhead ownership, or fatal-state UI work added.

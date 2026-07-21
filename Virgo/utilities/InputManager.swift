@@ -142,6 +142,7 @@ class InputManager: ObservableObject {
     private let diagnosticsStore: MIDIDiagnosticsStore
     private let learnSession: MIDILearnSession
     private let sourceIDResolver: MIDISourceIDResolving
+    private let timingTransitionCriticalSection: (() -> Void)?
     private var learnSessionCaptureCancellable: AnyCancellable?
     
     // MIDI setup
@@ -208,7 +209,8 @@ class InputManager: ObservableObject {
         hostTimeConverter: MIDIHostTimeConverter = MIDIHostTimeConverter(),
         diagnosticsStore: MIDIDiagnosticsStore? = nil,
         learnSession: MIDILearnSession? = nil,
-        sourceIDResolver: MIDISourceIDResolving = CoreMIDISourceIDResolver()
+        sourceIDResolver: MIDISourceIDResolving = CoreMIDISourceIDResolver(),
+        timingTransitionCriticalSection: (() -> Void)? = nil
     ) {
         let settingsManager = settingsManager ?? InputSettingsManager()
 
@@ -219,6 +221,7 @@ class InputManager: ObservableObject {
         self.diagnosticsStore = diagnosticsStore ?? Self.makeDefaultDiagnosticsStore()
         self.learnSession = learnSession ?? Self.makeDefaultLearnSession(settingsManager: settingsManager)
         self.sourceIDResolver = sourceIDResolver
+        self.timingTransitionCriticalSection = timingTransitionCriticalSection
         self.isTestEnvironment = TestEnvironment.isRunningTests
         bindLearnSessionCaptureState()
         reloadMappingsFromSettings()
@@ -346,14 +349,98 @@ extension InputManager {
     }
 
     func configure(_ configuration: InputTimingConfiguration, elapsedOffset: Double = 0) {
+        validateElapsedOffset(elapsedOffset)
+        let prepared = prepareInputTimingConfiguration(configuration)
+
+        updateRuntimeState {
+            applyPreparedInputTiming(prepared)
+            self.hostTimeElapsedOffset = elapsedOffset
+        }
+    }
+
+    func configureAndStartListening(
+        _ configuration: InputTimingConfiguration,
+        songStartTime: Date,
+        elapsedOffset: Double = 0,
+        scheduledStartDelay: Double = 0,
+        capturedHostTime: UInt64? = nil
+    ) {
+        validateElapsedOffset(elapsedOffset)
+        let prepared = prepareInputTimingConfiguration(configuration)
+        let hostOrigin = listeningHostOrigin(
+            scheduledStartDelay: scheduledStartDelay,
+            capturedHostTime: capturedHostTime
+        )
+
+        updateRuntimeState {
+            applyPreparedInputTiming(prepared)
+            self.songStartTime = songStartTime
+            self.songStartHostTime = hostOrigin
+            self.hostTimeElapsedOffset = elapsedOffset
+            self.timingTransitionCriticalSection?()
+        }
+        finishStartingListeners()
+    }
+    
+    /// - Parameter scheduledStartDelay: Seconds between *now* and the moment
+    ///   the metronome/BGM are scheduled to start producing audio.  When audio
+    ///   is scheduled in the future (e.g. 50 ms ahead for buffer priming), the
+    ///   host-time zero-point must be projected forward so that a hit arriving
+    ///   exactly at audio-start registers as zero elapsed time.
+    func startListening(
+        songStartTime: Date,
+        elapsedOffset: Double = 0.0,
+        scheduledStartDelay: Double = 0.0,
+        capturedHostTime: UInt64? = nil
+    ) {
+        validateElapsedOffset(elapsedOffset)
+        let hostOrigin = listeningHostOrigin(
+            scheduledStartDelay: scheduledStartDelay,
+            capturedHostTime: capturedHostTime
+        )
+        updateRuntimeState {
+            self.songStartTime = songStartTime
+            self.songStartHostTime = hostOrigin
+            self.hostTimeElapsedOffset = elapsedOffset
+        }
+        finishStartingListeners()
+    }
+
+    private func finishStartingListeners() {
+        refreshSelectedMIDISourceStateFromSettings()
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.startKeyboardListening()
+            }
+            return
+        }
+        startKeyboardListening()
+        // MIDI is already listening from setup
+    }
+
+    private func listeningHostOrigin(
+        scheduledStartDelay: Double,
+        capturedHostTime: UInt64?
+    ) -> UInt64 {
+        let rawHostTime = capturedHostTime ?? mach_absolute_time()
+        guard scheduledStartDelay > 0 else { return rawHostTime }
+        return hostTimeConverter.hostTimeByAdding(seconds: scheduledStartDelay, to: rawHostTime)
+    }
+
+    private func validateElapsedOffset(_ elapsedOffset: Double) {
         precondition(
             elapsedOffset.isFinite && elapsedOffset >= 0,
             "Input elapsed offset must be finite and nonnegative"
         )
+    }
+
+    private func prepareInputTimingConfiguration(
+        _ configuration: InputTimingConfiguration
+    ) -> (configuration: InputTimingConfiguration, matcher: InputTimingMatcher, bpm: Double?) {
         let normalizedConfiguration: InputTimingConfiguration
         switch configuration {
         case let .legacy(bpm, timeSignature, notes):
-            guard bpm > 0.1 && bpm <= 1000.0 else {
+            guard bpm > 0.1 && bpm <= 1000 else {
                 preconditionFailure("BPM must be between 0.1 and 1000.0, got: \(bpm)")
             }
             guard timeSignature.beatsPerMeasure > 0 else {
@@ -373,67 +460,32 @@ extension InputManager {
         case .timeline:
             normalizedConfiguration = configuration
         }
-
-        // Construct outside runtimeStateQueue so callbacks never observe a partially built matcher.
-        let timingMatcher = InputTimingMatcher(configuration: normalizedConfiguration)
-        let matcherBPM = timingMatcher.effectiveBPM
-
-        updateRuntimeState {
-            switch normalizedConfiguration {
-            case let .legacy(bpm, timeSignature, notes):
-                self.bpm = bpm
-                self.timeSignature = timeSignature
-                self.notes = notes
-                self.secondsPerBeat = 60 / bpm
-                self.secondsPerMeasure = self.secondsPerBeat * Double(timeSignature.beatsPerMeasure)
-            case let .timeline(_, timeline, _):
-                self.notes = []
-                if let timeSignature = timeline.measures.first?.timeSignature {
-                    self.timeSignature = timeSignature
-                }
-                if let matcherBPM {
-                    self.bpm = matcherBPM
-                    self.secondsPerBeat = 60 / matcherBPM
-                    self.secondsPerMeasure = self.secondsPerBeat * Double(self.timeSignature.beatsPerMeasure)
-                }
-            }
-            self.inputTimingMatcher = timingMatcher
-            self.hostTimeElapsedOffset = elapsedOffset
-        }
+        let matcher = InputTimingMatcher(configuration: normalizedConfiguration)
+        return (normalizedConfiguration, matcher, matcher.effectiveBPM)
     }
-    
-    /// - Parameter scheduledStartDelay: Seconds between *now* and the moment
-    ///   the metronome/BGM are scheduled to start producing audio.  When audio
-    ///   is scheduled in the future (e.g. 50 ms ahead for buffer priming), the
-    ///   host-time zero-point must be projected forward so that a hit arriving
-    ///   exactly at audio-start registers as zero elapsed time.
-    func startListening(
-        songStartTime: Date,
-        elapsedOffset: Double = 0.0,
-        scheduledStartDelay: Double = 0.0,
-        capturedHostTime: UInt64? = nil
+
+    private func applyPreparedInputTiming(
+        _ prepared: (configuration: InputTimingConfiguration, matcher: InputTimingMatcher, bpm: Double?)
     ) {
-        let rawHostTime = capturedHostTime ?? mach_absolute_time()
-        let songStartHostTime: UInt64
-        if scheduledStartDelay > 0 {
-            songStartHostTime = hostTimeConverter.hostTimeByAdding(seconds: scheduledStartDelay, to: rawHostTime)
-        } else {
-            songStartHostTime = rawHostTime
-        }
-        updateRuntimeState {
-            self.songStartTime = songStartTime
-            self.songStartHostTime = songStartHostTime
-            self.hostTimeElapsedOffset = elapsedOffset
-        }
-        refreshSelectedMIDISourceStateFromSettings()
-        guard Thread.isMainThread else {
-            DispatchQueue.main.async { [weak self] in
-                self?.startKeyboardListening()
+        switch prepared.configuration {
+        case let .legacy(bpm, timeSignature, notes):
+            self.bpm = bpm
+            self.timeSignature = timeSignature
+            self.notes = notes
+            self.secondsPerBeat = 60 / bpm
+            self.secondsPerMeasure = self.secondsPerBeat * Double(timeSignature.beatsPerMeasure)
+        case let .timeline(_, timeline, _):
+            self.notes = []
+            if let timeSignature = timeline.measures.first?.timeSignature {
+                self.timeSignature = timeSignature
             }
-            return
+            if let matcherBPM = prepared.bpm {
+                self.bpm = matcherBPM
+                self.secondsPerBeat = 60 / matcherBPM
+                self.secondsPerMeasure = self.secondsPerBeat * Double(self.timeSignature.beatsPerMeasure)
+            }
         }
-        startKeyboardListening()
-        // MIDI is already listening from setup
+        inputTimingMatcher = prepared.matcher
     }
     
     func stopListening() {

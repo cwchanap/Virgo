@@ -346,6 +346,28 @@ struct GameplayViewModelSpeedTests {
         #expect(vm.lastScheduledPlaybackStartTime != nil)
     }
 
+    @Test("Speed change fallback captures the live playback clock instead of stale paused time")
+    func applySpeedChangeFallbackPreservesLivePlaybackPosition() async {
+        let spy = ScheduledMetronomeSpy(audioDriver: RecordingAudioDriver())
+        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let vm = GameplayViewModel(
+            chart: GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4),
+            metronome: spy,
+            practiceSettings: settings
+        )
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+        vm.bgmPlayer = nil
+        vm.pausedElapsedTime = 0.25
+        vm.playbackStartTime = Date(timeIntervalSinceNow: -4)
+        vm.isPlaying = true
+        defer { vm.cleanup() }
+
+        vm.updateSpeed(0.5)
+
+        #expect(vm.pausedElapsedTime >= 8)
+    }
+
     @Test("Speed change while playing consumes metronome playback time when available")
     func applySpeedChangeWhilePlaying_usesMetronomeTime() async throws {
         let stub = MetronomePlaybackTimeStub(audioDriver: RecordingAudioDriver())
