@@ -17,6 +17,28 @@ import AppKit
 
 // MARK: - Test Infrastructure
 
+@MainActor
+enum TestModelContainerFactory {
+    static func makePersistentContainer(at url: URL) throws -> ModelContainer {
+        let schema = Schema([
+            Song.self,
+            Chart.self,
+            Note.self,
+            ChartControlEvent.self,
+            ServerSong.self,
+            ServerChart.self,
+            ScoreRecord.self
+        ])
+        let configuration = ModelConfiguration(
+            schema: schema,
+            url: url,
+            allowsSave: true,
+            cloudKitDatabase: .none
+        )
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+}
+
 /// Shared test container for SwiftData models in unit tests
 /// Provides isolated in-memory storage that can be reset between tests
 @MainActor

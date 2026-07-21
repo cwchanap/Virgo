@@ -98,8 +98,14 @@ final class Chart {
     @Relationship(deleteRule: .cascade, inverse: \ChartControlEvent.chart)
     var controlEvents: [ChartControlEvent]
     var bestScore: Int = 0
+    var rhythmMetadataData: Data?
     @Relationship(deleteRule: .cascade, inverse: \ScoreRecord.chart)
     var scoreRecords: [ScoreRecord] = []
+
+    var rhythmMetadataState: ChartRhythmMetadataLoadState {
+        guard let rhythmMetadataData else { return .missing }
+        return ChartRhythmMetadataCodec.decode(rhythmMetadataData)
+    }
 
     var timeSignature: TimeSignature {
         get {
@@ -144,6 +150,10 @@ final class Chart {
         return controlEvents.filter { !$0.isDeleted }
     }
 
+    func setRhythmMetadata(_ metadata: ChartRhythmMetadata) throws {
+        rhythmMetadataData = try ChartRhythmMetadataCodec.encode(metadata)
+    }
+
     init(
         difficulty: Difficulty,
         level: Int? = nil,
@@ -159,6 +169,7 @@ final class Chart {
         self.notes = notes
         self.controlEvents = controlEvents
         self.song = song
+        self.rhythmMetadataData = nil
     }
 }
 
