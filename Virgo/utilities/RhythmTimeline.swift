@@ -94,16 +94,32 @@ struct RhythmTimeline: Hashable, Sendable {
 
     func beatGroup(containing position: RhythmEventPosition) -> RhythmBeatGroup? {
         guard let measure = measure(at: position.measureIndex),
-              position.absoluteTick == measure.startTick + position.localTick,
               (0...measure.durationTicks).contains(position.localTick) else {
+            return nil
+        }
+        let absoluteTick = measure.startTick.addingReportingOverflow(position.localTick)
+        guard !absoluteTick.overflow,
+              absoluteTick.partialValue == position.absoluteTick else {
             return nil
         }
         if position.localTick == measure.durationTicks {
             return measure.beatGroups.last
         }
-        return measure.beatGroups.first {
-            $0.startTick <= position.localTick && position.localTick < $0.endTick
+
+        var lowerBound = 0
+        var upperBound = measure.beatGroups.count
+        while lowerBound < upperBound {
+            let midpoint = lowerBound + (upperBound - lowerBound) / 2
+            let group = measure.beatGroups[midpoint]
+            if position.localTick < group.startTick {
+                upperBound = midpoint
+            } else if position.localTick >= group.endTick {
+                lowerBound = midpoint + 1
+            } else {
+                return group
+            }
         }
+        return nil
     }
 
     func beatGroup(containingAbsoluteTick absoluteTick: Int) -> RhythmBeatGroup? {
@@ -117,7 +133,8 @@ struct RhythmTimeline: Hashable, Sendable {
               speed.isFinite, speed > 0 else {
             return nil
         }
-        return Double(absoluteTick) / Double(ticksPerWholeNote) * (240.0 / bpm) / speed
+        let seconds = Double(absoluteTick) / Double(ticksPerWholeNote) * (240.0 / bpm) / speed
+        return seconds.isFinite ? seconds : nil
     }
 
     func seconds(for position: RhythmEventPosition, bpm: Double, speed: Double) -> Double? {
