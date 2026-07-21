@@ -397,6 +397,52 @@ struct MetronomeEngineTests {
         engine.stop()
     }
 
+    @Test("timeline rebase stops audio after a completed callback")
+    func timelineRebaseStopsAudioAfterCompletedCallback() throws {
+        let driver = RecordingAudioDriver()
+        let timingEngine = MetronomeTimingEngine()
+        let engine = MetronomeEngine(audioDriver: driver, timingEngine: timingEngine)
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 4,
+            timeSignature: .fourFour,
+            beatGroups: (0..<4).map {
+                RhythmBeatGroup(groupIndex: $0, startTick: $0, durationTicks: 1, isResidual: false)
+            },
+            engravingSupport: .supported
+        )
+        let schedule = try RhythmMetronomeSchedule(
+            timeline: RhythmTimeline(
+                ticksPerWholeNote: 4,
+                measures: [measure],
+                eventPositions: [:],
+                bgmStartPosition: nil
+            ),
+            bpm: 120
+        )
+
+        engine.startAtTime(
+            schedule: schedule,
+            speed: 1,
+            startTime: 100,
+            elapsedTime: 0
+        )
+        timingEngine.onAudioBeat?(1, true, nil)
+        #expect(driver.playedTicksSnapshot.count == 1)
+
+        engine.startAtTime(
+            schedule: schedule,
+            speed: 1,
+            startTime: 200,
+            elapsedTime: 0
+        )
+
+        #expect(driver.stopCallCount == 1)
+        #expect(driver.resumeCallCount == 2)
+        engine.stop()
+    }
+
     @Test("MetronomeEngine timeline start scales immutable pulse offsets with practice speed")
     func testTimelineStartScalesPulseOffsets() throws {
         let driver = RecordingAudioDriver()

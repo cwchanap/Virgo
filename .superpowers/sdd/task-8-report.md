@@ -196,3 +196,74 @@ Tests:
 - SwiftLint reports no serious violations. Warning-level file/type/function size debt remains in the expanded timing
   engine and gameplay computation files, alongside existing repository warning-level debt.
 - No Task 9 ownership was entered, and the progress ledger was not edited.
+
+## Review Correction Wave: Runtime Identity and Cancellation
+
+The first Task 8 review rejected two Important findings. Both were corrected through focused RED/GREEN cycles on
+`e468772` without entering Task 9 ownership.
+
+### RED: audible cancellation race
+
+The timer handlers checked `token.isActive` and then invoked `audioBeatHandler` outside that lock. Cancellation could
+therefore stop the audio driver between the check and callback, allowing the stale callback to enqueue a tick after
+the stop. The new deterministic semaphore regression first failed to compile because the token exposed no atomic
+operation (`cannot find 'MetronomePlaybackToken' in scope`).
+
+`MetronomePlaybackToken.performIfActive` now holds the same lock used by `cancel()` across the complete audio callback.
+Both legacy and timeline timer handlers use that operation. A cancellation following an in-flight callback waits for
+the callback to leave the gate, after which `MetronomeEngine` still calls `audioDriver.stop()` during reseat. Existing
+visual callbacks retain their `token.isActive` generation checks. The regressions use semaphore handshakes and no
+sleep calls.
+
+### RED: relationship-array control reconstruction
+
+After the atomic gate was minimally green, the focused run failed only the two new control regressions:
+
+- reordered immutable relationship snapshots attached the wrong payload to timeline positions;
+- a one-element lingering/deleted-note count mismatch dropped or shifted control payloads.
+
+The resolver previously discarded the control payload and gameplay reconstructed it with
+`event.stableOrdinal - cachedNotes.count` into `cachedControlEvents`. Relationship order and the filtered resolver note
+count are not a valid identity boundary. `ResolvedChartRhythm` now owns an immutable
+`controlByEventID: [RhythmEventID: NotationControlEvent]` populated directly from each source envelope.
+`GameplayRhythmRuntime` carries that lookup, and timeline layout joins controls only through `eventID`.
+
+### Correction verification
+
+Focused timing, engine, and runtime integration suites:
+
+```text
+Result: Passed
+Failed: 0
+Skipped: 0
+xcresult: DerivedData/Logs/Test/Test-Virgo-2026.07.21_15-04-04--0700.xcresult
+```
+
+Exact Task 8 matrix, including the original 117 tests plus four correction regressions:
+
+```text
+Result: Passed
+Total tests: 121
+Failed: 0
+Skipped: 0
+xcresult: DerivedData/Logs/Test/Test-Virgo-2026.07.21_15-05-12--0700.xcresult
+```
+
+Full nonparallel VirgoTests suite with code coverage:
+
+```text
+Result: Passed
+Total tests: 1808
+Failed: 0
+Skipped: 0
+Device-expanded passed runs: 1848 (dynamic parameters)
+xcresult: DerivedData/Logs/Test/Test-Virgo-2026.07.21_15-06-01--0700.xcresult
+```
+
+Additional correction checks:
+
+- macOS Debug build: `BUILD SUCCEEDED`.
+- `rtk swiftlint lint --no-cache`: completed across 294 files with 167 warnings and 0 serious violations.
+- `rtk git diff --check`: passed.
+- Production changes remain confined to Task 8 timing/runtime ownership; no Task 9 files or behavior were added.
+- Progress ledger remains unchanged.

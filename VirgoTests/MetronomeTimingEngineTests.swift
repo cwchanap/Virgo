@@ -54,6 +54,42 @@ private func timingEngineOriginState(_ timingEngine: MetronomeTimingEngine) -> T
 @MainActor
 struct MetronomeTimingEngineTests {
 
+    @Test("audio callback and cancellation share one atomic playback gate")
+    func audioCallbackAndCancellationShareAtomicGate() {
+        let token = MetronomePlaybackToken()
+        let audioEntered = DispatchSemaphore(value: 0)
+        let releaseAudio = DispatchSemaphore(value: 0)
+        let audioCompleted = DispatchSemaphore(value: 0)
+        let cancellationStarted = DispatchSemaphore(value: 0)
+        let cancellationCompleted = DispatchSemaphore(value: 0)
+
+        DispatchQueue(label: "MetronomePlaybackToken.audio").async {
+            let audioBeatHandler = {
+                audioEntered.signal()
+                releaseAudio.wait()
+                audioCompleted.signal()
+            }
+            _ = token.performIfActive(audioBeatHandler)
+        }
+        #expect(audioEntered.wait(timeout: .now() + 1) == .success)
+
+        DispatchQueue(label: "MetronomePlaybackToken.cancel").async {
+            cancellationStarted.signal()
+            token.cancel()
+            cancellationCompleted.signal()
+        }
+        #expect(cancellationStarted.wait(timeout: .now() + 1) == .success)
+        #expect(
+            cancellationCompleted.wait(timeout: .now() + 0.05) == .timedOut,
+            "Cancellation must wait until the in-flight audio callback leaves the shared gate"
+        )
+
+        releaseAudio.signal()
+        #expect(audioCompleted.wait(timeout: .now() + 1) == .success)
+        #expect(cancellationCompleted.wait(timeout: .now() + 1) == .success)
+        #expect(token.performIfActive { Issue.record("Cancelled generations cannot invoke audio") } == false)
+    }
+
     @Test("timeline schedule seats at the first pulse after elapsed musical time")
     func timelineScheduleSeatsFromElapsedTime() async throws {
         let timingEngine = MetronomeTimingEngine()

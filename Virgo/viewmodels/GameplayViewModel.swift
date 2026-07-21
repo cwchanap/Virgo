@@ -33,6 +33,7 @@ struct GameplayRhythmRuntime {
     let noteTargets: [RhythmNoteTarget]
     let metronomeSchedule: RhythmMetronomeSchedule?
     let noteByEventID: [RhythmEventID: Note]
+    let controlByEventID: [RhythmEventID: NotationControlEvent]
     let positionByNoteObjectID: [ObjectIdentifier: RhythmEventPosition]
     let diagnostics: [PersistedRhythmDiagnostic]
 
@@ -43,6 +44,7 @@ struct GameplayRhythmRuntime {
         noteTargets: [],
         metronomeSchedule: nil,
         noteByEventID: [:],
+        controlByEventID: [:],
         positionByNoteObjectID: [:],
         diagnostics: []
     )
