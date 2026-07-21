@@ -96,6 +96,7 @@ struct NotationRhythmAnalyzer: Sendable {
                 diagnoseUnrecognizedStructure(
                     resolutions: streamResolutions,
                     measure: measure,
+                    ticksPerWholeNote: ticksPerWholeNote,
                     warningCodes: &warningCodes
                 )
             }
@@ -285,7 +286,7 @@ private extension NotationRhythmAnalyzer {
             hasFollowingDTXOnset: false,
             durationTicks: max(boundary - event.position.localTick, 1),
             rhythm: NotationRhythm(
-                baseInterval: event.visualDurationCandidate ?? event.storedInterval,
+                baseInterval: event.visualDurationCandidate ?? .quarter,
                 support: .indeterminate(.indeterminateTerminalDuration)
             ),
             tupletID: nil
@@ -484,6 +485,7 @@ private extension NotationRhythmAnalyzer {
     func diagnoseUnrecognizedStructure(
         resolutions: [EventResolution],
         measure: RhythmMeasure,
+        ticksPerWholeNote: Int,
         warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
     ) {
         let unresolved = resolutions.filter { $0.tupletID == nil }
@@ -511,7 +513,7 @@ private extension NotationRhythmAnalyzer {
                   resolution.event.origin == .manual,
                   let baseTicks = durationTicks(
                       for: resolution.event.storedInterval,
-                      ticksPerWholeNote: measure.durationTicks * 4 / max(measure.timeSignature.beatsPerMeasure, 1)
+                      ticksPerWholeNote: ticksPerWholeNote
                   ), let performed = tripletPerformedTicks(baseTicks: baseTicks) else { return false }
             return performed > slot
         }
@@ -544,9 +546,16 @@ private extension NotationRhythmAnalyzer {
             let measureIndex = resolutions[index].event.position.measureIndex
             guard unsupportedMeasures.contains(measureIndex) else { continue }
             let code = primaryCode(in: warningCodes[measureIndex, default: []])
+            let fallbackSupport: RhythmSemanticSupport
+            switch resolutions[index].rhythm.support {
+            case let .indeterminate(indeterminateCode):
+                fallbackSupport = .indeterminate(indeterminateCode)
+            case .supported, .unsupported:
+                fallbackSupport = .unsupported(code)
+            }
             resolutions[index].rhythm = NotationRhythm(
                 baseInterval: resolutions[index].rhythm.baseInterval,
-                support: .unsupported(code)
+                support: fallbackSupport
             )
             resolutions[index].tupletID = nil
         }

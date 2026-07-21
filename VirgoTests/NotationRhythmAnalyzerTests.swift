@@ -247,16 +247,47 @@ struct NotationRhythmAnalyzerTests {
         #expect(fitting.rhythm.baseInterval == .eighth)
         #expect(fitting.rhythm.support == .supported)
 
-        let absent = try #require(analyze([
+        let absentAnalysis = analyze([
             event(2, tick: 120, origin: .dtx, interval: .sixtyfourth)
-        ]).notes.first)
+        ])
+        let absent = try #require(absentAnalysis.notes.first)
         #expect(absent.durationTicks == 120)
-        #expect(absent.rhythm.support == .unsupported(.indeterminateTerminalDuration))
+        #expect(absent.rhythm.baseInterval == .quarter)
+        #expect(absent.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(absentAnalysis.rests.contains {
+            $0.voice == .upper && $0.visibility == .hiddenSpacing
+        })
+        #expect(absentAnalysis.rests.allSatisfy {
+            $0.voice != .upper || $0.visibility != .printed
+        })
 
         let crossing = try #require(analyze([
             event(3, tick: 120, origin: .dtx, candidate: .quarter)
         ]).notes.first)
-        #expect(crossing.rhythm.support == .unsupported(.indeterminateTerminalDuration))
+        #expect(crossing.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+    }
+
+    @Test("a later manual onset is never used as DTX duration evidence")
+    func laterManualOnsetDoesNotResolveDTXDuration() throws {
+        let trusted = analyze([
+            event(1, tick: 0, origin: .dtx, interval: .sixtyfourth, candidate: .eighth),
+            event(2, tick: 60, origin: .manual, interval: .sixteenth)
+        ])
+        let trustedDTX = try #require(trusted.notes.first { $0.eventID.rawValue == 1 })
+        #expect(trustedDTX.durationTicks == 120)
+        #expect(trustedDTX.rhythm == NotationRhythm(baseInterval: .eighth))
+
+        let absent = analyze([
+            event(3, tick: 0, origin: .dtx, interval: .sixtyfourth),
+            event(4, tick: 120, origin: .manual, interval: .eighth)
+        ])
+        let absentDTX = try #require(absent.notes.first { $0.eventID.rawValue == 3 })
+        #expect(absentDTX.durationTicks == 240)
+        #expect(absentDTX.rhythm.baseInterval == .quarter)
+        #expect(absentDTX.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(absent.rests.allSatisfy {
+            $0.voice != .upper || $0.visibility != .printed
+        })
     }
 
     @Test("DTX onset inference never crosses a simple-meter beat-group boundary")
@@ -447,6 +478,35 @@ struct NotationRhythmAnalyzerTests {
         #expect(analysis.notes.map(\.position.localTick) == [0, 80, 160])
         #expect(analysis.tuplets.isEmpty)
         #expect(analysis.warnings.first?.codes.contains(.incompleteTuplet) == true)
+    }
+
+    @Test("compound overlap diagnosis uses the analyzer whole-note resolution")
+    func compoundOverlapUsesActualWholeNoteResolution() {
+        let compoundMeasure = measure(
+            duration: 720,
+            timeSignature: .sixEight,
+            groups: [
+                RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 360, isResidual: false),
+                RhythmBeatGroup(groupIndex: 1, startTick: 360, durationTicks: 360, isResidual: false)
+            ]
+        )
+        let analysis = analyze([
+            event(1, tick: 0, interval: .quarter),
+            event(2, tick: 120, interval: .quarter),
+            event(3, tick: 240, interval: .quarter)
+        ], rhythmMeasure: compoundMeasure)
+
+        #expect(analysis.notes.map(\.position.localTick) == [0, 120, 240])
+        #expect(analysis.notes.allSatisfy {
+            $0.rhythm.support == .unsupported(.incompleteTuplet)
+                && $0.rhythm.dotCount == 0
+                && $0.tupletID == nil
+        })
+        #expect(analysis.tuplets.isEmpty)
+        #expect(analysis.warnings == [RhythmMeasureWarning(
+            measureIndex: 0,
+            codes: [.incompleteTuplet]
+        )])
     }
 
     @Test("engraving-unsupported measure keeps exact onsets but emits no tuplet claim")
