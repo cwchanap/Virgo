@@ -34,6 +34,9 @@ struct DTXFileParserTests {
         #expect(chartData.preview == "preview.mp3")
         #expect(chartData.previewImage == "preview.jpg")
         #expect(chartData.stageFile == "preview.jpg")
+        #expect(chartData.rhythmMetadata.timeSignature == .fourFour)
+        #expect(chartData.rhythmMetadata.feel == .straight)
+        #expect(chartData.rhythmMetadata.timingStatus == .valid)
     }
 
     @Test func testParseDTXMetadataMinimal() throws {
@@ -83,6 +86,70 @@ struct DTXFileParserTests {
             #expect(Bool(false), "Should throw invalid BPM error")
         } catch DTXParseError.invalidBPM {
             // Expected error
+        }
+    }
+
+    @Test("fatal rhythm metadata preserves source chips, notes, and controls")
+    func fatalRhythmMetadataPreservesSourceIdentity() throws {
+        let dtx = """
+        #TITLE: Fatal Rhythm
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_TIME_SIGNATURE: six/eight
+        #VIRGO_FEEL: TRIPLET
+        #VIRGO_CONTROL: 1
+        #00011: 01000100
+        #00021: 16000000
+        """
+
+        let data = try DTXFileParser.parseChartMetadata(from: dtx)
+
+        #expect(data.rhythmMetadata.timingStatus == .fatal)
+        #expect(data.rhythmDiagnostics.map(\.code) == [.malformedTimeSignature, .unsupportedFeel])
+        #expect(data.rhythmDiagnostics.map(\.severity) == [.timingFatal, .timingFatal])
+        #expect(data.rhythmDiagnostics.map(\.sourceLineNumber) == [5, 6])
+        #expect(data.notes.count == 3)
+        #expect(data.normalizedRhythmicEvents().isEmpty)
+
+        let chart = Chart(difficulty: .medium)
+        let notes = data.toNotes(for: chart)
+        #expect(notes.count == 2)
+        #expect(notes.allSatisfy { note in
+            note.interval == .quarter
+                && note.originKind == .dtx
+                && note.sourceLaneID == "11"
+                && note.visualDurationCandidate == nil
+                && note.normalizedMeasureIndex == nil
+                && note.normalizedAbsoluteTick == nil
+                && note.normalizedTickWithinMeasure == nil
+                && note.normalizedTicksPerMeasure == nil
+        })
+
+        let controls = data.toControlEvents(for: chart)
+        let control = try #require(controls.first)
+        #expect(controls.count == 1)
+        #expect(control.kind == .stop)
+        #expect(control.sourceLaneID == "21")
+        #expect(control.sourceNoteID == "16")
+        #expect(control.normalizedMeasureIndex == nil)
+        #expect(control.normalizedAbsoluteTick == nil)
+        #expect(control.normalizedTickWithinMeasure == nil)
+        #expect(control.normalizedTicksPerMeasure == nil)
+    }
+
+    @Test("invalid base BPM still throws instead of returning a fatal rhythm chart")
+    func invalidBaseBPMStillThrows() {
+        let dtx = """
+        #TITLE: Invalid Base
+        #ARTIST: Tester
+        #BPM: 0
+        #DLEVEL: 50
+        #VIRGO_FEEL: TRIPLET
+        """
+
+        #expect(throws: DTXParseError.self) {
+            _ = try DTXFileParser.parseChartMetadata(from: dtx)
         }
     }
 

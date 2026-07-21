@@ -43,7 +43,7 @@ struct DTXNormalizationTests {
         #expect(note.normalizedTickWithinMeasure == 1)
         #expect(note.normalizedTicksPerMeasure == 4)
         #expect(note.notationVoiceCandidate == .lower)
-        #expect(note.visualDurationCandidate == .quarter)
+        #expect(note.visualDurationCandidate == nil)
         #expect(note.articulationCandidate == .some(.none))
     }
 
@@ -75,7 +75,7 @@ struct DTXNormalizationTests {
         #expect(snare.gridSize == 4)
         #expect(snare.gridPosition == 3)
         #expect(snare.tickWithinMeasure == 3)
-        #expect(snare.visualDurationCandidate == .quarter)
+        #expect(snare.visualDurationCandidate == nil)
     }
 
     @Test("power-of-two grids normalize to readable visual duration candidates", arguments: [
@@ -108,13 +108,16 @@ struct DTXNormalizationTests {
         #expect(events.map(\.gridPosition) == Array(0..<gridSize))
         #expect(events.map(\.tickWithinMeasure) == Array(0..<gridSize))
         #expect(events.map(\.absoluteTick) == Array(gridSize..<(gridSize * 2)))
-        #expect(events.map(\.visualDurationCandidate) == Array(repeating: expectedInterval, count: gridSize))
+        #expect(events.dropLast().allSatisfy { $0.visualDurationCandidate == expectedInterval })
+        #expect(events.last?.visualDurationCandidate == nil)
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
         #expect(notes.count == gridSize)
-        #expect(notes.map(\.interval) == Array(repeating: expectedInterval, count: gridSize))
-        #expect(notes.map(\.visualDurationCandidate) == Array(repeating: .some(expectedInterval), count: gridSize))
+        #expect(notes.dropLast().allSatisfy { $0.interval == expectedInterval })
+        #expect(notes.last?.interval == .quarter)
+        #expect(notes.dropLast().allSatisfy { $0.visualDurationCandidate == expectedInterval })
+        #expect(notes.last?.visualDurationCandidate == nil)
     }
 
     @Test("non-power-of-two grids preserve timing and do not collapse every note to quarter")
@@ -134,7 +137,7 @@ struct DTXNormalizationTests {
         #expect(Set(events.map(\.ticksPerMeasure)) == Set([12]))
         #expect(events.map(\.tickWithinMeasure) == [0, 1, 2])
         #expect(events.map(\.absoluteTick) == [12, 13, 14])
-        #expect(events.map(\.visualDurationCandidate) == [.sixteenth, .sixteenth, .quarter])
+        #expect(events.map(\.visualDurationCandidate) == [.sixteenth, .sixteenth, nil])
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart).sorted {
@@ -142,7 +145,7 @@ struct DTXNormalizationTests {
         }
         #expect(notes.count == 3)
         #expect(notes.allSatisfy { $0.normalizedTicksPerMeasure == 12 })
-        #expect(notes.map(\.visualDurationCandidate) == [.some(.sixteenth), .some(.sixteenth), .some(.quarter)])
+        #expect(notes.map(\.visualDurationCandidate) == [.some(.sixteenth), .some(.sixteenth), nil])
         #expect(notes.map(\.interval) == [.sixteenth, .sixteenth, .quarter])
     }
 
@@ -167,7 +170,7 @@ struct DTXNormalizationTests {
         #expect(event.ticksPerMeasure == 32)
         #expect(event.tickWithinMeasure == 31)
         #expect(event.absoluteTick == 63)
-        #expect(event.visualDurationCandidate == .quarter)
+        #expect(event.visualDurationCandidate == nil)
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
@@ -176,7 +179,7 @@ struct DTXNormalizationTests {
         #expect(note.normalizedTicksPerMeasure == 32)
         #expect(note.normalizedTickWithinMeasure == 31)
         #expect(note.interval == .quarter)
-        #expect(note.visualDurationCandidate == .quarter)
+        #expect(note.visualDurationCandidate == nil)
     }
 
     @Test("visual duration candidates use the next chip across measure boundaries")
@@ -200,7 +203,7 @@ struct DTXNormalizationTests {
         #expect(bass.absoluteTick == 15)
         #expect(snare.absoluteTick == 16)
         #expect(bass.visualDurationCandidate == .eighth)
-        #expect(snare.visualDurationCandidate == .quarter)
+        #expect(snare.visualDurationCandidate == nil)
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
@@ -209,7 +212,7 @@ struct DTXNormalizationTests {
         #expect(bassNote.interval == .eighth)
         #expect(bassNote.visualDurationCandidate == .eighth)
         #expect(snareNote.interval == .quarter)
-        #expect(snareNote.visualDurationCandidate == .quarter)
+        #expect(snareNote.visualDurationCandidate == nil)
     }
 
     @Test("normalization rejects oversized shared tick scales")
