@@ -64,25 +64,35 @@ extension GameplayView {
         }
     }
 
-    func rhythmFatalSheet(message: String) -> some View {
+    func rhythmFatalSheet(message: String, onDismiss: (() -> Void)? = nil) -> some View {
         Palette.stage
             .overlay {
                 VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 34, weight: .semibold))
-                        .foregroundColor(Palette.vermillion)
-                    Text("Practice unavailable")
-                        .font(.headline)
-                        .foregroundColor(Palette.chalk)
-                    Text(message)
-                        .font(.subheadline)
-                        .foregroundColor(Palette.chalkMuted)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 420)
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 34, weight: .semibold))
+                            .foregroundColor(Palette.vermillion)
+                        Text("Practice unavailable")
+                            .font(.headline)
+                            .foregroundColor(Palette.chalk)
+                        Text(message)
+                            .font(.subheadline)
+                            .foregroundColor(Palette.chalkMuted)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 420)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("rhythmFatalPracticeMessage")
+
+                    if let onDismiss {
+                        Button("Back", action: onDismiss)
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("rhythmFatalBackButton")
+                            .accessibilityHint("Return to the song library")
+                    }
                 }
                 .padding(24)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("rhythmFatalPracticeMessage")
+                .accessibilityElement(children: .contain)
             }
     }
 

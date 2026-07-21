@@ -66,6 +66,11 @@ struct GameplayView: View {
         }
     }
 
+    func dismissFatalPractice() {
+        guard !practiceState.isPracticeEnabled else { return }
+        dismissGameplay()
+    }
+
     @MainActor
     private func prepareGameplay(initialRowWidth: CGFloat) async {
         if usesInjectedViewModel || viewModel?.isGameplayPrepared == true {
@@ -108,7 +113,8 @@ struct GameplayView: View {
         GeometryReader { geometry in
             if !practiceState.isPracticeEnabled {
                 rhythmFatalSheet(
-                    message: practiceState.reason ?? String(localized: "Unsupported chart timing")
+                    message: practiceState.reason ?? String(localized: "Unsupported chart timing"),
+                    onDismiss: dismissFatalPractice
                 )
                 .accessibilityIdentifier("gameplayRoot")
             } else {

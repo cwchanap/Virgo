@@ -10,6 +10,8 @@ enum LocalDTXFixtureImportError: LocalizedError {
     case missingSETFile(URL)
     case unreadableSETFile(URL)
     case noPlayableCharts(String)
+    case unmatchedRhythmBackfillChart(difficulty: Difficulty, level: Int)
+    case ambiguousRhythmBackfillChart(difficulty: Difficulty, level: Int)
 
     var errorDescription: String? {
         switch self {
@@ -19,8 +21,22 @@ enum LocalDTXFixtureImportError: LocalizedError {
             return "Unable to decode SET.def at \(url.path)"
         case .noPlayableCharts(let songId):
             return "No playable charts found for local DTX fixture \(songId)"
+        case let .unmatchedRhythmBackfillChart(difficulty, level):
+            return "No deterministic rhythm backfill source for \(difficulty.rawValue) level \(level)"
+        case let .ambiguousRhythmBackfillChart(difficulty, level):
+            return "Multiple rhythm backfill sources match \(difficulty.rawValue) level \(level)"
         }
     }
+}
+
+struct LocalDTXFixtureImportWarning: Hashable {
+    let chartFilename: String
+    let message: String
+}
+
+struct LocalDTXFixtureImportResult {
+    let song: Song
+    let warnings: [LocalDTXFixtureImportWarning]
 }
 
 enum LocalDTXFixtureImporter {
@@ -31,35 +47,52 @@ enum LocalDTXFixtureImporter {
     @MainActor
     @discardableResult
     static func importSong(from folderURL: URL, into context: ModelContext) throws -> Song {
-        try importSong(from: folderURL, songId: folderURL.lastPathComponent, into: context)
+        try importSongResult(from: folderURL, into: context).song
     }
 
     @MainActor
     @discardableResult
     static func importSong(from folderURL: URL, songId: String, into context: ModelContext) throws -> Song {
-        try importSong(
+        try importSongResult(
             from: folderURL,
             songId: songId,
             into: context,
-            performLegacySourceRefreshes: true
+            performLegacySourceRefreshes: true,
+            save: { try $0.save() }
+        ).song
+    }
+
+    @MainActor
+    static func importSongResult(
+        from folderURL: URL,
+        into context: ModelContext,
+        save: (ModelContext) throws -> Void = { try $0.save() }
+    ) throws -> LocalDTXFixtureImportResult {
+        try importSongResult(
+            from: folderURL,
+            songId: folderURL.lastPathComponent,
+            into: context,
+            performLegacySourceRefreshes: true,
+            save: save
         )
     }
 
     @MainActor
     @discardableResult
-    private static func importSong(
+    private static func importSongResult(
         from folderURL: URL,
         songId: String,
         into context: ModelContext,
-        performLegacySourceRefreshes: Bool
-    ) throws -> Song {
+        performLegacySourceRefreshes: Bool,
+        save: (ModelContext) throws -> Void
+    ) throws -> LocalDTXFixtureImportResult {
         if let existingSong = try existingSong(with: songId, in: context) {
             try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
             if performLegacySourceRefreshes {
                 try refreshDurationIfStale(for: existingSong, from: folderURL, in: context)
                 try refreshControlEventsIfMissing(for: existingSong, from: folderURL, in: context)
             }
-            return existingSong
+            return LocalDTXFixtureImportResult(song: existingSong, warnings: [])
         }
 
         let setURL = folderURL.appendingPathComponent(setFilename)
@@ -91,11 +124,23 @@ enum LocalDTXFixtureImporter {
             bgmStartOffsetSeconds: nil
         )
 
-        context.insert(song)
-        song.charts = try buildCharts(from: importedCharts, for: song, into: context)
-
-        try context.save()
-        return song
+        do {
+            context.insert(song)
+            song.charts = try buildCharts(from: importedCharts, for: song, into: context)
+            try save(context)
+            let warnings = importedCharts.compactMap { importedChart in
+                importedChart.projection.warning.map {
+                    LocalDTXFixtureImportWarning(
+                        chartFilename: importedChart.reference.filename,
+                        message: $0.message
+                    )
+                }
+            }
+            return LocalDTXFixtureImportResult(song: song, warnings: warnings)
+        } catch {
+            context.rollback()
+            throw error
+        }
     }
 
     @MainActor
@@ -171,12 +216,13 @@ enum LocalDTXFixtureImporter {
             )
             return nil
         }
-        return try importSong(
+        return try importSongResult(
             from: setURL.deletingLastPathComponent(),
             songId: soukyuuSongId,
             into: context,
-            performLegacySourceRefreshes: false
-        )
+            performLegacySourceRefreshes: false,
+            save: { try $0.save() }
+        ).song
     }
 
     /// Locates `SET.def` in `bundle`, trying the flat resource-root lookup first and
@@ -306,7 +352,7 @@ enum LocalDTXFixtureImporter {
         let setList = SETList(content: setContent)
 
         let importedCharts = try loadImportedCharts(from: folderURL, setList: setList)
-        guard let firstChart = importedCharts.first else { return }
+        guard !importedCharts.isEmpty else { return }
 
         let recomputed = formatDuration(
             Int(calculateDuration(from: importedCharts))
@@ -463,33 +509,62 @@ extension LocalDTXFixtureImporter {
             throw LocalDTXFixtureImportError.unreadableSETFile(folderURL.appendingPathComponent(setFilename))
         }
 
-        var eligibleCharts = song.charts.filter {
+        let eligibleCharts = song.charts.filter {
             $0.rhythmMetadataData == nil && containsDTXSourceIdentity($0)
         }
-        var plans: [RhythmBackfillPlan] = []
+        let eligibleDifficulties = Set(eligibleCharts.map(\.difficulty))
+        var candidates: [RhythmBackfillCandidate] = []
 
         for reference in SETList(content: setContent).chartReferences {
             guard let difficulty = reference.difficulty,
-                  eligibleCharts.contains(where: { $0.difficulty == difficulty }) else {
+                  eligibleDifficulties.contains(difficulty) else {
                 continue
             }
             let chartURL = folderURL.appendingPathComponent(reference.filename)
             guard FileManager.default.fileExists(atPath: chartURL.path) else { continue }
             let chartData = try parseChart(chartURL)
             let projection = try chartData.persistenceProjection()
-            guard let matchIndex = eligibleCharts.firstIndex(where: {
-                chartMatches($0, difficulty: difficulty, level: chartData.difficultyLevel, projection: projection)
-            }) else {
-                continue
-            }
-            let chart = eligibleCharts.remove(at: matchIndex)
-            plans.append(RhythmBackfillPlan(chart: chart, projection: projection))
+            candidates.append(RhythmBackfillCandidate(
+                difficulty: difficulty,
+                level: chartData.difficultyLevel,
+                sourceKey: String(format: "%04d|%@", reference.slot, reference.filename),
+                projection: projection
+            ))
         }
 
-        for plan in plans {
-            try apply(plan: plan, in: context)
+        var plans: [RhythmBackfillPlan] = []
+        for chart in eligibleCharts.sorted(by: backfillChartPrecedes) {
+            let matches = candidates.filter {
+                chartMatches(
+                    chart,
+                    difficulty: $0.difficulty,
+                    level: $0.level,
+                    projection: $0.projection
+                )
+            }
+            guard !matches.isEmpty else {
+                throw LocalDTXFixtureImportError.unmatchedRhythmBackfillChart(
+                    difficulty: chart.difficulty,
+                    level: chart.level
+                )
+            }
+            let equivalenceKeys = Set(matches.map(\.equivalenceKey))
+            guard equivalenceKeys.count == 1 else {
+                throw LocalDTXFixtureImportError.ambiguousRhythmBackfillChart(
+                    difficulty: chart.difficulty,
+                    level: chart.level
+                )
+            }
+            guard let selected = matches.min(by: { $0.sourceKey < $1.sourceKey }) else {
+                preconditionFailure("A non-empty backfill match set must have a minimum source key")
+            }
+            plans.append(RhythmBackfillPlan(chart: chart, projection: selected.projection))
         }
+
         do {
+            for plan in plans {
+                try apply(plan: plan, in: context)
+            }
             try save(context)
         } catch {
             context.rollback()
@@ -503,6 +578,44 @@ private extension LocalDTXFixtureImporter {
     struct RhythmBackfillPlan {
         let chart: Chart
         let projection: DTXChartPersistenceProjection
+    }
+
+    struct RhythmBackfillCandidate {
+        let difficulty: Difficulty
+        let level: Int
+        let sourceKey: String
+        let projection: DTXChartPersistenceProjection
+
+        var equivalenceKey: RhythmBackfillProjectionKey {
+            RhythmBackfillProjectionKey(
+                metadata: projection.chartMetadata,
+                timeSignature: projection.timeSignature,
+                notes: projection.notes,
+                controls: projection.controls
+            )
+        }
+    }
+
+    struct RhythmBackfillProjectionKey: Hashable {
+        let metadata: ChartRhythmMetadata
+        let timeSignature: TimeSignature
+        let notes: [ImportedNoteValues]
+        let controls: [ImportedControlValues]
+    }
+
+    static func backfillChartPrecedes(_ left: Chart, _ right: Chart) -> Bool {
+        let leftKey = backfillChartSortKey(left)
+        let rightKey = backfillChartSortKey(right)
+        return leftKey.lexicographicallyPrecedes(rightKey)
+    }
+
+    static func backfillChartSortKey(_ chart: Chart) -> [String] {
+        [
+            String(format: "%04d", chart.difficulty.sortOrder),
+            String(format: "%04d", chart.level),
+            chart.safeNotes.compactMap(sourceIdentity).sorted().joined(separator: ","),
+            chart.safeControlEvents.compactMap(sourceIdentity).sorted().joined(separator: ",")
+        ]
     }
 
     static func containsDTXSourceIdentity(_ chart: Chart) -> Bool {
