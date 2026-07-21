@@ -7,9 +7,94 @@ import Foundation
 import Testing
 @testable import Virgo
 
+private final class TimingResultBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: NoteMatchResult?
+
+    func store(_ result: NoteMatchResult?) {
+        lock.lock()
+        storage = result
+        lock.unlock()
+    }
+
+    func load() -> NoteMatchResult? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+}
+
 @Suite("Rhythm input timing", .serialized)
 @MainActor
 struct RhythmInputTimingTests {
+    @Test("Live speed transition exposes one atomic matcher and host-origin snapshot")
+    func liveSpeedTransitionIsAtomicForConcurrentMIDICallback() {
+        let transitionEntered = DispatchSemaphore(value: 0)
+        let releaseTransition = DispatchSemaphore(value: 0)
+        let transitionFinished = DispatchSemaphore(value: 0)
+        let callbackStarted = DispatchSemaphore(value: 0)
+        let callbackFinished = DispatchSemaphore(value: 0)
+        let resultBox = TimingResultBox()
+        let converter = MIDIHostTimeConverter()
+        let manager = InputManager(timingTransitionCriticalSection: {
+            transitionEntered.signal()
+            releaseTransition.wait()
+        })
+        manager.setMIDIMapping([38: .snare])
+        let position = RhythmEventPosition(measureIndex: 0, localTick: 2, absoluteTick: 2)
+        let target = RhythmNoteTarget(
+            eventID: .init(rawValue: 91),
+            drumType: .snare,
+            position: position,
+            targetSecondsAtOneX: 1
+        )
+        let timeline = makeTimeline(measureDurations: [4])
+        let oldHostOrigin = mach_absolute_time()
+        manager.configure(.timeline(targets: [target], timeline: timeline, speed: 1))
+        manager.startListening(songStartTime: Date(), capturedHostTime: oldHostOrigin)
+        let newHostOrigin = converter.hostTimeByAdding(seconds: 10, to: oldHostOrigin)
+
+        DispatchQueue.global().async {
+            manager.configureAndStartListening(
+                .timeline(targets: [target], timeline: timeline, speed: 0.5),
+                songStartTime: Date(),
+                elapsedOffset: 0.5,
+                capturedHostTime: newHostOrigin
+            )
+            transitionFinished.signal()
+        }
+
+        let didEnterTransition = transitionEntered.wait(timeout: .now() + 1) == .success
+        DispatchQueue.global().async {
+            callbackStarted.signal()
+            let eventHostTime = converter.hostTimeByAdding(seconds: 1.5, to: newHostOrigin)
+            resultBox.store(manager.handleMIDINoteEvent(MIDINoteEvent(
+                sourceID: "atomic-transition",
+                channel: 9,
+                note: 38,
+                velocity: 100,
+                hostTime: eventHostTime
+            )))
+            callbackFinished.signal()
+        }
+        let didStartCallback = callbackStarted.wait(timeout: .now() + 1) == .success
+        let callbackEscapedTransaction = callbackFinished.wait(timeout: .now()) == .success
+
+        releaseTransition.signal()
+        let didFinishTransition = transitionFinished.wait(timeout: .now() + 1) == .success
+        let didFinishCallback = callbackEscapedTransaction
+            || callbackFinished.wait(timeout: .now() + 1) == .success
+
+        #expect(didEnterTransition)
+        #expect(didStartCallback)
+        #expect(!callbackEscapedTransaction)
+        #expect(didFinishTransition)
+        #expect(didFinishCallback)
+        #expect(resultBox.load()?.matchedEventID == target.eventID)
+        #expect(resultBox.load()?.matchedTargetSeconds == 2)
+        #expect(resultBox.load()?.hitSongSeconds == 2)
+    }
+
     @Test("A target after a shortened bar uses cumulative timeline seconds")
     func shortenedBarUsesCumulativeTargetTime() throws {
         let timeline = makeTimeline(
@@ -60,23 +145,40 @@ struct RhythmInputTimingTests {
         #expect(matcher.calculateNoteMatch(for: hit(.snare), elapsedTime: 1.0).matchedEventID == snareID)
     }
 
-    @Test("Timeline matching preserves the existing exact 100 millisecond miss boundary")
+    @Test("Timeline matching treats an exact zero-origin 100 millisecond late hit as a miss")
     func exactHundredMillisecondsLateIsMiss() {
-        let position = RhythmEventPosition(measureIndex: 0, localTick: 2, absoluteTick: 2)
+        let position = RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0)
         let matcher = InputTimingMatcher(configuration: .timeline(
             targets: [
                 .init(
                     eventID: .init(rawValue: 1),
                     drumType: .kick,
                     position: position,
-                    targetSecondsAtOneX: 1.0
+                    targetSecondsAtOneX: 0
                 )
             ],
             timeline: makeTimeline(measureDurations: [4]),
             speed: 1.0
         ))
 
-        #expect(matcher.calculateNoteMatch(for: hit(.kick), elapsedTime: 1.1).timingAccuracy == .miss)
+        #expect(matcher.calculateNoteMatch(for: hit(.kick), elapsedTime: 0.1).timingAccuracy == .miss)
+    }
+
+    @Test("Legacy matching treats an exact zero-origin 100 millisecond late hit as a miss")
+    func legacyExactHundredMillisecondsLateIsMiss() {
+        let note = Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 1,
+            measureOffset: 0
+        )
+        let matcher = InputTimingMatcher(bpm: 120, timeSignature: .fourFour, notes: [note])
+
+        let result = matcher.calculateNoteMatch(for: hit(.kick), elapsedTime: 0.1)
+
+        #expect(result.matchedNote === note)
+        #expect(result.timingAccuracy == .miss)
+        #expect(result.timingError == 100)
     }
 
     @Test("Timeline inverse mapping remains nil when only tick-zero targets exist")

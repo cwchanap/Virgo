@@ -34,19 +34,25 @@ extension GameplayViewModel {
     }
 
     func configureInputTiming(speed: Double, elapsedOffset: Double = 0) {
+        guard let configuration = inputTimingConfiguration(speed: speed) else { return }
+        inputManager.configure(configuration, elapsedOffset: elapsedOffset)
+    }
+
+    func inputTimingConfiguration(speed: Double) -> InputTimingConfiguration? {
         if let timeline = cachedRhythmTimeline {
-            inputManager.configure(.timeline(
+            return .timeline(
                 targets: cachedRhythmNoteTargets,
                 timeline: timeline,
                 speed: speed
-            ), elapsedOffset: elapsedOffset)
+            )
         } else if let track {
-            inputManager.configure(.legacy(
+            return .legacy(
                 bpm: track.bpm * speed,
                 timeSignature: track.timeSignature,
                 notes: cachedNotes
-            ), elapsedOffset: elapsedOffset)
+            )
         }
+        return nil
     }
 
     // MARK: - Unique ID Generation
