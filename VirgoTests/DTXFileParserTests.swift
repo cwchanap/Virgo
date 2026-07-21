@@ -189,14 +189,32 @@ struct DTXFileParserTests {
         }
     }
 
-    @Test func testTimeSignatureConversion() throws {
-        let chartData = DTXChartData(
-            title: "Test",
-            artist: "Test",
-            bpm: 120,
-            difficultyLevel: 50
-        )
-        #expect(chartData.toTimeSignature() == .fourFour)
+    @Test("time-signature accessor returns the valid absent-directive 4/4 default")
+    func timeSignatureAccessorReturnsValidDefault() throws {
+        let chartData = try DTXFileParser.parseChartMetadata(from: """
+        #TITLE: Default Meter
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        """)
+        let timeSignature: TimeSignature? = chartData.toTimeSignature()
+
+        #expect(timeSignature == .fourFour)
+    }
+
+    @Test("time-signature accessor preserves an invalid explicit meter as absent")
+    func timeSignatureAccessorPreservesInvalidMeterAbsence() throws {
+        let chartData = try DTXFileParser.parseChartMetadata(from: """
+        #TITLE: Invalid Meter
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_TIME_SIGNATURE: six/eight
+        """)
+        let timeSignature: TimeSignature? = chartData.toTimeSignature()
+
+        #expect(chartData.rhythmMetadata.timingStatus == .fatal)
+        #expect(timeSignature == nil)
     }
 
     @Test func testParseEighthNotes() throws {
