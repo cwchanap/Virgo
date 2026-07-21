@@ -582,7 +582,7 @@ enum DTXImportWarning: Hashable {
     }
 }
 
-struct ImportedNoteValues {
+struct ImportedNoteValues: Hashable {
     let interval: NoteInterval
     let noteType: NoteType
     let measureNumber: Int
@@ -622,7 +622,7 @@ struct ImportedNoteValues {
     }
 }
 
-struct ImportedControlValues {
+struct ImportedControlValues: Hashable {
     let kind: NotationControlEventKind
     let measureNumber: Int
     let measureOffset: Double

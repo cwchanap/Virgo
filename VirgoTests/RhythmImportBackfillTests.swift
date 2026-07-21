@@ -11,6 +11,34 @@ import Testing
 @Suite("Rhythm Import and Backfill", .serialized)
 @MainActor
 struct RhythmImportBackfillTests {
+    @Test("failed local import rolls back the inserted graph before a later save")
+    func failedLocalImportRollsBackInsertedGraph() throws {
+        let testContainer = TestContainer.isolatedContainer()
+        let context = testContainer.context
+        let folder = try makeFixtureFolder(includeSecondChart: false)
+
+        #expect(throws: TestFailure.saveFailed) {
+            try LocalDTXFixtureImporter.importSongResult(
+                from: folder,
+                into: context,
+                save: { _ in throw TestFailure.saveFailed }
+            )
+        }
+
+        #expect(!context.hasChanges)
+        context.insert(Song(
+            title: "Unrelated", artist: "Tester", bpm: 120, duration: "1:00", genre: "Manual"
+        ))
+        try context.save()
+
+        let reopened = ModelContext(testContainer.container)
+        let songs = try reopened.fetch(FetchDescriptor<Song>())
+        #expect(songs.map(\.title) == ["Unrelated"])
+        #expect(try reopened.fetch(FetchDescriptor<Chart>()).isEmpty)
+        #expect(try reopened.fetch(FetchDescriptor<Note>()).isEmpty)
+        #expect(try reopened.fetch(FetchDescriptor<ChartControlEvent>()).isEmpty)
+    }
+
     @Test("valid DTX projection carries exact metadata and canonical note/control timing")
     func validProjectionCarriesCanonicalTiming() throws {
         let chartData = try DTXFileParser.parseChartMetadata(from: """
@@ -170,6 +198,129 @@ struct RhythmImportBackfillTests {
         #expect(saveCount == 1)
     }
 
+    @Test("backfill applies one equivalent projection to every duplicate source-backed chart")
+    func backfillUpdatesAllEquivalentDuplicateCharts() throws {
+        let context = TestContainer.isolatedContainer().context
+        let folder = try makeFixtureFolder(includeSecondChart: false)
+        let song = Song(
+            title: "Duplicates", artist: "Tester", bpm: 120, duration: "1:00",
+            genre: "DTX Import", isServerImported: true, serverSongId: folder.lastPathComponent
+        )
+        let first = sourceBackedChart(difficulty: .easy, level: 40, song: song)
+        let second = sourceBackedChart(difficulty: .easy, level: 40, song: song)
+        let manual = Chart(
+            difficulty: .easy,
+            level: 40,
+            notes: [Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)],
+            song: song
+        )
+        song.charts = [second, manual, first]
+        context.insert(song)
+        try context.save()
+
+        let (defaults, _) = TestUserDefaults.makeIsolated(
+            suiteName: "RhythmBackfill.duplicates.\(UUID().uuidString)"
+        )
+        let store = RhythmBackfillVersionStore(userDefaults: defaults)
+
+        try LocalDTXFixtureImporter.backfillRhythmTiming(
+            for: song,
+            from: folder,
+            in: context,
+            versionStore: store
+        )
+
+        #expect(first.rhythmMetadataData != nil)
+        #expect(second.rhythmMetadataData != nil)
+        #expect(first.notes.first?.normalizedAbsoluteTick == 0)
+        #expect(second.notes.first?.normalizedAbsoluteTick == 0)
+        #expect(first.controlEvents.first?.normalizedAbsoluteTick == 1)
+        #expect(second.controlEvents.first?.normalizedAbsoluteTick == 1)
+        #expect(manual.rhythmMetadataData == nil)
+        #expect(store.completedVersion() == RhythmBackfillVersionStore.currentVersion)
+    }
+
+    @Test("unmatched eligible source chart aborts without marking completion")
+    func unmatchedEligibleChartDoesNotCompleteBackfill() throws {
+        let context = TestContainer.isolatedContainer().context
+        let folder = try makeFixtureFolder(includeSecondChart: false)
+        let song = Song(
+            title: "Unmatched", artist: "Tester", bpm: 120, duration: "1:00",
+            genre: "DTX Import", isServerImported: true, serverSongId: folder.lastPathComponent
+        )
+        let unmatched = sourceBackedChart(difficulty: .easy, level: 40, song: song)
+        unmatched.notes.first?.sourceNoteID = "FF"
+        let manual = Chart(
+            difficulty: .easy,
+            level: 40,
+            notes: [Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)],
+            song: song
+        )
+        song.charts = [manual, unmatched]
+        context.insert(song)
+        try context.save()
+
+        let (defaults, _) = TestUserDefaults.makeIsolated(
+            suiteName: "RhythmBackfill.unmatched.\(UUID().uuidString)"
+        )
+        let store = RhythmBackfillVersionStore(userDefaults: defaults)
+
+        do {
+            try LocalDTXFixtureImporter.backfillRhythmTiming(
+                for: song,
+                from: folder,
+                in: context,
+                versionStore: store
+            )
+            Issue.record("Expected an unmatched eligible chart to abort the pass")
+        } catch {
+            #expect(error.localizedDescription.contains("No deterministic rhythm backfill source"))
+        }
+
+        #expect(store.completedVersion() == 0)
+        #expect(unmatched.rhythmMetadataData == nil)
+        #expect(unmatched.notes.first?.normalizedAbsoluteTick == nil)
+        #expect(manual.rhythmMetadataData == nil)
+        #expect(!context.hasChanges)
+    }
+
+    @Test("ambiguous eligible source chart aborts without choosing SET order")
+    func ambiguousEligibleChartDoesNotCompleteBackfill() throws {
+        let context = TestContainer.isolatedContainer().context
+        let folder = try makeAmbiguousFixtureFolder()
+        let song = Song(
+            title: "Ambiguous", artist: "Tester", bpm: 120, duration: "1:00",
+            genre: "DTX Import", isServerImported: true, serverSongId: folder.lastPathComponent
+        )
+        let ambiguous = sourceBackedChart(difficulty: .easy, level: 40, song: song)
+        ambiguous.controlEvents = []
+        song.charts = [ambiguous]
+        context.insert(song)
+        try context.save()
+
+        let (defaults, _) = TestUserDefaults.makeIsolated(
+            suiteName: "RhythmBackfill.ambiguous.\(UUID().uuidString)"
+        )
+        let store = RhythmBackfillVersionStore(userDefaults: defaults)
+
+        do {
+            try LocalDTXFixtureImporter.backfillRhythmTiming(
+                for: song,
+                from: folder,
+                in: context,
+                versionStore: store
+            )
+            Issue.record("Expected ambiguous source projections to abort the pass")
+        } catch {
+            #expect(error.localizedDescription.contains("Multiple rhythm backfill sources"))
+        }
+
+        #expect(store.completedVersion() == 0)
+        #expect(ambiguous.rhythmMetadataData == nil)
+        #expect(ambiguous.notes.first?.normalizedAbsoluteTick == nil)
+        #expect(!context.hasChanges)
+    }
+
     @Test("failed whole-pass save leaves version unset and retries next launch")
     func failedSaveRetries() throws {
         let testContainer = TestContainer.isolatedContainer()
@@ -287,6 +438,39 @@ struct RhythmImportBackfillTests {
             #00012: 01000000
             """.write(to: folder.appendingPathComponent("second.dtx"), atomically: true, encoding: .utf8)
         }
+        return folder
+    }
+
+    private func makeAmbiguousFixtureFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("virgo-rhythm-ambiguous-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try """
+        #TITLE: Ambiguous
+        #L1LABEL: BASIC
+        #L1FILE: first.dtx
+        #L2LABEL: BASIC
+        #L2FILE: second.dtx
+        """.write(to: folder.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
+        try """
+        #TITLE: Ambiguous
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 40
+        #VIRGO_CONTROL: 1
+        #00012: 01000000
+        #00022: 00160000
+        """.write(to: folder.appendingPathComponent("first.dtx"), atomically: true, encoding: .utf8)
+        try """
+        #TITLE: Ambiguous
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 40
+        #VIRGO_TIME_SIGNATURE: 6/8
+        #VIRGO_CONTROL: 1
+        #00012: 01000000
+        #00022: 00170000
+        """.write(to: folder.appendingPathComponent("second.dtx"), atomically: true, encoding: .utf8)
         return folder
     }
 }

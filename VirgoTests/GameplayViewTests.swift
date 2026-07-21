@@ -44,7 +44,12 @@ struct GameplayViewTests {
         let metronome = MetronomeEngine()
         let (userDefaults, _) = TestUserDefaults.makeIsolated()
         let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
-        let view = GameplayView(chart: chart, metronome: metronome)
+        var dismissCount = 0
+        let view = GameplayView(
+            chart: chart,
+            metronome: metronome,
+            onDismiss: { dismissCount += 1 }
+        )
 
         #expect(!view.practiceState.isPracticeEnabled)
         #expect(view.viewModel == nil)
@@ -52,10 +57,13 @@ struct GameplayViewTests {
             view.environmentObject(practiceSettings),
             containsStrings: [
                 "Practice unavailable",
-                "Unsupported chart timing: The chart time signature is not supported."
+                "Unsupported chart timing: The chart time signature is not supported.",
+                "Back"
             ],
             excludesStrings: ["Loading..."]
         )
+        view.dismissFatalPractice()
+        #expect(dismissCount == 1)
         #expect(view.viewModel == nil)
     }
 

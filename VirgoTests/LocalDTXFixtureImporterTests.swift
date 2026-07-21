@@ -392,9 +392,16 @@ struct LocalDTXFixtureImporterTests {
         #00122: 0016
         """.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
 
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+        let result = try LocalDTXFixtureImporter.importSongResult(from: tempDir, into: context)
+        let song = result.song
         let chart = try #require(song.charts.first)
 
+        let warning = try #require(result.warnings.first)
+        #expect(result.warnings.count == 1)
+        #expect(warning.chartFilename == "chart.dtx")
+        #expect(warning.message.contains("Unsupported chart timing"))
+        #expect(warning.message.contains("measure 2"))
+        #expect(warning.message.contains("measure length must be positive"))
         guard case let .valid(metadata) = chart.rhythmMetadataState else {
             Issue.record("Expected fatal diagnostics to be persisted")
             return
