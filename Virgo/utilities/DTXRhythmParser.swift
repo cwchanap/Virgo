@@ -29,9 +29,12 @@ enum DTXRhythmParser {
         private(set) var timeSignature: TimeSignature?
         private(set) var feel: RhythmicFeel?
         private var measureLengthOverrides: [Int: RhythmRatio] = [:]
+        private var conflictedMeasureIndices: Set<Int> = []
         private var diagnosticEntries: [DTXRhythmDiagnosticEntry] = []
         private var sawTimeSignatureDirective = false
         private var sawFeelDirective = false
+        private var hasTimeSignatureConflict = false
+        private var hasFeelConflict = false
 
         var diagnostics: [DTXRhythmDiagnostic] {
             diagnosticEntries.map(\.diagnostic)
@@ -90,8 +93,10 @@ enum DTXRhythmParser {
             }
 
             return try ChartRhythmMetadata(
-                timeSignature: timeSignature ?? (sawTimeSignatureDirective ? nil : .fourFour),
-                feel: feel ?? (sawFeelDirective ? nil : .straight),
+                timeSignature: hasTimeSignatureConflict
+                    ? nil
+                    : (timeSignature ?? (sawTimeSignatureDirective ? nil : .fourFour)),
+                feel: hasFeelConflict ? nil : (feel ?? (sawFeelDirective ? nil : .straight)),
                 measureLengthOverrides: overrides,
                 bgmStartAnchor: bgmStartAnchor,
                 timingStatus: hasFatalDiagnostic ? .fatal : .valid,
@@ -120,7 +125,10 @@ enum DTXRhythmParser {
                 )
                 return
             }
+            guard !hasTimeSignatureConflict else { return }
             if let timeSignature, timeSignature != parsed {
+                self.timeSignature = nil
+                hasTimeSignatureConflict = true
                 appendDiagnostic(
                     .conflictingTimeSignature,
                     sourceLineNumber: sourceLineNumber,
@@ -152,7 +160,10 @@ enum DTXRhythmParser {
                 )
                 return
             }
+            guard !hasFeelConflict else { return }
             if let feel, feel != parsed {
+                self.feel = nil
+                hasFeelConflict = true
                 appendDiagnostic(
                     .conflictingFeel,
                     sourceLineNumber: sourceLineNumber,
@@ -171,7 +182,10 @@ enum DTXRhythmParser {
         ) {
             switch Self.exactDecimalRatio(value) {
             case .value(let ratio):
+                guard !conflictedMeasureIndices.contains(measureIndex) else { return }
                 if let existing = measureLengthOverrides[measureIndex], existing != ratio {
+                    measureLengthOverrides.removeValue(forKey: measureIndex)
+                    conflictedMeasureIndices.insert(measureIndex)
                     appendDiagnostic(
                         .conflictingMeasureLength,
                         sourceLineNumber: sourceLineNumber,

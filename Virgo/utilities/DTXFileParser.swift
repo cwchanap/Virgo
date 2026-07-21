@@ -409,8 +409,8 @@ extension DTXChartData {
         }
     }
 
-    func toTimeSignature() -> TimeSignature {
-        rhythmMetadata.timeSignature ?? .fourFour
+    func toTimeSignature() -> TimeSignature? {
+        rhythmMetadata.timeSignature
     }
 
     var hasPlayableChips: Bool {

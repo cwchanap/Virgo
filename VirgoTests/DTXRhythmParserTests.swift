@@ -88,31 +88,48 @@ struct DTXRhythmParserTests {
         #expect(chart.rhythmMetadata.measureLengthOverrides.count == 1)
     }
 
-    @Test("conflicting rhythm declarations emit ordered stable diagnostics")
-    func diagnosesConflictingDuplicates() throws {
-        let chart = try parse("""
-        #VIRGO_TIME_SIGNATURE: 6/8
-        #VIRGO_TIME_SIGNATURE: 4/4
-        #VIRGO_FEEL: STRAIGHT
-        #VIRGO_FEEL: SWING
-        #00302: 0.75
-        #00302: 1.0
-        """)
+    @Test("conflicted values stay unavailable in either order and cannot be restored")
+    func conflictedValuesRemainUnavailable() throws {
+        let declarationOrders = [
+            """
+            #VIRGO_TIME_SIGNATURE: 6/8
+            #VIRGO_TIME_SIGNATURE: 4/4
+            #VIRGO_TIME_SIGNATURE: 6/8
+            #VIRGO_FEEL: STRAIGHT
+            #VIRGO_FEEL: SWING
+            #VIRGO_FEEL: STRAIGHT
+            #00302: 0.75
+            #00302: 1.0
+            #00302: 0.75
+            """,
+            """
+            #VIRGO_TIME_SIGNATURE: 4/4
+            #VIRGO_TIME_SIGNATURE: 6/8
+            #VIRGO_TIME_SIGNATURE: 4/4
+            #VIRGO_FEEL: SWING
+            #VIRGO_FEEL: STRAIGHT
+            #VIRGO_FEEL: SWING
+            #00302: 1.0
+            #00302: 0.75
+            #00302: 1.0
+            """
+        ]
 
-        #expect(chart.rhythmMetadata.timingStatus == .fatal)
-        #expect(chart.rhythmDiagnostics.map(\.code) == [
-            .conflictingTimeSignature,
-            .conflictingFeel,
-            .conflictingMeasureLength
-        ])
-        #expect(chart.rhythmDiagnostics.map(\.sourceLineNumber) == [6, 8, 10])
-        #expect(chart.rhythmMetadata.timeSignature == .sixEight)
-        #expect(chart.rhythmMetadata.feel == .straight)
-        let expectedOverride = try MeasureLengthOverride(
-            measureIndex: 3,
-            ratioToWholeNote: .init(numerator: 3, denominator: 4)
-        )
-        #expect(chart.rhythmMetadata.measureLengthOverrides == [expectedOverride])
+        for declarations in declarationOrders {
+            let chart = try parse(declarations)
+
+            #expect(chart.rhythmMetadata.timingStatus == .fatal)
+            #expect(chart.rhythmDiagnostics.map(\.code) == [
+                .conflictingTimeSignature,
+                .conflictingFeel,
+                .conflictingMeasureLength
+            ])
+            #expect(chart.rhythmDiagnostics.map(\.sourceLineNumber) == [6, 9, 12])
+            #expect(chart.rhythmMetadata.diagnostics.map(\.code) == chart.rhythmDiagnostics.map(\.code))
+            #expect(chart.rhythmMetadata.timeSignature == nil)
+            #expect(chart.rhythmMetadata.feel == nil)
+            #expect(chart.rhythmMetadata.measureLengthOverrides.isEmpty)
+        }
     }
 
     @Test("malformed and unsupported meters have distinct diagnostics")
