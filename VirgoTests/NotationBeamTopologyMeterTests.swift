@@ -19,20 +19,57 @@ extension NotationBeamTopologyTests {
         }
     }
 
-    @Test("Compound meter (6/8) returns no topology coverage")
-    func compoundMeterFallsBack() {
+    @Test("Compound meter beams inside resolved dotted-quarter groups")
+    func compoundMeterUsesResolvedGroups() {
         let events = [
-            event(tick: 0, levels: 1, durationTicks: 120, noteHeadID: 1),
-            event(tick: 120, levels: 1, durationTicks: 120, noteHeadID: 2)
+            event(tick: 0, levels: 1, durationTicks: 180, noteHeadID: 1),
+            event(tick: 180, levels: 1, durationTicks: 180, noteHeadID: 2),
+            event(tick: 360, levels: 1, durationTicks: 180, noteHeadID: 3),
+            event(tick: 540, levels: 1, durationTicks: 180, noteHeadID: 4)
         ]
-
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 720,
+            timeSignature: .sixEight,
+            beatGroups: [
+                RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 360, isResidual: false),
+                RhythmBeatGroup(groupIndex: 1, startTick: 360, durationTicks: 360, isResidual: false)
+            ],
+            engravingSupport: .supported
+        )
         let result = builder.build(
             events: events,
-            ticksPerMeasure: 960,
-            timeSignature: .sixEight
+            measures: [measure]
         )
 
-        #expect(result == BeamTopologyResult.empty)
+        #expect(result.primaryGroups.map(\.id.beatGroupIndex) == [0, 1])
+        #expect(result.primaryGroups.map(\.eventIndices) == [[0, 1], [2, 3]])
+    }
+
+    @Test("triplet members beam contiguously inside one resolved group")
+    func tripletsBeamInsideResolvedGroup() {
+        let events = [0, 80, 160].enumerated().map {
+            event(tick: $0.element, levels: 1, durationTicks: 80, noteHeadID: UInt64($0.offset + 1))
+        }
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 240,
+            timeSignature: .fourFour,
+            beatGroups: [RhythmBeatGroup(
+                groupIndex: 0,
+                startTick: 0,
+                durationTicks: 240,
+                isResidual: false
+            )],
+            engravingSupport: .supported
+        )
+
+        let result = builder.build(events: events, measures: [measure])
+
+        #expect(result.primaryGroups.map(\.eventIndices) == [[0, 1, 2]])
+        #expect(result.coveredLevelsByEventIndex == [0: [0], 1: [0], 2: [0]])
     }
 
     @Test("3/4 simple meter scopes beams to three quarter-note beat groups")
