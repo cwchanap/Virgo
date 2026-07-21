@@ -307,4 +307,56 @@ struct ContentViewTests {
             #expect(rockTracks[1].title == "C Rock Anthem")
         }
     }
+
+    @Test("fatal chart remains visible with stable reason and blocks only practice")
+    func fatalChartPracticeState() throws {
+        let diagnostic = try PersistedRhythmDiagnostic(
+            code: .nonpositiveMeasureLength,
+            severity: .timingFatal,
+            sourceMeasureIndex: 12,
+            sourceLineNumber: 8
+        )
+        let metadata = try ChartRhythmMetadata(
+            timeSignature: .fourFour,
+            feel: .straight,
+            measureLengthOverrides: [],
+            bgmStartAnchor: nil,
+            timingStatus: .fatal,
+            diagnostics: [diagnostic]
+        )
+        let chart = Chart(difficulty: .hard, level: 70)
+        chart.bestScore = 4_200
+        try chart.setRhythmMetadata(metadata)
+        var selectionCount = 0
+        let card = ChartSelectionCard(chart: chart) { selectionCount += 1 }
+
+        #expect(!card.practiceState.isPracticeEnabled)
+        #expect(card.practiceState.badgeTitle == "Timing issue")
+        #expect(
+            card.practiceState.reason
+                == "Unsupported chart timing: measure 13 The measure length must be positive."
+        )
+        #expect(card.practiceState.accessibilityExplanation.contains("Practice unavailable"))
+        card.attemptPractice()
+        #expect(selectionCount == 0)
+        SwiftUITestUtilities.assertView(
+            card,
+            containsStrings: ["Timing issue", "Level 70", "4,200"]
+        )
+    }
+
+    @Test("metadata-free manual chart stays runtime synthesized without persistence")
+    func metadataFreeManualChartStaysUnpersisted() {
+        let chart = Chart(
+            difficulty: .easy,
+            notes: [Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)]
+        )
+
+        let state = ChartPracticeState(chart: chart)
+
+        #expect(state.isPracticeEnabled)
+        #expect(chart.rhythmMetadataData == nil)
+        #expect(RhythmTimelineResolver().resolve(chart: chart).availability == .valid)
+        #expect(chart.rhythmMetadataData == nil)
+    }
 }

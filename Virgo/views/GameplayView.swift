@@ -18,6 +18,7 @@ struct GameplayView: View {
 
     let chart: Chart
     let metronome: MetronomeEngine
+    let practiceState: ChartPracticeState
     private let usesInjectedViewModel: Bool
     private let onDismissOverride: (() -> Void)?
 
@@ -35,6 +36,7 @@ struct GameplayView: View {
     ) {
         self.chart = chart
         self.metronome = metronome
+        self.practiceState = ChartPracticeState(chart: chart)
         self.usesInjectedViewModel = initialViewModel != nil
         self.onDismissOverride = onDismiss
         self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
@@ -104,37 +106,44 @@ struct GameplayView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Group {
-                if isGameplayReady {
-                    VStack(spacing: 0) {
-                        // Header with track info and controls
-                        GameplayHeaderView(
-                            track: viewModel?.track ?? cachedFallbackTrack,
-                            isPlaying: isPlayingBinding,
-                            viewModel: viewModel,
-                            onDismiss: dismissGameplay,
-                            onPlayPause: { viewModel?.togglePlayback() },
-                            onRestart: { viewModel?.restartPlayback() }
-                        )
-                        .background(Palette.stage)
+            if !practiceState.isPracticeEnabled {
+                rhythmFatalSheet(
+                    message: practiceState.reason ?? String(localized: "Unsupported chart timing")
+                )
+                .accessibilityIdentifier("gameplayRoot")
+            } else {
+                Group {
+                    if isGameplayReady {
+                        VStack(spacing: 0) {
+                            // Header with track info and controls
+                            GameplayHeaderView(
+                                track: viewModel?.track ?? cachedFallbackTrack,
+                                isPlaying: isPlayingBinding,
+                                viewModel: viewModel,
+                                onDismiss: dismissGameplay,
+                                onPlayPause: { viewModel?.togglePlayback() },
+                                onRestart: { viewModel?.restartPlayback() }
+                            )
+                            .background(Palette.stage)
 
-                        // Main sheet music area - now the primary scrollable content
-                        sheetMusicView(geometry: geometry)
+                            // Main sheet music area - now the primary scrollable content
+                            sheetMusicView(geometry: geometry)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                            // Bottom controls
+                            controlsView
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("gameplayRoot")
+                    } else {
+                        Palette.stage
+                            .overlay(Text("Loading...").foregroundColor(Palette.chalk))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                        // Bottom controls
-                        controlsView
                     }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("gameplayRoot")
-                } else {
-                    Palette.stage
-                        .overlay(Text("Loading...").foregroundColor(Palette.chalk))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            }
-            .task {
-                await prepareGameplay(initialRowWidth: geometry.size.width)
+                .task {
+                    await prepareGameplay(initialRowWidth: geometry.size.width)
+                }
             }
         }
         #if os(iOS)

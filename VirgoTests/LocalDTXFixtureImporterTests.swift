@@ -26,23 +26,22 @@ struct LocalDTXFixtureImporterTests {
         #expect(song.serverSongId == "soukyuu_e_no_shouka")
         #expect(song.bgmFilePath?.hasSuffix("bgm.m4a") == true)
         #expect(song.previewFilePath?.hasSuffix("preview.mp3") == true)
-        #expect((song.bgmStartOffsetSeconds ?? 0) > 0)
+        #expect(song.bgmStartOffsetSeconds == nil)
 
-        // Duration must be derived from the chart BPM (165.55) rather than the old
-        // hard-coded 2 sec/measure assumption (which only holds at 120 BPM). All four
-        // Soukyuu charts reach measure 156 (0-based raw DTX measure index), so the
-        // expected total is 157 measures × (4 × 60 / 165.55) ≈ 227.6s → "3:47".
+        // Duration comes from the same canonical timeline end used by gameplay,
+        // rather than fixed 4/4 measure arithmetic.
         // The old 120-BPM math produced "5:14", which made gameplay progress run well
         // past the audio end because calculateTrackDurationInSeconds trusts this field.
         #expect(
-            song.duration == "3:47",
-            "Soukyuu duration should be BPM-derived (3:47 at 165.55 BPM), not the 120-BPM '5:14' value"
+            song.duration == "3:46",
+            "Soukyuu duration should come from the canonical timeline, not the old '5:14' value"
         )
 
         let charts = song.charts.sorted { $0.difficulty.sortOrder < $1.difficulty.sortOrder }
         #expect(charts.map(\.difficulty) == [.easy, .medium, .hard, .expert])
         #expect(charts.map(\.level) == [36, 60, 74, 87])
         #expect(charts.allSatisfy { $0.notesCount > 0 })
+        #expect(charts.allSatisfy { $0.rhythmMetadataData != nil })
     }
 
     @Test("does not duplicate Soukyuu fixture when already imported")
@@ -145,16 +144,13 @@ struct LocalDTXFixtureImporterTests {
         #expect(refreshed.previewFilePath == nil, "Stale preview path must be cleared when preview.mp3 is absent")
     }
 
-    @Test("re-import backfills missing BGM start offset on an existing legacy record")
-    func reImportBackfillsMissingBGMStartOffset() throws {
+    @Test("re-import leaves missing legacy song BGM offset untouched")
+    func reImportLeavesMissingLegacyBGMStartOffsetUntouched() throws {
         let context = TestContainer.isolatedContainer().context
         let fixtureURL = try soukyuuFixtureURL()
 
-        // Simulate a legacy record created before BGM-offset parsing existed: same
-        // serverSongId, nil offset, and already-correct audio paths so refreshAudioPaths
-        // makes no change. Without the refresh-path backfill this record would keep nil
-        // (and fall back to the note-position heuristic in calculateBGMOffset) while a
-        // fresh import gets the authoritative parsed offset — an audible sync drift.
+        // New timing stores a raw anchor on Chart metadata. The song-wide seconds
+        // offset remains legacy-only and must not be created by a source refresh.
         let legacy = Song(
             title: "蒼穹への翔歌",
             artist: "legacy",
@@ -174,10 +170,7 @@ struct LocalDTXFixtureImporterTests {
         let refreshed = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
 
         #expect(refreshed === legacy, "Re-import should return the existing song, not a duplicate")
-        #expect(
-            (refreshed.bgmStartOffsetSeconds ?? 0) > 0,
-            "Re-import must backfill the parsed BGM offset on a legacy nil-offset record"
-        )
+        #expect(refreshed.bgmStartOffsetSeconds == nil)
     }
 
     @Test("re-import refreshes stale duration on an existing legacy record")
@@ -210,8 +203,8 @@ struct LocalDTXFixtureImporterTests {
 
         #expect(refreshed === legacy, "Re-import should return the existing song, not a duplicate")
         #expect(
-            refreshed.duration == "3:47",
-            "Stale '5:14' duration must be recomputed to the BPM-derived '3:47' on re-import"
+            refreshed.duration == "3:46",
+            "Stale '5:14' duration must be recomputed from the canonical timeline on re-import"
         )
     }
 
@@ -334,6 +327,91 @@ struct LocalDTXFixtureImporterTests {
             fast.duration != slow.duration,
             "Duration must vary with BPM, not be the fixed 2 sec/measure value"
         )
+    }
+
+    @Test("fresh import persists valid rhythm payload and canonical timing without song BGM offset")
+    func freshImportPersistsCanonicalRhythmTiming() throws {
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+        try """
+        #TITLE: Canonical Local
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
+        try """
+        #TITLE: Canonical Local
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 40
+        #VIRGO_TIME_SIGNATURE: 6/8
+        #VIRGO_CONTROL: 1
+        #00102: 0.5
+        #00001: 0001
+        #00012: 01000000
+        #00122: 00160000
+        #00113: 00000100
+        """.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
+
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+        let chart = try #require(song.charts.first)
+
+        #expect(song.bgmStartOffsetSeconds == nil)
+        #expect(chart.timeSignature == .sixEight)
+        guard case let .valid(metadata) = chart.rhythmMetadataState else {
+            Issue.record("Expected a persisted rhythm metadata payload")
+            return
+        }
+        #expect(metadata.timingStatus == .valid)
+        #expect(metadata.bgmStartAnchor != nil)
+        #expect(Set(chart.notes.compactMap(\.normalizedAbsoluteTick)) == Set([0, 16]))
+        #expect(Set(chart.notes.compactMap(\.normalizedTicksPerMeasure)) == Set([8, 12]))
+        let control = try #require(chart.controlEvents.first)
+        #expect(control.normalizedMeasureIndex == 1)
+        #expect(control.normalizedAbsoluteTick == 14)
+        #expect(control.normalizedTickWithinMeasure == 2)
+        #expect(control.normalizedTicksPerMeasure == 8)
+    }
+
+    @Test("fresh timing-fatal import keeps identifiable chart and source values")
+    func freshFatalImportKeepsIdentifiableChart() throws {
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+        try """
+        #TITLE: Fatal Local
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
+        try """
+        #TITLE: Fatal Local
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 40
+        #VIRGO_CONTROL: 1
+        #00102: 0
+        #00112: 0100
+        #00122: 0016
+        """.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
+
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+        let chart = try #require(song.charts.first)
+
+        guard case let .valid(metadata) = chart.rhythmMetadataState else {
+            Issue.record("Expected fatal diagnostics to be persisted")
+            return
+        }
+        #expect(metadata.timingStatus == .fatal)
+        #expect(!metadata.diagnostics.isEmpty)
+        let note = try #require(chart.notes.first)
+        #expect(note.sourceLaneID == "12")
+        #expect(note.sourceGridSize == 2)
+        #expect(note.normalizedMeasureIndex == nil)
+        #expect(note.normalizedAbsoluteTick == nil)
+        #expect(note.normalizedTickWithinMeasure == nil)
+        #expect(note.normalizedTicksPerMeasure == nil)
+        let control = try #require(chart.controlEvents.first)
+        #expect(control.sourceLaneID == "22")
+        #expect(control.normalizedAbsoluteTick == nil)
+        #expect(RhythmTimelineResolver().resolve(chart: chart).availability == .fatal)
     }
 
     // Control-event import/backfill/routing tests live in

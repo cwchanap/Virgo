@@ -621,7 +621,7 @@ struct ServerSongServiceTests {
             }
             #expect(imported != nil)
             #expect(imported?.bpm == 165.55)
-            #expect(imported?.duration == "1:04")
+            #expect(imported?.duration == "0:46")
 
             let charts = try context.fetch(FetchDescriptor<Chart>())
             let importedChart = charts.first { $0.song?.title == "Networked Song" }

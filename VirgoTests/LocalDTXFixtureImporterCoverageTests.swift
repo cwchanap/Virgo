@@ -172,13 +172,13 @@ struct LocalDTXFixtureImporterCoverageTests {
 
     // MARK: - Duration + title fallback
 
-    @Test("duration is 1:00 when the imported chart has no notes")
-    func durationIsOneMinuteWhenChartHasNoNotes() throws {
+    @Test("duration uses the canonical one-measure timeline when the imported chart has no notes")
+    func durationUsesCanonicalTimelineWhenChartHasNoNotes() throws {
         let context = TestContainer.isolatedContainer().context
         let tempDir = try makeTempDirectory()
         defer { removeTemp(tempDir) }
         try writeSETDef(in: tempDir, content: "#TITLE: Empty\n#L1LABEL: BASIC\n#L1FILE: chart.dtx\n")
-        // No note lines → empty notes → maxMeasure nil → calculateDuration returns 60s.
+        // No note lines still produce the timeline's canonical minimum one measure.
         let chart = "#TITLE: Empty\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50"
         try chart.write(
             to: tempDir.appendingPathComponent("chart.dtx"),
@@ -187,7 +187,7 @@ struct LocalDTXFixtureImporterCoverageTests {
 
         let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
 
-        #expect(song.duration == "1:00", "No notes → maxMeasure nil → 60s → '1:00'")
+        #expect(song.duration == "0:02")
     }
 
     @Test("importSong uses the chart title when SET.def omits #TITLE")

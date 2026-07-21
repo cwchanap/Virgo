@@ -59,7 +59,9 @@ struct DTXNoteLineParsingTests {
             gridSize: 4
         )
         #expect(chartData.rhythmMetadata.bgmStartAnchor == expectedAnchor)
-        let bgmOffset = try #require(chartData.bgmStartOffsetSeconds)
+        let timeline = try #require(chartData.persistenceProjection().timeline)
+        let bgmPosition = try #require(timeline.bgmStartPosition)
+        let bgmOffset = try #require(timeline.seconds(for: bgmPosition, bpm: chartData.bpm, speed: 1))
         #expect(abs(bgmOffset - 0.9) < 0.001)
     }
 
@@ -85,7 +87,9 @@ struct DTXNoteLineParsingTests {
             gridSize: 1
         )
         #expect(chartData.rhythmMetadata.bgmStartAnchor == expectedAnchor)
-        let bgmOffset = try #require(chartData.bgmStartOffsetSeconds)
+        let timeline = try #require(chartData.persistenceProjection().timeline)
+        let bgmPosition = try #require(timeline.bgmStartPosition)
+        let bgmOffset = try #require(timeline.seconds(for: bgmPosition, bpm: chartData.bpm, speed: 1))
         #expect(bgmOffset == 0.0)
     }
 
@@ -127,7 +131,8 @@ struct DTXNoteLineParsingTests {
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
 
         #expect(chartData.rhythmMetadata.bgmStartAnchor == nil)
-        #expect(chartData.bgmStartOffsetSeconds == nil)
+        let timeline = try #require(chartData.persistenceProjection().timeline)
+        #expect(timeline.bgmStartPosition == nil)
     }
 
     @Test("the first lane-01 chip in source order owns the raw anchor")

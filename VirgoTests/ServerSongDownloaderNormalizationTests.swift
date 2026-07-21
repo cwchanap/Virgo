@@ -33,8 +33,8 @@ struct ServerSongDownloaderNormalizationTests {
         return ServerConfig(userDefaults: defaults)
     }
 
-    @Test("downloadAndImportSong persists chart with no notes when normalization overflows")
-    func testPersistsEmptyChartWhenNormalizationOverflows() async throws {
+    @Test("downloadAndImportSong persists fatal source identity when timeline resolution overflows")
+    func testPersistsFatalSourceIdentityWhenTimelineResolutionOverflows() async throws {
         let mock = MockFileDownloader()
         // Grid sizes 65 and 64 are coprime; LCM = 4160 > maximumTicksPerMeasure (4096),
         // so sharedTicksPerMeasure returns nil and normalizedRhythmicEvents() yields [].
@@ -84,10 +84,21 @@ struct ServerSongDownloaderNormalizationTests {
             let allCharts = try verificationContext.fetch(FetchDescriptor<Chart>())
             let importedChart = allCharts.first { $0.song?.title == "Overflow Grid" }
             #expect(importedChart != nil, "Chart should be persisted despite normalization overflow")
-            #expect(
-                importedChart?.notes.isEmpty ?? true,
-                "Chart should have no notes when normalization overflows"
-            )
+            let chart = try #require(importedChart)
+            guard case let .valid(metadata) = chart.rhythmMetadataState else {
+                Issue.record("Expected persisted fatal rhythm metadata")
+                return
+            }
+            #expect(metadata.timingStatus == .fatal)
+            #expect(metadata.diagnostics.map(\.code).contains(.resolutionLimitExceeded))
+            #expect(chart.notes.count == 2)
+            #expect(chart.notes.allSatisfy { $0.sourceLaneID != nil && $0.sourceGridSize != nil })
+            #expect(chart.notes.allSatisfy {
+                $0.normalizedMeasureIndex == nil
+                    && $0.normalizedAbsoluteTick == nil
+                    && $0.normalizedTickWithinMeasure == nil
+                    && $0.normalizedTicksPerMeasure == nil
+            })
         }
     }
 
@@ -131,11 +142,17 @@ struct ServerSongDownloaderNormalizationTests {
             let songs = try verificationContext.fetch(FetchDescriptor<Song>())
             let song = try #require(songs.first)
             let chart = try #require(song.charts.first)
+            #expect(song.bgmStartOffsetSeconds == nil)
+            #expect(chart.rhythmMetadataData != nil)
             #expect(chart.notes.count == 1)
             #expect(chart.controlEvents.count == 1)
             let control = try #require(chart.controlEvents.first)
             #expect(control.kind == .choke)
             #expect(control.targetLaneID == "16")
+            #expect(control.normalizedMeasureIndex == 0)
+            #expect(control.normalizedAbsoluteTick == 0)
+            #expect(control.normalizedTickWithinMeasure == 0)
+            #expect(control.normalizedTicksPerMeasure == 4)
         }
     }
 }

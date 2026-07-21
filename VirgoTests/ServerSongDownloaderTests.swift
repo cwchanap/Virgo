@@ -114,7 +114,7 @@ struct ServerSongDownloaderTests {
             #expect(importedSong?.serverSongId == "multi-diff", "Downloaded song must persist the server songId")
             #expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.ogg")
             #expect(importedSong?.previewFilePath == "/tmp/mock-preview.mp3")
-            #expect(abs((importedSong?.bgmStartOffsetSeconds ?? 0) - 0.9) < 0.001)
+            #expect(importedSong?.bgmStartOffsetSeconds == nil)
 
             let allCharts = try verificationContext.fetch(FetchDescriptor<Chart>())
             let importedCharts = allCharts.filter { $0.song?.title == "Multi Diff" && $0.song?.artist == "Tester" }
@@ -221,8 +221,8 @@ struct ServerSongDownloaderTests {
         }
     }
 
-    @Test("downloadAndImportSong uses 1:00 duration fallback for charts with no notes")
-    func testDownloadAndImportSongUsesEmptyNotesDurationFallback() async throws {
+    @Test("downloadAndImportSong uses canonical one-measure duration for charts with no notes")
+    func testDownloadAndImportSongUsesEmptyNotesCanonicalDuration() async throws {
         let mock = MockFileDownloader()
         mock.responses["\(r2Base)/empty-notes/empty.dtx"] =
             dtxData("#TITLE: Empty Notes\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 12")
@@ -245,7 +245,7 @@ struct ServerSongDownloaderTests {
             let songs = try verificationContext.fetch(FetchDescriptor<Song>())
             let importedSong = songs.first { $0.title == "Empty Notes" && $0.artist == "Tester" }
             #expect(importedSong != nil)
-            #expect(importedSong?.duration == "1:00")
+            #expect(importedSong?.duration == "0:02")
         }
     }
 
