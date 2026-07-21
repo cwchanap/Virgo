@@ -200,6 +200,42 @@ struct NotationBeamTopologyTests {
 }
 
 extension NotationBeamTopologyTests {
+    @Test("resolved beat groups retain row voice and stem-direction boundaries")
+    func resolvedGroupsRetainSemanticBoundaries() {
+        let events = [
+            event(tick: 0, levels: 2, durationTicks: 30, noteHeadID: 1),
+            event(tick: 30, levels: 2, durationTicks: 30, noteHeadID: 2),
+            event(tick: 60, levels: 1, durationTicks: 30, row: 1, noteHeadID: 3),
+            event(tick: 90, levels: 1, durationTicks: 30, row: 1, noteHeadID: 4),
+            event(tick: 120, levels: 1, durationTicks: 30, voice: .lower, noteHeadID: 5),
+            event(tick: 150, levels: 1, durationTicks: 30, voice: .lower, noteHeadID: 6),
+            event(tick: 180, levels: 1, durationTicks: 30, direction: .down, noteHeadID: 7),
+            event(tick: 210, levels: 1, durationTicks: 30, direction: .down, noteHeadID: 8)
+        ]
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 240,
+            timeSignature: .fourFour,
+            beatGroups: [RhythmBeatGroup(
+                groupIndex: 0,
+                startTick: 0,
+                durationTicks: 240,
+                isResidual: false
+            )],
+            engravingSupport: .supported
+        )
+
+        let result = builder.build(events: events, measures: [measure])
+
+        #expect(result.primaryGroups.map(\.eventIndices) == [
+            [4, 5], [6, 7], [0, 1], [2, 3]
+        ])
+        #expect(result.primaryGroups.map(\.id.voice) == [.lower, .upper, .upper, .upper])
+        #expect(result.primaryGroups.map(\.id.stemDirection) == [.up, .down, .up, .up])
+        #expect(result.primaryGroups.map(\.id.row) == [0, 0, 0, 1])
+    }
+
     @Test(
         "Unequal-distance interior hooks select the nearer primary neighbor",
         arguments: [
