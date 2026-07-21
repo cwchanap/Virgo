@@ -193,8 +193,12 @@ struct NotationLayoutEngine {
             beams: beamBuild.beams,
             style: input.style
         )
+        let unsupportedMeasureIndexes = Set(rhythmMeasures?.compactMap { measure -> Int? in
+            if case .unsupported = measure.engravingSupport { return measure.measureIndex }
+            return nil
+        } ?? [])
         let flags = buildFlags(
-            noteHeads: noteHeads,
+            noteHeads: noteHeads.filter { !unsupportedMeasureIndexes.contains($0.measureIndex) },
             beamBuild: beamBuild,
             stems: stems,
             style: input.style

@@ -65,6 +65,7 @@ struct RhythmLayoutSnapshot: Hashable {
     let controls: [RhythmLayoutControl]
     let rests: [RhythmLayoutRest]
     let feel: RhythmicFeel
+    let diagnostics: [PersistedRhythmDiagnostic]
 
     init(
         ticksPerWholeNote: Int,
@@ -72,7 +73,9 @@ struct RhythmLayoutSnapshot: Hashable {
         notes: [RhythmLayoutNote],
         controls: [RhythmLayoutControl],
         rests: [RhythmLayoutRest],
-        feel: RhythmicFeel
+        feel: RhythmicFeel,
+        diagnostics: [PersistedRhythmDiagnostic] = [],
+        diagnosticLog: (String) -> Void = { Logger.warning($0) }
     ) throws {
         guard ticksPerWholeNote > 0 else {
             throw RhythmMetadataValidationError.invalidTicksPerWholeNote
@@ -83,6 +86,27 @@ struct RhythmLayoutSnapshot: Hashable {
         self.controls = controls
         self.rests = rests
         self.feel = feel
+        self.diagnostics = Self.stableDiagnostics(diagnostics)
+        for diagnostic in self.diagnostics {
+            diagnosticLog(RhythmDiagnosticPresentation(code: diagnostic.code).logMessage(
+                sourceMeasureIndex: diagnostic.sourceMeasureIndex,
+                sourceLineNumber: diagnostic.sourceLineNumber
+            ))
+        }
+    }
+
+    private static func stableDiagnostics(
+        _ diagnostics: [PersistedRhythmDiagnostic]
+    ) -> [PersistedRhythmDiagnostic] {
+        Array(Set(diagnostics)).sorted { left, right in
+            let leftMeasure = left.sourceMeasureIndex ?? -1
+            let rightMeasure = right.sourceMeasureIndex ?? -1
+            if leftMeasure != rightMeasure { return leftMeasure < rightMeasure }
+            let leftLine = left.sourceLineNumber ?? -1
+            let rightLine = right.sourceLineNumber ?? -1
+            if leftLine != rightLine { return leftLine < rightLine }
+            return left.code.rawValue < right.code.rawValue
+        }
     }
 }
 
