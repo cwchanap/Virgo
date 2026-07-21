@@ -13,6 +13,7 @@ enum RhythmLimits {
 
 enum RhythmMetadataValidationError: Error, Equatable {
     case nonpositiveRatio
+    case invalidTicksPerWholeNote
     case arithmeticOverflow
     case invalidMeasureIndex
     case invalidGridSize
@@ -23,6 +24,66 @@ enum RhythmMetadataValidationError: Error, Equatable {
     case unsupportedMetadataVersion
     case missingTimeSignature
     case missingFeel
+}
+
+/// Immutable note payload crossing from resolved/analyzed rhythm into layout.
+/// The SwiftData model itself deliberately stays outside this boundary.
+struct RhythmLayoutNote: Hashable {
+    let eventID: RhythmEventID
+    let sourceObjectID: ObjectIdentifier
+    let sourceLaneID: String?
+    let sourceChipID: String?
+    let noteType: NoteType
+    let position: RhythmEventPosition
+    let durationTicks: Int
+    let rhythm: NotationRhythm
+    let tupletID: RhythmTupletID?
+}
+
+/// Immutable control payload crossing from resolved rhythm into layout.
+struct RhythmLayoutControl: Hashable {
+    let eventID: RhythmEventID
+    let event: NotationControlEvent
+    let position: RhythmEventPosition
+}
+
+/// Immutable rest payload crossing from semantic rhythm analysis into layout.
+struct RhythmLayoutRest: Hashable {
+    let position: RhythmEventPosition
+    let durationTicks: Int
+    let voice: NotationVoice
+    let rhythm: NotationRhythm
+    let visibility: NotationRestVisibility
+    let tupletID: RhythmTupletID?
+}
+
+/// Self-contained timing boundary consumed by timeline-native layout.
+struct RhythmLayoutSnapshot: Hashable {
+    let ticksPerWholeNote: Int
+    let measures: [RhythmMeasure]
+    let notes: [RhythmLayoutNote]
+    let controls: [RhythmLayoutControl]
+    let rests: [RhythmLayoutRest]
+    let feel: RhythmicFeel
+
+    init(
+        ticksPerWholeNote: Int,
+        measures: [RhythmMeasure],
+        notes: [RhythmLayoutNote],
+        controls: [RhythmLayoutControl],
+        rests: [RhythmLayoutRest],
+        feel: RhythmicFeel
+    ) throws {
+        guard ticksPerWholeNote > 0 else {
+            throw RhythmMetadataValidationError.invalidTicksPerWholeNote
+        }
+        self.ticksPerWholeNote = ticksPerWholeNote
+        self.measures = measures
+        self.notes = notes
+        self.controls = controls
+        self.rests = rests
+        self.feel = feel
+    }
 }
 
 struct RhythmRatio: Codable, Hashable, Sendable {

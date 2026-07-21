@@ -22,6 +22,11 @@ struct NotationLayoutControlTests {
         #expect(result.measures.count == 1)
         #expect(stop.timeColumn.measureIndex == 0)
         #expect(stop.timeColumn.tickWithinMeasure == 240)
+        #expect(stop.rhythmPosition == RhythmEventPosition(
+            measureIndex: 0,
+            localTick: 240,
+            absoluteTick: 240
+        ))
     }
 
     @Test("invalid complete normalized tuples contribute neither measures nor marks")

@@ -11,6 +11,13 @@ struct NotationLayoutEngineTests {
         let input = NotationLayoutInput(notes: [], timeSignature: .fourFour)
 
         #expect(input.controlEvents.isEmpty)
+        guard case let .legacy(notes, controls, timeSignature) = input.timing else {
+            Issue.record("Expected legacy timing input")
+            return
+        }
+        #expect(notes.isEmpty)
+        #expect(controls.isEmpty)
+        #expect(timeSignature == .fourFour)
     }
 
     @Test("row-width copy preserves all HPA-143 metrics")
@@ -270,6 +277,27 @@ struct NotationLayoutEngineTests {
         #expect(layout.tabGrid.leftPadding == GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing)
         #expect(layout.tabGrid.measureWidth > GameplayLayout.measureWidth(for: .fourFour))
         #expect(layout.tabGrid.measureWidth < 700)
+    }
+
+    @Test("legacy grid distinguishes whole-note quantum from three-four measure ticks")
+    func legacyGridOwnsWholeNoteQuantumInThreeFour() {
+        let note = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0,
+            originKind: .dtx,
+            normalizedMeasureIndex: 0,
+            normalizedAbsoluteTick: 0,
+            normalizedTickWithinMeasure: 0,
+            normalizedTicksPerMeasure: 12
+        )
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(notes: [note], timeSignature: .threeFour)
+        )
+
+        #expect(layout.tabGrid.ticksPerMeasure == 12)
+        #expect(layout.tabGrid.ticksPerWholeNote == 16)
     }
 
     @Test("invalid normalized metadata falls back to deterministic 960 tick grid")

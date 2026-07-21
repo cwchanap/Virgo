@@ -4,10 +4,46 @@ import Foundation
 struct TabGrid: Equatable {
     static let fallbackTicksPerMeasure = 960
 
-    let ticksPerMeasure: Int
+    let ticksPerWholeNote: Int
     let tickWidth: CGFloat
     let leftPadding: CGFloat
-    let measureWidth: CGFloat
+    private let legacyTicksPerMeasure: Int?
+
+    /// Fixed-measure compatibility wrapper. Timeline layout uses each
+    /// `RenderedMeasure.durationTicks` instead.
+    var ticksPerMeasure: Int { legacyTicksPerMeasure ?? ticksPerWholeNote }
+
+    /// Fixed-measure compatibility wrapper. Timeline measures own their width.
+    var measureWidth: CGFloat {
+        Self.measureWidth(
+            ticksPerMeasure: ticksPerMeasure,
+            tickWidth: tickWidth,
+            leftPadding: leftPadding
+        )
+    }
+
+    init(
+        ticksPerWholeNote: Int,
+        tickWidth: CGFloat,
+        leftPadding: CGFloat
+    ) {
+        self.ticksPerWholeNote = ticksPerWholeNote
+        self.tickWidth = tickWidth
+        self.leftPadding = leftPadding
+        legacyTicksPerMeasure = nil
+    }
+
+    init(
+        legacyTicksPerMeasure: Int,
+        ticksPerWholeNote: Int? = nil,
+        tickWidth: CGFloat,
+        leftPadding: CGFloat
+    ) {
+        self.ticksPerWholeNote = ticksPerWholeNote ?? legacyTicksPerMeasure
+        self.tickWidth = tickWidth
+        self.leftPadding = leftPadding
+        self.legacyTicksPerMeasure = legacyTicksPerMeasure
+    }
 
     static func measureWidth(
         ticksPerMeasure: Int,
@@ -21,22 +57,24 @@ struct TabGrid: Equatable {
         let fallbackTickWidth = GameplayLayout.uniformSpacing / CGFloat(fallbackTicksPerMeasure / 4)
         let fallbackLeftPadding = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
         return TabGrid(
-            ticksPerMeasure: fallbackTicksPerMeasure,
+            legacyTicksPerMeasure: fallbackTicksPerMeasure,
             tickWidth: fallbackTickWidth,
-            leftPadding: fallbackLeftPadding,
-            measureWidth: measureWidth(
-                ticksPerMeasure: fallbackTicksPerMeasure,
-                tickWidth: fallbackTickWidth,
-                leftPadding: fallbackLeftPadding
-            )
+            leftPadding: fallbackLeftPadding
         )
     }()
 
-    func xPosition(in measure: RenderedMeasure, tickIndex: Int) -> CGFloat {
-        let clampedTick = min(max(tickIndex, 0), ticksPerMeasure)
-        return measure.xOffset + leftPadding + CGFloat(clampedTick) * tickWidth
+    func xPosition(in measure: RenderedMeasure, localTick: Int) -> CGFloat {
+        let clampedTick = min(max(localTick, 0), measure.durationTicks)
+        return measure.contentStartX + CGFloat(clampedTick) * tickWidth
     }
 
+    /// Fixed-measure compatibility wrapper. Timeline callers pass `localTick`.
+    func xPosition(in measure: RenderedMeasure, tickIndex: Int) -> CGFloat {
+        let clampedTick = min(max(tickIndex, 0), ticksPerMeasure)
+        return measure.contentStartX + CGFloat(clampedTick) * tickWidth
+    }
+
+    /// Fixed-measure compatibility wrapper for legacy beat fractions.
     func tickIndex(forBeatWithinMeasure beatWithinMeasure: Double, beatsPerMeasure: Int) -> Int {
         guard beatWithinMeasure.isFinite, beatsPerMeasure > 0 else { return 0 }
         let clampedBeat = min(max(beatWithinMeasure, 0), Double(beatsPerMeasure))
@@ -44,15 +82,49 @@ struct TabGrid: Equatable {
     }
 }
 
+enum NotationLayoutTimingInput {
+    case timeline(RhythmLayoutSnapshot)
+    case legacy(notes: [Note], controls: [NotationControlEvent], timeSignature: TimeSignature)
+}
+
 struct NotationLayoutInput {
-    let notes: [Note]
-    let controlEvents: [NotationControlEvent]
-    let timeSignature: TimeSignature
+    let timing: NotationLayoutTimingInput
     let minimumMeasureCount: Int
     let style: NotationLayoutStyle
     /// Per-drum overrides for the staff position used to render note heads, ledger lines, and stems.
     /// Drums omitted here fall back to `DrumType.notePosition`.
     let notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
+
+    var notes: [Note] {
+        guard case let .legacy(notes, _, _) = timing else { return [] }
+        return notes
+    }
+
+    var controlEvents: [NotationControlEvent] {
+        guard case let .legacy(_, controls, _) = timing else { return [] }
+        return controls
+    }
+
+    var timeSignature: TimeSignature {
+        switch timing {
+        case let .timeline(snapshot):
+            return snapshot.measures.first?.timeSignature ?? .fourFour
+        case let .legacy(_, _, timeSignature):
+            return timeSignature
+        }
+    }
+
+    init(
+        timing: NotationLayoutTimingInput,
+        minimumMeasureCount: Int = 1,
+        style: NotationLayoutStyle = .gameplayDefault,
+        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
+    ) {
+        self.timing = timing
+        self.minimumMeasureCount = minimumMeasureCount
+        self.style = style
+        self.notePositionOverrides = notePositionOverrides
+    }
 
     init(
         notes: [Note],
@@ -62,12 +134,12 @@ struct NotationLayoutInput {
         style: NotationLayoutStyle = .gameplayDefault,
         notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
     ) {
-        self.notes = notes
-        self.controlEvents = controlEvents
-        self.timeSignature = timeSignature
-        self.minimumMeasureCount = minimumMeasureCount
-        self.style = style
-        self.notePositionOverrides = notePositionOverrides
+        self.init(
+            timing: .legacy(notes: notes, controls: controlEvents, timeSignature: timeSignature),
+            minimumMeasureCount: minimumMeasureCount,
+            style: style,
+            notePositionOverrides: notePositionOverrides
+        )
     }
 }
 
@@ -252,6 +324,28 @@ struct RenderedMeasure: Identifiable, Hashable {
     let row: Int
     let xOffset: CGFloat
     let width: CGFloat
+    let startTick: Int
+    let durationTicks: Int
+
+    var contentStartX: CGFloat { xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing }
+
+    init(
+        id: Int,
+        measureIndex: Int,
+        row: Int,
+        xOffset: CGFloat,
+        width: CGFloat,
+        startTick: Int = 0,
+        durationTicks: Int = 0
+    ) {
+        self.id = id
+        self.measureIndex = measureIndex
+        self.row = row
+        self.xOffset = xOffset
+        self.width = width
+        self.startTick = startTick
+        self.durationTicks = durationTicks
+    }
 }
 
 struct NotationTimeColumn: Hashable {
@@ -270,11 +364,46 @@ struct RenderedRest: Identifiable, Hashable {
     let duration: NotationRestDuration
     let visibility: NotationRestVisibility
     let position: CGPoint
+    let rhythmPosition: RhythmEventPosition
+    let rhythm: NotationRhythm
+    let tupletID: RhythmTupletID?
 
     var isPrinted: Bool { visibility == .printed }
 
     var accessibilityLabel: String {
         "\(voice.accessibilityName) voice \(duration.accessibilityName) rest"
+    }
+
+    init(
+        id: String,
+        timeColumn: NotationTimeColumn,
+        measureIndex: Int,
+        row: Int,
+        voice: NotationVoice,
+        durationTicks: Int,
+        duration: NotationRestDuration,
+        visibility: NotationRestVisibility,
+        position: CGPoint,
+        rhythmPosition: RhythmEventPosition? = nil,
+        rhythm: NotationRhythm? = nil,
+        tupletID: RhythmTupletID? = nil
+    ) {
+        self.id = id
+        self.timeColumn = timeColumn
+        self.measureIndex = measureIndex
+        self.row = row
+        self.voice = voice
+        self.durationTicks = durationTicks
+        self.duration = duration
+        self.visibility = visibility
+        self.position = position
+        self.rhythmPosition = rhythmPosition ?? RhythmEventPosition(
+            measureIndex: timeColumn.measureIndex,
+            localTick: timeColumn.tickWithinMeasure,
+            absoluteTick: timeColumn.absoluteLayoutTick
+        )
+        self.rhythm = rhythm ?? duration.compatibilityRhythm
+        self.tupletID = tupletID
     }
 }
 
@@ -288,9 +417,41 @@ struct RenderedStopNote: Identifiable, Hashable {
     let timeColumn: NotationTimeColumn
     let row: Int
     let position: CGPoint
+    let eventID: RhythmEventID?
+    let rhythmPosition: RhythmEventPosition
 
     var accessibilityLabel: String {
         "\(kind.rawValue.capitalized) \(targetDisplayName)"
+    }
+
+    init(
+        id: String,
+        kind: NotationControlEventKind,
+        sourceLaneID: String?,
+        sourceNoteID: String?,
+        targetLaneID: String,
+        targetDisplayName: String,
+        timeColumn: NotationTimeColumn,
+        row: Int,
+        position: CGPoint,
+        eventID: RhythmEventID? = nil,
+        rhythmPosition: RhythmEventPosition? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.sourceLaneID = sourceLaneID
+        self.sourceNoteID = sourceNoteID
+        self.targetLaneID = targetLaneID
+        self.targetDisplayName = targetDisplayName
+        self.timeColumn = timeColumn
+        self.row = row
+        self.position = position
+        self.eventID = eventID
+        self.rhythmPosition = rhythmPosition ?? RhythmEventPosition(
+            measureIndex: timeColumn.measureIndex,
+            localTick: timeColumn.tickWithinMeasure,
+            absoluteTick: timeColumn.absoluteLayoutTick
+        )
     }
 }
 
@@ -324,6 +485,11 @@ struct RenderedNoteHead: Identifiable, Hashable {
     let staffStep: Int
     let interval: NoteInterval
     let catalogOrder: Int
+    let eventID: RhythmEventID?
+    let rhythmPosition: RhythmEventPosition
+    let rhythmDurationTicks: Int?
+    let rhythm: NotationRhythm
+    let tupletID: RhythmTupletID?
 
     var measureIndex: Int { timeColumn.measureIndex }
 
@@ -338,6 +504,58 @@ struct RenderedNoteHead: Identifiable, Hashable {
         default:
             return noteType.rawValue
         }
+    }
+
+    init(
+        id: UInt64,
+        sourceObjectID: ObjectIdentifier,
+        sourceLaneID: String?,
+        sourceChipID: String?,
+        noteType: NoteType,
+        drumType: DrumType,
+        glyph: DrumNoteheadGlyph,
+        variant: DrumNotationVariant,
+        voice: NotationVoice,
+        stemDirection: StemDirection,
+        timeColumn: NotationTimeColumn,
+        timePosition: Double,
+        row: Int,
+        position: CGPoint,
+        staffStep: Int,
+        interval: NoteInterval,
+        catalogOrder: Int,
+        eventID: RhythmEventID? = nil,
+        rhythmPosition: RhythmEventPosition? = nil,
+        rhythmDurationTicks: Int? = nil,
+        rhythm: NotationRhythm? = nil,
+        tupletID: RhythmTupletID? = nil
+    ) {
+        self.id = id
+        self.sourceObjectID = sourceObjectID
+        self.sourceLaneID = sourceLaneID
+        self.sourceChipID = sourceChipID
+        self.noteType = noteType
+        self.drumType = drumType
+        self.glyph = glyph
+        self.variant = variant
+        self.voice = voice
+        self.stemDirection = stemDirection
+        self.timeColumn = timeColumn
+        self.timePosition = timePosition
+        self.row = row
+        self.position = position
+        self.staffStep = staffStep
+        self.interval = interval
+        self.catalogOrder = catalogOrder
+        self.eventID = eventID
+        self.rhythmPosition = rhythmPosition ?? RhythmEventPosition(
+            measureIndex: timeColumn.measureIndex,
+            localTick: timeColumn.tickWithinMeasure,
+            absoluteTick: timeColumn.absoluteLayoutTick
+        )
+        self.rhythmDurationTicks = rhythmDurationTicks
+        self.rhythm = rhythm ?? NotationRhythm(baseInterval: interval)
+        self.tupletID = tupletID
     }
 }
 
@@ -361,6 +579,23 @@ private extension NotationRestDuration {
         case .thirtySecond: return "thirty-second"
         case .sixtyFourth: return "sixty-fourth"
         case .indeterminate: return "indeterminate"
+        }
+    }
+
+    var compatibilityRhythm: NotationRhythm {
+        switch self {
+        case .fullMeasure: return NotationRhythm(baseInterval: .full)
+        case .half: return NotationRhythm(baseInterval: .half)
+        case .quarter: return NotationRhythm(baseInterval: .quarter)
+        case .eighth: return NotationRhythm(baseInterval: .eighth)
+        case .sixteenth: return NotationRhythm(baseInterval: .sixteenth)
+        case .thirtySecond: return NotationRhythm(baseInterval: .thirtysecond)
+        case .sixtyFourth: return NotationRhythm(baseInterval: .sixtyfourth)
+        case .indeterminate:
+            return NotationRhythm(
+                baseInterval: .quarter,
+                support: .indeterminate(.indeterminateTerminalDuration)
+            )
         }
     }
 }

@@ -20,6 +20,15 @@ struct NotationLayoutEngine {
     }
 
     func layout(input: NotationLayoutInput) -> NotationLayout {
+        switch input.timing {
+        case .timeline(let snapshot):
+            return layoutTimeline(snapshot: snapshot, input: input)
+        case .legacy:
+            return layoutLegacy(input: input)
+        }
+    }
+
+    private func layoutLegacy(input: NotationLayoutInput) -> NotationLayout {
         let sortedNotes = input.notes.sorted {
             MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
                 < MeasureUtils.timePosition(measureNumber: $1.measureNumber, measureOffset: $1.measureOffset)
@@ -33,7 +42,13 @@ struct NotationLayoutEngine {
         let tabGrid = buildTabGrid(notes: sortedNotes, input: input)
         let measures = buildMeasures(totalMeasures: totalMeasures, tabGrid: tabGrid, input: input)
         let noteHeads = buildNoteHeads(notes: sortedNotes, measures: measures, tabGrid: tabGrid, input: input)
-        let derived = buildDerivedArtifacts(noteHeads: noteHeads, measures: measures, tabGrid: tabGrid, input: input)
+        let derived = buildDerivedArtifacts(
+            noteHeads: noteHeads,
+            measures: measures,
+            tabGrid: tabGrid,
+            rhythmMeasures: nil,
+            input: input
+        )
         let rests = buildRests(noteHeads: noteHeads, measures: measures, tabGrid: tabGrid, input: input)
         let renderedControls = buildStopNotes(
             controls: controlTiming.controls,
@@ -42,6 +57,77 @@ struct NotationLayoutEngine {
             input: input
         )
         let articulations = buildArticulations(noteHeads: noteHeads, style: input.style)
+        logControlDiagnostics(timing: controlTiming, rendering: renderedControls)
+        return finalizedLayout(
+            tabGrid: tabGrid,
+            measures: measures,
+            noteHeads: noteHeads,
+            rests: rests,
+            stopNotes: renderedControls.stopNotes,
+            articulations: articulations,
+            derived: derived,
+            style: input.style
+        )
+    }
+
+    private func layoutTimeline(
+        snapshot: RhythmLayoutSnapshot,
+        input: NotationLayoutInput
+    ) -> NotationLayout {
+        let tabGrid = buildTabGrid(snapshot: snapshot, input: input)
+        let rhythmMeasures = expandedRhythmMeasures(
+            snapshot,
+            minimumMeasureCount: input.minimumMeasureCount
+        )
+        let measures = buildMeasures(rhythmMeasures: rhythmMeasures, tabGrid: tabGrid, input: input)
+        let noteHeads = buildNoteHeads(
+            notes: snapshot.notes,
+            measures: measures,
+            tabGrid: tabGrid,
+            input: input
+        )
+        let derived = buildDerivedArtifacts(
+            noteHeads: noteHeads,
+            measures: measures,
+            tabGrid: tabGrid,
+            rhythmMeasures: rhythmMeasures,
+            input: input
+        )
+        let rests = buildRests(
+            rests: snapshot.rests,
+            measures: measures,
+            tabGrid: tabGrid,
+            style: input.style
+        )
+        let stopNotes = buildStopNotes(
+            controls: snapshot.controls,
+            measures: measures,
+            tabGrid: tabGrid,
+            input: input
+        )
+        let articulations = buildArticulations(noteHeads: noteHeads, style: input.style)
+        return finalizedLayout(
+            tabGrid: tabGrid,
+            measures: measures,
+            noteHeads: noteHeads,
+            rests: rests,
+            stopNotes: stopNotes,
+            articulations: articulations,
+            derived: derived,
+            style: input.style
+        )
+    }
+
+    private func finalizedLayout(
+        tabGrid: TabGrid,
+        measures: [RenderedMeasure],
+        noteHeads: [RenderedNoteHead],
+        rests: [RenderedRest],
+        stopNotes: [RenderedStopNote],
+        articulations: [RenderedArticulation],
+        derived: BuiltDerivedArtifacts,
+        style: NotationLayoutStyle
+    ) -> NotationLayout {
         let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
         let noteHeadIDsByLayoutTick = Dictionary(
             grouping: noteHeads,
@@ -52,15 +138,13 @@ struct NotationLayoutEngine {
                 GameplayLayout.MeasurePosition(row: $0.row, xOffset: $0.xOffset, measureIndex: $0.measureIndex)
             }
         )
-        logControlDiagnostics(timing: controlTiming, rendering: renderedControls)
-
         return NotationLayout(
             tabGrid: tabGrid,
             measures: measures,
-            noteHeadSize: input.style.noteHeadSize,
+            noteHeadSize: style.noteHeadSize,
             noteHeads: noteHeads,
             rests: rests,
-            stopNotes: renderedControls.stopNotes,
+            stopNotes: stopNotes,
             articulations: articulations,
             stems: derived.stems,
             beams: derived.beams,
@@ -88,14 +172,24 @@ struct NotationLayoutEngine {
         noteHeads: [RenderedNoteHead],
         measures: [RenderedMeasure],
         tabGrid: TabGrid,
+        rhythmMeasures: [RhythmMeasure]?,
         input: NotationLayoutInput
     ) -> BuiltDerivedArtifacts {
-        let beamBuild = buildBeams(
-            noteHeads: noteHeads,
-            tabGrid: tabGrid,
-            timeSignature: input.timeSignature,
-            style: input.style
-        )
+        let beamBuild: BeamBuildResult
+        if let rhythmMeasures {
+            beamBuild = buildBeams(
+                noteHeads: noteHeads,
+                measures: rhythmMeasures,
+                style: input.style
+            )
+        } else {
+            beamBuild = buildBeams(
+                noteHeads: noteHeads,
+                tabGrid: tabGrid,
+                timeSignature: input.timeSignature,
+                style: input.style
+            )
+        }
         let stems = buildStems(
             noteHeads: noteHeads,
             beams: beamBuild.beams,
@@ -108,7 +202,9 @@ struct NotationLayoutEngine {
             style: input.style
         )
         let ledgerLines = buildLedgerLines(noteHeads: noteHeads, style: input.style)
-        let measureBars = buildMeasureBars(measures: measures)
+        let measureBars = rhythmMeasures == nil
+            ? buildMeasureBars(measures: measures)
+            : buildMeasureBars(measures: measures, tabGrid: tabGrid)
         return BuiltDerivedArtifacts(
             beams: beamBuild.beams,
             stems: stems,
@@ -137,12 +233,44 @@ struct NotationLayoutEngine {
             result.append(
                 RenderedMeasure(
                     id: measureIndex, measureIndex: measureIndex,
-                    row: currentRow, xOffset: currentX, width: tabGrid.measureWidth
+                    row: currentRow, xOffset: currentX, width: tabGrid.measureWidth,
+                    startTick: measureIndex * tabGrid.ticksPerMeasure,
+                    durationTicks: tabGrid.ticksPerMeasure
                 )
             )
             currentX += tabGrid.measureWidth + GameplayLayout.measureSpacing
         }
 
+        return result
+    }
+
+    private func buildMeasures(
+        rhythmMeasures: [RhythmMeasure],
+        tabGrid: TabGrid,
+        input: NotationLayoutInput
+    ) -> [RenderedMeasure] {
+        var result: [RenderedMeasure] = []
+        var currentRow = 0
+        var currentX = GameplayLayout.leftMargin
+        let rowWidth = max(GameplayLayout.maxRowWidth, input.style.rowWidth)
+
+        for rhythmMeasure in rhythmMeasures {
+            let width = tabGrid.leftPadding + CGFloat(rhythmMeasure.durationTicks) * tabGrid.tickWidth
+            if currentX + width > rowWidth, !result.isEmpty {
+                currentRow += 1
+                currentX = GameplayLayout.leftMargin
+            }
+            result.append(RenderedMeasure(
+                id: rhythmMeasure.measureIndex,
+                measureIndex: rhythmMeasure.measureIndex,
+                row: currentRow,
+                xOffset: currentX,
+                width: width,
+                startTick: rhythmMeasure.startTick,
+                durationTicks: rhythmMeasure.durationTicks
+            ))
+            currentX += width + GameplayLayout.measureSpacing
+        }
         return result
     }
 
@@ -180,6 +308,69 @@ struct NotationLayoutEngine {
         }
 
         return sortedNoteHeads(heads)
+    }
+
+    private func buildNoteHeads(
+        notes: [RhythmLayoutNote],
+        measures: [RenderedMeasure],
+        tabGrid: TabGrid,
+        input: NotationLayoutInput
+    ) -> [RenderedNoteHead] {
+        let measuresByIndex = Dictionary(uniqueKeysWithValues: measures.map { ($0.measureIndex, $0) })
+        return notes.compactMap { note in
+            guard let resolved = DrumNotationCatalog.resolve(
+                noteType: note.noteType,
+                sourceLaneID: note.sourceLaneID
+            ), let id = UInt64(exactly: note.eventID.rawValue),
+            let measure = measuresByIndex[note.position.measureIndex],
+            note.position.localTick >= 0,
+            note.position.localTick < measure.durationTicks,
+            note.position.absoluteTick == measure.startTick + note.position.localTick else {
+                return nil
+            }
+            let definition = resolved.definition
+            let drumType = definition.gameplayInstrument
+            let notePosition = input.notePositionOverrides[drumType] ?? definition.defaultPosition
+            let timeColumn = NotationTimeColumn(
+                measureIndex: note.position.measureIndex,
+                tickWithinMeasure: note.position.localTick,
+                absoluteLayoutTick: note.position.absoluteTick
+            )
+            return RenderedNoteHead(
+                id: id,
+                sourceObjectID: note.sourceObjectID,
+                sourceLaneID: note.sourceLaneID,
+                sourceChipID: note.sourceChipID,
+                noteType: note.noteType,
+                drumType: drumType,
+                glyph: definition.glyph,
+                variant: resolved.variant,
+                voice: definition.voice,
+                stemDirection: definition.defaultStemDirection,
+                timeColumn: timeColumn,
+                timePosition: Double(note.position.absoluteTick),
+                row: measure.row,
+                position: CGPoint(
+                    x: tabGrid.xPosition(in: measure, localTick: note.position.localTick),
+                    y: GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
+                        + notePosition.yOffset
+                ),
+                staffStep: staffStep(for: notePosition),
+                interval: note.rhythm.baseInterval,
+                catalogOrder: definition.catalogOrder,
+                eventID: note.eventID,
+                rhythmPosition: note.position,
+                rhythmDurationTicks: note.durationTicks,
+                rhythm: note.rhythm,
+                tupletID: note.tupletID
+            )
+        }.sorted {
+            if $0.timeColumn.absoluteLayoutTick != $1.timeColumn.absoluteLayoutTick {
+                return $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick
+            }
+            if $0.catalogOrder != $1.catalogOrder { return $0.catalogOrder < $1.catalogOrder }
+            return $0.id < $1.id
+        }
     }
 
     private func buildNoteHead(
@@ -224,7 +415,20 @@ struct NotationLayoutEngine {
             position: placement.center,
             staffStep: placement.staffStep,
             interval: note.interval,
-            catalogOrder: definition.catalogOrder
+            catalogOrder: definition.catalogOrder,
+            eventID: nil,
+            rhythmPosition: RhythmEventPosition(
+                measureIndex: placement.timeColumn.measureIndex,
+                localTick: placement.timeColumn.tickWithinMeasure,
+                absoluteTick: placement.timeColumn.absoluteLayoutTick
+            ),
+            rhythmDurationTicks: NotationRestTopologyBuilder().noteDurationTicks(
+                for: note.interval,
+                ticksPerMeasure: tabGrid.ticksPerMeasure,
+                timeSignature: input.timeSignature
+            ),
+            rhythm: NotationRhythm(baseInterval: note.interval),
+            tupletID: nil
         )
         let fallbackLaneID = resolved.usedLaneFallback
             ? note.sourceLaneID?.uppercased()
@@ -332,6 +536,31 @@ struct NotationLayoutEngine {
             ))
         }
 
+        return bars
+    }
+
+    func buildMeasureBars(
+        measures: [RenderedMeasure],
+        tabGrid: TabGrid
+    ) -> [RenderedMeasureBar] {
+        var bars: [RenderedMeasureBar] = []
+        for (index, measure) in measures.enumerated() {
+            let isFirstInRow = index == 0 || measures[index - 1].row != measure.row
+            if isFirstInRow {
+                bars.append(RenderedMeasureBar(
+                    id: "bar_\(measure.measureIndex)",
+                    row: measure.row,
+                    x: measure.xOffset,
+                    isFinal: false
+                ))
+            }
+            bars.append(RenderedMeasureBar(
+                id: "bar_\(measure.measureIndex)_end",
+                row: measure.row,
+                x: tabGrid.xPosition(in: measure, localTick: measure.durationTicks),
+                isFinal: measure.measureIndex == measures.last?.measureIndex
+            ))
+        }
         return bars
     }
 }
