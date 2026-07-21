@@ -396,6 +396,67 @@ struct SwiftUIRenderingNotationTests {
             SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
         }
     }
+
+    @Test("rhythm dot tuplet feel and warning views mount with semantic labels")
+    func testRhythmPrimitiveViewsRender() async throws {
+        try await TestSetup.withTestSetup {
+            let style = NotationLayoutStyle.gameplayDefault
+            let dot = RenderedRhythmDot(
+                source: .event(RhythmEventID(rawValue: 1)),
+                position: CGPoint(x: 30, y: 30),
+                rowIndex: 0
+            )
+            let tuplet = RenderedTuplet(
+                id: RhythmTupletID(
+                    measureIndex: 0,
+                    voice: .upper,
+                    beatGroupIndex: 0,
+                    startTick: 0,
+                    durationTicks: 240,
+                    stableMemberEventID: RhythmEventID(rawValue: 1)
+                ),
+                voice: .upper,
+                ratio: TupletRatio(actual: 3, normal: 2),
+                memberEventIDs: [RhythmEventID(rawValue: 1)],
+                bracketPoints: [
+                    CGPoint(x: 20, y: 50), CGPoint(x: 20, y: 40), CGPoint(x: 45, y: 40),
+                    CGPoint(x: 55, y: 40), CGPoint(x: 80, y: 40), CGPoint(x: 80, y: 50)
+                ],
+                isBracketVisible: true,
+                labelPosition: CGPoint(x: 50, y: 40),
+                rowIndex: 0
+            )
+            let feel = RenderedFeelMark(
+                feel: .swing,
+                position: CGPoint(x: 50, y: 20),
+                rowIndex: 0,
+                style: style
+            )
+            let warning = RenderedRhythmWarning.measure(
+                measureIndex: 0,
+                codes: [.ambiguousBeatGrouping],
+                position: CGPoint(x: 80, y: 20),
+                style: style
+            )
+
+            let views = ZStack {
+                NotationRhythmDotView(dot: dot, style: style)
+                NotationTupletView(tuplet: tuplet, style: style)
+                NotationFeelMarkView(feelMark: feel, style: style)
+                NotationRhythmWarningView(warning: warning, style: style)
+            }
+            SwiftUITestUtilities.assertViewWithEnvironment(views, size: CGSize(width: 180, height: 120))
+            #expect(SwiftUITestUtilities.renderedTexts(
+                from: NotationTupletView(tuplet: tuplet, style: style).body
+            ).contains(tuplet.accessibilityLabel))
+            #expect(SwiftUITestUtilities.renderedTexts(
+                from: NotationFeelMarkView(feelMark: feel, style: style).body
+            ).contains(feel.accessibilityLabel))
+            #expect(SwiftUITestUtilities.renderedTexts(
+                from: NotationRhythmWarningView(warning: warning, style: style).body
+            ).contains(warning.accessibilityLabel))
+        }
+    }
 }
 
 private extension SwiftUIRenderingNotationTests {

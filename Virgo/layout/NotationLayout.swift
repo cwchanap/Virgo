@@ -169,6 +169,16 @@ struct NotationLayoutStyle: Equatable {
     let articulationDiameter: CGFloat
     let articulationStrokeWidth: CGFloat
     let articulationVerticalOffset: CGFloat
+    let rhythmDotRadius: CGFloat
+    let rhythmDotSpacing: CGFloat
+    let tupletLineWidth: CGFloat
+    let tupletLabelSize: CGSize
+    let tupletVerticalOffset: CGFloat
+    let tupletHookLength: CGFloat
+    let feelMarkSize: CGSize
+    let feelMarkVerticalOffset: CGFloat
+    let warningSize: CGSize
+    let warningVerticalOffset: CGFloat
 
     var noteHeadSize: CGSize {
         CGSize(width: noteHeadWidth, height: noteHeadHeight)
@@ -199,7 +209,17 @@ struct NotationLayoutStyle: Equatable {
         stopMarkVerticalOffset: 18,
         articulationDiameter: 10,
         articulationStrokeWidth: 1.5,
-        articulationVerticalOffset: 18
+        articulationVerticalOffset: 18,
+        rhythmDotRadius: 2.5,
+        rhythmDotSpacing: 4,
+        tupletLineWidth: 1.5,
+        tupletLabelSize: CGSize(width: 14, height: 16),
+        tupletVerticalOffset: 10,
+        tupletHookLength: 6,
+        feelMarkSize: CGSize(width: 72, height: 22),
+        feelMarkVerticalOffset: 30,
+        warningSize: CGSize(width: 180, height: 22),
+        warningVerticalOffset: 56
     )
 
     func with(rowWidth newRowWidth: CGFloat) -> NotationLayoutStyle {
@@ -228,7 +248,17 @@ struct NotationLayoutStyle: Equatable {
             stopMarkVerticalOffset: stopMarkVerticalOffset,
             articulationDiameter: articulationDiameter,
             articulationStrokeWidth: articulationStrokeWidth,
-            articulationVerticalOffset: articulationVerticalOffset
+            articulationVerticalOffset: articulationVerticalOffset,
+            rhythmDotRadius: rhythmDotRadius,
+            rhythmDotSpacing: rhythmDotSpacing,
+            tupletLineWidth: tupletLineWidth,
+            tupletLabelSize: tupletLabelSize,
+            tupletVerticalOffset: tupletVerticalOffset,
+            tupletHookLength: tupletHookLength,
+            feelMarkSize: feelMarkSize,
+            feelMarkVerticalOffset: feelMarkVerticalOffset,
+            warningSize: warningSize,
+            warningVerticalOffset: warningVerticalOffset
         )
     }
 }
@@ -246,54 +276,37 @@ struct NotationLayout {
     var flags: [RenderedFlag]
     var ledgerLines: [RenderedLedgerLine]
     var measureBars: [RenderedMeasureBar]
+    var rhythmDots: [RenderedRhythmDot] = []
+    var tuplets: [RenderedTuplet] = []
+    var feelMarks: [RenderedFeelMark] = []
+    var rhythmWarnings: [RenderedRhythmWarning] = []
     var noteHeadPositionsByID: [UInt64: CGPoint]
     var noteHeadIDsByLayoutTick: [Int: Set<UInt64>]
+    var paintedBounds: CGRect = .null
     var totalHeight: CGFloat
 
     var hasPlayableContent: Bool { !noteHeads.isEmpty }
 
     var hasRenderableContent: Bool {
-        hasPlayableContent || rests.contains(where: \.isPrinted) || !stopNotes.isEmpty
+        hasPlayableContent
+            || rests.contains(where: \.isPrinted)
+            || !stopNotes.isEmpty
+            || !feelMarks.isEmpty
+            || !rhythmWarnings.isEmpty
     }
 
     /// Vertical translation needed to keep notation overlays inside the sheet's
     /// zero-based render bounds. Primitive coordinates remain staff-relative;
     /// the sheet applies this inset to the complete notation coordinate system.
-    func topContentInset(style: NotationLayoutStyle) -> CGFloat {
-        let minimumArticulationY = articulations
-            .map {
-                $0.position.y
-                    - style.articulationDiameter / 2
-                    - style.articulationStrokeWidth / 2
-            }
-            .min() ?? 0
-        let minimumStopY = stopNotes
-            .map {
-                $0.position.y
-                    - style.stopMarkSize / 2
-                    - style.stopMarkStrokeWidth / 2
-            }
-            .min() ?? 0
-        return max(0, -min(minimumArticulationY, minimumStopY))
+    func topContentInset(style _: NotationLayoutStyle) -> CGFloat {
+        guard !paintedBounds.isNull else { return 0 }
+        return max(0, -paintedBounds.minY)
     }
 
     /// Minimum content width needed to contain all rendered primitives.
     var contentWidth: CGFloat {
-        let primitiveMaxX = [
-            noteHeads.map(\.position.x),
-            measureBars.map(\.x),
-            beams.flatMap { [$0.start.x, $0.end.x] },
-            ledgerLines.flatMap { [$0.start.x, $0.end.x] },
-            stems.flatMap { [$0.start.x, $0.end.x] }
-        ]
-        .flatMap { $0 }
-        .max()
-
-        guard let maxX = primitiveMaxX else {
-            return GameplayLayout.maxRowWidth
-        }
-
-        return max(GameplayLayout.maxRowWidth, maxX + GameplayLayout.uniformSpacing)
+        guard !paintedBounds.isNull else { return GameplayLayout.maxRowWidth }
+        return max(GameplayLayout.maxRowWidth, paintedBounds.maxX + GameplayLayout.uniformSpacing)
     }
 
     static let empty = NotationLayout(

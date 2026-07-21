@@ -208,4 +208,19 @@ struct NotationLayoutControlRenderingTests {
         #expect(labels == ["Closed hi-hat", "Open hi-hat", "Pedal hi-hat"])
         #expect(stop.accessibilityLabel == "Damp Crash")
     }
+
+    @Test("control and articulation painted bounds participate in the layout union")
+    func controlAndArticulationBoundsAreUnioned() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let result = support.layout(
+            notes: [Note(interval: .quarter, noteType: .openHiHat, measureNumber: 1, measureOffset: 0)],
+            controls: [support.control(targetLaneID: "1A")],
+            style: style
+        )
+        let stop = try #require(result.stopNotes.first)
+        let articulation = try #require(result.articulations.first)
+
+        #expect(result.paintedBounds.contains(stop.paintedBounds(style: style)))
+        #expect(result.paintedBounds.contains(articulation.paintedBounds(style: style)))
+    }
 }

@@ -58,7 +58,7 @@ struct NotationLayoutEngine {
         )
         let articulations = buildArticulations(noteHeads: noteHeads, style: input.style)
         logControlDiagnostics(timing: controlTiming, rendering: renderedControls)
-        return finalizedLayout(
+        return finalizedLayout(NotationLayoutFinalizationInput(
             tabGrid: tabGrid,
             measures: measures,
             noteHeads: noteHeads,
@@ -66,8 +66,12 @@ struct NotationLayoutEngine {
             stopNotes: renderedControls.stopNotes,
             articulations: articulations,
             derived: derived,
+            rhythmDots: [],
+            tuplets: [],
+            feelMarks: [],
+            rhythmWarnings: [],
             style: input.style
-        )
+        ))
     }
 
     private func layoutTimeline(
@@ -80,6 +84,10 @@ struct NotationLayoutEngine {
             minimumMeasureCount: input.minimumMeasureCount
         )
         let measures = buildMeasures(rhythmMeasures: rhythmMeasures, tabGrid: tabGrid, input: input)
+        let unsupportedMeasureIndexes = Set(rhythmMeasures.compactMap { measure -> Int? in
+            if case .unsupported = measure.engravingSupport { return measure.measureIndex }
+            return nil
+        })
         let noteHeads = buildNoteHeads(
             notes: snapshot.notes,
             measures: measures,
@@ -94,7 +102,9 @@ struct NotationLayoutEngine {
             input: input
         )
         let rests = buildRests(
-            rests: snapshot.rests,
+            rests: snapshot.rests.filter {
+                !unsupportedMeasureIndexes.contains($0.position.measureIndex)
+            },
             measures: measures,
             tabGrid: tabGrid,
             style: input.style
@@ -106,7 +116,30 @@ struct NotationLayoutEngine {
             input: input
         )
         let articulations = buildArticulations(noteHeads: noteHeads, style: input.style)
-        return finalizedLayout(
+        let rhythmDots = buildRhythmDots(
+            noteHeads: noteHeads,
+            rests: rests,
+            unsupportedMeasureIndexes: unsupportedMeasureIndexes,
+            style: input.style
+        )
+        let tuplets = buildTuplets(
+            noteHeads: noteHeads,
+            rests: rests,
+            context: TupletRenderingContext(
+                beams: derived.beams,
+                feel: snapshot.feel,
+                rhythmMeasures: rhythmMeasures,
+                unsupportedMeasureIndexes: unsupportedMeasureIndexes,
+                style: input.style
+            )
+        )
+        let feelMarks = buildFeelMarks(feel: snapshot.feel, measures: measures, style: input.style)
+        let rhythmWarnings = buildRhythmWarnings(
+            rhythmMeasures: rhythmMeasures,
+            renderedMeasures: measures,
+            style: input.style
+        )
+        return finalizedLayout(NotationLayoutFinalizationInput(
             tabGrid: tabGrid,
             measures: measures,
             noteHeads: noteHeads,
@@ -114,50 +147,15 @@ struct NotationLayoutEngine {
             stopNotes: stopNotes,
             articulations: articulations,
             derived: derived,
+            rhythmDots: rhythmDots,
+            tuplets: tuplets,
+            feelMarks: feelMarks,
+            rhythmWarnings: rhythmWarnings,
             style: input.style
-        )
+        ))
     }
 
-    private func finalizedLayout(
-        tabGrid: TabGrid,
-        measures: [RenderedMeasure],
-        noteHeads: [RenderedNoteHead],
-        rests: [RenderedRest],
-        stopNotes: [RenderedStopNote],
-        articulations: [RenderedArticulation],
-        derived: BuiltDerivedArtifacts,
-        style: NotationLayoutStyle
-    ) -> NotationLayout {
-        let noteHeadPositionsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0.position) })
-        let noteHeadIDsByLayoutTick = Dictionary(
-            grouping: noteHeads,
-            by: { $0.timeColumn.absoluteLayoutTick }
-        ).mapValues { Set($0.map(\.id)) }
-        let totalHeight = GameplayLayout.totalHeight(
-            for: measures.map {
-                GameplayLayout.MeasurePosition(row: $0.row, xOffset: $0.xOffset, measureIndex: $0.measureIndex)
-            }
-        )
-        return NotationLayout(
-            tabGrid: tabGrid,
-            measures: measures,
-            noteHeadSize: style.noteHeadSize,
-            noteHeads: noteHeads,
-            rests: rests,
-            stopNotes: stopNotes,
-            articulations: articulations,
-            stems: derived.stems,
-            beams: derived.beams,
-            flags: derived.flags,
-            ledgerLines: derived.ledgerLines,
-            measureBars: derived.measureBars,
-            noteHeadPositionsByID: noteHeadPositionsByID,
-            noteHeadIDsByLayoutTick: noteHeadIDsByLayoutTick,
-            totalHeight: totalHeight
-        )
-    }
-
-    private struct BuiltDerivedArtifacts {
+    struct BuiltDerivedArtifacts {
         let beams: [RenderedBeam]
         let stems: [RenderedStem]
         let flags: [RenderedFlag]
