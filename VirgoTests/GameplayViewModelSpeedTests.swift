@@ -368,6 +368,42 @@ struct GameplayViewModelSpeedTests {
         #expect(vm.pausedElapsedTime >= 8)
     }
 
+    @Test("BGM speed change captures media time with the previous one-X offset")
+    func bgmSpeedChangePreservesOldSpeedOffsetPosition() async throws {
+        let song = Song(
+            title: "Offset speed transition",
+            artist: "Tester",
+            bpm: 120,
+            duration: "0:10",
+            genre: "DTX",
+            bgmStartOffsetSeconds: 1
+        )
+        let chart = Chart(difficulty: .medium, song: song)
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 1,
+            measureOffset: 0
+        ))
+        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let vm = GameplayViewModel(
+            chart: chart,
+            metronome: ScheduledMetronomeSpy(audioDriver: RecordingAudioDriver()),
+            practiceSettings: settings
+        )
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 5)
+        player.currentTime = 2
+        vm.bgmPlayer = player
+        vm.isPlaying = true
+        defer { vm.cleanup() }
+
+        vm.updateSpeed(0.5)
+
+        #expect(abs(vm.pausedElapsedTime - 6) < 0.001)
+    }
+
     @Test("Speed change while playing consumes metronome playback time when available")
     func applySpeedChangeWhilePlaying_usesMetronomeTime() async throws {
         let stub = MetronomePlaybackTimeStub(audioDriver: RecordingAudioDriver())

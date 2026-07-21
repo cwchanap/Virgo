@@ -177,3 +177,55 @@ Additional correction checks:
 - `rtk git diff --check`: passed.
 - Live speed-transition caller audit found no playing path that separately installs a matcher and listening origin.
 - Progress ledger unchanged; no Task 8 metronome schedule, BGM anchor, playhead ownership, or fatal-state UI work added.
+
+## Second Review Correction Wave
+
+Review found that BGM-owned live speed transitions refreshed the speed-dependent one-X BGM offset before capturing
+the old-speed musical position. With a two-second media position, one-second one-X offset, and a 1.0x to 0.5x
+transition, this double-scaled the offset and resumed at eight seconds instead of six seconds.
+
+### RED/GREEN: preserve the previous-speed BGM position
+
+The regression first failed with the incorrect eight-second result. Live playback now captures its authoritative
+old-speed position before `refreshTimingCaches()` changes the BGM offset. The existing ownership order remains BGM
+media time, metronome time, playback clock, then paused-offset fallback. The captured position is scaled exactly once
+for the new speed. Paused transitions and no-BGM/metronome behavior retain their existing paths.
+
+### Second Correction Verification
+
+Focused speed and BGM suites, parallel testing disabled:
+
+```text
+Result: Passed
+Total tests: 44
+Failed: 0
+Skipped: 0
+xcresult: DerivedData/Logs/Test/Test-Virgo-2026.07.21_13-33-06--0700.xcresult
+```
+
+Final focused six-suite Task 7 matrix, parallel testing disabled:
+
+```text
+Result: Passed
+Total tests: 97
+Failed: 0
+Skipped: 0
+xcresult: DerivedData/Logs/Test/Test-Virgo-2026.07.21_13-33-36--0700.xcresult
+```
+
+Full nonparallel unit suite with code coverage:
+
+```text
+Result: Passed
+Total tests: 1785
+Failed: 0
+Skipped: 0
+Device-expanded runs: 1825 (dynamic parameters)
+xcresult: DerivedData/Logs/Test/Test-Virgo-2026.07.21_13-34-08--0700.xcresult
+```
+
+Additional second-correction checks:
+
+- `rtk swiftlint lint --no-cache`: 159 warnings and 0 serious violations across 291 files.
+- `rtk git diff --check`: passed.
+- Progress ledger unchanged; no Task 8 metronome schedule, BGM anchor, playhead ownership, or fatal-state UI work added.

@@ -94,6 +94,9 @@ extension GameplayViewModel {
         if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
             practiceSettings.setSpeed(clampedSpeed)
         }
+        let speedTransitionPosition = isPlaying
+            ? captureSpeedTransitionPosition(previousSpeed: previousSpeed)
+            : nil
         refreshTimingCaches()
         let currentSpeed = practiceSettings.speedMultiplier
         guard abs(previousSpeed - currentSpeed) > 0.0001 else { return }
@@ -104,11 +107,13 @@ extension GameplayViewModel {
         let effectiveBPMValue = effectiveBPM()
 
         // If playing, update metronome and BGM rate immediately
-        if isPlaying {
+        if isPlaying, let speedTransitionPosition {
             applySpeedChangeWhilePlaying(
                 previousSpeed: previousSpeed,
                 currentSpeed: currentSpeed,
-                effectiveBPMValue: effectiveBPMValue
+                effectiveBPMValue: effectiveBPMValue,
+                elapsedAtPreviousSpeed: speedTransitionPosition.elapsed,
+                hasMetronomeTime: speedTransitionPosition.hasMetronomeTime
             )
         } else if pausedElapsedTime > 0, previousSpeed > 0, currentSpeed > 0 {
             let speedRatio = previousSpeed / currentSpeed
@@ -201,24 +206,14 @@ extension GameplayViewModel {
     private func applySpeedChangeWhilePlaying(
         previousSpeed: Double,
         currentSpeed: Double,
-        effectiveBPMValue: Double
+        effectiveBPMValue: Double,
+        elapsedAtPreviousSpeed: Double,
+        hasMetronomeTime: Bool
     ) {
         guard let timingConfiguration = inputTimingConfiguration(speed: currentSpeed) else {
             Logger.error("Cannot change playback speed without an input timing configuration")
             return
         }
-        let metronomeTime = metronome.getCurrentPlaybackTime()
-        let elapsedAtPreviousSpeed: Double
-        if let bgmPlayer, bgmPlayer.currentTime > 0, previousSpeed > 0 {
-            elapsedAtPreviousSpeed = (bgmPlayer.currentTime / previousSpeed) + bgmOffsetSeconds
-        } else if let metronomeTime {
-            elapsedAtPreviousSpeed = pausedElapsedTime + metronomeTime
-        } else if let playbackStartTime {
-            elapsedAtPreviousSpeed = max(pausedElapsedTime, Date().timeIntervalSince(playbackStartTime))
-        } else {
-            elapsedAtPreviousSpeed = pausedElapsedTime
-        }
-
         if let bgmPlayer = bgmPlayer {
             bgmPlayer.enableRate = true
             bgmPlayer.rate = clampedBGMRate(for: currentSpeed)
@@ -228,7 +223,7 @@ extension GameplayViewModel {
             let speedRatio = previousSpeed / currentSpeed
             pausedElapsedTime = elapsedAtPreviousSpeed * speedRatio
         }
-        if metronomeTime == nil {
+        if !hasMetronomeTime {
             Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
         }
         let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
@@ -260,6 +255,25 @@ extension GameplayViewModel {
 
         let speedPercent = Int(currentSpeed * 100)
         Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
+    }
+
+    private func captureSpeedTransitionPosition(
+        previousSpeed: Double
+    ) -> (elapsed: Double, hasMetronomeTime: Bool) {
+        let metronomeTime = metronome.getCurrentPlaybackTime()
+        if let bgmPlayer, bgmPlayer.currentTime > 0, previousSpeed > 0 {
+            return (
+                elapsed: (bgmPlayer.currentTime / previousSpeed) + bgmOffsetSeconds,
+                hasMetronomeTime: metronomeTime != nil
+            )
+        }
+        if let metronomeTime {
+            return (pausedElapsedTime + metronomeTime, true)
+        }
+        if let playbackStartTime {
+            return (max(pausedElapsedTime, Date().timeIntervalSince(playbackStartTime)), false)
+        }
+        return (pausedElapsedTime, false)
     }
 
     /// Stops and restarts the metronome at a scheduled future time for a live speed
