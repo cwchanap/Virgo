@@ -132,6 +132,73 @@ struct RhythmTimelineBuilderTests {
         #expect(ambiguous.measures[0].beatGroups.count == 1)
     }
 
+    @Test("beat-group lookup covers first middle last residual and exact boundaries")
+    func beatGroupLookupBoundaries() throws {
+        let shortened = try MeasureLengthOverride(
+            measureIndex: 0,
+            ratioToWholeNote: .init(numerator: 5, denominator: 8)
+        )
+        let timeline = try build(metadata: metadata(.fourFour, overrides: [shortened]), events: [])
+        let measure = try #require(timeline.measures.first)
+
+        func position(_ localTick: Int) -> RhythmEventPosition {
+            RhythmEventPosition(
+                measureIndex: measure.measureIndex,
+                localTick: localTick,
+                absoluteTick: measure.startTick + localTick
+            )
+        }
+
+        #expect(timeline.beatGroup(containing: position(0))?.groupIndex == 0)
+        #expect(timeline.beatGroup(containing: position(2))?.groupIndex == 1)
+        #expect(timeline.beatGroup(containing: position(3))?.groupIndex == 1)
+        #expect(timeline.beatGroup(containing: position(4))?.groupIndex == 2)
+        #expect(timeline.beatGroup(containing: position(4))?.isResidual == true)
+        #expect(timeline.beatGroup(containing: position(measure.durationTicks))?.groupIndex == 2)
+    }
+
+    @Test("beat-group lookup handles a high-count accepted collection")
+    func beatGroupLookupAtMaterializationCap() throws {
+        let groupCount = RhythmLimits.maximumMaterializedRhythmUnitCount
+        let extended = try MeasureLengthOverride(
+            measureIndex: 0,
+            ratioToWholeNote: .init(numerator: groupCount, denominator: 4)
+        )
+        let timeline = try build(metadata: metadata(.fourFour, overrides: [extended]), events: [])
+        let measure = try #require(timeline.measures.first)
+        let middleIndex = groupCount / 2
+        let position = RhythmEventPosition(
+            measureIndex: 0,
+            localTick: middleIndex,
+            absoluteTick: middleIndex
+        )
+
+        #expect(measure.beatGroups.count == groupCount)
+        #expect(timeline.beatGroup(containing: position)?.groupIndex == middleIndex)
+    }
+
+    @Test("beat-group lookup rejects hostile and inconsistent positions without trapping")
+    func beatGroupLookupRejectsInvalidPositions() throws {
+        let timeline = try build(metadata: metadata(.fourFour), events: [], minimumMeasureCount: 2)
+        let laterMeasure = timeline.measures[1]
+
+        #expect(timeline.beatGroup(containing: .init(
+            measureIndex: 1,
+            localTick: Int.max,
+            absoluteTick: Int.max
+        )) == nil)
+        #expect(timeline.beatGroup(containing: .init(
+            measureIndex: 1,
+            localTick: -1,
+            absoluteTick: laterMeasure.startTick - 1
+        )) == nil)
+        #expect(timeline.beatGroup(containing: .init(
+            measureIndex: 1,
+            localTick: 1,
+            absoluteTick: laterMeasure.startTick
+        )) == nil)
+    }
+
     @Test("compound nine-eight and twelve-eight use dotted-quarter groups")
     func remainingCompoundMeters() throws {
         let nineEight = try build(metadata: metadata(.nineEight), events: [])
@@ -141,6 +208,22 @@ struct RhythmTimelineBuilderTests {
         #expect(nineEight.measures[0].beatGroups.map(\.durationTicks) == [3, 3, 3])
         #expect(twelveEight.measures[0].beatGroups.count == 4)
         #expect(twelveEight.measures[0].beatGroups.map(\.durationTicks) == [3, 3, 3, 3])
+    }
+
+    @Test("seconds conversion rejects nonfinite results from positive subnormal inputs")
+    func secondsConversionRejectsNonfiniteResults() throws {
+        let timeline = try build(metadata: metadata(.fourFour), events: [])
+
+        #expect(timeline.seconds(
+            forAbsoluteTick: 1,
+            bpm: .leastNonzeroMagnitude,
+            speed: 1
+        ) == nil)
+        #expect(timeline.seconds(
+            forAbsoluteTick: 1,
+            bpm: 120,
+            speed: .leastNonzeroMagnitude
+        ) == nil)
     }
 
     @Test("BGM source anchors use the same exact projection")
