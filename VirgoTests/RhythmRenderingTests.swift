@@ -90,6 +90,73 @@ struct RhythmRenderingTests {
         #expect(bracketed.paintedBounds.contains(bracketedTuplet.paintedBounds(style: .gameplayDefault)))
     }
 
+    @Test("partially beamed tuplets keep brackets around note-note-rest in both stem directions")
+    func partiallyBeamedTupletsKeepBrackets() throws {
+        let upperID = tupletID(voice: .upper, durationTicks: 240, stableID: 25)
+        let upperNotes = [0, 80].enumerated().map { index, tick in
+            layoutNote(
+                id: 25 + index,
+                tick: tick,
+                noteType: index == 0 ? .snare : .hiHat,
+                rhythm: tripletRhythm(base: .eighth),
+                tupletID: upperID,
+                durationTicks: 80
+            )
+        }
+        let upperRest = RhythmLayoutRest(
+            position: position(tick: 160),
+            durationTicks: 80,
+            voice: .upper,
+            rhythm: tripletRhythm(base: .eighth),
+            visibility: .printed,
+            tupletID: upperID
+        )
+        let upper = NotationLayoutEngine().layout(input: NotationLayoutInput(
+            timing: .timeline(try snapshot(
+                measures: [rhythmMeasure()],
+                notes: upperNotes,
+                rests: [upperRest]
+            ))
+        ))
+        let upperTuplet = try #require(upper.tuplets.first)
+
+        #expect(!upper.beams.isEmpty)
+        #expect(upperTuplet.isBracketVisible)
+        #expect(upperTuplet.bracketPoints.count == 6)
+
+        let lowerID = tupletID(voice: .lower, durationTicks: 240, stableID: 28)
+        let lowerRest = RhythmLayoutRest(
+            position: position(tick: 0),
+            durationTicks: 80,
+            voice: .lower,
+            rhythm: tripletRhythm(base: .eighth),
+            visibility: .printed,
+            tupletID: lowerID
+        )
+        let lowerNotes = [80, 160].enumerated().map { index, tick in
+            layoutNote(
+                id: 28 + index,
+                tick: tick,
+                noteType: index == 0 ? .bass : .hiHatPedal,
+                rhythm: tripletRhythm(base: .eighth),
+                tupletID: lowerID,
+                durationTicks: 80
+            )
+        }
+        let lower = NotationLayoutEngine().layout(input: NotationLayoutInput(
+            timing: .timeline(try snapshot(
+                measures: [rhythmMeasure()],
+                notes: lowerNotes,
+                rests: [lowerRest]
+            ))
+        ))
+        let lowerTuplet = try #require(lower.tuplets.first)
+
+        #expect(!lower.beams.isEmpty)
+        #expect(lowerTuplet.isBracketVisible)
+        #expect(lowerTuplet.bracketPoints.count == 6)
+    }
+
     @Test("swing and shuffle emit one accessible first-staff feel mark")
     func feelMarksAreChartScoped() throws {
         for feel in [RhythmicFeel.swing, .shuffle] {
@@ -206,6 +273,58 @@ struct RhythmRenderingTests {
         #expect(shuffledRestTuplet.tuplets.count == 1)
     }
 
+    @Test("declared swing and shuffle suppress chordal long-short pairs by occupied onset")
+    func declaredFeelSuppressesChordalLongShortPair() throws {
+        let pairID = tupletID(voice: .upper, durationTicks: 240, stableID: 45)
+        let chordalPair = [
+            layoutNote(
+                id: 45,
+                tick: 0,
+                noteType: .snare,
+                rhythm: tripletRhythm(base: .quarter),
+                tupletID: pairID,
+                durationTicks: 160
+            ),
+            layoutNote(
+                id: 46,
+                tick: 0,
+                noteType: .hiHat,
+                rhythm: tripletRhythm(base: .quarter),
+                tupletID: pairID,
+                durationTicks: 160
+            ),
+            layoutNote(
+                id: 47,
+                tick: 160,
+                noteType: .snare,
+                rhythm: tripletRhythm(base: .eighth),
+                tupletID: pairID,
+                durationTicks: 80
+            ),
+            layoutNote(
+                id: 48,
+                tick: 160,
+                noteType: .hiHat,
+                rhythm: tripletRhythm(base: .eighth),
+                tupletID: pairID,
+                durationTicks: 80
+            )
+        ]
+
+        for feel in [RhythmicFeel.swing, .shuffle] {
+            let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+                timing: .timeline(try snapshot(
+                    measures: [rhythmMeasure()],
+                    notes: chordalPair,
+                    feel: feel
+                ))
+            ))
+
+            #expect(layout.tuplets.isEmpty)
+            #expect(layout.feelMarks.count == 1)
+        }
+    }
+
     @Test("unsupported measures keep exact event x while suppressing duration-bearing engraving")
     func unsupportedMeasureUsesConservativeEngraving() throws {
         let tuplet = tupletID(voice: .upper, durationTicks: 240, stableID: 41)
@@ -249,6 +368,7 @@ struct RhythmRenderingTests {
 
         #expect(unsupported.noteHeads.map(\.position.x) == supported.noteHeads.map(\.position.x))
         #expect(unsupported.beams.isEmpty)
+        #expect(unsupported.flags.isEmpty)
         #expect(unsupported.rhythmDots.isEmpty)
         #expect(unsupported.tuplets.isEmpty)
         #expect(unsupported.rests.isEmpty)
@@ -285,6 +405,38 @@ struct RhythmRenderingTests {
         #expect(warning.codes == [.malformedTimeSignature])
         #expect(warning.accessibilityLabel.contains("measure 13"))
         #expect(!warning.accessibilityLabel.contains("measure 12"))
+    }
+
+    @Test("diagnostics log once at snapshot ingestion and repeated layout stays silent")
+    func repeatedLayoutDoesNotRelogPersistedDiagnostics() throws {
+        let diagnostic = try PersistedRhythmDiagnostic(
+            code: .ambiguousBeatGrouping,
+            severity: .engravingOnly,
+            sourceMeasureIndex: 0,
+            sourceLineNumber: 12
+        )
+        var messages: [String] = []
+        let resolvedSnapshot = try RhythmLayoutSnapshot(
+            ticksPerWholeNote: 960,
+            measures: [rhythmMeasure(support: .unsupported([.ambiguousBeatGrouping]))],
+            notes: [],
+            controls: [],
+            rests: [],
+            feel: .straight,
+            diagnostics: [diagnostic, diagnostic],
+            diagnosticLog: { messages.append($0) }
+        )
+
+        #expect(resolvedSnapshot.diagnostics == [diagnostic])
+        #expect(messages == [
+            "rhythmDiagnostic code=ambiguousBeatGrouping measureIndex=0 lineNumber=12"
+        ])
+
+        let engine = NotationLayoutEngine()
+        _ = engine.layout(input: NotationLayoutInput(timing: .timeline(resolvedSnapshot)))
+        _ = engine.layout(input: NotationLayoutInput(timing: .timeline(resolvedSnapshot)))
+
+        #expect(messages.count == 1)
     }
 }
 

@@ -148,12 +148,14 @@ extension NotationLayoutEngine {
             $0.rhythmPosition.localTick < $1.rhythmPosition.localTick
         }
         let slot = id.durationTicks / 3
-        guard members.count == 2,
-              members.allSatisfy({ $0.rhythm.tuplet == TupletRatio(actual: 3, normal: 2) }) else { return false }
-        return members[0].rhythmPosition.localTick == id.startTick
-            && members[1].rhythmPosition.localTick == id.startTick + slot * 2
-            && members[0].rhythmDurationTicks == slot * 2
-            && members[1].rhythmDurationTicks == slot
+        let membersByOnset = Dictionary(grouping: members, by: { $0.rhythmPosition.localTick })
+        let occupiedOnsets = membersByOnset.keys.sorted()
+        guard occupiedOnsets == [id.startTick, id.startTick + slot * 2],
+              members.allSatisfy({ $0.rhythm.tuplet == TupletRatio(actual: 3, normal: 2) }),
+              membersByOnset[id.startTick, default: []].allSatisfy({ $0.rhythmDurationTicks == slot * 2 }),
+              membersByOnset[id.startTick + slot * 2, default: []]
+                .allSatisfy({ $0.rhythmDurationTicks == slot }) else { return false }
+        return true
     }
 
     func buildFeelMarks(
@@ -189,12 +191,6 @@ extension NotationLayoutEngine {
         return rhythmMeasures.compactMap { measure in
             guard case .unsupported(let codes) = measure.engravingSupport,
                   let rendered = renderedByIndex[measure.measureIndex] else { return nil }
-            for code in codes {
-                Logger.warning(RhythmDiagnosticPresentation(code: code).logMessage(
-                    sourceMeasureIndex: measure.measureIndex,
-                    sourceLineNumber: nil
-                ))
-            }
             let staffTop = min(
                 GameplayLayout.StaffLinePosition.line1.absoluteY(for: rendered.row),
                 GameplayLayout.StaffLinePosition.line5.absoluteY(for: rendered.row)
@@ -231,12 +227,19 @@ private extension NotationLayoutEngine {
         let memberBeams = beams.filter { beam in
             beam.noteHeadIDs.filter(memberHeadIDs.contains).count >= 2
         }
+        let beamedHeadIDs = Set(memberBeams.flatMap(\.noteHeadIDs))
+        let headsByOnset = Dictionary(grouping: memberHeads, by: { $0.timeColumn })
+        let beamSpansEntireGroup = memberRests.isEmpty
+            && !memberBeams.isEmpty
+            && headsByOnset.values.allSatisfy { heads in
+                heads.contains { beamedHeadIDs.contains($0.id) }
+            }
         let direction = memberHeads.first?.stemDirection ?? (id.voice == .upper ? .up : .down)
         let memberBounds = memberHeads.map { $0.paintedBounds(style: style) }
             + memberRests.map { $0.paintedBounds(style: style) }
         guard let firstBounds = memberBounds.first else { return nil }
         let bounds = memberBounds.dropFirst().reduce(firstBounds) { $0.union($1) }
-        let bracketVisible = memberBeams.isEmpty
+        let bracketVisible = !beamSpansEntireGroup
         let referenceY: CGFloat
         switch direction {
         case .up:
