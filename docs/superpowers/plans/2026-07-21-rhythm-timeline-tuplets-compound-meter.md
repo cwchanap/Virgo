@@ -33,9 +33,9 @@
 
 ### New production files
 
-- `Virgo/models/RhythmMetadata.swift` — validated persisted values, diagnostics, load state, codec, and presentation mapping.
+- `Virgo/models/RhythmMetadata.swift` — validated persisted values, diagnostics, load state, and codec; Task 6 adds presentation mapping.
 - `Virgo/utilities/DTXRhythmParser.swift` — exact decimal/directive parsing and parser-local diagnostics.
-- `Virgo/utilities/RhythmTimeline.swift` — measures, positions, beat groups, conversions, metronome pulse values, and bounded lookup APIs.
+- `Virgo/utilities/RhythmTimeline.swift` — measures, positions, beat groups, conversions, and bounded lookup APIs.
 - `Virgo/utilities/RhythmTimelineBuilder.swift` — checked LCM resolution, source projection, manual-offset rationalization, and exact build errors.
 - `Virgo/utilities/RhythmTimelineResolver.swift` — chart-level tri-state selection, deterministic event IDs, layout/input snapshots, and MainActor note lookup.
 - `Virgo/layout/NotationRhythm.swift` — additive rhythm values, semantic support, and tuplet identifiers.
@@ -506,6 +506,7 @@ rtk git commit -m "feat: analyze dotted and tuplet rhythms"
 ### Task 5: Timeline Layout Snapshot, Variable Grid, and Row Packing
 
 **Files:**
+- Modify: `Virgo/models/RhythmMetadata.swift`
 - Modify: `Virgo/layout/NotationLayout.swift`
 - Modify: `Virgo/layout/NotationLayoutEngine.swift`
 - Modify: `Virgo/layout/NotationLayoutEngine+TabGrid.swift`
