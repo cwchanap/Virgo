@@ -1,7 +1,7 @@
 # Rhythm Timeline, Tuplets, Compound Meter, and Variable Measure Design
 
 - **Date:** 2026-07-20
-- **Status:** Design approved; revised after review and awaiting written-spec re-approval
+- **Status:** Design approved after review
 - **Scope:** Give imported and manual charts one timing authority for non-power-of-two grids, dotted rhythms,
   triplets, compound meter, and variable DTX measure lengths, then derive notation, playback, and scoring from it.
 - **Linear:** [HPA-145](https://linear.app/cwchanap/issue/HPA-145/handle-tuplets-dotted-rhythms-compound-meter-and-dtx-measure-length)
