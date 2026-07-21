@@ -179,20 +179,30 @@ class ServerSongDownloader {
             throw ServerSongImportError.decodeFailed(chartSnapshot.filename)
         }
         let chartData = try DTXFileParser.parseChartMetadata(from: content)
-        song.setBGMStartOffsetIfUnset(chartData.bgmStartOffsetSeconds)
+        let projection = try chartData.persistenceProjection()
         if song.charts.isEmpty {
             if chartData.bpm.isFinite && chartData.bpm > 0 { song.bpm = chartData.bpm }
-            if serverDurationSeconds == nil {
-                song.duration = Self.formatDuration(Int(calculateDuration(from: chartData.notes)))
+            if serverDurationSeconds == nil,
+               let duration = projection.timeline?.endSeconds(bpm: chartData.bpm, speed: 1) {
+                song.duration = Self.formatDuration(Int(duration))
             }
         }
         let difficulty = mapServerDifficultyToApp(chartSnapshot.difficulty)
-        let chart = Chart(difficulty: difficulty, level: chartSnapshot.level, song: song)
-        let parsedNotes = chartData.toNotes(for: chart)
+        let chart = Chart(
+            difficulty: difficulty,
+            level: chartSnapshot.level,
+            timeSignature: projection.timeSignature,
+            song: song
+        )
+        try chart.setRhythmMetadata(projection.chartMetadata)
+        let parsedNotes = projection.notes.map { $0.makeNote(for: chart) }
         parsedNotes.forEach { chart.notes.append($0) }
-        let parsedControls = chartData.toControlEvents(for: chart)
+        let parsedControls = projection.controls.map { $0.makeControl(for: chart) }
         parsedControls.forEach { context.insert($0); chart.controlEvents.append($0) }
         context.insert(chart)
+        if let warning = projection.warning {
+            return "Chart \(chartSnapshot.filename): \(warning.message)"
+        }
         if chartData.hasPlayableChips, parsedNotes.isEmpty {
             return "Chart \(chartSnapshot.filename) imported with no playable notes (normalization failed)."
         }
@@ -232,12 +242,6 @@ class ServerSongDownloader {
 
     private func mapServerDifficultyToApp(_ serverDifficulty: String) -> Difficulty {
         Difficulty(rawValue: serverDifficulty.capitalized) ?? .medium
-    }
-
-    private func calculateDuration(from notes: [DTXNote]) -> TimeInterval {
-        guard !notes.isEmpty else { return 60.0 }
-        let maxMeasure = notes.reduce(Int.min) { max($0, $1.measureNumber) }
-        return Double(maxMeasure + 1) / 30.0 * 60.0
     }
 
     private static func formatDuration(_ seconds: Int) -> String {

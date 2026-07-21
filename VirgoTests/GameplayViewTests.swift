@@ -7,6 +7,7 @@
 
 import Testing
 import Foundation
+import SwiftUI
 @testable import Virgo
 
 @MainActor
@@ -22,6 +23,40 @@ struct GameplayViewTests {
         let view = GameplayView(chart: chart, metronome: metronome)
             .environmentObject(practiceSettings)
         _ = view
+    }
+
+    @Test("direct fatal gameplay entry renders status without preparing runtime")
+    func fatalGameplayEntryRendersStatusWithoutPreparingRuntime() throws {
+        let diagnostic = try PersistedRhythmDiagnostic(
+            code: .unsupportedTimeSignature,
+            severity: .timingFatal
+        )
+        let metadata = try ChartRhythmMetadata(
+            timeSignature: nil,
+            feel: .straight,
+            measureLengthOverrides: [],
+            bgmStartAnchor: nil,
+            timingStatus: .fatal,
+            diagnostics: [diagnostic]
+        )
+        let chart = Chart(difficulty: .easy)
+        try chart.setRhythmMetadata(metadata)
+        let metronome = MetronomeEngine()
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
+        let view = GameplayView(chart: chart, metronome: metronome)
+
+        #expect(!view.practiceState.isPracticeEnabled)
+        #expect(view.viewModel == nil)
+        SwiftUITestUtilities.assertView(
+            view.environmentObject(practiceSettings),
+            containsStrings: [
+                "Practice unavailable",
+                "Unsupported chart timing: The chart time signature is not supported."
+            ],
+            excludesStrings: ["Loading..."]
+        )
+        #expect(view.viewModel == nil)
     }
 
     @Test func testDrumBeatCreation() async throws {

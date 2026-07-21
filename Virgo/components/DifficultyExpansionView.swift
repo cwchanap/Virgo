@@ -8,6 +8,43 @@
 import SwiftUI
 import SwiftData
 
+@MainActor
+struct ChartPracticeState: Hashable {
+    let isPracticeEnabled: Bool
+    let badgeTitle: String?
+    let reason: String?
+    let accessibilityExplanation: String
+
+    init(chart: Chart) {
+        let resolved = RhythmTimelineResolver().resolve(chart: chart)
+        guard resolved.availability == .fatal else {
+            isPracticeEnabled = true
+            badgeTitle = nil
+            reason = nil
+            accessibilityExplanation = String(localized: "Practice available")
+            return
+        }
+
+        isPracticeEnabled = false
+        badgeTitle = String(localized: "Timing issue")
+        reason = Self.reason(for: resolved.runtimeDiagnostics.first)
+        accessibilityExplanation = String(localized: "Practice unavailable. \(reason ?? Self.fallbackReason)")
+    }
+
+    private static let fallbackReason = String(localized: "Unsupported chart timing")
+
+    private static func reason(for diagnostic: PersistedRhythmDiagnostic?) -> String {
+        guard let diagnostic else { return fallbackReason }
+        let presentation = RhythmDiagnosticPresentation(code: diagnostic.code)
+        if let measureIndex = diagnostic.sourceMeasureIndex {
+            return String(
+                localized: "\(presentation.title): measure \(measureIndex + 1) \(presentation.description)"
+            )
+        }
+        return String(localized: "\(presentation.title): \(presentation.description)")
+    }
+}
+
 // MARK: - Difficulty Expansion View
 struct DifficultyExpansionView: View {
     let charts: [Chart]
@@ -46,8 +83,15 @@ struct DifficultyExpansionView: View {
 struct ChartSelectionCard: View {
     let chart: Chart
     let onSelect: () -> Void
+    let practiceState: ChartPracticeState
     @State private var showingScores = false
     @Environment(\.theme) private var theme
+
+    init(chart: Chart, onSelect: @escaping () -> Void) {
+        self.chart = chart
+        self.onSelect = onSelect
+        self.practiceState = ChartPracticeState(chart: chart)
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -66,8 +110,10 @@ struct ChartSelectionCard: View {
             playButtonContent
         }
         .buttonStyle(PlainButtonStyle())
+        .disabled(!practiceState.isPracticeEnabled)
         .accessibilityIdentifier("chartDifficulty\(chart.difficulty.rawValue)")
         .accessibilityLabel(playButtonAccessibilityLabel)
+        .accessibilityHint(practiceState.accessibilityExplanation)
     }
 
     private var playButtonContent: some View {
@@ -81,6 +127,12 @@ struct ChartSelectionCard: View {
                 Text("Level \(chart.level)")
                     .font(.plexMono(11))
                     .foregroundColor(theme.secondary)
+                if let badgeTitle = practiceState.badgeTitle {
+                    Text(badgeTitle)
+                        .font(.plexMono(10))
+                        .foregroundColor(theme.accent)
+                        .accessibilityIdentifier("chartTimingWarning")
+                }
             }
 
             Spacer()
@@ -105,6 +157,7 @@ struct ChartSelectionCard: View {
                 .stroke(theme.rule, lineWidth: 1)
         )
         .contentShape(Rectangle())
+        .opacity(practiceState.isPracticeEnabled ? 1 : 0.7)
     }
 
     private var scoresButton: some View {
@@ -136,11 +189,17 @@ struct ChartSelectionCard: View {
 
     private var playButtonAccessibilityLabel: String {
         let base = "\(chart.difficulty.rawValue) difficulty, \(chart.notesCount) notes, Level \(chart.level)"
-        guard chart.bestScore > 0 else { return base }
-        return base + ", best \(chart.bestScore)"
+        let score = chart.bestScore > 0 ? ", best \(chart.bestScore)" : ""
+        guard !practiceState.isPracticeEnabled else { return base + score }
+        return base + score + ". " + practiceState.accessibilityExplanation
+    }
+
+    func attemptPractice() {
+        guard practiceState.isPracticeEnabled else { return }
+        onSelect()
     }
 
     private func handleSelect() {
-        onSelect()
+        attemptPractice()
     }
 }

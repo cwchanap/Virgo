@@ -85,15 +85,6 @@ struct DTXChartData {
         self.rhythmDiagnostics = rhythmDiagnostics
     }
 
-    @available(*, deprecated, message: "Use rhythmMetadata.bgmStartAnchor with the resolved rhythm timeline")
-    var bgmStartOffsetSeconds: Double? {
-        guard let anchor = rhythmMetadata.bgmStartAnchor else { return nil }
-        let bgmStartTimePosition = Double(anchor.measureIndex)
-            + Double(anchor.gridPosition) / Double(anchor.gridSize)
-        let secondsPerMeasure = 4.0 * 60.0 / bpm
-        return bgmStartTimePosition * secondsPerMeasure
-    }
-
     private static let defaultRhythmMetadata: ChartRhythmMetadata = {
         do {
             return try ChartRhythmMetadata(
@@ -571,6 +562,304 @@ extension DTXChartData {
                 normalizedTicksPerMeasure: hasValidTiming ? chip.gridSize : nil,
                 targetLaneID: chip.noteID.uppercased()
             )
+        }
+    }
+}
+
+enum DTXImportWarning: Hashable {
+    case fatalRhythm([PersistedRhythmDiagnostic])
+
+    var message: String {
+        guard case let .fatalRhythm(diagnostics) = self,
+              let diagnostic = diagnostics.first else {
+            return String(localized: "Unsupported chart timing")
+        }
+        let presentation = RhythmDiagnosticPresentation(code: diagnostic.code)
+        if let measureIndex = diagnostic.sourceMeasureIndex {
+            return String(localized: "\(presentation.title): measure \(measureIndex + 1) \(presentation.description)")
+        }
+        return String(localized: "\(presentation.title): \(presentation.description)")
+    }
+}
+
+struct ImportedNoteValues {
+    let interval: NoteInterval
+    let noteType: NoteType
+    let measureNumber: Int
+    let measureOffset: Double
+    let sourceLaneID: String
+    let sourceNoteID: String
+    let sourceGridPosition: Int
+    let sourceGridSize: Int
+    let normalizedMeasureIndex: Int?
+    let normalizedAbsoluteTick: Int?
+    let normalizedTickWithinMeasure: Int?
+    let normalizedTicksPerMeasure: Int?
+    let notationVoiceCandidate: NormalizedNotationVoice?
+    let visualDurationCandidate: NoteInterval?
+    let articulationCandidate: NormalizedArticulation?
+
+    func makeNote(for chart: Chart) -> Note {
+        Note(
+            interval: interval,
+            noteType: noteType,
+            measureNumber: measureNumber,
+            measureOffset: measureOffset,
+            chart: chart,
+            originKind: .dtx,
+            sourceLaneID: sourceLaneID,
+            sourceNoteID: sourceNoteID,
+            sourceGridPosition: sourceGridPosition,
+            sourceGridSize: sourceGridSize,
+            normalizedMeasureIndex: normalizedMeasureIndex,
+            normalizedAbsoluteTick: normalizedAbsoluteTick,
+            normalizedTickWithinMeasure: normalizedTickWithinMeasure,
+            normalizedTicksPerMeasure: normalizedTicksPerMeasure,
+            notationVoiceCandidate: notationVoiceCandidate,
+            visualDurationCandidate: visualDurationCandidate,
+            articulationCandidate: articulationCandidate
+        )
+    }
+}
+
+struct ImportedControlValues {
+    let kind: NotationControlEventKind
+    let measureNumber: Int
+    let measureOffset: Double
+    let sourceLaneID: String
+    let sourceNoteID: String
+    let sourceGridPosition: Int
+    let sourceGridSize: Int
+    let normalizedMeasureIndex: Int?
+    let normalizedAbsoluteTick: Int?
+    let normalizedTickWithinMeasure: Int?
+    let normalizedTicksPerMeasure: Int?
+    let targetLaneID: String
+
+    func makeControl(for chart: Chart) -> ChartControlEvent {
+        ChartControlEvent(
+            kind: kind,
+            measureNumber: measureNumber,
+            measureOffset: measureOffset,
+            chart: chart,
+            originKind: .dtx,
+            sourceLaneID: sourceLaneID,
+            sourceNoteID: sourceNoteID,
+            sourceGridPosition: sourceGridPosition,
+            sourceGridSize: sourceGridSize,
+            normalizedMeasureIndex: normalizedMeasureIndex,
+            normalizedAbsoluteTick: normalizedAbsoluteTick,
+            normalizedTickWithinMeasure: normalizedTickWithinMeasure,
+            normalizedTicksPerMeasure: normalizedTicksPerMeasure,
+            targetLaneID: targetLaneID
+        )
+    }
+}
+
+struct DTXChartPersistenceProjection {
+    let chartMetadata: ChartRhythmMetadata
+    let timeSignature: TimeSignature
+    let notes: [ImportedNoteValues]
+    let controls: [ImportedControlValues]
+    let warning: DTXImportWarning?
+    let timeline: RhythmTimeline?
+}
+
+extension DTXChartData {
+    func persistenceProjection() throws -> DTXChartPersistenceProjection {
+        let noteSources = notes.enumerated().compactMap { index, chip -> ProjectionNoteSource? in
+            guard let noteType = chip.toNoteType() else { return nil }
+            let id = RhythmSourceEventID(kind: .note, stableOrdinal: index)
+            return ProjectionNoteSource(id: id, chip: chip, noteType: noteType)
+        }
+        let controlSources = notes.enumerated().compactMap { index, chip -> ProjectionControlSource? in
+            guard let kind = controlLaneKinds[chip.laneID.uppercased()] else { return nil }
+            let id = RhythmSourceEventID(kind: .control, stableOrdinal: index)
+            return ProjectionControlSource(id: id, chip: chip, kind: kind)
+        }
+
+        guard rhythmMetadata.timingStatus == .valid else {
+            return fatalProjection(
+                metadata: rhythmMetadata,
+                noteSources: noteSources,
+                controlSources: controlSources
+            )
+        }
+
+        do {
+            let events = noteSources.map(\.sourceEvent) + controlSources.map(\.sourceEvent)
+            let timeline = try RhythmTimelineBuilder().build(metadata: rhythmMetadata, events: events)
+            let projection = CanonicalRhythmProjection(timeline: timeline)
+            let durationCandidates = visualDurationCandidates(noteSources: noteSources, timeline: timeline)
+            return DTXChartPersistenceProjection(
+                chartMetadata: rhythmMetadata,
+                timeSignature: rhythmMetadata.timeSignature ?? .fourFour,
+                notes: noteSources.compactMap {
+                    importedNote(
+                        from: $0,
+                        timing: projection.normalizedTiming(for: $0.id),
+                        visualDurationCandidate: durationCandidates[$0.id]
+                    )
+                },
+                controls: controlSources.compactMap {
+                    importedControl(from: $0, timing: projection.normalizedTiming(for: $0.id))
+                },
+                warning: nil,
+                timeline: timeline
+            )
+        } catch let error as RhythmTimelineBuildError {
+            let diagnostic = try PersistedRhythmDiagnostic(
+                code: error.diagnosticCode,
+                severity: .timingFatal
+            )
+            let fatalMetadata = try ChartRhythmMetadata(
+                timeSignature: rhythmMetadata.timeSignature,
+                feel: rhythmMetadata.feel,
+                measureLengthOverrides: rhythmMetadata.measureLengthOverrides,
+                bgmStartAnchor: rhythmMetadata.bgmStartAnchor,
+                timingStatus: .fatal,
+                diagnostics: orderedDiagnostics(rhythmMetadata.diagnostics + [diagnostic])
+            )
+            return fatalProjection(
+                metadata: fatalMetadata,
+                noteSources: noteSources,
+                controlSources: controlSources
+            )
+        }
+    }
+}
+
+private extension DTXChartData {
+    struct ProjectionNoteSource {
+        let id: RhythmSourceEventID
+        let chip: DTXNote
+        let noteType: NoteType
+
+        var sourceEvent: RhythmSourceEvent {
+            RhythmSourceEvent(
+                id: id,
+                coordinate: .dtx(
+                    measureIndex: chip.measureIndex,
+                    gridPosition: chip.gridPosition,
+                    gridSize: chip.gridSize
+                ),
+                sourceLaneID: chip.laneID.uppercased(),
+                sourceNoteID: chip.noteID.uppercased(),
+                drumLaneID: noteType.rawValue
+            )
+        }
+    }
+
+    struct ProjectionControlSource {
+        let id: RhythmSourceEventID
+        let chip: DTXNote
+        let kind: NotationControlEventKind
+
+        var sourceEvent: RhythmSourceEvent {
+            RhythmSourceEvent(
+                id: id,
+                coordinate: .dtx(
+                    measureIndex: chip.measureIndex,
+                    gridPosition: chip.gridPosition,
+                    gridSize: chip.gridSize
+                ),
+                sourceLaneID: chip.laneID.uppercased(),
+                sourceNoteID: chip.noteID.uppercased(),
+                drumLaneID: chip.noteID.uppercased()
+            )
+        }
+    }
+
+    func fatalProjection(
+        metadata: ChartRhythmMetadata,
+        noteSources: [ProjectionNoteSource],
+        controlSources: [ProjectionControlSource]
+    ) -> DTXChartPersistenceProjection {
+        DTXChartPersistenceProjection(
+            chartMetadata: metadata,
+            timeSignature: metadata.timeSignature ?? .fourFour,
+            notes: noteSources.map { importedNote(from: $0, timing: nil, visualDurationCandidate: nil) },
+            controls: controlSources.map { importedControl(from: $0, timing: nil) },
+            warning: .fatalRhythm(metadata.diagnostics),
+            timeline: nil
+        )
+    }
+
+    func importedNote(
+        from source: ProjectionNoteSource,
+        timing: CanonicalNormalizedTiming?,
+        visualDurationCandidate: NoteInterval?
+    ) -> ImportedNoteValues {
+        ImportedNoteValues(
+            interval: visualDurationCandidate ?? .quarter,
+            noteType: source.noteType,
+            measureNumber: source.chip.measureIndex + 1,
+            measureOffset: source.chip.measureOffset,
+            sourceLaneID: source.chip.laneID.uppercased(),
+            sourceNoteID: source.chip.noteID.uppercased(),
+            sourceGridPosition: source.chip.gridPosition,
+            sourceGridSize: source.chip.gridSize,
+            normalizedMeasureIndex: timing?.measureIndex,
+            normalizedAbsoluteTick: timing?.absoluteTick,
+            normalizedTickWithinMeasure: timing?.tickWithinMeasure,
+            normalizedTicksPerMeasure: timing?.ticksPerMeasure,
+            notationVoiceCandidate: timing == nil ? nil : voiceCandidate(for: source.noteType),
+            visualDurationCandidate: visualDurationCandidate,
+            articulationCandidate: timing == nil ? nil : NormalizedArticulation.none
+        )
+    }
+
+    func importedControl(
+        from source: ProjectionControlSource,
+        timing: CanonicalNormalizedTiming?
+    ) -> ImportedControlValues {
+        ImportedControlValues(
+            kind: source.kind,
+            measureNumber: source.chip.measureIndex + 1,
+            measureOffset: source.chip.measureOffset,
+            sourceLaneID: source.chip.laneID.uppercased(),
+            sourceNoteID: source.chip.noteID.uppercased(),
+            sourceGridPosition: source.chip.gridPosition,
+            sourceGridSize: source.chip.gridSize,
+            normalizedMeasureIndex: timing?.measureIndex,
+            normalizedAbsoluteTick: timing?.absoluteTick,
+            normalizedTickWithinMeasure: timing?.tickWithinMeasure,
+            normalizedTicksPerMeasure: timing?.ticksPerMeasure,
+            targetLaneID: source.chip.noteID.uppercased()
+        )
+    }
+
+    func visualDurationCandidates(
+        noteSources: [ProjectionNoteSource],
+        timeline: RhythmTimeline
+    ) -> [RhythmSourceEventID: NoteInterval] {
+        let positions = noteSources.compactMap { source -> (RhythmSourceEventID, Int)? in
+            guard let position = timeline.position(for: source.id) else { return nil }
+            return (source.id, position.absoluteTick)
+        }
+        let orderedTicks = Array(Set(positions.map(\.1))).sorted()
+        let nextTickByTick = Dictionary(uniqueKeysWithValues: zip(orderedTicks, orderedTicks.dropFirst()))
+        return Dictionary(uniqueKeysWithValues: positions.compactMap { id, tick in
+            guard let nextTick = nextTickByTick[tick] else { return nil }
+            return (
+                id,
+                VisualDurationLookup.closestInterval(
+                    toTickSpan: nextTick - tick,
+                    ticksPerMeasure: timeline.ticksPerWholeNote
+                )
+            )
+        })
+    }
+
+    func voiceCandidate(for noteType: NoteType) -> NormalizedNotationVoice {
+        DrumNotationCatalog.definition(for: noteType)?.voice == .lower ? .lower : .upper
+    }
+
+    func orderedDiagnostics(_ diagnostics: [PersistedRhythmDiagnostic]) -> [PersistedRhythmDiagnostic] {
+        Array(Set(diagnostics)).sorted {
+            let left = ($0.sourceMeasureIndex ?? -1, $0.sourceLineNumber ?? -1, $0.code.rawValue)
+            let right = ($1.sourceMeasureIndex ?? -1, $1.sourceLineNumber ?? -1, $1.code.rawValue)
+            return left < right
         }
     }
 }
