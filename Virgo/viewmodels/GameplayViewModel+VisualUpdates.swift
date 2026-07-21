@@ -98,7 +98,11 @@ extension GameplayViewModel {
             currentBeat = findClosestBeatIndex(measureIndex: measureIndex, beatPosition: beatPosition)
             totalBeatsElapsed = discreteTotalBeats
 
-            scanForMissedNotes(upToTimePosition: playheadTimePosition)
+            if cachedRhythmTimeline != nil {
+                scanForMissedNotes(upToSeconds: elapsedTime)
+            } else {
+                scanForMissedNotes(upToTimePosition: playheadTimePosition)
+            }
 
             // Schedule delayed completion to preserve late-tolerance window for final notes.
             // Without this, notes near the end get instantly marked as missed before a
@@ -109,7 +113,7 @@ extension GameplayViewModel {
                 completionTask = completionScheduler(gracePeriodSeconds) { [weak self] in
                     // Grace period elapsed — mark any still-unscored notes missed,
                     // then finalize the session.
-                    self?.scanForMissedNotes(upToTimePosition: .infinity)
+                    self?.scanForAllMissedNotes()
                     self?.handlePlaybackCompletion()
                 }
             }

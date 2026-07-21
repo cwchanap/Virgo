@@ -103,15 +103,6 @@ extension GameplayViewModel {
         }
         let effectiveBPMValue = effectiveBPM()
 
-        if isDataLoaded, let track = track {
-            // Keep input timing aligned even before playback starts.
-            inputManager.configure(
-                bpm: effectiveBPMValue,
-                timeSignature: track.timeSignature,
-                notes: cachedNotes
-            )
-        }
-
         // If playing, update metronome and BGM rate immediately
         if isPlaying {
             applySpeedChangeWhilePlaying(
@@ -129,6 +120,12 @@ extension GameplayViewModel {
                 playbackProgress = 0.0
             }
         }
+        if !isPlaying {
+            // Paused changes install the immutable matcher immediately. The shared
+            // playback clock itself is reseated by startListening when playback resumes.
+            configureInputTiming(speed: currentSpeed, elapsedOffset: pausedElapsedTime)
+        }
+        lastScannedRhythmTargetSeconds = -.infinity
 
         if !isPlaying, metronome.isEnabled {
             metronome.updateBPM(effectiveBPMValue)
@@ -215,17 +212,16 @@ extension GameplayViewModel {
             pausedElapsedTime += metronomeTime
             let speedRatio = previousSpeed / currentSpeed
             pausedElapsedTime *= speedRatio
-            let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
-            restartMetronomeForSpeedChange(effectiveBPM: effectiveBPMValue, elapsedBeats: elapsedBeats)
         } else {
             if previousSpeed > 0, currentSpeed > 0 {
                 let speedRatio = previousSpeed / currentSpeed
                 pausedElapsedTime *= speedRatio
             }
-            let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
-            restartMetronomeForSpeedChange(effectiveBPM: effectiveBPMValue, elapsedBeats: elapsedBeats)
             Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
         }
+        configureInputTiming(speed: currentSpeed, elapsedOffset: pausedElapsedTime)
+        let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
+        restartMetronomeForSpeedChange(effectiveBPM: effectiveBPMValue, elapsedBeats: elapsedBeats)
 
         if previousSpeed > 0, currentSpeed > 0 {
             if let scheduledStart = lastScheduledPlaybackStartTime {

@@ -33,6 +33,58 @@ final class MetronomePlaybackTimeStub: MetronomeEngine {
 @MainActor
 struct GameplayViewModelSpeedTests {
 
+    @Test("Paused speed changes immediately reinstall the cached timeline targets")
+    func pausedSpeedChangeReconfiguresTimelineMatcher() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+        defer { vm.cleanup() }
+        let originalTargets = vm.cachedRhythmNoteTargets
+        let target = try #require(originalTargets.dropFirst().first)
+
+        vm.updateSpeed(0.5)
+
+        #expect(vm.cachedRhythmNoteTargets == originalTargets)
+        let result = timelineMIDIResult(
+            from: vm,
+            target: target,
+            elapsedSeconds: target.targetSecondsAtOneX / 0.5
+        )
+        #expect(result?.matchedEventID == target.eventID)
+        #expect(result?.matchedTargetPosition == target.position)
+    }
+
+    @Test("Playing speed changes preserve event identity without a legacy matcher transition")
+    func playingSpeedChangeKeepsTimelineIdentity() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+        let originalTargets = vm.cachedRhythmNoteTargets
+        let target = try #require(originalTargets.dropFirst().first)
+        vm.inputManager.setMIDIMapping([midiNote(for: target.drumType): target.drumType])
+        vm.isPlaying = true
+        defer { vm.cleanup() }
+
+        vm.updateSpeed(0.5)
+
+        #expect(vm.cachedRhythmNoteTargets.map(\.eventID) == originalTargets.map(\.eventID))
+        let capturedHostTime = try #require(vm.lastScheduledPlaybackHostTime)
+        let converter = MIDIHostTimeConverter()
+        let elapsedAfterScheduledStart = target.targetSecondsAtOneX / 0.5
+        let eventHostTime = converter.hostTimeByAdding(
+            seconds: 0.05 + elapsedAfterScheduledStart,
+            to: capturedHostTime
+        )
+        let result = vm.inputManager.handleMIDINoteEvent(MIDINoteEvent(
+            sourceID: "speed-test",
+            channel: 9,
+            note: midiNote(for: target.drumType),
+            velocity: 100,
+            hostTime: eventHostTime
+        ))
+        #expect(result?.matchedEventID == target.eventID)
+    }
+
     // MARK: - effectiveBPM()
 
     @Test("effectiveBPM returns 120 fallback when track is nil")
@@ -315,5 +367,32 @@ struct GameplayViewModelSpeedTests {
 
         #expect(vm.lastScheduledPlaybackStartTime != nil)
         #expect(vm.pausedElapsedTime > 0.0)
+    }
+
+    private func timelineMIDIResult(
+        from viewModel: GameplayViewModel,
+        target: RhythmNoteTarget,
+        elapsedSeconds: Double
+    ) -> NoteMatchResult? {
+        let converter = MIDIHostTimeConverter()
+        let startHostTime = mach_absolute_time()
+        let note = midiNote(for: target.drumType)
+        viewModel.inputManager.setMIDIMapping([note: target.drumType])
+        viewModel.inputManager.startListening(songStartTime: Date(), capturedHostTime: startHostTime)
+        return viewModel.inputManager.handleMIDINoteEvent(MIDINoteEvent(
+            sourceID: "speed-test",
+            channel: 9,
+            note: note,
+            velocity: 100,
+            hostTime: converter.hostTimeByAdding(seconds: elapsedSeconds, to: startHostTime)
+        ))
+    }
+
+    private func midiNote(for drumType: DrumType) -> UInt8 {
+        switch drumType {
+        case .kick: 36
+        case .snare: 38
+        default: 42
+        }
     }
 }

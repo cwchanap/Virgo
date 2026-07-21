@@ -28,14 +28,23 @@ class GameplayInputHandler: InputManagerDelegate {
         case .miss: "MISS"
         }
 
-        if result.matchedNote != nil {
+        let positionDescription: String
+        if let targetPosition = result.matchedTargetPosition {
+            positionDescription = "measure \(targetPosition.measureIndex + 1), tick \(targetPosition.localTick)"
+        } else if let measureNumber = result.measureNumber {
+            positionDescription = "measure \(measureNumber)"
+        } else {
+            positionDescription = "unknown position"
+        }
+
+        if result.matchedNote != nil || result.matchedEventID != nil {
             let logMessage = "Note matched: \(result.hitInput.drumType.description) - \(accuracyText) " +
             "(\(result.timingError?.formatted(.number.precision(.fractionLength(0))) ?? "n/a")ms) " +
-            "at measure \(result.measureNumber)"
+            "at \(positionDescription)"
             Logger.userAction(logMessage)
         } else {
             let logMessage = "No note match: \(result.hitInput.drumType.description) - " +
-            "\(accuracyText) at measure \(result.measureNumber)"
+            "\(accuracyText) at \(positionDescription)"
             Logger.userAction(logMessage)
         }
 
