@@ -82,6 +82,8 @@ struct NotationLayoutNotePositionOverrideTests {
         #expect(head.voice == defaultHead.voice)
         #expect(head.stemDirection == .up)
         #expect(head.stemDirection == defaultHead.stemDirection)
+        #expect(head.rhythmPosition == defaultHead.rhythmPosition)
+        #expect(head.rhythm == NotationRhythm(baseInterval: .quarter))
         #expect(head.position.y == GameplayLayout.NotePosition.aboveLine9.absoluteY(for: 0))
     }
 

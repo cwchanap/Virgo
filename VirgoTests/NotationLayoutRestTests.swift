@@ -93,6 +93,13 @@ struct NotationLayoutRestTests {
 
         #expect(rest.timeColumn.tickWithinMeasure == 480)
         #expect(rest.position.x == result.tabGrid.xPosition(in: measure, tickIndex: 480))
+        #expect(rest.rhythmPosition == RhythmEventPosition(
+            measureIndex: 0,
+            localTick: 480,
+            absoluteTick: 480
+        ))
+        #expect(rest.rhythm == NotationRhythm(baseInterval: .half))
+        #expect(rest.tupletID == nil)
     }
 
     @Test("printed voice rests use distinct style-owned baselines")
@@ -157,7 +164,9 @@ struct NotationLayoutRestTests {
             measureIndex: 0,
             row: 0,
             xOffset: GameplayLayout.leftMargin,
-            width: result.tabGrid.measureWidth
+            width: result.tabGrid.measureWidth,
+            startTick: 0,
+            durationTicks: result.tabGrid.ticksPerMeasure
         )])
         #expect(result.noteHeads.map(\.position.x) == [
             result.tabGrid.xPosition(in: measure, tickIndex: 0),
