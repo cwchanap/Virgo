@@ -109,9 +109,7 @@ struct GameplayViewModelDataLoadingTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay(loadPersistedSpeed: false)
 
-        let beat = try #require(viewModel.cachedDrumBeats.first)
-
-        #expect(viewModel.cachedDrumBeats.count == 1)
+        #expect(viewModel.cachedDrumBeats.count == 2)
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
         #expect(viewModel.cachedNotationLayout.hasPlayableContent)
         #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)

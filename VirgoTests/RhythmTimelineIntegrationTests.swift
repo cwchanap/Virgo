@@ -5,12 +5,169 @@
 
 import AVFoundation
 import Foundation
+import SwiftData
 import Testing
 @testable import Virgo
 
 @Suite("Rhythm timeline gameplay integration", .serialized)
 @MainActor
 struct RhythmTimelineIntegrationTests {
+    @Test("real 6/8 DTX projection persists selected note and control identity")
+    func realDTXProjectionPersistsResolvedIdentity() throws {
+        let fixture = try makePersistedTask10Fixture()
+        let projection = fixture.projection
+        let persistedChart = fixture.chart
+        let resolved = RhythmTimelineResolver().resolve(chart: persistedChart)
+        let timeline = try #require(resolved.timeline)
+        let persistedNote = try #require(persistedChart.safeNotes.first { $0.sourceNoteID == "D1" })
+        let persistedControl = try #require(persistedChart.safeControlEvents.first)
+        let noteEvent = try #require(resolved.orderedEvents.first {
+            resolved.noteByEventID[$0.eventID] === persistedNote
+        })
+        let controlEvent = try #require(resolved.orderedEvents.first {
+            let control = resolved.controlByEventID[$0.eventID]
+            return control?.sourceLaneID == persistedControl.sourceLaneID
+                && control?.sourceNoteID == persistedControl.sourceNoteID
+        })
+        let pickupRatio = try RhythmRatio(numerator: 3, denominator: 4)
+        let extendedRatio = try RhythmRatio(numerator: 3, denominator: 2)
+        let expectedAnchor = try RhythmSourceAnchor(measureIndex: 0, gridPosition: 1, gridSize: 2)
+        let noteMeasureIndex = try #require(persistedNote.normalizedMeasureIndex)
+        let noteLocalTick = try #require(persistedNote.normalizedTickWithinMeasure)
+        let controlMeasureIndex = try #require(persistedControl.normalizedMeasureIndex)
+        let controlLocalTick = try #require(persistedControl.normalizedTickWithinMeasure)
+
+        #expect(projection.chartMetadata.timeSignature == .sixEight)
+        #expect(projection.chartMetadata.measureLengthOverrides.map(\.ratioToWholeNote) == [
+            pickupRatio,
+            extendedRatio
+        ])
+        #expect(projection.chartMetadata.bgmStartAnchor == expectedAnchor)
+        #expect(resolved.availability == .valid)
+        #expect(persistedNote.sourceLaneID == "12")
+        #expect(persistedNote.sourceNoteID == "D1")
+        #expect(noteEvent.sourceLaneID == persistedNote.sourceLaneID)
+        #expect(noteEvent.sourceNoteID == persistedNote.sourceNoteID)
+        #expect(noteEvent.position == timeline.position(
+            measureIndex: noteMeasureIndex,
+            localTick: noteLocalTick
+        ))
+        #expect(persistedControl.sourceLaneID == "22")
+        #expect(persistedControl.sourceNoteID == "16")
+        #expect(controlEvent.sourceLaneID == persistedControl.sourceLaneID)
+        #expect(controlEvent.sourceNoteID == persistedControl.sourceNoteID)
+        #expect(controlEvent.position == timeline.position(
+            measureIndex: controlMeasureIndex,
+            localTick: controlLocalTick
+        ))
+    }
+
+    @Test("valid DTX fixture shares event identity and exact time through gameplay consumers")
+    func validDTXFixtureSharesIdentityAndTime() async throws {
+        let fixture = try makePersistedTask10Fixture()
+        let resolved = RhythmTimelineResolver().resolve(chart: fixture.chart)
+        let timeline = try #require(resolved.timeline)
+        let metronome = ScheduledMetronomeSpy()
+        let viewModel = GameplayViewModel(
+            chart: fixture.chart,
+            metronome: metronome,
+            completionScheduler: GameplayViewModelTestHarness.immediateCompletionScheduler()
+        )
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let selectedEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "D1" })
+        let layoutSnapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
+        let layoutNote = try #require(layoutSnapshot.notes.first { $0.eventID == selectedEvent.eventID })
+        let noteHead = try #require(viewModel.cachedNotationLayout.noteHeads.first {
+            $0.eventID == selectedEvent.eventID
+        })
+        let target = try #require(viewModel.cachedRhythmNoteTargets.first {
+            $0.eventID == selectedEvent.eventID
+        })
+        let renderedMeasure = try #require(viewModel.cachedNotationMeasuresByIndex[selectedEvent.position.measureIndex])
+        let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(
+            in: renderedMeasure,
+            localTick: selectedEvent.position.localTick
+        )
+        let expectedSeconds = try #require(timeline.seconds(
+            for: selectedEvent.position,
+            bpm: fixture.chart.bpm,
+            speed: 1
+        ))
+
+        #expect(layoutNote.position == selectedEvent.position)
+        #expect(noteHead.rhythmPosition == selectedEvent.position)
+        #expect(target.position == selectedEvent.position)
+        #expect(target.targetSecondsAtOneX == expectedSeconds)
+        #expect(noteHead.position.x == expectedX)
+        #expect(layoutNote.rhythm == NotationRhythm(baseInterval: .eighth, dotCount: 1))
+        #expect(viewModel.cachedNotationLayout.rhythmDots.contains { $0.source == .event(selectedEvent.eventID) })
+        #expect(layoutSnapshot.rests.contains { $0.tupletID != nil && $0.visibility == .printed })
+        #expect(viewModel.cachedNotationLayout.tuplets.contains { $0.memberEventIDs.count == 2 })
+        #expect(layoutSnapshot.notes.first { $0.sourceChipID == "F1" }?.rhythm.baseInterval == .thirtysecond)
+        #expect(layoutSnapshot.notes.first { $0.sourceChipID == "F2" }?.rhythm.baseInterval == .sixtyfourth)
+
+        let cachedBeat = try #require(viewModel.cachedDrumBeats.first {
+            $0.rhythmEventID == selectedEvent.eventID
+        })
+        #expect(cachedBeat.rhythmPosition == selectedEvent.position)
+
+        let match = InputTimingMatcher(configuration: .timeline(
+            targets: viewModel.cachedRhythmNoteTargets,
+            timeline: timeline,
+            speed: 1
+        )).calculateNoteMatch(
+            for: InputHit(drumType: target.drumType, velocity: 1, timestamp: Date()),
+            elapsedTime: expectedSeconds
+        )
+        #expect(match.matchedEventID == selectedEvent.eventID)
+        #expect(match.matchedTargetPosition == selectedEvent.position)
+        #expect(match.matchedTargetSeconds == expectedSeconds)
+        viewModel.isPlaying = true
+        viewModel.recordHit(result: match)
+        #expect(viewModel.scoredRhythmEventIDs.contains(selectedEvent.eventID))
+
+        let anchorPosition = try #require(timeline.bgmStartPosition)
+        let anchorSeconds = try #require(timeline.seconds(
+            for: anchorPosition,
+            bpm: fixture.chart.bpm,
+            speed: 1
+        ))
+        #expect(viewModel.bgmOffsetSeconds == anchorSeconds)
+        #expect(viewModel.cachedTrackDuration == timeline.endSeconds(bpm: fixture.chart.bpm, speed: 1))
+        let selectedPulse = try #require(viewModel.cachedRhythmRuntime.metronomeSchedule?.pulses.first {
+            $0.position == selectedEvent.position
+        })
+        #expect(selectedPulse.offsetSecondsAtOneX == expectedSeconds)
+
+        let laterEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "D2" })
+        let laterTarget = try #require(viewModel.cachedRhythmNoteTargets.first {
+            $0.eventID == laterEvent.eventID
+        })
+        let laterHead = try #require(viewModel.cachedNotationLayout.noteHeads.first {
+            $0.eventID == laterEvent.eventID
+        })
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: laterTarget.targetSecondsAtOneX)
+        #expect(viewModel.currentMeasureIndex == laterEvent.position.measureIndex)
+        #expect(viewModel.purpleBarPosition?.x == Double(laterHead.position.x))
+        viewModel.scanForMissedNotes(
+            upToSeconds: laterTarget.targetSecondsAtOneX + TimingAccuracy.good.toleranceMs / 1_000
+        )
+        #expect(viewModel.scoredRhythmEventIDs.contains(laterEvent.eventID))
+
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: viewModel.cachedTrackDuration + 0.01)
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(1))
+        while clock.now < deadline && !viewModel.isShowingSessionResults {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        #expect(viewModel.isShowingSessionResults)
+        #expect(!viewModel.isPlaying)
+        viewModel.cleanup()
+    }
+
     @Test("gameplay caches one complete valid rhythm runtime before setup")
     func cachesCompleteRuntime() async throws {
         let chart = try makeVariableMeasureChart()
@@ -245,6 +402,7 @@ struct RhythmTimelineIntegrationTests {
         chart.notes.append(Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0))
         let metronome = ScheduledMetronomeSpy()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        let practiceState = ChartPracticeState(chart: chart)
 
         await viewModel.loadChartData()
         viewModel.setupGameplay(loadPersistedSpeed: false)
@@ -252,6 +410,7 @@ struct RhythmTimelineIntegrationTests {
         viewModel.startBGMPlayback(track: try #require(viewModel.track))
 
         #expect(viewModel.cachedRhythmRuntime.availability == .fatal)
+        #expect(viewModel.cachedRhythmRuntime.diagnostics.map(\.code) == [.inconsistentPersistedTiming])
         #expect(viewModel.cachedRhythmRuntime.timeline == nil)
         #expect(viewModel.cachedRhythmRuntime.layoutSnapshot == nil)
         #expect(viewModel.cachedRhythmRuntime.noteTargets.isEmpty)
@@ -264,11 +423,88 @@ struct RhythmTimelineIntegrationTests {
         #expect(metronome.timelineStartAtTimeCalls.isEmpty)
         #expect(viewModel.bgmPlayer == nil)
         #expect(!viewModel.rhythmFatalMessage.isEmpty)
+        #expect(!practiceState.isPracticeEnabled)
+        #expect(practiceState.badgeTitle == "Timing issue")
         viewModel.cleanup()
     }
 }
 
 private extension RhythmTimelineIntegrationTests {
+    struct PersistedTask10Fixture {
+        let container: TestContainer
+        let projection: DTXChartPersistenceProjection
+        let chart: Chart
+    }
+
+    func dtxChipArray(gridSize: Int, chips: [Int: String]) -> String {
+        (0..<gridSize).map { chips[$0] ?? "00" }.joined()
+    }
+
+    func makePersistedTask10Fixture() throws -> PersistedTask10Fixture {
+        let dottedLane = dtxChipArray(gridSize: 16, chips: [0: "D1", 4: "D2"])
+        let dottedEvidenceUpperLane = dtxChipArray(gridSize: 12, chips: [5: "D3", 8: "D4"])
+        let dottedEvidenceLowerLane = dtxChipArray(gridSize: 6, chips: [3: "D5", 5: "D6"])
+        let tripletLane = dtxChipArray(gridSize: 18, chips: [0: "T1", 2: "T2", 9: "B1", 12: "B2"])
+        let tripletEvidenceLane = dtxChipArray(gridSize: 18, chips: [6: "E1"])
+        let controlLane = dtxChipArray(gridSize: 18, chips: [3: "16"])
+        let fineUpperLane = dtxChipArray(
+            gridSize: 96,
+            chips: [8: "A1", 32: "A2", 56: "A3", 92: "F1", 94: "F2", 95: "F3"]
+        )
+        let fineLowerLane = dtxChipArray(gridSize: 96, chips: [0: "C1", 24: "C2", 48: "C3", 72: "C4"])
+        let chartData = try DTXFileParser.parseChartMetadata(from: """
+        #TITLE: End-to-End Rhythm
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 55
+        #VIRGO_TIME_SIGNATURE: 6/8
+        #VIRGO_FEEL: straight
+        #VIRGO_CONTROL: 1
+        #00002: 0.75
+        #00202: 1.5
+        #00001: 0001
+        #00012: \(dottedLane)
+        #00014: \(dottedEvidenceUpperLane)
+        #00013: \(dottedEvidenceLowerLane)
+        #00112: \(tripletLane)
+        #00113: \(tripletEvidenceLane)
+        #00122: \(controlLane)
+        #00212: \(fineUpperLane)
+        #00213: \(fineLowerLane)
+        #00312: Z1
+        """)
+        let projection = try chartData.persistenceProjection()
+        let testContainer = TestContainer.isolatedContainer()
+        let context = testContainer.context
+        let song = Song(
+            title: chartData.title,
+            artist: chartData.artist,
+            bpm: chartData.bpm,
+            duration: "9:59",
+            genre: "DTX"
+        )
+        let chart = Chart(
+            difficulty: chartData.toDifficulty(),
+            level: chartData.difficultyLevel,
+            timeSignature: projection.timeSignature,
+            song: song
+        )
+        try chart.setRhythmMetadata(projection.chartMetadata)
+        chart.notes = projection.notes.map { $0.makeNote(for: chart) }
+        chart.controlEvents = projection.controls.map { $0.makeControl(for: chart) }
+        song.charts = [chart]
+        context.insert(song)
+        try context.save()
+
+        let reopenedContext = ModelContext(testContainer.container)
+        let persistedChart = try #require(reopenedContext.fetch(FetchDescriptor<Chart>()).first)
+        return PersistedTask10Fixture(
+            container: testContainer,
+            projection: projection,
+            chart: persistedChart
+        )
+    }
+
     func makeControlIdentityChart() -> Chart {
         let song = Song(
             title: "Control Identity",

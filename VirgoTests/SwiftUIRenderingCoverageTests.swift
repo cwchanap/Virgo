@@ -231,4 +231,37 @@ struct SwiftUIRenderingCoverageTests {
             #expect(!gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: false))
         }
     }
+
+    @Test("malformed explicit feel remains visible but disables practice")
+    func malformedExplicitFeelDisablesPractice() throws {
+        let chartData = try DTXFileParser.parseChartMetadata(from: """
+        #TITLE: Malformed Feel
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 70
+        #VIRGO_TIME_SIGNATURE: 6/8
+        #VIRGO_FEEL: swing-ish
+        #00012: 01
+        """)
+        let projection = try chartData.persistenceProjection()
+        let chart = Chart(difficulty: .hard, level: 70, timeSignature: projection.timeSignature)
+        try chart.setRhythmMetadata(projection.chartMetadata)
+        chart.notes = projection.notes.map { $0.makeNote(for: chart) }
+        var selectionCount = 0
+        let card = ChartSelectionCard(chart: chart) { selectionCount += 1 }
+
+        #expect(projection.timeline == nil)
+        #expect(projection.chartMetadata.timingStatus == .fatal)
+        #expect(projection.chartMetadata.diagnostics.map(\.code) == [.malformedFeel])
+        #expect(projection.notes.first?.normalizedMeasureIndex == nil)
+        #expect(!card.practiceState.isPracticeEnabled)
+        #expect(card.practiceState.badgeTitle == "Timing issue")
+        #expect(card.practiceState.reason?.contains("feel declaration is malformed") == true)
+        card.attemptPractice()
+        #expect(selectionCount == 0)
+        SwiftUITestUtilities.assertView(
+            card,
+            containsStrings: ["Timing issue", "Level 70"]
+        )
+    }
 }
