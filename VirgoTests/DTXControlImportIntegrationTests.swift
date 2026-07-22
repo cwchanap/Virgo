@@ -155,6 +155,26 @@ struct DTXControlImportIntegrationTests {
         })
         #expect(viewModel.cachedNotationLayout.rests.filter { $0.measureIndex == 0 }.isEmpty)
         #expect(viewModel.cachedNotationLayout.rhythmWarnings.filter { $0.scope == .measure(0) }.count == 1)
+
+        let selectedTarget = try #require(targets.first)
+        let match = InputTimingMatcher(configuration: .timeline(
+            targets: viewModel.cachedRhythmNoteTargets,
+            timeline: timeline,
+            speed: 1
+        )).calculateNoteMatch(
+            for: InputHit(drumType: selectedTarget.drumType, velocity: 1, timestamp: Date()),
+            elapsedTime: selectedTarget.targetSecondsAtOneX
+        )
+        #expect(match.matchedEventID == selectedTarget.eventID)
+        #expect(match.matchedTargetPosition == selectedTarget.position)
+        #expect(match.matchedTargetSeconds == selectedTarget.targetSecondsAtOneX)
+        #expect(match.hitSongSeconds == selectedTarget.targetSecondsAtOneX)
+        viewModel.isPlaying = true
+        viewModel.recordHit(result: match)
+        viewModel.recordHit(result: match)
+        #expect(viewModel.scoredRhythmEventIDs == Set([selectedTarget.eventID]))
+        #expect(viewModel.scoreEngine.combo == 1)
+        #expect(viewModel.scoreEngine.score == 100)
         viewModel.cleanup()
     }
 }

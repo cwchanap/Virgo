@@ -103,13 +103,20 @@ struct GameplayViewModelLayoutComputationsTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay(loadPersistedSpeed: false)
 
+        let noteHead = try #require(viewModel.cachedNotationLayout.noteHeads.first)
+        let renderedMeasure = try #require(viewModel.cachedNotationMeasuresByIndex[0])
+        let tabGrid = viewModel.cachedNotationLayout.tabGrid
+        let expectedTick = tabGrid.tickIndex(forBeatWithinMeasure: 1, beatsPerMeasure: 4)
+        let expectedX = tabGrid.xPosition(in: renderedMeasure, tickIndex: expectedTick)
+
         #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
         #expect(viewModel.cachedRhythmRuntime.diagnostics.isEmpty)
         #expect(viewModel.cachedRhythmTimeline == nil)
         #expect(viewModel.cachedRhythmNoteTargets.isEmpty)
         #expect(viewModel.cachedDrumBeats.first?.rhythmEventID == nil)
         #expect(viewModel.cachedDrumBeats.first?.rhythmPosition == nil)
-        #expect(viewModel.cachedNotationLayout.noteHeads.first?.eventID == nil)
+        #expect(noteHead.eventID == nil)
+        #expect(noteHead.position.x == expectedX)
         #expect(viewModel.bgmOffsetSeconds == 0.5)
         if case .legacy = try #require(viewModel.inputTimingConfiguration(speed: 1)) {
             // Expected fixed-grid input configuration.

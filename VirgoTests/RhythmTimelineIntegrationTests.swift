@@ -104,8 +104,8 @@ struct RhythmTimelineIntegrationTests {
         #expect(noteHead.position.x == expectedX)
         #expect(layoutNote.rhythm == NotationRhythm(baseInterval: .eighth, dotCount: 1))
         #expect(viewModel.cachedNotationLayout.rhythmDots.contains { $0.source == .event(selectedEvent.eventID) })
-        #expect(layoutSnapshot.rests.contains { $0.tupletID != nil && $0.visibility == .printed })
-        #expect(viewModel.cachedNotationLayout.tuplets.contains { $0.memberEventIDs.count == 2 })
+
+        try assertDTXTripletSlots(resolved, layoutSnapshot, viewModel.cachedNotationLayout)
         #expect(layoutSnapshot.notes.first { $0.sourceChipID == "F1" }?.rhythm.baseInterval == .thirtysecond)
         #expect(layoutSnapshot.notes.first { $0.sourceChipID == "F2" }?.rhythm.baseInterval == .sixtyfourth)
 
@@ -434,6 +434,26 @@ private extension RhythmTimelineIntegrationTests {
         let container: TestContainer
         let projection: DTXChartPersistenceProjection
         let chart: Chart
+    }
+
+    func assertDTXTripletSlots(
+        _ resolved: ResolvedChartRhythm, _ snapshot: RhythmLayoutSnapshot, _ renderedLayout: NotationLayout
+    ) throws {
+        let firstEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "T1" })
+        let secondEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "T2" })
+        let firstNote = try #require(snapshot.notes.first { $0.eventID == firstEvent.eventID })
+        let secondNote = try #require(snapshot.notes.first { $0.eventID == secondEvent.eventID })
+        let tupletID = try #require(firstNote.tupletID)
+        let printedRest = try #require(snapshot.rests.first {
+            $0.tupletID == tupletID && $0.visibility == .printed
+        })
+        let slotTicks = tupletID.durationTicks / 3
+        #expect(secondNote.tupletID == tupletID)
+        #expect(firstNote.position.localTick == tupletID.startTick)
+        #expect(secondNote.position.localTick == tupletID.startTick + slotTicks)
+        #expect(printedRest.position.localTick == tupletID.startTick + slotTicks * 2)
+        let renderedTuplet = try #require(renderedLayout.tuplets.first { $0.id == tupletID })
+        #expect(renderedTuplet.memberEventIDs == [firstEvent.eventID, secondEvent.eventID])
     }
 
     func dtxChipArray(gridSize: Int, chips: [Int: String]) -> String {
