@@ -17,7 +17,10 @@ struct ChartPracticeState: Hashable {
 
     init(chart: Chart) {
         let resolved = RhythmTimelineResolver().resolve(chart: chart)
-        guard resolved.availability == .fatal else {
+        guard let fatalDiagnostic = Self.fatalDiagnostic(
+            for: resolved,
+            bpm: chart.bpm
+        ) else {
             isPracticeEnabled = true
             badgeTitle = nil
             reason = nil
@@ -27,11 +30,47 @@ struct ChartPracticeState: Hashable {
 
         isPracticeEnabled = false
         badgeTitle = String(localized: "Timing issue")
-        reason = Self.reason(for: resolved.runtimeDiagnostics.first)
+        reason = Self.reason(for: fatalDiagnostic)
         accessibilityExplanation = String(localized: "Practice unavailable. \(reason ?? Self.fallbackReason)")
     }
 
     private static let fallbackReason = String(localized: "Unsupported chart timing")
+
+    private static func fatalDiagnostic(
+        for resolved: ResolvedChartRhythm,
+        bpm: Double
+    ) -> PersistedRhythmDiagnostic? {
+        switch resolved.availability {
+        case .fatal:
+            return resolved.runtimeDiagnostics.first { $0.severity == .timingFatal }
+                ?? resolved.runtimeDiagnostics.first
+        case .legacy:
+            return nil
+        case .valid:
+            break
+        }
+        guard let timeline = resolved.timeline else {
+            return makeFatalDiagnostic(code: .inconsistentPersistedTiming)
+        }
+        do {
+            _ = try RhythmMetronomeSchedule.preflight(timeline: timeline, bpm: bpm)
+            return nil
+        } catch let error as RhythmTimelineBuildError {
+            return makeFatalDiagnostic(code: error.diagnosticCode)
+        } catch {
+            return makeFatalDiagnostic(code: .inconsistentPersistedTiming)
+        }
+    }
+
+    private static func makeFatalDiagnostic(
+        code: RhythmDiagnosticCode
+    ) -> PersistedRhythmDiagnostic {
+        do {
+            return try PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
+        } catch {
+            preconditionFailure("Timing-fatal rhythm code has invalid severity: \(code)")
+        }
+    }
 
     private static func reason(for diagnostic: PersistedRhythmDiagnostic?) -> String {
         guard let diagnostic else { return fallbackReason }

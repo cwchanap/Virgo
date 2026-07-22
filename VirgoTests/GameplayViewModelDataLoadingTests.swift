@@ -113,7 +113,9 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
         #expect(viewModel.cachedNotationLayout.hasPlayableContent)
         #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)
-        #expect(!viewModel.cachedNotationLayout.stems.isEmpty)
+        // Both manual sixteenth notes retain distinct exact onsets, but their
+        // near-overlap makes the measure conservatively unsupported.
+        #expect(viewModel.cachedNotationLayout.stems.isEmpty)
         #expect(!viewModel.cachedBeatPositions.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadPositions.count == viewModel.cachedNotationLayout.noteHeads.count)
     }

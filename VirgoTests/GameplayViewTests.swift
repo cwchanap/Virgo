@@ -67,6 +67,62 @@ struct GameplayViewTests {
         #expect(view.viewModel == nil)
     }
 
+    @Test("schedule-cap fatal disables direct practice before starting gameplay consumers")
+    func scheduleCapFatalDisablesDirectPracticeBeforeRuntimeStarts() async throws {
+        let chart = try makeScheduleCapFatalChart()
+        let resolved = RhythmTimelineResolver().resolve(chart: chart)
+        let timeline = try #require(resolved.timeline)
+
+        #expect(resolved.availability == .valid)
+        #expect(timeline.measures.count == 1)
+        #expect(timeline.measures[0].durationTicks == 49_153)
+        #expect(timeline.measures[0].beatGroups.count == 16_385)
+        #expect(timeline.measures[0].beatGroups.count <= RhythmLimits.maximumMaterializedRhythmUnitCount)
+        #expect(throws: RhythmTimelineBuildError.materializationLimitExceeded) {
+            _ = try RhythmMetronomeSchedule.preflightPulseCount(for: timeline)
+        }
+
+        let practiceState = ChartPracticeState(chart: chart)
+        #expect(!practiceState.isPracticeEnabled)
+        #expect(practiceState.badgeTitle == "Timing issue")
+        #expect(practiceState.reason?.contains("too many rhythm units") == true)
+
+        let metronome = ScheduledMetronomeSpy()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.startPlayback()
+        viewModel.startBGMPlayback(track: try #require(viewModel.track))
+
+        #expect(viewModel.cachedRhythmRuntime.availability == .fatal)
+        #expect(viewModel.cachedRhythmRuntime.diagnostics.map(\.code) == [.rhythmMaterializationLimitExceeded])
+        #expect(viewModel.cachedRhythmRuntime.timeline == nil)
+        #expect(viewModel.cachedRhythmRuntime.metronomeSchedule == nil)
+        #expect(viewModel.cachedRhythmNoteTargets.isEmpty)
+        #expect(viewModel.isGameplayPrepared == false)
+        #expect(viewModel.inputManager.configuredBPM == 120)
+        #expect(metronome.startAtTimeCalls.isEmpty)
+        #expect(metronome.timelineStartAtTimeCalls.isEmpty)
+        #expect(viewModel.bgmPlayer == nil)
+
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        let view = GameplayView(
+            chart: chart,
+            metronome: metronome,
+            initialViewModel: viewModel
+        )
+        SwiftUITestUtilities.assertView(
+            view.environmentObject(PracticeSettingsService(userDefaults: userDefaults)),
+            containsStrings: [
+                "Practice unavailable",
+                "Unsupported chart timing: The chart contains too many rhythm units.",
+                "Back"
+            ],
+            excludesStrings: ["Loading..."]
+        )
+        viewModel.cleanup()
+    }
+
     @Test func testDrumBeatCreation() async throws {
         let beat = DrumBeat(id: 0, drums: [.kick, .hiHat], timePosition: 0.0, interval: .quarter)
 
@@ -373,5 +429,39 @@ struct GameplayViewTests {
             let shouldUpdate = difference > threshold
             #expect(shouldUpdate == testCase.shouldUpdate)
         }
+    }
+}
+
+private extension GameplayViewTests {
+    func makeScheduleCapFatalChart() throws -> Chart {
+        let override = try MeasureLengthOverride(
+            measureIndex: 0,
+            ratioToWholeNote: RhythmRatio(numerator: 49_153, denominator: 8)
+        )
+        let metadata = try ChartRhythmMetadata(
+            timeSignature: .twelveEight,
+            feel: .straight,
+            measureLengthOverrides: [override],
+            bgmStartAnchor: nil,
+            timingStatus: .valid,
+            diagnostics: []
+        )
+        let song = Song(
+            title: "Schedule cap",
+            artist: "Tester",
+            bpm: 137,
+            duration: "9:59",
+            genre: "Test",
+            bgmFilePath: "/tmp/schedule-cap-must-not-load.wav"
+        )
+        let chart = Chart(
+            difficulty: .expert,
+            level: 99,
+            timeSignature: .twelveEight,
+            song: song
+        )
+        try chart.setRhythmMetadata(metadata)
+        song.charts = [chart]
+        return chart
     }
 }

@@ -26,11 +26,7 @@ struct RhythmMetronomeSchedule: Hashable, Sendable {
     let pulses: [RhythmMetronomePulse]
 
     init(timeline: RhythmTimeline, bpm: Double) throws {
-        guard bpm.isFinite, bpm > 0 else {
-            throw RhythmTimelineBuildError.invalidMetadata
-        }
-
-        let pulseCount = try Self.preflightPulseCount(for: timeline)
+        let pulseCount = try Self.preflight(timeline: timeline, bpm: bpm)
         var pulses: [RhythmMetronomePulse] = []
         pulses.reserveCapacity(pulseCount)
 
@@ -77,6 +73,17 @@ struct RhythmMetronomeSchedule: Hashable, Sendable {
         }
 
         self.pulses = pulses
+    }
+
+    /// Validates every schedule prerequisite and returns its exact pulse count
+    /// without allocating the pulse array. Library readiness and runtime schedule
+    /// construction share this boundary so a chart cannot be selectable but
+    /// impossible to start.
+    static func preflight(timeline: RhythmTimeline, bpm: Double) throws -> Int {
+        guard bpm.isFinite, bpm > 0 else {
+            throw RhythmTimelineBuildError.invalidMetadata
+        }
+        return try preflightPulseCount(for: timeline)
     }
 
     static func preflightPulseCount(for timeline: RhythmTimeline) throws -> Int {

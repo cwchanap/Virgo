@@ -441,19 +441,19 @@ private extension RhythmTimelineIntegrationTests {
     ) throws {
         let firstEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "T1" })
         let secondEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "T2" })
+        let thirdEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "T3" })
         let firstNote = try #require(snapshot.notes.first { $0.eventID == firstEvent.eventID })
         let secondNote = try #require(snapshot.notes.first { $0.eventID == secondEvent.eventID })
+        let thirdNote = try #require(snapshot.notes.first { $0.eventID == thirdEvent.eventID })
         let tupletID = try #require(firstNote.tupletID)
-        let printedRest = try #require(snapshot.rests.first {
-            $0.tupletID == tupletID && $0.visibility == .printed
-        })
         let slotTicks = tupletID.durationTicks / 3
         #expect(secondNote.tupletID == tupletID)
+        #expect(thirdNote.tupletID == tupletID)
         #expect(firstNote.position.localTick == tupletID.startTick)
         #expect(secondNote.position.localTick == tupletID.startTick + slotTicks)
-        #expect(printedRest.position.localTick == tupletID.startTick + slotTicks * 2)
+        #expect(thirdNote.position.localTick == tupletID.startTick + slotTicks * 2)
         let renderedTuplet = try #require(renderedLayout.tuplets.first { $0.id == tupletID })
-        #expect(renderedTuplet.memberEventIDs == [firstEvent.eventID, secondEvent.eventID])
+        #expect(renderedTuplet.memberEventIDs == [firstEvent.eventID, secondEvent.eventID, thirdEvent.eventID])
     }
 
     func dtxChipArray(gridSize: Int, chips: [Int: String]) -> String {
@@ -461,15 +461,21 @@ private extension RhythmTimelineIntegrationTests {
     }
 
     func makePersistedTask10Fixture() throws -> PersistedTask10Fixture {
-        let dottedLane = dtxChipArray(gridSize: 16, chips: [0: "D1", 4: "D2"])
-        let dottedEvidenceUpperLane = dtxChipArray(gridSize: 12, chips: [5: "D3", 8: "D4"])
-        let dottedEvidenceLowerLane = dtxChipArray(gridSize: 6, chips: [3: "D5", 5: "D6"])
-        let tripletLane = dtxChipArray(gridSize: 18, chips: [0: "T1", 2: "T2", 9: "B1", 12: "B2"])
-        let tripletEvidenceLane = dtxChipArray(gridSize: 18, chips: [6: "E1"])
+        // The pickup resolves to 144 ticks at 192 ticks per whole note. Each
+        // 36-tick span is therefore an exact dotted eighth, and the following
+        // boundary onset gives the terminal chip local same-voice evidence.
+        let dottedLane = dtxChipArray(
+            gridSize: 12,
+            chips: [0: "D1", 3: "D2", 5: "D3", 6: "D4", 9: "D5", 11: "D6"]
+        )
+        let tripletLane = dtxChipArray(
+            gridSize: 18,
+            chips: [0: "T1", 2: "T2", 4: "T3", 6: "E1", 9: "B1", 12: "B2", 15: "B3"]
+        )
         let controlLane = dtxChipArray(gridSize: 18, chips: [3: "16"])
         let fineUpperLane = dtxChipArray(
             gridSize: 96,
-            chips: [8: "A1", 32: "A2", 56: "A3", 92: "F1", 94: "F2", 95: "F3"]
+            chips: [0: "S1", 8: "A1", 32: "A2", 56: "A3", 92: "F1", 94: "F2", 95: "F3"]
         )
         let fineLowerLane = dtxChipArray(gridSize: 96, chips: [0: "C1", 24: "C2", 48: "C3", 72: "C4"])
         let chartData = try DTXFileParser.parseChartMetadata(from: """
@@ -484,10 +490,7 @@ private extension RhythmTimelineIntegrationTests {
         #00202: 1.5
         #00001: 0001
         #00012: \(dottedLane)
-        #00014: \(dottedEvidenceUpperLane)
-        #00013: \(dottedEvidenceLowerLane)
         #00112: \(tripletLane)
-        #00113: \(tripletEvidenceLane)
         #00122: \(controlLane)
         #00212: \(fineUpperLane)
         #00213: \(fineLowerLane)

@@ -58,6 +58,14 @@ struct GameplayView: View {
         viewModel?.isGameplayPrepared == true
     }
 
+    private var fatalPracticeMessage: String? {
+        if !practiceState.isPracticeEnabled {
+            return practiceState.reason ?? String(localized: "Unsupported chart timing")
+        }
+        guard let viewModel, viewModel.hasFatalRhythmTiming else { return nil }
+        return viewModel.rhythmFatalMessage
+    }
+
     private func dismissGameplay() {
         if let onDismissOverride {
             onDismissOverride()
@@ -67,7 +75,7 @@ struct GameplayView: View {
     }
 
     func dismissFatalPractice() {
-        guard !practiceState.isPracticeEnabled else { return }
+        guard fatalPracticeMessage != nil else { return }
         dismissGameplay()
     }
 
@@ -102,6 +110,7 @@ struct GameplayView: View {
         vm.updateRowWidth(initialRowWidth)
         // setupGameplay loads the persisted speed for this chart (SC-06)
         vm.setupGameplay()
+        guard vm.isGameplayPrepared else { return }
         // Setup InputManager delegate and metronome subscription after viewModel is ready
         vm.inputManager.delegate = vm.inputHandler
         vm.wireInputHandler()
@@ -111,9 +120,9 @@ struct GameplayView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            if !practiceState.isPracticeEnabled {
+            if let fatalPracticeMessage {
                 rhythmFatalSheet(
-                    message: practiceState.reason ?? String(localized: "Unsupported chart timing"),
+                    message: fatalPracticeMessage,
                     onDismiss: dismissFatalPractice
                 )
                 .accessibilityIdentifier("gameplayRoot")

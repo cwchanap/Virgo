@@ -77,19 +77,17 @@ struct NotationBeamTopologyBuilder {
     /// Events are grouped by measure, row, voice, stem direction, and beat
     /// group index. Consecutive beamable events within a beat group form
     /// primary runs, which are then segmented into full beams and hooks.
-    /// Compound meters (X/8) are intentionally unsupported and return
-    /// ``BeamTopologyResult/empty``.
+    /// This legacy fixed-measure overload supports simple X/4 meters only.
+    /// Timeline-native callers use ``build(events:measures:)`` so compound and
+    /// variable measures retain their resolved beat groups.
     func build(
         events: [BeamTimelineEvent],
         ticksPerMeasure: Int,
         timeSignature: TimeSignature
     ) -> BeamTopologyResult {
-        // Simple X/4 meters (4/4, 3/4, 2/4, 5/4) share quarter-note beats, so
-        // beat scoping generalizes trivially: one beat = ticksPerMeasure /
-        // beatsPerMeasure. Compound meters (6/8, 12/8, …) use dotted-quarter
-        // beats and a different grouping; they are intentionally deferred here
-        // and fall back to flags-only rendering until a compound beat grouper
-        // is added.
+        // Keep the compatibility overload limited to its original simple-meter
+        // contract. Resolved compound/variable grouping belongs to the
+        // measure-driven overload above rather than being reconstructed here.
         guard timeSignature.noteValue == 4,
               ticksPerMeasure > 0,
               ticksPerMeasure.isMultiple(of: timeSignature.beatsPerMeasure) else {
