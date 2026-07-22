@@ -324,4 +324,45 @@ struct ScoringIntegrationTests {
         vm.resetScoring()
         #expect(vm.scoreEngine.timingDeviations.isEmpty)
     }
+
+    @Test("timeline matcher identity is the scoring deduplication key")
+    func testTimelineMatcherIdentityDrivesScoring() async throws {
+        let song = Song(
+            title: "Timeline Scoring",
+            artist: "Tester",
+            bpm: 120,
+            duration: "0:02",
+            genre: "Test"
+        )
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour, song: song)
+        chart.notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.25, chart: chart),
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.75, chart: chart)
+        ]
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        let target = try #require(viewModel.cachedRhythmNoteTargets.first)
+        let configuration = try #require(viewModel.inputTimingConfiguration(speed: 1))
+        let result = InputTimingMatcher(configuration: configuration).calculateNoteMatch(
+            for: InputHit(drumType: target.drumType, velocity: 1, timestamp: Date()),
+            elapsedTime: target.targetSecondsAtOneX
+        )
+
+        #expect(result.matchedEventID == target.eventID)
+        #expect(result.matchedTargetPosition == target.position)
+        #expect(result.matchedTargetSeconds == target.targetSecondsAtOneX)
+        viewModel.isPlaying = true
+        viewModel.recordHit(result: result)
+        viewModel.recordHit(result: result)
+        #expect(viewModel.scoredRhythmEventIDs == Set([target.eventID]))
+        #expect(viewModel.scoreEngine.combo == 1)
+        #expect(viewModel.scoreEngine.score == 100)
+        viewModel.handlePlaybackCompletion()
+        #expect(viewModel.sessionScoreSnapshot.score == 100)
+        viewModel.cleanup()
+    }
 }

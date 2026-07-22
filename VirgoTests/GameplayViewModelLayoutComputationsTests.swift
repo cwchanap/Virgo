@@ -46,6 +46,199 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(viewModel.cachedBeatIndices.isEmpty)
     }
 
+    @Test("Timeline beat with duplicate legacy fraction retains stable canonical identity")
+    func timelineBeatWithDuplicateFractionRetainsIdentity() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .sixEight)
+        chart.notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 3.0),
+            Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 1.0 / 3.0)
+        ]
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+
+        let targets = viewModel.cachedRhythmNoteTargets
+        let expectedTarget = try #require(targets.min {
+            $0.eventID.rawValue < $1.eventID.rawValue
+        })
+        let beat = try #require(viewModel.cachedDrumBeats.first)
+
+        #expect(targets.count == 2)
+        #expect(viewModel.cachedDrumBeats.count == 1)
+        #expect(beat.rhythmEventID == expectedTarget.eventID)
+        #expect(beat.rhythmPosition == expectedTarget.position)
+        #expect(viewModel.cachedBeatPositions[beat.id] != nil)
+    }
+
+    @Test("metadata-free DTX stays on the fixed legacy gameplay path")
+    func metadataFreeDTXUsesFixedLegacyPath() async throws {
+        let song = Song(
+            title: "Legacy DTX",
+            artist: "Tester",
+            bpm: 120,
+            duration: "0:02",
+            genre: "DTX",
+            bgmStartOffsetSeconds: 0.5
+        )
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour, song: song)
+        chart.notes = [Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0.25,
+            chart: chart,
+            originKind: .dtx,
+            sourceLaneID: "12",
+            sourceNoteID: "01",
+            sourceGridPosition: 1,
+            sourceGridSize: 4
+        )]
+        let metronome = ScheduledMetronomeSpy()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
+        #expect(viewModel.cachedRhythmRuntime.diagnostics.isEmpty)
+        #expect(viewModel.cachedRhythmTimeline == nil)
+        #expect(viewModel.cachedRhythmNoteTargets.isEmpty)
+        #expect(viewModel.cachedDrumBeats.first?.rhythmEventID == nil)
+        #expect(viewModel.cachedDrumBeats.first?.rhythmPosition == nil)
+        #expect(viewModel.cachedNotationLayout.noteHeads.first?.eventID == nil)
+        #expect(viewModel.bgmOffsetSeconds == 0.5)
+        if case .legacy = try #require(viewModel.inputTimingConfiguration(speed: 1)) {
+            // Expected fixed-grid input configuration.
+        } else {
+            Issue.record("Metadata-free DTX must not synthesize a partial timeline")
+        }
+        viewModel.startPlayback()
+        #expect(metronome.startAtTimeCalls.count == 1)
+        #expect(metronome.timelineStartAtTimeCalls.isEmpty)
+        viewModel.cleanup()
+    }
+
+    @Test("metadata-free manual exact offsets synthesize the complete timeline path")
+    func metadataFreeManualExactOffsetSynthesizesTimeline() async throws {
+        let song = Song(
+            title: "Manual Exact",
+            artist: "Tester",
+            bpm: 120,
+            duration: "0:00",
+            genre: "Manual"
+        )
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour, song: song)
+        chart.notes = [Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 1.0 / 3.0,
+            chart: chart
+        )]
+        let metronome = ScheduledMetronomeSpy()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let target = try #require(viewModel.cachedRhythmNoteTargets.first)
+        let timeline = try #require(viewModel.cachedRhythmTimeline)
+        #expect(viewModel.cachedRhythmRuntime.availability == .valid)
+        #expect(target.position == viewModel.cachedDrumBeats.first?.rhythmPosition)
+        #expect(target.eventID == viewModel.cachedNotationLayout.noteHeads.first?.eventID)
+        #expect(timeline.seconds(for: target.position, bpm: 120, speed: 1) == target.targetSecondsAtOneX)
+        if case .timeline = try #require(viewModel.inputTimingConfiguration(speed: 1)) {
+            // Expected canonical input configuration.
+        } else {
+            Issue.record("An exactly representable manual offset must synthesize a timeline")
+        }
+        viewModel.startPlayback()
+        #expect(metronome.startAtTimeCalls.isEmpty)
+        #expect(metronome.timelineStartAtTimeCalls.count == 1)
+        viewModel.cleanup()
+    }
+
+    @Test("authoritative manual durations synthesize a note-rest-note triplet")
+    func manualDurationsSynthesizeNoteRestNoteTriplet() async throws {
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes = [
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+            Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 6.0),
+            Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 1.0 / 8.0)
+        ]
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let snapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
+        let rest = try #require(snapshot.rests.first { $0.visibility == .printed && $0.tupletID != nil })
+        let tupletID = try #require(rest.tupletID)
+        let memberTicks = snapshot.notes
+            .filter { $0.tupletID == tupletID }
+            .map(\.position.localTick)
+            .sorted()
+
+        #expect(viewModel.cachedRhythmRuntime.availability == .valid)
+        #expect(memberTicks.count == 2)
+        #expect(memberTicks.first.map { $0 < rest.position.localTick } == true)
+        #expect(memberTicks.last.map { rest.position.localTick < $0 } == true)
+        #expect(viewModel.cachedNotationLayout.tuplets.contains { $0.id == tupletID })
+        viewModel.cleanup()
+    }
+
+    @Test("inadmissible manual offsets fall back wholly to playable legacy")
+    func inadmissibleManualOffsetFallsBackWhollyToLegacy() async throws {
+        let song = Song(
+            title: "Manual Legacy",
+            artist: "Tester",
+            bpm: 120,
+            duration: "0:02",
+            genre: "Manual"
+        )
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour, song: song)
+        chart.notes = [
+            Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0, chart: chart),
+            Note(
+                interval: .quarter,
+                noteType: .snare,
+                measureNumber: 1,
+                measureOffset: 0.4142135623730951,
+                chart: chart
+            )
+        ]
+        let metronome = ScheduledMetronomeSpy()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
+        #expect(viewModel.cachedRhythmRuntime.diagnostics.map(\.code) == [.manualTimelineUnavailable])
+        #expect(viewModel.cachedRhythmRuntime.diagnostics.allSatisfy { $0.severity == .engravingOnly })
+        #expect(viewModel.cachedRhythmTimeline == nil)
+        #expect(viewModel.cachedRhythmNoteTargets.isEmpty)
+        #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)
+        #expect(viewModel.isGameplayPrepared)
+        if case .legacy = try #require(viewModel.inputTimingConfiguration(speed: 1)) {
+            // Expected all-or-nothing legacy fallback.
+        } else {
+            Issue.record("Inadmissible manual timing must not leak partial timeline state")
+        }
+        viewModel.startPlayback()
+        #expect(viewModel.isPlaying)
+        #expect(metronome.startAtTimeCalls.count == 1)
+        #expect(metronome.timelineStartAtTimeCalls.isEmpty)
+        viewModel.cleanup()
+    }
+
     @Test func testComputeCachedLayoutData() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 16)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()

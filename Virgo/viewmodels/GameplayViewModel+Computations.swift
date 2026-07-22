@@ -242,6 +242,11 @@ extension GameplayViewModel {
             return
         }
 
+        if cachedRhythmRuntime.availability == .valid {
+            computeTimelineDrumBeats()
+            return
+        }
+
         let groupedNotes = Dictionary(grouping: cachedNotes) { note in
             NotePositionKey(measureNumber: note.measureNumber, measureOffset: note.measureOffset).normalized()
         }
@@ -264,6 +269,34 @@ extension GameplayViewModel {
         .sorted { $0.timePosition < $1.timePosition }
 
         cachedBeatIndices = Array(0..<cachedDrumBeats.count)
+    }
+
+    private func computeTimelineDrumBeats() {
+        let groupedTargets = Dictionary(grouping: cachedRhythmNoteTargets, by: \.position)
+        cachedDrumBeats = groupedTargets.compactMap { position, targets in
+            guard let representative = targets.min(by: { $0.eventID.rawValue < $1.eventID.rawValue }),
+                  let note = cachedNoteByRhythmEventID[representative.eventID] else {
+                return nil
+            }
+            let drums = targets.sorted { $0.eventID.rawValue < $1.eventID.rawValue }.map(\.drumType)
+            return DrumBeat(
+                id: generateBeatId(),
+                drums: drums,
+                timePosition: MeasureUtils.timePosition(
+                    measureNumber: note.measureNumber,
+                    measureOffset: note.measureOffset
+                ),
+                interval: note.interval,
+                rhythmEventID: representative.eventID,
+                rhythmPosition: position
+            )
+        }.sorted {
+            let leftTick = $0.rhythmPosition?.absoluteTick ?? Int.max
+            let rightTick = $1.rhythmPosition?.absoluteTick ?? Int.max
+            if leftTick != rightTick { return leftTick < rightTick }
+            return ($0.rhythmEventID?.rawValue ?? Int.max) < ($1.rhythmEventID?.rawValue ?? Int.max)
+        }
+        cachedBeatIndices = Array(cachedDrumBeats.indices)
     }
 
     func computeCachedLayoutData() {
@@ -523,12 +556,8 @@ extension GameplayViewModel {
 
     private func cacheTimelineNotationBeatPositions() {
         for beat in cachedDrumBeats {
-            guard let note = cachedNotes.first(where: {
-                MeasureUtils.timePosition(measureNumber: $0.measureNumber, measureOffset: $0.measureOffset)
-                    == beat.timePosition
-            }),
-            let position = cachedRhythmRuntime.positionByNoteObjectID[ObjectIdentifier(note)],
-            let measure = cachedNotationMeasuresByIndex[position.measureIndex] else {
+            guard let position = beat.rhythmPosition,
+                  let measure = cachedNotationMeasuresByIndex[position.measureIndex] else {
                 continue
             }
             let beatX = cachedNotationLayout.tabGrid.xPosition(in: measure, localTick: position.localTick)
