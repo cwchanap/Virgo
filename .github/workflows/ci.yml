@@ -208,8 +208,10 @@ jobs:
     if: ${{ always() }}
 
     steps:
-      - name: Checkout
+      - name: Checkout coverage commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Download coverage results
         uses: actions/download-artifact@v4
@@ -232,6 +234,9 @@ jobs:
           files: coverage-results/cobertura.xml
           flags: unit-tests
           disable_search: true
+          override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
+          override_pr: ${{ github.event.pull_request.number }}
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
