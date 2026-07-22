@@ -43,7 +43,9 @@ extension NotationLayoutEngine {
             }
         }
 
-        let headsNeedingStems = noteHeads.filter { $0.interval.needsStem }
+        let headsNeedingStems = noteHeads.filter {
+            $0.interval.needsStem && $0.rhythm.support == .supported
+        }
 
         let grouped = Dictionary(grouping: headsNeedingStems) { head in
             StemGroupKey(

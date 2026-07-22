@@ -833,22 +833,19 @@ private extension DTXChartData {
         noteSources: [ProjectionNoteSource],
         timeline: RhythmTimeline
     ) -> [RhythmSourceEventID: NoteInterval] {
-        let positions = noteSources.compactMap { source -> (RhythmSourceEventID, Int)? in
+        let positions = noteSources.compactMap { source -> (
+            key: RhythmSourceEventID,
+            absoluteTick: Int,
+            voice: NotationVoice
+        )? in
             guard let position = timeline.position(for: source.id) else { return nil }
-            return (source.id, position.absoluteTick)
+            let voice = DrumNotationCatalog.definition(for: source.noteType)?.voice ?? .upper
+            return (key: source.id, absoluteTick: position.absoluteTick, voice: voice)
         }
-        let orderedTicks = Array(Set(positions.map(\.1))).sorted()
-        let nextTickByTick = Dictionary(uniqueKeysWithValues: zip(orderedTicks, orderedTicks.dropFirst()))
-        return Dictionary(uniqueKeysWithValues: positions.compactMap { id, tick in
-            guard let nextTick = nextTickByTick[tick] else { return nil }
-            return (
-                id,
-                VisualDurationLookup.closestInterval(
-                    toTickSpan: nextTick - tick,
-                    ticksPerMeasure: timeline.ticksPerWholeNote
-                )
-            )
-        })
+        return VisualDurationLookup.candidates(
+            for: positions,
+            ticksPerWholeNote: timeline.ticksPerWholeNote
+        )
     }
 
     func voiceCandidate(for noteType: NoteType) -> NormalizedNotationVoice {

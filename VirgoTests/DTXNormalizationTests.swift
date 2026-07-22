@@ -182,7 +182,7 @@ struct DTXNormalizationTests {
         #expect(note.visualDurationCandidate == nil)
     }
 
-    @Test("visual duration candidates use the next chip across measure boundaries")
+    @Test("visual duration candidates use the next same-voice chip across measure boundaries")
     func testVisualDurationCandidatesUseNextMeasureChip() throws {
         let finalEighthChip = String(repeating: "00", count: 7) + "01"
         let nextMeasureChip = "01" + String(repeating: "00", count: 7)
@@ -192,27 +192,27 @@ struct DTXNormalizationTests {
         #BPM: 120
         #DLEVEL: 50
         #00113: \(finalEighthChip)
-        #00212: \(nextMeasureChip)
+        #00213: \(nextMeasureChip)
         """
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
         let events = chartData.normalizedRhythmicEvents()
 
-        let bass = try #require(events.first { $0.laneID == "13" })
-        let snare = try #require(events.first { $0.laneID == "12" })
-        #expect(bass.absoluteTick == 15)
-        #expect(snare.absoluteTick == 16)
-        #expect(bass.visualDurationCandidate == .eighth)
-        #expect(snare.visualDurationCandidate == nil)
+        let firstBass = try #require(events.first { $0.measureIndex == 1 })
+        let secondBass = try #require(events.first { $0.measureIndex == 2 })
+        #expect(firstBass.absoluteTick == 15)
+        #expect(secondBass.absoluteTick == 16)
+        #expect(firstBass.visualDurationCandidate == .eighth)
+        #expect(secondBass.visualDurationCandidate == nil)
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
-        let bassNote = try #require(notes.first { $0.sourceLaneID == "13" })
-        let snareNote = try #require(notes.first { $0.sourceLaneID == "12" })
-        #expect(bassNote.interval == .eighth)
-        #expect(bassNote.visualDurationCandidate == .eighth)
-        #expect(snareNote.interval == .quarter)
-        #expect(snareNote.visualDurationCandidate == nil)
+        let firstBassNote = try #require(notes.first { $0.normalizedMeasureIndex == 1 })
+        let secondBassNote = try #require(notes.first { $0.normalizedMeasureIndex == 2 })
+        #expect(firstBassNote.interval == .eighth)
+        #expect(firstBassNote.visualDurationCandidate == .eighth)
+        #expect(secondBassNote.interval == .quarter)
+        #expect(secondBassNote.visualDurationCandidate == nil)
     }
 
     @Test("normalization rejects oversized shared tick scales")

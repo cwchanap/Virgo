@@ -73,7 +73,9 @@ struct RhythmImportBackfillTests {
         #expect(projection.notes[0].normalizedAbsoluteTick == 0)
         #expect(projection.notes[0].normalizedTickWithinMeasure == 0)
         #expect(projection.notes[0].normalizedTicksPerMeasure == 12)
-        #expect(projection.notes[0].visualDurationCandidate != nil)
+        // The only later playable onset is in the lower voice, so it cannot
+        // provide duration evidence for this terminal upper-voice note.
+        #expect(projection.notes[0].visualDurationCandidate == nil)
         #expect(projection.notes[1].normalizedMeasureIndex == 1)
         #expect(projection.notes[1].normalizedAbsoluteTick == 16)
         #expect(projection.notes[1].normalizedTickWithinMeasure == 4)
@@ -123,6 +125,97 @@ struct RhythmImportBackfillTests {
         #expect(projection.controls[0].normalizedAbsoluteTick == nil)
         #expect(projection.controls[0].normalizedTickWithinMeasure == nil)
         #expect(projection.controls[0].normalizedTicksPerMeasure == nil)
+    }
+
+    @Test("cross-voice onset cannot invent a terminal upper-voice duration")
+    func crossVoiceOnsetStaysIndeterminateThroughBackfillAndLayout() async throws {
+        let folder = try makeVoiceScopedDurationFixtureFolder()
+        let chartURL = folder.appendingPathComponent("first.dtx")
+        let chartData = try DTXFileParser.parseChartMetadata(from: chartURL)
+        let projection = try chartData.persistenceProjection()
+
+        #expect(projection.notes.map(\.sourceLaneID) == ["12", "11", "13"])
+        #expect(projection.notes.map(\.normalizedAbsoluteTick) == [0, 0, 1])
+        #expect(projection.notes.map(\.notationVoiceCandidate) == [.upper, .upper, .lower])
+        #expect(projection.notes.map(\.visualDurationCandidate) == [nil, nil, nil])
+
+        let testContainer = TestContainer.isolatedContainer()
+        let context = testContainer.context
+        let song = Song(
+            title: "Voice-scoped durations",
+            artist: "Tester",
+            bpm: 120,
+            duration: "0:01",
+            genre: "DTX Import",
+            isServerImported: true,
+            serverSongId: folder.lastPathComponent
+        )
+        let chart = Chart(difficulty: .easy, level: 40, song: song)
+        chart.notes = projection.notes.map { values in
+            let note = values.makeNote(for: chart)
+            note.normalizedMeasureIndex = nil
+            note.normalizedAbsoluteTick = nil
+            note.normalizedTickWithinMeasure = nil
+            note.normalizedTicksPerMeasure = nil
+            note.notationVoiceCandidate = nil
+            note.visualDurationCandidate = nil
+            return note
+        }
+        song.charts = [chart]
+        context.insert(song)
+        try context.save()
+
+        let (defaults, _) = TestUserDefaults.makeIsolated(
+            suiteName: "RhythmBackfill.voice-scoped.\(UUID().uuidString)"
+        )
+        try LocalDTXFixtureImporter.backfillRhythmTiming(
+            for: song,
+            from: folder,
+            in: context,
+            versionStore: RhythmBackfillVersionStore(userDefaults: defaults)
+        )
+
+        #expect(Set(chart.safeNotes.compactMap(\.sourceLaneID)) == Set(["12", "11", "13"]))
+        #expect(chart.safeNotes.allSatisfy { $0.visualDurationCandidate == nil })
+
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        let snapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
+        let upperNotes = snapshot.notes.filter { $0.sourceLaneID == "12" || $0.sourceLaneID == "11" }
+
+        #expect(upperNotes.count == 2)
+        #expect(upperNotes.allSatisfy {
+            $0.rhythm.support == .indeterminate(.indeterminateTerminalDuration)
+        })
+        guard case let .unsupported(warningCodes) = snapshot.measures.first?.engravingSupport else {
+            Issue.record("Expected the terminal upper voice to mark its measure unsupported")
+            return
+        }
+        #expect(warningCodes.contains(.indeterminateTerminalDuration))
+
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        let upperHeadIDs = Set(viewModel.cachedNotationLayout.noteHeads.compactMap { head in
+            upperNotes.contains { $0.eventID == head.eventID } ? head.id : nil
+        })
+        #expect(!upperHeadIDs.isEmpty)
+        #expect(viewModel.cachedNotationLayout.stems.allSatisfy {
+            upperHeadIDs.isDisjoint(with: $0.noteHeadIDs)
+        })
+        #expect(viewModel.cachedNotationLayout.beams.allSatisfy {
+            upperHeadIDs.isDisjoint(with: $0.noteHeadIDs)
+        })
+        #expect(viewModel.cachedNotationLayout.flags.allSatisfy { !upperHeadIDs.contains($0.noteHeadID) })
+        #expect(viewModel.cachedNotationLayout.rhythmDots.allSatisfy { dot in
+            guard case let .event(eventID) = dot.source else { return true }
+            return !upperNotes.contains { $0.eventID == eventID }
+        })
+        #expect(viewModel.cachedNotationLayout.tuplets.allSatisfy { tuplet in
+            Set(tuplet.memberEventIDs).isDisjoint(with: upperNotes.map(\.eventID))
+        })
+        viewModel.cleanup()
     }
 
     @Test("backfill updates only source-backed nil payloads, saves once, and skips a completed version")
@@ -438,6 +531,27 @@ struct RhythmImportBackfillTests {
             #00012: 01000000
             """.write(to: folder.appendingPathComponent("second.dtx"), atomically: true, encoding: .utf8)
         }
+        return folder
+    }
+
+    private func makeVoiceScopedDurationFixtureFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("virgo-rhythm-voice-duration-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try """
+        #TITLE: Voice-scoped durations
+        #L1LABEL: BASIC
+        #L1FILE: first.dtx
+        """.write(to: folder.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
+        try """
+        #TITLE: Voice-scoped durations
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 40
+        #00012: 0100000000000000
+        #00011: 0200000000000000
+        #00013: 0003000000000000
+        """.write(to: folder.appendingPathComponent("first.dtx"), atomically: true, encoding: .utf8)
         return folder
     }
 
