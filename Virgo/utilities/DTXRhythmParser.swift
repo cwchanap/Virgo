@@ -64,7 +64,7 @@ enum DTXRhythmParser {
                 )
                 return true
             }
-            guard let measureIndex = Self.measureLengthIndex(in: line) else {
+            guard let measureIndex = Self.measureLengthIndex(in: uppercasedLine) else {
                 return false
             }
             parseMeasureLength(

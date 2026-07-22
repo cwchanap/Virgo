@@ -423,9 +423,9 @@ struct RhythmRenderingTests {
             controls: [],
             rests: [],
             feel: .straight,
-            diagnostics: [diagnostic, diagnostic],
-            diagnosticLog: { messages.append($0) }
+            diagnostics: [diagnostic, diagnostic]
         )
+        resolvedSnapshot.logDiagnostics { messages.append($0) }
 
         #expect(resolvedSnapshot.diagnostics == [diagnostic])
         #expect(messages == [

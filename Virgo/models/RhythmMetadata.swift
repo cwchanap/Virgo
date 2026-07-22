@@ -74,8 +74,7 @@ struct RhythmLayoutSnapshot: Hashable {
         controls: [RhythmLayoutControl],
         rests: [RhythmLayoutRest],
         feel: RhythmicFeel,
-        diagnostics: [PersistedRhythmDiagnostic] = [],
-        diagnosticLog: (String) -> Void = { Logger.warning($0) }
+        diagnostics: [PersistedRhythmDiagnostic] = []
     ) throws {
         guard ticksPerWholeNote > 0 else {
             throw RhythmMetadataValidationError.invalidTicksPerWholeNote
@@ -87,8 +86,11 @@ struct RhythmLayoutSnapshot: Hashable {
         self.rests = rests
         self.feel = feel
         self.diagnostics = Self.stableDiagnostics(diagnostics)
-        for diagnostic in self.diagnostics {
-            diagnosticLog(RhythmDiagnosticPresentation(code: diagnostic.code).logMessage(
+    }
+
+    func logDiagnostics(_ log: (String) -> Void = { Logger.warning($0) }) {
+        for diagnostic in diagnostics {
+            log(RhythmDiagnosticPresentation(code: diagnostic.code).logMessage(
                 sourceMeasureIndex: diagnostic.sourceMeasureIndex,
                 sourceLineNumber: diagnostic.sourceLineNumber
             ))
@@ -489,9 +491,6 @@ enum ChartRhythmMetadataCodec {
     }
 
     private static func diagnosticCode(for data: Data, error: Error) -> RhythmDiagnosticCode {
-        if case RhythmMetadataValidationError.unsupportedMetadataVersion = error {
-            return .unsupportedMetadataVersion
-        }
         guard let object = try? JSONSerialization.jsonObject(with: data),
               let values = object as? [String: Any],
               let version = values["version"] as? Int,

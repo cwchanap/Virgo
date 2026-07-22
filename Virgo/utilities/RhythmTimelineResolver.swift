@@ -341,14 +341,23 @@ private extension RhythmTimelineResolver {
     func manualLegacyResult() -> ResolvedChartRhythm {
         unavailable(
             availability: .legacy,
-            diagnostics: [try! PersistedRhythmDiagnostic(
-                code: .manualTimelineUnavailable,
-                severity: .engravingOnly
-            )]
+            diagnostics: [engravingDiagnostic(.manualTimelineUnavailable)]
         )
     }
 
     func timingDiagnostic(_ code: RhythmDiagnosticCode) -> PersistedRhythmDiagnostic {
-        try! PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
+        precondition(
+            code.requiredSeverity == .timingFatal,
+            "timingDiagnostic requires a timingFatal code; received \(code.rawValue) (\(code.requiredSeverity))"
+        )
+        return try! PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
+    }
+
+    private func engravingDiagnostic(_ code: RhythmDiagnosticCode) -> PersistedRhythmDiagnostic {
+        precondition(
+            code.requiredSeverity == .engravingOnly,
+            "engravingDiagnostic requires an engravingOnly code; received \(code.rawValue) (\(code.requiredSeverity))"
+        )
+        return try! PersistedRhythmDiagnostic(code: code, severity: .engravingOnly)
     }
 }
