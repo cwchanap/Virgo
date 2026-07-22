@@ -74,6 +74,7 @@ jobs:
             -destination 'platform=macOS' \
             -configuration Debug \
             -only-testing:VirgoTests \
+            -parallel-testing-enabled NO \
             ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
@@ -204,6 +205,7 @@ jobs:
     name: Upload Coverage to Codecov
     runs-on: macos-latest
     needs: test
+    if: ${{ always() }}
 
     steps:
       - name: Checkout
