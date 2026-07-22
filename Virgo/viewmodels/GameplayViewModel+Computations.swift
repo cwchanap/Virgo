@@ -143,7 +143,7 @@ extension GameplayViewModel {
                 tupletID: rest.tupletID
             )
         }
-        return try RhythmLayoutSnapshot(
+        let snapshot = try RhythmLayoutSnapshot(
             ticksPerWholeNote: timeline.ticksPerWholeNote,
             measures: measures,
             notes: notes,
@@ -152,6 +152,8 @@ extension GameplayViewModel {
             feel: feel,
             diagnostics: resolvedRhythm.runtimeDiagnostics
         )
+        snapshot.logDiagnostics()
+        return snapshot
     }
 
     private func resolvedRhythmFeel() -> RhythmicFeel {
@@ -189,6 +191,10 @@ extension GameplayViewModel {
         diagnostics: [PersistedRhythmDiagnostic],
         code: RhythmDiagnosticCode
     ) -> GameplayRhythmRuntime {
+        precondition(
+            code.requiredSeverity == .timingFatal,
+            "fatalRhythmRuntime requires a timingFatal code; received \(code.rawValue) (\(code.requiredSeverity))"
+        )
         let diagnostic = try! PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
         return GameplayRhythmRuntime(
             availability: .fatal,
