@@ -91,3 +91,41 @@ Review result:
 
 - Production changes were limited to the integration-exposed cached-beat identity contract.
 - `.superpowers/sdd/progress.md` was not modified.
+
+## Review Correction Wave
+
+Applied on top of `869d89e9ecb7a9c2fb5cf45ebca23b9d99673583` in response to the Task 10
+review. This wave changes tests and this report only; no production source changed.
+
+### Strengthened Proof
+
+- The exact 7/8 integration fixture now configures `InputTimingMatcher` from the runtime timeline targets, hits the
+  first event at its exact target, and proves matched event identity, canonical position, target seconds, and hit
+  seconds. Recording that result twice proves event-ID deduplication leaves one scored event, combo 1, and score 100.
+- The composite real-DTX fixture now resolves T1 and T2 explicitly, requires both notes and the printed silent rest
+  to share one `RhythmTupletID`, and proves their ordered local ticks are exactly the first, second, and third slots.
+  The rendered tuplet is also required to contain exactly the T1 and T2 event IDs.
+- The metadata-free DTX legacy fixture now requires the rendered notehead to exist and proves its x-coordinate is the
+  fixed-grid quarter-note position for beat 1 in 4/4; it no longer permits an absent notehead through optional access.
+
+### Characterization Evidence
+
+All three strengthened contracts passed on their first owning-suite run: 34 tests, 0 failures, 0 skips. They therefore
+characterize behavior already present at the review baseline rather than expose a production defect. No artificial
+failing expectation was introduced. SwiftLint then exposed an error-level function-length violation caused by the
+additional test assertions; extracting the triplet proof into a test helper removed it without changing production.
+
+### Verification
+
+- Owning suites after the assertions: PASS, 34 tests, 0 failures, 0 skips.
+  Result bundle: `DerivedData/Logs/Test/Test-Virgo-2026.07.21_17-35-22--0700.xcresult`.
+- Final focused Task 10 matrix after the lint-only helper extraction: PASS, 64 tests, 0 failures, 0 skips.
+  Result bundle: `DerivedData/Logs/Test/Test-Virgo-2026.07.21_17-41-13--0700.xcresult`.
+- One full `VirgoTests` nonparallel suite after the substantive assertion additions: PASS, 1,831 tests, 0 failures,
+  0 skips; 1,871 device-level expanded invocations.
+  Result bundle: `DerivedData/Logs/Test/Test-Virgo-2026.07.21_17-36-39--0700.xcresult`.
+- SwiftLint after the final helper compaction: exit 0, 182 warning-level violations, 0 serious violations across
+  296 files.
+- `git diff --check`: PASS. The diff contains only the three requested test files and this report;
+  `.superpowers/sdd/progress.md` remains untouched.
+- macOS and iPad builds were not rerun because no production source or project configuration changed in this wave.
