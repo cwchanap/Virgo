@@ -118,6 +118,16 @@ struct RhythmMetronomeSchedule: Hashable, Sendable {
         return totalCount
     }
 
+    // Pulse unit selection. Simple meters (x/4) pulse on each quarter; the
+    // divisor is the whole-note denominator so one pulse spans one beat.
+    //
+    // Compound meters (x/8) intentionally pulse on each eighth note rather than
+    // the conventional dotted-quarter beat. This is a deliberate choice for a
+    // practice metronome: eighth subdivision keeps every pulse audible while
+    // practicing, and `accentLevel` marks the dotted-quarter group starts
+    // (via `accentedGroupStarts`) so the downbeat/group accents still convey
+    // the compound grouping. Switching to dotted-quarter pulses would halve
+    // the click density and is a behavior change, not a fix.
     private static func pulseUnitTicks(
         for meter: TimeSignature,
         ticksPerWholeNote: Int

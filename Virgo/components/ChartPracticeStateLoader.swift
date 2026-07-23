@@ -11,11 +11,18 @@ final class ChartPracticeStateLoader: ObservableObject {
     private let resolver: Resolver
 
     init(
-        initialState: ChartPracticeState = .loading,
-        resolver: @escaping Resolver = { ChartPracticeState.resolve(chart: $0) }
+        initialState: ChartPracticeState? = nil,
+        resolver: Resolver? = nil
     ) {
-        self.state = initialState
-        self.resolver = resolver
+        // Resolve defaults inside the initializer body rather than as default
+        // argument expressions. Under Swift 6, default arguments are evaluated
+        // in the caller's isolation context, so defaults that reference
+        // `@MainActor`-isolated symbols (`.loading`, `ChartPracticeState.resolve`)
+        // would warn or error. Materializing them here keeps the access on the
+        // `@MainActor` initializer context. `resolver` is an optional closure,
+        // which is implicitly escaping, so no `@escaping` annotation is needed.
+        self.state = initialState ?? .loading
+        self.resolver = resolver ?? { ChartPracticeState.resolve(chart: $0) }
     }
 
     func load(chart: Chart) async {

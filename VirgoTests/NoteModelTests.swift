@@ -120,37 +120,6 @@ struct NoteModelTests {
         #expect(note2.measureOffset == 0.75)
         #expect(note3.measureOffset == 1.0)
     }
-
-    @Test("setBGMStartOffsetIfUnset applies first-writer-wins and preserves explicit zero")
-    func setBGMStartOffsetIfUnsetAppliesFirstWriterWins() {
-        let song = Song(title: "T", artist: "A", bpm: 120, duration: "1:00", genre: "Rock")
-        #expect(song.bgmStartOffsetSeconds == nil)
-
-        song.setBGMStartOffsetIfUnset(nil)     // no BGM lane → ignored
-        #expect(song.bgmStartOffsetSeconds == nil)
-
-        song.setBGMStartOffsetIfUnset(0.0)     // BGM starts at time zero → accepted
-        #expect(song.bgmStartOffsetSeconds == 0.0)
-
-        song.setBGMStartOffsetIfUnset(1.5)     // later non-nil cannot override
-        #expect(song.bgmStartOffsetSeconds == 0.0)
-
-        song.setBGMStartOffsetIfUnset(-0.1)    // negative rejected defensively
-        #expect(song.bgmStartOffsetSeconds == 0.0)
-    }
-
-    @Test("setBGMStartOffsetIfUnset first writer wins with a positive offset")
-    func setBGMStartOffsetIfUnsetFirstPositiveWins() {
-        let song = Song(title: "T", artist: "A", bpm: 120, duration: "1:00", genre: "Rock")
-        #expect(song.bgmStartOffsetSeconds == nil)
-
-        song.setBGMStartOffsetIfUnset(nil)     // ignored
-        song.setBGMStartOffsetIfUnset(1.5)     // first non-nil wins
-        #expect(song.bgmStartOffsetSeconds == 1.5)
-
-        song.setBGMStartOffsetIfUnset(2.0)     // later non-nil cannot override
-        #expect(song.bgmStartOffsetSeconds == 1.5)
-    }
 }
 
 @Suite("Chart Model Tests")

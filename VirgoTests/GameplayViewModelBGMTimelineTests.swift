@@ -377,6 +377,53 @@ struct GameplayViewModelBGMTimelineTests {
         viewModel.cleanup()
     }
 
+    @Test("legacy DTX-origin chart with no rhythm metadata aligns BGM via the first-note heuristic")
+    func testLegacyDTXOriginChartAlignsBGMViaFirstNoteHeuristic() async throws {
+        // Regression guard for the removal of `refreshBGMStartOffsetIfMissing` /
+        // `setBGMStartOffsetIfUnset`. A fresh legacy DTX import persists
+        // `rhythmMetadataData = nil` (so `rhythmMetadataState == .missing`) and
+        // `bgmStartOffsetSeconds = nil`. The resolver returns a `.legacy` result
+        // with no timeline, so `calculateBGMOffset` must fall through to the
+        // earliest-note heuristic and align BGM to the first drum note.
+        let song = Song(
+            title: "Legacy DTX",
+            artist: "Tester",
+            bpm: 120,
+            duration: "2:00",
+            genre: "DTX",
+            bgmStartOffsetSeconds: nil
+        )
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour, song: song)
+        // DTX-origin notes starting in measure 3 — no rhythm metadata, so the
+        // resolver takes the `.missing` + `.dtx` → `.legacy` branch.
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 3,
+            measureOffset: 0.0,
+            originKind: .dtx
+        ))
+
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        #expect(viewModel.cachedRhythmTimeline == nil,
+                "A legacy DTX-origin chart with no metadata must not materialize a timeline")
+        #expect(song.bgmStartOffsetSeconds == nil,
+                "Fresh legacy import must not backfill a persisted BGM offset")
+
+        // secondsPerBeat = 0.5, secondsPerMeasure = 2.0, first note at measure 3
+        // → noteTimeSeconds = (3 - 1) * 2.0 = 4.0, scaled by 1.0x speed = 4.0.
+        #expect(abs(viewModel.bgmOffsetSeconds - 4.0) < 0.001,
+                "Legacy chart BGM must align to the earliest note via the first-note heuristic")
+
+        viewModel.cleanup()
+    }
+
     @Test("calculateBGMOffset scales by speed multiplier for notes after measure 1")
     func testCalculateBGMOffsetScalesWithSpeedMultiplier() async throws {
         // A note in measure 3 should produce a non-zero BGM offset.
