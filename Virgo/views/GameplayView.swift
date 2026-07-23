@@ -20,6 +20,7 @@ struct GameplayView: View {
     let chart: Chart
     let metronome: MetronomeEngine
     private let usesInjectedViewModel: Bool
+    private let initialPracticeState: ChartPracticeState
     private let onDismissOverride: (() -> Void)?
 
     // MARK: - ViewModel
@@ -30,7 +31,7 @@ struct GameplayView: View {
     @StateObject private var practiceStateLoader: ChartPracticeStateLoader
 
     var practiceState: ChartPracticeState {
-        practiceStateLoader.state
+        initialPracticeState.isResolved ? initialPracticeState : practiceStateLoader.state
     }
 
     init(
@@ -40,14 +41,16 @@ struct GameplayView: View {
         initialPracticeState: ChartPracticeState? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
+        let resolvedInitialPracticeState = initialPracticeState ?? ChartPracticeState.initial(chart: chart)
         self.chart = chart
         self.metronome = metronome
         self.usesInjectedViewModel = initialViewModel != nil
+        self.initialPracticeState = resolvedInitialPracticeState
         self.onDismissOverride = onDismiss
         self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
         self._viewModel = State(initialValue: initialViewModel)
         self._practiceStateLoader = StateObject(wrappedValue: ChartPracticeStateLoader(
-            initialState: initialPracticeState ?? ChartPracticeState.initial(chart: chart)
+            initialState: resolvedInitialPracticeState
         ))
     }
 
