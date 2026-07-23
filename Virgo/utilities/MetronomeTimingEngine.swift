@@ -238,11 +238,7 @@ class MetronomeTimingEngine: ObservableObject {
         guard isPlaying else { return }
 
         isPlaying = false
-        
-        if !isTestEnvironment {
-            stopTimer()
-        }
-        
+        stopTimer()
         currentBeat = 1
         beatOffset = 0
         startTime = 0
@@ -331,16 +327,21 @@ class MetronomeTimingEngine: ObservableObject {
             schedule: schedule,
             seatedAtOrAfterOffsetSeconds: oneXElapsedTime
         )
+        guard let firstCandidate = cursor.nextCandidate() else {
+            stop()
+            return
+        }
 
         self.startTime = effectiveStartTime
         beatOriginTime = effectiveStartTime - effectiveElapsedTime
         beatOffset = 0
         lastFiredBeat = 0
         rhythmScheduleCursor = cursor
-        currentBeat = cursor.nextCandidate()?.pulse.beatInMeasure ?? 1
+        currentBeat = firstCandidate.pulse.beatInMeasure
 
         scheduleTimelineTimer(
             cursor: cursor,
+            firstCandidate: firstCandidate,
             playbackOriginTime: beatOriginTime,
             speed: speed,
             referenceTime: currentTime
@@ -422,11 +423,11 @@ class MetronomeTimingEngine: ObservableObject {
 
     private func scheduleTimelineTimer(
         cursor: RhythmScheduleCursor,
+        firstCandidate: RhythmScheduleCursor.Candidate,
         playbackOriginTime: TimeInterval,
         speed: Double,
         referenceTime: TimeInterval
     ) {
-        guard let firstCandidate = cursor.nextCandidate() else { return }
         let timer = DispatchSource.makeTimerSource(queue: timerQueue)
         beatTimer = timer
         let token = MetronomePlaybackToken()
@@ -455,6 +456,7 @@ class MetronomeTimingEngine: ObservableObject {
                 audioBeatHandler?(pulse.beatInMeasure, pulse.isAccented, preciseAudioTime)
             }) else { return }
 
+            let nextCandidate = token.isActive ? cursor.nextCandidate() : nil
             Task { @MainActor in
                 guard let self, token.isActive else { return }
                 self.recordTimelineVisualPulse(
@@ -463,9 +465,12 @@ class MetronomeTimingEngine: ObservableObject {
                     token: token,
                     handler: visualBeatHandler
                 )
+                if nextCandidate == nil {
+                    self.scheduleTimelineCompletion(idealTime: idealTime, token: token)
+                }
             }
 
-            guard token.isActive, let nextCandidate = cursor.nextCandidate() else { return }
+            guard let nextCandidate else { return }
             let nextIdealTime = playbackOriginTime + nextCandidate.pulse.offsetSecondsAtOneX / speed
             Self.scheduleTimelineDeadline(
                 timer,
@@ -475,6 +480,20 @@ class MetronomeTimingEngine: ObservableObject {
             )
         }
         timer.resume()
+    }
+
+    private func scheduleTimelineCompletion(
+        idealTime: CFAbsoluteTime,
+        token: MetronomePlaybackToken
+    ) {
+        let completionDelay = max(0, idealTime - CFAbsoluteTimeGetCurrent())
+        DispatchQueue.main.asyncAfter(deadline: .now() + completionDelay) { [weak self] in
+            guard let self,
+                  self.isPlaying,
+                  self.playbackToken === token,
+                  token.isActive else { return }
+            self.stop()
+        }
     }
 
     nonisolated private static func scheduleTimelineDeadline(
@@ -509,8 +528,8 @@ class MetronomeTimingEngine: ObservableObject {
         token: MetronomePlaybackToken
     ) {
         // SAFETY CHECK: Ensure we're still playing and haven't been stopped
-        guard isPlaying else { 
-            return 
+        guard isPlaying else {
+            return
         }
 
         lastFiredBeat = firedBeatNumber
@@ -660,7 +679,7 @@ class MetronomeTimingEngine: ObservableObject {
         rhythmScheduleCursor = cursor
         guard let candidate = cursor.nextCandidate(),
               let pulse = cursor.consume(candidate) else {
-            currentBeat = 1
+            stop()
             return
         }
         currentBeat = pulse.beatInMeasure
