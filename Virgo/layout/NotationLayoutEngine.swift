@@ -47,6 +47,7 @@ struct NotationLayoutEngine {
             measures: measures,
             tabGrid: tabGrid,
             rhythmMeasures: nil,
+            unsupportedMeasureIndexes: [],
             input: input
         )
         let rests = buildRests(noteHeads: noteHeads, measures: measures, tabGrid: tabGrid, input: input)
@@ -99,6 +100,7 @@ struct NotationLayoutEngine {
             measures: measures,
             tabGrid: tabGrid,
             rhythmMeasures: rhythmMeasures,
+            unsupportedMeasureIndexes: unsupportedMeasureIndexes,
             input: input
         )
         let rests = buildRests(
@@ -171,6 +173,7 @@ struct NotationLayoutEngine {
         measures: [RenderedMeasure],
         tabGrid: TabGrid,
         rhythmMeasures: [RhythmMeasure]?,
+        unsupportedMeasureIndexes: Set<Int>,
         input: NotationLayoutInput
     ) -> BuiltDerivedArtifacts {
         let beamBuild: BeamBuildResult
@@ -193,10 +196,6 @@ struct NotationLayoutEngine {
             beams: beamBuild.beams,
             style: input.style
         )
-        let unsupportedMeasureIndexes = Set(rhythmMeasures?.compactMap { measure -> Int? in
-            if case .unsupported = measure.engravingSupport { return measure.measureIndex }
-            return nil
-        } ?? [])
         let flags = buildFlags(
             noteHeads: noteHeads.filter { !unsupportedMeasureIndexes.contains($0.measureIndex) },
             beamBuild: beamBuild,

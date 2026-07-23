@@ -126,8 +126,36 @@ extension NotationLayoutEngine {
             ticksPerMeasure: tabGrid.ticksPerMeasure,
             timeSignature: timeSignature
         )
-        let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
+        return assembleBeams(
+            events: events,
+            topology: topology,
+            noteHeads: noteHeads,
+            style: style
+        )
+    }
 
+    func buildBeams(
+        noteHeads: [RenderedNoteHead],
+        measures: [RhythmMeasure],
+        style: NotationLayoutStyle
+    ) -> BeamBuildResult {
+        let events = buildTimelineEvents(noteHeads: noteHeads)
+        let topology = NotationBeamTopologyBuilder().build(events: events, measures: measures)
+        return assembleBeams(
+            events: events,
+            topology: topology,
+            noteHeads: noteHeads,
+            style: style
+        )
+    }
+
+    private func assembleBeams(
+        events: [BeamTimelineEvent],
+        topology: BeamTopologyResult,
+        noteHeads: [RenderedNoteHead],
+        style: NotationLayoutStyle
+    ) -> BeamBuildResult {
+        let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
         let beams = topology.primaryGroups.flatMap { group -> [RenderedBeam] in
             let representatives = group.eventIndices.compactMap { index in
                 stemRepresentative(
@@ -152,35 +180,6 @@ extension NotationLayoutEngine {
                     context: context,
                     baseY: baseY
                 )
-            }
-        }
-        .sorted(by: renderedBeamComesBefore)
-
-        return BeamBuildResult(events: events, topology: topology, beams: beams)
-    }
-
-    func buildBeams(
-        noteHeads: [RenderedNoteHead],
-        measures: [RhythmMeasure],
-        style: NotationLayoutStyle
-    ) -> BeamBuildResult {
-        let events = buildTimelineEvents(noteHeads: noteHeads)
-        let topology = NotationBeamTopologyBuilder().build(events: events, measures: measures)
-        let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
-        let beams = topology.primaryGroups.flatMap { group -> [RenderedBeam] in
-            let representatives = group.eventIndices.compactMap { index in
-                stemRepresentative(in: events[index].noteHeadIDs.compactMap { headsByID[$0] })
-            }
-            guard let direction = representatives.first?.stemDirection else { return [] }
-            let baseY = sharedBeamBaseY(for: representatives, direction: direction, style: style)
-            let context = RenderedBeamContext(
-                group: group,
-                events: events,
-                headsByID: headsByID,
-                style: style
-            )
-            return group.segments.compactMap {
-                renderedBeam(segment: $0, context: context, baseY: baseY)
             }
         }.sorted(by: renderedBeamComesBefore)
         return BeamBuildResult(events: events, topology: topology, beams: beams)

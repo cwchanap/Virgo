@@ -389,7 +389,7 @@ private extension RhythmTimelineBuilder {
                 startTick: startTick,
                 durationTicks: durationTicks,
                 timeSignature: timeSignature,
-                beatGroups: beatGroups(
+                beatGroups: RhythmBeatGroupBuilder.groups(
                     timeSignature: timeSignature,
                     durationTicks: durationTicks,
                     ticksPerWholeNote: ticksPerWholeNote
@@ -442,50 +442,6 @@ private extension RhythmTimelineBuilder {
         }
         let uniqueCodes = Array(Set(codes)).sorted { $0.rawValue < $1.rawValue }
         return uniqueCodes.isEmpty ? .supported : .unsupported(uniqueCodes)
-    }
-
-    func beatGroups(
-        timeSignature: TimeSignature,
-        durationTicks: Int,
-        ticksPerWholeNote: Int
-    ) -> [RhythmBeatGroup] {
-        if timeSignature == .sevenEight {
-            return [RhythmBeatGroup(
-                groupIndex: 0,
-                startTick: 0,
-                durationTicks: durationTicks,
-                isResidual: false
-            )]
-        }
-        let standardDuration: Int
-        switch timeSignature {
-        case .sixEight, .nineEight, .twelveEight:
-            standardDuration = ticksPerWholeNote / 8 * 3
-        case .twoFour, .threeFour, .fourFour, .fiveFour:
-            standardDuration = ticksPerWholeNote / 4
-        case .sevenEight:
-            return []
-        }
-        var groups: [RhythmBeatGroup] = []
-        var startTick = 0
-        while durationTicks - startTick >= standardDuration {
-            groups.append(RhythmBeatGroup(
-                groupIndex: groups.count,
-                startTick: startTick,
-                durationTicks: standardDuration,
-                isResidual: false
-            ))
-            startTick += standardDuration
-        }
-        if startTick < durationTicks {
-            groups.append(RhythmBeatGroup(
-                groupIndex: groups.count,
-                startTick: startTick,
-                durationTicks: durationTicks - startTick,
-                isResidual: true
-            ))
-        }
-        return groups
     }
 
     func projectEvents(

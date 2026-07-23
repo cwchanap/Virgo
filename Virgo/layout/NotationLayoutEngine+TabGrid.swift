@@ -91,9 +91,9 @@ extension NotationLayoutEngine {
                 startTick: startTick,
                 durationTicks: durationTicks,
                 timeSignature: template.timeSignature,
-                beatGroups: timelineBeatGroups(
-                    durationTicks: durationTicks,
+                beatGroups: RhythmBeatGroupBuilder.groups(
                     timeSignature: template.timeSignature,
+                    durationTicks: durationTicks,
                     ticksPerWholeNote: snapshot.ticksPerWholeNote
                 ),
                 engravingSupport: template.engravingSupport
@@ -111,38 +111,6 @@ extension NotationLayoutEngine {
               timeSignature.noteValue > 0,
               product.partialValue.isMultiple(of: timeSignature.noteValue) else { return nil }
         return product.partialValue / timeSignature.noteValue
-    }
-
-    private func timelineBeatGroups(
-        durationTicks: Int,
-        timeSignature: TimeSignature,
-        ticksPerWholeNote: Int
-    ) -> [RhythmBeatGroup] {
-        guard timeSignature != .sevenEight else {
-            return [RhythmBeatGroup(
-                groupIndex: 0,
-                startTick: 0,
-                durationTicks: durationTicks,
-                isResidual: false
-            )]
-        }
-        let standardDuration = timeSignature.noteValue == 8
-            ? ticksPerWholeNote / 8 * 3
-            : ticksPerWholeNote / 4
-        guard standardDuration > 0 else { return [] }
-        var groups: [RhythmBeatGroup] = []
-        var startTick = 0
-        while startTick < durationTicks {
-            let groupDuration = min(standardDuration, durationTicks - startTick)
-            groups.append(RhythmBeatGroup(
-                groupIndex: groups.count,
-                startTick: startTick,
-                durationTicks: groupDuration,
-                isResidual: groupDuration < standardDuration
-            ))
-            startTick += groupDuration
-        }
-        return groups
     }
 
     func resolvedTicksPerMeasure(for notes: [Note], timeSignature: TimeSignature) -> Int {
