@@ -350,7 +350,11 @@ private extension RhythmTimelineResolver {
             code.requiredSeverity == .timingFatal,
             "timingDiagnostic requires a timingFatal code; received \(code.rawValue) (\(code.requiredSeverity))"
         )
-        return try! PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
+        do {
+            return try PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
+        } catch {
+            preconditionFailure("timingDiagnostic: PersistedRhythmDiagnostic threw despite matching severity: \(error)")
+        }
     }
 
     private func engravingDiagnostic(_ code: RhythmDiagnosticCode) -> PersistedRhythmDiagnostic {
@@ -358,6 +362,10 @@ private extension RhythmTimelineResolver {
             code.requiredSeverity == .engravingOnly,
             "engravingDiagnostic requires an engravingOnly code; received \(code.rawValue) (\(code.requiredSeverity))"
         )
-        return try! PersistedRhythmDiagnostic(code: code, severity: .engravingOnly)
+        do {
+            return try PersistedRhythmDiagnostic(code: code, severity: .engravingOnly)
+        } catch {
+            preconditionFailure("engravingDiagnostic: PersistedRhythmDiagnostic threw despite matching severity: \(error)")
+        }
     }
 }

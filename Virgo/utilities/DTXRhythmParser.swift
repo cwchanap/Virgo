@@ -254,6 +254,14 @@ enum DTXRhythmParser {
             return "\(numerator)/\(denominator)"
         }
 
+        // DTX measure-length headers are `#XXX02` — a literal `#`, exactly three
+        // ASCII-digit measure index, then the fixed `02` channel. The three-digit
+        // width is a property of the DTX file format itself (the same 3-digit
+        // measure encoding is used by every `#XXXNN` note/control line), so a DTX
+        // file cannot represent a measure index >= 1000 here. This is not an
+        // arbitrary Virgo cap: `RhythmLimits.maximumMeasureCount == 4_096` exists
+        // to bound manually-constructed timelines and `MeasureLengthOverride`
+        // values from non-DTX sources, not DTX-parsed length headers.
         private static func measureLengthIndex(in line: String) -> Int? {
             guard let colon = line.firstIndex(of: ":") else { return nil }
             let header = line[..<colon]

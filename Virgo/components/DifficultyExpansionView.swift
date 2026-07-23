@@ -34,7 +34,13 @@ struct ChartPracticeState: Hashable {
             return
         }
 
-        self = Self.unavailableState(diagnostic: fatalDiagnostic)
+        let additionalFatalCount = Self.additionalFatalCount(
+            in: resolved.runtimeDiagnostics
+        )
+        self = Self.unavailableState(
+            diagnostic: fatalDiagnostic,
+            additionalFatalCount: additionalFatalCount
+        )
     }
 
     static func resolve(chart: Chart) -> ChartPracticeState {
@@ -49,9 +55,13 @@ struct ChartPracticeState: Hashable {
         case let .invalid(code):
             return unavailableState(diagnostic: makeFatalDiagnostic(code: code))
         case let .valid(metadata) where metadata.timingStatus == .fatal:
-            let diagnostic = metadata.diagnostics.first { $0.severity == .timingFatal }
-                ?? metadata.diagnostics.first
-            return unavailableState(diagnostic: diagnostic)
+            let fatalDiagnostics = metadata.diagnostics.filter { $0.severity == .timingFatal }
+            let diagnostic = fatalDiagnostics.first ?? metadata.diagnostics.first
+            let additionalFatalCount = max(0, fatalDiagnostics.count - 1)
+            return unavailableState(
+                diagnostic: diagnostic,
+                additionalFatalCount: additionalFatalCount
+            )
         case .missing, .valid:
             return .loading
         }
@@ -82,9 +92,18 @@ struct ChartPracticeState: Hashable {
     }
 
     private static func unavailableState(
-        diagnostic: PersistedRhythmDiagnostic?
+        diagnostic: PersistedRhythmDiagnostic?,
+        additionalFatalCount: Int = 0
     ) -> ChartPracticeState {
-        let reason = reason(for: diagnostic)
+        var reason = reason(for: diagnostic)
+        if additionalFatalCount > 0 {
+            // Surface the count of further timing-fatal diagnostics so the badge
+            // does not silently drop multi-error charts to a single reason.
+            let issueSuffix = additionalFatalCount == 1 ? "" : "s"
+            reason = String(
+                localized: "\(reason) (+\(additionalFatalCount) more timing issue\(issueSuffix))"
+            )
+        }
         return ChartPracticeState(
             isResolved: true,
             isPracticeEnabled: false,
@@ -92,6 +111,16 @@ struct ChartPracticeState: Hashable {
             reason: reason,
             accessibilityExplanation: String(localized: "Practice unavailable. \(reason)")
         )
+    }
+
+    /// Count of timing-fatal diagnostics beyond the primary one already surfaced.
+    /// Only the `.fatal` availability path carries multiple runtime diagnostics;
+    /// the synthesized single-diagnostic paths (`makeFatalDiagnostic`) pass 0.
+    private static func additionalFatalCount(
+        in diagnostics: [PersistedRhythmDiagnostic]
+    ) -> Int {
+        let fatalCount = diagnostics.filter { $0.severity == .timingFatal }.count
+        return max(0, fatalCount - 1)
     }
 
     private static func fatalDiagnostic(

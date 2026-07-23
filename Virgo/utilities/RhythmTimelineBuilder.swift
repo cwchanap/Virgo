@@ -538,6 +538,10 @@ private extension RhythmTimelineBuilder {
     func checkedLeastCommonMultiple(_ left: Int, _ right: Int) throws -> Int {
         guard left > 0, right > 0 else { throw RhythmTimelineBuildError.arithmeticOverflow }
         let divisor = greatestCommonDivisor(left, right)
+        // `left / divisor` is plain (unchecked) division by intent: `divisor`
+        // is `gcd(left, right)`, which divides `left` exactly, so the quotient
+        // is an integer no larger than `left` and cannot overflow (the only
+        // `Int` division overflow is `Int.min / -1`, impossible with `left > 0`).
         return try checkedMultiply(left / divisor, right)
     }
 
@@ -545,6 +549,10 @@ private extension RhythmTimelineBuilder {
         var dividend = left
         var divisor = right
         while divisor != 0 {
+            // Plain modulo is safe: the `while divisor != 0` guard ensures the
+            // divisor is non-zero on every iteration, and `Int` remainder never
+            // overflows (the only division trap is `Int.min % -1`, impossible
+            // here because inputs are non-negative per the callers).
             let remainder = dividend % divisor
             dividend = divisor
             divisor = remainder

@@ -213,9 +213,11 @@ struct LocalDTXFixtureImporterTests {
         let context = TestContainer.isolatedContainer().context
         let fixtureURL = try soukyuuFixtureURL()
 
-        // An existing record that already has a positive offset must be left alone —
-        // refreshBGMStartOffsetIfMissing's guard returns early so it neither re-parses
-        // nor overrides (first-positive-wins contract from setBGMStartOffsetIfUnset).
+        // An existing record that already has a positive offset must be left
+        // alone — the re-import path no longer backfills `bgmStartOffsetSeconds`
+        // (the legacy `refreshBGMStartOffsetIfMissing` / `setBGMStartOffsetIfUnset`
+        // helpers were removed when the rhythm timeline became the authoritative
+        // BGM anchor). The offset set at construction is preserved verbatim.
         let existing = Song(
             title: "蒼穹への翔歌",
             artist: "existing",

@@ -397,22 +397,6 @@ extension Chart {
     }
 }
 
-extension Song {
-    /// Sets the BGM start offset from the first chart that defines one.
-    /// Subsequent charts cannot override it (shared-BGM charts share one BGM track).
-    /// Used by both LocalDTXFixtureImporter and ServerSongDownloader so the
-    /// "first-writer-wins" rule has a single definition.
-    ///
-    /// Pass `nil` when the chart has no BGM lane (no authoritative offset); the
-    /// call is a no-op and the receiver keeps whatever it already had. Pass `0.0`
-    /// when the chart explicitly starts BGM at time zero — this is a real offset
-    /// and must be honored (not treated as "unset"). Negative values are rejected
-    /// defensively.
-    func setBGMStartOffsetIfUnset(_ parsed: Double?) {
-        guard let parsed, parsed >= 0, bgmStartOffsetSeconds == nil else { return }
-        bgmStartOffsetSeconds = parsed
-    }
-}
 // MARK: - Legacy Support for DrumTrack
 // Keeping DrumTrack as a computed structure for backward compatibility
 struct DrumTrack: Equatable {
