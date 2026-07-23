@@ -10,10 +10,19 @@ import SwiftData
 
 @MainActor
 struct ChartPracticeState: Hashable {
+    let isResolved: Bool
     let isPracticeEnabled: Bool
     let badgeTitle: String?
     let reason: String?
     let accessibilityExplanation: String
+
+    static let loading = ChartPracticeState(
+        isResolved: false,
+        isPracticeEnabled: false,
+        badgeTitle: nil,
+        reason: nil,
+        accessibilityExplanation: String(localized: "Checking chart timing")
+    )
 
     init(chart: Chart) {
         let resolved = RhythmTimelineResolver().resolve(chart: chart)
@@ -21,20 +30,69 @@ struct ChartPracticeState: Hashable {
             for: resolved,
             bpm: chart.bpm
         ) else {
-            isPracticeEnabled = true
-            badgeTitle = nil
-            reason = nil
-            accessibilityExplanation = String(localized: "Practice available")
+            self = Self.availableState
             return
         }
 
-        isPracticeEnabled = false
-        badgeTitle = String(localized: "Timing issue")
-        reason = Self.reason(for: fatalDiagnostic)
-        accessibilityExplanation = String(localized: "Practice unavailable. \(reason ?? Self.fallbackReason)")
+        self = Self.unavailableState(diagnostic: fatalDiagnostic)
+    }
+
+    static func resolve(chart: Chart) -> ChartPracticeState {
+        ChartPracticeState(chart: chart)
+    }
+
+    /// Produces an initializer-safe state without traversing SwiftData relationships.
+    /// Metadata-fatal charts can render their error immediately; all other charts
+    /// remain disabled until ``ChartPracticeStateLoader`` resolves them from a task.
+    static func initial(chart: Chart) -> ChartPracticeState {
+        switch chart.rhythmMetadataState {
+        case let .invalid(code):
+            return unavailableState(diagnostic: makeFatalDiagnostic(code: code))
+        case let .valid(metadata) where metadata.timingStatus == .fatal:
+            let diagnostic = metadata.diagnostics.first { $0.severity == .timingFatal }
+                ?? metadata.diagnostics.first
+            return unavailableState(diagnostic: diagnostic)
+        case .missing, .valid:
+            return .loading
+        }
     }
 
     private static let fallbackReason = String(localized: "Unsupported chart timing")
+
+    private static let availableState = ChartPracticeState(
+        isResolved: true,
+        isPracticeEnabled: true,
+        badgeTitle: nil,
+        reason: nil,
+        accessibilityExplanation: String(localized: "Practice available")
+    )
+
+    private init(
+        isResolved: Bool,
+        isPracticeEnabled: Bool,
+        badgeTitle: String?,
+        reason: String?,
+        accessibilityExplanation: String
+    ) {
+        self.isResolved = isResolved
+        self.isPracticeEnabled = isPracticeEnabled
+        self.badgeTitle = badgeTitle
+        self.reason = reason
+        self.accessibilityExplanation = accessibilityExplanation
+    }
+
+    private static func unavailableState(
+        diagnostic: PersistedRhythmDiagnostic?
+    ) -> ChartPracticeState {
+        let reason = reason(for: diagnostic)
+        return ChartPracticeState(
+            isResolved: true,
+            isPracticeEnabled: false,
+            badgeTitle: String(localized: "Timing issue"),
+            reason: reason,
+            accessibilityExplanation: String(localized: "Practice unavailable. \(reason)")
+        )
+    }
 
     private static func fatalDiagnostic(
         for resolved: ResolvedChartRhythm,
@@ -85,6 +143,7 @@ struct ChartPracticeState: Hashable {
 }
 
 // MARK: - Difficulty Expansion View
+@MainActor
 struct DifficultyExpansionView: View {
     let charts: [Chart]
     let onChartSelect: (Chart) -> Void
@@ -119,17 +178,21 @@ struct DifficultyExpansionView: View {
 }
 
 // MARK: - Chart Selection Card
+@MainActor
 struct ChartSelectionCard: View {
     let chart: Chart
     let onSelect: () -> Void
-    let practiceState: ChartPracticeState
+    @StateObject private var practiceStateLoader = ChartPracticeStateLoader()
     @State private var showingScores = false
     @Environment(\.theme) private var theme
+
+    var practiceState: ChartPracticeState {
+        practiceStateLoader.state
+    }
 
     init(chart: Chart, onSelect: @escaping () -> Void) {
         self.chart = chart
         self.onSelect = onSelect
-        self.practiceState = ChartPracticeState(chart: chart)
     }
 
     var body: some View {
@@ -141,6 +204,9 @@ struct ChartSelectionCard: View {
             NavigationStack {
                 ChartScoresView(chart: chart)
             }
+        }
+        .task(id: chart.persistentModelID) {
+            await practiceStateLoader.load(chart: chart)
         }
     }
 
