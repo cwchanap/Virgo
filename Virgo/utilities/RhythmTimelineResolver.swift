@@ -365,7 +365,9 @@ private extension RhythmTimelineResolver {
         do {
             return try PersistedRhythmDiagnostic(code: code, severity: .engravingOnly)
         } catch {
-            preconditionFailure("engravingDiagnostic: PersistedRhythmDiagnostic threw despite matching severity: \(error)")
+            preconditionFailure(
+                "engravingDiagnostic: PersistedRhythmDiagnostic threw despite matching severity: \(error)"
+            )
         }
     }
 }
