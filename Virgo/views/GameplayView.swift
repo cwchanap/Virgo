@@ -9,6 +9,7 @@ import SwiftUI
 import AVFoundation
 import Combine
 
+@MainActor
 struct GameplayView: View {
     // MARK: - Dependencies
     /// Shared practice settings service - single source of truth injected via environment
@@ -18,7 +19,6 @@ struct GameplayView: View {
 
     let chart: Chart
     let metronome: MetronomeEngine
-    let practiceState: ChartPracticeState
     private let usesInjectedViewModel: Bool
     private let onDismissOverride: (() -> Void)?
 
@@ -27,20 +27,28 @@ struct GameplayView: View {
     @State var viewModel: GameplayViewModel?
     /// Cached fallback track to avoid constructing a new DrumTrack on every render
     @State private var cachedFallbackTrack: DrumTrack
+    @StateObject private var practiceStateLoader: ChartPracticeStateLoader
+
+    var practiceState: ChartPracticeState {
+        practiceStateLoader.state
+    }
 
     init(
         chart: Chart,
         metronome: MetronomeEngine,
         initialViewModel: GameplayViewModel? = nil,
+        initialPracticeState: ChartPracticeState? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         self.chart = chart
         self.metronome = metronome
-        self.practiceState = ChartPracticeState(chart: chart)
         self.usesInjectedViewModel = initialViewModel != nil
         self.onDismissOverride = onDismiss
         self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
         self._viewModel = State(initialValue: initialViewModel)
+        self._practiceStateLoader = StateObject(wrappedValue: ChartPracticeStateLoader(
+            initialState: initialPracticeState ?? ChartPracticeState.initial(chart: chart)
+        ))
     }
 
     /// Creates a binding for isPlaying when viewModel exists, or returns a constant false binding
@@ -59,7 +67,7 @@ struct GameplayView: View {
     }
 
     private var fatalPracticeMessage: String? {
-        if !practiceState.isPracticeEnabled {
+        if practiceState.isResolved, !practiceState.isPracticeEnabled {
             return practiceState.reason ?? String(localized: "Unsupported chart timing")
         }
         guard let viewModel, viewModel.hasFatalRhythmTiming else { return nil }
@@ -156,7 +164,9 @@ struct GameplayView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .task {
+                .task(id: chart.persistentModelID) {
+                    await practiceStateLoader.load(chart: chart)
+                    guard practiceStateLoader.state.isPracticeEnabled else { return }
                     await prepareGameplay(initialRowWidth: geometry.size.width)
                 }
             }
