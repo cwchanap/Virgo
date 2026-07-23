@@ -182,17 +182,23 @@ struct DifficultyExpansionView: View {
 struct ChartSelectionCard: View {
     let chart: Chart
     let onSelect: () -> Void
-    @StateObject private var practiceStateLoader = ChartPracticeStateLoader()
+    private let initialPracticeState: ChartPracticeState
+    @StateObject private var practiceStateLoader: ChartPracticeStateLoader
     @State private var showingScores = false
     @Environment(\.theme) private var theme
 
     var practiceState: ChartPracticeState {
-        practiceStateLoader.state
+        initialPracticeState.isResolved ? initialPracticeState : practiceStateLoader.state
     }
 
     init(chart: Chart, onSelect: @escaping () -> Void) {
+        let initialState = ChartPracticeState.initial(chart: chart)
         self.chart = chart
         self.onSelect = onSelect
+        self.initialPracticeState = initialState
+        self._practiceStateLoader = StateObject(
+            wrappedValue: ChartPracticeStateLoader(initialState: initialState)
+        )
     }
 
     var body: some View {
