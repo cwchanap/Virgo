@@ -1,0 +1,373 @@
+name: Apply Review Refactors
+
+on:
+  push:
+    branches:
+      - codex/hpa-145-rhythm-timeline
+    paths:
+      - .github/workflows/apply-review-refactors.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/hpa-145-rhythm-timeline
+          fetch-depth: 2
+
+      - name: Apply assertion-guarded replacements
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected exactly one match, found {count}")
+              file.write_text(text.replace(old, new))
+
+          replace_once(
+              "Virgo/utilities/RhythmTimelineBuilder.swift",
+              """                beatGroups: beatGroups(
+                              timeSignature: timeSignature,
+                              durationTicks: durationTicks,
+                              ticksPerWholeNote: ticksPerWholeNote
+                          ),""",
+              """                beatGroups: RhythmBeatGroupBuilder.groups(
+                              timeSignature: timeSignature,
+                              durationTicks: durationTicks,
+                              ticksPerWholeNote: ticksPerWholeNote
+                          ),""",
+          )
+          replace_once(
+              "Virgo/utilities/RhythmTimelineBuilder.swift",
+              """    func beatGroups(
+                  timeSignature: TimeSignature,
+                  durationTicks: Int,
+                  ticksPerWholeNote: Int
+              ) -> [RhythmBeatGroup] {
+                  if timeSignature == .sevenEight {
+                      return [RhythmBeatGroup(
+                          groupIndex: 0,
+                          startTick: 0,
+                          durationTicks: durationTicks,
+                          isResidual: false
+                      )]
+                  }
+                  let standardDuration: Int
+                  switch timeSignature {
+                  case .sixEight, .nineEight, .twelveEight:
+                      standardDuration = ticksPerWholeNote / 8 * 3
+                  case .twoFour, .threeFour, .fourFour, .fiveFour:
+                      standardDuration = ticksPerWholeNote / 4
+                  case .sevenEight:
+                      return []
+                  }
+                  var groups: [RhythmBeatGroup] = []
+                  var startTick = 0
+                  while durationTicks - startTick >= standardDuration {
+                      groups.append(RhythmBeatGroup(
+                          groupIndex: groups.count,
+                          startTick: startTick,
+                          durationTicks: standardDuration,
+                          isResidual: false
+                      ))
+                      startTick += standardDuration
+                  }
+                  if startTick < durationTicks {
+                      groups.append(RhythmBeatGroup(
+                          groupIndex: groups.count,
+                          startTick: startTick,
+                          durationTicks: durationTicks - startTick,
+                          isResidual: true
+                      ))
+                  }
+                  return groups
+              }
+
+""",
+              "",
+          )
+
+          replace_once(
+              "Virgo/layout/NotationLayoutEngine+TabGrid.swift",
+              """                beatGroups: timelineBeatGroups(
+                              durationTicks: durationTicks,
+                              timeSignature: template.timeSignature,
+                              ticksPerWholeNote: snapshot.ticksPerWholeNote
+                          ),""",
+              """                beatGroups: RhythmBeatGroupBuilder.groups(
+                              timeSignature: template.timeSignature,
+                              durationTicks: durationTicks,
+                              ticksPerWholeNote: snapshot.ticksPerWholeNote
+                          ),""",
+          )
+          replace_once(
+              "Virgo/layout/NotationLayoutEngine+TabGrid.swift",
+              """    private func timelineBeatGroups(
+                  durationTicks: Int,
+                  timeSignature: TimeSignature,
+                  ticksPerWholeNote: Int
+              ) -> [RhythmBeatGroup] {
+                  guard timeSignature != .sevenEight else {
+                      return [RhythmBeatGroup(
+                          groupIndex: 0,
+                          startTick: 0,
+                          durationTicks: durationTicks,
+                          isResidual: false
+                      )]
+                  }
+                  let standardDuration = timeSignature.noteValue == 8
+                      ? ticksPerWholeNote / 8 * 3
+                      : ticksPerWholeNote / 4
+                  guard standardDuration > 0 else { return [] }
+                  var groups: [RhythmBeatGroup] = []
+                  var startTick = 0
+                  while startTick < durationTicks {
+                      let groupDuration = min(standardDuration, durationTicks - startTick)
+                      groups.append(RhythmBeatGroup(
+                          groupIndex: groups.count,
+                          startTick: startTick,
+                          durationTicks: groupDuration,
+                          isResidual: groupDuration < standardDuration
+                      ))
+                      startTick += groupDuration
+                  }
+                  return groups
+              }
+
+""",
+              "",
+          )
+
+          replace_once(
+              "Virgo/layout/NotationLayoutEngine.swift",
+              """        let derived = buildDerivedArtifacts(
+                      noteHeads: noteHeads,
+                      measures: measures,
+                      tabGrid: tabGrid,
+                      rhythmMeasures: nil,
+                      input: input
+                  )""",
+              """        let derived = buildDerivedArtifacts(
+                      noteHeads: noteHeads,
+                      measures: measures,
+                      tabGrid: tabGrid,
+                      rhythmMeasures: nil,
+                      unsupportedMeasureIndexes: [],
+                      input: input
+                  )""",
+          )
+          replace_once(
+              "Virgo/layout/NotationLayoutEngine.swift",
+              """        let derived = buildDerivedArtifacts(
+                      noteHeads: noteHeads,
+                      measures: measures,
+                      tabGrid: tabGrid,
+                      rhythmMeasures: rhythmMeasures,
+                      input: input
+                  )""",
+              """        let derived = buildDerivedArtifacts(
+                      noteHeads: noteHeads,
+                      measures: measures,
+                      tabGrid: tabGrid,
+                      rhythmMeasures: rhythmMeasures,
+                      unsupportedMeasureIndexes: unsupportedMeasureIndexes,
+                      input: input
+                  )""",
+          )
+          replace_once(
+              "Virgo/layout/NotationLayoutEngine.swift",
+              """        tabGrid: TabGrid,
+                  rhythmMeasures: [RhythmMeasure]?,
+                  input: NotationLayoutInput
+              ) -> BuiltDerivedArtifacts {""",
+              """        tabGrid: TabGrid,
+                  rhythmMeasures: [RhythmMeasure]?,
+                  unsupportedMeasureIndexes: Set<Int>,
+                  input: NotationLayoutInput
+              ) -> BuiltDerivedArtifacts {""",
+          )
+          replace_once(
+              "Virgo/layout/NotationLayoutEngine.swift",
+              """        let unsupportedMeasureIndexes = Set(rhythmMeasures?.compactMap { measure -> Int? in
+                      if case .unsupported = measure.engravingSupport { return measure.measureIndex }
+                      return nil
+                  } ?? [])
+""",
+              "",
+          )
+
+          first_beam = """    func buildBeams(
+                  noteHeads: [RenderedNoteHead],
+                  tabGrid: TabGrid,
+                  timeSignature: TimeSignature,
+                  style: NotationLayoutStyle
+              ) -> BeamBuildResult {
+                  let events = buildTimelineEvents(
+                      noteHeads: noteHeads,
+                      ticksPerMeasure: tabGrid.ticksPerMeasure,
+                      timeSignature: timeSignature
+                  )
+                  let topology = NotationBeamTopologyBuilder().build(
+                      events: events,
+                      ticksPerMeasure: tabGrid.ticksPerMeasure,
+                      timeSignature: timeSignature
+                  )
+                  let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
+
+                  let beams = topology.primaryGroups.flatMap { group -> [RenderedBeam] in
+                      let representatives = group.eventIndices.compactMap { index in
+                          stemRepresentative(
+                              in: events[index].noteHeadIDs.compactMap { headsByID[$0] }
+                          )
+                      }
+                      guard let direction = representatives.first?.stemDirection else { return [] }
+                      let baseY = sharedBeamBaseY(
+                          for: representatives,
+                          direction: direction,
+                          style: style
+                      )
+                      let context = RenderedBeamContext(
+                          group: group,
+                          events: events,
+                          headsByID: headsByID,
+                          style: style
+                      )
+                      return group.segments.compactMap { segment in
+                          renderedBeam(
+                              segment: segment,
+                              context: context,
+                              baseY: baseY
+                          )
+                      }
+                  }
+                  .sorted(by: renderedBeamComesBefore)
+
+                  return BeamBuildResult(events: events, topology: topology, beams: beams)
+              }
+"""
+          first_beam_new = """    func buildBeams(
+                  noteHeads: [RenderedNoteHead],
+                  tabGrid: TabGrid,
+                  timeSignature: TimeSignature,
+                  style: NotationLayoutStyle
+              ) -> BeamBuildResult {
+                  let events = buildTimelineEvents(
+                      noteHeads: noteHeads,
+                      ticksPerMeasure: tabGrid.ticksPerMeasure,
+                      timeSignature: timeSignature
+                  )
+                  let topology = NotationBeamTopologyBuilder().build(
+                      events: events,
+                      ticksPerMeasure: tabGrid.ticksPerMeasure,
+                      timeSignature: timeSignature
+                  )
+                  return assembleBeams(
+                      events: events,
+                      topology: topology,
+                      noteHeads: noteHeads,
+                      style: style
+                  )
+              }
+"""
+          replace_once("Virgo/layout/NotationLayoutEngine+Beams.swift", first_beam, first_beam_new)
+
+          second_beam = """    func buildBeams(
+                  noteHeads: [RenderedNoteHead],
+                  measures: [RhythmMeasure],
+                  style: NotationLayoutStyle
+              ) -> BeamBuildResult {
+                  let events = buildTimelineEvents(noteHeads: noteHeads)
+                  let topology = NotationBeamTopologyBuilder().build(events: events, measures: measures)
+                  let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
+                  let beams = topology.primaryGroups.flatMap { group -> [RenderedBeam] in
+                      let representatives = group.eventIndices.compactMap { index in
+                          stemRepresentative(in: events[index].noteHeadIDs.compactMap { headsByID[$0] })
+                      }
+                      guard let direction = representatives.first?.stemDirection else { return [] }
+                      let baseY = sharedBeamBaseY(for: representatives, direction: direction, style: style)
+                      let context = RenderedBeamContext(
+                          group: group,
+                          events: events,
+                          headsByID: headsByID,
+                          style: style
+                      )
+                      return group.segments.compactMap {
+                          renderedBeam(segment: $0, context: context, baseY: baseY)
+                      }
+                  }.sorted(by: renderedBeamComesBefore)
+                  return BeamBuildResult(events: events, topology: topology, beams: beams)
+              }
+"""
+          second_beam_new = """    func buildBeams(
+                  noteHeads: [RenderedNoteHead],
+                  measures: [RhythmMeasure],
+                  style: NotationLayoutStyle
+              ) -> BeamBuildResult {
+                  let events = buildTimelineEvents(noteHeads: noteHeads)
+                  let topology = NotationBeamTopologyBuilder().build(events: events, measures: measures)
+                  return assembleBeams(
+                      events: events,
+                      topology: topology,
+                      noteHeads: noteHeads,
+                      style: style
+                  )
+              }
+
+              private func assembleBeams(
+                  events: [BeamTimelineEvent],
+                  topology: BeamTopologyResult,
+                  noteHeads: [RenderedNoteHead],
+                  style: NotationLayoutStyle
+              ) -> BeamBuildResult {
+                  let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
+                  let beams = topology.primaryGroups.flatMap { group -> [RenderedBeam] in
+                      let representatives = group.eventIndices.compactMap { index in
+                          stemRepresentative(
+                              in: events[index].noteHeadIDs.compactMap { headsByID[$0] }
+                          )
+                      }
+                      guard let direction = representatives.first?.stemDirection else { return [] }
+                      let baseY = sharedBeamBaseY(
+                          for: representatives,
+                          direction: direction,
+                          style: style
+                      )
+                      let context = RenderedBeamContext(
+                          group: group,
+                          events: events,
+                          headsByID: headsByID,
+                          style: style
+                      )
+                      return group.segments.compactMap { segment in
+                          renderedBeam(
+                              segment: segment,
+                              context: context,
+                              baseY: baseY
+                          )
+                      }
+                  }.sorted(by: renderedBeamComesBefore)
+                  return BeamBuildResult(events: events, topology: topology, beams: beams)
+              }
+"""
+          replace_once("Virgo/layout/NotationLayoutEngine+Beams.swift", second_beam, second_beam_new)
+
+          workflow = Path(".github/workflows/apply-review-refactors.yml")
+          workflow.unlink()
+          PY
+
+      - name: Commit refactors
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: unify rhythm layout contracts"
+          git push origin HEAD:codex/hpa-145-rhythm-timeline
