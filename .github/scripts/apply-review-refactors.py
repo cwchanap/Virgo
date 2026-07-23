@@ -336,35 +336,3 @@ second_beam_new = """    func buildBeams(
     }
 """
 replace_once("Virgo/layout/NotationLayoutEngine+Beams.swift", second_beam, second_beam_new)
-
-ci_job = """
-
-  apply-review-refactors:
-    name: Apply Guarded Review Refactors
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 2
-
-      - name: Apply refactors
-        run: python3 .github/scripts/apply-review-refactors.py
-
-      - name: Remove temporary refactor tooling
-        run: |
-          rm .github/apply-review-refactors
-          rm .github/scripts/apply-review-refactors.py
-
-      - name: Commit refactors
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "refactor: unify rhythm layout contracts"
-          git push origin HEAD:codex/hpa-145-rhythm-timeline
-"""
-replace_once(".github/workflows/ci.yml", ci_job, "")
