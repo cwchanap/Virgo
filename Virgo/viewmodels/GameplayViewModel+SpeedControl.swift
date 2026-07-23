@@ -302,21 +302,11 @@ extension GameplayViewModel {
         lastScheduledPlaybackHostTime = capturedHostTime
         let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
         lastScheduledPlaybackStartTime = scheduledStartTime
-        if let schedule = cachedRhythmRuntime.metronomeSchedule {
-            metronome.startAtTime(
-                schedule: schedule,
-                speed: practiceSettings.speedMultiplier,
-                startTime: scheduledStartTime,
-                elapsedTime: pausedElapsedTime
-            )
-        } else {
-            metronome.startAtTime(
-                bpm: effectiveBPM,
-                timeSignature: track?.timeSignature ?? .fourFour,
-                startTime: scheduledStartTime,
-                totalBeatsElapsed: elapsedBeats
-            )
-        }
+        startMetronomeAtSharedTime(
+            scheduledStartTime,
+            timeSignature: track?.timeSignature ?? .fourFour,
+            effectiveBPM: effectiveBPM
+        )
         rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
         return scheduledStartTime
     }
