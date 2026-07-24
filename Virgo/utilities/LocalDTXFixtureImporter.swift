@@ -422,7 +422,15 @@ enum LocalDTXFixtureImporter {
             // lost.
             let existingChart = remainingCharts.remove(at: matchIndex)
 
-            let controls = importedChart.data.toControlEvents(for: existingChart)
+            // Use the canonical projection controls (LCM-based
+            // `ticksPerMeasure`), not `data.toControlEvents`'s native per-chip
+            // gridSize. The fresh-import path (buildCharts) persists projection
+            // controls, and `RhythmTimelineBuilder.validatePersistedTiming`
+            // requires `ticksPerMeasure == measure.durationTicks` (the LCM).
+            // Persisting native gridSize on fine-grid, mixed-grid, or variable-
+            // length charts would mark the chart fatal with
+            // `inconsistentPersistedTiming` on the next resolve.
+            let controls = importedChart.projection.controls.map { $0.makeControl(for: existingChart) }
             guard !controls.isEmpty else { continue }
 
             controls.forEach { context.insert($0) }
