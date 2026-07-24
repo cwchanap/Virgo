@@ -66,4 +66,46 @@ struct ChartPracticeStateLoaderTests {
         await loader.load(chart: chart)
         #expect(resolutionCount == 2, "Fingerprint change must trigger re-resolution")
     }
+
+    @Test("notes mutation re-resolves via timingRevision bump")
+    func notesMutationReResolves() async {
+        let chart = Chart(difficulty: .easy)
+        var resolutionCount = 0
+        let loader = ChartPracticeStateLoader { chart in
+            resolutionCount += 1
+            return ChartPracticeState.resolve(chart: chart)
+        }
+
+        await loader.load(chart: chart)
+        #expect(resolutionCount == 1)
+
+        // Simulate a notes backfill: append a note and bump the revision.
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 1,
+            measureOffset: 0.0
+        ))
+        chart.bumpTimingRevision()
+
+        await loader.load(chart: chart)
+        #expect(resolutionCount == 2, "Notes mutation must trigger re-resolution")
+    }
+
+    @Test("timingFingerprint is relationship-free and does not fault the Song")
+    func timingFingerprintIsRelationshipFree() {
+        // A chart with no song must produce a valid fingerprint without crashing.
+        // The fingerprint must depend only on the chart-owned timingRevision
+        // scalar, never on the Song relationship (which can fault during view
+        // rendering). See P1: the old fingerprint read chart.timeSignature,
+        // which falls back to song?.timeSignature.
+        let chart = Chart(difficulty: .easy)
+        let initialFingerprint = chart.timingFingerprint
+        #expect(initialFingerprint.timingRevision == 0)
+
+        chart.bumpTimingRevision()
+        let bumpedFingerprint = chart.timingFingerprint
+        #expect(bumpedFingerprint.timingRevision == 1)
+        #expect(initialFingerprint != bumpedFingerprint)
+    }
 }

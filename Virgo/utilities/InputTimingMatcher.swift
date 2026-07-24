@@ -20,6 +20,11 @@ enum InputTimingConfiguration {
 struct InputTimingMatcher {
     // Wider than the scoring window so near-miss hits can still report timingError.
     private static let searchWindowSeconds = 0.2
+    // Absorbs binary floating-point representation error in
+    // `(actualTime - expectedTime) * 1000` so that an intended exact-boundary
+    // hit (e.g. 1.6 - 1.5 = 0.10000000000000009) classifies as `.good` instead
+    // of `.miss`. Matches the 1e-9 epsilon used by the missed-note scanner.
+    private static let toleranceEpsilonMs = 1e-9
 
     struct LegacyState {
         let timeSignature: TimeSignature
@@ -221,12 +226,13 @@ private extension InputTimingMatcher {
         guard let expectedTime else { return (.miss, nil) }
         let timingErrorMs = (actualTime - expectedTime) * 1000.0
         let absErrorMs = abs(timingErrorMs)
+        let epsilon = Self.toleranceEpsilonMs
 
-        if absErrorMs <= TimingAccuracy.perfect.toleranceMs {
+        if absErrorMs <= TimingAccuracy.perfect.toleranceMs + epsilon {
             return (.perfect, timingErrorMs)
-        } else if absErrorMs <= TimingAccuracy.great.toleranceMs {
+        } else if absErrorMs <= TimingAccuracy.great.toleranceMs + epsilon {
             return (.great, timingErrorMs)
-        } else if absErrorMs <= TimingAccuracy.good.toleranceMs {
+        } else if absErrorMs <= TimingAccuracy.good.toleranceMs + epsilon {
             return (.good, timingErrorMs)
         }
         return (.miss, timingErrorMs)

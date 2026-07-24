@@ -199,6 +199,7 @@ class ServerSongDownloader {
         parsedNotes.forEach { chart.notes.append($0) }
         let parsedControls = projection.controls.map { $0.makeControl(for: chart) }
         parsedControls.forEach { context.insert($0); chart.controlEvents.append($0) }
+        chart.bumpTimingRevision()
         context.insert(chart)
         if let warning = projection.warning {
             return "Chart \(chartSnapshot.filename): \(warning.message)"

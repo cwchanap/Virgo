@@ -159,6 +159,7 @@ enum LocalDTXFixtureImporter {
             try chart.setRhythmMetadata(importedChart.projection.chartMetadata)
             chart.notes = importedChart.projection.notes.map { $0.makeNote(for: chart) }
             chart.controlEvents = importedChart.projection.controls.map { $0.makeControl(for: chart) }
+            chart.bumpTimingRevision()
             if let warning = importedChart.projection.warning {
                 Logger.warning(warning.message)
             }
@@ -435,6 +436,7 @@ enum LocalDTXFixtureImporter {
 
             controls.forEach { context.insert($0) }
             existingChart.controlEvents = controls
+            existingChart.bumpTimingRevision()
             didChange = true
         }
 
@@ -701,6 +703,7 @@ private extension LocalDTXFixtureImporter {
                 control.normalizedTicksPerMeasure = values.normalizedTicksPerMeasure
             }
         }
+        chart.bumpTimingRevision()
     }
 
     static func sourceIdentity(_ note: Note) -> String? {
