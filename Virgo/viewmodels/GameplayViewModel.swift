@@ -249,9 +249,12 @@ final class GameplayViewModel {
     /// Notes sorted by ascending time position; built once after data load.
     /// Enables the missed-note scan to walk forward without re-scanning the full list.
     var sortedNotesByTimePosition: [Note] = [] // internal for cross-file extension access
-    /// Cursor into sortedNotesByTimePosition; advanced forward-only each scan tick.
+    /// Cursor into sortedNotesByTimePosition (legacy miss scan); advanced forward-only each scan tick.
     /// Avoids O(totalNotes) scan on every metronome callback (now O(new notes)).
-    var missedNoteScanCursor: Int = 0 // internal for cross-file extension access
+    var legacyMissedNoteScanCursor: Int = 0 // internal for cross-file extension access
+    /// Cursor into cachedRhythmNoteTargets (timeline miss scan); advanced forward-only each scan tick.
+    /// Kept separate from legacyMissedNoteScanCursor because the two collections are not aligned.
+    var rhythmMissedNoteScanCursor: Int = 0 // internal for cross-file extension access
     /// High-water mark for missed-note scan (timePosition units)
     var lastScannedTimePosition: Double = 0.0 // internal for cross-file extension access
     /// High-water mark for timeline missed-note scans (effective song seconds).

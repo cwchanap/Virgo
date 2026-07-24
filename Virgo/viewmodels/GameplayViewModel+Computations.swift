@@ -195,7 +195,14 @@ extension GameplayViewModel {
             code.requiredSeverity == .timingFatal,
             "fatalRhythmRuntime requires a timingFatal code; received \(code.rawValue) (\(code.requiredSeverity))"
         )
-        let diagnostic = try! PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
+        let diagnostic: PersistedRhythmDiagnostic
+        do {
+            diagnostic = try PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
+        } catch {
+            preconditionFailure(
+                "fatalRhythmRuntime: PersistedRhythmDiagnostic threw despite matching severity: \(error)"
+            )
+        }
         return GameplayRhythmRuntime(
             availability: .fatal,
             timeline: nil,
@@ -744,8 +751,8 @@ extension GameplayViewModel {
         // Walk forward from the cursor; notes are sorted ascending by time position,
         // so we stop as soon as we reach a note at or beyond the scan boundary.
         // This is O(new notes this tick) rather than O(totalNotes).
-        while missedNoteScanCursor < sortedNotesByTimePosition.count {
-            let note = sortedNotesByTimePosition[missedNoteScanCursor]
+        while legacyMissedNoteScanCursor < sortedNotesByTimePosition.count {
+            let note = sortedNotesByTimePosition[legacyMissedNoteScanCursor]
             let noteTimePos = MeasureUtils.timePosition(
                 measureNumber: note.measureNumber,
                 measureOffset: note.measureOffset
@@ -758,7 +765,7 @@ extension GameplayViewModel {
                 scoredNoteIDs.insert(noteID)
                 scoreEngine.processMissedNote()
             }
-            missedNoteScanCursor += 1
+            legacyMissedNoteScanCursor += 1
         }
         lastScannedTimePosition = scanBoundary
 
@@ -782,14 +789,14 @@ extension GameplayViewModel {
         guard speed.isFinite, speed > 0 else { return }
         let previousCombo = scoreEngine.combo
 
-        while missedNoteScanCursor < cachedRhythmNoteTargets.count {
-            let target = cachedRhythmNoteTargets[missedNoteScanCursor]
+        while rhythmMissedNoteScanCursor < cachedRhythmNoteTargets.count {
+            let target = cachedRhythmNoteTargets[rhythmMissedNoteScanCursor]
             let targetSeconds = target.targetSecondsAtOneX / speed
             if targetSeconds > scanBoundary + 1e-12 { break }
             if scoredRhythmEventIDs.insert(target.eventID).inserted {
                 scoreEngine.processMissedNote()
             }
-            missedNoteScanCursor += 1
+            rhythmMissedNoteScanCursor += 1
         }
         lastScannedRhythmTargetSeconds = scanBoundary
 
@@ -816,7 +823,8 @@ extension GameplayViewModel {
         showComboBreakFeedback = false
         scoredNoteIDs = []
         scoredRhythmEventIDs = []
-        missedNoteScanCursor = 0
+        legacyMissedNoteScanCursor = 0
+        rhythmMissedNoteScanCursor = 0
         lastScannedTimePosition = 0.0
         lastScannedRhythmTargetSeconds = -.infinity
         // Cancel any in-flight feedback reset tasks so they cannot clear flags on

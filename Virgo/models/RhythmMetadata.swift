@@ -491,6 +491,12 @@ enum ChartRhythmMetadataCodec {
     }
 
     private static func diagnosticCode(for data: Data, error: Error) -> RhythmDiagnosticCode {
+        // JSONDecoder.decode already failed above, so we can't use the typed Codable
+        // path to read `version`. Fall back to JSONSerialization to peek at the version
+        // field without requiring the full schema, distinguishing "unsupported version"
+        // (decodeable shape but wrong version) from "inconsistent/corrupt data".
+        // The round-trip through JSONSerialization is intentional: it tolerates extra
+        // keys and partial schemas that the strict Codable decoder rejects.
         guard let object = try? JSONSerialization.jsonObject(with: data),
               let values = object as? [String: Any],
               let version = values["version"] as? Int,
