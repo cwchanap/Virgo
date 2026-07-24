@@ -125,6 +125,7 @@ extension Song {
             )
             chart.notes = copiedNotes(from: templateChart, into: chart)
             chart.controlEvents = copiedControlEvents(from: templateChart, into: chart)
+            chart.rhythmMetadataData = templateChart.rhythmMetadataData
             chart.bumpTimingRevision()
             return chart
         }
