@@ -80,7 +80,13 @@ swiftlint lint --fix   # Auto-fix
 ### Initial Setup
 ```bash
 ./scripts/setup-git-hooks.sh   # Installs SwiftLint pre-commit hook
+cp Virgo/Config/ServerEndpoints.env.example Virgo/Config/ServerEndpoints.env
 ```
+
+`Virgo/Config/ServerEndpoints.env` supplies `GRAPHQL_ENDPOINT` and `R2_BASE_URL`. It is gitignored;
+CI regenerates it from repository variables via `.github/scripts/generate-endpoints-env.sh`. When the
+file is missing or a key is empty, `ServerConfig` falls back to a local-dev placeholder endpoint and
+disables audio downloads, so a fresh checkout still builds and tests green.
 
 `AGENTS.md` is a symlink to `CLAUDE.md` — edit `CLAUDE.md` only.
 
@@ -96,11 +102,22 @@ GitHub Actions: `.github/workflows/ci.yml` (macOS build + unit tests, plus a gua
 ## Architecture
 
 ### Data Model (SwiftData)
-Five primary models in `models/DrumTrack.swift`:
+Seven `@Model` types, all registered in the `Schema` in `VirgoApp.swift`. Adding a model requires
+adding it there too, or SwiftData will fault at runtime.
+
+`models/DrumTrack.swift`:
 - `Song`: Local track metadata (title, artist, BPM, time signature, duration, genre, bgmFilePath, previewFilePath)
 - `Chart`: Difficulty-specific charts linked to songs
-- `Note`: Individual drum notes (interval, type, measureNumber, measureOffset)
+- `Note`: Individual drum notes (interval, type, measureNumber, measureOffset) plus normalized rhythm tick fields
 - `ServerSong` / `ServerChart`: Server-based tracks with download/cache support
+
+Other model files:
+- `models/ChartControlEvent.swift`: non-note notation events (`stop`, `choke`, `damp`) with the same
+  normalized tick fields as `Note`
+- `models/ScoreRecord.swift`: one persisted row per completed gameplay run
+- `models/RhythmMetadata.swift`: rhythm value types (not `@Model`) — the resolved/analyzed rhythm
+  payloads that cross into layout. `Song+Fixtures.swift` holds sample data split out of `DrumTrack.swift`
+  for the SwiftLint file-length limit.
 
 ### Metronome System (Three-Layer Architecture)
 `MetronomeEngine` is the public facade that composes two internal engines:
@@ -108,30 +125,80 @@ Five primary models in `models/DrumTrack.swift`:
 - `MetronomeTimingEngine`: Uses `DispatchSourceTimer` for nanosecond-precision beat scheduling; exposes `onBeat` callback and `@Published currentBeat`
 - `MetronomeEngine`: Wires the two together, exposes `@Published` state for UI, handles haptic feedback (iOS). Accepts an `AudioDriverProtocol` in `init` for test injection.
 
+### Rhythm & Notation Pipeline
+The largest subsystem. DTX timing is normalized into an integer-tick timeline before it ever reaches
+layout, so the stages must be understood in order:
+
+1. `DTXRhythmParser` (`utilities/`): extracts measure-length ratios, time signatures, and diagnostics
+   from raw DTX text
+2. `RhythmTimelineBuilder`: turns notes + control events into `RhythmSourceEvent`s and picks a
+   canonical `ticksPerWholeNote` (LCM-based) for the chart
+3. `RhythmTimelineResolver`: assigns stable `RhythmEventID`s and resolves each event to a
+   `RhythmEventPosition` (measureIndex / localTick / absoluteTick)
+4. `RhythmBeatGroupBuilder` + `RhythmTimeline`: groups ticks into `RhythmBeatGroup`s per measure.
+   `RhythmBeatGroupBuilder.count(...)` is the **single source of truth** for how many groups a measure
+   materializes — both group construction and the timeline's pre-allocation bound route through it, so
+   expanded layout measures cannot drift from the persisted timeline. Do not recompute it locally.
+5. `NotationRhythmAnalyzer` (`layout/`): infers note durations, rests, and tuplets from tick spacing
+6. `NotationLayoutEngine` (+`Beams`/`Rests`/`Controls`/`TabGrid`/`RhythmRendering` extensions):
+   produces the drawable layout
+
+Normalized tick fields are persisted on `Note` and `ChartControlEvent`. `RhythmBackfillVersionStore`
+gates a one-time backfill of those fields for already-imported charts — bump `currentVersion` when a
+change requires re-normalizing existing data. `RhythmMetronomeSchedule` derives the metronome
+schedule from the same timeline, so timing changes affect audio and notation together.
+
 ### Gameplay Architecture
-`GameplayView` delegates all state to `GameplayViewModel` (`@Observable @MainActor`):
+`GameplayView` delegates all state to `GameplayViewModel` (`@Observable @MainActor`), which is split
+across `GameplayViewModel.swift` plus `+BGM`, `+Computations`, `+Playback`, `+SpeedControl`, and
+`+VisualUpdates` extension files (SwiftLint type-body limits). The view model:
 - Caches SwiftData relationships (`cachedNotes`, `cachedSong`) to avoid main-thread blocking
 - Pre-computes layout data (`cachedDrumBeats`, `cachedMeasurePositions`, `cachedBeamGroups`, `cachedBeatPositions`) to avoid per-frame recalculation
 - Manages BGM (`AVAudioPlayer`) synchronized with metronome via `CFAbsoluteTime`
 - Handles speed changes with trailing-edge debounce (100ms) to avoid slider jitter
-- `GameplayView+InputManagerDelegate.swift` and `GameplayView+Preview.swift` are extensions of `GameplayView`
+
+`GameplayView+InputManagerDelegate.swift` and `GameplayView+Preview.swift` are extensions of the
+view, not the view model.
 
 ### Services Layer
 All services are `@MainActor` and live in `services/`:
 - `PlaybackService`: Simple song playback state for the library list
-- `PracticeSettingsService`: Speed control (0.25x–1.5x), per-chart persistence via `UserDefaults` with `CryptoKit` SHA-256 keying
+- `PracticeSettingsService`: Speed control (0.25x–1.5x), per-chart persistence via `UserDefaults`
 - `DatabaseMaintenanceService`: SwiftData relationship maintenance and cleanup
-- `HighScoreService`: Per-chart best-score persistence via `UserDefaults` with `CryptoKit` SHA-256 keying
+- `ScorePersistenceService`: SwiftData-backed per-chart scores (`ScoreRecord`). Keeps the 10 most
+  recent attempts, tracks an all-time best from **full-speed runs only**, and performs a one-time
+  migration from the legacy `HighScorePerChart` `UserDefaults` blob
+
+Per-chart `UserDefaults` keys (practice settings) are derived by `PersistentIdentifierPersistenceKey`
+(`CryptoKit` SHA-256 over the SwiftData `PersistentIdentifier`) — the single place that keying lives.
 
 `AudioPlaybackService` (song preview playback, FIFO cache of 10 `AVAudioPlayer` instances) lives in `utilities/` despite being a service.
 
+### Catalog Layer (GraphQL)
+The song catalog is fetched over GraphQL; the legacy REST configuration layer was removed.
+
+- `SimfileDTO.swift` defines the `SimfileFetching` protocol and plain DTOs. **This is the seam** —
+  `ApolloSimfileClient` is the only type that touches generated Apollo code, so the rest of the app
+  never imports `Apollo`.
+- `ServerConfig` resolves endpoints in precedence order: `UserDefaults` override (settings UI) →
+  `EndpointDefaults` from the bundled `.env` → hard-coded local-dev fallback. No `r2BaseURL` means
+  audio downloads are skipped rather than failed.
+- Generated code lives in `Virgo/GraphQL/Generated/` and **is committed** (CI runs no codegen step).
+  It is excluded from SwiftLint. To regenerate after editing `Virgo/GraphQL/Operations/*.graphql` or
+  `Virgo/schema.graphql`, run the `apollo-ios-cli` binary from the SPM artifact directory against
+  `apollo-codegen-config.json`; locate it with
+  `find ~/Library/Developer/Xcode/DerivedData -name apollo-ios-cli -type f`.
+- Partial GraphQL responses are preserved: `ApolloSimfileClient` only throws when `data` is absent,
+  since field-level errors (e.g. one chart's `fileUrl`) can coexist with a valid payload.
+
 ### Server Song Management
 `ServerSongService` is the public facade (coordinator) over four focused utilities under `utilities/`:
-- `ServerSongDownloader`: Downloads DTX files from FastAPI backend
+- `ServerSongDownloader`: Downloads DTX/audio files from the public R2 URLs in the catalog response
 - `ServerSongFileManager`: Local file system operations for downloaded songs
 - `ServerSongCache`: In-memory caching for server song metadata
 - `ServerSongStatusManager`: Tracks download/delete state and syncs with SwiftData
-- `DTXAPIClient`: HTTP client for the FastAPI backend (list/download endpoints)
+- `DTXAPIClient`: now **only** a `FileDownloading` implementation (raw HTTP GET). It no longer does
+  catalog access or server-URL configuration.
 
 ### Input System
 - `InputManager`: Real-time MIDI and keyboard input; delegates hit events to `InputTimingMatcher`
@@ -146,6 +213,21 @@ All services are `@MainActor` and live in `services/`:
 - `MIDIHostTimeConverter`: Converts CoreMIDI host timestamps (`mach_absolute_time`) to `Date` for timing comparison
 - `MIDIPreviewMonitor`: Passes incoming MIDI events to `MIDIDiagnosticsStore` for the diagnostics UI
 - `MIDIDiagnosticsStore`: `@MainActor ObservableObject` holding the last decoded `MIDIDiagnosticSnapshot` for display in settings
+
+### Design System (`Virgo/design/`)
+Two color "worlds" (`SurfaceWorld.paper` / `.ink`) resolve into a semantic `VirgoTheme`
+(background/raised/primary/secondary/rule/accent). The resolution convention is deliberate:
+
+- Paper-world screens and **all** world-shared components (button styles, etc.) read
+  `@Environment(\.theme)` so they adapt to whichever surface hosts them.
+- Fixed-world Ink screens (gameplay, session results) reference `Palette.*` directly — their world
+  never flips, and notation primitives render in tight `ForEach`/`Path` loops where skipping the
+  environment lookup matters. They still apply `.surface(.ink)` at the root so hosted shared
+  components resolve correctly.
+
+Fonts are bundled `.ttf` files registered at runtime by `AppFonts.registerAll()` (called from
+`VirgoApp.init`), not via Info.plist — it falls back to scanning `Bundle.allBundles` so fonts also
+resolve in the XCTest host.
 
 ## Key Technical Patterns
 
@@ -180,31 +262,43 @@ BGM (`AVAudioPlayer`) and metronome are synchronized using a common `CFAbsoluteT
 - Swift Testing method selectors can report "Executed 0 tests" when the generated test name does not match the guessed selector. Prefer suite/class selectors for focused verification unless the exact selector is already proven.
 - Avoid running concurrent `xcodebuild` commands against the same `-derivedDataPath`; they can lock `XCBuildData/build.db`. Run Xcode build/test verification sequentially when sharing derived data.
 - Regression coverage for bundled DTX fixtures only works if the required audio/chart assets are available in CI or committed/generated by a reliable setup step. An ignored local `bgm.m4a` is not enough to prevent future audio regressions on fresh checkouts.
+- `.gitignore` commits only the fixture assets tests actually need from `Virgo/Fixtures/soukyuu_e_no_shouka/`: `SET.def`, the `.dtx` charts, `bgm.m4a`, and `preview.mp3`. The `.ogg`/`.xa`/`.jpg` drum samples are intentionally excluded — do not add tests that depend on them.
+- Do not apply `.appThemeRoot()`, `.preferredColorScheme()`, or any other modifier to `VirgoApp.rootView`'s `WindowGroup` content. macOS derives its window-restoration identifier from the SwiftUI view-type signature; changing it makes restoration fail after rapid launch/terminate cycles (UI tests), leaving the app running with no window. `MainMenuView` applies those modifiers inside its own body and resolves its own theme for exactly this reason.
 
 ## Project Structure
 ```text
 Virgo/
 ├── Virgo.xcodeproj/
 ├── Virgo/
-│   ├── VirgoApp.swift           # App entry point; creates ModelContainer and MetronomeEngine
+│   ├── VirgoApp.swift           # App entry point; SwiftData Schema, MetronomeEngine, font registration
 │   ├── components/              # Reusable UI components (song rows, difficulty badges, metronome)
-│   ├── views/                   # Feature views (ContentView, GameplayView, SongsTabView, etc.)
+│   ├── views/                   # Feature views (MainMenuView is the root screen, GameplayView, etc.)
 │   │   └── subviews/            # View decompositions
-│   ├── viewmodels/
-│   │   └── GameplayViewModel.swift  # All gameplay state and logic
-│   ├── models/                  # SwiftData models (DrumTrack.swift, DrumType+Extensions.swift)
-│   ├── services/                # Business logic services (PlaybackService, HighScoreService, etc.)
-│   ├── utilities/               # Shared utilities: audio engines, DTX parser, input, MIDI, logging, AudioPlaybackService
+│   ├── viewmodels/              # GameplayViewModel + its 5 extension files
+│   ├── models/                  # SwiftData models + rhythm value types
+│   ├── services/                # Business logic services (PlaybackService, ScorePersistenceService, etc.)
+│   ├── utilities/               # Audio engines, DTX/rhythm parsing, timeline, input, MIDI, server, logging
+│   ├── design/                  # Theme, Palette, Typography, Spacing, font registration
+│   ├── layout/                  # Musical notation layout + rhythm analysis
 │   ├── constants/               # Drum type definitions
-│   ├── layout/                  # Musical notation layout calculations
+│   ├── GraphQL/                 # .graphql operations + committed Apollo-generated code
+│   ├── Config/                  # ServerEndpoints.env (gitignored) + .example template
+│   ├── Fixtures/                # Bundled DTX fixture (soukyuu_e_no_shouka)
+│   ├── Resources/Fonts/         # Bundled .ttf files
 │   └── Assets.xcassets/
 ├── VirgoTests/                  # Unit tests (Swift Testing framework, not XCTest)
 ├── VirgoUITests/                # UI automation tests
+├── docs/                        # PRD, architecture blueprint, superpowers plans/specs
 ├── scripts/                     # setup-git-hooks.sh
-└── server/                      # FastAPI backend (main.py, dtx_files/, requirements.txt)
+└── server/                      # Legacy local REST fixture server (not the GraphQL backend)
 ```
 
-## FastAPI Backend Server
+## `server/` — Legacy REST Fixture Server
+
+**This is not the backend the app talks to.** The catalog now goes through GraphQL
+(`ServerConfig.graphQLEndpoint` → `ApolloSimfileClient`); `server/main.py` only exposes REST routes
+(`/dtx/list`, `/dtx/download/...`, `/dtx/metadata/...`) over `server/dtx_files/` and is kept for local
+DTX experimentation. Point `GRAPHQL_ENDPOINT` at a real GraphQL backend for catalog work.
 
 ```bash
 # Initial setup (uses uv, not pip)
@@ -214,7 +308,8 @@ cd server && uv sync
 cd server && uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
-- Local dev: `http://127.0.0.1:8001` (configurable via UserDefaults)
-- Endpoints: list, download, and parse DTX files from `server/dtx_files/`
 - Parses `SET.def` files with multi-encoding fallback (UTF-16 → Shift-JIS → UTF-8)
 - CORS-enabled; Cloudflare Workers deployment supported
+
+Note: `.github/README.md` is stale — its example commands use iPhone simulator destinations, which
+contradicts the iPad-only rule that `ci.yml` actively enforces. Use the commands in this file instead.
