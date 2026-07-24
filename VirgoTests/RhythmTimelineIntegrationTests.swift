@@ -153,7 +153,7 @@ struct RhythmTimelineIntegrationTests {
         #expect(viewModel.currentMeasureIndex == laterEvent.position.measureIndex)
         #expect(viewModel.purpleBarPosition?.x == Double(laterHead.position.x))
         viewModel.scanForMissedNotes(
-            upToSeconds: laterTarget.targetSecondsAtOneX + TimingAccuracy.good.toleranceMs / 1_000
+            upToSeconds: laterTarget.targetSecondsAtOneX + TimingAccuracy.good.toleranceMs / 1_000 + 0.001
         )
         #expect(viewModel.scoredRhythmEventIDs.contains(laterEvent.eventID))
 

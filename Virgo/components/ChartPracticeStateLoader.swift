@@ -8,6 +8,7 @@ final class ChartPracticeStateLoader: ObservableObject {
     @Published private(set) var state: ChartPracticeState
 
     private var loadedChartID: PersistentIdentifier?
+    private var loadedFingerprint: ChartTimingFingerprint?
     private let resolver: Resolver
 
     init(
@@ -27,12 +28,14 @@ final class ChartPracticeStateLoader: ObservableObject {
 
     func load(chart: Chart) async {
         let chartID = chart.persistentModelID
-        guard loadedChartID != chartID else { return }
+        let fingerprint = chart.timingFingerprint
+        guard loadedChartID != chartID || loadedFingerprint != fingerprint else { return }
 
         let initialState = ChartPracticeState.initial(chart: chart)
         if initialState.isResolved {
             state = initialState
             loadedChartID = chartID
+            loadedFingerprint = fingerprint
             return
         }
 
@@ -45,5 +48,6 @@ final class ChartPracticeStateLoader: ObservableObject {
 
         state = resolvedState
         loadedChartID = chartID
+        loadedFingerprint = fingerprint
     }
 }

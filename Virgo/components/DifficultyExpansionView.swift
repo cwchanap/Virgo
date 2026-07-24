@@ -217,7 +217,7 @@ struct ChartSelectionCard: View {
     @Environment(\.theme) private var theme
 
     var practiceState: ChartPracticeState {
-        initialPracticeState.isResolved ? initialPracticeState : practiceStateLoader.state
+        practiceStateLoader.state.isResolved ? practiceStateLoader.state : initialPracticeState
     }
 
     init(chart: Chart, onSelect: @escaping () -> Void) {
@@ -240,7 +240,7 @@ struct ChartSelectionCard: View {
                 ChartScoresView(chart: chart)
             }
         }
-        .task(id: chart.persistentModelID) {
+        .task(id: chart.timingFingerprint) {
             await practiceStateLoader.load(chart: chart)
         }
     }

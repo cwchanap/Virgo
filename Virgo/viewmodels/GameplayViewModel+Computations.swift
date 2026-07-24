@@ -792,7 +792,7 @@ extension GameplayViewModel {
         while rhythmMissedNoteScanCursor < cachedRhythmNoteTargets.count {
             let target = cachedRhythmNoteTargets[rhythmMissedNoteScanCursor]
             let targetSeconds = target.targetSecondsAtOneX / speed
-            if targetSeconds > scanBoundary + 1e-12 { break }
+            if targetSeconds >= scanBoundary - 1e-9 { break }
             if scoredRhythmEventIDs.insert(target.eventID).inserted {
                 scoreEngine.processMissedNote()
             }

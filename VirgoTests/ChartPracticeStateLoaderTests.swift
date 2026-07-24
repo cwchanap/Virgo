@@ -46,4 +46,24 @@ struct ChartPracticeStateLoaderTests {
         #expect(resolutionCount == 2)
         #expect(loader.state.isResolved)
     }
+
+    @Test("in-place timing mutation re-resolves even when the persistent ID is unchanged")
+    func timingFingerprintChangeReResolves() async {
+        let chart = Chart(difficulty: .easy)
+        var resolutionCount = 0
+        let loader = ChartPracticeStateLoader { chart in
+            resolutionCount += 1
+            return ChartPracticeState.resolve(chart: chart)
+        }
+
+        await loader.load(chart: chart)
+        #expect(resolutionCount == 1)
+
+        // Simulate a rhythm backfill: mutate a timing-affecting field in place
+        // without changing the chart's persistent identity.
+        chart.timeSignature = .threeFour
+
+        await loader.load(chart: chart)
+        #expect(resolutionCount == 2, "Fingerprint change must trigger re-resolution")
+    }
 }

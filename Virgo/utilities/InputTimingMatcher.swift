@@ -226,7 +226,7 @@ private extension InputTimingMatcher {
             return (.perfect, timingErrorMs)
         } else if absErrorMs <= TimingAccuracy.great.toleranceMs {
             return (.great, timingErrorMs)
-        } else if absErrorMs < TimingAccuracy.good.toleranceMs {
+        } else if absErrorMs <= TimingAccuracy.good.toleranceMs {
             return (.good, timingErrorMs)
         }
         return (.miss, timingErrorMs)

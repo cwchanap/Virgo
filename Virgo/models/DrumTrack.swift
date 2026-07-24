@@ -87,6 +87,14 @@ final class Note {
     }
 }
 
+/// Lightweight fingerprint of a ``Chart``'s timing-affecting scalar fields,
+/// used to invalidate cached practice-state without traversing SwiftData
+/// relationships. See ``Chart/timingFingerprint``.
+struct ChartTimingFingerprint: Hashable {
+    let metadataDataCount: Int?
+    let timeSignature: TimeSignature
+}
+
 @Model
 final class Chart {
     var difficulty: Difficulty
@@ -152,6 +160,18 @@ final class Chart {
 
     func setRhythmMetadata(_ metadata: ChartRhythmMetadata) throws {
         rhythmMetadataData = try ChartRhythmMetadataCodec.encode(metadata)
+    }
+
+    /// A cheap, relationship-free fingerprint of the timing-affecting fields that
+    /// ``ChartPracticeStateLoader`` and SwiftUI `.task` modifiers use to detect
+    /// in-place mutations (e.g. rhythm backfill) without traversing SwiftData
+    /// relationships. Only scalar/stored properties are read so this is safe to
+    /// evaluate during view rendering.
+    var timingFingerprint: ChartTimingFingerprint {
+        ChartTimingFingerprint(
+            metadataDataCount: rhythmMetadataData?.count,
+            timeSignature: timeSignature
+        )
     }
 
     init(
