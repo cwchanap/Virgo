@@ -249,7 +249,7 @@ struct GameplayViewModelComputationsTests {
         vm.showComboBreakFeedback = true
         vm.isShowingSessionResults = true
         vm.scoredNoteIDs.insert(ObjectIdentifier(note))
-        vm.missedNoteScanCursor = 5
+        vm.legacyMissedNoteScanCursor = 5
         vm.lastScannedTimePosition = 3.0
         vm.completionScheduled = true
 
@@ -263,7 +263,7 @@ struct GameplayViewModelComputationsTests {
         #expect(vm.showMilestoneAnimation == false)
         #expect(vm.showComboBreakFeedback == false)
         #expect(vm.scoredNoteIDs.isEmpty)
-        #expect(vm.missedNoteScanCursor == 0)
+        #expect(vm.legacyMissedNoteScanCursor == 0)
         #expect(vm.lastScannedTimePosition == 0.0)
         #expect(vm.completionScheduled == false)
         #expect(vm.milestoneAnimationTask == nil)
@@ -354,14 +354,14 @@ struct GameplayViewModelComputationsTests {
         vm.isPlaying = true
 
         vm.scanForMissedNotes(upToTimePosition: 5.0)
-        let cursorAfterFirst = vm.missedNoteScanCursor
+        let cursorAfterFirst = vm.legacyMissedNoteScanCursor
         let lastScanned = vm.lastScannedTimePosition
         #expect(vm.scoreEngine.missCount == 0, "Pre-condition: nothing marked yet")
 
         // Second call with a regressed playhead must bail out immediately.
         vm.scanForMissedNotes(upToTimePosition: 1.0)
 
-        #expect(vm.missedNoteScanCursor == cursorAfterFirst, "Cursor must not move backward")
+        #expect(vm.legacyMissedNoteScanCursor == cursorAfterFirst, "Cursor must not move backward")
         #expect(vm.lastScannedTimePosition == lastScanned, "High-water mark must not regress")
         #expect(vm.scoreEngine.missCount == 0, "Regressed scan must not mark any note")
     }
