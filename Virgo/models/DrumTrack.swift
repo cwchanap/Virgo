@@ -87,12 +87,15 @@ final class Note {
     }
 }
 
-/// Lightweight fingerprint of a ``Chart``'s timing-affecting scalar fields,
+/// Lightweight fingerprint of a ``Chart``'s timing-affecting state,
 /// used to invalidate cached practice-state without traversing SwiftData
 /// relationships. See ``Chart/timingFingerprint``.
+///
+/// Uses only ``Chart/timingRevision`` — a chart-owned stored scalar bumped on
+/// every timing mutation — so evaluating this is safe during SwiftUI view
+/// rendering and never faults the ``Song`` relationship.
 struct ChartTimingFingerprint: Hashable {
-    let metadataDataCount: Int?
-    let timeSignature: TimeSignature
+    let timingRevision: Int
 }
 
 @Model
@@ -107,6 +110,12 @@ final class Chart {
     var controlEvents: [ChartControlEvent]
     var bestScore: Int = 0
     var rhythmMetadataData: Data?
+    /// Monotonic counter bumped on every timing-affecting mutation (time
+    /// signature, rhythm metadata, notes, control events, or song BPM). Used
+    /// by ``timingFingerprint`` to invalidate cached practice state without
+    /// traversing SwiftData relationships. Stored as a chart-owned scalar so
+    /// it is safe to read during SwiftUI view rendering.
+    var timingRevision: Int = 0
     @Relationship(deleteRule: .cascade, inverse: \ScoreRecord.chart)
     var scoreRecords: [ScoreRecord] = []
 
@@ -119,7 +128,18 @@ final class Chart {
         get {
             _timeSignature ?? (song?.isDeleted == false ? song?.timeSignature : nil) ?? .fourFour
         }
-        set { _timeSignature = newValue }
+        set {
+            _timeSignature = newValue
+            bumpTimingRevision()
+        }
+    }
+
+    /// Increment ``timingRevision`` to invalidate cached practice state.
+    /// Call after any mutation to notes, control events, or song BPM that
+    /// affects timing resolution. The ``timeSignature`` setter and
+    /// ``setRhythmMetadata(_:)`` bump automatically.
+    func bumpTimingRevision() {
+        timingRevision &+= 1
     }
 
     // Convenience accessors for song properties
@@ -160,18 +180,16 @@ final class Chart {
 
     func setRhythmMetadata(_ metadata: ChartRhythmMetadata) throws {
         rhythmMetadataData = try ChartRhythmMetadataCodec.encode(metadata)
+        bumpTimingRevision()
     }
 
-    /// A cheap, relationship-free fingerprint of the timing-affecting fields that
-    /// ``ChartPracticeStateLoader`` and SwiftUI `.task` modifiers use to detect
-    /// in-place mutations (e.g. rhythm backfill) without traversing SwiftData
-    /// relationships. Only scalar/stored properties are read so this is safe to
-    /// evaluate during view rendering.
+    /// A cheap, relationship-free fingerprint of the timing-affecting state
+    /// that ``ChartPracticeStateLoader`` and SwiftUI `.task` modifiers use to
+    /// detect in-place mutations (e.g. rhythm backfill) without traversing
+    /// SwiftData relationships. Reads only ``timingRevision`` — a chart-owned
+    /// stored scalar — so this is safe to evaluate during view rendering.
     var timingFingerprint: ChartTimingFingerprint {
-        ChartTimingFingerprint(
-            metadataDataCount: rhythmMetadataData?.count,
-            timeSignature: timeSignature
-        )
+        ChartTimingFingerprint(timingRevision: timingRevision)
     }
 
     init(

@@ -168,4 +168,34 @@ struct InputTimingMatcherTests {
         #expect(result.timingAccuracy == .miss)
         #expect(abs((result.timingError ?? 0) - 150.0) < 0.2)
     }
+
+    @Test("calculateNoteMatch treats exact 100ms late hit at nonzero target as good despite float representation")
+    func testNonzeroTargetExactHundredMillisecondsLateIsGood() {
+        // Regression guard for floating-point boundary sensitivity: with a
+        // nonzero expected time, (1.6 - 1.5) * 1000 evaluates to
+        // 100.00000000000001 in binary floating point, which is > 100.0.
+        // Without an epsilon in the tolerance comparison this would classify
+        // as .miss instead of .good.
+        //
+        // At bpm=120, 4/4: secondsPerMeasure = 2.0.
+        // Note at measureOffset 0.75 → expectedTime = 1.5s.
+        // Hit at elapsedTime 1.6 → 100ms late.
+        let note = makeNote(noteType: .bass, measureNumber: 1, measureOffset: 0.75)
+        let matcher = InputTimingMatcher(
+            bpm: 120.0,
+            timeSignature: .fourFour,
+            notes: [note]
+        )
+        let hit = InputHit(
+            drumType: .kick,
+            velocity: 0.7,
+            timestamp: Date(timeIntervalSinceReferenceDate: 400)
+        )
+
+        let result = matcher.calculateNoteMatch(for: hit, elapsedTime: 1.6)
+
+        #expect(result.matchedNote === note)
+        #expect(result.timingAccuracy == .good)
+        #expect(abs((result.timingError ?? 0) - 100.0) < 0.001)
+    }
 }

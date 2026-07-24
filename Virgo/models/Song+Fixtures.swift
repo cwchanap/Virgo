@@ -92,7 +92,9 @@ extension Song {
         song7.charts = [chart7Easy]
 
         chart1Easy.notes = Self.thunderBeatVerificationNotes()
+        chart1Easy.bumpTimingRevision()
         chart1Medium.notes = Self.thunderBeatVerificationNotes(includeFills: true)
+        chart1Medium.bumpTimingRevision()
 
         return [song1, song2, song3, song4, song5, song6, song7]
     }
@@ -123,6 +125,7 @@ extension Song {
             )
             chart.notes = copiedNotes(from: templateChart, into: chart)
             chart.controlEvents = copiedControlEvents(from: templateChart, into: chart)
+            chart.bumpTimingRevision()
             return chart
         }
         return song
