@@ -199,7 +199,11 @@ private extension RhythmTimelineBuilder {
                   (0...1).contains(measureOffset) else {
                 throw RhythmTimelineBuildError.invalidManualOffset
             }
-            let rollsForward = measureOffset == 1
+            // Use the same tolerance as `rationalize` so a value within
+            // `manualOffsetTolerance` of 1 rolls forward to the next measure
+            // instead of falling into `rationalize`, which would return 1/1
+            // and then fail the `localTick < durationTicks` projection guard.
+            let rollsForward = abs(measureOffset - 1) <= Self.manualOffsetTolerance
             let measureIndex = rollsForward ? measureNumber : measureNumber - 1
             guard measureIndex < RhythmLimits.maximumMeasureCount else {
                 throw RhythmTimelineBuildError.measureLimitExceeded
