@@ -145,8 +145,8 @@ struct RhythmInputTimingTests {
         #expect(matcher.calculateNoteMatch(for: hit(.snare), elapsedTime: 1.0).matchedEventID == snareID)
     }
 
-    @Test("Timeline matching treats an exact zero-origin 100 millisecond late hit as a miss")
-    func exactHundredMillisecondsLateIsMiss() {
+    @Test("Timeline matching treats an exact zero-origin 100 millisecond late hit as good")
+    func exactHundredMillisecondsLateIsGood() {
         let position = RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0)
         let matcher = InputTimingMatcher(configuration: .timeline(
             targets: [
@@ -161,11 +161,11 @@ struct RhythmInputTimingTests {
             speed: 1.0
         ))
 
-        #expect(matcher.calculateNoteMatch(for: hit(.kick), elapsedTime: 0.1).timingAccuracy == .miss)
+        #expect(matcher.calculateNoteMatch(for: hit(.kick), elapsedTime: 0.1).timingAccuracy == .good)
     }
 
-    @Test("Legacy matching treats an exact zero-origin 100 millisecond late hit as a miss")
-    func legacyExactHundredMillisecondsLateIsMiss() {
+    @Test("Legacy matching treats an exact zero-origin 100 millisecond late hit as good")
+    func legacyExactHundredMillisecondsLateIsGood() {
         let note = Note(
             interval: .quarter,
             noteType: .bass,
@@ -177,7 +177,7 @@ struct RhythmInputTimingTests {
         let result = matcher.calculateNoteMatch(for: hit(.kick), elapsedTime: 0.1)
 
         #expect(result.matchedNote === note)
-        #expect(result.timingAccuracy == .miss)
+        #expect(result.timingAccuracy == .good)
         #expect(result.timingError == 100)
     }
 

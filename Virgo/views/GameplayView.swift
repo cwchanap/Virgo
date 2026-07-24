@@ -31,7 +31,7 @@ struct GameplayView: View {
     @StateObject private var practiceStateLoader: ChartPracticeStateLoader
 
     var practiceState: ChartPracticeState {
-        initialPracticeState.isResolved ? initialPracticeState : practiceStateLoader.state
+        practiceStateLoader.state.isResolved ? practiceStateLoader.state : initialPracticeState
     }
 
     init(
@@ -167,7 +167,7 @@ struct GameplayView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .task(id: chart.persistentModelID) {
+                .task(id: chart.timingFingerprint) {
                     await practiceStateLoader.load(chart: chart)
                     guard practiceStateLoader.state.isPracticeEnabled else { return }
                     await prepareGameplay(initialRowWidth: geometry.size.width)
