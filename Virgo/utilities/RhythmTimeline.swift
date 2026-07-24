@@ -221,17 +221,18 @@ extension RhythmTimelineBuilder {
             throw RhythmTimelineBuildError.inexactProjection
         }
 
-        let groupDuration = try standardBeatGroupDuration(
-            for: timeSignature,
-            ticksPerWholeNote: ticksPerWholeNote
-        )
-
         var totalCount = 0
         for durationTicks in durationTicksByMeasure {
-            let measureCount = try beatGroupCount(
+            // `count` is the single source of truth shared with
+            // `RhythmBeatGroupBuilder.groups`; routing the cap through it
+            // guarantees the bound matches what materialization produces.
+            guard let measureCount = RhythmBeatGroupBuilder.count(
+                timeSignature: timeSignature,
                 durationTicks: durationTicks,
-                groupDuration: groupDuration
-            )
+                ticksPerWholeNote: ticksPerWholeNote
+            ) else {
+                throw RhythmTimelineBuildError.inexactProjection
+            }
             let result = totalCount.addingReportingOverflow(measureCount)
             guard !result.overflow else { throw RhythmTimelineBuildError.arithmeticOverflow }
             guard result.partialValue <= RhythmLimits.maximumMaterializedRhythmUnitCount else {
@@ -240,37 +241,5 @@ extension RhythmTimelineBuilder {
             totalCount = result.partialValue
         }
         return totalCount
-    }
-
-    private static func standardBeatGroupDuration(
-        for timeSignature: TimeSignature,
-        ticksPerWholeNote: Int
-    ) throws -> Int? {
-        switch timeSignature {
-        case .sixEight, .nineEight, .twelveEight:
-            guard ticksPerWholeNote.isMultiple(of: 8) else {
-                throw RhythmTimelineBuildError.inexactProjection
-            }
-            return ticksPerWholeNote / 8 * 3
-        case .twoFour, .threeFour, .fourFour, .fiveFour:
-            guard ticksPerWholeNote.isMultiple(of: 4) else {
-                throw RhythmTimelineBuildError.inexactProjection
-            }
-            return ticksPerWholeNote / 4
-        case .sevenEight:
-            return nil
-        }
-    }
-
-    private static func beatGroupCount(
-        durationTicks: Int,
-        groupDuration: Int?
-    ) throws -> Int {
-        guard let groupDuration else { return 1 }
-        let completeCount = durationTicks / groupDuration
-        let residualCount = durationTicks.isMultiple(of: groupDuration) ? 0 : 1
-        let result = completeCount.addingReportingOverflow(residualCount)
-        guard !result.overflow else { throw RhythmTimelineBuildError.arithmeticOverflow }
-        return result.partialValue
     }
 }
