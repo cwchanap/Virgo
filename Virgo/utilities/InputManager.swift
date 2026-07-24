@@ -25,9 +25,40 @@ struct NoteMatchResult {
     let hitInput: InputHit
     let matchedNote: Note?
     let timingAccuracy: TimingAccuracy
-    let measureNumber: Int
-    let measureOffset: Double
+    let measureNumber: Int?
+    let measureOffset: Double?
     let timingError: Double? // in milliseconds, positive = late, negative = early; nil when no note matched
+    let matchedEventID: RhythmEventID?
+    let matchedTargetPosition: RhythmEventPosition?
+    let matchedTargetSeconds: Double?
+    let hitSongSeconds: Double?
+    let hitPosition: RhythmEventPosition?
+
+    init(
+        hitInput: InputHit,
+        matchedNote: Note? = nil,
+        timingAccuracy: TimingAccuracy,
+        measureNumber: Int? = nil,
+        measureOffset: Double? = nil,
+        timingError: Double?,
+        matchedEventID: RhythmEventID? = nil,
+        matchedTargetPosition: RhythmEventPosition? = nil,
+        matchedTargetSeconds: Double? = nil,
+        hitSongSeconds: Double? = nil,
+        hitPosition: RhythmEventPosition? = nil
+    ) {
+        self.hitInput = hitInput
+        self.matchedNote = matchedNote
+        self.timingAccuracy = timingAccuracy
+        self.measureNumber = measureNumber
+        self.measureOffset = measureOffset
+        self.timingError = timingError
+        self.matchedEventID = matchedEventID
+        self.matchedTargetPosition = matchedTargetPosition
+        self.matchedTargetSeconds = matchedTargetSeconds
+        self.hitSongSeconds = hitSongSeconds
+        self.hitPosition = hitPosition
+    }
 }
 
 enum TimingAccuracy: Sendable {
@@ -111,6 +142,7 @@ class InputManager: ObservableObject {
     private let diagnosticsStore: MIDIDiagnosticsStore
     private let learnSession: MIDILearnSession
     private let sourceIDResolver: MIDISourceIDResolving
+    private let timingTransitionCriticalSection: (() -> Void)?
     private var learnSessionCaptureCancellable: AnyCancellable?
     
     // MIDI setup
@@ -130,8 +162,6 @@ class InputManager: ObservableObject {
     #endif
     
     // Timing calculation cache
-    private var secondsPerBeat: Double = 0.5
-    private var secondsPerMeasure: Double = 2.0
     private var inputTimingMatcher: InputTimingMatcher?
     private var hostTimeElapsedOffset: Double = 0.0
     
@@ -177,7 +207,8 @@ class InputManager: ObservableObject {
         hostTimeConverter: MIDIHostTimeConverter = MIDIHostTimeConverter(),
         diagnosticsStore: MIDIDiagnosticsStore? = nil,
         learnSession: MIDILearnSession? = nil,
-        sourceIDResolver: MIDISourceIDResolving = CoreMIDISourceIDResolver()
+        sourceIDResolver: MIDISourceIDResolving = CoreMIDISourceIDResolver(),
+        timingTransitionCriticalSection: (() -> Void)? = nil
     ) {
         let settingsManager = settingsManager ?? InputSettingsManager()
 
@@ -188,6 +219,7 @@ class InputManager: ObservableObject {
         self.diagnosticsStore = diagnosticsStore ?? Self.makeDefaultDiagnosticsStore()
         self.learnSession = learnSession ?? Self.makeDefaultLearnSession(settingsManager: settingsManager)
         self.sourceIDResolver = sourceIDResolver
+        self.timingTransitionCriticalSection = timingTransitionCriticalSection
         self.isTestEnvironment = TestEnvironment.isRunningTests
         bindLearnSessionCaptureState()
         reloadMappingsFromSettings()
@@ -311,30 +343,41 @@ class InputManager: ObservableObject {
 
 extension InputManager {
     func configure(bpm: Double, timeSignature: TimeSignature, notes: [Note]) {
-        // Validate BPM range to prevent division by zero and unrealistic values
-        guard bpm > 0.1 && bpm <= 1000.0 else {
-            preconditionFailure("BPM must be between 0.1 and 1000.0, got: \(bpm)")
-        }
-        
-        // Validate time signature
-        guard timeSignature.beatsPerMeasure > 0 else {
-            preconditionFailure("Time signature beats per measure must be positive, got: \(timeSignature.beatsPerMeasure)")
-        }
-        
-        let sortedNotes = notes.sorted { $0.measureNumber < $1.measureNumber ||
-            ($0.measureNumber == $1.measureNumber && $0.measureOffset < $1.measureOffset) }
-        let secondsPerBeat = 60.0 / bpm
-        let secondsPerMeasure = secondsPerBeat * Double(timeSignature.beatsPerMeasure)
-        let timingMatcher = InputTimingMatcher(bpm: bpm, timeSignature: timeSignature, notes: sortedNotes)
+        configure(.legacy(bpm: bpm, timeSignature: timeSignature, notes: notes))
+    }
+
+    func configure(_ configuration: InputTimingConfiguration, elapsedOffset: Double = 0) {
+        validateElapsedOffset(elapsedOffset)
+        let prepared = prepareInputTimingConfiguration(configuration)
 
         updateRuntimeState {
-            self.bpm = bpm
-            self.timeSignature = timeSignature
-            self.notes = sortedNotes
-            self.secondsPerBeat = secondsPerBeat
-            self.secondsPerMeasure = secondsPerMeasure
-            self.inputTimingMatcher = timingMatcher
+            applyPreparedInputTiming(prepared)
+            self.hostTimeElapsedOffset = elapsedOffset
         }
+    }
+
+    func configureAndStartListening(
+        _ configuration: InputTimingConfiguration,
+        songStartTime: Date,
+        elapsedOffset: Double = 0,
+        scheduledStartDelay: Double = 0,
+        capturedHostTime: UInt64? = nil
+    ) {
+        validateElapsedOffset(elapsedOffset)
+        let prepared = prepareInputTimingConfiguration(configuration)
+        let hostOrigin = listeningHostOrigin(
+            scheduledStartDelay: scheduledStartDelay,
+            capturedHostTime: capturedHostTime
+        )
+
+        updateRuntimeState {
+            applyPreparedInputTiming(prepared)
+            self.songStartTime = songStartTime
+            self.songStartHostTime = hostOrigin
+            self.hostTimeElapsedOffset = elapsedOffset
+            self.timingTransitionCriticalSection?()
+        }
+        finishStartingListeners()
     }
     
     /// - Parameter scheduledStartDelay: Seconds between *now* and the moment
@@ -348,18 +391,20 @@ extension InputManager {
         scheduledStartDelay: Double = 0.0,
         capturedHostTime: UInt64? = nil
     ) {
-        let rawHostTime = capturedHostTime ?? mach_absolute_time()
-        let songStartHostTime: UInt64
-        if scheduledStartDelay > 0 {
-            songStartHostTime = hostTimeConverter.hostTimeByAdding(seconds: scheduledStartDelay, to: rawHostTime)
-        } else {
-            songStartHostTime = rawHostTime
-        }
+        validateElapsedOffset(elapsedOffset)
+        let hostOrigin = listeningHostOrigin(
+            scheduledStartDelay: scheduledStartDelay,
+            capturedHostTime: capturedHostTime
+        )
         updateRuntimeState {
             self.songStartTime = songStartTime
-            self.songStartHostTime = songStartHostTime
+            self.songStartHostTime = hostOrigin
             self.hostTimeElapsedOffset = elapsedOffset
         }
+        finishStartingListeners()
+    }
+
+    private func finishStartingListeners() {
         refreshSelectedMIDISourceStateFromSettings()
         guard Thread.isMainThread else {
             DispatchQueue.main.async { [weak self] in
@@ -369,6 +414,72 @@ extension InputManager {
         }
         startKeyboardListening()
         // MIDI is already listening from setup
+    }
+
+    private func listeningHostOrigin(
+        scheduledStartDelay: Double,
+        capturedHostTime: UInt64?
+    ) -> UInt64 {
+        let rawHostTime = capturedHostTime ?? mach_absolute_time()
+        guard scheduledStartDelay > 0 else { return rawHostTime }
+        return hostTimeConverter.hostTimeByAdding(seconds: scheduledStartDelay, to: rawHostTime)
+    }
+
+    private func validateElapsedOffset(_ elapsedOffset: Double) {
+        precondition(
+            elapsedOffset.isFinite && elapsedOffset >= 0,
+            "Input elapsed offset must be finite and nonnegative"
+        )
+    }
+
+    private func prepareInputTimingConfiguration(
+        _ configuration: InputTimingConfiguration
+    ) -> (configuration: InputTimingConfiguration, matcher: InputTimingMatcher, bpm: Double?) {
+        let normalizedConfiguration: InputTimingConfiguration
+        switch configuration {
+        case let .legacy(bpm, timeSignature, notes):
+            guard bpm > 0.1 && bpm <= 1000 else {
+                preconditionFailure("BPM must be between 0.1 and 1000.0, got: \(bpm)")
+            }
+            guard timeSignature.beatsPerMeasure > 0 else {
+                preconditionFailure(
+                    "Time signature beats per measure must be positive, got: \(timeSignature.beatsPerMeasure)"
+                )
+            }
+            let sortedNotes = notes.sorted {
+                $0.measureNumber < $1.measureNumber
+                    || ($0.measureNumber == $1.measureNumber && $0.measureOffset < $1.measureOffset)
+            }
+            normalizedConfiguration = .legacy(
+                bpm: bpm,
+                timeSignature: timeSignature,
+                notes: sortedNotes
+            )
+        case .timeline:
+            normalizedConfiguration = configuration
+        }
+        let matcher = InputTimingMatcher(configuration: normalizedConfiguration)
+        return (normalizedConfiguration, matcher, matcher.effectiveBPM)
+    }
+
+    private func applyPreparedInputTiming(
+        _ prepared: (configuration: InputTimingConfiguration, matcher: InputTimingMatcher, bpm: Double?)
+    ) {
+        switch prepared.configuration {
+        case let .legacy(bpm, timeSignature, notes):
+            self.bpm = bpm
+            self.timeSignature = timeSignature
+            self.notes = notes
+        case let .timeline(_, timeline, _):
+            self.notes = []
+            if let timeSignature = timeline.measures.first?.timeSignature {
+                self.timeSignature = timeSignature
+            }
+            if let matcherBPM = prepared.bpm {
+                self.bpm = matcherBPM
+            }
+        }
+        inputTimingMatcher = prepared.matcher
     }
     
     func stopListening() {

@@ -94,6 +94,9 @@ extension GameplayViewModel {
         if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
             practiceSettings.setSpeed(clampedSpeed)
         }
+        let speedTransitionPosition = isPlaying
+            ? captureSpeedTransitionPosition(previousSpeed: previousSpeed)
+            : nil
         refreshTimingCaches()
         let currentSpeed = practiceSettings.speedMultiplier
         guard abs(previousSpeed - currentSpeed) > 0.0001 else { return }
@@ -103,21 +106,14 @@ extension GameplayViewModel {
         }
         let effectiveBPMValue = effectiveBPM()
 
-        if isDataLoaded, let track = track {
-            // Keep input timing aligned even before playback starts.
-            inputManager.configure(
-                bpm: effectiveBPMValue,
-                timeSignature: track.timeSignature,
-                notes: cachedNotes
-            )
-        }
-
         // If playing, update metronome and BGM rate immediately
-        if isPlaying {
+        if isPlaying, let speedTransitionPosition {
             applySpeedChangeWhilePlaying(
                 previousSpeed: previousSpeed,
                 currentSpeed: currentSpeed,
-                effectiveBPMValue: effectiveBPMValue
+                effectiveBPMValue: effectiveBPMValue,
+                elapsedAtPreviousSpeed: speedTransitionPosition.elapsed,
+                hasMetronomeTime: speedTransitionPosition.hasMetronomeTime
             )
         } else if pausedElapsedTime > 0, previousSpeed > 0, currentSpeed > 0 {
             let speedRatio = previousSpeed / currentSpeed
@@ -129,6 +125,12 @@ extension GameplayViewModel {
                 playbackProgress = 0.0
             }
         }
+        if !isPlaying {
+            // Paused changes install the immutable matcher immediately. The shared
+            // playback clock itself is reseated by startListening when playback resumes.
+            configureInputTiming(speed: currentSpeed, elapsedOffset: pausedElapsedTime)
+        }
+        lastScannedRhythmTargetSeconds = -.infinity
 
         if !isPlaying, metronome.isEnabled {
             metronome.updateBPM(effectiveBPMValue)
@@ -181,7 +183,7 @@ extension GameplayViewModel {
     /// Internal for unit testing.
     @discardableResult
     func rescheduleBGMForSpeedChange(commonStartTime: CFAbsoluteTime) -> Bool {
-        guard let bgmPlayer = bgmPlayer else {
+        guard let bgmPlayer = bgmPlayer, !shouldYieldBGMClockToTimeline(bgmPlayer) else {
             return false
         }
 
@@ -204,28 +206,28 @@ extension GameplayViewModel {
     private func applySpeedChangeWhilePlaying(
         previousSpeed: Double,
         currentSpeed: Double,
-        effectiveBPMValue: Double
+        effectiveBPMValue: Double,
+        elapsedAtPreviousSpeed: Double,
+        hasMetronomeTime: Bool
     ) {
+        guard let timingConfiguration = inputTimingConfiguration(speed: currentSpeed) else {
+            Logger.error("Cannot change playback speed without an input timing configuration")
+            return
+        }
         if let bgmPlayer = bgmPlayer {
             bgmPlayer.enableRate = true
             bgmPlayer.rate = clampedBGMRate(for: currentSpeed)
         }
 
-        if let metronomeTime = metronome.getCurrentPlaybackTime(), previousSpeed > 0, currentSpeed > 0 {
-            pausedElapsedTime += metronomeTime
+        if previousSpeed > 0, currentSpeed > 0 {
             let speedRatio = previousSpeed / currentSpeed
-            pausedElapsedTime *= speedRatio
-            let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
-            restartMetronomeForSpeedChange(effectiveBPM: effectiveBPMValue, elapsedBeats: elapsedBeats)
-        } else {
-            if previousSpeed > 0, currentSpeed > 0 {
-                let speedRatio = previousSpeed / currentSpeed
-                pausedElapsedTime *= speedRatio
-            }
-            let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
-            restartMetronomeForSpeedChange(effectiveBPM: effectiveBPMValue, elapsedBeats: elapsedBeats)
+            pausedElapsedTime = elapsedAtPreviousSpeed * speedRatio
+        }
+        if !hasMetronomeTime {
             Logger.warning("BGM rescheduled after speed change without metronome time - may cause brief desync")
         }
+        let elapsedBeats = elapsedBeatsForScheduling(effectiveBPM: effectiveBPMValue)
+        restartMetronomeForSpeedChange(effectiveBPM: effectiveBPMValue, elapsedBeats: elapsedBeats)
 
         if previousSpeed > 0, currentSpeed > 0 {
             if let scheduledStart = lastScheduledPlaybackStartTime {
@@ -233,27 +235,55 @@ extension GameplayViewModel {
                     timeIntervalSinceReferenceDate: scheduledStart - pausedElapsedTime
                 )
                 self.playbackStartTime = adjustedSongStartTime
-                inputManager.startListening(
+                inputManager.configureAndStartListening(
+                    timingConfiguration,
                     songStartTime: adjustedSongStartTime,
                     elapsedOffset: pausedElapsedTime,
                     scheduledStartDelay: 0.05,
                     capturedHostTime: lastScheduledPlaybackHostTime
                 )
-            } else if let playbackStartTime = playbackStartTime {
-                let elapsedSinceStart = Date().timeIntervalSince(playbackStartTime)
-                let speedRatio = previousSpeed / currentSpeed
-                let adjustedElapsed = elapsedSinceStart * speedRatio
+            } else {
                 let adjustedSongStartTime = Date()
                 self.playbackStartTime = adjustedSongStartTime
-                inputManager.startListening(
+                inputManager.configureAndStartListening(
+                    timingConfiguration,
                     songStartTime: adjustedSongStartTime,
-                    elapsedOffset: adjustedElapsed
+                    elapsedOffset: pausedElapsedTime
                 )
             }
         }
 
         let speedPercent = Int(currentSpeed * 100)
         Logger.audioPlayback("Live speed change to \(speedPercent)% (\(Int(effectiveBPMValue)) BPM)")
+    }
+
+    private func captureSpeedTransitionPosition(
+        previousSpeed: Double
+    ) -> (elapsed: Double, hasMetronomeTime: Bool) {
+        let metronomeTime = metronome.getCurrentPlaybackTime()
+        if let bgmPlayer,
+           bgmPlayer.currentTime > 0,
+           !shouldYieldBGMClockToTimeline(bgmPlayer),
+           previousSpeed > 0 {
+            return (
+                elapsed: clampedTimelinePlaybackElapsed(
+                    (bgmPlayer.currentTime / previousSpeed) + bgmOffsetSeconds
+                ),
+                hasMetronomeTime: metronomeTime != nil
+            )
+        }
+        if let metronomeTime {
+            return (clampedTimelinePlaybackElapsed(pausedElapsedTime + metronomeTime), true)
+        }
+        if let playbackStartTime {
+            return (
+                clampedTimelinePlaybackElapsed(
+                    max(pausedElapsedTime, Date().timeIntervalSince(playbackStartTime))
+                ),
+                false
+            )
+        }
+        return (clampedTimelinePlaybackElapsed(pausedElapsedTime), false)
     }
 
     /// Stops and restarts the metronome at a scheduled future time for a live speed
@@ -272,11 +302,10 @@ extension GameplayViewModel {
         lastScheduledPlaybackHostTime = capturedHostTime
         let scheduledStartTime = CFAbsoluteTimeGetCurrent() + 0.05
         lastScheduledPlaybackStartTime = scheduledStartTime
-        metronome.startAtTime(
-            bpm: effectiveBPM,
+        startMetronomeAtSharedTime(
+            scheduledStartTime,
             timeSignature: track?.timeSignature ?? .fourFour,
-            startTime: scheduledStartTime,
-            totalBeatsElapsed: elapsedBeats
+            effectiveBPM: effectiveBPM
         )
         rescheduleBGMForSpeedChange(commonStartTime: scheduledStartTime)
         return scheduledStartTime

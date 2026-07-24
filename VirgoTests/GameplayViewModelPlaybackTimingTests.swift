@@ -93,15 +93,15 @@ struct GameplayViewModelPlaybackTimingTests {
         viewModel.startPlayback()
 
         let call = try #require(
-            metronome.startAtTimeCalls.last,
+            metronome.timelineStartAtTimeCalls.last,
             "Resuming playback should schedule the metronome"
         )
         let secondsPerBeat = 60.0 / viewModel.effectiveBPM()
         let expectedBeatsElapsed = pausedElapsedTime / secondsPerBeat
 
         #expect(
-            abs(call.totalBeatsElapsed - expectedBeatsElapsed) < 0.0001,
-            "Metronome scheduling should preserve fractional beat progress instead of flooring to an integer"
+            abs(call.elapsedTime - pausedElapsedTime) < 0.0001,
+            "Timeline scheduling should preserve fractional elapsed progress"
         )
         #expect(viewModel.totalBeatsElapsed == Int(expectedBeatsElapsed))
         #expect(viewModel.isPlaying == true)
@@ -334,76 +334,50 @@ struct GameplayViewModelPlaybackTimingTests {
         viewModel.cleanup()
     }
 
-    @Test func testMetronomeBPMMatchesEffectiveBPMOnSpeedChange() async throws {
-        // This test verifies that the metronome BPM matches effectiveBPM after speed changes.
-        // This ensures synchronization between metronome audio, visual timing, and BGM.
-        // Previously, updateBPM clamped to 40-200 which caused desync at extreme speeds.
+    @Test func testTimelineMetronomeSpeedMatchesPracticeSpeed() async throws {
 
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let metronome = ScheduledMetronomeSpy()
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
         viewModel.setupGameplay()
 
-        // Verify track was loaded
-        guard let track = viewModel.track else {
-            throw TestError.trackMissing
-        }
-
         // Test 1: Normal speed (100%)
         viewModel.startPlayback()
-        let normalEffectiveBPM = viewModel.effectiveBPM()
-        #expect(metronome.bpm == normalEffectiveBPM, "Metronome BPM should match effective BPM at 100% speed")
+        #expect(metronome.timelineStartAtTimeCalls.last?.speed == 1.0)
         viewModel.pausePlayback()
 
         // Test 2: Slow speed (50%) - common for practice
         viewModel.practiceSettings.setSpeed(0.5)
         viewModel.startPlayback()
-        let slowEffectiveBPM = viewModel.effectiveBPM()
-        #expect(metronome.bpm == slowEffectiveBPM, "Metronome BPM should match effective BPM at 50% speed")
-        #expect(abs(metronome.bpm - (track.bpm * 0.5)) < 0.01, "Metronome BPM should be 50% of base BPM")
+        #expect(metronome.timelineStartAtTimeCalls.last?.speed == 0.5)
         viewModel.pausePlayback()
 
         // Test 3: Very slow speed (25%) - for learning complex patterns
         // If base BPM is 120, effective BPM would be 30 (previously clamped to 40)
         viewModel.practiceSettings.setSpeed(0.25)
         viewModel.startPlayback()
-        let verySlowEffectiveBPM = viewModel.effectiveBPM()
-        #expect(
-            metronome.bpm == verySlowEffectiveBPM,
-            "Metronome BPM should match effective BPM at 25% speed"
-        )
-        #expect(abs(metronome.bpm - (track.bpm * 0.25)) < 0.01, "Metronome BPM should be 25% of base BPM")
+        #expect(metronome.timelineStartAtTimeCalls.last?.speed == 0.25)
         viewModel.pausePlayback()
 
         // Test 4: Fast speed (150%) - for endurance training
         viewModel.practiceSettings.setSpeed(1.5)
         viewModel.startPlayback()
-        let fastEffectiveBPM = viewModel.effectiveBPM()
-        #expect(metronome.bpm == fastEffectiveBPM, "Metronome BPM should match effective BPM at 150% speed")
-        #expect(abs(metronome.bpm - (track.bpm * 1.5)) < 0.01, "Metronome BPM should be 150% of base BPM")
+        #expect(metronome.timelineStartAtTimeCalls.last?.speed == 1.5)
         viewModel.pausePlayback()
 
         // Test 5: Live speed change during playback
         // Start at 75% speed
         viewModel.practiceSettings.setSpeed(0.75)
         viewModel.startPlayback()
-        #expect(metronome.bpm == track.bpm * 0.75, "Initial metronome BPM should be correct")
+        #expect(metronome.timelineStartAtTimeCalls.last?.speed == 0.75)
 
         // Change speed to 125% while playing
         viewModel.updateSpeed(1.25)
         // Wait for trailing-edge debounce timer to fire (100ms debounce interval + small buffer)
         try await Task.sleep(nanoseconds: 300_000_000)
-        let updatedEffectiveBPM = viewModel.effectiveBPM()
-        #expect(
-            metronome.bpm == updatedEffectiveBPM,
-            "Metronome BPM should update to match new effective BPM during live speed change"
-        )
-        #expect(
-            abs(metronome.bpm - (track.bpm * 1.25)) < 0.01,
-            "Metronome BPM should be 125% of base BPM after live change"
-        )
+        #expect(metronome.timelineStartAtTimeCalls.last?.speed == 1.25)
 
         viewModel.cleanup()
     }

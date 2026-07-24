@@ -7,14 +7,15 @@
 
 import Foundation
 
-/// Pure lookup helper that maps DTX chips to readable `NoteInterval` visual
-/// duration candidates based on musical spacing in a shared tick space.
+/// Pure lookup helper that maps DTX chips with a later same-voice onset to
+/// readable `NoteInterval` visual duration candidates in a shared tick space.
+/// Terminal chips are deliberately absent because the source contains no
+/// duration evidence.
 ///
-/// The lookup sorts every playable chip by absolute tick across all measures
-/// (not just within a single measure) so that the final chip in one measure
-/// can inherit its visual duration from the first chip in the next measure.
-/// This is musically more correct than a per-measure-only scan and is covered
-/// by `testVisualDurationCandidatesUseNextMeasureChip`.
+/// Each notation voice is scanned independently across all measures (not just
+/// within a single measure), while same-tick chips remain one chord onset. This
+/// lets the final chip in one measure inherit from a same-voice chip in the next
+/// measure without borrowing duration evidence from the opposite voice.
 enum VisualDurationLookup {
 
     /// Returns a dictionary keyed by `chipKey` mapping each playable chip to
@@ -32,47 +33,42 @@ enum VisualDurationLookup {
                 && chip.gridPosition >= 0
                 && chip.gridPosition < chip.gridSize
         }
-        let playableChipsByMeasure = Dictionary(grouping: playableChips, by: \.measureIndex)
-        let fallbackTickSpanByMeasure = playableChipsByMeasure.mapValues { measureChips in
-            let uniqueTicks = Set(measureChips.map {
-                normalizedTick(for: $0, ticksPerMeasure: ticksPerMeasure)
-            })
-
-            return uniqueTicks.count == ticksPerMeasure ? 1 : max(ticksPerMeasure / 4, 1)
-        }
-        let sortedChips = playableChips.sorted { lhs, rhs in
-            let lhsTick = normalizedAbsoluteTick(for: lhs, ticksPerMeasure: ticksPerMeasure)
-            let rhsTick = normalizedAbsoluteTick(for: rhs, ticksPerMeasure: ticksPerMeasure)
-
-            if lhsTick == rhsTick {
-                return chipKey(lhs) < chipKey(rhs)
-            }
-
-            return lhsTick < rhsTick
-        }
-        let uniqueAbsoluteTicks = Array(Set(sortedChips.map {
-            normalizedAbsoluteTick(for: $0, ticksPerMeasure: ticksPerMeasure)
-        })).sorted()
-        var nextAbsoluteTickByTick: [Int: Int] = [:]
-        for index in uniqueAbsoluteTicks.indices.dropLast() {
-            nextAbsoluteTickByTick[uniqueAbsoluteTicks[index]] = uniqueAbsoluteTicks[index + 1]
-        }
-
-        var candidates: [String: NoteInterval] = [:]
-
-        for chip in sortedChips {
-            let currentTick = normalizedAbsoluteTick(for: chip, ticksPerMeasure: ticksPerMeasure)
-            let tickSpan = nextAbsoluteTickByTick[currentTick].map { $0 - currentTick }
-                ?? fallbackTickSpanByMeasure[chip.measureIndex]
-                ?? max(ticksPerMeasure / 4, 1)
-
-            candidates[chipKey(chip)] = closestInterval(
-                toTickSpan: tickSpan,
-                ticksPerMeasure: ticksPerMeasure
+        let positions = playableChips.compactMap { chip -> (
+            key: String,
+            absoluteTick: Int,
+            voice: NotationVoice
+        )? in
+            guard let noteType = chip.toNoteType() else { return nil }
+            let voice = DrumNotationCatalog.definition(for: noteType)?.voice ?? .upper
+            return (
+                key: chipKey(chip),
+                absoluteTick: normalizedAbsoluteTick(for: chip, ticksPerMeasure: ticksPerMeasure),
+                voice: voice
             )
         }
+        return candidates(for: positions, ticksPerWholeNote: ticksPerMeasure)
+    }
 
-        return candidates
+    static func candidates<Key: Hashable>(
+        for positions: [(key: Key, absoluteTick: Int, voice: NotationVoice)],
+        ticksPerWholeNote: Int
+    ) -> [Key: NoteInterval] {
+        guard ticksPerWholeNote > 0 else { return [:] }
+        let positionsByVoice = Dictionary(grouping: positions) { $0.voice }
+        var result: [Key: NoteInterval] = [:]
+
+        for voicePositions in positionsByVoice.values {
+            let orderedTicks = Array(Set(voicePositions.map { $0.absoluteTick })).sorted()
+            let nextTickByTick = Dictionary(uniqueKeysWithValues: zip(orderedTicks, orderedTicks.dropFirst()))
+            for position in voicePositions {
+                guard let nextTick = nextTickByTick[position.absoluteTick] else { continue }
+                result[position.key] = closestInterval(
+                    toTickSpan: nextTick - position.absoluteTick,
+                    ticksPerMeasure: ticksPerWholeNote
+                )
+            }
+        }
+        return result
     }
 
     static func chipKey(_ chip: DTXNote) -> String {

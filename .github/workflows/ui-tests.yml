@@ -52,6 +52,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
         
       - name: Select Xcode version
         uses: maxim-lobanov/setup-xcode@v1
@@ -237,8 +241,12 @@ jobs:
     needs: ui-tests
 
     steps:
-      - name: Checkout
+      - name: Checkout coverage commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
 
       - name: Download coverage results
         uses: actions/download-artifact@v4
@@ -246,12 +254,46 @@ jobs:
           name: ui-test-coverage-results
           path: coverage-results
 
+      - name: Validate coverage report
+        id: validate
+        run: |
+          set -euo pipefail
+          report="coverage-results/cobertura.xml"
+
+          if [ ! -s "$report" ]; then
+            echo "Coverage report is missing or empty — skipping upload"
+            echo "skip_upload=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if grep -q '^No coverage available$' "$report"; then
+            echo "Coverage report is the 'No coverage available' sentinel — skipping upload"
+            echo "skip_upload=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! xmllint --noout "$report"; then
+            echo "Coverage report is not valid XML"
+            exit 1
+          fi
+
+          if ! grep -Eq '<coverage([[:space:]>])' "$report"; then
+            echo "Coverage report does not contain a Cobertura <coverage> root"
+            exit 1
+          fi
+
+          echo "Coverage report is valid:"
+          head -20 "$report"
+
       - name: Upload coverage to Codecov
+        if: steps.validate.outputs.skip_upload != 'true'
         uses: codecov/codecov-action@v5
         with:
           files: coverage-results/cobertura.xml
           flags: ui-tests
           disable_search: true
+          override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+          fail_ci_if_error: true

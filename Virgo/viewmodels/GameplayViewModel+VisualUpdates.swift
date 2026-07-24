@@ -3,6 +3,7 @@
 //  Virgo
 //
 
+import AVFoundation
 import Foundation
 
 extension GameplayViewModel {
@@ -59,6 +60,41 @@ extension GameplayViewModel {
 
     /// Shared logic for both the metronome callback and the continuous tick timer.
     private func updateContinuousVisuals(elapsedTime: Double, track: DrumTrack) {
+        if cachedRhythmRuntime.availability == .valid {
+            updateTimelineContinuousVisuals(elapsedTime: elapsedTime, track: track)
+            return
+        }
+        updateLegacyContinuousVisuals(elapsedTime: elapsedTime, track: track)
+    }
+
+    private func updateTimelineContinuousVisuals(elapsedTime: Double, track: DrumTrack) {
+        guard let resolved = resolvedTimelinePlaybackPosition(elapsedTime: elapsedTime) else { return }
+
+        updatePurpleBarPosition(elapsedTime: elapsedTime)
+        if cachedNotationLayout.hasPlayableContent || !cachedNotationLayout.hasRenderableContent {
+            let newRow = rowForMeasure(resolved.measure.measureIndex)
+            if newRow != currentRow {
+                currentRow = newRow
+            }
+        }
+        updatePlaybackProgress(elapsedTime: elapsedTime)
+
+        currentMeasureIndex = resolved.measure.measureIndex
+        currentBeatPosition = resolved.localTick / Double(resolved.measure.durationTicks)
+        rawBeatPosition = currentBeatPosition
+        currentQuarterNotePosition = resolved.absoluteTick / Double(resolved.timeline.ticksPerWholeNote) * 4
+        let pulseIndex = timelinePulseIndex(atOneXSeconds: elapsedTime * practiceSettings.speedMultiplier)
+        totalBeatsElapsed = pulseIndex
+        currentBeat = closestRhythmTargetIndex(atAbsoluteTick: resolved.absoluteTick)
+        if pulseIndex != lastDiscreteBeat {
+            lastDiscreteBeat = pulseIndex
+        }
+
+        scanForMissedNotes(upToSeconds: elapsedTime)
+        schedulePlaybackCompletionIfNeeded()
+    }
+
+    private func updateLegacyContinuousVisuals(elapsedTime: Double, track: DrumTrack) {
         // Use effective BPM for visual sync (speed-adjusted)
         let secondsPerBeat = 60.0 / effectiveBPM()
         let totalBeatsElapsedFloat = elapsedTime / secondsPerBeat
@@ -98,21 +134,23 @@ extension GameplayViewModel {
             currentBeat = findClosestBeatIndex(measureIndex: measureIndex, beatPosition: beatPosition)
             totalBeatsElapsed = discreteTotalBeats
 
-            scanForMissedNotes(upToTimePosition: playheadTimePosition)
-
-            // Schedule delayed completion to preserve late-tolerance window for final notes.
-            // Without this, notes near the end get instantly marked as missed before a
-            // late-but-valid hit (within ±100ms) can be scored.
-            if playbackProgress >= 1.0 && !completionScheduled {
-                completionScheduled = true
-                let gracePeriodSeconds = TimingAccuracy.good.toleranceMs / 1000.0
-                completionTask = completionScheduler(gracePeriodSeconds) { [weak self] in
-                    // Grace period elapsed — mark any still-unscored notes missed,
-                    // then finalize the session.
-                    self?.scanForMissedNotes(upToTimePosition: .infinity)
-                    self?.handlePlaybackCompletion()
-                }
+            if cachedRhythmTimeline != nil {
+                scanForMissedNotes(upToSeconds: elapsedTime)
+            } else {
+                scanForMissedNotes(upToTimePosition: playheadTimePosition)
             }
+
+            schedulePlaybackCompletionIfNeeded()
+        }
+    }
+
+    private func schedulePlaybackCompletionIfNeeded() {
+        guard playbackProgress >= 1, !completionScheduled else { return }
+        completionScheduled = true
+        let gracePeriodSeconds = TimingAccuracy.good.toleranceMs / 1_000
+        completionTask = completionScheduler(gracePeriodSeconds) { [weak self] in
+            self?.scanForAllMissedNotes()
+            self?.handlePlaybackCompletion()
         }
     }
 
@@ -165,6 +203,10 @@ extension GameplayViewModel {
             elapsedTime = calculatedElapsedTime
         }
 
+        if cachedRhythmRuntime.availability == .valid {
+            return calculateTimelinePurpleBarPosition(elapsedTime: elapsedTime)
+        }
+
         let secondsPerBeat = 60.0 / effectiveBPM()
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
         let totalBeatsElapsed = quantizedPurpleBarBeatBoundaryBeats(elapsedTime / secondsPerBeat)
@@ -204,6 +246,20 @@ extension GameplayViewModel {
         )
         let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
 
+        return (x: Double(indicatorX), y: Double(staffCenterY))
+    }
+
+    private func calculateTimelinePurpleBarPosition(elapsedTime: Double) -> (x: Double, y: Double)? {
+        guard cachedNotationLayout.hasPlayableContent,
+              let resolved = resolvedTimelinePlaybackPosition(elapsedTime: elapsedTime),
+              let measure = cachedNotationMeasuresByIndex[resolved.measure.measureIndex] else {
+            return nil
+        }
+        let indicatorX = cachedNotationLayout.tabGrid.xPosition(
+            in: measure,
+            localTick: resolved.localTick
+        )
+        let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
         return (x: Double(indicatorX), y: Double(staffCenterY))
     }
 
@@ -253,12 +309,12 @@ extension GameplayViewModel {
             return bgmElapsedTime
         }
         if let metronomeTime = metronome.getCurrentPlaybackTime() {
-            return pausedElapsedTime + metronomeTime
+            return clampedTimelinePlaybackElapsed(pausedElapsedTime + metronomeTime)
         } else if isPlaying, let startTime = playbackStartTime {
             // playbackStartTime is backdated by pausedElapsedTime (e.g. scheduledStart - pausedElapsedTime),
             // so the raw interval already includes the pause offset. Do NOT add pausedElapsedTime again.
             // Clamp to zero: before a scheduled start, the interval can be slightly negative.
-            return max(0, Date().timeIntervalSince(startTime))
+            return clampedTimelinePlaybackElapsed(max(0, Date().timeIntervalSince(startTime)))
         }
         return nil
     }
@@ -267,7 +323,87 @@ extension GameplayViewModel {
         guard isPlaying, let bgmPlayer = bgmPlayer, bgmPlayer.currentTime > 0 else {
             return nil
         }
-        return bgmTimelineElapsedTime(for: bgmPlayer.currentTime)
+        guard !shouldYieldBGMClockToTimeline(bgmPlayer) else { return nil }
+        return clampedTimelinePlaybackElapsed(bgmTimelineElapsedTime(for: bgmPlayer.currentTime))
+    }
+
+    func shouldYieldBGMClockToTimeline(_ player: AVAudioPlayer) -> Bool {
+        cachedRhythmRuntime.availability == .valid
+            && !player.isPlaying
+            && player.duration > 0
+            && player.currentTime >= player.duration - 0.001
+    }
+
+    func clampedTimelinePlaybackElapsed(_ elapsedTime: Double) -> Double {
+        guard cachedRhythmRuntime.availability == .valid, cachedTrackDuration > 0 else {
+            return elapsedTime
+        }
+        return min(max(elapsedTime, 0), cachedTrackDuration)
+    }
+
+    struct ResolvedTimelinePlaybackPosition {
+        let timeline: RhythmTimeline
+        let measure: RhythmMeasure
+        let absoluteTick: Double
+        let localTick: Double
+    }
+
+    func resolvedTimelinePlaybackPosition(elapsedTime: Double) -> ResolvedTimelinePlaybackPosition? {
+        guard let timeline = cachedRhythmTimeline,
+              let track,
+              elapsedTime.isFinite else {
+            return nil
+        }
+        let duration = timeline.endSeconds(
+            bpm: track.bpm,
+            speed: practiceSettings.speedMultiplier
+        ) ?? 0
+        let clampedElapsed = min(max(elapsedTime, 0), duration)
+        guard let absoluteTick = timeline.continuousTick(
+            forSeconds: clampedElapsed,
+            bpm: track.bpm,
+            speed: practiceSettings.speedMultiplier
+        ) else {
+            return nil
+        }
+        let lookupTick = min(Int(floor(absoluteTick)), timeline.endTick)
+        guard let measure = timeline.measure(containingAbsoluteTick: lookupTick) else { return nil }
+        return ResolvedTimelinePlaybackPosition(
+            timeline: timeline,
+            measure: measure,
+            absoluteTick: absoluteTick,
+            localTick: absoluteTick - Double(measure.startTick)
+        )
+    }
+
+    func timelinePulseIndex(atOneXSeconds oneXSeconds: Double) -> Int {
+        guard let pulses = cachedRhythmRuntime.metronomeSchedule?.pulses, !pulses.isEmpty else { return 0 }
+        var lowerBound = pulses.startIndex
+        var upperBound = pulses.endIndex
+        while lowerBound < upperBound {
+            let midpoint = lowerBound + (upperBound - lowerBound) / 2
+            if pulses[midpoint].offsetSecondsAtOneX <= oneXSeconds + 1e-12 {
+                lowerBound = midpoint + 1
+            } else {
+                upperBound = midpoint
+            }
+        }
+        return max(0, lowerBound - 1)
+    }
+
+    func closestRhythmTargetIndex(atAbsoluteTick absoluteTick: Double) -> Int {
+        guard !cachedRhythmNoteTargets.isEmpty else { return 0 }
+        var lowerBound = 0
+        var upperBound = cachedRhythmNoteTargets.count
+        while lowerBound < upperBound {
+            let midpoint = lowerBound + (upperBound - lowerBound) / 2
+            if Double(cachedRhythmNoteTargets[midpoint].position.absoluteTick) <= absoluteTick {
+                lowerBound = midpoint + 1
+            } else {
+                upperBound = midpoint
+            }
+        }
+        return max(0, lowerBound - 1)
     }
 
     func findClosestBeatIndex(measureIndex: Int, beatPosition: Double) -> Int {
@@ -317,5 +453,12 @@ extension GameplayViewModel {
         Logger.audioPlayback(
             "Playback finished. Score: \(finalScore)\(recordResult == .newBest ? " (new high score!)" : "")"
         )
+    }
+}
+
+private extension TabGrid {
+    func xPosition(in measure: RenderedMeasure, localTick: Double) -> CGFloat {
+        let clampedTick = min(max(localTick, 0), Double(measure.durationTicks))
+        return measure.contentStartX + CGFloat(clampedTick) * tickWidth
     }
 }

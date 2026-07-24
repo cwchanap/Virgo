@@ -43,7 +43,9 @@ extension NotationLayoutEngine {
             }
         }
 
-        let headsNeedingStems = noteHeads.filter { $0.interval.needsStem }
+        let headsNeedingStems = noteHeads.filter {
+            $0.interval.needsStem && $0.rhythm.support == .supported
+        }
 
         let grouped = Dictionary(grouping: headsNeedingStems) { head in
             StemGroupKey(
@@ -124,8 +126,36 @@ extension NotationLayoutEngine {
             ticksPerMeasure: tabGrid.ticksPerMeasure,
             timeSignature: timeSignature
         )
-        let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
+        return assembleBeams(
+            events: events,
+            topology: topology,
+            noteHeads: noteHeads,
+            style: style
+        )
+    }
 
+    func buildBeams(
+        noteHeads: [RenderedNoteHead],
+        measures: [RhythmMeasure],
+        style: NotationLayoutStyle
+    ) -> BeamBuildResult {
+        let events = buildTimelineEvents(noteHeads: noteHeads)
+        let topology = NotationBeamTopologyBuilder().build(events: events, measures: measures)
+        return assembleBeams(
+            events: events,
+            topology: topology,
+            noteHeads: noteHeads,
+            style: style
+        )
+    }
+
+    private func assembleBeams(
+        events: [BeamTimelineEvent],
+        topology: BeamTopologyResult,
+        noteHeads: [RenderedNoteHead],
+        style: NotationLayoutStyle
+    ) -> BeamBuildResult {
+        let headsByID = Dictionary(uniqueKeysWithValues: noteHeads.map { ($0.id, $0) })
         let beams = topology.primaryGroups.flatMap { group -> [RenderedBeam] in
             let representatives = group.eventIndices.compactMap { index in
                 stemRepresentative(
@@ -151,9 +181,7 @@ extension NotationLayoutEngine {
                     baseY: baseY
                 )
             }
-        }
-        .sorted(by: renderedBeamComesBefore)
-
+        }.sorted(by: renderedBeamComesBefore)
         return BeamBuildResult(events: events, topology: topology, beams: beams)
     }
 
@@ -266,6 +294,42 @@ extension NotationLayoutEngine {
                         timeSignature: timeSignature
                     )
                 )
+            return BeamTimelineEvent(
+                timeColumn: representative.timeColumn,
+                row: representative.row,
+                voice: representative.voice,
+                stemDirection: representative.stemDirection,
+                noteHeadIDs: group.map(\.id).sorted(),
+                role: role
+            )
+        }
+        .sorted(by: timelineEventComesBefore)
+    }
+
+    func buildTimelineEvents(noteHeads: [RenderedNoteHead]) -> [BeamTimelineEvent] {
+        Dictionary(grouping: noteHeads) {
+            StemGroupKey(
+                timeColumn: $0.timeColumn,
+                row: $0.row,
+                voice: $0.voice,
+                stemDirection: $0.stemDirection
+            )
+        }
+        .values
+        .compactMap { group in
+            guard let representative = flagRepresentative(in: group) else { return nil }
+            let role: BeamTimelineEventRole
+            if representative.interval.flagCount > 0,
+               representative.rhythm.support == .supported,
+               let durationTicks = representative.rhythmDurationTicks,
+               durationTicks > 0 {
+                role = .beamable(
+                    requiredBeamLevels: representative.interval.flagCount,
+                    durationTicks: durationTicks
+                )
+            } else {
+                role = .boundary
+            }
             return BeamTimelineEvent(
                 timeColumn: representative.timeColumn,
                 row: representative.row,

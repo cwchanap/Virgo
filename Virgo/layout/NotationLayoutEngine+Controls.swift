@@ -1,10 +1,9 @@
 import CoreGraphics
 
 extension NotationLayoutEngine {
-    /// DTX's three-digit measure address tops out at 1,000 measures. Allow a
-    /// generous multiple for manual charts while bounding per-measure arrays,
-    /// synthesized rests, and row geometry from malformed persisted values.
-    static let maximumRenderableMeasureCount = 4_096
+    /// Bound per-measure arrays, synthesized rests, and row geometry with the
+    /// same chart-wide limit used by canonical rhythm validation.
+    static let maximumRenderableMeasureCount = RhythmLimits.maximumMeasureCount
 
     struct ControlTimingResolution {
         let controls: [SemanticallyTimedControl]
@@ -112,6 +111,57 @@ extension NotationLayoutEngine {
             inexactManualOffsets: inexactManualOffsets,
             unresolvedTargetLaneIDs: unresolvedTargetLaneIDs
         )
+    }
+
+    func buildStopNotes(
+        controls: [RhythmLayoutControl],
+        measures: [RenderedMeasure],
+        tabGrid: TabGrid,
+        input: NotationLayoutInput
+    ) -> [RenderedStopNote] {
+        let measuresByIndex = Dictionary(uniqueKeysWithValues: measures.map { ($0.measureIndex, $0) })
+        return controls.compactMap { control -> RenderedStopNote? in
+            let position = control.position
+            guard let measure = measuresByIndex[position.measureIndex],
+                  position.localTick >= 0,
+                  position.localTick < measure.durationTicks,
+                  position.absoluteTick == measure.startTick + position.localTick,
+                  let targetLaneID = control.event.targetLaneID,
+                  let target = DrumNotationCatalog.resolveTarget(laneID: targetLaneID) else {
+                return nil
+            }
+            let targetPosition = input.notePositionOverrides[target.definition.gameplayInstrument]
+                ?? target.definition.defaultPosition
+            let targetStaffStep = staffStep(for: targetPosition)
+            let timeColumn = NotationTimeColumn(
+                measureIndex: position.measureIndex,
+                tickWithinMeasure: position.localTick,
+                absoluteLayoutTick: position.absoluteTick
+            )
+            return RenderedStopNote(
+                id: "control-event-\(control.eventID.rawValue)",
+                kind: control.event.kind,
+                sourceLaneID: control.event.sourceLaneID,
+                sourceNoteID: control.event.sourceNoteID,
+                targetLaneID: target.laneID,
+                targetDisplayName: target.displayName,
+                timeColumn: timeColumn,
+                row: measure.row,
+                position: CGPoint(
+                    x: tabGrid.xPosition(in: measure, localTick: position.localTick),
+                    y: GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
+                        + CGFloat(targetStaffStep) * GameplayLayout.staffLineSpacing / 2
+                        - input.style.stopMarkVerticalOffset
+                ),
+                eventID: control.eventID,
+                rhythmPosition: position
+            )
+        }.sorted {
+            if $0.timeColumn.absoluteLayoutTick != $1.timeColumn.absoluteLayoutTick {
+                return $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick
+            }
+            return $0.id < $1.id
+        }
     }
 
     func buildArticulations(
@@ -368,7 +418,13 @@ private func materializeStopNotes(_ candidates: [StopNoteCandidate]) -> [Rendere
             targetDisplayName: candidate.target.displayName,
             timeColumn: candidate.timeColumn,
             row: candidate.row,
-            position: candidate.position
+            position: candidate.position,
+            eventID: nil,
+            rhythmPosition: RhythmEventPosition(
+                measureIndex: candidate.timeColumn.measureIndex,
+                localTick: candidate.timeColumn.tickWithinMeasure,
+                absoluteTick: candidate.timeColumn.absoluteLayoutTick
+            )
         )
     }
 }

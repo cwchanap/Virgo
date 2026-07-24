@@ -80,7 +80,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test func testUpdateSpeedWhilePlayingRescalesElapsedTimeWhenMetronomeTimeUnavailable() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let metronome = ScheduledMetronomeSpy()
         let practiceSettings = GameplayViewModelTestHarness.createTestPracticeSettings()
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
@@ -101,14 +101,7 @@ struct GameplayViewModelBGMTimelineTests {
             abs(viewModel.pausedElapsedTime - 4.0) < 0.001,
             "Elapsed timeline should rescale in fallback path when metronome playback time is unavailable"
         )
-        #expect(
-            abs(metronome.bpm - viewModel.effectiveBPM()) < 0.001,
-            "Metronome BPM should still be updated in fallback path"
-        )
-        #expect(
-            metronome.isEnabled == true,
-            "Fallback speed change should reschedule the metronome instead of only updating BPM"
-        )
+        #expect(metronome.timelineStartAtTimeCalls.last?.speed == 0.5)
 
         viewModel.cleanup()
     }
@@ -223,14 +216,20 @@ struct GameplayViewModelBGMTimelineTests {
 
         viewModel.updateVisualElementsFromMetronome()
 
-        let expectedElapsedTime = 45.0 / 0.75 + (0.9 / 0.75)
-        let expectedTotalBeats = Int(expectedElapsedTime / (60.0 / viewModel.effectiveBPM()))
-        let expectedMeasureIndex = expectedTotalBeats / chart.timeSignature.beatsPerMeasure
-        let expectedBeatPosition = Double(expectedTotalBeats % chart.timeSignature.beatsPerMeasure)
-            / Double(chart.timeSignature.beatsPerMeasure)
+        let expectedElapsedTime = 45.0 / 0.75 + viewModel.bgmOffsetSeconds
+        let timeline = try #require(viewModel.cachedRhythmTimeline)
+        let expectedTick = try #require(timeline.continuousTick(
+            forSeconds: expectedElapsedTime,
+            bpm: chart.bpm,
+            speed: 0.75
+        ))
+        let expectedMeasure = try #require(timeline.measure(containingAbsoluteTick: Int(expectedTick)))
+        let expectedTotalBeats = Int(expectedTick / Double(timeline.ticksPerWholeNote / 4))
+        let expectedBeatPosition = (expectedTick - Double(expectedMeasure.startTick))
+            / Double(expectedMeasure.durationTicks)
 
         #expect(viewModel.totalBeatsElapsed == expectedTotalBeats)
-        #expect(viewModel.currentMeasureIndex == expectedMeasureIndex)
+        #expect(viewModel.currentMeasureIndex == expectedMeasure.measureIndex)
         #expect(abs(viewModel.currentBeatPosition - expectedBeatPosition) < 0.0001)
         #expect(viewModel.purpleBarPosition != nil)
 
@@ -323,7 +322,13 @@ struct GameplayViewModelBGMTimelineTests {
             bgmStartOffsetSeconds: 0.9
         )
         let chart = Chart(difficulty: .medium, song: song)
-        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 2, measureOffset: 0.625))
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 2,
+            measureOffset: 0.625,
+            originKind: .dtx
+        ))
 
         let viewModel = GameplayViewModel(chart: chart, metronome: GameplayViewModelTestHarness.createTestMetronome())
         await viewModel.loadChartData()
@@ -351,7 +356,13 @@ struct GameplayViewModelBGMTimelineTests {
         )
         let chart = Chart(difficulty: .medium, song: song)
         // First drum note in measure 3 — well after the BGM start.
-        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.0))
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 3,
+            measureOffset: 0.0,
+            originKind: .dtx
+        ))
 
         let viewModel = GameplayViewModel(
             chart: chart,
@@ -362,6 +373,53 @@ struct GameplayViewModelBGMTimelineTests {
 
         #expect(abs(viewModel.bgmOffsetSeconds) < 0.001,
                "An explicit 0.0 BGM offset must be honored, not replaced by the first-note heuristic")
+
+        viewModel.cleanup()
+    }
+
+    @Test("legacy DTX-origin chart with no rhythm metadata aligns BGM via the first-note heuristic")
+    func testLegacyDTXOriginChartAlignsBGMViaFirstNoteHeuristic() async throws {
+        // Regression guard for the removal of `refreshBGMStartOffsetIfMissing` /
+        // `setBGMStartOffsetIfUnset`. A fresh legacy DTX import persists
+        // `rhythmMetadataData = nil` (so `rhythmMetadataState == .missing`) and
+        // `bgmStartOffsetSeconds = nil`. The resolver returns a `.legacy` result
+        // with no timeline, so `calculateBGMOffset` must fall through to the
+        // earliest-note heuristic and align BGM to the first drum note.
+        let song = Song(
+            title: "Legacy DTX",
+            artist: "Tester",
+            bpm: 120,
+            duration: "2:00",
+            genre: "DTX",
+            bgmStartOffsetSeconds: nil
+        )
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour, song: song)
+        // DTX-origin notes starting in measure 3 — no rhythm metadata, so the
+        // resolver takes the `.missing` + `.dtx` → `.legacy` branch.
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 3,
+            measureOffset: 0.0,
+            originKind: .dtx
+        ))
+
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+
+        #expect(viewModel.cachedRhythmTimeline == nil,
+                "A legacy DTX-origin chart with no metadata must not materialize a timeline")
+        #expect(song.bgmStartOffsetSeconds == nil,
+                "Fresh legacy import must not backfill a persisted BGM offset")
+
+        // secondsPerBeat = 0.5, secondsPerMeasure = 2.0, first note at measure 3
+        // → noteTimeSeconds = (3 - 1) * 2.0 = 4.0, scaled by 1.0x speed = 4.0.
+        #expect(abs(viewModel.bgmOffsetSeconds - 4.0) < 0.001,
+                "Legacy chart BGM must align to the earliest note via the first-note heuristic")
 
         viewModel.cleanup()
     }

@@ -13,7 +13,7 @@ import os.log
 // fires on `timerQueue` (see `startTimer` / `startTimerAtTime`). All mutable
 // state is lock-guarded; `@unchecked Sendable` documents this manual contract
 // and keeps the type consistent with `MetronomeAudioEngine`'s Sendable story.
-private final class MetronomePlaybackToken: @unchecked Sendable {
+final class MetronomePlaybackToken: @unchecked Sendable {
     private let lock = NSLock()
     private var active = true
 
@@ -27,6 +27,15 @@ private final class MetronomePlaybackToken: @unchecked Sendable {
         lock.lock()
         active = false
         lock.unlock()
+    }
+
+    @discardableResult
+    func performIfActive(_ action: () -> Void) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard active else { return false }
+        action()
+        return true
     }
 }
 
@@ -89,6 +98,8 @@ class MetronomeTimingEngine: ObservableObject {
     // Timer - using single DispatchSourceTimer for consistency
     private var beatTimer: DispatchSourceTimer?
     private var playbackToken: MetronomePlaybackToken?
+    private var rhythmScheduleCursor: RhythmScheduleCursor?
+    private var activeRhythmSchedule: RhythmMetronomeSchedule?
     private let timerQueue = DispatchQueue(label: "com.virgo.metronome.timing", qos: .userInitiated)
     
     // High-precision timing
@@ -152,6 +163,7 @@ class MetronomeTimingEngine: ObservableObject {
     func start() {
         guard !isPlaying else { return }
 
+        activeRhythmSchedule = nil
         isPlaying = true
         currentBeat = 1
         
@@ -171,6 +183,7 @@ class MetronomeTimingEngine: ObservableObject {
         // A scheduled start is an explicit phase reset. Gameplay uses this when
         // playback begins, and it must rebase any free-running metronome started
         // from the standalone toggle.
+        activeRhythmSchedule = nil
         if !isPlaying {
             isPlaying = true
         }
@@ -190,20 +203,48 @@ class MetronomeTimingEngine: ObservableObject {
         }
     }
 
+    func startAtTime(
+        startTime: TimeInterval,
+        schedule: RhythmMetronomeSchedule,
+        speed: Double,
+        elapsedTime: TimeInterval
+    ) {
+        guard speed.isFinite, speed > 0,
+              elapsedTime.isFinite, elapsedTime >= 0 else {
+            return
+        }
+
+        activeRhythmSchedule = schedule
+        isPlaying = true
+
+        if isTestEnvironment {
+            simulateTimelineTestPulse(
+                startTime: startTime,
+                schedule: schedule,
+                speed: speed,
+                elapsedTime: elapsedTime
+            )
+        } else {
+            startTimelineTimerAtTime(
+                startTime: startTime,
+                schedule: schedule,
+                speed: speed,
+                elapsedTime: elapsedTime
+            )
+        }
+    }
+
     func stop() {
         guard isPlaying else { return }
 
         isPlaying = false
-        
-        if !isTestEnvironment {
-            stopTimer()
-        }
-        
+        stopTimer()
         currentBeat = 1
         beatOffset = 0
         startTime = 0
         beatOriginTime = 0
         lastFiredBeat = 0
+        activeRhythmSchedule = nil
     }
 
     func toggle() {
@@ -269,6 +310,44 @@ class MetronomeTimingEngine: ObservableObject {
         )
     }
 
+    private func startTimelineTimerAtTime(
+        startTime: TimeInterval,
+        schedule: RhythmMetronomeSchedule,
+        speed: Double,
+        elapsedTime: TimeInterval
+    ) {
+        stopTimer()
+
+        let currentTime = CFAbsoluteTimeGetCurrent()
+        let elapsedSinceScheduledStart = max(0, currentTime - startTime)
+        let effectiveStartTime = max(startTime, currentTime)
+        let effectiveElapsedTime = elapsedTime + elapsedSinceScheduledStart
+        let oneXElapsedTime = effectiveElapsedTime * speed
+        let cursor = RhythmScheduleCursor(
+            schedule: schedule,
+            seatedAtOrAfterOffsetSeconds: oneXElapsedTime
+        )
+        guard let firstCandidate = cursor.nextCandidate() else {
+            stop()
+            return
+        }
+
+        self.startTime = effectiveStartTime
+        beatOriginTime = effectiveStartTime - effectiveElapsedTime
+        beatOffset = 0
+        lastFiredBeat = 0
+        rhythmScheduleCursor = cursor
+        currentBeat = firstCandidate.pulse.beatInMeasure
+
+        scheduleTimelineTimer(
+            cursor: cursor,
+            firstCandidate: firstCandidate,
+            playbackOriginTime: beatOriginTime,
+            speed: speed,
+            referenceTime: currentTime
+        )
+    }
+
     private func scheduleBeatTimer(
         startTime: TimeInterval,
         beatOffset: Int,
@@ -304,7 +383,9 @@ class MetronomeTimingEngine: ObservableObject {
             let idealBeatTime = schedule.audioTargetTime(forBeatNumber: firedBeatNumber)
             let beatToPlay = Self.beatInMeasure(forFiredBeatNumber: firedBeatNumber, timeSignature: timeSignature)
             let preciseAudioTime = Self.audioTime(forIdealBeatTime: idealBeatTime)
-            audioBeatHandler?(beatToPlay, beatToPlay == 1, preciseAudioTime)
+            guard token.performIfActive({
+                audioBeatHandler?(beatToPlay, beatToPlay == 1, preciseAudioTime)
+            }) else { return }
 
             Task { @MainActor in
                 guard let self = self, token.isActive else { return }
@@ -326,6 +407,8 @@ class MetronomeTimingEngine: ObservableObject {
     private func stopTimer() {
         playbackToken?.cancel()
         playbackToken = nil
+        rhythmScheduleCursor?.cancel()
+        rhythmScheduleCursor = nil
         if let timer = beatTimer {
             timer.cancel()
             beatTimer = nil
@@ -333,8 +416,109 @@ class MetronomeTimingEngine: ObservableObject {
     }
 
     private func restartTimer() {
-        if isPlaying {
+        if isPlaying, activeRhythmSchedule == nil {
             startTimer()
+        }
+    }
+
+    private func scheduleTimelineTimer(
+        cursor: RhythmScheduleCursor,
+        firstCandidate: RhythmScheduleCursor.Candidate,
+        playbackOriginTime: TimeInterval,
+        speed: Double,
+        referenceTime: TimeInterval
+    ) {
+        let timer = DispatchSource.makeTimerSource(queue: timerQueue)
+        beatTimer = timer
+        let token = MetronomePlaybackToken()
+        playbackToken = token
+        let firstIdealTime = playbackOriginTime + firstCandidate.pulse.offsetSecondsAtOneX / speed
+        Self.scheduleTimelineDeadline(
+            timer,
+            idealTime: firstIdealTime,
+            referenceTime: referenceTime,
+            schedulingLeadTime: audioSchedulingLeadTime
+        )
+
+        let audioBeatHandler = onAudioBeat
+        let visualBeatHandler = onBeat
+        let schedulingLeadTime = audioSchedulingLeadTime
+        timer.setEventHandler { [weak self] in
+            guard token.isActive,
+                  let candidate = cursor.nextCandidate(),
+                  let pulse = cursor.consume(candidate) else {
+                return
+            }
+
+            let idealTime = playbackOriginTime + pulse.offsetSecondsAtOneX / speed
+            let preciseAudioTime = Self.audioTime(forIdealBeatTime: idealTime)
+            guard token.performIfActive({
+                audioBeatHandler?(pulse.beatInMeasure, pulse.isAccented, preciseAudioTime)
+            }) else { return }
+
+            let nextCandidate = token.isActive ? cursor.nextCandidate() : nil
+            Task { @MainActor in
+                guard let self, token.isActive else { return }
+                self.recordTimelineVisualPulse(
+                    pulse,
+                    idealTime: idealTime,
+                    token: token,
+                    handler: visualBeatHandler
+                )
+                if nextCandidate == nil {
+                    self.scheduleTimelineCompletion(idealTime: idealTime, token: token)
+                }
+            }
+
+            guard let nextCandidate else { return }
+            let nextIdealTime = playbackOriginTime + nextCandidate.pulse.offsetSecondsAtOneX / speed
+            Self.scheduleTimelineDeadline(
+                timer,
+                idealTime: nextIdealTime,
+                referenceTime: CFAbsoluteTimeGetCurrent(),
+                schedulingLeadTime: schedulingLeadTime
+            )
+        }
+        timer.resume()
+    }
+
+    private func scheduleTimelineCompletion(
+        idealTime: CFAbsoluteTime,
+        token: MetronomePlaybackToken
+    ) {
+        let completionDelay = max(0, idealTime - CFAbsoluteTimeGetCurrent())
+        DispatchQueue.main.asyncAfter(deadline: .now() + completionDelay) { [weak self] in
+            guard let self,
+                  self.isPlaying,
+                  self.playbackToken === token,
+                  token.isActive else { return }
+            self.stop()
+        }
+    }
+
+    nonisolated private static func scheduleTimelineDeadline(
+        _ timer: DispatchSourceTimer,
+        idealTime: TimeInterval,
+        referenceTime: TimeInterval,
+        schedulingLeadTime: TimeInterval
+    ) {
+        let delay = max(0, idealTime - schedulingLeadTime - referenceTime)
+        let nanos = Int(min(delay * 1_000_000_000, Double(Int.max)))
+        timer.schedule(deadline: .now() + .nanoseconds(nanos))
+    }
+
+    private func recordTimelineVisualPulse(
+        _ pulse: RhythmMetronomePulse,
+        idealTime: CFAbsoluteTime,
+        token: MetronomePlaybackToken,
+        handler: ((Int, Bool, AVAudioTime?) -> Void)?
+    ) {
+        guard isPlaying, token.isActive else { return }
+        let visualDelay = max(0, idealTime - CFAbsoluteTimeGetCurrent())
+        DispatchQueue.main.asyncAfter(deadline: .now() + visualDelay) {
+            guard self.isPlaying, token.isActive else { return }
+            handler?(pulse.beatInMeasure, pulse.isAccented, nil)
+            self.currentBeat = pulse.beatInMeasure
         }
     }
     
@@ -344,8 +528,8 @@ class MetronomeTimingEngine: ObservableObject {
         token: MetronomePlaybackToken
     ) {
         // SAFETY CHECK: Ensure we're still playing and haven't been stopped
-        guard isPlaying else { 
-            return 
+        guard isPlaying else {
+            return
         }
 
         lastFiredBeat = firedBeatNumber
@@ -476,6 +660,32 @@ class MetronomeTimingEngine: ObservableObject {
             if currentBeat > timeSignature.beatsPerMeasure {
                 currentBeat = 1
             }
+        }
+    }
+
+    private func simulateTimelineTestPulse(
+        startTime: TimeInterval,
+        schedule: RhythmMetronomeSchedule,
+        speed: Double,
+        elapsedTime: TimeInterval
+    ) {
+        stopTimer()
+        self.startTime = startTime
+        beatOriginTime = startTime - elapsedTime
+        let cursor = RhythmScheduleCursor(
+            schedule: schedule,
+            seatedAtOrAfterOffsetSeconds: elapsedTime * speed
+        )
+        rhythmScheduleCursor = cursor
+        guard let candidate = cursor.nextCandidate(),
+              let pulse = cursor.consume(candidate) else {
+            stop()
+            return
+        }
+        currentBeat = pulse.beatInMeasure
+        Task { @MainActor in
+            guard isPlaying else { return }
+            onBeat?(pulse.beatInMeasure, pulse.isAccented, nil)
         }
     }
 }

@@ -155,7 +155,16 @@ final class ScheduledMetronomeSpy: MetronomeEngine {
         let totalBeatsElapsed: Double
     }
 
+    struct TimelineStartAtTimeCall {
+        let schedule: RhythmMetronomeSchedule
+        let speed: Double
+        let startTime: TimeInterval
+        let elapsedTime: TimeInterval
+    }
+
     private(set) var startAtTimeCalls: [StartAtTimeCall] = []
+    private(set) var timelineStartAtTimeCalls: [TimelineStartAtTimeCall] = []
+    var playbackTime: TimeInterval?
 
     override func startAtTime(
         bpm: Double,
@@ -173,9 +182,23 @@ final class ScheduledMetronomeSpy: MetronomeEngine {
         )
     }
 
+    override func startAtTime(
+        schedule: RhythmMetronomeSchedule,
+        speed: Double,
+        startTime: TimeInterval,
+        elapsedTime: TimeInterval
+    ) {
+        timelineStartAtTimeCalls.append(TimelineStartAtTimeCall(
+            schedule: schedule,
+            speed: speed,
+            startTime: startTime,
+            elapsedTime: elapsedTime
+        ))
+    }
+
     override func stop() {}
 
     override func getCurrentPlaybackTime() -> TimeInterval? {
-        nil
+        playbackTime
     }
 }

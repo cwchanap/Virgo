@@ -6,6 +6,238 @@
 import Foundation
 
 extension GameplayViewModel {
+    func makeRhythmRuntime(resolvedRhythm: ResolvedChartRhythm) -> GameplayRhythmRuntime {
+        guard resolvedRhythm.availability == .valid,
+              let timeline = resolvedRhythm.timeline,
+              let track else {
+            return GameplayRhythmRuntime(
+                availability: resolvedRhythm.availability,
+                timeline: nil,
+                layoutSnapshot: nil,
+                noteTargets: [],
+                metronomeSchedule: nil,
+                noteByEventID: [:],
+                controlByEventID: [:],
+                positionByNoteObjectID: [:],
+                diagnostics: resolvedRhythm.runtimeDiagnostics
+            )
+        }
+
+        let noteTargets: [RhythmNoteTarget] = resolvedRhythm.orderedEvents.compactMap { event -> RhythmNoteTarget? in
+            guard let note = resolvedRhythm.noteByEventID[event.eventID],
+                  let drumType = DrumType.from(noteType: note.noteType),
+                  let targetSeconds = timeline.seconds(for: event.position, bpm: track.bpm, speed: 1) else {
+                return nil
+            }
+            return RhythmNoteTarget(
+                eventID: event.eventID,
+                drumType: drumType,
+                position: event.position,
+                targetSecondsAtOneX: targetSeconds
+            )
+        }.sorted {
+            if $0.targetSecondsAtOneX != $1.targetSecondsAtOneX {
+                return $0.targetSecondsAtOneX < $1.targetSecondsAtOneX
+            }
+            return $0.eventID.rawValue < $1.eventID.rawValue
+        }
+
+        do {
+            let layoutSnapshot = try makeRhythmLayoutSnapshot(
+                resolvedRhythm: resolvedRhythm,
+                timeline: timeline
+            )
+            let schedule = try RhythmMetronomeSchedule(timeline: timeline, bpm: track.bpm)
+            return GameplayRhythmRuntime(
+                availability: .valid,
+                timeline: timeline,
+                layoutSnapshot: layoutSnapshot,
+                noteTargets: noteTargets,
+                metronomeSchedule: schedule,
+                noteByEventID: resolvedRhythm.noteByEventID,
+                controlByEventID: resolvedRhythm.controlByEventID,
+                positionByNoteObjectID: notePositionMap(for: resolvedRhythm),
+                diagnostics: resolvedRhythm.runtimeDiagnostics
+            )
+        } catch let error as RhythmTimelineBuildError {
+            return fatalRhythmRuntime(
+                diagnostics: resolvedRhythm.runtimeDiagnostics,
+                code: error.diagnosticCode
+            )
+        } catch {
+            return fatalRhythmRuntime(
+                diagnostics: resolvedRhythm.runtimeDiagnostics,
+                code: .inconsistentPersistedTiming
+            )
+        }
+    }
+
+    private func notePositionMap(
+        for resolvedRhythm: ResolvedChartRhythm
+    ) -> [ObjectIdentifier: RhythmEventPosition] {
+        var result: [ObjectIdentifier: RhythmEventPosition] = [:]
+        for event in resolvedRhythm.orderedEvents {
+            guard let note = resolvedRhythm.noteByEventID[event.eventID] else { continue }
+            result[ObjectIdentifier(note)] = event.position
+        }
+        return result
+    }
+
+    private func makeRhythmLayoutSnapshot(
+        resolvedRhythm: ResolvedChartRhythm,
+        timeline: RhythmTimeline
+    ) throws -> RhythmLayoutSnapshot {
+        let analysisEvents = resolvedRhythm.orderedEvents.compactMap { event -> RhythmAnalysisEvent? in
+            guard let note = resolvedRhythm.noteByEventID[event.eventID] else { return nil }
+            let drumType = DrumType.from(noteType: note.noteType)
+            return RhythmAnalysisEvent(
+                eventID: event.eventID,
+                origin: event.origin,
+                position: event.position,
+                voice: drumType.map(NotationVoice.voice(for:)) ?? .upper,
+                storedInterval: note.interval,
+                visualDurationCandidate: note.visualDurationCandidate
+            )
+        }
+        let feel = resolvedRhythmFeel()
+        let analysis = NotationRhythmAnalyzer().analyze(
+            events: analysisEvents,
+            measures: timeline.measures,
+            ticksPerWholeNote: timeline.ticksPerWholeNote,
+            feel: feel
+        )
+        let measures = rhythmMeasuresApplyingWarnings(timeline.measures, warnings: analysis.warnings)
+        let notes = analysis.notes.compactMap { analyzed -> RhythmLayoutNote? in
+            guard let note = resolvedRhythm.noteByEventID[analyzed.eventID] else { return nil }
+            return RhythmLayoutNote(
+                eventID: analyzed.eventID,
+                sourceObjectID: ObjectIdentifier(note),
+                sourceLaneID: note.sourceLaneID,
+                sourceChipID: note.sourceNoteID,
+                noteType: note.noteType,
+                position: analyzed.position,
+                durationTicks: analyzed.durationTicks,
+                rhythm: analyzed.rhythm,
+                tupletID: analyzed.tupletID
+            )
+        }
+        let controls = resolvedRhythm.orderedEvents.compactMap { event -> RhythmLayoutControl? in
+            guard let control = resolvedRhythm.controlByEventID[event.eventID] else { return nil }
+            return RhythmLayoutControl(
+                eventID: event.eventID,
+                event: control,
+                position: event.position
+            )
+        }
+        let rests = analysis.rests.compactMap { rest -> RhythmLayoutRest? in
+            guard let position = timeline.position(
+                measureIndex: rest.measureIndex,
+                localTick: rest.startTick
+            ) else { return nil }
+            return RhythmLayoutRest(
+                position: position,
+                durationTicks: rest.durationTicks,
+                voice: rest.voice,
+                rhythm: rest.rhythm,
+                visibility: rest.visibility,
+                tupletID: rest.tupletID
+            )
+        }
+        let snapshot = try RhythmLayoutSnapshot(
+            ticksPerWholeNote: timeline.ticksPerWholeNote,
+            measures: measures,
+            notes: notes,
+            controls: controls,
+            rests: rests,
+            feel: feel,
+            diagnostics: resolvedRhythm.runtimeDiagnostics
+        )
+        snapshot.logDiagnostics()
+        return snapshot
+    }
+
+    private func resolvedRhythmFeel() -> RhythmicFeel {
+        if case let .valid(metadata) = chart.rhythmMetadataState {
+            return metadata.feel ?? .straight
+        }
+        return .straight
+    }
+
+    private func rhythmMeasuresApplyingWarnings(
+        _ measures: [RhythmMeasure],
+        warnings: [RhythmMeasureWarning]
+    ) -> [RhythmMeasure] {
+        let warningsByMeasure = Dictionary(uniqueKeysWithValues: warnings.map { ($0.measureIndex, $0.codes) })
+        return measures.map { measure in
+            guard let codes = warningsByMeasure[measure.measureIndex], !codes.isEmpty else { return measure }
+            let existingCodes: Set<RhythmDiagnosticCode>
+            if case let .unsupported(existing) = measure.engravingSupport {
+                existingCodes = Set(existing)
+            } else {
+                existingCodes = []
+            }
+            return RhythmMeasure(
+                measureIndex: measure.measureIndex,
+                startTick: measure.startTick,
+                durationTicks: measure.durationTicks,
+                timeSignature: measure.timeSignature,
+                beatGroups: measure.beatGroups,
+                engravingSupport: .unsupported(Array(existingCodes.union(codes)).sorted { $0.rawValue < $1.rawValue })
+            )
+        }
+    }
+
+    private func fatalRhythmRuntime(
+        diagnostics: [PersistedRhythmDiagnostic],
+        code: RhythmDiagnosticCode
+    ) -> GameplayRhythmRuntime {
+        precondition(
+            code.requiredSeverity == .timingFatal,
+            "fatalRhythmRuntime requires a timingFatal code; received \(code.rawValue) (\(code.requiredSeverity))"
+        )
+        let diagnostic: PersistedRhythmDiagnostic
+        do {
+            diagnostic = try PersistedRhythmDiagnostic(code: code, severity: .timingFatal)
+        } catch {
+            preconditionFailure(
+                "fatalRhythmRuntime: PersistedRhythmDiagnostic threw despite matching severity: \(error)"
+            )
+        }
+        return GameplayRhythmRuntime(
+            availability: .fatal,
+            timeline: nil,
+            layoutSnapshot: nil,
+            noteTargets: [],
+            metronomeSchedule: nil,
+            noteByEventID: [:],
+            controlByEventID: [:],
+            positionByNoteObjectID: [:],
+            diagnostics: diagnostics + [diagnostic]
+        )
+    }
+
+    func configureInputTiming(speed: Double, elapsedOffset: Double = 0) {
+        guard let configuration = inputTimingConfiguration(speed: speed) else { return }
+        inputManager.configure(configuration, elapsedOffset: elapsedOffset)
+    }
+
+    func inputTimingConfiguration(speed: Double) -> InputTimingConfiguration? {
+        if let timeline = cachedRhythmTimeline {
+            return .timeline(
+                targets: cachedRhythmNoteTargets,
+                timeline: timeline,
+                speed: speed
+            )
+        } else if let track {
+            return .legacy(
+                bpm: track.bpm * speed,
+                timeSignature: track.timeSignature,
+                notes: cachedNotes
+            )
+        }
+        return nil
+    }
+
     // MARK: - Unique ID Generation
 
     /// Generate a unique ID for a DrumBeat
@@ -20,6 +252,11 @@ extension GameplayViewModel {
         if cachedNotes.isEmpty {
             cachedDrumBeats = []
             nextBeatId = 0  // Reset counter for consistency
+            return
+        }
+
+        if cachedRhythmRuntime.availability == .valid {
+            computeTimelineDrumBeats()
             return
         }
 
@@ -47,18 +284,49 @@ extension GameplayViewModel {
         cachedBeatIndices = Array(0..<cachedDrumBeats.count)
     }
 
+    private func computeTimelineDrumBeats() {
+        let groupedTargets = Dictionary(grouping: cachedRhythmNoteTargets, by: \.position)
+        cachedDrumBeats = groupedTargets.compactMap { position, targets in
+            guard let representative = targets.min(by: { $0.eventID.rawValue < $1.eventID.rawValue }),
+                  let note = cachedNoteByRhythmEventID[representative.eventID] else {
+                return nil
+            }
+            let drums = targets.sorted { $0.eventID.rawValue < $1.eventID.rawValue }.map(\.drumType)
+            return DrumBeat(
+                id: generateBeatId(),
+                drums: drums,
+                timePosition: MeasureUtils.timePosition(
+                    measureNumber: note.measureNumber,
+                    measureOffset: note.measureOffset
+                ),
+                interval: note.interval,
+                rhythmEventID: representative.eventID,
+                rhythmPosition: position
+            )
+        }.sorted {
+            let leftTick = $0.rhythmPosition?.absoluteTick ?? Int.max
+            let rightTick = $1.rhythmPosition?.absoluteTick ?? Int.max
+            if leftTick != rightTick { return leftTick < rightTick }
+            return ($0.rhythmEventID?.rawValue ?? Int.max) < ($1.rhythmEventID?.rawValue ?? Int.max)
+        }
+        cachedBeatIndices = Array(cachedDrumBeats.indices)
+    }
+
     func computeCachedLayoutData() {
         guard let track = track else {
             cacheNotationLayout()
             return
         }
 
-        let secondsPerBeat = 60.0 / track.bpm
-        let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
-
-        let trackDurationInSeconds = calculateTrackDurationInSeconds(secondsPerMeasure: secondsPerMeasure)
-        let totalMeasuresForDuration = Int(ceil(trackDurationInSeconds / secondsPerMeasure))
-        let measuresCount = max(1, totalMeasuresForDuration)
+        let measuresCount: Int
+        if let timeline = cachedRhythmTimeline {
+            measuresCount = max(1, timeline.measures.count)
+        } else {
+            let secondsPerBeat = 60.0 / track.bpm
+            let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
+            let trackDurationInSeconds = calculateTrackDurationInSeconds(secondsPerMeasure: secondsPerMeasure)
+            measuresCount = max(1, Int(ceil(trackDurationInSeconds / secondsPerMeasure)))
+        }
         cachedLayoutMeasureCount = measuresCount
 
         cachedMeasurePositions = GameplayLayout.calculateMeasurePositions(
@@ -163,14 +431,24 @@ extension GameplayViewModel {
 
         let resolvedRowWidth = max(GameplayLayout.maxRowWidth, cachedLayoutRowWidth)
         let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: resolvedRowWidth)
-        let input = NotationLayoutInput(
-            notes: cachedNotes,
-            controlEvents: cachedControlEvents,
-            timeSignature: track.timeSignature,
-            minimumMeasureCount: cachedLayoutMeasureCount,
-            style: style,
-            notePositionOverrides: notePositionOverrides
-        )
+        let input: NotationLayoutInput
+        if let snapshot = cachedRhythmRuntime.layoutSnapshot {
+            input = NotationLayoutInput(
+                timing: .timeline(snapshot),
+                minimumMeasureCount: cachedLayoutMeasureCount,
+                style: style,
+                notePositionOverrides: notePositionOverrides
+            )
+        } else {
+            input = NotationLayoutInput(
+                notes: cachedNotes,
+                controlEvents: cachedControlEvents,
+                timeSignature: track.timeSignature,
+                minimumMeasureCount: cachedLayoutMeasureCount,
+                style: style,
+                notePositionOverrides: notePositionOverrides
+            )
+        }
         cachedNotationLayout = NotationLayoutEngine().layout(input: input)
         if cachedNotationLayout.hasRenderableContent {
             cachedMeasureRowMap = Dictionary(
@@ -270,6 +548,10 @@ extension GameplayViewModel {
     }
 
     private func cacheNotationBeatPositions(track: DrumTrack) {
+        if cachedRhythmRuntime.availability == .valid {
+            cacheTimelineNotationBeatPositions()
+            return
+        }
         for beat in cachedDrumBeats {
             let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
             guard let measure = cachedNotationMeasuresByIndex[measureIndex] else { continue }
@@ -280,6 +562,18 @@ extension GameplayViewModel {
                 beatsPerMeasure: track.timeSignature.beatsPerMeasure
             )
             let beatX = cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: tick)
+            let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
+            cachedBeatPositions[beat.id] = (x: Double(beatX), y: Double(staffCenterY))
+        }
+    }
+
+    private func cacheTimelineNotationBeatPositions() {
+        for beat in cachedDrumBeats {
+            guard let position = beat.rhythmPosition,
+                  let measure = cachedNotationMeasuresByIndex[position.measureIndex] else {
+                continue
+            }
+            let beatX = cachedNotationLayout.tabGrid.xPosition(in: measure, localTick: position.localTick)
             let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
             cachedBeatPositions[beat.id] = (x: Double(beatX), y: Double(staffCenterY))
         }
@@ -304,6 +598,11 @@ extension GameplayViewModel {
     }
 
     private func calculateTrackDurationInSeconds(secondsPerMeasure: Double) -> Double {
+        if let timeline = cachedRhythmTimeline,
+           let track,
+           let endSeconds = timeline.endSeconds(bpm: track.bpm, speed: 1) {
+            return endSeconds
+        }
         if let song = cachedSong, !song.duration.isEmpty && song.duration != "0:00" {
             let components = song.duration.split(separator: ":")
             if components.count == 2,
@@ -339,12 +638,26 @@ extension GameplayViewModel {
 
     func calculateBGMOffset() -> Double {
         guard let track = track else { return 0.0 }
+        let speedMultiplier = practiceSettings.speedMultiplier
+        if let timeline = cachedRhythmTimeline {
+            let oneXOffset: Double
+            if let anchor = timeline.bgmStartPosition,
+               let seconds = timeline.seconds(for: anchor, bpm: track.bpm, speed: 1) {
+                oneXOffset = seconds
+            } else {
+                oneXOffset = cachedRhythmNoteTargets.map(\.targetSecondsAtOneX).min() ?? 0
+            }
+            guard speedMultiplier > 0 else {
+                Logger.error("calculateBGMOffset called with zero speedMultiplier - returning one-X timeline anchor")
+                return oneXOffset
+            }
+            return oneXOffset / speedMultiplier
+        }
         // `nil` means no authoritative BGM offset was parsed (fall back to the
         // first-note heuristic below). A non-nil value — including 0.0, which
         // means the chart explicitly starts BGM at time zero — is authoritative
         // and must be honored rather than replaced by the heuristic.
         if let bgmStartOffsetSeconds = cachedSong?.bgmStartOffsetSeconds {
-            let speedMultiplier = practiceSettings.speedMultiplier
             guard speedMultiplier > 0 else {
                 Logger.error("calculateBGMOffset called with zero speedMultiplier - returning unscaled DTX BGM offset")
                 return bgmStartOffsetSeconds
@@ -363,7 +676,6 @@ extension GameplayViewModel {
             let secondsPerMeasure = secondsPerBeat * Double(track.timeSignature.beatsPerMeasure)
             let noteTimeSeconds = Double(earliestNote.measureNumber - 1) * secondsPerMeasure +
                 (earliestNote.measureOffset * secondsPerMeasure)
-            let speedMultiplier = practiceSettings.speedMultiplier
             guard speedMultiplier > 0 else {
                 Logger.error("calculateBGMOffset called with zero speedMultiplier - returning unscaled offset")
                 return noteTimeSeconds
@@ -382,15 +694,22 @@ extension GameplayViewModel {
 
         // Flush any notes that were missed before this hit so combo state is correct
         // when processHit runs (handles 8th/16th notes within the same beat).
-        let hitTimePos = MeasureUtils.timePosition(
-            measureNumber: result.measureNumber,
-            measureOffset: result.measureOffset
-        )
-        scanForMissedNotes(upToTimePosition: hitTimePos)
+        if let hitSongSeconds = result.hitSongSeconds {
+            scanForMissedNotes(upToSeconds: hitSongSeconds)
+        } else if let measureNumber = result.measureNumber,
+           let measureOffset = result.measureOffset {
+            let hitTimePos = MeasureUtils.timePosition(
+                measureNumber: measureNumber,
+                measureOffset: measureOffset
+            )
+            scanForMissedNotes(upToTimePosition: hitTimePos)
+        }
 
         // Prevent duplicate scoring: if this note was already scored (e.g. double-tap
         // within InputManager's search window), discard the repeated result entirely.
-        if let note = result.matchedNote {
+        if let eventID = result.matchedEventID {
+            guard scoredRhythmEventIDs.insert(eventID).inserted else { return }
+        } else if let note = result.matchedNote {
             let noteID = ObjectIdentifier(note)
             guard scoredNoteIDs.insert(noteID).inserted else { return }
         }
@@ -432,8 +751,8 @@ extension GameplayViewModel {
         // Walk forward from the cursor; notes are sorted ascending by time position,
         // so we stop as soon as we reach a note at or beyond the scan boundary.
         // This is O(new notes this tick) rather than O(totalNotes).
-        while missedNoteScanCursor < sortedNotesByTimePosition.count {
-            let note = sortedNotesByTimePosition[missedNoteScanCursor]
+        while legacyMissedNoteScanCursor < sortedNotesByTimePosition.count {
+            let note = sortedNotesByTimePosition[legacyMissedNoteScanCursor]
             let noteTimePos = MeasureUtils.timePosition(
                 measureNumber: note.measureNumber,
                 measureOffset: note.measureOffset
@@ -446,7 +765,7 @@ extension GameplayViewModel {
                 scoredNoteIDs.insert(noteID)
                 scoreEngine.processMissedNote()
             }
-            missedNoteScanCursor += 1
+            legacyMissedNoteScanCursor += 1
         }
         lastScannedTimePosition = scanBoundary
 
@@ -455,6 +774,42 @@ extension GameplayViewModel {
         // double-checks combo == 0 internally, so no duplication risk.
         if prevCombo > 0 && scoreEngine.combo == 0 {
             triggerComboBreakFeedback()
+        }
+    }
+
+    /// Scan immutable timeline targets by effective target seconds.
+    func scanForMissedNotes(upToSeconds playheadSeconds: Double) {
+        guard isPlaying || playheadSeconds.isInfinite else { return }
+        guard cachedRhythmTimeline != nil else { return }
+
+        let lateWindowSeconds = TimingAccuracy.good.toleranceMs / 1_000
+        let scanBoundary = playheadSeconds - lateWindowSeconds
+        guard scanBoundary > lastScannedRhythmTargetSeconds else { return }
+        let speed = practiceSettings.speedMultiplier
+        guard speed.isFinite, speed > 0 else { return }
+        let previousCombo = scoreEngine.combo
+
+        while rhythmMissedNoteScanCursor < cachedRhythmNoteTargets.count {
+            let target = cachedRhythmNoteTargets[rhythmMissedNoteScanCursor]
+            let targetSeconds = target.targetSecondsAtOneX / speed
+            if targetSeconds >= scanBoundary - 1e-9 { break }
+            if scoredRhythmEventIDs.insert(target.eventID).inserted {
+                scoreEngine.processMissedNote()
+            }
+            rhythmMissedNoteScanCursor += 1
+        }
+        lastScannedRhythmTargetSeconds = scanBoundary
+
+        if previousCombo > 0 && scoreEngine.combo == 0 {
+            triggerComboBreakFeedback()
+        }
+    }
+
+    func scanForAllMissedNotes() {
+        if cachedRhythmTimeline != nil {
+            scanForMissedNotes(upToSeconds: .infinity)
+        } else {
+            scanForMissedNotes(upToTimePosition: .infinity)
         }
     }
 
@@ -467,8 +822,11 @@ extension GameplayViewModel {
         showMilestoneAnimation = false
         showComboBreakFeedback = false
         scoredNoteIDs = []
-        missedNoteScanCursor = 0
+        scoredRhythmEventIDs = []
+        legacyMissedNoteScanCursor = 0
+        rhythmMissedNoteScanCursor = 0
         lastScannedTimePosition = 0.0
+        lastScannedRhythmTargetSeconds = -.infinity
         // Cancel any in-flight feedback reset tasks so they cannot clear flags on
         // the fresh session that is about to start.
         milestoneAnimationTask?.cancel()

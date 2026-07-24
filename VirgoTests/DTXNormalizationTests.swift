@@ -43,7 +43,7 @@ struct DTXNormalizationTests {
         #expect(note.normalizedTickWithinMeasure == 1)
         #expect(note.normalizedTicksPerMeasure == 4)
         #expect(note.notationVoiceCandidate == .lower)
-        #expect(note.visualDurationCandidate == .quarter)
+        #expect(note.visualDurationCandidate == nil)
         #expect(note.articulationCandidate == .some(.none))
     }
 
@@ -75,7 +75,7 @@ struct DTXNormalizationTests {
         #expect(snare.gridSize == 4)
         #expect(snare.gridPosition == 3)
         #expect(snare.tickWithinMeasure == 3)
-        #expect(snare.visualDurationCandidate == .quarter)
+        #expect(snare.visualDurationCandidate == nil)
     }
 
     @Test("power-of-two grids normalize to readable visual duration candidates", arguments: [
@@ -108,13 +108,16 @@ struct DTXNormalizationTests {
         #expect(events.map(\.gridPosition) == Array(0..<gridSize))
         #expect(events.map(\.tickWithinMeasure) == Array(0..<gridSize))
         #expect(events.map(\.absoluteTick) == Array(gridSize..<(gridSize * 2)))
-        #expect(events.map(\.visualDurationCandidate) == Array(repeating: expectedInterval, count: gridSize))
+        #expect(events.dropLast().allSatisfy { $0.visualDurationCandidate == expectedInterval })
+        #expect(events.last?.visualDurationCandidate == nil)
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
         #expect(notes.count == gridSize)
-        #expect(notes.map(\.interval) == Array(repeating: expectedInterval, count: gridSize))
-        #expect(notes.map(\.visualDurationCandidate) == Array(repeating: .some(expectedInterval), count: gridSize))
+        #expect(notes.dropLast().allSatisfy { $0.interval == expectedInterval })
+        #expect(notes.last?.interval == .quarter)
+        #expect(notes.dropLast().allSatisfy { $0.visualDurationCandidate == expectedInterval })
+        #expect(notes.last?.visualDurationCandidate == nil)
     }
 
     @Test("non-power-of-two grids preserve timing and do not collapse every note to quarter")
@@ -134,7 +137,7 @@ struct DTXNormalizationTests {
         #expect(Set(events.map(\.ticksPerMeasure)) == Set([12]))
         #expect(events.map(\.tickWithinMeasure) == [0, 1, 2])
         #expect(events.map(\.absoluteTick) == [12, 13, 14])
-        #expect(events.map(\.visualDurationCandidate) == [.sixteenth, .sixteenth, .quarter])
+        #expect(events.map(\.visualDurationCandidate) == [.sixteenth, .sixteenth, nil])
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart).sorted {
@@ -142,7 +145,7 @@ struct DTXNormalizationTests {
         }
         #expect(notes.count == 3)
         #expect(notes.allSatisfy { $0.normalizedTicksPerMeasure == 12 })
-        #expect(notes.map(\.visualDurationCandidate) == [.some(.sixteenth), .some(.sixteenth), .some(.quarter)])
+        #expect(notes.map(\.visualDurationCandidate) == [.some(.sixteenth), .some(.sixteenth), nil])
         #expect(notes.map(\.interval) == [.sixteenth, .sixteenth, .quarter])
     }
 
@@ -167,7 +170,7 @@ struct DTXNormalizationTests {
         #expect(event.ticksPerMeasure == 32)
         #expect(event.tickWithinMeasure == 31)
         #expect(event.absoluteTick == 63)
-        #expect(event.visualDurationCandidate == .quarter)
+        #expect(event.visualDurationCandidate == nil)
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
@@ -176,10 +179,10 @@ struct DTXNormalizationTests {
         #expect(note.normalizedTicksPerMeasure == 32)
         #expect(note.normalizedTickWithinMeasure == 31)
         #expect(note.interval == .quarter)
-        #expect(note.visualDurationCandidate == .quarter)
+        #expect(note.visualDurationCandidate == nil)
     }
 
-    @Test("visual duration candidates use the next chip across measure boundaries")
+    @Test("visual duration candidates use the next same-voice chip across measure boundaries")
     func testVisualDurationCandidatesUseNextMeasureChip() throws {
         let finalEighthChip = String(repeating: "00", count: 7) + "01"
         let nextMeasureChip = "01" + String(repeating: "00", count: 7)
@@ -189,27 +192,27 @@ struct DTXNormalizationTests {
         #BPM: 120
         #DLEVEL: 50
         #00113: \(finalEighthChip)
-        #00212: \(nextMeasureChip)
+        #00213: \(nextMeasureChip)
         """
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
         let events = chartData.normalizedRhythmicEvents()
 
-        let bass = try #require(events.first { $0.laneID == "13" })
-        let snare = try #require(events.first { $0.laneID == "12" })
-        #expect(bass.absoluteTick == 15)
-        #expect(snare.absoluteTick == 16)
-        #expect(bass.visualDurationCandidate == .eighth)
-        #expect(snare.visualDurationCandidate == .quarter)
+        let firstBass = try #require(events.first { $0.measureIndex == 1 })
+        let secondBass = try #require(events.first { $0.measureIndex == 2 })
+        #expect(firstBass.absoluteTick == 15)
+        #expect(secondBass.absoluteTick == 16)
+        #expect(firstBass.visualDurationCandidate == .eighth)
+        #expect(secondBass.visualDurationCandidate == nil)
 
         let chart = Chart(difficulty: .medium)
         let notes = chartData.toNotes(for: chart)
-        let bassNote = try #require(notes.first { $0.sourceLaneID == "13" })
-        let snareNote = try #require(notes.first { $0.sourceLaneID == "12" })
-        #expect(bassNote.interval == .eighth)
-        #expect(bassNote.visualDurationCandidate == .eighth)
-        #expect(snareNote.interval == .quarter)
-        #expect(snareNote.visualDurationCandidate == .quarter)
+        let firstBassNote = try #require(notes.first { $0.normalizedMeasureIndex == 1 })
+        let secondBassNote = try #require(notes.first { $0.normalizedMeasureIndex == 2 })
+        #expect(firstBassNote.interval == .eighth)
+        #expect(firstBassNote.visualDurationCandidate == .eighth)
+        #expect(secondBassNote.interval == .quarter)
+        #expect(secondBassNote.visualDurationCandidate == nil)
     }
 
     @Test("normalization rejects oversized shared tick scales")

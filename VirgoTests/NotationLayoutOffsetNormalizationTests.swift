@@ -14,6 +14,12 @@ struct NotationLayoutOffsetNormalizationTests {
 
         #expect(head.measureIndex == 1)
         #expect(head.timePosition == 1.0)
+        #expect(head.rhythmPosition == RhythmEventPosition(
+            measureIndex: 1,
+            localTick: 0,
+            absoluteTick: layout.tabGrid.ticksPerMeasure
+        ))
+        #expect(head.rhythm == NotationRhythm(baseInterval: .quarter))
         let measure1 = try #require(layout.measures.first { $0.measureIndex == 1 })
         let expectedX = measure1.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
         #expect(abs(head.position.x - expectedX) < 0.001)

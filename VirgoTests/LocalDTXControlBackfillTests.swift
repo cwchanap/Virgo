@@ -100,6 +100,72 @@ struct LocalDTXControlBackfillTests {
         #expect(chart.controlEvents.count == 1)
     }
 
+    @Test("backfill persists canonical projection timing, not native chip gridSize")
+    func backfillPersistsCanonicalTimingOnMixedGridChart() throws {
+        // Regression: refreshControlEventsIfMissing previously called
+        // `data.toControlEvents`, which persists each control chip's NATIVE
+        // gridSize as `normalizedTicksPerMeasure`. For mixed-grid charts the
+        // native gridSize ≠ the canonical LCM `measure.durationTicks`, so
+        // `RhythmTimelineBuilder.validatePersistedTiming` would later mark the
+        // chart fatal with `inconsistentPersistedTiming`. The fix uses the
+        // parsed projection controls (LCM-based), matching the fresh-import
+        // path.
+        //
+        // This DTX has a note at gridSize=16 (32 hex chars) and a control at
+        // gridSize=8 (16 hex chars) in the same 4/4 measure. The canonical
+        // LCM ticksPerWholeNote is 16, so durationTicks=16. The control's
+        // native gridSize=8 ≠ 16 — persisting 8 would fail validation.
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+
+        let setDef = """
+        #TITLE: Mixed Grid
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let chartContent = """
+        #TITLE: Mixed Grid
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00012: 01000000000000000000000000000000
+        #00021: 1600000000000000
+        """
+        try chartContent.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
+
+        // Fresh import populates rhythmMetadataData, canonical notes, AND
+        // canonical controls (via projection.controls).
+        let song = try LocalDTXFixtureImporter.importSong(
+            from: tempDir, songId: tempDir.lastPathComponent, into: context
+        )
+        let chart = try #require(song.charts.first)
+        let freshControl = try #require(chart.controlEvents.first)
+        #expect(freshControl.normalizedTicksPerMeasure == 16,
+                "fresh import persists canonical LCM ticksPerMeasure")
+
+        // Simulate the "valid rhythmMetadataData but empty control relationship"
+        // state: delete the controls, keep the notes and metadata.
+        for control in chart.controlEvents { context.delete(control) }
+        chart.controlEvents = []
+        try context.save()
+        #expect(chart.controlEvents.isEmpty)
+
+        // Re-import triggers refreshControlEventsIfMissing backfill.
+        _ = try LocalDTXFixtureImporter.importSong(
+            from: tempDir, songId: tempDir.lastPathComponent, into: context
+        )
+
+        let backfilledControl = try #require(chart.controlEvents.first)
+        #expect(backfilledControl.kind == .stop)
+        #expect(backfilledControl.targetLaneID == "16")
+        #expect(backfilledControl.normalizedTicksPerMeasure == 16,
+                "backfill must persist canonical LCM ticksPerMeasure (16), not native gridSize (8)")
+        #expect(backfilledControl.normalizedTicksPerMeasure != 8,
+                "backfill must NOT persist the control chip's native gridSize")
+    }
+
     @Test("refreshControlEventsIfMissing is first-wins: edited control lanes do not propagate")
     func refreshControlsFirstWinsOnEditedDTX() throws {
         // Pins the documented known limitation: backfill is first-wins, so editing

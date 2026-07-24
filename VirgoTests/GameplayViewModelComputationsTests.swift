@@ -21,6 +21,15 @@ private enum CoverageHelpers {
         return vm
     }
 
+    static func preparedLegacyVM(noteCount: Int = 4) async -> GameplayViewModel {
+        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: noteCount)
+        chart.notes.forEach { $0.originKind = .dtx }
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        await vm.loadChartData()
+        vm.setupGameplay(loadPersistedSpeed: false)
+        return vm
+    }
+
     static func makeResult(
         note: Note?,
         timingAccuracy: TimingAccuracy,
@@ -201,7 +210,7 @@ struct GameplayViewModelComputationsTests {
 
     @Test("calculateTrackDuration falls back when song.duration is non-numeric")
     func testCalculateTrackDurationFallsBackOnMalformedDurationString() async throws {
-        let vm = await CoverageHelpers.preparedVM(noteCount: 4)
+        let vm = await CoverageHelpers.preparedLegacyVM(noteCount: 4)
         defer { vm.cleanup() }
 
         vm.cachedSong = Song(title: "T", artist: "A", bpm: 120.0, duration: "abc", genre: "Rock")
@@ -214,7 +223,7 @@ struct GameplayViewModelComputationsTests {
 
     @Test("calculateTrackDuration falls back when seconds component fails to parse")
     func testCalculateTrackDurationFallsBackOnUnparsableSeconds() async throws {
-        let vm = await CoverageHelpers.preparedVM(noteCount: 4)
+        let vm = await CoverageHelpers.preparedLegacyVM(noteCount: 4)
         defer { vm.cleanup() }
 
         vm.cachedSong = Song(title: "T", artist: "A", bpm: 120.0, duration: "1:xx", genre: "Rock")
@@ -240,7 +249,7 @@ struct GameplayViewModelComputationsTests {
         vm.showComboBreakFeedback = true
         vm.isShowingSessionResults = true
         vm.scoredNoteIDs.insert(ObjectIdentifier(note))
-        vm.missedNoteScanCursor = 5
+        vm.legacyMissedNoteScanCursor = 5
         vm.lastScannedTimePosition = 3.0
         vm.completionScheduled = true
 
@@ -254,7 +263,7 @@ struct GameplayViewModelComputationsTests {
         #expect(vm.showMilestoneAnimation == false)
         #expect(vm.showComboBreakFeedback == false)
         #expect(vm.scoredNoteIDs.isEmpty)
-        #expect(vm.missedNoteScanCursor == 0)
+        #expect(vm.legacyMissedNoteScanCursor == 0)
         #expect(vm.lastScannedTimePosition == 0.0)
         #expect(vm.completionScheduled == false)
         #expect(vm.milestoneAnimationTask == nil)
@@ -345,14 +354,14 @@ struct GameplayViewModelComputationsTests {
         vm.isPlaying = true
 
         vm.scanForMissedNotes(upToTimePosition: 5.0)
-        let cursorAfterFirst = vm.missedNoteScanCursor
+        let cursorAfterFirst = vm.legacyMissedNoteScanCursor
         let lastScanned = vm.lastScannedTimePosition
         #expect(vm.scoreEngine.missCount == 0, "Pre-condition: nothing marked yet")
 
         // Second call with a regressed playhead must bail out immediately.
         vm.scanForMissedNotes(upToTimePosition: 1.0)
 
-        #expect(vm.missedNoteScanCursor == cursorAfterFirst, "Cursor must not move backward")
+        #expect(vm.legacyMissedNoteScanCursor == cursorAfterFirst, "Cursor must not move backward")
         #expect(vm.lastScannedTimePosition == lastScanned, "High-water mark must not regress")
         #expect(vm.scoreEngine.missCount == 0, "Regressed scan must not mark any note")
     }
@@ -456,7 +465,7 @@ struct ComputationsVisualUpdatesTests {
 
     @Test("calculatePurpleBarPosition uses the legacy layout when notation layout is inactive")
     func testCalculatePurpleBarPositionUsesLegacyLayoutWhenNotationInactive() async throws {
-        let vm = await CoverageHelpers.preparedVM(noteCount: 4)
+        let vm = await CoverageHelpers.preparedLegacyVM(noteCount: 4)
         defer { vm.cleanup() }
 
         vm.cachedNotationLayout = .empty
@@ -475,7 +484,7 @@ struct ComputationsVisualUpdatesTests {
 
     @Test("calculatePurpleBarPosition quantizes non-finite beat counts to zero")
     func testCalculatePurpleBarPositionQuantizesNonFiniteBeatsToZero() async throws {
-        let vm = await CoverageHelpers.preparedVM(noteCount: 4)
+        let vm = await CoverageHelpers.preparedLegacyVM(noteCount: 4)
         defer { vm.cleanup() }
 
         vm.isPlaying = true

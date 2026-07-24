@@ -4,6 +4,11 @@ import SwiftUI
 
 @Suite("Tab Grid Overflow Fallback Tests")
 struct NotationLayoutEngineTabGridOverflowTests {
+    @Test("renderable measures reuse the shared rhythm limit")
+    func renderableMeasuresReuseRhythmLimit() {
+        #expect(NotationLayoutEngine.maximumRenderableMeasureCount == RhythmLimits.maximumMeasureCount)
+    }
+
     @Test("tab grid degrades to fallback when LCM of tick resolutions overflows")
     func tabGridDegradesToFallbackWhenLCMOverflows() {
         // 256 and 251 are coprime → LCM = 64256, which exceeds the

@@ -14,6 +14,172 @@ import SwiftUI
 @MainActor
 struct GameplayViewModelScoringTests {
 
+    @Test("Timeline scoring suppresses duplicate hits by event ID")
+    func timelineScoringSuppressesDuplicateEventID() async throws {
+        let viewModel = GameplayViewModel(
+            chart: GameplayViewModelTestHarness.createTestChart(noteCount: 1),
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.isPlaying = true
+        defer { viewModel.cleanup() }
+        let target = try #require(viewModel.cachedRhythmNoteTargets.first)
+        let result = timelineResult(target: target, hitSeconds: target.targetSecondsAtOneX)
+
+        viewModel.recordHit(result: result)
+        let scoreAfterFirstHit = viewModel.scoreEngine.score
+        viewModel.recordHit(result: result)
+
+        #expect(scoreAfterFirstHit > 0)
+        #expect(viewModel.scoreEngine.score == scoreAfterFirstHit)
+        #expect(viewModel.scoredRhythmEventIDs == [target.eventID])
+    }
+
+    @Test("Same-time timeline events remain independently scoreable")
+    func distinctSameTimeEventIDsScoreSeparately() async {
+        let viewModel = GameplayViewModel(
+            chart: GameplayViewModelTestHarness.createTestChart(noteCount: 1),
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay()
+        viewModel.isPlaying = true
+        defer { viewModel.cleanup() }
+        let position = RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0)
+        let first = RhythmNoteTarget(
+            eventID: .init(rawValue: 100),
+            drumType: .kick,
+            position: position,
+            targetSecondsAtOneX: 0
+        )
+        let second = RhythmNoteTarget(
+            eventID: .init(rawValue: 101),
+            drumType: .snare,
+            position: position,
+            targetSecondsAtOneX: 0
+        )
+
+        viewModel.recordHit(result: timelineResult(target: first, hitSeconds: 0))
+        viewModel.recordHit(result: timelineResult(target: second, hitSeconds: 0))
+
+        #expect(viewModel.scoreEngine.perfectCount == 2)
+        #expect(viewModel.scoredRhythmEventIDs == [first.eventID, second.eventID])
+    }
+
+    @Test("Timeline missed-note scan marks a target past the 100 millisecond late boundary")
+    func timelineMissScanIncludesPastLateBoundary() async throws {
+        let chart = Chart(difficulty: .medium)
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 1,
+            measureOffset: 0.25
+        ))
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+        defer { viewModel.cleanup() }
+        let target = try #require(viewModel.cachedRhythmNoteTargets.first)
+
+        // Scan 1 ms past the late boundary so the target is strictly expired.
+        viewModel.scanForMissedNotes(
+            upToSeconds: target.targetSecondsAtOneX + TimingAccuracy.good.toleranceMs / 1_000 + 0.001
+        )
+
+        #expect(viewModel.scoreEngine.missCount == 1)
+        #expect(viewModel.scoredRhythmEventIDs == [target.eventID])
+    }
+
+    @Test("Timeline missed-note scan does not preempt a hit at the exact 100 millisecond boundary")
+    func timelineMissScanExcludesExactLateBoundary() async throws {
+        let chart = Chart(difficulty: .medium)
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 1,
+            measureOffset: 0.25
+        ))
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+        defer { viewModel.cleanup() }
+        let target = try #require(viewModel.cachedRhythmNoteTargets.first)
+
+        // Scanning at exactly the late boundary must NOT consume the target —
+        // a hit arriving at exactly 100 ms late is still inside the good window.
+        viewModel.scanForMissedNotes(
+            upToSeconds: target.targetSecondsAtOneX + TimingAccuracy.good.toleranceMs / 1_000
+        )
+
+        #expect(viewModel.scoreEngine.missCount == 0)
+        #expect(viewModel.scoredRhythmEventIDs.isEmpty)
+    }
+
+    @Test("recordHit at exactly 100 ms late scores as good despite scan running first")
+    func recordHitAtExactLateBoundaryScoresAsGood() async throws {
+        let chart = Chart(difficulty: .medium)
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 1,
+            measureOffset: 0.25
+        ))
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        viewModel.isPlaying = true
+        defer { viewModel.cleanup() }
+        let target = try #require(viewModel.cachedRhythmNoteTargets.first)
+
+        // A hit at exactly target + 100 ms is inside the good window (<=).
+        // recordHit calls scanForMissedNotes(upToSeconds: hitSongSeconds) before
+        // duplicate protection, so the scan must NOT consume the target at the
+        // exact boundary — otherwise the hit is discarded as already scored.
+        let lateHitSeconds = target.targetSecondsAtOneX + TimingAccuracy.good.toleranceMs / 1_000
+        let result = NoteMatchResult(
+            hitInput: InputHit(drumType: target.drumType, velocity: 1.0, timestamp: Date()),
+            timingAccuracy: .good,
+            timingError: 100.0,
+            matchedEventID: target.eventID,
+            matchedTargetPosition: target.position,
+            matchedTargetSeconds: target.targetSecondsAtOneX,
+            hitSongSeconds: lateHitSeconds,
+            hitPosition: target.position
+        )
+
+        viewModel.recordHit(result: result)
+
+        #expect(viewModel.scoreEngine.missCount == 0, "Scan must not preempt the boundary hit")
+        #expect(viewModel.scoreEngine.goodCount == 1, "Hit at exactly 100 ms late must score as good")
+        #expect(viewModel.scoredRhythmEventIDs == [target.eventID])
+    }
+
+    @Test("Timeline chart load caches a MainActor note lookup by event ID")
+    func timelineChartLoadCachesNoteLookup() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 2)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        defer { viewModel.cleanup() }
+        let target = try #require(viewModel.cachedRhythmNoteTargets.first)
+
+        #expect(viewModel.cachedNoteByRhythmEventID[target.eventID] != nil)
+    }
+
     @Test("resetScoring synchronously clears both feedback flags so stale tasks cannot race")
     func testResetScoringClearsFeedbackFlagsImmediately() async throws {
         // The feedback tasks sleep for 0.8s / 0.4s before clearing their flags.
@@ -399,5 +565,22 @@ struct GameplayViewModelScoringTests {
                 "resetScoring() should reset sessionRecordResult to recorded")
 
         viewModel.cleanup()
+    }
+
+    private func timelineResult(target: RhythmNoteTarget, hitSeconds: Double) -> NoteMatchResult {
+        NoteMatchResult(
+            hitInput: InputHit(
+                drumType: target.drumType,
+                velocity: 1.0,
+                timestamp: Date(timeIntervalSinceReferenceDate: 1_000)
+            ),
+            timingAccuracy: .perfect,
+            timingError: 0,
+            matchedEventID: target.eventID,
+            matchedTargetPosition: target.position,
+            matchedTargetSeconds: target.targetSecondsAtOneX,
+            hitSongSeconds: hitSeconds,
+            hitPosition: target.position
+        )
     }
 }

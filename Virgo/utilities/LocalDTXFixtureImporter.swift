@@ -10,6 +10,8 @@ enum LocalDTXFixtureImportError: LocalizedError {
     case missingSETFile(URL)
     case unreadableSETFile(URL)
     case noPlayableCharts(String)
+    case unmatchedRhythmBackfillChart(difficulty: Difficulty, level: Int)
+    case ambiguousRhythmBackfillChart(difficulty: Difficulty, level: Int)
 
     var errorDescription: String? {
         switch self {
@@ -19,8 +21,22 @@ enum LocalDTXFixtureImportError: LocalizedError {
             return "Unable to decode SET.def at \(url.path)"
         case .noPlayableCharts(let songId):
             return "No playable charts found for local DTX fixture \(songId)"
+        case let .unmatchedRhythmBackfillChart(difficulty, level):
+            return "No deterministic rhythm backfill source for \(difficulty.rawValue) level \(level)"
+        case let .ambiguousRhythmBackfillChart(difficulty, level):
+            return "Multiple rhythm backfill sources match \(difficulty.rawValue) level \(level)"
         }
     }
+}
+
+struct LocalDTXFixtureImportWarning: Hashable {
+    let chartFilename: String
+    let message: String
+}
+
+struct LocalDTXFixtureImportResult {
+    let song: Song
+    let warnings: [LocalDTXFixtureImportWarning]
 }
 
 enum LocalDTXFixtureImporter {
@@ -31,18 +47,52 @@ enum LocalDTXFixtureImporter {
     @MainActor
     @discardableResult
     static func importSong(from folderURL: URL, into context: ModelContext) throws -> Song {
-        try importSong(from: folderURL, songId: folderURL.lastPathComponent, into: context)
+        try importSongResult(from: folderURL, into: context).song
     }
 
     @MainActor
     @discardableResult
     static func importSong(from folderURL: URL, songId: String, into context: ModelContext) throws -> Song {
+        try importSongResult(
+            from: folderURL,
+            songId: songId,
+            into: context,
+            performLegacySourceRefreshes: true,
+            save: { try $0.save() }
+        ).song
+    }
+
+    @MainActor
+    static func importSongResult(
+        from folderURL: URL,
+        into context: ModelContext,
+        save: (ModelContext) throws -> Void = { try $0.save() }
+    ) throws -> LocalDTXFixtureImportResult {
+        try importSongResult(
+            from: folderURL,
+            songId: folderURL.lastPathComponent,
+            into: context,
+            performLegacySourceRefreshes: true,
+            save: save
+        )
+    }
+
+    @MainActor
+    @discardableResult
+    private static func importSongResult(
+        from folderURL: URL,
+        songId: String,
+        into context: ModelContext,
+        performLegacySourceRefreshes: Bool,
+        save: (ModelContext) throws -> Void
+    ) throws -> LocalDTXFixtureImportResult {
         if let existingSong = try existingSong(with: songId, in: context) {
             try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
-            try refreshBGMStartOffsetIfMissing(for: existingSong, from: folderURL, in: context)
-            try refreshDurationIfStale(for: existingSong, from: folderURL, in: context)
-            try refreshControlEventsIfMissing(for: existingSong, from: folderURL, in: context)
-            return existingSong
+            if performLegacySourceRefreshes {
+                try refreshDurationIfStale(for: existingSong, from: folderURL, in: context)
+                try refreshControlEventsIfMissing(for: existingSong, from: folderURL, in: context)
+            }
+            return LocalDTXFixtureImportResult(song: existingSong, warnings: [])
         }
 
         let setURL = folderURL.appendingPathComponent(setFilename)
@@ -64,22 +114,33 @@ enum LocalDTXFixtureImporter {
             title: setList.title ?? firstChart.data.title,
             artist: firstChart.data.artist,
             bpm: firstChart.data.bpm,
-            duration: formatDuration(Int(calculateDuration(from: importedCharts, bpm: firstChart.data.bpm))),
+            duration: formatDuration(Int(calculateDuration(from: importedCharts))),
             genre: "DTX Import",
-            timeSignature: .fourFour,
+            timeSignature: firstChart.projection.timeSignature,
             isServerImported: true,
             serverSongId: songId,
             bgmFilePath: existingAudioPath(named: "bgm.m4a", in: folderURL),
             previewFilePath: existingAudioPath(named: "preview.mp3", in: folderURL),
             bgmStartOffsetSeconds: nil
         )
-        importedCharts.forEach { song.setBGMStartOffsetIfUnset($0.data.bgmStartOffsetSeconds) }
 
-        context.insert(song)
-        song.charts = try buildCharts(from: importedCharts, for: song, into: context)
-
-        try context.save()
-        return song
+        do {
+            context.insert(song)
+            song.charts = try buildCharts(from: importedCharts, for: song, into: context)
+            try save(context)
+            let warnings = importedCharts.compactMap { importedChart in
+                importedChart.projection.warning.map {
+                    LocalDTXFixtureImportWarning(
+                        chartFilename: importedChart.reference.filename,
+                        message: $0.message
+                    )
+                }
+            }
+            return LocalDTXFixtureImportResult(song: song, warnings: warnings)
+        } catch {
+            context.rollback()
+            throw error
+        }
     }
 
     @MainActor
@@ -92,11 +153,16 @@ enum LocalDTXFixtureImporter {
             let chart = Chart(
                 difficulty: importedChart.difficulty,
                 level: importedChart.data.difficultyLevel,
-                timeSignature: .fourFour,
+                timeSignature: importedChart.projection.timeSignature,
                 song: song
             )
-            chart.notes = importedChart.data.toNotes(for: chart)
-            chart.controlEvents = importedChart.data.toControlEvents(for: chart)
+            try chart.setRhythmMetadata(importedChart.projection.chartMetadata)
+            chart.notes = importedChart.projection.notes.map { $0.makeNote(for: chart) }
+            chart.controlEvents = importedChart.projection.controls.map { $0.makeControl(for: chart) }
+            chart.bumpTimingRevision()
+            if let warning = importedChart.projection.warning {
+                Logger.warning(warning.message)
+            }
             context.insert(chart)
             for note in chart.notes {
                 context.insert(note)
@@ -151,11 +217,13 @@ enum LocalDTXFixtureImporter {
             )
             return nil
         }
-        return try importSong(
+        return try importSongResult(
             from: setURL.deletingLastPathComponent(),
             songId: soukyuuSongId,
-            into: context
-        )
+            into: context,
+            performLegacySourceRefreshes: false,
+            save: { try $0.save() }
+        ).song
     }
 
     /// Locates `SET.def` in `bundle`, trying the flat resource-root lookup first and
@@ -219,7 +287,13 @@ enum LocalDTXFixtureImporter {
             }
 
             let data = try DTXFileParser.parseChartMetadata(from: chartURL)
-            return ImportedChart(reference: reference, difficulty: difficulty, data: data)
+            let projection = try data.persistenceProjection()
+            return ImportedChart(
+                reference: reference,
+                difficulty: difficulty,
+                data: data,
+                projection: projection
+            )
         }
     }
 
@@ -259,43 +333,6 @@ enum LocalDTXFixtureImporter {
         }
     }
 
-    /// Backfills `bgmStartOffsetSeconds` on an existing record that predates offset
-    /// parsing (nil), by reading the fixture's charts and applying the same
-    /// "first writer wins" rule as a fresh import.
-    ///
-    /// Idempotent and cheap on the steady-state path: the leading guard returns
-    /// immediately once the offset is already set (including the legitimate 0.0
-    /// "BGM starts at time zero" case), so the chart-parse cost is paid at most
-    /// once per legacy record (the first launch after this code ships).
-    /// Mirrors the fresh-import loop above (lines that build `importedCharts`) so the
-    /// two paths stay consistent rather than drifting again.
-    @MainActor
-    private static func refreshBGMStartOffsetIfMissing(
-        for song: Song,
-        from folderURL: URL,
-        in context: ModelContext
-    ) throws {
-        guard song.bgmStartOffsetSeconds == nil else { return }
-
-        guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else { return }
-        let setList = SETList(content: setContent)
-
-        for reference in setList.chartReferences {
-            guard reference.difficulty != nil else { continue }
-            let chartURL = folderURL.appendingPathComponent(reference.filename)
-            guard FileManager.default.fileExists(atPath: chartURL.path) else { continue }
-            guard let data = try? DTXFileParser.parseChartMetadata(from: chartURL) else { continue }
-            song.setBGMStartOffsetIfUnset(data.bgmStartOffsetSeconds)
-            // First writer wins; stop once setBGMStartOffsetIfUnset accepted any
-            // offset (including 0.0 for "BGM starts at time zero").
-            if song.bgmStartOffsetSeconds != nil { break }
-        }
-
-        if song.bgmStartOffsetSeconds != nil {
-            try context.save()
-        }
-    }
-
     /// Recomputes `Song.duration` from the fixture's charts and migrates any
     /// stale value persisted by an older importer version.
     ///
@@ -316,10 +353,10 @@ enum LocalDTXFixtureImporter {
         let setList = SETList(content: setContent)
 
         let importedCharts = try loadImportedCharts(from: folderURL, setList: setList)
-        guard let firstChart = importedCharts.first else { return }
+        guard !importedCharts.isEmpty else { return }
 
         let recomputed = formatDuration(
-            Int(calculateDuration(from: importedCharts, bpm: firstChart.data.bpm))
+            Int(calculateDuration(from: importedCharts))
         )
         guard song.duration != recomputed else { return }
         song.duration = recomputed
@@ -386,11 +423,20 @@ enum LocalDTXFixtureImporter {
             // lost.
             let existingChart = remainingCharts.remove(at: matchIndex)
 
-            let controls = importedChart.data.toControlEvents(for: existingChart)
+            // Use the canonical projection controls (LCM-based
+            // `ticksPerMeasure`), not `data.toControlEvents`'s native per-chip
+            // gridSize. The fresh-import path (buildCharts) persists projection
+            // controls, and `RhythmTimelineBuilder.validatePersistedTiming`
+            // requires `ticksPerMeasure == measure.durationTicks` (the LCM).
+            // Persisting native gridSize on fine-grid, mixed-grid, or variable-
+            // length charts would mark the chart fatal with
+            // `inconsistentPersistedTiming` on the next resolve.
+            let controls = importedChart.projection.controls.map { $0.makeControl(for: existingChart) }
             guard !controls.isEmpty else { continue }
 
             controls.forEach { context.insert($0) }
             existingChart.controlEvents = controls
+            existingChart.bumpTimingRevision()
             didChange = true
         }
 
@@ -426,29 +472,295 @@ enum LocalDTXFixtureImporter {
         return FileManager.default.fileExists(atPath: url.path) ? url.path : nil
     }
 
-    /// Derives the imported song's duration from the highest measure number across
-    /// all charts and the chart BPM.
-    ///
-    /// The previous implementation hard-coded `2 seconds per measure` (`/ 30.0 * 60.0`
-    /// = 30 measures/minute at 4/4), which is only correct at 120 BPM. For charts at
-    /// other tempos (the bundled Soukyuu fixture is 165.55 BPM) it overstates
-    /// `Song.duration`, and `GameplayViewModel.calculateTrackDurationInSeconds` trusts
-    /// that value, so gameplay progress keeps running well past the chart/audio end.
-    /// Using `4.0 * 60.0 / bpm` matches the per-measure seconds convention already used
-    /// by `DTXChartData.bgmStartOffsetSeconds` and the `.fourFour` time signature set
-    /// on the `Song`.
-    private static func calculateDuration(from importedCharts: [ImportedChart], bpm: Double) -> TimeInterval {
-        let maxMeasure = importedCharts
-            .flatMap(\.data.notes)
-            .map(\.measureNumber)
-            .max()
-        guard let maxMeasure else { return 60.0 }
-        let secondsPerMeasure = 4.0 * 60.0 / bpm
-        return Double(maxMeasure + 1) * secondsPerMeasure
+    private static func calculateDuration(from importedCharts: [ImportedChart]) -> TimeInterval {
+        importedCharts.compactMap { importedChart in
+            importedChart.projection.timeline?.endSeconds(
+                bpm: importedChart.data.bpm,
+                speed: 1
+            )
+        }.max() ?? 60.0
     }
 
     private static func formatDuration(_ seconds: Int) -> String {
         String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+extension LocalDTXFixtureImporter {
+    @MainActor
+    static func backfillBundledRhythmTimingIfNeeded(
+        for song: Song,
+        in context: ModelContext,
+        bundle: Bundle = .main,
+        versionStore: any RhythmBackfillVersionStoring = RhythmBackfillVersionStore()
+    ) throws {
+        guard let setURL = locateBundledSETDef(in: bundle) else { return }
+        try backfillRhythmTiming(
+            for: song,
+            from: setURL.deletingLastPathComponent(),
+            in: context,
+            versionStore: versionStore
+        )
+    }
+
+    @MainActor
+    static func backfillRhythmTiming(
+        for song: Song,
+        from folderURL: URL,
+        in context: ModelContext,
+        versionStore: any RhythmBackfillVersionStoring = RhythmBackfillVersionStore(),
+        parseChart: (URL) throws -> DTXChartData = { try DTXFileParser.parseChartMetadata(from: $0) },
+        save: (ModelContext) throws -> Void = { try $0.save() }
+    ) throws {
+        guard versionStore.completedVersion() != RhythmBackfillVersionStore.currentVersion else {
+            return
+        }
+        guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else {
+            throw LocalDTXFixtureImportError.unreadableSETFile(folderURL.appendingPathComponent(setFilename))
+        }
+
+        let eligibleCharts = song.charts.filter {
+            $0.rhythmMetadataData == nil && containsDTXSourceIdentity($0)
+        }
+        let eligibleDifficulties = Set(eligibleCharts.map(\.difficulty))
+        var candidates: [RhythmBackfillCandidate] = []
+
+        for reference in SETList(content: setContent).chartReferences {
+            guard let difficulty = reference.difficulty,
+                  eligibleDifficulties.contains(difficulty) else {
+                continue
+            }
+            let chartURL = folderURL.appendingPathComponent(reference.filename)
+            guard FileManager.default.fileExists(atPath: chartURL.path) else { continue }
+            let chartData = try parseChart(chartURL)
+            let projection = try chartData.persistenceProjection()
+            candidates.append(RhythmBackfillCandidate(
+                difficulty: difficulty,
+                level: chartData.difficultyLevel,
+                sourceKey: String(format: "%04d|%@", reference.slot, reference.filename),
+                projection: projection
+            ))
+        }
+
+        var plans: [RhythmBackfillPlan] = []
+        for chart in eligibleCharts.sorted(by: backfillChartPrecedes) {
+            let matches = candidates.filter {
+                chartMatches(
+                    chart,
+                    difficulty: $0.difficulty,
+                    level: $0.level,
+                    projection: $0.projection
+                )
+            }
+            guard !matches.isEmpty else {
+                throw LocalDTXFixtureImportError.unmatchedRhythmBackfillChart(
+                    difficulty: chart.difficulty,
+                    level: chart.level
+                )
+            }
+            let equivalenceKeys = Set(matches.map(\.equivalenceKey))
+            guard equivalenceKeys.count == 1 else {
+                throw LocalDTXFixtureImportError.ambiguousRhythmBackfillChart(
+                    difficulty: chart.difficulty,
+                    level: chart.level
+                )
+            }
+            guard let selected = matches.min(by: { $0.sourceKey < $1.sourceKey }) else {
+                preconditionFailure("A non-empty backfill match set must have a minimum source key")
+            }
+            plans.append(RhythmBackfillPlan(chart: chart, projection: selected.projection))
+        }
+
+        do {
+            for plan in plans {
+                try apply(plan: plan, in: context)
+            }
+            try save(context)
+        } catch {
+            context.rollback()
+            throw error
+        }
+        versionStore.markCompleted(version: RhythmBackfillVersionStore.currentVersion)
+    }
+}
+
+private extension LocalDTXFixtureImporter {
+    struct RhythmBackfillPlan {
+        let chart: Chart
+        let projection: DTXChartPersistenceProjection
+    }
+
+    struct RhythmBackfillCandidate {
+        let difficulty: Difficulty
+        let level: Int
+        let sourceKey: String
+        let projection: DTXChartPersistenceProjection
+
+        var equivalenceKey: RhythmBackfillProjectionKey {
+            RhythmBackfillProjectionKey(
+                metadata: projection.chartMetadata,
+                timeSignature: projection.timeSignature,
+                notes: projection.notes,
+                controls: projection.controls
+            )
+        }
+    }
+
+    struct RhythmBackfillProjectionKey: Hashable {
+        let metadata: ChartRhythmMetadata
+        let timeSignature: TimeSignature
+        let notes: [ImportedNoteValues]
+        let controls: [ImportedControlValues]
+    }
+
+    static func backfillChartPrecedes(_ left: Chart, _ right: Chart) -> Bool {
+        let leftKey = backfillChartSortKey(left)
+        let rightKey = backfillChartSortKey(right)
+        return leftKey.lexicographicallyPrecedes(rightKey)
+    }
+
+    static func backfillChartSortKey(_ chart: Chart) -> [String] {
+        [
+            String(format: "%04d", chart.difficulty.sortOrder),
+            String(format: "%04d", chart.level),
+            chart.safeNotes.compactMap(sourceIdentity).sorted().joined(separator: ","),
+            chart.safeControlEvents.compactMap(sourceIdentity).sorted().joined(separator: ",")
+        ]
+    }
+
+    static func containsDTXSourceIdentity(_ chart: Chart) -> Bool {
+        chart.safeNotes.contains { note in
+            note.originKind == .dtx && sourceIdentity(
+                measureNumber: note.measureNumber,
+                laneID: note.sourceLaneID,
+                noteID: note.sourceNoteID,
+                gridPosition: note.sourceGridPosition,
+                gridSize: note.sourceGridSize
+            ) != nil
+        } || chart.safeControlEvents.contains { control in
+            control.originKind == .dtx && sourceIdentity(
+                measureNumber: control.measureNumber,
+                laneID: control.sourceLaneID,
+                noteID: control.sourceNoteID,
+                gridPosition: control.sourceGridPosition,
+                gridSize: control.sourceGridSize
+            ) != nil
+        }
+    }
+
+    static func chartMatches(
+        _ chart: Chart,
+        difficulty: Difficulty,
+        level: Int,
+        projection: DTXChartPersistenceProjection
+    ) -> Bool {
+        guard chart.difficulty == difficulty, chart.level == level else { return false }
+        let existingNotes = chart.safeNotes.compactMap(sourceIdentity).sorted()
+        let projectedNotes = projection.notes.compactMap(sourceIdentity).sorted()
+        guard existingNotes == projectedNotes else { return false }
+
+        let existingControls = chart.safeControlEvents.compactMap(sourceIdentity).sorted()
+        let projectedControls = projection.controls.compactMap(sourceIdentity).sorted()
+        return existingControls.isEmpty || existingControls == projectedControls
+    }
+
+    @MainActor
+    static func apply(plan: RhythmBackfillPlan, in context: ModelContext) throws {
+        let chart = plan.chart
+        chart.timeSignature = plan.projection.timeSignature
+        try chart.setRhythmMetadata(plan.projection.chartMetadata)
+
+        let notesByIdentity = Dictionary(
+            grouping: plan.projection.notes,
+            by: sourceIdentity
+        )
+        for note in chart.safeNotes where note.originKind == .dtx {
+            guard let key = sourceIdentity(note), let values = notesByIdentity[key]?.first else { continue }
+            note.interval = values.interval
+            note.normalizedMeasureIndex = values.normalizedMeasureIndex
+            note.normalizedAbsoluteTick = values.normalizedAbsoluteTick
+            note.normalizedTickWithinMeasure = values.normalizedTickWithinMeasure
+            note.normalizedTicksPerMeasure = values.normalizedTicksPerMeasure
+            note.notationVoiceCandidate = values.notationVoiceCandidate
+            note.visualDurationCandidate = values.visualDurationCandidate
+            note.articulationCandidate = values.articulationCandidate
+        }
+
+        if chart.safeControlEvents.isEmpty {
+            let controls = plan.projection.controls.map { $0.makeControl(for: chart) }
+            controls.forEach(context.insert)
+            chart.controlEvents = controls
+        } else {
+            let controlsByIdentity = Dictionary(
+                grouping: plan.projection.controls,
+                by: sourceIdentity
+            )
+            for control in chart.safeControlEvents where control.originKind == .dtx {
+                guard let key = sourceIdentity(control), let values = controlsByIdentity[key]?.first else { continue }
+                control.normalizedMeasureIndex = values.normalizedMeasureIndex
+                control.normalizedAbsoluteTick = values.normalizedAbsoluteTick
+                control.normalizedTickWithinMeasure = values.normalizedTickWithinMeasure
+                control.normalizedTicksPerMeasure = values.normalizedTicksPerMeasure
+            }
+        }
+        chart.bumpTimingRevision()
+    }
+
+    static func sourceIdentity(_ note: Note) -> String? {
+        sourceIdentity(
+            measureNumber: note.measureNumber,
+            laneID: note.sourceLaneID,
+            noteID: note.sourceNoteID,
+            gridPosition: note.sourceGridPosition,
+            gridSize: note.sourceGridSize
+        )
+    }
+
+    static func sourceIdentity(_ control: ChartControlEvent) -> String? {
+        sourceIdentity(
+            measureNumber: control.measureNumber,
+            laneID: control.sourceLaneID,
+            noteID: control.sourceNoteID,
+            gridPosition: control.sourceGridPosition,
+            gridSize: control.sourceGridSize
+        )
+    }
+
+    static func sourceIdentity(_ note: ImportedNoteValues) -> String? {
+        sourceIdentity(
+            measureNumber: note.measureNumber,
+            laneID: note.sourceLaneID,
+            noteID: note.sourceNoteID,
+            gridPosition: note.sourceGridPosition,
+            gridSize: note.sourceGridSize
+        )
+    }
+
+    static func sourceIdentity(_ control: ImportedControlValues) -> String? {
+        sourceIdentity(
+            measureNumber: control.measureNumber,
+            laneID: control.sourceLaneID,
+            noteID: control.sourceNoteID,
+            gridPosition: control.sourceGridPosition,
+            gridSize: control.sourceGridSize
+        )
+    }
+
+    static func sourceIdentity(
+        measureNumber: Int,
+        laneID: String?,
+        noteID: String?,
+        gridPosition: Int?,
+        gridSize: Int?
+    ) -> String? {
+        guard let laneID, let noteID, let gridPosition, let gridSize else { return nil }
+        return [
+            String(measureNumber),
+            laneID.uppercased(),
+            noteID.uppercased(),
+            String(gridPosition),
+            String(gridSize)
+        ].joined(separator: "|")
     }
 }
 
@@ -560,4 +872,5 @@ private struct ImportedChart {
     let reference: SETChartReference
     let difficulty: Difficulty
     let data: DTXChartData
+    let projection: DTXChartPersistenceProjection
 }

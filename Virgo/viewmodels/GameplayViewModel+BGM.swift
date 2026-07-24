@@ -37,7 +37,7 @@ extension GameplayViewModel {
     /// Returns the clamped speed if BGM is present and speed is below minimum, nil otherwise.
     /// Returns value instead of calling setSpeed directly, preventing .onChange re-entry.
     func enforceBGMMinimumSpeedIfNeeded() -> Double? { // internal for cross-file extension access
-        guard bgmPlayer != nil else { return nil }
+        guard let bgmPlayer, !shouldYieldBGMClockToTimeline(bgmPlayer) else { return nil }
         let minimumSpeed = 0.5
         if practiceSettings.speedMultiplier < minimumSpeed {
             Logger.warning("BGM enabled - clamping speed to 50% to keep audio in sync")
@@ -47,6 +47,10 @@ extension GameplayViewModel {
     }
 
     func startBGMPlayback(track: DrumTrack) { // internal for cross-file extension access
+        guard !hasFatalRhythmTiming else {
+            Logger.error("Cannot start BGM or metronome for timing-fatal chart")
+            return
+        }
         let currentEffectiveBPM = effectiveBPM()
         let currentSpeedMultiplier = practiceSettings.speedMultiplier
 
@@ -56,30 +60,53 @@ extension GameplayViewModel {
 
             let isResuming = pausedElapsedTime > 0.0
 
-            if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
-                lastScheduledPlaybackStartTime = resumeBGMFromPosition(track: track, bgmPlayer: bgmPlayer, effectiveBPM: currentEffectiveBPM)
+            if shouldYieldBGMClockToTimeline(bgmPlayer) {
+                lastScheduledPlaybackStartTime = startMetronomeOnlyPlayback(
+                    track: track,
+                    effectiveBPM: currentEffectiveBPM
+                )
+            } else if bgmPlayer.currentTime > 0 && !bgmPlayer.isPlaying {
+                lastScheduledPlaybackStartTime = resumeBGMFromPosition(
+                    track: track,
+                    bgmPlayer: bgmPlayer,
+                    effectiveBPM: currentEffectiveBPM
+                )
             } else if isResuming {
-                lastScheduledPlaybackStartTime = resumeBGMDuringOffset(track: track, bgmPlayer: bgmPlayer, effectiveBPM: currentEffectiveBPM)
+                lastScheduledPlaybackStartTime = resumeBGMDuringOffset(
+                    track: track,
+                    bgmPlayer: bgmPlayer,
+                    effectiveBPM: currentEffectiveBPM
+                )
             } else {
-                lastScheduledPlaybackStartTime = startFreshBGMPlayback(track: track, bgmPlayer: bgmPlayer, effectiveBPM: currentEffectiveBPM)
+                lastScheduledPlaybackStartTime = startFreshBGMPlayback(
+                    track: track,
+                    bgmPlayer: bgmPlayer,
+                    effectiveBPM: currentEffectiveBPM
+                )
             }
         } else {
-            lastScheduledPlaybackStartTime = startMetronomeOnlyPlayback(track: track, effectiveBPM: currentEffectiveBPM)
+            lastScheduledPlaybackStartTime = startMetronomeOnlyPlayback(
+                track: track,
+                effectiveBPM: currentEffectiveBPM
+            )
         }
     }
 
     @discardableResult
-    private func resumeBGMFromPosition(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) -> CFAbsoluteTime {
+    private func resumeBGMFromPosition(
+        track: DrumTrack,
+        bgmPlayer: AVAudioPlayer,
+        effectiveBPM: Double
+    ) -> CFAbsoluteTime {
         Logger.audioPlayback("🎮 Resuming BGM at \(bgmPlayer.currentTime)s")
         let setupTime: TimeInterval = 0.05
         let capturedHostTime = mach_absolute_time()
         lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-        metronome.startAtTime(
-            bpm: effectiveBPM,
+        startMetronomeAtSharedTime(
+            commonStartTime,
             timeSignature: track.timeSignature,
-            startTime: commonStartTime,
-            totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
+            effectiveBPM: effectiveBPM
         )
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
         if !bgmPlayer.play(atTime: bgmDeviceTime) {
@@ -89,7 +116,11 @@ extension GameplayViewModel {
     }
 
     @discardableResult
-    private func resumeBGMDuringOffset(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) -> CFAbsoluteTime {
+    private func resumeBGMDuringOffset(
+        track: DrumTrack,
+        bgmPlayer: AVAudioPlayer,
+        effectiveBPM: Double
+    ) -> CFAbsoluteTime {
         Logger.audioPlayback("🎮 Resuming during BGM offset period")
         bgmPlayer.currentTime = 0
         let setupTime: TimeInterval = 0.05
@@ -97,11 +128,10 @@ extension GameplayViewModel {
         lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
 
-        metronome.startAtTime(
-            bpm: effectiveBPM,
+        startMetronomeAtSharedTime(
+            commonStartTime,
             timeSignature: track.timeSignature,
-            startTime: commonStartTime,
-            totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
+            effectiveBPM: effectiveBPM
         )
 
         let remainingOffset = remainingBGMOffset()
@@ -114,17 +144,21 @@ extension GameplayViewModel {
     }
 
     @discardableResult
-    private func startFreshBGMPlayback(track: DrumTrack, bgmPlayer: AVAudioPlayer, effectiveBPM: Double) -> CFAbsoluteTime {
+    private func startFreshBGMPlayback(
+        track: DrumTrack,
+        bgmPlayer: AVAudioPlayer,
+        effectiveBPM: Double
+    ) -> CFAbsoluteTime {
         Logger.audioPlayback("🎮 Starting fresh BGM playback")
         bgmPlayer.currentTime = 0
         let setupTime: TimeInterval = 0.05
         let capturedHostTime = mach_absolute_time()
         lastScheduledPlaybackHostTime = capturedHostTime
         let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
-        metronome.startAtTime(
-            bpm: effectiveBPM,
+        startMetronomeAtSharedTime(
+            commonStartTime,
             timeSignature: track.timeSignature,
-            startTime: commonStartTime
+            effectiveBPM: effectiveBPM
         )
 
         let bgmDeviceTime = convertToAudioPlayerDeviceTime(commonStartTime, bgmPlayer: bgmPlayer)
@@ -136,34 +170,50 @@ extension GameplayViewModel {
     }
 
     @discardableResult
-    private func startMetronomeOnlyPlayback(track: DrumTrack, effectiveBPM: Double) -> CFAbsoluteTime {
-        if pausedElapsedTime > 0.0 {
-            Logger.audioPlayback("🎮 Resuming metronome-only playback with beat offset")
-            let setupTime: TimeInterval = 0.05
-            let capturedHostTime = mach_absolute_time()
-            lastScheduledPlaybackHostTime = capturedHostTime
-            let commonStartTime = CFAbsoluteTimeGetCurrent() + setupTime
+    private func startMetronomeOnlyPlayback(
+        track: DrumTrack,
+        effectiveBPM: Double
+    ) -> CFAbsoluteTime {
+        let isResuming = pausedElapsedTime > 0.0
+        Logger.audioPlayback(
+            isResuming
+                ? "🎮 Resuming metronome-only playback with beat offset"
+                : "🎮 Starting metronome-only playback"
+        )
+
+        // Use the same delayed start as BGM-backed playback so input listening
+        // is installed before the first scheduled metronome pulse.
+        let setupTime: TimeInterval = 0.05
+        let capturedHostTime = mach_absolute_time()
+        lastScheduledPlaybackHostTime = capturedHostTime
+        let startTime = CFAbsoluteTimeGetCurrent() + setupTime
+        startMetronomeAtSharedTime(
+            startTime,
+            timeSignature: track.timeSignature,
+            effectiveBPM: effectiveBPM
+        )
+        return startTime
+    }
+
+    func startMetronomeAtSharedTime(
+        _ startTime: CFAbsoluteTime,
+        timeSignature: TimeSignature,
+        effectiveBPM: Double
+    ) {
+        if let schedule = cachedRhythmRuntime.metronomeSchedule {
+            metronome.startAtTime(
+                schedule: schedule,
+                speed: practiceSettings.speedMultiplier,
+                startTime: startTime,
+                elapsedTime: pausedElapsedTime
+            )
+        } else {
             metronome.startAtTime(
                 bpm: effectiveBPM,
-                timeSignature: track.timeSignature,
-                startTime: commonStartTime,
+                timeSignature: timeSignature,
+                startTime: startTime,
                 totalBeatsElapsed: elapsedBeatsForScheduling(effectiveBPM: effectiveBPM)
             )
-            return commonStartTime
-        } else {
-            Logger.audioPlayback("🎮 Starting metronome-only playback")
-            // Fresh metronome start uses scheduled timing (setupTime delay) to match BGM cases,
-            // ensuring inputManager.startListening is called before audio actually begins.
-            let setupTime: TimeInterval = 0.05
-            let capturedHostTime = mach_absolute_time()
-            lastScheduledPlaybackHostTime = capturedHostTime
-            let startTime = CFAbsoluteTimeGetCurrent() + setupTime
-            metronome.startAtTime(
-                bpm: effectiveBPM,
-                timeSignature: track.timeSignature,
-                startTime: startTime
-            )
-            return startTime
         }
     }
 
@@ -184,6 +234,7 @@ extension GameplayViewModel {
     // MARK: - BGM Setup
 
     func setupBGMPlayer() {
+        guard !hasFatalRhythmTiming else { return }
         guard let song = cachedSong,
               let bgmFilePath = song.bgmFilePath,
               !bgmFilePath.isEmpty else {

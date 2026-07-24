@@ -98,6 +98,38 @@ struct NotationLayoutDefensiveGuardTests {
         )
     }
 
+    @Test("every legacy primitive reports finite nonempty painted bounds")
+    func legacyPrimitivePaintedBoundsAreFinite() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+            notes: [
+                Note(interval: .sixteenth, noteType: .crash, measureNumber: 1, measureOffset: 0),
+                Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
+            ],
+            controlEvents: [NotationControlEvent(ChartControlEvent(
+                kind: .stop,
+                measureNumber: 1,
+                measureOffset: 0.25,
+                targetLaneID: "1A"
+            ))],
+            timeSignature: .fourFour
+        ))
+        let bounds = layout.noteHeads.map { $0.paintedBounds(style: style) }
+            + layout.rests.filter(\.isPrinted).map { $0.paintedBounds(style: style) }
+            + layout.stopNotes.map { $0.paintedBounds(style: style) }
+            + layout.articulations.map { $0.paintedBounds(style: style) }
+            + layout.stems.map { $0.paintedBounds(style: style) }
+            + layout.beams.map { $0.paintedBounds(style: style) }
+            + layout.flags.map { $0.paintedBounds(style: style) }
+            + layout.ledgerLines.map { $0.paintedBounds(style: style) }
+            + layout.measureBars.map { $0.paintedBounds(style: style) }
+
+        #expect(!bounds.isEmpty)
+        #expect(bounds.allSatisfy { !$0.isNull && !$0.isEmpty })
+        #expect(bounds.allSatisfy { $0.minX.isFinite && $0.minY.isFinite && $0.maxX.isFinite && $0.maxY.isFinite })
+        #expect(bounds.allSatisfy { layout.paintedBounds.contains($0) })
+    }
+
     private func makeDefensiveNoteHead(
         id: UInt64,
         x: CGFloat

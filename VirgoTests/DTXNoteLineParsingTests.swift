@@ -40,8 +40,8 @@ struct DTXNoteLineParsingTests {
         #expect(gapNotes[1].measureOffset == 0.75)
     }
 
-    @Test("parseChartMetadata records BGM lane start position")
-    func testParseChartMetadataRecordsBGMLaneStartPosition() throws {
+    @Test("parseChartMetadata records the first lane-01 chip as a raw anchor")
+    func testParseChartMetadataRecordsRawBGMAnchor() throws {
         let dtxContent = """
         #TITLE: BGM Offset
         #ARTIST: Tester
@@ -53,8 +53,15 @@ struct DTXNoteLineParsingTests {
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
 
-        #expect(chartData.bgmStartTimePosition == 0.75)
-        let bgmOffset = try #require(chartData.bgmStartOffsetSeconds)
+        let expectedAnchor = try RhythmSourceAnchor(
+            measureIndex: 0,
+            gridPosition: 3,
+            gridSize: 4
+        )
+        #expect(chartData.rhythmMetadata.bgmStartAnchor == expectedAnchor)
+        let timeline = try #require(chartData.persistenceProjection().timeline)
+        let bgmPosition = try #require(timeline.bgmStartPosition)
+        let bgmOffset = try #require(timeline.seconds(for: bgmPosition, bpm: chartData.bpm, speed: 1))
         #expect(abs(bgmOffset - 0.9) < 0.001)
     }
 
@@ -74,8 +81,15 @@ struct DTXNoteLineParsingTests {
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
 
-        #expect(chartData.bgmStartTimePosition == 0.0)
-        let bgmOffset = try #require(chartData.bgmStartOffsetSeconds)
+        let expectedAnchor = try RhythmSourceAnchor(
+            measureIndex: 0,
+            gridPosition: 0,
+            gridSize: 1
+        )
+        #expect(chartData.rhythmMetadata.bgmStartAnchor == expectedAnchor)
+        let timeline = try #require(chartData.persistenceProjection().timeline)
+        let bgmPosition = try #require(timeline.bgmStartPosition)
+        let bgmOffset = try #require(timeline.seconds(for: bgmPosition, bpm: chartData.bpm, speed: 1))
         #expect(bgmOffset == 0.0)
     }
 
@@ -116,7 +130,29 @@ struct DTXNoteLineParsingTests {
 
         let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
 
-        #expect(chartData.bgmStartTimePosition == nil)
-        #expect(chartData.bgmStartOffsetSeconds == nil)
+        #expect(chartData.rhythmMetadata.bgmStartAnchor == nil)
+        let timeline = try #require(chartData.persistenceProjection().timeline)
+        #expect(timeline.bgmStartPosition == nil)
+    }
+
+    @Test("the first lane-01 chip in source order owns the raw anchor")
+    func testBGMAnchorUsesSourceOrder() throws {
+        let dtxContent = """
+        #TITLE: Source Order
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #00201: 001A
+        #00001: 1B00
+        """
+
+        let chartData = try DTXFileParser.parseChartMetadata(from: dtxContent)
+
+        let expectedAnchor = try RhythmSourceAnchor(
+            measureIndex: 2,
+            gridPosition: 1,
+            gridSize: 2
+        )
+        #expect(chartData.rhythmMetadata.bgmStartAnchor == expectedAnchor)
     }
 }

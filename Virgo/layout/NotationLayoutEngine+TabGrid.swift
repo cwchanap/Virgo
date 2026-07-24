@@ -26,18 +26,91 @@ extension NotationLayoutEngine {
         let spacingTickGap = min(actualSmallestGap ?? baselineGap, baselineGap)
         let tickWidth = requiredGap / CGFloat(max(spacingTickGap, 1))
         let leftPadding = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
-        let measureWidth = TabGrid.measureWidth(
-            ticksPerMeasure: ticksPerMeasure,
+
+        return TabGrid(
+            legacyTicksPerMeasure: ticksPerMeasure,
+            ticksPerWholeNote: legacyTicksPerWholeNote(
+                ticksPerMeasure: ticksPerMeasure,
+                timeSignature: input.timeSignature
+            ),
             tickWidth: tickWidth,
             leftPadding: leftPadding
         )
+    }
 
+    func buildTabGrid(snapshot: RhythmLayoutSnapshot, input: NotationLayoutInput) -> TabGrid {
+        let positions = snapshot.notes.map(\.position)
+        let positionsByMeasure = Dictionary(grouping: positions, by: \.measureIndex)
+        let smallestGap = positionsByMeasure.values.compactMap { positions -> Int? in
+            smallestPositiveGap(in: Set(positions.map(\.localTick)).sorted())
+        }.min()
+        let quarterTickWidth = input.style.minimumQuarterBeatGap * 4
+            / CGFloat(snapshot.ticksPerWholeNote)
+        let eventTickWidth = smallestGap.map {
+            input.style.minimumNoteColumnGap / CGFloat($0)
+        } ?? 0
         return TabGrid(
-            ticksPerMeasure: ticksPerMeasure,
-            tickWidth: tickWidth,
-            leftPadding: leftPadding,
-            measureWidth: measureWidth
+            ticksPerWholeNote: snapshot.ticksPerWholeNote,
+            tickWidth: max(quarterTickWidth, eventTickWidth),
+            leftPadding: GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
         )
+    }
+
+    private func legacyTicksPerWholeNote(
+        ticksPerMeasure: Int,
+        timeSignature: TimeSignature
+    ) -> Int {
+        let product = ticksPerMeasure.multipliedReportingOverflow(by: timeSignature.noteValue)
+        guard !product.overflow,
+              timeSignature.beatsPerMeasure > 0,
+              product.partialValue.isMultiple(of: timeSignature.beatsPerMeasure) else {
+            return ticksPerMeasure
+        }
+        return product.partialValue / timeSignature.beatsPerMeasure
+    }
+
+    func expandedRhythmMeasures(
+        _ snapshot: RhythmLayoutSnapshot,
+        minimumMeasureCount: Int
+    ) -> [RhythmMeasure] {
+        var measures = snapshot.measures.sorted { $0.measureIndex < $1.measureIndex }
+        let requestedCount = min(
+            max(minimumMeasureCount, measures.count, 1),
+            Self.maximumRenderableMeasureCount
+        )
+        guard let template = measures.last else { return [] }
+        while measures.count < requestedCount {
+            let measureIndex = measures.count
+            let durationTicks = nominalDurationTicks(
+                timeSignature: template.timeSignature,
+                ticksPerWholeNote: snapshot.ticksPerWholeNote
+            ) ?? template.durationTicks
+            let startTick = measures.last?.endTick ?? 0
+            measures.append(RhythmMeasure(
+                measureIndex: measureIndex,
+                startTick: startTick,
+                durationTicks: durationTicks,
+                timeSignature: template.timeSignature,
+                beatGroups: RhythmBeatGroupBuilder.groups(
+                    timeSignature: template.timeSignature,
+                    durationTicks: durationTicks,
+                    ticksPerWholeNote: snapshot.ticksPerWholeNote
+                ),
+                engravingSupport: template.engravingSupport
+            ))
+        }
+        return measures
+    }
+
+    private func nominalDurationTicks(
+        timeSignature: TimeSignature,
+        ticksPerWholeNote: Int
+    ) -> Int? {
+        let product = ticksPerWholeNote.multipliedReportingOverflow(by: timeSignature.beatsPerMeasure)
+        guard !product.overflow,
+              timeSignature.noteValue > 0,
+              product.partialValue.isMultiple(of: timeSignature.noteValue) else { return nil }
+        return product.partialValue / timeSignature.noteValue
     }
 
     func resolvedTicksPerMeasure(for notes: [Note], timeSignature: TimeSignature) -> Int {

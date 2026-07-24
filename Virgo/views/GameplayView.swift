@@ -9,6 +9,7 @@ import SwiftUI
 import AVFoundation
 import Combine
 
+@MainActor
 struct GameplayView: View {
     // MARK: - Dependencies
     /// Shared practice settings service - single source of truth injected via environment
@@ -19,6 +20,7 @@ struct GameplayView: View {
     let chart: Chart
     let metronome: MetronomeEngine
     private let usesInjectedViewModel: Bool
+    private let initialPracticeState: ChartPracticeState
     private let onDismissOverride: (() -> Void)?
 
     // MARK: - ViewModel
@@ -26,19 +28,30 @@ struct GameplayView: View {
     @State var viewModel: GameplayViewModel?
     /// Cached fallback track to avoid constructing a new DrumTrack on every render
     @State private var cachedFallbackTrack: DrumTrack
+    @StateObject private var practiceStateLoader: ChartPracticeStateLoader
+
+    var practiceState: ChartPracticeState {
+        practiceStateLoader.state.isResolved ? practiceStateLoader.state : initialPracticeState
+    }
 
     init(
         chart: Chart,
         metronome: MetronomeEngine,
         initialViewModel: GameplayViewModel? = nil,
+        initialPracticeState: ChartPracticeState? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
+        let resolvedInitialPracticeState = initialPracticeState ?? ChartPracticeState.initial(chart: chart)
         self.chart = chart
         self.metronome = metronome
         self.usesInjectedViewModel = initialViewModel != nil
+        self.initialPracticeState = resolvedInitialPracticeState
         self.onDismissOverride = onDismiss
         self._cachedFallbackTrack = State(initialValue: DrumTrack(chart: chart))
         self._viewModel = State(initialValue: initialViewModel)
+        self._practiceStateLoader = StateObject(wrappedValue: ChartPracticeStateLoader(
+            initialState: resolvedInitialPracticeState
+        ))
     }
 
     /// Creates a binding for isPlaying when viewModel exists, or returns a constant false binding
@@ -56,12 +69,25 @@ struct GameplayView: View {
         viewModel?.isGameplayPrepared == true
     }
 
+    private var fatalPracticeMessage: String? {
+        if practiceState.isResolved, !practiceState.isPracticeEnabled {
+            return practiceState.reason ?? String(localized: "Unsupported chart timing")
+        }
+        guard let viewModel, viewModel.hasFatalRhythmTiming else { return nil }
+        return viewModel.rhythmFatalMessage
+    }
+
     private func dismissGameplay() {
         if let onDismissOverride {
             onDismissOverride()
         } else {
             dismiss()
         }
+    }
+
+    func dismissFatalPractice() {
+        guard fatalPracticeMessage != nil else { return }
+        dismissGameplay()
     }
 
     @MainActor
@@ -95,6 +121,7 @@ struct GameplayView: View {
         vm.updateRowWidth(initialRowWidth)
         // setupGameplay loads the persisted speed for this chart (SC-06)
         vm.setupGameplay()
+        guard vm.isGameplayPrepared else { return }
         // Setup InputManager delegate and metronome subscription after viewModel is ready
         vm.inputManager.delegate = vm.inputHandler
         vm.wireInputHandler()
@@ -104,37 +131,47 @@ struct GameplayView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Group {
-                if isGameplayReady {
-                    VStack(spacing: 0) {
-                        // Header with track info and controls
-                        GameplayHeaderView(
-                            track: viewModel?.track ?? cachedFallbackTrack,
-                            isPlaying: isPlayingBinding,
-                            viewModel: viewModel,
-                            onDismiss: dismissGameplay,
-                            onPlayPause: { viewModel?.togglePlayback() },
-                            onRestart: { viewModel?.restartPlayback() }
-                        )
-                        .background(Palette.stage)
+            if let fatalPracticeMessage {
+                rhythmFatalSheet(
+                    message: fatalPracticeMessage,
+                    onDismiss: dismissFatalPractice
+                )
+                .accessibilityIdentifier("gameplayRoot")
+            } else {
+                Group {
+                    if isGameplayReady {
+                        VStack(spacing: 0) {
+                            // Header with track info and controls
+                            GameplayHeaderView(
+                                track: viewModel?.track ?? cachedFallbackTrack,
+                                isPlaying: isPlayingBinding,
+                                viewModel: viewModel,
+                                onDismiss: dismissGameplay,
+                                onPlayPause: { viewModel?.togglePlayback() },
+                                onRestart: { viewModel?.restartPlayback() }
+                            )
+                            .background(Palette.stage)
 
-                        // Main sheet music area - now the primary scrollable content
-                        sheetMusicView(geometry: geometry)
+                            // Main sheet music area - now the primary scrollable content
+                            sheetMusicView(geometry: geometry)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                            // Bottom controls
+                            controlsView
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("gameplayRoot")
+                    } else {
+                        Palette.stage
+                            .overlay(Text("Loading...").foregroundColor(Palette.chalk))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                        // Bottom controls
-                        controlsView
                     }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("gameplayRoot")
-                } else {
-                    Palette.stage
-                        .overlay(Text("Loading...").foregroundColor(Palette.chalk))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            }
-            .task {
-                await prepareGameplay(initialRowWidth: geometry.size.width)
+                .task(id: chart.timingFingerprint) {
+                    await practiceStateLoader.load(chart: chart)
+                    guard practiceStateLoader.state.isPracticeEnabled else { return }
+                    await prepareGameplay(initialRowWidth: geometry.size.width)
+                }
             }
         }
         #if os(iOS)
