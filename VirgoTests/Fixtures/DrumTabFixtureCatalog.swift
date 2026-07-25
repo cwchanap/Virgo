@@ -115,4 +115,40 @@ enum DrumTabFixtureCatalog {
             DrumTabFixture.line(measure: 1, lane: "13", at: [0], total: 1)
         ])
     )
+
+    /// Fixture 6: open (18), closed (11), and pedal (1B) hi-hat must stay three
+    /// distinct mappings rather than collapsing to one rendering. Note this is
+    /// not distinguishable via (drumType, glyph) alone: open and closed hi-hat
+    /// share `gameplayInstrument == .hiHat` (`DrumNotationCatalogTests` locks
+    /// this equivalence directly), and all three share `glyph == .cross` in
+    /// `DrumNotationCatalog.definitions` -- the articulation is carried purely
+    /// by `variant` (`.openHiHat` / `.closedHiHat` / `.pedalHiHat`). The gate
+    /// below checks (glyph, variant) pairs, not (drumType, glyph), so it
+    /// actually fails if open/closed/pedal collapse to the same variant.
+    /// No trailing sentinel measure: both gates read note-head glyph/variant,
+    /// which are recorded regardless of the final measure's (always
+    /// unsupported) engraving support -- see `sixteenthRun`'s doc comment.
+    static let hiHatOpenClosedPedal = DrumTabFixture(
+        name: "hihat-open-closed-pedal",
+        dtx: chart([
+            DrumTabFixture.line(measure: 1, lane: "18", at: [0], total: 4),
+            DrumTabFixture.line(measure: 1, lane: "11", at: [1], total: 4),
+            DrumTabFixture.line(measure: 1, lane: "1B", at: [2], total: 4)
+        ])
+    )
+
+    /// Fixture 7: lane 1C (left bass) must actually reach the layout as a
+    /// playable kick head, alongside a normal 13 kick, rather than being
+    /// dropped by a `compactMap` along the import/layout path (HPA-139). Two
+    /// kicks on different lanes at different ticks so a dropped 1C leaves an
+    /// unambiguous count mismatch rather than an accidental match against the
+    /// surviving 13 note. No trailing sentinel measure: the gate reads note
+    /// head presence/lane/drumType, not beams, flags, or inferred duration.
+    static let leftBass1C = DrumTabFixture(
+        name: "left-bass-1c",
+        dtx: chart([
+            DrumTabFixture.line(measure: 1, lane: "13", at: [0], total: 4),
+            DrumTabFixture.line(measure: 1, lane: "1C", at: [2], total: 4)
+        ])
+    )
 }

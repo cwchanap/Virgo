@@ -104,4 +104,45 @@ struct DrumTabGoldenTests {
             fixture: fixture.name
         )
     }
+
+    @Test("open, closed, and pedal hi-hat stay three distinct mappings")
+    func hiHatOpenClosedPedal() throws {
+        let fixture = DrumTabFixtureCatalog.hiHatOpenClosedPedal
+        let result = try DrumTabFixtureHarness.render(fixture)
+
+        #expect(result.layout.noteHeads.count == 3)
+
+        // (drumType, glyph) is not enough: open and closed hi-hat share both
+        // `gameplayInstrument == .hiHat` and `glyph == .cross` in
+        // `DrumNotationCatalog.definitions` -- only `variant` carries the
+        // open/closed/pedal distinction. A regression that collapses two of
+        // the three articulations to the same variant (e.g. open reporting
+        // as closed) must fail this count, so the pair is (glyph, variant).
+        let pairs = Set(result.layout.noteHeads.map { "\($0.glyph)|\($0.variant)" })
+        #expect(pairs.count == 3, "expected three distinct (glyph, variant) pairs, got \(pairs)")
+
+        try GoldenFile.assertMatches(
+            NotationLayoutDigest.make(result),
+            fixture: fixture.name
+        )
+    }
+
+    @Test("lane 1C imports as a playable kick instead of being dropped")
+    func leftBass1C() throws {
+        let fixture = DrumTabFixtureCatalog.leftBass1C
+        let result = try DrumTabFixtureHarness.render(fixture)
+
+        #expect(result.layout.noteHeads.count == 2)
+        // Count alone is not enough: another lane surviving would satisfy it
+        // while 1C was silently dropped.
+        let leftBass = result.layout.noteHeads.filter {
+            $0.sourceLaneID == "1C" && $0.drumType == .kick
+        }
+        #expect(leftBass.count == 1, "lane 1C must map to a kick head")
+
+        try GoldenFile.assertMatches(
+            NotationLayoutDigest.make(result),
+            fixture: fixture.name
+        )
+    }
 }
