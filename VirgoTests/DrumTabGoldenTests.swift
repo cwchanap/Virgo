@@ -165,22 +165,41 @@ struct DrumTabGoldenTests {
             Set(withControls.layout.stopNotes.map(\.kind)) == [.stop, .choke, .damp]
         )
 
-        // Count and kind alone would still pass if the two crash-targeted
-        // chips (stop, choke) swapped targets with each other, or if a
-        // resolution bug mapped every chip to the same lane -- kind stays
-        // distinct either way. Each kind's chip has a distinct declared
-        // target lane (stop/choke -> crash "16", damp -> hi-hat "11"), so
-        // pinning targetLaneID per kind actually exercises resolution.
-        let stopNotesByKind = Dictionary(uniqueKeysWithValues: withControls.layout.stopNotes.map { ($0.kind, $0) })
-        #expect(stopNotesByKind[.stop]?.targetLaneID == "16")
-        #expect(stopNotesByKind[.choke]?.targetLaneID == "16")
-        #expect(stopNotesByKind[.damp]?.targetLaneID == "11")
+        // Count and kind distinctness alone would not catch a target lost,
+        // defaulted, or swapped across the 16/11 boundary (e.g. damp
+        // resolving to crash instead of hi-hat). They would NOT catch stop
+        // and choke swapping targets with each other -- both declare "16",
+        // so that particular swap is undetectable by any assertion here.
+        // `Dictionary(grouping:)` rather than `uniqueKeysWithValues:` so a
+        // regression that collapses two kinds together (the exact failure
+        // this gate exists to catch) fails the #expect above and returns
+        // gracefully, instead of trapping the whole test-host process on a
+        // duplicate-key precondition.
+        let stopNotesByKind = Dictionary(grouping: withControls.layout.stopNotes, by: \.kind)
+        let stop = stopNotesByKind[.stop]?.first
+        let choke = stopNotesByKind[.choke]?.first
+        let damp = stopNotesByKind[.damp]?.first
+        #expect(stop?.targetLaneID == "16")
+        #expect(stop?.targetDisplayName == "Crash")
+        #expect(choke?.targetLaneID == "16")
+        #expect(choke?.targetDisplayName == "Crash")
+        #expect(damp?.targetLaneID == "11")
+        #expect(damp?.targetDisplayName == "Hi-Hat")
 
         // Differential proof of separation: identical playable lanes must yield
         // identical rests whether or not control chips are present. "rests
         // unaffected" is only checkable against a baseline.
         #expect(restLines(withControls) == restLines(withoutControls))
         #expect(!restLines(withControls).isEmpty, "differential is vacuous unless both sides have rests")
+        // Both-sides-non-empty is satisfiable by measure 0's always-present,
+        // control-free lead-in rests alone (see the fixture's doc comment).
+        // Pin the rest that actually sits in the control-bearing measure, so
+        // if the measure-2 sentinel is ever removed and measure 1's rest is
+        // stripped again, this gate -- not just prose -- catches it.
+        #expect(
+            restLines(withControls).contains { $0.hasPrefix("rest  m1 ") },
+            "differential must include a rest from the control-bearing measure"
+        )
 
         // Playable content must also be untouched by the control chips.
         #expect(
