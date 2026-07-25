@@ -1,0 +1,34 @@
+tl-grid ticksPerWholeNote=4 feel=straight
+tl-meas m0 startTick=0 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
+tl-meas m1 startTick=4 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
+tl-meas m2 startTick=8 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=unsupported[indeterminateTerminalDuration]
+
+grid  ticksPerWholeNote=4 tickWidth=50.00 leftPadding=52.00
+style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
+dims  noteHeadSize=30.00x20.00 totalHeight=610.00 paintedBounds=(99.00,14.00,781.00,176.00)
+row   0 measures=[m0,m1,m2] contentWidth=930.00
+meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4 contentStartX=152.00
+meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4 contentStartX=416.00
+meas  m2 row=0 xOffset=628.00 width=252.00 startTick=8 durationTicks=4 contentStartX=680.00
+head  m1 t0000 abs0004 pos=(416.00,90.00) crash glyph=bullseye variant=crash voice=upper stem=up row=0 lane=16
+head  m1 t0001 abs0005 pos=(466.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m1 t0002 abs0006 pos=(516.00,90.00) crash glyph=bullseye variant=crash voice=upper stem=up row=0 lane=16
+head  m1 t0003 abs0007 pos=(566.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m2 t0000 abs0008 pos=(680.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+stem  ids=[0] dir=up start=(428.00,90.00) end=(428.00,15.00)
+stem  ids=[2] dir=up start=(477.40,116.38) end=(477.40,41.38)
+stem  ids=[3] dir=up start=(528.00,90.00) end=(528.00,15.00)
+stem  ids=[5] dir=up start=(577.40,116.38) end=(577.40,41.38)
+rest  m0 t0000 voice=upper dur=fullMeasure ticks=4 vis=printed pos=(252.00,130.00) tuplet=-
+rest  m0 t0000 voice=lower dur=fullMeasure ticks=4 vis=hiddenDuplicate pos=(252.00,170.00) tuplet=-
+rest  m1 t0000 voice=lower dur=fullMeasure ticks=4 vis=printed pos=(516.00,170.00) tuplet=-
+stop  m1 t0000 kind=stop target=16 pos=(416.00,72.00) lane=21
+stop  m1 t0002 kind=choke target=16 pos=(516.00,72.00) lane=22
+stop  m1 t0003 kind=damp target=11 pos=(566.00,92.00) lane=23
+ledger row=0 start=(398.00,90.00) end=(434.00,90.00)
+ledger row=0 start=(498.00,90.00) end=(534.00,90.00)
+bar   row=0 x=100.00 isFinal=false
+bar   row=0 x=352.00 isFinal=false
+bar   row=0 x=616.00 isFinal=false
+bar   row=0 x=880.00 isFinal=true
+warn  scope=measure:2 codes=[indeterminateTerminalDuration] row=0 measure=3
