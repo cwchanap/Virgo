@@ -44,71 +44,87 @@ extension DrumTabFixtureCatalog {
         ])
     )
 
-    /// Fixture 9: hi-hat (upper voice) and kick (lower voice) each need an
-    /// independently-computed printed rest, proving rests are not shared or
-    /// conflated across voices.
+    /// Fixture 9: hi-hat (upper voice) and kick (lower voice) sound together
+    /// in the SAME measure, each with its own leading rest of a different
+    /// length, proving per-voice rest topology is computed independently
+    /// even when both voices are active at once (not just "one voice active,
+    /// one voice fully silent" -- see below for why that weaker shape was
+    /// rejected).
+    ///
+    /// An onset resolves `.supported` when
+    /// `localTick + durationTicks(closestInterval(gap)) <= min(beatGroup
+    /// .endTick, measure.durationTicks)` (`NotationRhythmAnalyzer
+    /// .terminalDTXResolution`, `NotationRhythmAnalyzer.swift:248-294`,
+    /// boundary at `:254`) whenever it has no later onset of the same voice
+    /// within its own beat group (`resolveStream`,
+    /// `NotationRhythmAnalyzer.swift:203-246`). `closestInterval` picks the
+    /// nearest of the seven supported fractions to the raw gap
+    /// (`VisualDurationLookup.closestInterval`), so this can succeed even
+    /// when the gap is not literally one quarter note -- e.g. a 5-tick gap
+    /// out of 16 snaps DOWN to `.quarter` (4 ticks), not up to some
+    /// unsupported "5/16" interval, and that snapped-down duration is what
+    /// has to fit the boundary. A beat group is always exactly one quarter
+    /// note wide in 4/4 (`RhythmBeatGroupBuilder.standardBeatGroupDuration`),
+    /// so in practice this only leaves room for the next same-voice onset to
+    /// be at most one quarter-note's worth of ticks later.
     ///
     /// The brief's original shape packed both voices into one measure
-    /// (hi-hat beats 1-2, kick beats 3-4). Kick's own half of that shape is
-    /// fine in isolation -- a leading rest (beats 1-2) before content that
-    /// reaches the measure's last beat, the same safe, established
+    /// (hi-hat beats 1-2, kick beats 3-4). Kick's half is fine in isolation
+    /// -- a leading rest (beats 1-2) before content that reaches the
+    /// measure's last beat, the same safe, established
     /// last-beat-plus-next-measure-sentinel shape `sixteenthRun` and
     /// `stopChokeDamp` already use. Hi-hat's half is not: its last onset
     /// (beat 2) is followed by an in-measure rest (beats 3-4) that does NOT
-    /// reach the measure's end, and no same-voice follower can be placed
-    /// close enough to rescue it without colliding with kick's own beats
-    /// 3-4 content. `NotationRhythmAnalyzer.terminalDTXResolution` only
-    /// accepts a "terminal in its own beat group" onset (no later onset of
-    /// the same voice within that one beat group -- `resolveStream`,
-    /// `NotationRhythmAnalyzer.swift:203-246`) when its inferred duration
-    /// fits inside the REMAINDER of that same beat group
-    /// (`boundary = min(beatGroup.endTick, measure.durationTicks)`,
-    /// `NotationRhythmAnalyzer.swift:254`). A beat group is always exactly
-    /// one quarter note wide in 4/4
-    /// (`RhythmBeatGroupBuilder.standardBeatGroupDuration`), so this only
-    /// succeeds when the next same-voice onset is exactly one quarter later
-    /// (i.e. no rest at all) or when the onset is the last beat of its own
-    /// measure and picks up a same-voice sentinel exactly one quarter into
-    /// the next measure -- hi-hat's beat-2 onset satisfies neither. And
-    /// because a single indeterminate onset poisons the WHOLE measure,
-    /// regardless of any other onset's own validity
-    /// (`NotationRhythmAnalyzer.applyConservativeFallback`,
-    /// `NotationRhythmAnalyzer.swift:537-564`), hi-hat's one unrescuable
-    /// onset is enough to drag kick's otherwise-fine half down too. Once a
-    /// measure is unsupported, `NotationRestTopologyBuilder.appendExactGap`
-    /// only emits `.hiddenSpacing`/`.indeterminate` gaps, never `.printed`
-    /// ones (`NotationRestTopology.swift:672-693`). So the brief's shape
+    /// reach the measure's end, so its only candidate gap (to a same-voice
+    /// onset at least two beats later) snaps to `.half` (2 ticks), and
+    /// `1 (localTick) + 2 (duration) = 3 > 2 (its own beat group's
+    /// boundary)` -- it does not fit, no matter where a same-voice sentinel
+    /// is placed, because nothing can shrink hi-hat's own gap to fit inside
+    /// one beat group once kick occupies beats 3-4. Because a single
+    /// indeterminate onset poisons the WHOLE measure regardless of any
+    /// other onset's own validity (`NotationRhythmAnalyzer
+    /// .applyConservativeFallback`, `NotationRhythmAnalyzer.swift:537-564`),
+    /// hi-hat's one unrescuable onset drags kick's otherwise-fine half down
+    /// too, and once a measure is unsupported,
+    /// `NotationRestTopologyBuilder.appendExactGap` only emits
+    /// `.hiddenSpacing`/`.indeterminate` gaps, never `.printed` ones
+    /// (`NotationRestTopology.swift:672-693`). So the brief's exact shape
     /// would always end up with zero printed rests for either voice.
     ///
-    /// This fixture instead gives each voice its OWN measure where it is the
-    /// only active voice, ending on beats 3-4 (the safe, established
-    /// last-beats-plus-next-measure-sentinel shape used by `sixteenthRun`
-    /// and `stopChokeDamp`): a full run of beats-3-4 content always resolves
-    /// `.supported` (each onset is either immediately followed by the next
-    /// same-voice onset one tick later, or is the true last beat of the
-    /// measure and picks up its own sentinel one tick into the next
-    /// measure). With one voice `.supported` and the other voice completely
-    /// silent for that whole measure,
-    /// `NotationRestTopologyBuilder.buildExact`'s automatic full-measure rest
-    /// for the silent voice (`NotationRestTopology.swift:550-563`) is
-    /// unconditionally `.printed` when the OTHER voice is non-empty (upper:
-    /// always `.printed` when empty; lower: `.printed` whenever upper is
-    /// non-empty, `.hiddenDuplicate` only when both are empty). Measure 0
-    /// (kick active, hi-hat silent) prints hi-hat's (upper) rest; measure 2
-    /// (hi-hat active, kick silent) prints kick's (lower) rest. Measures 1
-    /// and 3 are pure one-note sentinels (grid 1) that rescue measure 0's
-    /// and measure 2's own last onsets respectively, exactly like
-    /// `sixteenthRun`'s trailing sentinel; measure 3's own onset is in turn
-    /// the chart's true final onset and predictably resolves
-    /// `.unsupported(indeterminateTerminalDuration)`, which is fine because
-    /// nothing under test lives there.
+    /// This fixture keeps both voices in one measure but starts each one on
+    /// a DIFFERENT beat, so each voice's own onset-to-onset gaps stay
+    /// within one beat group the whole way through (never needing a gap
+    /// longer than one quarter note): hi-hat plays beats 2-4
+    /// (`at: [1, 2, 3]`) and kick plays beats 3-4 (`at: [2, 3]`). Every
+    /// onset is either immediately followed by the next same-voice onset
+    /// one tick later, or is the true last beat of the measure and picks up
+    /// its own same-voice sentinel one tick into measure 1 -- both voices'
+    /// sentinels live there together, at tick 0, on their own lanes. That
+    /// keeps measure 0 fully `.supported` with both voices sounding, so
+    /// `NotationRestTopologyBuilder.appendExactVoice`
+    /// (`NotationRestTopology.swift:564-567`, gated per-voice by the
+    /// `$0.voice == voice` filter at `:567`) computes each voice's own
+    /// leading rest independently: hi-hat rests only beat 1 (one printed
+    /// quarter rest, tick 0), kick rests beats 1-2 (two printed quarter
+    /// rests, ticks 0 and 1 -- rests are computed per beat group and never
+    /// merged across a beat-group boundary, per `appendExactVoice`'s
+    /// `for group in measure.beatGroups` loop, `NotationRestTopology.swift:
+    /// 626-658`, so a two-beat-wide leading gap is two one-beat rest events,
+    /// not one half-note rest). The two voices' rest sets differ in both
+    /// count and total ticks, so a regression that computed one voice's
+    /// gaps from the other voice's onsets (e.g. dropping the `voice ==`
+    /// filter above) would make them match and fail the gates below.
+    /// Measure 1 (both sentinels, no further followers) predictably
+    /// resolves `.unsupported(indeterminateTerminalDuration)`, same as
+    /// every other chart's true final measure in this catalog -- nothing
+    /// under test lives there.
     static let voiceRests = DrumTabFixture(
         name: "voice-rests",
         dtx: chart([
+            DrumTabFixture.line(measure: 0, lane: "11", at: [1, 2, 3], total: 4),
             DrumTabFixture.line(measure: 0, lane: "13", at: [2, 3], total: 4),
-            DrumTabFixture.line(measure: 1, lane: "13", at: [0], total: 1),
-            DrumTabFixture.line(measure: 2, lane: "11", at: [2, 3], total: 4),
-            DrumTabFixture.line(measure: 3, lane: "11", at: [0], total: 1)
+            DrumTabFixture.line(measure: 1, lane: "11", at: [0], total: 1),
+            DrumTabFixture.line(measure: 1, lane: "13", at: [0], total: 1)
         ])
     )
 
@@ -145,13 +161,17 @@ extension DrumTabFixtureCatalog {
     /// reads tick position only and is untouched by engraving support. One
     /// that also needs beam data for the SPARSE side of the pair cannot get
     /// it from this fixture at all without adding its own sentinel.
+    /// `minimumMeasureCount` is deliberately left at its default (1): DTX
+    /// measures 0-7 already materialize 8 layout measures on their own, and
+    /// padding to a floor of 8 would let a regression that drops trailing
+    /// measures get silently topped back up to 8, defeating the
+    /// `measures.count == 8` gate below.
     static let multiRowStableWidths = DrumTabFixture(
         name: "multi-row-stable-widths",
         dtx: chart((0...7).map { measure in
             measure.isMultiple(of: 2)
                 ? DrumTabFixture.line(measure: measure, lane: "11", at: [0], total: 16)
                 : DrumTabFixture.line(measure: measure, lane: "11", at: Array(0..<16), total: 16)
-        }),
-        minimumMeasureCount: 8
+        })
     )
 }
