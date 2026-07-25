@@ -151,4 +151,44 @@ enum DrumTabFixtureCatalog {
             DrumTabFixture.line(measure: 1, lane: "1C", at: [2], total: 4)
         ])
     )
+
+    /// Fixture 8: stop (21), choke (22), and damp (23) control chips over a
+    /// crash/hi-hat pattern. `controlBlock` is separable so the harness can
+    /// render with and without it — proving control events do not feed rest
+    /// inference (HPA-143), which a single render cannot demonstrate.
+    ///
+    /// Measure 1's crash (0, 2) and hi-hat (1, 3) chips fill all four upper-
+    /// voice ticks, so the measure's only rest is the *unconditional*
+    /// full-measure rest `NotationRestTopologyBuilder` emits for the (empty)
+    /// lower voice -- that lower-voice rest is exactly what the differential
+    /// needs: it disappears if a control chip is ever mistaken for a
+    /// lower-voice onset. But `applyConservativeFallback` strips *every*
+    /// rest -- including that unconditional one -- from a chart's true final
+    /// measure once it resolves `.unsupported(indeterminateTerminalDuration)`
+    /// (see `sixteenthRun`'s doc comment; confirmed empirically against
+    /// `same-time-trio`'s golden, which shows zero rest lines survive for
+    /// its own final measure despite real gaps in its lower voice). Without
+    /// a sentinel, measure 1 IS that final measure, its rest is stripped,
+    /// and the only rests left in the digest are from the always-empty,
+    /// control-free measure 0 lead-in -- a differential that would still
+    /// read "non-empty" but could never actually detect a control-to-rest
+    /// leak in measure 1. The measure-2 sentinel (a single hi-hat note, same
+    /// upper voice as the content) gives measure 1's last upper-voice onset
+    /// a follower, so measure 1 resolves `.supported` and keeps its own
+    /// rest; measure 2 becomes the new (untested) unsupported terminal
+    /// measure instead.
+    static let stopChokeDamp = DrumTabFixture(
+        name: "stop-choke-damp",
+        dtx: chart([
+            "#VIRGO_CONTROL: 1",
+            DrumTabFixture.line(measure: 1, lane: "16", at: [0, 2], total: 4),
+            DrumTabFixture.line(measure: 1, lane: "11", at: [1, 3], total: 4),
+            DrumTabFixture.line(measure: 2, lane: "11", at: [0], total: 1)
+        ]),
+        controlBlock: [
+            DrumTabFixture.line(measure: 1, lane: "21", positions: [0: "16"], total: 4),
+            DrumTabFixture.line(measure: 1, lane: "22", positions: [2: "16"], total: 4),
+            DrumTabFixture.line(measure: 1, lane: "23", positions: [3: "11"], total: 4)
+        ].joined(separator: "\n")
+    )
 }

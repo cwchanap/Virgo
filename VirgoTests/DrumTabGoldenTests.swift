@@ -152,4 +152,51 @@ struct DrumTabGoldenTests {
             fixture: fixture.name
         )
     }
+
+    @Test("stop, choke, and damp render as stop marks without disturbing rests")
+    func stopChokeDamp() throws {
+        let fixture = DrumTabFixtureCatalog.stopChokeDamp
+        let withControls = try DrumTabFixtureHarness.render(fixture, includeControls: true)
+        let withoutControls = try DrumTabFixtureHarness.render(fixture, includeControls: false)
+
+        #expect(withControls.layout.stopNotes.count == 3)
+        #expect(withoutControls.layout.stopNotes.isEmpty)
+        #expect(
+            Set(withControls.layout.stopNotes.map(\.kind)) == [.stop, .choke, .damp]
+        )
+
+        // Count and kind alone would still pass if the two crash-targeted
+        // chips (stop, choke) swapped targets with each other, or if a
+        // resolution bug mapped every chip to the same lane -- kind stays
+        // distinct either way. Each kind's chip has a distinct declared
+        // target lane (stop/choke -> crash "16", damp -> hi-hat "11"), so
+        // pinning targetLaneID per kind actually exercises resolution.
+        let stopNotesByKind = Dictionary(uniqueKeysWithValues: withControls.layout.stopNotes.map { ($0.kind, $0) })
+        #expect(stopNotesByKind[.stop]?.targetLaneID == "16")
+        #expect(stopNotesByKind[.choke]?.targetLaneID == "16")
+        #expect(stopNotesByKind[.damp]?.targetLaneID == "11")
+
+        // Differential proof of separation: identical playable lanes must yield
+        // identical rests whether or not control chips are present. "rests
+        // unaffected" is only checkable against a baseline.
+        #expect(restLines(withControls) == restLines(withoutControls))
+        #expect(!restLines(withControls).isEmpty, "differential is vacuous unless both sides have rests")
+
+        // Playable content must also be untouched by the control chips.
+        #expect(
+            withControls.layout.noteHeads.count == withoutControls.layout.noteHeads.count
+        )
+
+        try GoldenFile.assertMatches(
+            NotationLayoutDigest.make(withControls),
+            fixture: fixture.name
+        )
+    }
+
+    /// The `rest` subsection of a digest, for differential comparison.
+    private func restLines(_ result: FixtureRenderResult) -> [String] {
+        NotationLayoutDigest.make(result)
+            .components(separatedBy: "\n")
+            .filter { $0.hasPrefix("rest ") }
+    }
 }
