@@ -1,0 +1,50 @@
+tl-grid ticksPerWholeNote=16 feel=straight
+tl-meas m0 startTick=0 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
+tl-meas m1 startTick=16 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=unsupported[indeterminateTerminalDuration]
+
+grid  ticksPerWholeNote=16 tickWidth=28.00 leftPadding=52.00
+style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
+dims  noteHeadSize=30.00x20.00 totalHeight=930.00 paintedBounds=(99.00,33.38,502.00,476.62)
+row   0 measures=[m0] contentWidth=900.00
+row   1 measures=[m1] contentWidth=900.00
+meas  m0 row=0 xOffset=100.00 width=500.00 startTick=0 durationTicks=16 contentStartX=152.00
+meas  m1 row=1 xOffset=100.00 width=500.00 startTick=16 durationTicks=16 contentStartX=152.00
+head  m0 t0000 abs0000 pos=(152.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0002 abs0002 pos=(208.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0003 abs0003 pos=(236.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0004 abs0004 pos=(264.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0006 abs0006 pos=(320.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0007 abs0007 pos=(348.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0008 abs0008 pos=(376.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0010 abs0010 pos=(432.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0011 abs0011 pos=(460.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0012 abs0012 pos=(488.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0014 abs0014 pos=(544.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0015 abs0015 pos=(572.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m1 t0000 abs0016 pos=(152.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+stem  ids=[0] dir=up start=(163.40,116.38) end=(163.40,41.38)
+stem  ids=[1] dir=up start=(219.40,116.38) end=(219.40,35.38)
+stem  ids=[2] dir=up start=(247.40,116.38) end=(247.40,35.38)
+stem  ids=[3] dir=up start=(275.40,116.38) end=(275.40,41.38)
+stem  ids=[4] dir=up start=(331.40,116.38) end=(331.40,35.38)
+stem  ids=[5] dir=up start=(359.40,116.38) end=(359.40,35.38)
+stem  ids=[6] dir=up start=(387.40,116.38) end=(387.40,41.38)
+stem  ids=[7] dir=up start=(443.40,116.38) end=(443.40,35.38)
+stem  ids=[8] dir=up start=(471.40,116.38) end=(471.40,35.38)
+stem  ids=[9] dir=up start=(499.40,116.38) end=(499.40,41.38)
+stem  ids=[10] dir=up start=(555.40,116.38) end=(555.40,35.38)
+stem  ids=[11] dir=up start=(583.40,116.38) end=(583.40,35.38)
+beam  ids=[0, 1, 2] dir=up level=0 kind=full start=(163.40,41.38) end=(247.40,41.38) thickness=4.00
+beam  ids=[1, 2] dir=up level=1 kind=full start=(219.40,35.38) end=(247.40,35.38) thickness=4.00
+beam  ids=[3, 4, 5] dir=up level=0 kind=full start=(275.40,41.38) end=(359.40,41.38) thickness=4.00
+beam  ids=[4, 5] dir=up level=1 kind=full start=(331.40,35.38) end=(359.40,35.38) thickness=4.00
+beam  ids=[6, 7, 8] dir=up level=0 kind=full start=(387.40,41.38) end=(471.40,41.38) thickness=4.00
+beam  ids=[7, 8] dir=up level=1 kind=full start=(443.40,35.38) end=(471.40,35.38) thickness=4.00
+beam  ids=[9, 10, 11] dir=up level=0 kind=full start=(499.40,41.38) end=(583.40,41.38) thickness=4.00
+beam  ids=[10, 11] dir=up level=1 kind=full start=(555.40,35.38) end=(583.40,35.38) thickness=4.00
+rest  m0 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(376.00,170.00) tuplet=-
+bar   row=0 x=100.00 isFinal=false
+bar   row=0 x=600.00 isFinal=false
+bar   row=1 x=100.00 isFinal=false
+bar   row=1 x=600.00 isFinal=true
+warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=1 measure=2
