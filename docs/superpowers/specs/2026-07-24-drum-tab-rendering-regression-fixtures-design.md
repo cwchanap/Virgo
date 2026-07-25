@@ -44,10 +44,17 @@ from tick literals, bypassing `NotationRhythmAnalyzer` and everything upstream o
 The result: no test drives realistic DTX input through parse → project → resolve → analyze → layout.
 That full path is exactly what the HPA-97 screenshots broke.
 
-### 2.2 No whole-output lock
+### 2.2 No broad output lock
 
 Every current assertion names a specific property. A spacing or beaming regression in a dimension
-nobody thought to assert passes silently. Nothing pins the complete rendered geometry of a chart.
+nobody thought to assert passes silently.
+
+The goal here is a *broad* geometry lock, not a total one, and the distinction is worth stating
+plainly: the digest (§6) pins every primitive collection on `NotationLayout`, the grid, the resolved
+style, and the layout's own dimensions. It does not pin anything downstream of layout — SwiftUI view
+modifiers, colours, z-order, font rasterization, or the sheet chrome around the notation overlay. A
+regression confined to those is out of the digest's reach by design (§7.3's probe covers the narrow
+case of a primitive computed but never mounted). Claiming a "whole-output lock" would overstate it.
 
 ## 3. Approach
 
@@ -68,10 +75,12 @@ bypass entirely. The reference pattern is the timeline-path test in
 `chart.setRhythmMetadata(...)` before standing up a view model — **not** the first test in that file,
 which uses `NotationLayoutTestSupport.layout(...)` and is therefore on the legacy path.
 
-**View layer: a thin ink probe.** A digest tests the layout engine, not whether the SwiftUI views
-mount what it produced. Two fixtures additionally render through `ImageRenderer` and assert ink is
-present in the expected note columns. This counts ink rather than comparing images, so it stays
-tolerant of antialiasing and font drift while still catching "primitive computed but never mounted".
+**View layer: a differential ink probe.** A digest tests the layout engine, not whether the SwiftUI
+views mount what it produced. Two fixtures additionally render through `ImageRenderer` twice — once
+normally, once with `noteHeads` emptied — and require a positive ink delta inside each head's painted
+bounds (§7.3). It compares two live renders against each other rather than against a stored image, so
+it stays tolerant of antialiasing and font drift while still catching "primitive computed but never
+mounted".
 
 ## 4. Architecture
 
@@ -120,7 +129,7 @@ any geometry assertion, so a fixture that silently degrades cannot pass vacuousl
 | Component | Location | Kind | Purpose |
 | --- | --- | --- | --- |
 | `RhythmLayoutSnapshotBuilder` | `Virgo/layout/` | production | Snapshot assembly, shared by the view model and the harness |
-| `DrumTabFixtureCatalog` (+`…+Rhythm`) | `VirgoTests/Fixtures/` | test | The 10 fixtures as DTX text + expectations |
+| `DrumTabFixtureCatalog` (+`…+Rhythm`) | `VirgoTests/Fixtures/` | test | The 11 fixtures as DTX text + expectations |
 | `DrumTabFixtureHarness` | `VirgoTests/Fixtures/` | test | Runs a fixture through §4.1, returns `FixtureRenderResult` |
 | `NotationLayoutDigest` | `VirgoTests/` | test | `FixtureRenderResult` → stable text |
 
@@ -198,7 +207,7 @@ golden header.
 
 ## 5. Fixture catalog
 
-Ten fixtures, one per scenario in HPA-144. DTX lane IDs per `DTXLane`: `11` hi-hat closed, `12`
+Eleven fixtures: one per scenario in HPA-144, plus fixture 11 added in review (§5, note below). DTX lane IDs per `DTXLane`: `11` hi-hat closed, `12`
 snare, `13` bass drum, `14` high tom, `16` crash, `18` hi-hat open, `19` ride, `1A` left crash,
 `1B` left pedal, `1C` left bass. Control lanes `21` stop / `22` choke / `23` damp require
 `#VIRGO_CONTROL: 1`. Measure length is channel `02`.
@@ -215,13 +224,24 @@ snare, `13` bass drum, `14` high tom, `16` crash, `18` hi-hat open, `19` ride, `
 | 8 | `stop-choke-damp` | Control lanes 21, 22, 23 | Three stop marks, modeled separately from rests |
 | 9 | `voice-rests` | Independent upper/lower voice gaps | Per-voice rests, computed independently |
 | 10 | `multi-row-stable-widths` | ≥2 wrapped rows, **mixing sparse and dense measures** | Uniform tick scale across all measures and rows |
+| 11 | `isolated-flagged-notes` | One lone eighth and one lone sixteenth, each alone in its beat | Each renders a flag/tail; no zero-length beam |
 
 Fixture 10 deliberately contains both a sparse and a dense measure so it can serve as the subject of
-the spacing invariant in §7.1 without an eleventh fixture.
+the spacing invariant in §7.1 without a further fixture.
+
+**Fixture 11 exists because review found a real hole.** HPA-144 requires geometry tests to lock
+"flags/tails", and HPA-142's criteria include "isolated eighth/sixteenth notes render tails/flags" —
+but none of fixtures 1–10 is guaranteed to emit a single `RenderedFlag`. Fixture 1 is quarter notes
+(no flag), fixture 2's sixteenths are fully beamed, and fixture 3's mixed beat beams within the beat
+group. Supporting a `flag` digest line (§6.1) does not help if no golden ever contains one: a renderer
+emitting zero flags could have established the initial goldens and satisfied every gate.
+`NotationBeamTopologyTests` pins the upstream behavior — "Single eighth alone in a beat produces no
+beam group (flag, not zero-length beam)" — so a lone beamable note is the input that forces the flag
+path in `NotationLayoutEngine+Beams`.
 
 **Catalog file split** (SwiftLint 600-line file / 300-line type-body warnings):
 
-- `DrumTabFixtureCatalog.swift` — fixtures 1, 2, 3, 6, 7, 8 (mapping and beaming)
+- `DrumTabFixtureCatalog.swift` — fixtures 1, 2, 3, 6, 7, 8, 11 (mapping, beaming, flags)
 - `DrumTabFixtureCatalog+Rhythm.swift` — fixtures 4, 5, 9, 10 (grid resolution, rests, wrapping)
 
 ### 5.1 Per-fixture validity gates
@@ -239,9 +259,10 @@ the harness asserts them before any geometry comparison:
 | 5 | See §5.2 — **not** a free choice between tuplet and diagnostic |
 | 6 | 3 heads with 3 distinct `(drumType, glyph)` pairs |
 | 7 | ≥1 head with `drumType == .kick` **and** `sourceLaneID == "1C"` |
-| 8 | exactly 3 stop notes, kinds `{stop, choke, damp}`; `layout.rests` unaffected |
+| 8 | exactly 3 stop notes, kinds `{stop, choke, damp}`; rest separation per §5.3 |
 | 9 | ≥1 printed rest in each of `.upper` and `.lower` |
 | 10 | `Set(measures.map(\.row)).count >= 2`; one `tickWidth` chart-wide |
+| 11 | exactly 2 flags: one with `flagIndex` count matching an eighth, one matching a sixteenth; `layout.beams.isEmpty` |
 
 ### 5.2 Fixture 5: the fallback must not be a free pass
 
@@ -262,6 +283,26 @@ The gate is therefore conditional on engraving support, not a choice:
 This keeps HPA-145's "documented conservative fallback" license intact without letting it silently
 absorb a real regression. Which branch is live today is determined during implementation by running
 the fixture; the spec deliberately does not guess.
+
+### 5.3 Fixture 8: rest separation as a differential test
+
+An earlier draft gated fixture 8 on "`layout.rests` unaffected", which review correctly identified as
+not executable — unaffected relative to what? No baseline was defined, so an implementation could not
+objectively demonstrate that control events stay separate from rest inference (HPA-143's core
+requirement).
+
+The gate is a differential render instead. The catalog declares fixture 8 as a DTX body plus a
+*separable* control block, and the harness renders it twice:
+
+1. **with** the `21`/`22`/`23` control chips;
+2. **without** them, the playable lanes byte-identical.
+
+The `rest`-line subsection of the digest must be **identical** across both renders, while run 1 has
+exactly 3 `stop` lines and run 2 has none. This proves separation by construction rather than by
+assertion, and fails loudly if control chips ever start feeding rest inference.
+
+The committed golden is run 1. Run 2 is computed in-test and never committed, so this costs no extra
+golden file.
 
 ## 6. Digest format
 
@@ -284,7 +325,8 @@ Section `layout` — from `NotationLayout`, `TabGrid`, and the locked style:
 | Line | Source type | Fields |
 | --- | --- | --- |
 | `grid` | `TabGrid` | `ticksPerWholeNote`, `tickWidth`, `leftPadding` |
-| `style` | `NotationLayoutStyle` | `rowWidth`, `overrides=default` |
+| `style` | `NotationLayoutStyle` | `rowWidth`, `overrides=default`, plus every geometry-affecting field: `minimumNoteColumnGap`, `minimumQuarterBeatGap`, `staffLineSpacing`, `noteHeadWidth`, `noteHeadHeight`, `stemLength` |
+| `dims` | `NotationLayout` | `noteHeadSize`, `totalHeight`, `paintedBounds` |
 | `row` | derived | `row`, `measures=[…]`, `contentWidth` |
 | `meas` | `RenderedMeasure` | `measureIndex`, `row`, `xOffset`, `width`, `startTick`, `durationTicks`, `contentStartX` |
 | `head` | `RenderedNoteHead` | `timeColumn`, `position`, `drumType`, `glyph`, `variant`, `voice`, `stemDirection`, `row`, `sourceLaneID` |
@@ -295,7 +337,7 @@ Section `layout` — from `NotationLayout`, `TabGrid`, and the locked style:
 | `stop` | `RenderedStopNote` | `kind`, `targetLaneID`, `timeColumn`, `position`, `sourceLaneID` |
 | `artic` | `RenderedArticulation` | `kind`, `sourceNoteHeadID`, `row`, `position` |
 | `dot` | `RenderedRhythmDot` | `source`, `position`, `rowIndex` |
-| `tuplet` | `RenderedTuplet` | `id`, `voice`, `ratio`, `memberEventIDs`, `isBracketVisible`, `labelPosition` |
+| `tuplet` | `RenderedTuplet` | `id`, `voice`, `ratio`, `memberEventIDs`, `isBracketVisible`, `labelPosition`, **`bracketPoints`**, `rowIndex` |
 | `ledger` | `RenderedLedgerLine` | `row`, `start`, `end` |
 | `bar` | `RenderedMeasureBar` | `row`, `x`, `isFinal` |
 | `feel` | `RenderedFeelMark` | `feel`, `position`, `rowIndex` |
@@ -312,7 +354,8 @@ distinction. Serializing the head x for a stem would make the goldens lie about 
 ### 6.2 Illustrative example
 
 Field names are normative. Numbers are illustrative but internally consistent, so the format can be
-checked by hand:
+checked by hand. The `style` and `dims` lines are **abridged** here to keep the example readable — the
+normative field lists are in §6.1:
 
 ```
 tl-grid ticksPerWholeNote=960 feel=straight
@@ -419,7 +462,7 @@ beam's member heads agree on measure, row, voice, and stem direction. It is labe
 guard against a future change removing a field from `GroupKey`, not as a behavioral invariant — so
 nobody reads it as proof that cross-voice beaming was tested.
 
-Cross-cutting invariants over all ten fixtures, parameterized:
+Cross-cutting invariants over all eleven fixtures, parameterized:
 - every head's x equals `TabGrid.xPosition(in:localTick:)` for its own measure and tick;
 - simultaneous events share one x column;
 - `layout.paintedBounds` **contains** every primitive's `paintedBounds(style:)` — containment, as in
@@ -427,23 +470,41 @@ Cross-cutting invariants over all ten fixtures, parameterized:
 
 ### 7.2 `DrumTabGoldenTests.swift`
 
-Ten digest comparisons, parameterized over the catalog, each preceded by its §5.1 validity gate (and
+Eleven digest comparisons, parameterized over the catalog, each preceded by its §5.1 validity gate (and
 §5.2 for fixture 5). Mismatches report via the §6.5 diff helper, never a bare string equality.
 
 ### 7.3 `DrumTabRenderProbeTests.swift`
 
 Ink probes on fixtures 2 (dense row) and 10 (multi-row), `#if os(macOS)`, using the `ImageRenderer`
 approach in `SwiftUIRenderingNotationTests`. The existing helper there counts *yellow* pixels for a
-specific assertion and is not reusable as-is; this defines its own algorithm:
+different assertion and is not reusable as-is.
 
-1. Render the notation view at the locked `rowWidth` and the layout's `totalHeight`, `scale = 1`.
-2. Draw into a `CGContext` with `CGColorSpaceCreateDeviceRGB` and `premultipliedLast`.
-3. Classify a pixel as **ink** when `alpha > 20` — colour-agnostic, so theme changes do not break it.
-4. For each expected head x, assert ink count within a ±`noteHeadWidth/2` column band is `> 0`.
-5. Assert the total ink count is `> 0` first, so a fully blank render fails with a clear message
-   rather than as N confusing per-column failures.
+**Why this is a differential test, not a column probe.** An earlier draft asserted "ink count within a
+±`noteHeadWidth/2` column band is `> 0`". Review showed that is satisfiable without any notehead:
+`drumNotationView` stacks `ledgerLines`, rests, `beams`, `flags`, `stems`, *then* `noteHeads` in one
+`ZStack`, and stems and beams occupy the same x bands as the heads they belong to. Deleting every
+`NotationNoteHeadView` would leave that probe green — precisely the "computed but never mounted" bug
+the probe exists to catch.
 
-Thresholds are `> 0`, never exact counts, so antialiasing and font drift cannot flake it.
+The probe therefore renders the same layout twice and requires a positive delta:
+
+1. Render `drumNotationView` for the fixture's layout at the locked `rowWidth` and the layout's
+   `totalHeight`, `scale = 1`, on a transparent background — the notation overlay only, not the sheet
+   background or staff lines, so staff ink cannot mask a missing head.
+2. Render a second image from `var stripped = layout; stripped.noteHeads = []`, everything else equal.
+3. Draw both into `CGContext`s with `CGColorSpaceCreateDeviceRGB` and `premultipliedLast`.
+4. Classify a pixel as **ink** when `alpha > 20` — colour-agnostic, so theme changes do not break it.
+5. Assert total ink in image 1 `>` total ink in image 2, so a wholly unmounted head layer fails first
+   with one clear message rather than as N confusing per-head failures.
+6. For each head, assert the ink delta **inside that head's `paintedBounds(style:)`** — a 2-D rect, not
+   a full-height column — is `> 0`. Stems and beams are present in both images, so they cancel; only
+   the head contributes to the delta.
+
+Thresholds are `> 0` on a delta, never exact counts, so antialiasing and font drift cannot flake it.
+Because `drumNotationView` resolves its own `NotationLayoutStyle.gameplayDefault` internally, the probe
+uses that same style when computing `paintedBounds` rather than the harness's locked style, which
+matters only if the two ever diverge — asserted equal in the probe's setup so a future divergence
+fails loudly instead of silently misplacing the sample rects.
 
 ## 8. Playhead alignment
 
@@ -492,7 +553,7 @@ tests go in a sibling file, `DrumTabPlayheadAlignmentTests.swift`, not into the 
 
 | HPA-144 criterion | Satisfied by |
 | --- | --- |
-| Geometry tests lock x alignment, beam grouping, flags/tails, rests, stop/choke | §6.1 normative line kinds (incl. `flag`, `beam.kind`, `artic`, `tuplet`) + §7.1 invariants over all 10 fixtures |
+| Geometry tests lock x alignment, beam grouping, flags/tails, rests, stop/choke | §6.1 normative line kinds (incl. `flag`, `beam.kind`, `artic`, `tuplet`) + §7.1 invariants over all 11 fixtures, with fixture 11 forcing a non-empty `layout.flags` |
 | Fixture tests cover both screenshot failure modes | §7.1, explicitly named |
 | Visual/snapshot coverage for a dense row and a multi-row chart, or a documented alternative | §7.3 ink probes, plus the textual digest as the documented alternative to pixel goldens (§3) |
 | Playhead x alignment against rendered note columns | §8 |
@@ -500,8 +561,8 @@ tests go in a sibling file, `DrumTabPlayheadAlignmentTests.swift`, not into the 
 
 ## 11. Scope boundaries
 
-**In scope:** the four components in §4.2, the three test files in §7, the playhead file in §8, ten
-golden files, and the `RhythmLayoutSnapshotBuilder` extraction.
+**In scope:** the four components in §4.2, the three test files in §7, the playhead file in §8, eleven
+golden files (one per fixture), and the `RhythmLayoutSnapshotBuilder` extraction.
 
 **Out of scope:**
 - Changing rendering behavior. This ticket adds coverage. If a fixture reveals a genuine rendering
@@ -530,3 +591,6 @@ regression suite rather than the minimum non-redundant set.
 | A golden blesses a degraded fallback instead of real engraving | §5.2 makes fixture 5's gate conditional on `engravingSupport` rather than an either/or, requires the specific diagnostic code, and forces a `# SUSPECT:` trailer when the fallback branch is pinned |
 | An invariant reads as stronger coverage than it provides | §7.1 separates falsifiable geometric assertions from the `GroupKey` partition guard, which is labelled in-code as tautological under current construction |
 | Playhead tests silently diverge from the golden fixtures | §8 requires the attached chart from `DrumTabFixtureHarness`, forbids `createTestChart`, and re-asserts the §5.1 gates so a `nil == nil` comparison cannot pass |
+| A digest line kind is supported but no golden ever contains one | Fixture 11 forces a non-empty `layout.flags` with an exact gate; the §5.1 table pins at least one fixture per required primitive rather than relying on the schema alone |
+| Ink probe green with noteheads unmounted | §7.3 is differential — heads-present vs `noteHeads = []` — sampled inside each head's 2-D `paintedBounds`, so stems and beams sharing the x band cancel out |
+| Digest overclaims what it locks | §2.2 states the boundary explicitly: layout geometry, grid, style and dimensions are pinned; view modifiers, colour, z-order and rasterization are not |
