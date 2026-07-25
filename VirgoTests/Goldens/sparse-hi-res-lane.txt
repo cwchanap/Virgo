@@ -1,0 +1,18 @@
+tl-grid ticksPerWholeNote=64 feel=straight
+tl-meas m0 startTick=0 durationTicks=64 sig=4/4 groups=[0,16,32,48] engraving=unsupported[indeterminateTerminalDuration]
+tl-meas m1 startTick=64 durationTicks=64 sig=4/4 groups=[0,16,32,48] engraving=unsupported[indeterminateTerminalDuration]
+
+grid  ticksPerWholeNote=64 tickWidth=3.12 leftPadding=52.00
+style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
+dims  noteHeadSize=30.00x20.00 totalHeight=610.00 paintedBounds=(99.00,43.00,517.00,147.00)
+row   0 measures=[m0,m1] contentWidth=900.00
+meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=64 contentStartX=152.00
+meas  m1 row=0 xOffset=364.00 width=252.00 startTick=64 durationTicks=64 contentStartX=416.00
+head  m0 t0000 abs0000 pos=(152.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0033 abs0033 pos=(255.12,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m1 t0000 abs0064 pos=(416.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+bar   row=0 x=100.00 isFinal=false
+bar   row=0 x=352.00 isFinal=false
+bar   row=0 x=616.00 isFinal=true
+warn  scope=measure:0 codes=[indeterminateTerminalDuration] row=0 measure=1
+warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2

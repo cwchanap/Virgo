@@ -212,6 +212,76 @@ struct DrumTabGoldenTests {
         )
     }
 
+    @Test("sparse high-resolution grid preserves timing without 64th notes")
+    func sparseHiResLane() throws {
+        let fixture = DrumTabFixtureCatalog.sparseHiResLane
+        let result = try DrumTabFixtureHarness.render(fixture)
+
+        // Measure 0: 2 content chips. Measure 1: 1 sentinel chip (see the
+        // fixture's doc comment for why the sentinel is needed even though
+        // measure 0 is unsupported regardless of its presence).
+        #expect(result.layout.noteHeads.count == 3)
+        let contentHeads = result.layout.noteHeads.filter { $0.timeColumn.measureIndex == 0 }
+        #expect(contentHeads.count == 2)
+        // Grid resolution must not become visual duration.
+        #expect(contentHeads.allSatisfy { $0.interval != .sixtyfourth })
+        // Timing must survive: the second chip sits at 33/64 of the measure.
+        // Looked up explicitly rather than via `measures.first` -- content
+        // lives in measure 0 here, but that shortcut is unsafe in general
+        // (see the fixture's doc comment and `sixteenthRun`'s).
+        let measure = try #require(result.layout.measures.first { $0.measureIndex == 0 })
+        let ticks = contentHeads
+            .map(\.timeColumn.tickWithinMeasure)
+            .sorted()
+        #expect(ticks.first == 0)
+        #expect(ticks.last == measure.durationTicks * 33 / 64)
+
+        try GoldenFile.assertMatches(
+            NotationLayoutDigest.make(result),
+            fixture: fixture.name
+        )
+    }
+
+    @Test("upper and lower voices get independent rests")
+    func voiceRests() throws {
+        let fixture = DrumTabFixtureCatalog.voiceRests
+        let result = try DrumTabFixtureHarness.render(fixture)
+
+        // Measure 0: 2 kick notes. Measure 1: 1 kick sentinel. Measure 2: 2
+        // hi-hat notes. Measure 3: 1 hi-hat sentinel (see the fixture's doc
+        // comment for why this needs four measures rather than one).
+        #expect(result.layout.noteHeads.count == 6)
+
+        let printed = result.layout.rests.filter(\.isPrinted)
+        // Count/voice alone would also be satisfied by an accidental rest
+        // from the wrong measure, so each is pinned to the specific measure
+        // that must produce it: measure 0 (kick active, hi-hat silent) is
+        // the only place an upper rest can legitimately come from, and
+        // measure 2 (hi-hat active, kick silent) is the only place a lower
+        // rest can.
+        #expect(printed.contains { $0.voice == .upper && $0.measureIndex == 0 })
+        #expect(printed.contains { $0.voice == .lower && $0.measureIndex == 2 })
+
+        try GoldenFile.assertMatches(
+            NotationLayoutDigest.make(result),
+            fixture: fixture.name
+        )
+    }
+
+    @Test("multi-row chart keeps one tick scale across sparse and dense measures")
+    func multiRowStableWidths() throws {
+        let fixture = DrumTabFixtureCatalog.multiRowStableWidths
+        let result = try DrumTabFixtureHarness.render(fixture)
+
+        #expect(result.layout.measures.count == 8)
+        #expect(Set(result.layout.measures.map(\.row)).count >= 2, "fixture must wrap rows")
+
+        try GoldenFile.assertMatches(
+            NotationLayoutDigest.make(result),
+            fixture: fixture.name
+        )
+    }
+
     /// The `rest` subsection of a digest, for differential comparison.
     private func restLines(_ result: FixtureRenderResult) -> [String] {
         NotationLayoutDigest.make(result)

@@ -1,0 +1,45 @@
+tl-grid ticksPerWholeNote=4 feel=straight
+tl-meas m0 startTick=0 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
+tl-meas m1 startTick=4 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=unsupported[indeterminateTerminalDuration]
+tl-meas m2 startTick=8 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
+tl-meas m3 startTick=12 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=unsupported[indeterminateTerminalDuration]
+
+grid  ticksPerWholeNote=4 tickWidth=50.00 leftPadding=52.00
+style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
+dims  noteHeadSize=30.00x20.00 totalHeight=930.00 paintedBounds=(99.00,40.38,782.00,469.62)
+row   0 measures=[m0,m1,m2] contentWidth=931.00
+row   1 measures=[m3] contentWidth=931.00
+meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4 contentStartX=152.00
+meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4 contentStartX=416.00
+meas  m2 row=0 xOffset=628.00 width=252.00 startTick=8 durationTicks=4 contentStartX=680.00
+meas  m3 row=1 xOffset=100.00 width=252.00 startTick=12 durationTicks=4 contentStartX=152.00
+head  m0 t0002 abs0002 pos=(252.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
+head  m0 t0003 abs0003 pos=(302.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
+head  m1 t0000 abs0004 pos=(416.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
+head  m2 t0002 abs0010 pos=(780.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m2 t0003 abs0011 pos=(830.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m3 t0000 abs0012 pos=(152.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+stem  ids=[0] dir=down start=(240.00,230.00) end=(240.00,305.00)
+stem  ids=[1] dir=down start=(290.00,230.00) end=(290.00,305.00)
+stem  ids=[3] dir=up start=(791.40,116.38) end=(791.40,41.38)
+stem  ids=[4] dir=up start=(841.40,116.38) end=(841.40,41.38)
+rest  m0 t0000 voice=upper dur=fullMeasure ticks=4 vis=printed pos=(252.00,130.00) tuplet=-
+rest  m0 t0000 voice=lower dur=quarter ticks=1 vis=printed pos=(152.00,170.00) tuplet=-
+rest  m0 t0001 voice=lower dur=quarter ticks=1 vis=printed pos=(202.00,170.00) tuplet=-
+rest  m2 t0000 voice=upper dur=quarter ticks=1 vis=printed pos=(680.00,130.00) tuplet=-
+rest  m2 t0000 voice=lower dur=fullMeasure ticks=4 vis=printed pos=(780.00,170.00) tuplet=-
+rest  m2 t0001 voice=upper dur=quarter ticks=1 vis=printed pos=(730.00,130.00) tuplet=-
+ledger row=0 start=(234.00,210.00) end=(270.00,210.00)
+ledger row=0 start=(234.00,230.00) end=(270.00,230.00)
+ledger row=0 start=(284.00,210.00) end=(320.00,210.00)
+ledger row=0 start=(284.00,230.00) end=(320.00,230.00)
+ledger row=0 start=(398.00,210.00) end=(434.00,210.00)
+ledger row=0 start=(398.00,230.00) end=(434.00,230.00)
+bar   row=0 x=100.00 isFinal=false
+bar   row=0 x=352.00 isFinal=false
+bar   row=0 x=616.00 isFinal=false
+bar   row=0 x=880.00 isFinal=false
+bar   row=1 x=100.00 isFinal=false
+bar   row=1 x=352.00 isFinal=true
+warn  scope=measure:3 codes=[indeterminateTerminalDuration] row=1 measure=4
+warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2
