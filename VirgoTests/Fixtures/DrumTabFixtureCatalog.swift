@@ -162,21 +162,33 @@ enum DrumTabFixtureCatalog {
     /// full-measure rest `NotationRestTopologyBuilder` emits for the (empty)
     /// lower voice -- that lower-voice rest is exactly what the differential
     /// needs: it disappears if a control chip is ever mistaken for a
-    /// lower-voice onset. But `applyConservativeFallback` strips *every*
-    /// rest -- including that unconditional one -- from a chart's true final
-    /// measure once it resolves `.unsupported(indeterminateTerminalDuration)`
-    /// (see `sixteenthRun`'s doc comment; confirmed empirically against
+    /// lower-voice onset. But `NotationLayoutEngine.layout(...)` drops
+    /// *every* rest from a chart's true final measure once that measure
+    /// resolves `.unsupported(...)`, via
+    /// `snapshot.rests.filter { !unsupportedMeasureIndexes.contains(...) }`
+    /// (`NotationLayoutEngine.swift:106-113`; see `sixteenthRun`'s doc
+    /// comment on the terminal-measure trap, confirmed empirically against
     /// `same-time-trio`'s golden, which shows zero rest lines survive for
     /// its own final measure despite real gaps in its lower voice). Without
     /// a sentinel, measure 1 IS that final measure, its rest is stripped,
     /// and the only rests left in the digest are from the always-empty,
     /// control-free measure 0 lead-in -- a differential that would still
     /// read "non-empty" but could never actually detect a control-to-rest
-    /// leak in measure 1. The measure-2 sentinel (a single hi-hat note, same
-    /// upper voice as the content) gives measure 1's last upper-voice onset
-    /// a follower, so measure 1 resolves `.supported` and keeps its own
-    /// rest; measure 2 becomes the new (untested) unsupported terminal
-    /// measure instead.
+    /// leak in measure 1.
+    ///
+    /// The measure-2 sentinel (a single hi-hat note, same *upper* voice as
+    /// the content) fixes this by giving measure 1's last upper-voice onset
+    /// (hi-hat, tick 3) a same-voice follower. Duration inference chases the
+    /// next onset in the *same voice* only, scanning across measures
+    /// (`VisualDurationLookup.candidates`, grouping by voice and mapping
+    /// each tick to its next same-voice tick at `VisualDurationLookup.swift:
+    /// 60-69`); with no follower at all, that onset falls through to the
+    /// unconditional indeterminate fallback (`NotationRhythmAnalyzer.swift:
+    /// 283-293`) and drags measure 1 unsupported. With the sentinel, that
+    /// last onset gets an exact one-tick same-voice candidate and resolves
+    /// `.supported` like its neighbors, so measure 1 keeps its own rest;
+    /// measure 2 becomes the new (untested) unsupported terminal measure
+    /// instead.
     static let stopChokeDamp = DrumTabFixture(
         name: "stop-choke-damp",
         dtx: chart([
