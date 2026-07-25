@@ -124,8 +124,8 @@ extension NotationLayoutDigest {
         for head in heads {
             lines.append(
                 "head  m\(head.timeColumn.measureIndex) "
-                + "t\(String(format: "%04d", head.timeColumn.tickWithinMeasure)) "
-                + "abs\(String(format: "%04d", head.timeColumn.absoluteLayoutTick)) "
+                + "t\(String(format: "%04d", locale: posix, head.timeColumn.tickWithinMeasure)) "
+                + "abs\(String(format: "%04d", locale: posix, head.timeColumn.absoluteLayoutTick)) "
                 + "pos=\(pt(head.position)) \(head.drumType.description) "
                 + "glyph=\(head.glyph) variant=\(head.variant) voice=\(head.voice.rawValue) "
                 + "stem=\(head.stemDirection.rawValue) row=\(head.row) "
@@ -162,7 +162,7 @@ extension NotationLayoutDigest {
         for rest in rests {
             lines.append(
                 "rest  m\(rest.measureIndex) "
-                + "t\(String(format: "%04d", rest.timeColumn.tickWithinMeasure)) "
+                + "t\(String(format: "%04d", locale: posix, rest.timeColumn.tickWithinMeasure)) "
                 + "voice=\(rest.voice.rawValue) dur=\(rest.duration) ticks=\(rest.durationTicks) "
                 + "vis=\(rest.visibility) pos=\(pt(rest.position)) "
                 + "tuplet=\(rest.tupletID.map { "\($0)" } ?? "-")"
@@ -176,7 +176,7 @@ extension NotationLayoutDigest {
         for stop in stops {
             lines.append(
                 "stop  m\(stop.timeColumn.measureIndex) "
-                + "t\(String(format: "%04d", stop.timeColumn.tickWithinMeasure)) "
+                + "t\(String(format: "%04d", locale: posix, stop.timeColumn.tickWithinMeasure)) "
                 + "kind=\(stop.kind.rawValue) target=\(stop.targetLaneID) "
                 + "pos=\(pt(stop.position)) lane=\(stop.sourceLaneID ?? "-")"
             )
@@ -190,13 +190,13 @@ extension NotationLayoutDigest {
         }
 
         for dot in layout.rhythmDots.sorted(by: byStart(\.position, \.id)) {
-            lines.append("dot   source=\(dot.source) pos=\(pt(dot.position)) row=\(dot.rowIndex)")
+            lines.append("dot   source=\(dotSourceText(dot.source)) pos=\(pt(dot.position)) row=\(dot.rowIndex)")
         }
 
-        for tuplet in layout.tuplets.sorted(by: { "\($0.id)" < "\($1.id)" }) {
+        for tuplet in layout.tuplets.sorted(by: tupletIDOrder) {
             let bracket = tuplet.bracketPoints.map(pt).joined(separator: " ")
             lines.append(
-                "tuplet id=\(tuplet.id) voice=\(tuplet.voice.rawValue) ratio=\(tuplet.ratio) "
+                "tuplet id=\(tupletIDText(tuplet.id)) voice=\(tuplet.voice.rawValue) ratio=\(tuplet.ratio) "
                 + "members=\(tuplet.memberEventIDs.map(\.rawValue).sorted()) "
                 + "bracketVisible=\(tuplet.isBracketVisible) label=\(pt(tuplet.labelPosition)) "
                 + "row=\(tuplet.rowIndex) bracket=[\(bracket)]"
@@ -218,13 +218,56 @@ extension NotationLayoutDigest {
         for warning in layout.rhythmWarnings.sorted(by: byStart(\.position, \.id)) {
             let codes = warning.codes.map(\.rawValue).sorted().joined(separator: ",")
             lines.append(
-                "warn  scope=\(warning.scope) codes=[\(codes)] "
+                "warn  scope=\(warningScopeText(warning.scope)) codes=[\(codes)] "
                 + "row=\(warning.rowIndex.map(String.init) ?? "-") "
                 + "measure=\(warning.displayMeasureNumber.map(String.init) ?? "-")"
             )
         }
 
         return lines
+    }
+
+    /// Field-by-field text for `RenderedRhythmDotSource`, rather than reflecting the enum
+    /// via string interpolation. Reflection output is stable within a toolchain but is not
+    /// a documented API contract across Swift versions.
+    private static func dotSourceText(_ source: RenderedRhythmDotSource) -> String {
+        switch source {
+        case let .event(eventID):
+            return "event:\(eventID.rawValue)"
+        case let .rest(restID):
+            return "rest:\(restID)"
+        }
+    }
+
+    /// Field-by-field text for `RhythmWarningScope`, for the same reason as
+    /// `dotSourceText(_:)`.
+    private static func warningScopeText(_ scope: RhythmWarningScope) -> String {
+        switch scope {
+        case let .measure(index):
+            return "measure:\(index)"
+        case .chartFatal:
+            return "chartFatal"
+        }
+    }
+
+    /// Field-by-field text for `RhythmTupletID`. Also backs `tupletIDOrder(_:_:)` below —
+    /// this ID doubles as the tuplet sort key, so an unstable reflected description would
+    /// have silently reordered `tuplet` lines, not just reformatted them.
+    private static func tupletIDText(_ id: RhythmTupletID) -> String {
+        "m\(id.measureIndex)/v\(id.voice.rawValue)/g\(id.beatGroupIndex)/"
+            + "t\(id.startTick)+\(id.durationTicks)/e\(id.stableMemberEventID.rawValue)"
+    }
+
+    /// Explicit field-by-field total order for `RenderedTuplet`, matching
+    /// `tupletIDText(_:)`'s field order.
+    private static func tupletIDOrder(_ lhs: RenderedTuplet, _ rhs: RenderedTuplet) -> Bool {
+        let left = lhs.id, right = rhs.id
+        if left.measureIndex != right.measureIndex { return left.measureIndex < right.measureIndex }
+        if left.voice.rawValue != right.voice.rawValue { return left.voice.rawValue < right.voice.rawValue }
+        if left.beatGroupIndex != right.beatGroupIndex { return left.beatGroupIndex < right.beatGroupIndex }
+        if left.startTick != right.startTick { return left.startTick < right.startTick }
+        if left.durationTicks != right.durationTicks { return left.durationTicks < right.durationTicks }
+        return left.stableMemberEventID.rawValue < right.stableMemberEventID.rawValue
     }
 
     /// Total order for primitives that carry a point but no time column.

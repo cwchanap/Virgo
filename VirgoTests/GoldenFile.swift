@@ -15,8 +15,24 @@ enum GoldenFile {
         directory.appendingPathComponent("\(fixture).txt")
     }
 
+    /// The working invocation, spelled out once so both user-facing messages below (and
+    /// anyone reading them) get instructions that actually reach the test host. Plain
+    /// `VIRGO_UPDATE_GOLDENS=1 xcodebuild test …` does not: xcodebuild does not forward
+    /// bare shell variables into the process it spawns for the test bundle.
+    private static let updateInstructions = """
+    Via `xcodebuild test`, set TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1 (xcodebuild only \
+    forwards TEST_RUNNER_-prefixed variables into the test host). Via an Xcode scheme's \
+    test-action environment variables, the bare VIRGO_UPDATE_GOLDENS=1 works directly.
+    """
+
+    /// `xcodebuild test` only forwards `TEST_RUNNER_`-prefixed variables into the spawned
+    /// test host (stripping the prefix before exec); an Xcode scheme's test-action
+    /// environment injects the bare key directly. Both spellings are accepted so either
+    /// invocation style works.
     static var isUpdating: Bool {
-        ProcessInfo.processInfo.environment["VIRGO_UPDATE_GOLDENS"] == "1"
+        let environment = ProcessInfo.processInfo.environment
+        return environment["VIRGO_UPDATE_GOLDENS"] == "1"
+            || environment["TEST_RUNNER_VIRGO_UPDATE_GOLDENS"] == "1"
     }
 
     static func assertMatches(
@@ -48,7 +64,7 @@ enum GoldenFile {
             Issue.record(
                 """
                 Missing golden for "\(fixture)" at \(target.path).
-                Create it by running this suite with VIRGO_UPDATE_GOLDENS=1.
+                Create it by running this suite with the update flag set. \(updateInstructions)
                 """,
                 sourceLocation: sourceLocation
             )
@@ -109,7 +125,7 @@ enum GoldenFile {
             out.append("  \(index + 1) + \(actualLines[safeIndex: index] ?? "<absent>")")
             emitted += 1
         }
-        out.append("Regenerate with VIRGO_UPDATE_GOLDENS=1, then inspect `git diff`.")
+        out.append("Regenerate: \(updateInstructions) Then inspect `git diff`.")
         return out.joined(separator: "\n")
     }
 }

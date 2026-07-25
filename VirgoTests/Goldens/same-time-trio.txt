@@ -23,4 +23,4 @@ ledger row=0 start=(498.00,230.00) end=(534.00,230.00)
 bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
-warn  scope=measure(1) codes=[indeterminateTerminalDuration] row=0 measure=2
+warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2
