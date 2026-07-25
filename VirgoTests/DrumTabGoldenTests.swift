@@ -134,11 +134,18 @@ struct DrumTabGoldenTests {
 
         #expect(result.layout.noteHeads.count == 2)
         // Count alone is not enough: another lane surviving would satisfy it
-        // while 1C was silently dropped.
+        // while 1C was silently dropped. `variant` is also required, not
+        // just `sourceLaneID`/`drumType`: those two fields are copied
+        // straight from the source note and stay "1C"/.kick even if
+        // DrumNotationCatalog.resolve's lane lookup mismatches and falls
+        // back to definition.defaultVariant (.standard, the same variant
+        // plain lane 13 gets) -- a lane-matching bug in `resolve` would
+        // silently collapse 1C into an indistinguishable-from-13 kick
+        // without tripping sourceLaneID or drumType at all.
         let leftBass = result.layout.noteHeads.filter {
-            $0.sourceLaneID == "1C" && $0.drumType == .kick
+            $0.sourceLaneID == "1C" && $0.drumType == .kick && $0.variant == .leftBass
         }
-        #expect(leftBass.count == 1, "lane 1C must map to a kick head")
+        #expect(leftBass.count == 1, "lane 1C must map to a kick head with the leftBass variant")
 
         try GoldenFile.assertMatches(
             NotationLayoutDigest.make(result),
