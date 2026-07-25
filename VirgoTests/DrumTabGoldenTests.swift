@@ -223,8 +223,11 @@ struct DrumTabGoldenTests {
         #expect(result.layout.noteHeads.count == 3)
         let contentHeads = result.layout.noteHeads.filter { $0.timeColumn.measureIndex == 0 }
         #expect(contentHeads.count == 2)
-        // Grid resolution must not become visual duration.
-        #expect(contentHeads.allSatisfy { $0.interval != .sixtyfourth })
+        // Grid resolution must not become visual duration: both chips are
+        // spaced 33/64 apart, which snaps to a real, pinned `.half` -- not
+        // merely "anything but .sixtyfourth" (six other wrong values would
+        // still pass a `!=` check).
+        #expect(contentHeads.allSatisfy { $0.interval == .half })
         // Timing must survive: the second chip sits at 33/64 of the measure.
         // Looked up explicitly rather than via `measures.first` -- content
         // lives in measure 0 here, but that shortcut is unsafe in general
@@ -242,25 +245,32 @@ struct DrumTabGoldenTests {
         )
     }
 
-    @Test("upper and lower voices get independent rests")
+    @Test("upper and lower voices get independent rests while sounding together")
     func voiceRests() throws {
         let fixture = DrumTabFixtureCatalog.voiceRests
         let result = try DrumTabFixtureHarness.render(fixture)
 
-        // Measure 0: 2 kick notes. Measure 1: 1 kick sentinel. Measure 2: 2
-        // hi-hat notes. Measure 3: 1 hi-hat sentinel (see the fixture's doc
-        // comment for why this needs four measures rather than one).
-        #expect(result.layout.noteHeads.count == 6)
+        // Measure 0: 3 hi-hat notes (beats 2-4) + 2 kick notes (beats 3-4),
+        // both voices sounding in the same supported measure. Measure 1: 1
+        // hi-hat sentinel + 1 kick sentinel (see the fixture's doc comment).
+        #expect(result.layout.noteHeads.count == 7)
 
-        let printed = result.layout.rests.filter(\.isPrinted)
-        // Count/voice alone would also be satisfied by an accidental rest
-        // from the wrong measure, so each is pinned to the specific measure
-        // that must produce it: measure 0 (kick active, hi-hat silent) is
-        // the only place an upper rest can legitimately come from, and
-        // measure 2 (hi-hat active, kick silent) is the only place a lower
-        // rest can.
-        #expect(printed.contains { $0.voice == .upper && $0.measureIndex == 0 })
-        #expect(printed.contains { $0.voice == .lower && $0.measureIndex == 2 })
+        let printedUpper = result.layout.rests.filter { $0.isPrinted && $0.voice == .upper }
+        let printedLower = result.layout.rests.filter { $0.isPrinted && $0.voice == .lower }
+        // Hi-hat rests only beat 1 (one quarter); kick rests beats 1-2 (two
+        // quarters, one per beat group -- see the fixture's doc comment on
+        // why a two-beat leading gap is two rest events, not one half
+        // rest). Pinning count, measure, tick, AND duration for both voices
+        // means a regression that computes one voice's gaps from the other
+        // voice's onsets (e.g. dropping the `voice ==` filter in
+        // `NotationRestTopologyBuilder.buildExact`, `NotationRestTopology
+        // .swift:567`) would make the two sets match and fail here.
+        #expect(printedUpper.count == 1)
+        #expect(printedLower.count == 2)
+        #expect(printedUpper.allSatisfy { $0.measureIndex == 0 && $0.duration == .quarter })
+        #expect(printedLower.allSatisfy { $0.measureIndex == 0 && $0.duration == .quarter })
+        #expect(Set(printedUpper.map(\.timeColumn.tickWithinMeasure)) == [0])
+        #expect(Set(printedLower.map(\.timeColumn.tickWithinMeasure)) == [0, 1])
 
         try GoldenFile.assertMatches(
             NotationLayoutDigest.make(result),
@@ -275,6 +285,17 @@ struct DrumTabGoldenTests {
 
         #expect(result.layout.measures.count == 8)
         #expect(Set(result.layout.measures.map(\.row)).count >= 2, "fixture must wrap rows")
+        // Pins the dense/sparse alternation itself. A bare total
+        // (`noteHeads.count == 68`, 4 sparse * 1 + 4 dense * 16) would pass
+        // unchanged if the alternation were flipped -- 4 sparse + 4 dense
+        // measures sum to 68 no matter which four indices are which -- so
+        // it only catches the degenerate "every measure sparse/dense" case.
+        // Pinning note count per measure index instead also catches a
+        // flipped `isMultiple(of: 2)`.
+        let perMeasureCounts = (0..<8).map { index in
+            result.layout.noteHeads.filter { $0.timeColumn.measureIndex == index }.count
+        }
+        #expect(perMeasureCounts == [1, 16, 1, 16, 1, 16, 1, 16])
 
         try GoldenFile.assertMatches(
             NotationLayoutDigest.make(result),
