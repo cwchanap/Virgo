@@ -1,0 +1,193 @@
+tl-grid ticksPerWholeNote=16 feel=straight
+tl-meas m0 startTick=0 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=unsupported[indeterminateTerminalDuration]
+tl-meas m1 startTick=16 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
+tl-meas m2 startTick=32 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=unsupported[indeterminateTerminalDuration]
+tl-meas m3 startTick=48 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
+tl-meas m4 startTick=64 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=unsupported[indeterminateTerminalDuration]
+tl-meas m5 startTick=80 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
+tl-meas m6 startTick=96 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=unsupported[indeterminateTerminalDuration]
+tl-meas m7 startTick=112 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=unsupported[indeterminateTerminalDuration]
+
+grid  ticksPerWholeNote=16 tickWidth=28.00 leftPadding=52.00
+style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
+dims  noteHeadSize=30.00x20.00 totalHeight=2850.00 paintedBounds=(99.00,43.00,502.00,2387.00)
+row   0 measures=[m0] contentWidth=900.00
+row   1 measures=[m1] contentWidth=900.00
+row   2 measures=[m2] contentWidth=900.00
+row   3 measures=[m3] contentWidth=900.00
+row   4 measures=[m4] contentWidth=900.00
+row   5 measures=[m5] contentWidth=900.00
+row   6 measures=[m6] contentWidth=900.00
+row   7 measures=[m7] contentWidth=900.00
+meas  m0 row=0 xOffset=100.00 width=500.00 startTick=0 durationTicks=16 contentStartX=152.00
+meas  m1 row=1 xOffset=100.00 width=500.00 startTick=16 durationTicks=16 contentStartX=152.00
+meas  m2 row=2 xOffset=100.00 width=500.00 startTick=32 durationTicks=16 contentStartX=152.00
+meas  m3 row=3 xOffset=100.00 width=500.00 startTick=48 durationTicks=16 contentStartX=152.00
+meas  m4 row=4 xOffset=100.00 width=500.00 startTick=64 durationTicks=16 contentStartX=152.00
+meas  m5 row=5 xOffset=100.00 width=500.00 startTick=80 durationTicks=16 contentStartX=152.00
+meas  m6 row=6 xOffset=100.00 width=500.00 startTick=96 durationTicks=16 contentStartX=152.00
+meas  m7 row=7 xOffset=100.00 width=500.00 startTick=112 durationTicks=16 contentStartX=152.00
+head  m0 t0000 abs0000 pos=(152.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m1 t0000 abs0016 pos=(152.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0001 abs0017 pos=(180.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0002 abs0018 pos=(208.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0003 abs0019 pos=(236.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0004 abs0020 pos=(264.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0005 abs0021 pos=(292.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0006 abs0022 pos=(320.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0007 abs0023 pos=(348.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0008 abs0024 pos=(376.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0009 abs0025 pos=(404.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0010 abs0026 pos=(432.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0011 abs0027 pos=(460.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0012 abs0028 pos=(488.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0013 abs0029 pos=(516.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0014 abs0030 pos=(544.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m1 t0015 abs0031 pos=(572.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
+head  m2 t0000 abs0032 pos=(152.00,750.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=2 lane=11
+head  m3 t0000 abs0048 pos=(152.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0001 abs0049 pos=(180.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0002 abs0050 pos=(208.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0003 abs0051 pos=(236.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0004 abs0052 pos=(264.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0005 abs0053 pos=(292.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0006 abs0054 pos=(320.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0007 abs0055 pos=(348.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0008 abs0056 pos=(376.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0009 abs0057 pos=(404.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0010 abs0058 pos=(432.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0011 abs0059 pos=(460.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0012 abs0060 pos=(488.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0013 abs0061 pos=(516.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0014 abs0062 pos=(544.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m3 t0015 abs0063 pos=(572.00,1070.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=3 lane=11
+head  m4 t0000 abs0064 pos=(152.00,1390.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=4 lane=11
+head  m5 t0000 abs0080 pos=(152.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0001 abs0081 pos=(180.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0002 abs0082 pos=(208.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0003 abs0083 pos=(236.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0004 abs0084 pos=(264.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0005 abs0085 pos=(292.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0006 abs0086 pos=(320.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0007 abs0087 pos=(348.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0008 abs0088 pos=(376.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0009 abs0089 pos=(404.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0010 abs0090 pos=(432.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0011 abs0091 pos=(460.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0012 abs0092 pos=(488.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0013 abs0093 pos=(516.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0014 abs0094 pos=(544.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m5 t0015 abs0095 pos=(572.00,1710.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=5 lane=11
+head  m6 t0000 abs0096 pos=(152.00,2030.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=6 lane=11
+head  m7 t0000 abs0112 pos=(152.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0001 abs0113 pos=(180.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0002 abs0114 pos=(208.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0003 abs0115 pos=(236.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0004 abs0116 pos=(264.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0005 abs0117 pos=(292.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0006 abs0118 pos=(320.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0007 abs0119 pos=(348.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0008 abs0120 pos=(376.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0009 abs0121 pos=(404.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0010 abs0122 pos=(432.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0011 abs0123 pos=(460.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0012 abs0124 pos=(488.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0013 abs0125 pos=(516.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0014 abs0126 pos=(544.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+head  m7 t0015 abs0127 pos=(572.00,2350.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=7 lane=11
+stem  ids=[1] dir=up start=(163.40,436.38) end=(163.40,355.38)
+stem  ids=[18] dir=up start=(163.40,1076.38) end=(163.40,995.38)
+stem  ids=[35] dir=up start=(163.40,1716.38) end=(163.40,1635.38)
+stem  ids=[2] dir=up start=(191.40,436.38) end=(191.40,355.38)
+stem  ids=[19] dir=up start=(191.40,1076.38) end=(191.40,995.38)
+stem  ids=[36] dir=up start=(191.40,1716.38) end=(191.40,1635.38)
+stem  ids=[3] dir=up start=(219.40,436.38) end=(219.40,355.38)
+stem  ids=[20] dir=up start=(219.40,1076.38) end=(219.40,995.38)
+stem  ids=[37] dir=up start=(219.40,1716.38) end=(219.40,1635.38)
+stem  ids=[4] dir=up start=(247.40,436.38) end=(247.40,355.38)
+stem  ids=[21] dir=up start=(247.40,1076.38) end=(247.40,995.38)
+stem  ids=[38] dir=up start=(247.40,1716.38) end=(247.40,1635.38)
+stem  ids=[5] dir=up start=(275.40,436.38) end=(275.40,355.38)
+stem  ids=[22] dir=up start=(275.40,1076.38) end=(275.40,995.38)
+stem  ids=[39] dir=up start=(275.40,1716.38) end=(275.40,1635.38)
+stem  ids=[6] dir=up start=(303.40,436.38) end=(303.40,355.38)
+stem  ids=[23] dir=up start=(303.40,1076.38) end=(303.40,995.38)
+stem  ids=[40] dir=up start=(303.40,1716.38) end=(303.40,1635.38)
+stem  ids=[7] dir=up start=(331.40,436.38) end=(331.40,355.38)
+stem  ids=[24] dir=up start=(331.40,1076.38) end=(331.40,995.38)
+stem  ids=[41] dir=up start=(331.40,1716.38) end=(331.40,1635.38)
+stem  ids=[8] dir=up start=(359.40,436.38) end=(359.40,355.38)
+stem  ids=[25] dir=up start=(359.40,1076.38) end=(359.40,995.38)
+stem  ids=[42] dir=up start=(359.40,1716.38) end=(359.40,1635.38)
+stem  ids=[9] dir=up start=(387.40,436.38) end=(387.40,355.38)
+stem  ids=[26] dir=up start=(387.40,1076.38) end=(387.40,995.38)
+stem  ids=[43] dir=up start=(387.40,1716.38) end=(387.40,1635.38)
+stem  ids=[10] dir=up start=(415.40,436.38) end=(415.40,355.38)
+stem  ids=[27] dir=up start=(415.40,1076.38) end=(415.40,995.38)
+stem  ids=[44] dir=up start=(415.40,1716.38) end=(415.40,1635.38)
+stem  ids=[11] dir=up start=(443.40,436.38) end=(443.40,355.38)
+stem  ids=[28] dir=up start=(443.40,1076.38) end=(443.40,995.38)
+stem  ids=[45] dir=up start=(443.40,1716.38) end=(443.40,1635.38)
+stem  ids=[12] dir=up start=(471.40,436.38) end=(471.40,355.38)
+stem  ids=[29] dir=up start=(471.40,1076.38) end=(471.40,995.38)
+stem  ids=[46] dir=up start=(471.40,1716.38) end=(471.40,1635.38)
+stem  ids=[13] dir=up start=(499.40,436.38) end=(499.40,355.38)
+stem  ids=[30] dir=up start=(499.40,1076.38) end=(499.40,995.38)
+stem  ids=[47] dir=up start=(499.40,1716.38) end=(499.40,1635.38)
+stem  ids=[14] dir=up start=(527.40,436.38) end=(527.40,355.38)
+stem  ids=[31] dir=up start=(527.40,1076.38) end=(527.40,995.38)
+stem  ids=[48] dir=up start=(527.40,1716.38) end=(527.40,1635.38)
+stem  ids=[15] dir=up start=(555.40,436.38) end=(555.40,355.38)
+stem  ids=[32] dir=up start=(555.40,1076.38) end=(555.40,995.38)
+stem  ids=[49] dir=up start=(555.40,1716.38) end=(555.40,1635.38)
+stem  ids=[16] dir=up start=(583.40,436.38) end=(583.40,355.38)
+stem  ids=[33] dir=up start=(583.40,1076.38) end=(583.40,995.38)
+stem  ids=[50] dir=up start=(583.40,1716.38) end=(583.40,1635.38)
+beam  ids=[1, 2, 3, 4] dir=up level=1 kind=full start=(163.40,355.38) end=(247.40,355.38) thickness=4.00
+beam  ids=[1, 2, 3, 4] dir=up level=0 kind=full start=(163.40,361.38) end=(247.40,361.38) thickness=4.00
+beam  ids=[18, 19, 20, 21] dir=up level=1 kind=full start=(163.40,995.38) end=(247.40,995.38) thickness=4.00
+beam  ids=[18, 19, 20, 21] dir=up level=0 kind=full start=(163.40,1001.38) end=(247.40,1001.38) thickness=4.00
+beam  ids=[35, 36, 37, 38] dir=up level=1 kind=full start=(163.40,1635.38) end=(247.40,1635.38) thickness=4.00
+beam  ids=[35, 36, 37, 38] dir=up level=0 kind=full start=(163.40,1641.38) end=(247.40,1641.38) thickness=4.00
+beam  ids=[5, 6, 7, 8] dir=up level=1 kind=full start=(275.40,355.38) end=(359.40,355.38) thickness=4.00
+beam  ids=[5, 6, 7, 8] dir=up level=0 kind=full start=(275.40,361.38) end=(359.40,361.38) thickness=4.00
+beam  ids=[22, 23, 24, 25] dir=up level=1 kind=full start=(275.40,995.38) end=(359.40,995.38) thickness=4.00
+beam  ids=[22, 23, 24, 25] dir=up level=0 kind=full start=(275.40,1001.38) end=(359.40,1001.38) thickness=4.00
+beam  ids=[39, 40, 41, 42] dir=up level=1 kind=full start=(275.40,1635.38) end=(359.40,1635.38) thickness=4.00
+beam  ids=[39, 40, 41, 42] dir=up level=0 kind=full start=(275.40,1641.38) end=(359.40,1641.38) thickness=4.00
+beam  ids=[9, 10, 11, 12] dir=up level=1 kind=full start=(387.40,355.38) end=(471.40,355.38) thickness=4.00
+beam  ids=[9, 10, 11, 12] dir=up level=0 kind=full start=(387.40,361.38) end=(471.40,361.38) thickness=4.00
+beam  ids=[26, 27, 28, 29] dir=up level=1 kind=full start=(387.40,995.38) end=(471.40,995.38) thickness=4.00
+beam  ids=[26, 27, 28, 29] dir=up level=0 kind=full start=(387.40,1001.38) end=(471.40,1001.38) thickness=4.00
+beam  ids=[43, 44, 45, 46] dir=up level=1 kind=full start=(387.40,1635.38) end=(471.40,1635.38) thickness=4.00
+beam  ids=[43, 44, 45, 46] dir=up level=0 kind=full start=(387.40,1641.38) end=(471.40,1641.38) thickness=4.00
+beam  ids=[13, 14, 15, 16] dir=up level=1 kind=full start=(499.40,355.38) end=(583.40,355.38) thickness=4.00
+beam  ids=[13, 14, 15, 16] dir=up level=0 kind=full start=(499.40,361.38) end=(583.40,361.38) thickness=4.00
+beam  ids=[30, 31, 32, 33] dir=up level=1 kind=full start=(499.40,995.38) end=(583.40,995.38) thickness=4.00
+beam  ids=[30, 31, 32, 33] dir=up level=0 kind=full start=(499.40,1001.38) end=(583.40,1001.38) thickness=4.00
+beam  ids=[47, 48, 49, 50] dir=up level=1 kind=full start=(499.40,1635.38) end=(583.40,1635.38) thickness=4.00
+beam  ids=[47, 48, 49, 50] dir=up level=0 kind=full start=(499.40,1641.38) end=(583.40,1641.38) thickness=4.00
+rest  m1 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(376.00,490.00) tuplet=-
+rest  m3 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(376.00,1130.00) tuplet=-
+rest  m5 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(376.00,1770.00) tuplet=-
+bar   row=0 x=100.00 isFinal=false
+bar   row=0 x=600.00 isFinal=false
+bar   row=1 x=100.00 isFinal=false
+bar   row=1 x=600.00 isFinal=false
+bar   row=2 x=100.00 isFinal=false
+bar   row=2 x=600.00 isFinal=false
+bar   row=3 x=100.00 isFinal=false
+bar   row=3 x=600.00 isFinal=false
+bar   row=4 x=100.00 isFinal=false
+bar   row=4 x=600.00 isFinal=false
+bar   row=5 x=100.00 isFinal=false
+bar   row=5 x=600.00 isFinal=false
+bar   row=6 x=100.00 isFinal=false
+bar   row=6 x=600.00 isFinal=false
+bar   row=7 x=100.00 isFinal=false
+bar   row=7 x=600.00 isFinal=true
+warn  scope=measure:0 codes=[indeterminateTerminalDuration] row=0 measure=1
+warn  scope=measure:2 codes=[indeterminateTerminalDuration] row=2 measure=3
+warn  scope=measure:4 codes=[indeterminateTerminalDuration] row=4 measure=5
+warn  scope=measure:6 codes=[indeterminateTerminalDuration] row=6 measure=7
+warn  scope=measure:7 codes=[indeterminateTerminalDuration] row=7 measure=8
