@@ -125,16 +125,21 @@ any geometry assertion, so a fixture that silently degrades cannot pass vacuousl
 | `NotationLayoutDigest` | `VirgoTests/` | test | `FixtureRenderResult` → stable text |
 
 The harness returns a composite, not a bare layout — the §7.1 beam invariants and the digest header
-need beat-group and engraving data that lives on the snapshot, not on the layout:
+need beat-group and engraving data that lives on the snapshot, not on the layout, and the §8 playhead
+tests need the attached chart:
 
 ```swift
 struct FixtureRenderResult {
+    let chart: Chart                     // attached + saved; for view-model-level tests (§8)
     let layout: NotationLayout
     let snapshot: RhythmLayoutSnapshot   // beat groups, engraving support, feel
     let timeline: RhythmTimeline
     let style: NotationLayoutStyle
 }
 ```
+
+The `ModelContainer` backing `chart` must outlive the result, so the harness keeps it alive for the
+duration of the test rather than letting it deallocate when `render(...)` returns.
 
 ### 4.3 The one production change
 
@@ -231,12 +236,32 @@ the harness asserts them before any geometry comparison:
 | 2 | 16 heads, one measure, ≥4 beam groups |
 | 3 | ≥1 beam with `kind == .forwardHook` or `.backwardHook` |
 | 4 | exactly 2 heads; neither `rhythm.baseInterval == .sixtyfourth` |
-| 5 | ≥1 `RenderedTuplet`, or an engraving-unsupported diagnostic on the measure |
+| 5 | See §5.2 — **not** a free choice between tuplet and diagnostic |
 | 6 | 3 heads with 3 distinct `(drumType, glyph)` pairs |
 | 7 | ≥1 head with `drumType == .kick` **and** `sourceLaneID == "1C"` |
 | 8 | exactly 3 stop notes, kinds `{stop, choke, damp}`; `layout.rests` unaffected |
 | 9 | ≥1 printed rest in each of `.upper` and `.lower` |
 | 10 | `Set(measures.map(\.row)).count >= 2`; one `tickWidth` chart-wide |
+
+### 5.2 Fixture 5: the fallback must not be a free pass
+
+An earlier draft let fixture 5 pass on "≥1 `RenderedTuplet`, **or** an engraving-unsupported
+diagnostic". Review correctly identified that as a hole: a future regression that degraded genuine
+triplet engraving into the unsupported fallback would satisfy the second branch and pass, and the
+golden would pin the degraded output as correct.
+
+The gate is therefore conditional on engraving support, not a choice:
+
+- The test first reads `snapshot.measures[triplet].engravingSupport`.
+- If `.supported`, the fixture **must** produce ≥1 `RenderedTuplet` whose `ratio` matches the
+  fixture's declared triplet ratio. A diagnostic instead is a failure, not an alternative.
+- Only if `.unsupported(codes)` may it assert the diagnostic branch, and then it must additionally
+  assert the specific expected `RhythmDiagnosticCode` — not merely that *some* diagnostic exists — and
+  the golden carries a `# SUSPECT:` trailer (§11) recording that this fixture pins a fallback.
+
+This keeps HPA-145's "documented conservative fallback" license intact without letting it silently
+absorb a real regression. Which branch is live today is determined during implementation by running
+the fixture; the spec deliberately does not guess.
 
 ## 6. Digest format
 
@@ -338,6 +363,23 @@ cannot silently self-approve, and a developer regenerating locally always sees w
 before committing. A missing golden fails with an explicit "run with `VIRGO_UPDATE_GOLDENS=1` to
 create" message rather than passing.
 
+### 6.5 Comparison failure output
+
+A boolean `#expect(actual == expected)` on a multi-hundred-line string is close to undiagnosable, and
+these digests are long by design. The comparison helper therefore does not compare whole strings — it
+splits both sides on newlines and reports, in this order:
+
+1. the fixture name and golden path;
+2. a count of differing lines, and the line numbers of the first and last divergence — so a
+   one-primitive shift is instantly distinguishable from a whole-chart reflow;
+3. a unified-style diff limited to divergent lines with two lines of surrounding context, capped at 40
+   emitted lines with an "and N more differing lines" tail so a total reflow cannot flood the log;
+4. if lengths differ, the count on each side, stated separately from content differences — a missing
+   `flag` line and a moved `flag` line are different bugs.
+
+The cap exists so CI output stays usable; the full actual digest is always recoverable by rerunning
+with `VIRGO_UPDATE_GOLDENS=1` and reading `git diff`.
+
 ## 7. Test files
 
 Three new files, each under the 600-line SwiftLint file warning.
@@ -353,11 +395,29 @@ The two screenshot failure modes from HPA-97, as named tests:
   Expressed against `contentStartX` and the tick span, **not** `RenderedMeasure.width`, which
   includes bar-line and padding allowance and would fail for the wrong reason.
 
-**Overlong connection bars** — fixtures 2, 3, 10:
-- every beam's x-span ≤ its containing beat group's width, using `snapshot.measures[…].beatGroups`
-  (beat groups are not on `RenderedBeam`);
-- no beam crosses a beat-group, measure, row, or voice boundary;
+**Overlong connection bars** — fixtures 2, 3, 10. Review asked whether the cross-voice clause was
+falsifiable. It is not, and the problem is broader than voice: `NotationBeamTopology`'s private
+`GroupKey` partitions events by `measureIndex`, `row`, `voice`, `direction`, `beatGroupIndex`,
+`beatGroupStartTick`, and `beatGroupDurationTicks`. A beam therefore **cannot** contain heads from two
+measures, rows, voices, stem directions, or beat groups — that is dictionary-key construction, not
+behavior. Asserting it over `noteHeadIDs` membership would be tautological and would read as stronger
+coverage than it is.
+
+The invariants are therefore split by what they can actually catch:
+
+*Geometric (falsifiable — this is the screenshot failure mode).* The bug in the screenshots was beam
+**geometry** extending past its members while membership stayed correct, so these carry the weight:
+- each beam's `[start.x, end.x]` lies within the x-range spanned by its own members' stem anchors,
+  plus at most the style's hook length for `forwardHook`/`backwardHook` kinds;
+- each beam's x-span ≤ its containing beat group's x extent, derived from
+  `snapshot.measures[…].beatGroups` via `TabGrid.xPosition(in:localTick:)` (beat groups are not on
+  `RenderedBeam`);
 - secondary beams (`level > 1`) do not span heads lacking that level.
+
+*Structural partition guard (tautological today, kept deliberately).* One test asserts that every
+beam's member heads agree on measure, row, voice, and stem direction. It is labelled in-code as a
+guard against a future change removing a field from `GroupKey`, not as a behavioral invariant — so
+nobody reads it as proof that cross-voice beaming was tested.
 
 Cross-cutting invariants over all ten fixtures, parameterized:
 - every head's x equals `TabGrid.xPosition(in:localTick:)` for its own measure and tick;
@@ -367,7 +427,8 @@ Cross-cutting invariants over all ten fixtures, parameterized:
 
 ### 7.2 `DrumTabGoldenTests.swift`
 
-Ten digest comparisons, parameterized over the catalog, each preceded by its §5.1 validity gate.
+Ten digest comparisons, parameterized over the catalog, each preceded by its §5.1 validity gate (and
+§5.2 for fixture 5). Mismatches report via the §6.5 diff helper, never a bare string equality.
 
 ### 7.3 `DrumTabRenderProbeTests.swift`
 
@@ -392,7 +453,25 @@ HPA-144 requires tests verifying playhead x alignment against rendered note colu
 
 `purpleBarPosition` is computed in `GameplayViewModel+VisualUpdates` and requires a full view model —
 SwiftData container, metronome, practice settings. Rather than build a second playhead harness,
-extend that pattern to the dense-row and multi-row fixtures using `GameplayViewModelTestHarness`.
+extend that pattern to the dense-row and multi-row fixtures.
+
+**Chart provenance (the seam review flagged as unresolved).** These tests must consume the *same*
+fixtures as the goldens, or they verify alignment for a chart nobody else tests. `DrumTabFixtureHarness`
+therefore exposes the attached, persisted `Chart` it built in §4.1 — DTX text through
+`persistenceProjection()`, `setRhythmMetadata`, inserted and saved in a `TestContainer` — and the
+playhead tests hand that chart straight to
+`GameplayViewModel(chart:metronome: GameplayViewModelTestHarness.createTestMetronome())`.
+
+Explicitly **not** `GameplayViewModelTestHarness.createTestChart(...)`: it does not run DTX through the
+projection, so it would leave `rhythmMetadataState == .missing`, route `resolve(chart:)` through
+`resolveMissing`, and land the test on the legacy layout path with a chart that may be detached — the
+hazard §9 exists to avoid. This is why `FixtureRenderResult` carries `chart` (§4.2).
+
+Because these tests enter through the view model rather than `DrumTabFixtureHarness.render(...)`, they
+do **not** inherit the §5.1 validity gates automatically. Each must re-assert
+`availability == .valid`, `timeline != nil`, and a non-zero head count before comparing
+`purpleBarPosition?.x` against a rendered column — otherwise a fixture that degrades to
+`resolveMissing` yields `nil` on both sides and passes vacuously.
 
 `RhythmTimelineIntegrationTests.swift` is already 602 lines, over the 600-line warning. The two new
 tests go in a sibling file, `DrumTabPlayheadAlignmentTests.swift`, not into the existing file.
@@ -448,3 +527,6 @@ regression suite rather than the minimum non-redundant set.
 | Goldens depend on ambient machine or user state | §4.4 pins `rowWidth` and `notePositionOverrides`; the `style` line serializes them into the golden |
 | Extraction changes view-model behavior | Pure move with `feel` parameterized and `logDiagnostics()` retained; existing `GameplayViewModel` suites are the regression check |
 | Ink probe flakiness on CI | Alpha-based, colour-agnostic classification; `> 0` thresholds, never exact counts |
+| A golden blesses a degraded fallback instead of real engraving | §5.2 makes fixture 5's gate conditional on `engravingSupport` rather than an either/or, requires the specific diagnostic code, and forces a `# SUSPECT:` trailer when the fallback branch is pinned |
+| An invariant reads as stronger coverage than it provides | §7.1 separates falsifiable geometric assertions from the `GroupKey` partition guard, which is labelled in-code as tautological under current construction |
+| Playhead tests silently diverge from the golden fixtures | §8 requires the attached chart from `DrumTabFixtureHarness`, forbids `createTestChart`, and re-asserts the §5.1 gates so a `nil == nil` comparison cannot pass |
