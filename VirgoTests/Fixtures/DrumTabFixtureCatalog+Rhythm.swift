@@ -174,4 +174,59 @@ extension DrumTabFixtureCatalog {
                 : DrumTabFixture.line(measure: measure, lane: "11", at: Array(0..<16), total: 16)
         })
     )
+
+    /// Fixture 5: a 12-position (non-power-of-two) grid on one voice — four
+    /// groups of eighth-note triplets (4 beats * 3 subdivisions). Grid
+    /// resolution must not silently degrade a triplet chart to quarter notes
+    /// or any other value that happens not to be `.unsupported`.
+    ///
+    /// Content lives in DTX measure 0 (not 1), with a one-note sentinel in
+    /// measure 1 -- same shape as `sixteenthRun`. Content-in-1 would add an
+    /// empty lead-in measure 0 ahead of it (see `sixteenthRun`'s doc comment
+    /// and `same-time-trio`'s golden), which would make
+    /// `snapshot.measures.first { $0.measureIndex == 0 }` resolve to that
+    /// empty lead-in instead of the triplet measure under test.
+    ///
+    /// The sentinel does NOT change this fixture's verdict today, and the
+    /// doc comment says so on purpose. Measured directly by deleting the
+    /// sentinel line and re-recording: measure 0 resolves
+    /// `unsupported[incompleteTuplet,indeterminateTerminalDuration]` either
+    /// way. Do not cite it as protection against the terminal-measure trap
+    /// the way `sixteenthRun` and `stopChokeDamp` legitimately do -- at this
+    /// grid the indeterminate code has a different cause (see below).
+    ///
+    /// It is kept because it is load-bearing for the *future*: when HPA-145
+    /// is fixed and `recognizeTuplets` can form a candidate here, measure 0
+    /// still has to avoid being the chart's terminal measure or it would
+    /// stay `.unsupported` for the unrelated reason and this fixture could
+    /// never reach its `.supported` branch — the branch that asserts
+    /// triplets actually engrave. The test pins the sentinel (note count 13
+    /// and a required `measureIndex == 1`) so it cannot be quietly dropped.
+    ///
+    /// The measure cannot currently be rescued into `.supported` at all:
+    /// with only a
+    /// 12-position line and a 1-position sentinel in the chart, the resolved
+    /// `ticksPerWholeNote` is 12 (`RhythmTimelineBuilder
+    /// .resolvedTicksPerWholeNote`, `RhythmTimelineBuilder.swift:290-326` --
+    /// LCM of the 4/4 meter factor (4) and the grid factor from a
+    /// 12-position line (12) is 12). A regular (non-tuplet) eighth note
+    /// needs `ticksPerWholeNote` to be a multiple of 8
+    /// (`NotationRhythmAnalyzer.durationTicks(for:ticksPerWholeNote:)`,
+    /// `NotationRhythmAnalyzer.swift:681-694`), and the triplet-to-base
+    /// conversion in `tripletBaseInterval(performedTicks:ticksPerWholeNote:)`
+    /// (`NotationRhythmAnalyzer.swift:669-673`) requires
+    /// `performedTicks * 3` to be even to land back on that integer eighth.
+    /// At `ticksPerWholeNote == 12`, each performed triplet-eighth is 1
+    /// tick, and `1 * 3 == 3` is odd, so that conversion always returns
+    /// `nil` -- `recognizeTuplets` (`NotationRhythmAnalyzer.swift:298-359`)
+    /// can never form a candidate here, independent of the sentinel. This
+    /// is HPA-145, tracked via the golden's `# SUSPECT:` trailer: this
+    /// fixture pins the documented fallback, not engraved triplets.
+    static let tripletGrid = DrumTabFixture(
+        name: "triplet-grid",
+        dtx: chart([
+            DrumTabFixture.line(measure: 0, lane: "11", at: Array(0..<12), total: 12),
+            DrumTabFixture.line(measure: 1, lane: "11", at: [0], total: 1)
+        ])
+    )
 }

@@ -1,0 +1,29 @@
+tl-grid ticksPerWholeNote=12 feel=straight
+tl-meas m0 startTick=0 durationTicks=12 sig=4/4 groups=[0,3,6,9] engraving=unsupported[incompleteTuplet,indeterminateTerminalDuration]
+tl-meas m1 startTick=12 durationTicks=12 sig=4/4 groups=[0,3,6,9] engraving=unsupported[indeterminateTerminalDuration]
+
+grid  ticksPerWholeNote=12 tickWidth=28.00 leftPadding=52.00
+style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
+dims  noteHeadSize=30.00x20.00 totalHeight=610.00 paintedBounds=(99.00,43.00,789.00,147.00)
+row   0 measures=[m0,m1] contentWidth=938.00
+meas  m0 row=0 xOffset=100.00 width=388.00 startTick=0 durationTicks=12 contentStartX=152.00
+meas  m1 row=0 xOffset=500.00 width=388.00 startTick=12 durationTicks=12 contentStartX=552.00
+head  m0 t0000 abs0000 pos=(152.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0001 abs0001 pos=(180.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0002 abs0002 pos=(208.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0003 abs0003 pos=(236.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0004 abs0004 pos=(264.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0005 abs0005 pos=(292.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0006 abs0006 pos=(320.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0007 abs0007 pos=(348.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0008 abs0008 pos=(376.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0009 abs0009 pos=(404.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0010 abs0010 pos=(432.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m0 t0011 abs0011 pos=(460.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m1 t0000 abs0012 pos=(552.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+bar   row=0 x=100.00 isFinal=false
+bar   row=0 x=488.00 isFinal=false
+bar   row=0 x=888.00 isFinal=true
+warn  scope=measure:0 codes=[incompleteTuplet,indeterminateTerminalDuration] row=0 measure=1
+warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2
+# SUSPECT: HPA-145 12-grid measure falls back to unsupported engraving; this golden pins the fallback, not engraved triplets.
