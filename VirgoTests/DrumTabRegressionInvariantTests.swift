@@ -8,11 +8,14 @@ import CoreGraphics
 /// Where `DrumTabGoldenTests` pins exact per-fixture output, this suite targets
 /// the two HPA-97 screenshot failure modes directly: inconsistent spacing
 /// (dense measures compressing or sparse ones stretching relative to a shared
-/// tick scale) and overlong connection bars (beams whose drawn extent exceeds
-/// what their own members or beat group justify). It also carries a few
-/// chart-wide sanity checks (grid placement, simultaneous-onset alignment,
-/// painted-bounds coverage) that goldens exercise per fixture but never
-/// state as an explicit, reusable claim.
+/// tick scale -- the genuinely falsifiable gate for this is
+/// `headsSitOnGridPositions` under Cross-cutting, which compares real
+/// rendered note positions against the grid; see its doc comment) and
+/// overlong connection bars (beams whose drawn extent exceeds what their own
+/// members or beat group justify). It also carries a few chart-wide sanity
+/// checks (grid placement, simultaneous-onset alignment, painted-bounds
+/// coverage) that goldens exercise per fixture but never state as an
+/// explicit, reusable claim.
 @Suite("Drum tab regression invariants", .serialized)
 @MainActor
 struct DrumTabRegressionInvariantTests {
@@ -37,19 +40,28 @@ struct DrumTabRegressionInvariantTests {
     /// HPA-97 spacing bug would take, so it stays as a named regression pin on
     /// that formula rather than being deleted).
     ///
-    /// The second `#expect` is an independent cross-check rather than a
-    /// restatement: `measure.width` is set in a *different* code path
-    /// (`NotationLayoutEngine.buildMeasures(rhythmMeasures:tabGrid:input:)`,
-    /// `width = tabGrid.leftPadding + durationTicks * tickWidth`) from
-    /// `contentStartX` (`RenderedMeasure`'s computed property, `xOffset +
-    /// GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing` -- the same
-    /// two constants `tabGrid.leftPadding` is built from, but re-derived rather
-    /// than read from the grid). A future change to either constant
-    /// expression without updating the other -- e.g. adding a label margin to
-    /// one but not the other -- would diverge the measure's drawn box width
-    /// from where its own tick content actually starts and ends, and this
-    /// assertion is what would catch it; the first assertion above would not,
-    /// since it never touches `.width` or `.leftPadding`.
+    /// The second `#expect` was originally written to compare `measure.width`
+    /// against `grid.leftPadding + durationTicks * tickWidth`, on the theory
+    /// that `.width` came from a different code path than `.contentStartX`.
+    /// It did not: `width = tabGrid.leftPadding + durationTicks * tickWidth`
+    /// is `NotationLayoutEngine.buildMeasures`'s own formula
+    /// (`NotationLayoutEngine.swift:259`) restated verbatim off the same
+    /// `grid` instance, so it was exactly as tautological as the first
+    /// `#expect` -- confirmed by fault injection in review: a +37 shift added
+    /// to `RenderedMeasure.contentStartX`'s formula left both assertions
+    /// green while `DrumTabGoldenTests` went red 11/11.
+    ///
+    /// It has been replaced with a genuine cross-check between two
+    /// independently-written expressions of the same padding constant:
+    /// `RenderedMeasure.contentStartX` (`NotationLayout.swift:343`, `xOffset +
+    /// GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing`) versus
+    /// `TabGrid.leftPadding` (`NotationLayoutEngine+TabGrid.swift:28,55`, the
+    /// same two constants, written independently in a different file).
+    /// `contentStartX - xOffset` isolates the padding term from the first
+    /// expression; comparing it to `grid.leftPadding` is what would catch a
+    /// future edit to either expression (e.g. adding a label margin to one)
+    /// without updating the other. Verified to go red under the exact fault
+    /// injected above (re-checked locally before committing this fix).
     @Test("one tick scale spans every measure and row")
     func singleTickScaleChartWide() throws {
         let result = try DrumTabFixtureHarness.render(
@@ -67,67 +79,13 @@ struct DrumTabRegressionInvariantTests {
                     + "!= tick span \(expectedContentSpan)")
             )
 
-            let expectedWidth = grid.leftPadding + expectedContentSpan
+            let actualPadding = measure.contentStartX - measure.xOffset
             #expect(
-                abs(measure.width - expectedWidth) < tolerance,
-                Comment(rawValue: "measure \(measure.measureIndex) width \(measure.width) "
-                    + "!= leftPadding + tick span \(expectedWidth)")
+                abs(actualPadding - grid.leftPadding) < tolerance,
+                Comment(rawValue: "measure \(measure.measureIndex) contentStartX padding \(actualPadding) "
+                    + "!= grid.leftPadding \(grid.leftPadding)")
             )
         }
-    }
-
-    /// Same claim as above, from the opposite direction: a fixed tick delta
-    /// probed in a dense measure and a sparse measure must produce the same x
-    /// delta. Selection is by sorted `measureIndex`, not `Dictionary.first`,
-    /// so the pick is deterministic regardless of hash-seed-dependent
-    /// iteration order -- `multiRowStableWidths`'s own per-measure counts are
-    /// `[1,16,1,16,1,16,1,16]` (index 0 is sparse), so `.min()` on each
-    /// filtered key set always yields the same two measures across runs.
-    ///
-    /// Like the test above, this holds today by construction: both
-    /// `xPosition` calls read the one shared `grid.tickWidth`, and the
-    /// `measure.contentStartX` term cancels out of the subtraction on each
-    /// side, leaving `delta * tickWidth == delta * tickWidth`. It is kept as a
-    /// named pin on that architectural guarantee (single chart-wide grid, no
-    /// per-measure or density-aware scaling) rather than removed: the sparse
-    /// measure has exactly one onset, so there is no second real note-head
-    /// position to probe here instead -- probing the grid function directly is
-    /// the only way to exercise this specific measure pair at all. A
-    /// regression that instead makes *note head placement* diverge from
-    /// `xPosition` (e.g. `buildNoteHeads` computing x from note index instead
-    /// of tick) would not be caught here; that class is covered by
-    /// `headsSitOnGridPositions` below, which compares actual
-    /// `head.position.x` against this same grid function.
-    @Test("equal tick deltas produce equal x deltas in sparse and dense measures")
-    func equalTickDeltasGiveEqualXDeltas() throws {
-        let result = try DrumTabFixtureHarness.render(
-            DrumTabFixtureCatalog.multiRowStableWidths
-        )
-        let headsByMeasure = Dictionary(grouping: result.layout.noteHeads) {
-            $0.timeColumn.measureIndex
-        }
-        let dense = try #require(
-            headsByMeasure.filter { $0.value.count >= 16 }.keys.min()
-        )
-        let sparse = try #require(
-            headsByMeasure.filter { $0.value.count == 1 }.keys.min()
-        )
-
-        let denseMeasure = try #require(result.layout.measures.first { $0.measureIndex == dense })
-        let sparseMeasure = try #require(result.layout.measures.first { $0.measureIndex == sparse })
-
-        // Probe the same tick delta in both measures.
-        let delta = min(denseMeasure.durationTicks, sparseMeasure.durationTicks) / 4
-        let grid = result.layout.tabGrid
-        let denseSpan = grid.xPosition(in: denseMeasure, localTick: delta)
-            - grid.xPosition(in: denseMeasure, localTick: 0)
-        let sparseSpan = grid.xPosition(in: sparseMeasure, localTick: delta)
-            - grid.xPosition(in: sparseMeasure, localTick: 0)
-
-        #expect(
-            abs(denseSpan - sparseSpan) < tolerance,
-            "dense \(denseSpan) vs sparse \(sparseSpan): density is changing spacing"
-        )
     }
 
     // MARK: - Screenshot failure mode 2: overlong connection bars
@@ -200,14 +158,16 @@ struct DrumTabRegressionInvariantTests {
     func beamsStayWithinTheirBeatGroup() throws {
         let result = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.sixteenthRun)
         let grid = result.layout.tabGrid
-        let headByID = Dictionary(
-            uniqueKeysWithValues: result.layout.noteHeads.map { ($0.id, $0) }
-        )
+        // Dictionary(grouping:) rather than uniqueKeysWithValues: a duplicate
+        // note-head ID fails this test's own lookup instead of trapping the
+        // whole in-process test host (same reasoning as
+        // `DrumTabGoldenTests.stopChokeDamp`'s `stopNotesByKind`).
+        let headByID = Dictionary(grouping: result.layout.noteHeads, by: \.id)
 
         #expect(!result.layout.beams.isEmpty, "sixteenthRun must produce beams for this check to be non-vacuous")
 
         for beam in result.layout.beams {
-            let heads = beam.noteHeadIDs.compactMap { headByID[$0] }
+            let heads = beam.noteHeadIDs.compactMap { headByID[$0]?.first }
             guard let first = heads.first else { continue }
             let measureIndex = first.timeColumn.measureIndex
             let renderedMeasure = try #require(
@@ -250,11 +210,11 @@ struct DrumTabRegressionInvariantTests {
     func beamMembersShareTheirPartition() throws {
         for fixture in DrumTabFixtureCatalog.all {
             let result = try DrumTabFixtureHarness.render(fixture)
-            let headByID = Dictionary(
-                uniqueKeysWithValues: result.layout.noteHeads.map { ($0.id, $0) }
-            )
+            // Dictionary(grouping:) rather than uniqueKeysWithValues: see
+            // `beamsStayWithinTheirBeatGroup`'s `headByID` above.
+            let headByID = Dictionary(grouping: result.layout.noteHeads, by: \.id)
             for beam in result.layout.beams {
-                let heads = beam.noteHeadIDs.compactMap { headByID[$0] }
+                let heads = beam.noteHeadIDs.compactMap { headByID[$0]?.first }
                 #expect(Set(heads.map(\.timeColumn.measureIndex)).count <= 1)
                 #expect(Set(heads.map(\.row)).count <= 1)
                 #expect(Set(heads.map(\.voice)).count <= 1)
@@ -266,19 +226,40 @@ struct DrumTabRegressionInvariantTests {
     // MARK: - Cross-cutting
 
     /// Every note head's rendered x must equal what the grid says its own
-    /// tick should place it at. This is what would catch a regression where
-    /// note placement (`NotationLayoutEngine.buildNoteHeads`) stops routing
-    /// through `TabGrid.xPosition` -- e.g. computing x from note index or
-    /// local density instead of tick -- which the two spacing tests above
-    /// cannot see, since they call `xPosition` directly rather than reading
-    /// rendered head positions.
+    /// tick should place it at. This is the suite's actual density-invariance
+    /// gate for screenshot failure mode 1 (inconsistent spacing): it compares
+    /// real `head.position.x` -- as `NotationLayoutEngine.buildNoteHeads`
+    /// actually computed it, for every head in every fixture, including
+    /// `multiRowStableWidths`'s alternating 16-note/1-note measures -- against
+    /// `TabGrid.xPosition` recomputed independently. This is what would catch
+    /// a regression where note placement stops routing through `xPosition`
+    /// (e.g. computing x from note index or local density instead of tick).
+    ///
+    /// An earlier version of this suite also had a dedicated dense-vs-sparse
+    /// test that called `TabGrid.xPosition` directly on both sides instead of
+    /// reading real positions. It was removed (not weakened, deleted): it
+    /// reduced algebraically to `delta * grid.tickWidth == delta *
+    /// grid.tickWidth` off one shared grid instance and could not fail short
+    /// of rewriting `xPosition` itself. Unlike here, there was no way to
+    /// substitute real head positions for its sparse side -- every sparse
+    /// measure in `multiRowStableWidths` has exactly one onset, so there is
+    /// no second real data point in a sparse measure to derive a slope from,
+    /// and every other geometric quantity in this layout engine (measure
+    /// widths, bar positions) is likewise defined in terms of the same single
+    /// `tickWidth`, leaving no independent ground truth to compare against.
+    /// This test is the genuine replacement: it doesn't need a second data
+    /// point per measure, because it checks each head's own tick against its
+    /// own position directly, across all 11 fixtures.
     @Test("every note head sits on its own tick's grid x", arguments: DrumTabFixtureCatalog.all)
     func headsSitOnGridPositions(_ fixture: DrumTabFixture) throws {
         let result = try DrumTabFixtureHarness.render(fixture)
         let grid = result.layout.tabGrid
-        let measuresByIndex = Dictionary(
-            uniqueKeysWithValues: result.layout.measures.map { ($0.measureIndex, $0) }
-        )
+        // Dictionary(grouping:) rather than uniqueKeysWithValues: so a
+        // regression that ever produced two measures sharing a measureIndex
+        // fails this test's own #require, instead of trapping the whole
+        // in-process test host on a duplicate-key precondition (same
+        // reasoning as `DrumTabGoldenTests.stopChokeDamp`'s `stopNotesByKind`).
+        let measuresByIndex = Dictionary(grouping: result.layout.measures, by: \.measureIndex)
 
         #expect(
             !result.layout.noteHeads.isEmpty,
@@ -286,7 +267,7 @@ struct DrumTabRegressionInvariantTests {
         )
 
         for head in result.layout.noteHeads {
-            let measure = try #require(measuresByIndex[head.timeColumn.measureIndex])
+            let measure = try #require(measuresByIndex[head.timeColumn.measureIndex]?.first)
             let expected = grid.xPosition(
                 in: measure,
                 localTick: head.timeColumn.tickWithinMeasure
@@ -303,12 +284,36 @@ struct DrumTabRegressionInvariantTests {
     /// generalized to every fixture. Rounds to the nearest 1/100pt before
     /// comparing so this only flags a real column disagreement, not float
     /// noise from independently-derived positions.
+    ///
+    /// Only 3 of the 11 fixtures actually strike more than one head on the
+    /// same tick (verified against their goldens): `same-time-trio` (2
+    /// three-note chords, its entire subject), `isolated-flagged-notes` (4
+    /// shared ticks across its two independent voices), and `voice-rests` (3,
+    /// same reason). The other 8 are single-onset-per-tick by construction,
+    /// so `xs.count == 1` holds vacuously for them -- reporting "11 test
+    /// cases passed" would overstate how many actually exercise the column
+    /// check by ~3.7x. The guard below keeps that honest by failing loudly if
+    /// one of the three chord-bearing fixtures ever stops producing a shared
+    /// tick (e.g. a fixture edit that accidentally desyncs the two voices).
     @Test("simultaneous heads share one x column", arguments: DrumTabFixtureCatalog.all)
     func simultaneousHeadsShareColumn(_ fixture: DrumTabFixture) throws {
         let result = try DrumTabFixtureHarness.render(fixture)
         let byTick = Dictionary(grouping: result.layout.noteHeads) {
             $0.timeColumn.absoluteLayoutTick
         }
+
+        let fixturesRequiringAChord: Set<String> = [
+            DrumTabFixtureCatalog.sameTimeTrio.name,
+            DrumTabFixtureCatalog.isolatedFlaggedNotes.name,
+            DrumTabFixtureCatalog.voiceRests.name
+        ]
+        if fixturesRequiringAChord.contains(fixture.name) {
+            #expect(
+                byTick.values.contains { $0.count > 1 },
+                "\(fixture.name) must have a shared-tick chord for this check to be non-vacuous"
+            )
+        }
+
         for (tick, heads) in byTick {
             let xs = Set(heads.map { ($0.position.x * 100).rounded() })
             #expect(xs.count == 1, "tick \(tick) heads span \(xs.count) x positions")
