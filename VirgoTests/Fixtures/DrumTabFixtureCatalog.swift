@@ -203,4 +203,12 @@ enum DrumTabFixtureCatalog {
             DrumTabFixture.line(measure: 1, lane: "23", positions: [3: "11"], total: 4)
         ].joined(separator: "\n")
     )
+
+    /// Every fixture, for parameterized invariant tests
+    /// (`DrumTabRegressionInvariantTests`).
+    static let all: [DrumTabFixture] = [
+        sameTimeTrio, sixteenthRun, mixedEighthSixteenth, sparseHiResLane,
+        tripletGrid, hiHatOpenClosedPedal, leftBass1C, stopChokeDamp,
+        voiceRests, multiRowStableWidths, isolatedFlaggedNotes
+    ]
 }
