@@ -47,7 +47,8 @@ enum GoldenFile {
                 at: directory,
                 withIntermediateDirectories: true
             )
-            try actual.write(to: target, atomically: true, encoding: .utf8)
+            try regenerated(actual, preservingCommentsFrom: target)
+                .write(to: target, atomically: true, encoding: .utf8)
             Issue.record(
                 """
                 Golden rewritten (VIRGO_UPDATE_GOLDENS=1): \(target.path)
@@ -72,11 +73,43 @@ enum GoldenFile {
         }
 
         let expected = try String(contentsOf: target, encoding: .utf8)
-        guard actual != expected else { return }
+        let strippedActual = stripComments(actual)
+        let strippedExpected = stripComments(expected)
+        guard strippedActual != strippedExpected else { return }
         Issue.record(
-            Comment(rawValue: report(actual: actual, expected: expected, fixture: fixture, path: target.path)),
+            Comment(rawValue: report(
+                actual: strippedActual,
+                expected: strippedExpected,
+                fixture: fixture,
+                path: target.path
+            )),
             sourceLocation: sourceLocation
         )
+    }
+
+    /// Drops `#`-prefixed annotation lines so a golden can carry provenance notes —
+    /// notably a `# SUSPECT:` trailer marking a golden that pins a known-defective
+    /// rendering rather than correct output — without those notes participating in the
+    /// comparison. Applied to both sides, and to the text `report(...)` renders, so the
+    /// line numbers a human is shown index the same text that was actually compared.
+    private static func stripComments(_ text: String) -> String {
+        text.components(separatedBy: "\n")
+            .filter { !$0.hasPrefix("#") }
+            .joined(separator: "\n")
+    }
+
+    /// Regeneration rewrites the digest but carries any existing `#` annotation lines
+    /// over to the end of the new file. Without this, regenerating a golden would
+    /// silently delete its `# SUSPECT:` trailer — and a trailer exists precisely because
+    /// that golden pins a known defect, so losing it on the next regeneration would
+    /// erase the warning at the exact moment someone is re-blessing the output.
+    private static func regenerated(_ actual: String, preservingCommentsFrom target: URL) -> String {
+        let comments = (try? String(contentsOf: target, encoding: .utf8))?
+            .components(separatedBy: "\n")
+            .filter { $0.hasPrefix("#") } ?? []
+        guard !comments.isEmpty else { return actual }
+        let body = actual.hasSuffix("\n") ? actual : actual + "\n"
+        return body + comments.joined(separator: "\n") + "\n"
     }
 
     /// Reports differing-line count, first/last divergence, and a capped

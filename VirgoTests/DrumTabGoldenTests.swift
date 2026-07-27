@@ -303,6 +303,79 @@ struct DrumTabGoldenTests {
         )
     }
 
+    @Test("triplet grid engraves tuplets, or falls back with a specific diagnostic")
+    func tripletGrid() throws {
+        let fixture = DrumTabFixtureCatalog.tripletGrid
+        let result = try DrumTabFixtureHarness.render(fixture)
+
+        // Measure 0: 12 content notes (four eighth-note triplet groups).
+        // Measure 1: 1 sentinel note (see the fixture's doc comment).
+        #expect(result.layout.noteHeads.count == 13)
+
+        // Content lives in measure 0 (not 1), so this lookup is unambiguous:
+        // there is no empty lead-in measure ahead of it (see the fixture's
+        // doc comment and `sixteenthRun`'s).
+        let measure = try #require(
+            result.snapshot.measures.first { $0.measureIndex == 0 }
+        )
+
+        // Conditional, not a free choice: if the engine can engrave this
+        // measure, the tuplet form is required. Accepting either branch
+        // would let a regression that degrades real triplets into the
+        // fallback pass.
+        switch measure.engravingSupport {
+        case .supported:
+            #expect(
+                !result.layout.tuplets.isEmpty,
+                "engraving is supported, so the triplet must render as a tuplet"
+            )
+        case let .unsupported(codes):
+            // A bare "codes is non-empty" check would be vacuous: an
+            // `.unsupported` measure always names at least one code, so it
+            // passes whether triplets engrave, degrade, or fail outright.
+            // Pin the exact set instead, so adding or dropping a diagnostic
+            // here has to be a deliberate re-blessing.
+            //
+            // `.incompleteTuplet` is the triplet-specific half and the one
+            // that makes this fixture mean something.
+            // `.indeterminateTerminalDuration` rides along because at
+            // ticksPerWholeNote 12 no regular interval is integral (an
+            // eighth would be 1.5 ticks), so every onset's duration is
+            // indeterminate -- here it is NOT evidence of the
+            // terminal-measure trap. Verified empirically: measure 0
+            // carries both codes identically with and without the
+            // trailing sentinel.
+            #expect(
+                Set(codes) == [.incompleteTuplet, .indeterminateTerminalDuration],
+                Comment(rawValue: "expected the documented HPA-145 fallback set, got "
+                    + "\(codes.map(\.rawValue).sorted())")
+            )
+
+            // Differential proof that `.incompleteTuplet` is caused by the
+            // 12-position content rather than being ambient: the sentinel
+            // measure holds one plain note and must carry ONLY the
+            // indeterminate code. If a regression started stamping
+            // `.incompleteTuplet` on every measure, the assertion above
+            // would still pass and only this one would catch it.
+            let sentinelMeasure = try #require(
+                result.snapshot.measures.first { $0.measureIndex == 1 }
+            )
+            #expect(
+                sentinelMeasure.engravingSupport == .unsupported([.indeterminateTerminalDuration])
+            )
+
+            // An unsupported measure must not also emit tuplet marks: an
+            // engine that renders tuplet brackets while still reporting the
+            // measure unsupported is a new inconsistency, not a fix.
+            #expect(result.layout.tuplets.isEmpty)
+        }
+
+        try GoldenFile.assertMatches(
+            NotationLayoutDigest.make(result),
+            fixture: fixture.name
+        )
+    }
+
     /// The `rest` subsection of a digest, for differential comparison.
     private func restLines(_ result: FixtureRenderResult) -> [String] {
         NotationLayoutDigest.make(result)
