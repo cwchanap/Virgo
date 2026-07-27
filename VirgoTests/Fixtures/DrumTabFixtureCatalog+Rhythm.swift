@@ -187,40 +187,50 @@ extension DrumTabFixtureCatalog {
     /// `snapshot.measures.first { $0.measureIndex == 0 }` resolve to that
     /// empty lead-in instead of the triplet measure under test.
     ///
-    /// The sentinel does NOT change this fixture's verdict today, and the
-    /// doc comment says so on purpose. Measured directly by deleting the
-    /// sentinel line and re-recording: measure 0 resolves
+    /// The measure-1 note is NOT a terminal-measure sentinel, and must not
+    /// be described as one. `sixteenthRun` and `stopChokeDamp` legitimately
+    /// use that pattern; here it would be false. Measured directly by
+    /// deleting the line and re-recording: measure 0 resolves
     /// `unsupported[incompleteTuplet,indeterminateTerminalDuration]` either
-    /// way. Do not cite it as protection against the terminal-measure trap
-    /// the way `sixteenthRun` and `stopChokeDamp` legitimately do -- at this
-    /// grid the indeterminate code has a different cause (see below).
+    /// way, because `resolveStream` scopes its `dtxOnsets` set to a single
+    /// beat-group stream (`NotationRhythmAnalyzer.swift:208-210`), so the
+    /// last onset of every triplet group reaches `terminalDTXResolution`
+    /// regardless of what follows the measure.
     ///
-    /// It is kept because it is load-bearing for the *future*: when HPA-145
-    /// is fixed and `recognizeTuplets` can form a candidate here, measure 0
-    /// still has to avoid being the chart's terminal measure or it would
-    /// stay `.unsupported` for the unrelated reason and this fixture could
-    /// never reach its `.supported` branch — the branch that asserts
-    /// triplets actually engrave. The test pins the sentinel (note count 13
-    /// and a required `measureIndex == 1`) so it cannot be quietly dropped.
+    /// It earns its place as the differential's control measure. It holds
+    /// one plain note on a power-of-two grid, so it must resolve
+    /// `unsupported[indeterminateTerminalDuration]` and nothing more —
+    /// which is what proves `.incompleteTuplet` is caused by *this*
+    /// measure's 12-position content rather than being stamped on every
+    /// measure by a regression. The test pins it (note count 13 plus a
+    /// required `measureIndex == 1`), so it cannot be quietly dropped.
     ///
-    /// The measure cannot currently be rescued into `.supported` at all:
-    /// with only a
-    /// 12-position line and a 1-position sentinel in the chart, the resolved
+    /// The measure cannot currently be rescued into `.supported` at all.
+    /// With a 12-position line and a 1-position control note, the resolved
     /// `ticksPerWholeNote` is 12 (`RhythmTimelineBuilder
     /// .resolvedTicksPerWholeNote`, `RhythmTimelineBuilder.swift:290-326` --
     /// LCM of the 4/4 meter factor (4) and the grid factor from a
     /// 12-position line (12) is 12). A regular (non-tuplet) eighth note
     /// needs `ticksPerWholeNote` to be a multiple of 8
     /// (`NotationRhythmAnalyzer.durationTicks(for:ticksPerWholeNote:)`,
-    /// `NotationRhythmAnalyzer.swift:681-694`), and the triplet-to-base
-    /// conversion in `tripletBaseInterval(performedTicks:ticksPerWholeNote:)`
-    /// (`NotationRhythmAnalyzer.swift:669-673`) requires
-    /// `performedTicks * 3` to be even to land back on that integer eighth.
-    /// At `ticksPerWholeNote == 12`, each performed triplet-eighth is 1
-    /// tick, and `1 * 3 == 3` is odd, so that conversion always returns
-    /// `nil` -- `recognizeTuplets` (`NotationRhythmAnalyzer.swift:298-359`)
-    /// can never form a candidate here, independent of the sentinel. This
-    /// is HPA-145, tracked via the golden's `# SUSPECT:` trailer: this
+    /// `NotationRhythmAnalyzer.swift:681-694`), so no eighth exists here
+    /// even though `.quarter`/.half/.full do (3/6/12 ticks).
+    ///
+    /// `recognizeTuplets` (`NotationRhythmAnalyzer.swift:298-359`) then
+    /// fails on both of its routes, which is why no candidate ever forms:
+    /// - The eight onsets that have a following onset within their own
+    ///   beat-group stream go through
+    ///   `tripletBaseInterval(performedTicks:ticksPerWholeNote:)`
+    ///   (`:669-673`), which needs `performedTicks * 3` to be even to land
+    ///   back on an integer eighth. Each performed triplet-eighth is 1 tick
+    ///   and `1 * 3 == 3` is odd, so it returns `nil`.
+    /// - The four group-terminal onsets skip that parity check entirely --
+    ///   `tripletBaseInterval(for:ticksPerWholeNote:)` (`:653-667`) returns
+    ///   `visualDurationCandidate` directly when `hasFollowingDTXOnset` is
+    ///   false (`:660`) -- but are rejected later anyway: a slot of 2 yields
+    ///   `subgroupDuration 6 > group.durationTicks 3` (`:374`).
+    ///
+    /// This is HPA-145, tracked via the golden's `# SUSPECT:` trailer: this
     /// fixture pins the documented fallback, not engraved triplets.
     static let tripletGrid = DrumTabFixture(
         name: "triplet-grid",

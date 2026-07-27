@@ -103,6 +103,14 @@ enum GoldenFile {
     /// silently delete its `# SUSPECT:` trailer — and a trailer exists precisely because
     /// that golden pins a known defect, so losing it on the next regeneration would
     /// erase the warning at the exact moment someone is re-blessing the output.
+    ///
+    /// Two known limitations, both judged smaller than the hazard above:
+    /// - The reverse case is not handled. Once the pinned defect is *fixed*, re-recording
+    ///   carries the now-stale `# SUSPECT:` line forward, and since comments are stripped
+    ///   before comparison nothing fails. Whoever fixes the defect must delete the trailer
+    ///   by hand; the trailer text names its ticket so the staleness is at least legible.
+    /// - Annotations are collected and re-emitted as a trailer, so a `#` line written
+    ///   *between* digest sections is relocated to the end rather than kept in place.
     private static func regenerated(_ actual: String, preservingCommentsFrom target: URL) -> String {
         let comments = (try? String(contentsOf: target, encoding: .utf8))?
             .components(separatedBy: "\n")
