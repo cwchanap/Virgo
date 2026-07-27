@@ -227,8 +227,16 @@ extension DrumTabFixtureCatalog {
     /// - The four group-terminal onsets skip that parity check entirely --
     ///   `tripletBaseInterval(for:ticksPerWholeNote:)` (`:653-667`) returns
     ///   `visualDurationCandidate` directly when `hasFollowingDTXOnset` is
-    ///   false (`:660`) -- but are rejected later anyway: a slot of 2 yields
-    ///   `subgroupDuration 6 > group.durationTicks 3` (`:374`).
+    ///   false (`:660`) -- but die one step later in
+    ///   `tripletPerformedDuration` (`:640-651`), which also needs
+    ///   `durationTicks(for:ticksPerWholeNote:)` to be non-nil. At
+    ///   `ticksPerWholeNote == 12` that succeeds only for `.quarter`,
+    ///   `.half`, and `.full` (divisors 4/2/1 divide 12). The candidate here
+    ///   is `.sixteenth` -- `VisualDurationLookup.closestInterval` maps a
+    ///   1-tick span to measure fraction 1/12 ~= 0.083, nearer `.sixteenth`
+    ///   (0.0625) than `.eighth` (0.125) -- and 16 does not divide 12
+    ///   (`:692`). So these onsets never enter `performedByIndex` and never
+    ///   produce a slot to test.
     ///
     /// This is HPA-145, tracked via the golden's `# SUSPECT:` trailer: this
     /// fixture pins the documented fallback, not engraved triplets.
