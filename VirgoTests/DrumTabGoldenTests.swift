@@ -325,9 +325,16 @@ struct DrumTabGoldenTests {
         // fallback pass.
         switch measure.engravingSupport {
         case .supported:
+            // Dead today (the live branch is the fallback below), so it has
+            // to be written for the day HPA-145 lands rather than merely
+            // compile. A chart-wide `!tuplets.isEmpty` would pass on a fix
+            // that engraved 1 of the 4 groups -- the exact partial fix this
+            // fixture exists to reject -- so scope it to the measure under
+            // test and pin the count.
+            let engraved = result.layout.tuplets.filter { $0.id.measureIndex == 0 }
             #expect(
-                !result.layout.tuplets.isEmpty,
-                "engraving is supported, so the triplet must render as a tuplet"
+                engraved.count == 4,
+                "engraving is supported, so all four triplet groups must render as tuplets"
             )
         case let .unsupported(codes):
             // A bare "codes is non-empty" check would be vacuous: an
@@ -338,13 +345,27 @@ struct DrumTabGoldenTests {
             //
             // `.incompleteTuplet` is the triplet-specific half and the one
             // that makes this fixture mean something.
-            // `.indeterminateTerminalDuration` rides along because at
-            // ticksPerWholeNote 12 no regular interval is integral (an
-            // eighth would be 1.5 ticks), so every onset's duration is
-            // indeterminate -- here it is NOT evidence of the
-            // terminal-measure trap. Verified empirically: measure 0
-            // carries both codes identically with and without the
-            // trailing sentinel.
+            //
+            // `.indeterminateTerminalDuration` rides along, but NOT because
+            // of the chart-terminal trap that `sixteenthRun` and
+            // `stopChokeDamp` guard against. `resolveStream` builds its
+            // `dtxOnsets` set from the events of one beat-group stream
+            // (`NotationRhythmAnalyzer.swift:208-210`), so
+            // `hasFollowingDTXOnset` is beat-group-scoped: the last onset of
+            // *each* of the four triplet groups has no follower within its
+            // own stream and reaches `terminalDTXResolution` (:239). Four of
+            // the twelve onsets, in the middle of the chart as much as at
+            // its end -- which is why adding or removing a trailing measure
+            // changes nothing here (measured directly).
+            //
+            // The other eight onsets are `.unsupported(.ambiguousBeatGrouping)`:
+            // `classify(spanTicks: 1, ticksPerWholeNote: 12)` finds no match,
+            // since at this grid `.quarter`/.half/.full ARE integral (3/6/12
+            // ticks) but a 1-tick span equals none of them and `.eighth`
+            // would need 1.5 (`NotationRhythmAnalyzer.swift:37-54`, :681-694).
+            // That code never reaches the measure's code set: it only makes
+            // `unsupportedSpan` true, which is what produces
+            // `.incompleteTuplet` (:492-503).
             #expect(
                 Set(codes) == [.incompleteTuplet, .indeterminateTerminalDuration],
                 Comment(rawValue: "expected the documented HPA-145 fallback set, got "
