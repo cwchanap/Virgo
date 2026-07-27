@@ -247,9 +247,22 @@ struct DrumTabRegressionInvariantTests {
     /// and every other geometric quantity in this layout engine (measure
     /// widths, bar positions) is likewise defined in terms of the same single
     /// `tickWidth`, leaving no independent ground truth to compare against.
-    /// This test is the genuine replacement: it doesn't need a second data
-    /// point per measure, because it checks each head's own tick against its
-    /// own position directly, across all 11 fixtures.
+    /// This test is the replacement: it doesn't need a second data point per
+    /// measure, because it checks each head's own tick against its own
+    /// position directly, across all 11 fixtures.
+    ///
+    /// Know what it does and does not own. Production assigns
+    /// `head.position.x = tabGrid.xPosition(in:localTick:)`
+    /// (`NotationLayoutEngine.swift:354-355`) and this test recomputes that
+    /// same call, so it pins *routing*: every head reaching its own tick's
+    /// column through the one shared grid, which is what catches
+    /// index-based-instead-of-tick-based placement. It cannot catch a change
+    /// to `xPosition`'s own formula -- if that became measure- or
+    /// density-dependent (the literal HPA-97 shape), both sides of this
+    /// comparison would move together and stay green. That case is covered
+    /// instead by the goldens, which pin every head's exact `pos=` (see
+    /// `NotationLayoutDigest.swift`), so it fails 11 golden tests rather
+    /// than this one.
     @Test("every note head sits on its own tick's grid x", arguments: DrumTabFixtureCatalog.all)
     func headsSitOnGridPositions(_ fixture: DrumTabFixture) throws {
         let result = try DrumTabFixtureHarness.render(fixture)
