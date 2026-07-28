@@ -10,11 +10,11 @@ row   0 measures=[m0,m1,m2] contentWidth=930.00
 meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4 contentStartX=152.00
 meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4 contentStartX=416.00
 meas  m2 row=0 xOffset=628.00 width=252.00 startTick=8 durationTicks=4 contentStartX=680.00
-head  m1 t0000 abs0004 pos=(416.00,90.00) crash glyph=bullseye variant=crash voice=upper stem=up row=0 lane=16
-head  m1 t0001 abs0005 pos=(466.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m1 t0002 abs0006 pos=(516.00,90.00) crash glyph=bullseye variant=crash voice=upper stem=up row=0 lane=16
-head  m1 t0003 abs0007 pos=(566.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m2 t0000 abs0008 pos=(680.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
+head  m1 t0000 abs0004 pos=(416.00,90.00) crash glyph=bullseye variant=crash voice=upper stem=up row=0 lane=16 interval=Quarter rhythm=Quarter durTicks=1
+head  m1 t0001 abs0005 pos=(466.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=1
+head  m1 t0002 abs0006 pos=(516.00,90.00) crash glyph=bullseye variant=crash voice=upper stem=up row=0 lane=16 interval=Quarter rhythm=Quarter durTicks=1
+head  m1 t0003 abs0007 pos=(566.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=1
+head  m2 t0000 abs0008 pos=(680.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[indeterminate:indeterminateTerminalDuration] durTicks=1
 stem  ids=[0] dir=up start=(428.00,90.00) end=(428.00,15.00)
 stem  ids=[2] dir=up start=(477.40,116.38) end=(477.40,41.38)
 stem  ids=[3] dir=up start=(528.00,90.00) end=(528.00,15.00)

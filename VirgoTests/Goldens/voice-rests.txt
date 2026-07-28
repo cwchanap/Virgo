@@ -8,13 +8,13 @@ dims  noteHeadSize=30.00x20.00 totalHeight=610.00 paintedBounds=(99.00,40.38,517
 row   0 measures=[m0,m1] contentWidth=900.00
 meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4 contentStartX=152.00
 meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4 contentStartX=416.00
-head  m0 t0001 abs0001 pos=(202.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m0 t0002 abs0002 pos=(252.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m0 t0002 abs0002 pos=(252.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
-head  m0 t0003 abs0003 pos=(302.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m0 t0003 abs0003 pos=(302.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
-head  m1 t0000 abs0004 pos=(416.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m1 t0000 abs0004 pos=(416.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
+head  m0 t0001 abs0001 pos=(202.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=1
+head  m0 t0002 abs0002 pos=(252.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=1
+head  m0 t0002 abs0002 pos=(252.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=1
+head  m0 t0003 abs0003 pos=(302.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=1
+head  m0 t0003 abs0003 pos=(302.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=1
+head  m1 t0000 abs0004 pos=(416.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[indeterminate:indeterminateTerminalDuration] durTicks=1
+head  m1 t0000 abs0004 pos=(416.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter[indeterminate:indeterminateTerminalDuration] durTicks=1
 stem  ids=[0] dir=up start=(213.40,116.38) end=(213.40,41.38)
 stem  ids=[2] dir=down start=(240.00,230.00) end=(240.00,305.00)
 stem  ids=[1] dir=up start=(263.40,116.38) end=(263.40,41.38)

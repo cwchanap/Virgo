@@ -129,7 +129,9 @@ extension NotationLayoutDigest {
                 + "pos=\(pt(head.position)) \(head.drumType.description) "
                 + "glyph=\(head.glyph) variant=\(head.variant) voice=\(head.voice.rawValue) "
                 + "stem=\(head.stemDirection.rawValue) row=\(head.row) "
-                + "lane=\(head.sourceLaneID ?? "-")"
+                + "lane=\(head.sourceLaneID ?? "-") "
+                + "interval=\(head.interval.rawValue) rhythm=\(rhythmText(head.rhythm)) "
+                + "durTicks=\(head.rhythmDurationTicks.map(String.init) ?? "-")"
             )
         }
 
@@ -225,6 +227,29 @@ extension NotationLayoutDigest {
         }
 
         return lines
+    }
+
+    /// Field-by-field text for the inferred duration a head carries, for the same reason as
+    /// `dotSourceText(_:)` below.
+    ///
+    /// This is the analyzer's *verdict* about a note — base value, augmentation dots, tuplet
+    /// ratio, and whether it could be engraved at all — and it is otherwise only indirectly
+    /// observable in a digest, through the stems, beams and flags it produces. In a measure
+    /// that resolves `.unsupported` there are no such primitives at all, so without this
+    /// field a duration-inference regression inside an unsupported measure moves no golden
+    /// line whatsoever.
+    private static func rhythmText(_ rhythm: NotationRhythm) -> String {
+        var text = rhythm.baseInterval.rawValue
+        if rhythm.dotCount > 0 { text += "+\(rhythm.dotCount)dot" }
+        if let tuplet = rhythm.tuplet { text += "/\(tuplet.actual):\(tuplet.normal)" }
+        switch rhythm.support {
+        case .supported:
+            return text
+        case let .indeterminate(code):
+            return text + "[indeterminate:\(code.rawValue)]"
+        case let .unsupported(code):
+            return text + "[unsupported:\(code.rawValue)]"
+        }
     }
 
     /// Field-by-field text for `RenderedRhythmDotSource`, rather than reflecting the enum

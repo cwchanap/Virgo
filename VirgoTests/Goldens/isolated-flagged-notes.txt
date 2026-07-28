@@ -9,16 +9,16 @@ row   0 measures=[m0] contentWidth=900.00
 row   1 measures=[m1] contentWidth=900.00
 meas  m0 row=0 xOffset=100.00 width=500.00 startTick=0 durationTicks=16 contentStartX=152.00
 meas  m1 row=1 xOffset=100.00 width=500.00 startTick=16 durationTicks=16 contentStartX=152.00
-head  m0 t0002 abs0002 pos=(208.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
-head  m0 t0003 abs0003 pos=(236.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m0 t0004 abs0004 pos=(264.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m0 t0004 abs0004 pos=(264.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
-head  m0 t0008 abs0008 pos=(376.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m0 t0008 abs0008 pos=(376.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
-head  m0 t0012 abs0012 pos=(488.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11
-head  m0 t0012 abs0012 pos=(488.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13
-head  m1 t0000 abs0016 pos=(152.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11
-head  m1 t0000 abs0016 pos=(152.00,550.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=1 lane=13
+head  m0 t0002 abs0002 pos=(208.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Eighth rhythm=Eighth durTicks=2
+head  m0 t0003 abs0003 pos=(236.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
+head  m0 t0004 abs0004 pos=(264.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0004 abs0004 pos=(264.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0008 abs0008 pos=(376.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0008 abs0008 pos=(376.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0012 abs0012 pos=(488.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0012 abs0012 pos=(488.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
+head  m1 t0000 abs0016 pos=(152.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Quarter rhythm=Quarter[indeterminate:indeterminateTerminalDuration] durTicks=4
+head  m1 t0000 abs0016 pos=(152.00,550.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=1 lane=13 interval=Quarter rhythm=Quarter[indeterminate:indeterminateTerminalDuration] durTicks=4
 stem  ids=[0] dir=down start=(196.00,230.00) end=(196.00,305.00)
 stem  ids=[1] dir=up start=(247.40,116.38) end=(247.40,41.38)
 stem  ids=[3] dir=down start=(252.00,230.00) end=(252.00,305.00)
