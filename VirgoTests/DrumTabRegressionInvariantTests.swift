@@ -62,11 +62,9 @@ struct DrumTabRegressionInvariantTests {
     /// future edit to either expression (e.g. adding a label margin to one)
     /// without updating the other. Verified to go red under the exact fault
     /// injected above (re-checked locally before committing this fix).
-    @Test("one tick scale spans every measure and row")
-    func singleTickScaleChartWide() throws {
-        let result = try DrumTabFixtureHarness.render(
-            DrumTabFixtureCatalog.multiRowStableWidths
-        )
+    @Test("one tick scale spans every measure and row", arguments: DrumTabFixtureCatalog.all)
+    func singleTickScaleChartWide(_ fixture: DrumTabFixture) throws {
+        let result = try DrumTabFixtureHarness.render(fixture)
         let grid = result.layout.tabGrid
         for measure in result.layout.measures {
             let expectedContentSpan = CGFloat(measure.durationTicks) * grid.tickWidth
@@ -126,6 +124,8 @@ struct DrumTabRegressionInvariantTests {
 
         for beam in result.layout.beams {
             let memberXs = beam.noteHeadIDs.compactMap { stemXByHead[$0] }
+            #expect(memberXs.count == beam.noteHeadIDs.count,
+                    "beam \(beam.id): \(beam.noteHeadIDs.count - memberXs.count) member(s) have no stem")
             guard let low = memberXs.min(), let high = memberXs.max() else { continue }
             let beamLow = min(beam.start.x, beam.end.x)
             let beamHigh = max(beam.start.x, beam.end.x)
@@ -168,6 +168,8 @@ struct DrumTabRegressionInvariantTests {
 
         for beam in result.layout.beams {
             let heads = beam.noteHeadIDs.compactMap { headByID[$0]?.first }
+            #expect(heads.count == beam.noteHeadIDs.count,
+                    "beam \(beam.id): \(beam.noteHeadIDs.count - heads.count) member(s) have no head")
             guard let first = heads.first else { continue }
             let measureIndex = first.timeColumn.measureIndex
             let renderedMeasure = try #require(
@@ -215,6 +217,8 @@ struct DrumTabRegressionInvariantTests {
             let headByID = Dictionary(grouping: result.layout.noteHeads, by: \.id)
             for beam in result.layout.beams {
                 let heads = beam.noteHeadIDs.compactMap { headByID[$0]?.first }
+                #expect(heads.count == beam.noteHeadIDs.count,
+                        "beam \(beam.id): \(beam.noteHeadIDs.count - heads.count) member(s) have no head")
                 #expect(Set(heads.map(\.timeColumn.measureIndex)).count <= 1)
                 #expect(Set(heads.map(\.row)).count <= 1)
                 #expect(Set(heads.map(\.voice)).count <= 1)
@@ -259,10 +263,22 @@ struct DrumTabRegressionInvariantTests {
     /// index-based-instead-of-tick-based placement. It cannot catch a change
     /// to `xPosition`'s own formula -- if that became measure- or
     /// density-dependent (the literal HPA-97 shape), both sides of this
-    /// comparison would move together and stay green. That case is covered
-    /// instead by the goldens, which pin every head's exact `pos=` (see
-    /// `NotationLayoutDigest.swift`), so it fails 11 golden tests rather
-    /// than this one.
+    /// comparison would move together and stay green.
+    ///
+    /// The durable mitigation for that case is `singleTickScaleChartWide`'s
+    /// first `#expect` above: it compares `xPosition(in: measure, localTick:
+    /// measure.durationTicks) - measure.contentStartX` against
+    /// `measure.durationTicks * grid.tickWidth` -- an expression derived
+    /// independently of any recorded output -- so it fails outright if
+    /// `xPosition` starts reading anything other than the one shared
+    /// `tickWidth`. Unlike a golden, there is nothing to re-bless: this
+    /// assertion has no stored expected value that a good-faith regeneration
+    /// could carry the bug into, so it survives regeneration in a way the
+    /// goldens structurally cannot. The goldens (which pin every head's exact
+    /// `pos=`, see `NotationLayoutDigest.swift`) are secondary cover for the
+    /// same case -- they would also fail, 11 of them at once -- but they are
+    /// the weaker net because someone re-blessing a golden in good faith
+    /// would bless the regression along with it.
     @Test("every note head sits on its own tick's grid x", arguments: DrumTabFixtureCatalog.all)
     func headsSitOnGridPositions(_ fixture: DrumTabFixture) throws {
         let result = try DrumTabFixtureHarness.render(fixture)

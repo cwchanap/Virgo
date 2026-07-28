@@ -46,7 +46,7 @@ extension GameplayViewModel {
             let layoutSnapshot = try RhythmLayoutSnapshotBuilder().build(
                 resolvedRhythm: resolvedRhythm,
                 timeline: timeline,
-                feel: resolvedRhythmFeel()
+                feel: RhythmLayoutSnapshotBuilder.feel(for: chart)
             )
             let schedule = try RhythmMetronomeSchedule(timeline: timeline, bpm: track.bpm)
             return GameplayRhythmRuntime(
@@ -82,13 +82,6 @@ extension GameplayViewModel {
             result[ObjectIdentifier(note)] = event.position
         }
         return result
-    }
-
-    private func resolvedRhythmFeel() -> RhythmicFeel {
-        if case let .valid(metadata) = chart.rhythmMetadataState {
-            return metadata.feel ?? .straight
-        }
-        return .straight
     }
 
     private func fatalRhythmRuntime(
