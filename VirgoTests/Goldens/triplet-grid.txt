@@ -27,3 +27,4 @@ bar   row=0 x=888.00 isFinal=true
 warn  scope=measure:0 codes=[incompleteTuplet,indeterminateTerminalDuration] row=0 measure=1
 warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2
 # SUSPECT: HPA-145 12-grid measure falls back to unsupported engraving; this golden pins the fallback, not engraved triplets.
+# SUSPECT: HPA-419 — the m1 sentinel carries the separate indeterminateTerminalDuration fallback, so it too renders with no stems, beams or flags.

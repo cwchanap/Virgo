@@ -20,4 +20,4 @@ bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
 warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2
-# SUSPECT: unfiled — m1's indeterminateTerminalDuration fallback marks the measure unsupported, so its 2 note heads render with 0 stems; this golden pins the fallback, not correctly engraved notation.
+# SUSPECT: HPA-419 — m1's indeterminateTerminalDuration fallback marks the measure unsupported, so its 2 note heads render with 0 stems; this golden pins the fallback, not correctly engraved notation.
