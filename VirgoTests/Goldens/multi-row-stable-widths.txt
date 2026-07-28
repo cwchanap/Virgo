@@ -191,4 +191,4 @@ warn  scope=measure:2 codes=[indeterminateTerminalDuration] row=2 measure=3
 warn  scope=measure:4 codes=[indeterminateTerminalDuration] row=4 measure=5
 warn  scope=measure:6 codes=[indeterminateTerminalDuration] row=6 measure=7
 warn  scope=measure:7 codes=[indeterminateTerminalDuration] row=7 measure=8
-# SUSPECT: unfiled — final measure m7's indeterminateTerminalDuration fallback marks it unsupported, so its 16 sixteenths render with 0 stems, 0 beams; the rest of this golden is correct output.
+# SUSPECT: unfiled — five of eight measures carry the indeterminateTerminalDuration fallback and are marked unsupported: m7 (16 sixteenths rendering 0 stems and 0 beams) and every sparse measure m0/m2/m4/m6, whose single notes also render stemless — no beams are lost there only because one note cannot form a beam. All 48 stems in this golden come from m1/m3/m5, the three supported dense measures, which are the only correctly engraved output in this file.
