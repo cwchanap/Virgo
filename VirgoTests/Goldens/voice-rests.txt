@@ -32,4 +32,4 @@ ledger row=0 start=(398.00,230.00) end=(434.00,230.00)
 bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
-warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2
+warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2 pos=(506.00,54.00) size=180.00x22.00

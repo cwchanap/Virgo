@@ -222,7 +222,8 @@ extension NotationLayoutDigest {
             lines.append(
                 "warn  scope=\(warningScopeText(warning.scope)) codes=[\(codes)] "
                 + "row=\(warning.rowIndex.map(String.init) ?? "-") "
-                + "measure=\(warning.displayMeasureNumber.map(String.init) ?? "-")"
+                + "measure=\(warning.displayMeasureNumber.map(String.init) ?? "-") "
+                + "pos=\(pt(warning.position)) size=\(f(warning.size.width))x\(f(warning.size.height))"
             )
         }
 

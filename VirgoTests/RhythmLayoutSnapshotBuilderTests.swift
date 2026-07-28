@@ -16,7 +16,7 @@ struct RhythmLayoutSnapshotBuilderTests {
         """
         let chartData = try DTXFileParser.parseChartMetadata(from: dtx)
         let projection = try chartData.persistenceProjection()
-        let container = TestContainer.isolatedContainer()
+        let container = TestContainer.ephemeralContainer()
         let context = container.context
         let song = Song(
             title: chartData.title,

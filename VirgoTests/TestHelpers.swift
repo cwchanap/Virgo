@@ -70,6 +70,21 @@ class TestContainer {
         }
     }
 
+    /// Creates a `TestContainer` that is **not** registered in the static
+    /// `isolatedContainers` dictionary. Use this when the caller already
+    /// retains the container for the lifetime it needs (e.g. stored in a
+    /// result struct like `FixtureRenderResult.container`) — the global
+    /// registry's retention is then redundant and would leak memory across
+    /// many invocations (parameterized suites calling `render()` per fixture).
+    ///
+    /// `isolatedContainer(for:)` is still appropriate when a test needs to
+    /// look up the same container by ID later or clean it up explicitly;
+    /// `ephemeralContainer()` is for fire-and-forget containers whose
+    /// lifetime is tied to a holding value.
+    static func ephemeralContainer() -> TestContainer {
+        TestContainer()
+    }
+
     var context: ModelContext {
         if let active = Self.activeContainer, active !== self {
             return active.resolveContext()

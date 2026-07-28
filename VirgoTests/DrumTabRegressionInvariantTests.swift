@@ -171,6 +171,20 @@ struct DrumTabRegressionInvariantTests {
             #expect(heads.count == beam.noteHeadIDs.count,
                     "beam \(beam.id): \(beam.noteHeadIDs.count - heads.count) member(s) have no head")
             guard let first = heads.first else { continue }
+
+            // Derive the beat-group key for every member head and require they
+            // all belong to exactly one beat group. A short beam connecting
+            // the last note of one beat to the first note of the next can
+            // cross the boundary while still being narrower than either group,
+            // so the width check below alone would not catch it. The sibling
+            // partition guard (`beamMembersShareTheirPartition`) checks
+            // measure/row/voice/direction but not beat-group identity.
+            let beatGroupKeys = Set(heads.map { beatGroupKey(head: $0, in: result.snapshot) })
+            #expect(
+                beatGroupKeys.count == 1,
+                "beam \(beam.id) members span \(beatGroupKeys.count) beat groups: \(beatGroupKeys)"
+            )
+
             let measureIndex = first.timeColumn.measureIndex
             let renderedMeasure = try #require(
                 result.layout.measures.first { $0.measureIndex == measureIndex }
@@ -195,6 +209,27 @@ struct DrumTabRegressionInvariantTests {
                 "beam \(beam.id) spans \(beamWidth) > beat group \(groupWidth)"
             )
         }
+    }
+
+    /// Beat-group identity key for a rendered note head: `(measureIndex,
+    /// groupIndex)` of the `RhythmBeatGroup` whose tick range contains the
+    /// head's `tickWithinMeasure`. Returns `nil` (mapped to `-1`) if the head
+    /// falls outside every beat group — which would itself be a bug worth
+    /// surfacing, since the `beatGroupKeys.count == 1` check above would then
+    /// fail rather than silently passing.
+    private func beatGroupKey(
+        head: RenderedNoteHead,
+        in snapshot: RhythmLayoutSnapshot
+    ) -> [Int] {
+        let measureIndex = head.timeColumn.measureIndex
+        guard let rhythmMeasure = snapshot.measures.first(where: { $0.measureIndex == measureIndex }) else {
+            return [measureIndex, -1]
+        }
+        let groupIndex = rhythmMeasure.beatGroups.first {
+            head.timeColumn.tickWithinMeasure >= $0.startTick
+                && head.timeColumn.tickWithinMeasure < $0.endTick
+        }?.groupIndex ?? -1
+        return [measureIndex, groupIndex]
     }
 
     /// Structural guard, not a behavioral invariant:
@@ -356,15 +391,14 @@ struct DrumTabRegressionInvariantTests {
     /// flags, ledgerLines, measureBars, rhythmDots, tuplets, feelMarks,
     /// rhythmWarnings -- `calculatePaintedBounds`,
     /// `NotationRhythmRendering.swift`). This check recomputes bounds for
-    /// nine of those thirteen categories (the ones with layout-affecting
-    /// visual extent most relevant to a screenshot regression) and asserts
-    /// each is contained in that stored union. Because the stored union
-    /// already covers a strict superset of what is checked, this cannot fail
-    /// today except by `calculatePaintedBounds` itself becoming incomplete
-    /// (dropping a primitive category from the union, or being invoked with a
-    /// different style than layout actually used) -- exactly the shape of bug
-    /// that would clip a primitive out of the rendered/scrollable content
-    /// area without necessarily changing any single primitive's own recorded
+    /// all thirteen categories and asserts each is contained in that stored
+    /// union. Because the stored union already covers a strict superset of
+    /// what is checked, this cannot fail today except by
+    /// `calculatePaintedBounds` itself becoming incomplete (dropping a
+    /// primitive category from the union, or being invoked with a different
+    /// style than layout actually used) -- exactly the shape of bug that
+    /// would clip a primitive out of the rendered/scrollable content area
+    /// without necessarily changing any single primitive's own recorded
     /// position.
     @Test("painted bounds contain every primitive", arguments: DrumTabFixtureCatalog.all)
     func paintedBoundsContainEveryPrimitive(_ fixture: DrumTabFixture) throws {
@@ -380,6 +414,10 @@ struct DrumTabRegressionInvariantTests {
             + layout.flags.map { $0.paintedBounds(style: style) }
             + layout.ledgerLines.map { $0.paintedBounds(style: style) }
             + layout.measureBars.map { $0.paintedBounds(style: style) }
+            + layout.rhythmDots.map { $0.paintedBounds(style: style) }
+            + layout.tuplets.map { $0.paintedBounds(style: style) }
+            + layout.feelMarks.map { $0.paintedBounds(style: style) }
+            + layout.rhythmWarnings.map { $0.paintedBounds(style: style) }
 
         var checked = 0
         for rect in bounds where !rect.isNull {

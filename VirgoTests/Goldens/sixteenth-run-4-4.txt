@@ -55,4 +55,4 @@ bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=600.00 isFinal=false
 bar   row=1 x=100.00 isFinal=false
 bar   row=1 x=600.00 isFinal=true
-warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=1 measure=2
+warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=1 measure=2 pos=(242.00,374.00) size=180.00x22.00

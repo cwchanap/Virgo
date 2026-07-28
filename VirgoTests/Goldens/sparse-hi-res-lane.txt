@@ -14,6 +14,6 @@ head  m1 t0000 abs0064 pos=(416.00,110.00) hiHat glyph=cross variant=closedHiHat
 bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
-warn  scope=measure:0 codes=[indeterminateTerminalDuration] row=0 measure=1
-warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2
+warn  scope=measure:0 codes=[indeterminateTerminalDuration] row=0 measure=1 pos=(242.00,54.00) size=180.00x22.00
+warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2 pos=(506.00,54.00) size=180.00x22.00
 # SUSPECT: HPA-419 — both measures' indeterminateTerminalDuration fallback marks them unsupported, so all 3 note heads render with 0 stems; this golden pins the fallback, not correctly engraved notation.
