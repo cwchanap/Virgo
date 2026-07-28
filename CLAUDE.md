@@ -148,6 +148,30 @@ gates a one-time backfill of those fields for already-imported charts — bump `
 change requires re-normalizing existing data. `RhythmMetronomeSchedule` derives the metronome
 schedule from the same timeline, so timing changes affect audio and notation together.
 
+### Drum Tab Golden Coverage
+`VirgoTests/Fixtures/DrumTabFixtureCatalog*.swift` holds 11 DTX fixtures driven through the real
+import path by `DrumTabFixtureHarness` (`persistenceProjection()` + `setRhythmMetadata`, **not**
+`toNotes`/`toControlEvents` — the latter leaves `rhythmMetadataState == .missing` and stamps control
+ticks at each chip's native grid size). `NotationLayoutDigest` serializes the result to text, compared
+against `VirgoTests/Goldens/<fixture>.txt`.
+
+Regenerate with `TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1` (via `xcodebuild test` — `xcodebuild` forwards
+only `TEST_RUNNER_`-prefixed variables into the spawned test host, stripping the prefix before exec;
+the bare `VIRGO_UPDATE_GOLDENS=1` only works via an Xcode scheme's test-action environment). The run
+always **fails** afterwards so CI cannot self-approve a regression. Review `git diff` before
+committing. Golden lines starting with `#` are stripped before comparison, so `# SUSPECT: HPA-<id> …`
+marks a golden that pins known-suspect output.
+
+`RhythmLayoutSnapshotBuilder` (`Virgo/layout/`) is shared by `GameplayViewModel` and the harness on
+purpose — a parallel copy in tests would let goldens pass while production rendering broke.
+
+Four suites cover this: `DrumTabGoldenTests` (full-digest goldens per fixture),
+`DrumTabRegressionInvariantTests` (geometric invariants — beam extent within member stems and within
+the beat group, head-to-grid routing, simultaneous-column identity, painted-bounds containment),
+`DrumTabRenderProbeTests` (differential `ImageRenderer` ink probe; gates that `NotationNoteHeadView`
+actually paints, and deliberately does not gate production's mounting of it), and
+`DrumTabPlayheadAlignmentTests` (playhead x and measure index against the rendered note columns).
+
 ### Gameplay Architecture
 `GameplayView` delegates all state to `GameplayViewModel` (`@Observable @MainActor`), which is split
 across `GameplayViewModel.swift` plus `+BGM`, `+Computations`, `+Playback`, `+SpeedControl`, and
