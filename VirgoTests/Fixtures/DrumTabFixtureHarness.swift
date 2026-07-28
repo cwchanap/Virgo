@@ -80,17 +80,10 @@ enum DrumTabFixtureHarness {
             throw DrumTabFixtureHarnessError.missingTimeline
         }
 
-        let feel: RhythmicFeel = {
-            if case let .valid(metadata) = chart.rhythmMetadataState {
-                return metadata.feel ?? .straight
-            }
-            return .straight
-        }()
-
         let snapshot = try RhythmLayoutSnapshotBuilder().build(
             resolvedRhythm: resolved,
             timeline: timeline,
-            feel: feel
+            feel: RhythmLayoutSnapshotBuilder.feel(for: chart)
         )
 
         let layout = NotationLayoutEngine().layout(

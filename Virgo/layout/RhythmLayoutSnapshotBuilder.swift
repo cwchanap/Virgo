@@ -12,6 +12,15 @@ import Foundation
 /// would let goldens pass while production rendering broke.
 @MainActor
 struct RhythmLayoutSnapshotBuilder {
+    /// Resolves the `RhythmicFeel` a chart's layout should use. Lives here rather than on
+    /// `GameplayViewModel` or the test harness because both callers need the exact same
+    /// resolution: a parallel copy in either place is the failure mode this file's doc
+    /// comment above already warns about, applied to `feel` instead of the snapshot build.
+    static func feel(for chart: Chart) -> RhythmicFeel {
+        if case let .valid(metadata) = chart.rhythmMetadataState { return metadata.feel ?? .straight }
+        return .straight
+    }
+
     func build(
         resolvedRhythm: ResolvedChartRhythm,
         timeline: RhythmTimeline,

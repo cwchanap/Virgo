@@ -101,7 +101,12 @@ struct DrumTabPlayheadAlignmentTests {
         // comes from the resolver's event position.
         #expect(viewModel.currentMeasureIndex == farTarget.position.measureIndex)
 
-        // The playhead must sit on a column that actually has a head.
+        // The playhead must sit on a column that actually has a head. This is
+        // strictly implied by the exact-match assertion below (`position.x ==
+        // matchingHead.position.x`), which necessarily puts `position.x` in
+        // `columnXs`. Retained anyway for the friendlier first failure message —
+        // "matches no rendered note column" is more diagnosable than a `#require`
+        // failure on `matchingHead` — not as independent coverage.
         let columnXs = Set(
             viewModel.cachedNotationLayout.noteHeads.map { ($0.position.x * 100).rounded() }
         )
