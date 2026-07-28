@@ -16,20 +16,38 @@ import CoreGraphics
 /// rasterizes through `ImageRenderer` and checks that ink landed where the layout said it
 /// would.
 ///
-/// Know its boundary. `drumNotationView` takes a `GameplayViewModel`, so this suite cannot
-/// call it and instead re-declares the same primitives in the same z-order (see
-/// `notationOverlay`). What that gates is `NotationNoteHeadView` *itself* -- an empty body, a
-/// zero frame, a transparent fill, a broken `DrumNoteheadShape` path, a dropped `.position` --
-/// against real pixels, plus the layout geometry those pixels are sampled at. What it does
-/// **not** gate is production's mounting of that view: deleting the `noteHeads` `ForEach` from
-/// `drumNotationView` leaves this probe green, because the probe builds its own ZStack. Nor
-/// does anything force the two z-orders to stay in step; `notationOverlay` is a hand-kept
-/// mirror, and a primitive added to `drumNotationView` will not appear here on its own.
+/// Know its boundary. This suite does not drive a real `GameplayViewModel` through
+/// `drumNotationView`. That is possible --
+/// `SwiftUIRenderingNotationTests.testNotationSheetFiltersHiddenRestsBeforeConstruction` calls
+/// `gameplayView.drumNotationView(viewModel:)` directly via
+/// `GameplayViewModelCoverageTestSupport.makeViewModel` -- but it pulls in the view model's
+/// async lifecycle and its own row-width/style resolution, which these fixture-driven probes
+/// are built to hold fixed. Instead this suite re-declares a deliberately head-layer-scoped
+/// subset of the same primitives in the same z-order (see `notationOverlay`): it mounts
+/// `ledgerLines`, `rests`, `beams`, `flags`, `stems`, then stops at `noteHeads`, omitting the
+/// six layers `drumNotationView` mounts afterwards (`rhythmDots`, `articulations`,
+/// `stopNotes`, `tuplets`, `feelMarks`, `rhythmWarnings`). That is intentional, not an
+/// oversight: all six draw *over* note heads, so including them could only mask head ink and
+/// weaken the differential. It does mean this mirror diverges from `drumNotationView` from
+/// day one, not as some hypothetical future risk -- and nothing enforces that the two
+/// z-orders stay in step going forward.
 ///
-/// Fault-injected on both counts before being committed: displacing every note head by
-/// `.offset(x: 40)` in `NotationPrimitiveViews.swift` turned the per-head deltas red (total
-/// ink is unchanged by a pure translation, so only the rect-scoped comparison catches it),
-/// and the total-ink guard fails by construction if the head layer paints nothing at all.
+/// What `notationOverlay` gates is `NotationNoteHeadView` *itself* -- an empty body, a zero
+/// frame, a transparent fill, a broken `DrumNoteheadShape` path, a dropped `.position` --
+/// against real pixels. Head *placement* is a separate claim this probe does not make: the
+/// sample rect is computed from `noteHead.position` via `RenderedNoteHead.paintedBounds`
+/// (`NotationRhythmRendering.swift:178-180`), and the glyph is drawn at that same position, so
+/// a wrong position moves rect and glyph together and this probe stays green. Placement is
+/// gated by the goldens (`DrumTabGoldenTests`), not here. Nor does anything gate production's
+/// mounting of the head layer: deleting the `noteHeads` `ForEach` from `drumNotationView`
+/// leaves this probe green, because the probe builds its own ZStack.
+///
+/// Fault-injected once, on the per-head gate: displacing every note head by `.offset(x: 40)`
+/// in `NotationPrimitiveViews.swift` turned the per-head deltas red -- and only at the edge
+/// heads, because a uniform shift lands head *N*'s glyph inside head *N+1*'s rect at these
+/// fixtures' spacing. The total-ink guard was not separately injected; it is false by
+/// construction when the head layer paints nothing, since the two renders are then
+/// byte-identical.
 @Suite("Drum tab render probe", .serialized)
 @MainActor
 struct DrumTabRenderProbeTests {
@@ -49,12 +67,12 @@ struct DrumTabRenderProbeTests {
 
     // MARK: - Overlay under test
 
-    /// Mounts the notation primitives in the same z-order as
+    /// Mounts the first six notation primitive layers, in the same z-order as
     /// `GameplaySheetMusicView.drumNotationView`: `ledgerLines`, printed `rests`, `beams`,
-    /// `flags`, `stems`, then `noteHeads`. `drumNotationView` takes a `GameplayViewModel`, so
-    /// it cannot be called directly from a fixture-driven test; this rebuilds the same
-    /// primitive z-order from a `NotationLayout` instead, on a transparent background so no
-    /// staff/sheet chrome can mask a missing head.
+    /// `flags`, `stems`, then `noteHeads` -- deliberately stopping there (see the type doc for
+    /// why). `drumNotationView` takes a `GameplayViewModel`, and this suite does not drive one
+    /// (see the type doc); this rebuilds the same primitive z-order from a `NotationLayout`
+    /// instead, on a transparent background so no staff/sheet chrome can mask a missing head.
     private func notationOverlay(
         _ layout: NotationLayout,
         style: NotationLayoutStyle
@@ -132,7 +150,10 @@ struct DrumTabRenderProbeTests {
     @Test("ImageRenderer paints a plain filled rectangle")
     func imageRendererPaintsSolidInk() throws {
         let size = CGSize(width: 40, height: 40)
-        let map = try inkMap(of: Rectangle().fill(Color.white), size: size)
+        // Black (0,0,0,255) rather than white: white's RGB channels are all 255, so this would
+        // still pass even if the renderer wrote the wrong byte index for alpha. Black pins the
+        // alpha channel as the only non-zero byte, at zero extra cost.
+        let map = try inkMap(of: Rectangle().fill(Color.black), size: size)
         #expect(totalInk(map) > 0, "ImageRenderer produced an all-transparent bitmap for a filled rectangle")
     }
 
@@ -140,7 +161,9 @@ struct DrumTabRenderProbeTests {
 
     @Test("note heads are actually painted", arguments: [
         DrumTabFixtureCatalog.sixteenthRun,
-        DrumTabFixtureCatalog.multiRowStableWidths
+        DrumTabFixtureCatalog.multiRowStableWidths,
+        DrumTabFixtureCatalog.sameTimeTrio,
+        DrumTabFixtureCatalog.stopChokeDamp
     ])
     func noteHeadsArePainted(_ fixture: DrumTabFixture) throws {
         let result = try DrumTabFixtureHarness.render(fixture)
@@ -150,7 +173,11 @@ struct DrumTabRenderProbeTests {
         // renders with a locked style so goldens stay stable. Confirm the two agree on note
         // head size before trusting sample rects computed against `viewStyle` to land on
         // `result.style`'s rendered geometry -- if they ever diverge, fail loudly here instead
-        // of silently sampling the wrong pixels below.
+        // of silently sampling the wrong pixels below. This is a drift tripwire, not an active
+        // check today: `DrumTabFixtureHarness.lockedStyle` is
+        // `gameplayDefault.with(rowWidth: maxRowWidth)`, and `.with(rowWidth:)` copies
+        // note-head size verbatim from `gameplayDefault`, so as currently wired this
+        // `#expect` cannot fail.
         let viewStyle = NotationLayoutStyle.gameplayDefault
         #expect(
             viewStyle.noteHeadWidth == result.style.noteHeadWidth
@@ -166,7 +193,11 @@ struct DrumTabRenderProbeTests {
         // rects -- computed from the same un-shifted `paintedBounds` -- land on the painted
         // glyphs instead of drifting off them.
         let yOffset = layout.topContentInset(style: viewStyle)
-        let size = CGSize(width: result.style.rowWidth, height: max(layout.totalHeight + yOffset, 1))
+        // `layout.contentWidth`, not `result.style.rowWidth`: production sizes the sheet with
+        // the same `max(maxRowWidth, paintedBounds.maxX + uniformSpacing)` formula
+        // (`NotationLayout.swift:307-310`), so a future fixture wider than the fixed row width
+        // cannot get clipped out of this canvas.
+        let size = CGSize(width: layout.contentWidth, height: max(layout.totalHeight + yOffset, 1))
 
         var stripped = layout
         stripped.noteHeads = []
@@ -187,6 +218,10 @@ struct DrumTabRenderProbeTests {
         // deleting every NotationNoteHeadView.
         for head in layout.noteHeads {
             let rect = head.paintedBounds(style: viewStyle).offsetBy(dx: 0, dy: yOffset)
+            // RenderedNoteHead.paintedBounds has no `.null` return path (unlike RenderedRest's),
+            // so this should never fire; assert it instead of silently skipping so a future
+            // change that introduces one is caught rather than swallowed.
+            #expect(!rect.isNull, "head \(head.id) has a null painted bounds rect")
             guard !rect.isNull else { continue }
             let delta = inkCount(in: withHeads, rect: rect) - inkCount(in: withoutHeads, rect: rect)
             #expect(delta > 0, "head \(head.id) contributed no ink in \(rect)")
