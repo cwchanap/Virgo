@@ -49,20 +49,31 @@ struct DrumTabPlayheadAlignmentTests {
         // setupGameplay() alone leaves purpleBarPosition nil:
         // calculatePurpleBarPosition (GameplayViewModel+VisualUpdates.swift:196-197)
         // guards on `isPlaying`, which setupGameplay never sets. Mirror
-        // RhythmTimelineIntegrationTests' pattern (realDTXProjectionPersists...
-        // test, line ~152) of flipping isPlaying and driving a synthetic
-        // elapsed time through updateContinuousVisualsForTesting.
+        // RhythmTimelineIntegrationTests.validDTXFixtureSharesIdentityAndTime
+        // (line 66), which flips isPlaying (line 128) and then drives a
+        // synthetic elapsed time through updateContinuousVisualsForTesting
+        // (line 152).
         //
-        // Target selection matters: xPosition is computed from the tick
-        // *local to its measure*, so tick 0 of any measure lands on the same
-        // x as tick 0 of measure 0 — driving to "the middle event by index"
-        // was verified (via a throwaway diagnostic run) to still land on
-        // that trivial start-of-measure column for multiRowStableWidths,
-        // because its sparse measures only ever have a note at local tick 0.
-        // Picking the event with the largest local tick instead deterministically
-        // lands on a late-in-measure column, so the check exercises real
-        // alignment rather than only ever confirming "the playhead is at the
-        // start."
+        // Target selection matters: `TabGrid.xPosition` returns
+        // `measure.contentStartX + tick * tickWidth`, and `contentStartX` is
+        // `xOffset + barLineWidth + uniformSpacing` (NotationLayout.swift:343)
+        // — it is `xOffset`, not the tick alone, that anchors a measure's
+        // column origin, and `xOffset` differs between measures that share a
+        // row. For these two fixtures specifically, every measure is 500pt
+        // wide (52pt leftPadding + 16 ticks * 28pt tickWidth) against the
+        // locked 900pt row width, so `buildMeasures`
+        // (NotationLayoutEngine.swift:258-274) wraps every measure onto its
+        // own row (100 + 500 + 12 measureSpacing = 612, then 612 + 500 =
+        // 1112 > 900) and each one lands back at `xOffset == leftMargin ==
+        // 100`, so `contentStartX == 152` for every measure in both charts.
+        // That means x alone cannot distinguish measures here, so
+        // "the middle event by index" was verified (via a throwaway
+        // diagnostic run) to still land on the same x=152 column that tick 0
+        // of measure 0 uses, for multiRowStableWidths, because its sparse
+        // measures only ever place a note at local tick 0. Picking the event
+        // with the largest local tick instead deterministically lands on a
+        // late-in-measure column, so the check exercises real alignment
+        // rather than only ever confirming "the playhead is at the start."
         let targets = viewModel.cachedRhythmNoteTargets
         try #require(!targets.isEmpty)
         let farTarget = try #require(targets.max { $0.position.localTick < $1.position.localTick })
@@ -74,6 +85,21 @@ struct DrumTabPlayheadAlignmentTests {
             viewModel.purpleBarPosition,
             "playhead must have a position once gameplay is set up"
         )
+
+        // Because every measure in these fixtures shares the same
+        // contentStartX (see above), x alone can't tell a correct playhead
+        // apart from one that resolved to the wrong measure at the right
+        // local tick — same column, wrong measure, and both assertions below
+        // would still pass. Assert the measure independently first, matching
+        // RhythmTimelineIntegrationTests.swift:153
+        // (`viewModel.currentMeasureIndex == laterEvent.position.measureIndex`),
+        // which sits immediately before that test's own x comparison.
+        // `currentMeasureIndex` is written from `resolved.measure.measureIndex`
+        // in `updateTimelineContinuousVisuals`
+        // (GameplayViewModel+VisualUpdates.swift:82), derived from elapsed
+        // seconds — independent of `farTarget.position.measureIndex`, which
+        // comes from the resolver's event position.
+        #expect(viewModel.currentMeasureIndex == farTarget.position.measureIndex)
 
         // The playhead must sit on a column that actually has a head.
         let columnXs = Set(
@@ -93,5 +119,7 @@ struct DrumTabPlayheadAlignmentTests {
             viewModel.cachedNotationLayout.noteHeads.first { $0.eventID == farTarget.eventID }
         )
         #expect(position.x == Double(matchingHead.position.x))
+
+        viewModel.cleanup()
     }
 }
