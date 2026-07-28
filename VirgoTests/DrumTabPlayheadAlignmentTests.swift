@@ -33,6 +33,11 @@ struct DrumTabPlayheadAlignmentTests {
         )
         await viewModel.loadChartData()
         viewModel.setupGameplay(loadPersistedSpeed: false)
+        // Guard teardown immediately after setup so cleanup runs on both the
+        // success path and any throwing `#require` below — the explicit call
+        // that used to live at the end of the test was skipped whenever an
+        // earlier `#require` threw.
+        defer { viewModel.cleanup() }
 
         // These tests bypass the harness's gate step, so re-assert validity.
         // Without this, a fixture degrading to resolveMissing would leave
@@ -124,7 +129,5 @@ struct DrumTabPlayheadAlignmentTests {
             viewModel.cachedNotationLayout.noteHeads.first { $0.eventID == farTarget.eventID }
         )
         #expect(position.x == Double(matchingHead.position.x))
-
-        viewModel.cleanup()
     }
 }

@@ -50,27 +50,10 @@ enum DrumTabFixtureHarness {
         )
         let projection = try chartData.persistenceProjection()
 
-        let container = TestContainer.isolatedContainer()
-        let context = container.context
-        let song = Song(
-            title: chartData.title,
-            artist: chartData.artist,
-            bpm: chartData.bpm,
-            duration: "0:10",
-            genre: "DTX"
+        let (chart, container) = try makePersistedChart(
+            chartData: chartData,
+            projection: projection
         )
-        let chart = Chart(
-            difficulty: .medium,
-            level: chartData.difficultyLevel,
-            timeSignature: projection.timeSignature,
-            song: song
-        )
-        try chart.setRhythmMetadata(projection.chartMetadata)
-        chart.notes = projection.notes.map { $0.makeNote(for: chart) }
-        chart.controlEvents = projection.controls.map { $0.makeControl(for: chart) }
-        song.charts = [chart]
-        context.insert(song)
-        try context.save()
 
         let resolved = RhythmTimelineResolver().resolve(chart: chart)
         guard resolved.availability == .valid else {
@@ -103,5 +86,37 @@ enum DrumTabFixtureHarness {
             style: lockedStyle,
             container: container
         )
+    }
+
+    /// Builds the `Song`/`Chart` pair from a parsed projection, wires their
+    /// relationships, applies rhythm metadata, and persists them into an
+    /// isolated `TestContainer`. Returns the chart and the container so the
+    /// caller can retain the backing store for the chart's lifetime.
+    private static func makePersistedChart(
+        chartData: DTXChartData,
+        projection: DTXChartPersistenceProjection
+    ) throws -> (chart: Chart, container: TestContainer) {
+        let container = TestContainer.isolatedContainer()
+        let context = container.context
+        let song = Song(
+            title: chartData.title,
+            artist: chartData.artist,
+            bpm: chartData.bpm,
+            duration: "0:10",
+            genre: "DTX"
+        )
+        let chart = Chart(
+            difficulty: .medium,
+            level: chartData.difficultyLevel,
+            timeSignature: projection.timeSignature,
+            song: song
+        )
+        try chart.setRhythmMetadata(projection.chartMetadata)
+        chart.notes = projection.notes.map { $0.makeNote(for: chart) }
+        chart.controlEvents = projection.controls.map { $0.makeControl(for: chart) }
+        song.charts = [chart]
+        context.insert(song)
+        try context.save()
+        return (chart, container)
     }
 }

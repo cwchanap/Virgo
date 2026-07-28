@@ -26,7 +26,34 @@ struct RhythmLayoutSnapshotBuilder {
         timeline: RhythmTimeline,
         feel: RhythmicFeel
     ) throws -> RhythmLayoutSnapshot {
-        let analysisEvents = resolvedRhythm.orderedEvents.compactMap { event -> RhythmAnalysisEvent? in
+        let analysisEvents = makeAnalysisEvents(resolvedRhythm: resolvedRhythm)
+        let analysis = NotationRhythmAnalyzer().analyze(
+            events: analysisEvents,
+            measures: timeline.measures,
+            ticksPerWholeNote: timeline.ticksPerWholeNote,
+            feel: feel
+        )
+        let measures = rhythmMeasuresApplyingWarnings(timeline.measures, warnings: analysis.warnings)
+        let notes = makeLayoutNotes(analysis: analysis, resolvedRhythm: resolvedRhythm)
+        let controls = makeLayoutControls(resolvedRhythm: resolvedRhythm)
+        let rests = makeLayoutRests(analysis: analysis, timeline: timeline)
+        let snapshot = try RhythmLayoutSnapshot(
+            ticksPerWholeNote: timeline.ticksPerWholeNote,
+            measures: measures,
+            notes: notes,
+            controls: controls,
+            rests: rests,
+            feel: feel,
+            diagnostics: resolvedRhythm.runtimeDiagnostics
+        )
+        snapshot.logDiagnostics()
+        return snapshot
+    }
+
+    private func makeAnalysisEvents(
+        resolvedRhythm: ResolvedChartRhythm
+    ) -> [RhythmAnalysisEvent] {
+        resolvedRhythm.orderedEvents.compactMap { event -> RhythmAnalysisEvent? in
             guard let note = resolvedRhythm.noteByEventID[event.eventID] else { return nil }
             let drumType = DrumType.from(noteType: note.noteType)
             return RhythmAnalysisEvent(
@@ -38,14 +65,13 @@ struct RhythmLayoutSnapshotBuilder {
                 visualDurationCandidate: note.visualDurationCandidate
             )
         }
-        let analysis = NotationRhythmAnalyzer().analyze(
-            events: analysisEvents,
-            measures: timeline.measures,
-            ticksPerWholeNote: timeline.ticksPerWholeNote,
-            feel: feel
-        )
-        let measures = rhythmMeasuresApplyingWarnings(timeline.measures, warnings: analysis.warnings)
-        let notes = analysis.notes.compactMap { analyzed -> RhythmLayoutNote? in
+    }
+
+    private func makeLayoutNotes(
+        analysis: NotationRhythmAnalysis,
+        resolvedRhythm: ResolvedChartRhythm
+    ) -> [RhythmLayoutNote] {
+        analysis.notes.compactMap { analyzed -> RhythmLayoutNote? in
             guard let note = resolvedRhythm.noteByEventID[analyzed.eventID] else { return nil }
             return RhythmLayoutNote(
                 eventID: analyzed.eventID,
@@ -59,7 +85,12 @@ struct RhythmLayoutSnapshotBuilder {
                 tupletID: analyzed.tupletID
             )
         }
-        let controls = resolvedRhythm.orderedEvents.compactMap { event -> RhythmLayoutControl? in
+    }
+
+    private func makeLayoutControls(
+        resolvedRhythm: ResolvedChartRhythm
+    ) -> [RhythmLayoutControl] {
+        resolvedRhythm.orderedEvents.compactMap { event -> RhythmLayoutControl? in
             guard let control = resolvedRhythm.controlByEventID[event.eventID] else { return nil }
             return RhythmLayoutControl(
                 eventID: event.eventID,
@@ -67,7 +98,13 @@ struct RhythmLayoutSnapshotBuilder {
                 position: event.position
             )
         }
-        let rests = analysis.rests.compactMap { rest -> RhythmLayoutRest? in
+    }
+
+    private func makeLayoutRests(
+        analysis: NotationRhythmAnalysis,
+        timeline: RhythmTimeline
+    ) -> [RhythmLayoutRest] {
+        analysis.rests.compactMap { rest -> RhythmLayoutRest? in
             guard let position = timeline.position(
                 measureIndex: rest.measureIndex,
                 localTick: rest.startTick
@@ -81,17 +118,6 @@ struct RhythmLayoutSnapshotBuilder {
                 tupletID: rest.tupletID
             )
         }
-        let snapshot = try RhythmLayoutSnapshot(
-            ticksPerWholeNote: timeline.ticksPerWholeNote,
-            measures: measures,
-            notes: notes,
-            controls: controls,
-            rests: rests,
-            feel: feel,
-            diagnostics: resolvedRhythm.runtimeDiagnostics
-        )
-        snapshot.logDiagnostics()
-        return snapshot
     }
 
     private func rhythmMeasuresApplyingWarnings(
