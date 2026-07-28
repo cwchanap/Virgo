@@ -15,53 +15,13 @@ import AppKit
 #endif
 @testable import Virgo
 
-private enum RenderProbeError: Error {
-    case missingCGImage
-    case missingPixelBuffer
-    case missingBitmapContext
-}
-
 #if os(macOS)
+/// Rasterization itself lives in `RenderRasterProbe.swift`, shared with
+/// `DrumTabRenderProbeTests`; only the colour predicate is local to this suite.
 @MainActor
 private func countYellowPixels<V: View>(in view: V, size: CGSize) throws -> Int {
-    let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height))
-    renderer.scale = 1
-    guard let cgImage = renderer.cgImage else {
-        throw RenderProbeError.missingCGImage
-    }
-
-    let width = cgImage.width
-    let height = cgImage.height
-    let bytesPerPixel = 4
-    let bytesPerRow = width * bytesPerPixel
-    var pixels = [UInt8](repeating: 0, count: height * bytesPerRow)
-
-    try pixels.withUnsafeMutableBytes { buffer in
-        guard let baseAddress = buffer.baseAddress else {
-            throw RenderProbeError.missingPixelBuffer
-        }
-        guard let context = CGContext(
-            data: baseAddress,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: bytesPerRow,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            throw RenderProbeError.missingBitmapContext
-        }
-
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-    }
-
-    return stride(from: 0, to: pixels.count, by: bytesPerPixel).reduce(0) { count, index in
-        let red = pixels[index]
-        let green = pixels[index + 1]
-        let blue = pixels[index + 2]
-        let alpha = pixels[index + 3]
-        let isYellow = alpha > 20 && red > 180 && green > 150 && blue < 120
-        return count + (isYellow ? 1 : 0)
+    try rasterizeView(view, size: size).count { pixel in
+        pixel.alpha > 20 && pixel.red > 180 && pixel.green > 150 && pixel.blue < 120
     }
 }
 #endif

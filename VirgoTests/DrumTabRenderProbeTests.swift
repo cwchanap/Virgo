@@ -51,12 +51,6 @@ import CoreGraphics
 @Suite("Drum tab render probe", .serialized)
 @MainActor
 struct DrumTabRenderProbeTests {
-    private enum ProbeError: Error {
-        case missingCGImage
-        case missingPixelBuffer
-        case missingBitmapContext
-    }
-
     /// Per-pixel alpha map of a rendered bitmap. A struct rather than a tuple so SwiftLint's
     /// large-tuple rule doesn't flag the 3-member (pixels, width, height) grouping.
     private struct InkMap {
@@ -93,30 +87,17 @@ struct DrumTabRenderProbeTests {
 
     /// Renders `view` into an offscreen bitmap of `size` and returns a per-pixel alpha map.
     /// Ink is alpha > 20 so the probe is colour-agnostic (survives theme/palette changes).
+    ///
+    /// Rasterization is `rasterizeView` in `RenderRasterProbe.swift`, shared with
+    /// `SwiftUIRenderingNotationTests`; this adds only the boolean ink threshold and the
+    /// 2-D indexing the per-head rect sampling below needs.
     private func inkMap<V: View>(of view: V, size: CGSize) throws -> InkMap {
-        let renderer = ImageRenderer(content: view.frame(width: size.width, height: size.height))
-        renderer.scale = 1
-        guard let cgImage = renderer.cgImage else { throw ProbeError.missingCGImage }
-
-        let width = cgImage.width, height = cgImage.height
-        let bytesPerRow = width * 4
-        var bytes = [UInt8](repeating: 0, count: height * bytesPerRow)
-        try bytes.withUnsafeMutableBytes { buffer in
-            guard let base = buffer.baseAddress else { throw ProbeError.missingPixelBuffer }
-            guard let context = CGContext(
-                data: base, width: width, height: height,
-                bitsPerComponent: 8, bytesPerRow: bytesPerRow,
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-            ) else { throw ProbeError.missingBitmapContext }
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let raster = try rasterizeView(view, size: size)
+        var pixels = [Bool](repeating: false, count: raster.pixelCount)
+        for index in 0..<raster.pixelCount {
+            pixels[index] = raster.pixel(at: index).alpha > 20
         }
-
-        var pixels = [Bool](repeating: false, count: width * height)
-        for index in 0..<(width * height) {
-            pixels[index] = bytes[index * 4 + 3] > 20
-        }
-        return InkMap(pixels: pixels, width: width, height: height)
+        return InkMap(pixels: pixels, width: raster.width, height: raster.height)
     }
 
     private func totalInk(_ map: InkMap) -> Int {
@@ -143,7 +124,7 @@ struct DrumTabRenderProbeTests {
 
     /// Verifies `ImageRenderer` produces real, non-transparent pixels in this test host before
     /// trusting it to gate note-head rendering below. A `nil` `cgImage` already fails
-    /// `noteHeadsArePainted` loudly via `ProbeError.missingCGImage`; what that test cannot
+    /// `noteHeadsArePainted` loudly via `RenderRasterProbeError.missingCGImage`; what that test cannot
     /// distinguish on its own is a *non-nil but all-transparent* bitmap, which would also make
     /// its differential comparison fail (0 vs 0 ink) -- correctly, but without pointing at the
     /// renderer as the cause. This test isolates that failure mode directly.
