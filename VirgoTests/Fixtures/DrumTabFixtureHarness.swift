@@ -90,13 +90,16 @@ enum DrumTabFixtureHarness {
 
     /// Builds the `Song`/`Chart` pair from a parsed projection, wires their
     /// relationships, applies rhythm metadata, and persists them into an
-    /// isolated `TestContainer`. Returns the chart and the container so the
-    /// caller can retain the backing store for the chart's lifetime.
+    /// ephemeral `TestContainer` (not registered in the global
+    /// `isolatedContainers` dict — `FixtureRenderResult.container` retains
+    /// it for the chart's lifetime, so global registration would leak).
+    /// Returns the chart and the container so the caller can retain the
+    /// backing store for the chart's lifetime.
     private static func makePersistedChart(
         chartData: DTXChartData,
         projection: DTXChartPersistenceProjection
     ) throws -> (chart: Chart, container: TestContainer) {
-        let container = TestContainer.isolatedContainer()
+        let container = TestContainer.ephemeralContainer()
         let context = container.context
         let song = Song(
             title: chartData.title,

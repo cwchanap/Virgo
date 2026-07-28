@@ -45,9 +45,12 @@ import CoreGraphics
 /// Fault-injected once, on the per-head gate: displacing every note head by `.offset(x: 40)`
 /// in `NotationPrimitiveViews.swift` turned the per-head deltas red -- and only at the edge
 /// heads, because a uniform shift lands head *N*'s glyph inside head *N+1*'s rect at these
-/// fixtures' spacing. The total-ink guard was not separately injected; it is false by
-/// construction when the head layer paints nothing, since the two renders are then
-/// byte-identical.
+/// fixtures' spacing. That was under the old baseline which stripped ALL heads, so a
+/// neighbour's glyph could supply ink for an interior head's rect. The per-head gate now
+/// renders each head in isolation against the no-heads baseline, so the same shift would
+/// turn every head red, not just the edge ones. The total-ink guard was not separately
+/// injected; it is false by construction when the head layer paints nothing, since the two
+/// renders are then byte-identical.
 @Suite("Drum tab render probe", .serialized)
 @MainActor
 struct DrumTabRenderProbeTests {
@@ -193,10 +196,21 @@ struct DrumTabRenderProbeTests {
         // as N confusing per-head failures below.
         #expect(totalWith > totalWithout, "mounting note heads added no ink (\(totalWith) vs \(totalWithout))")
 
-        // Per-head delta inside the head's own 2-D bounds. A full-height column band would
-        // also catch stems and beams sharing that x band -- that's why this is differential
-        // and rect-scoped rather than a coarse column check that would stay green after
+        // Per-head delta inside the head's own 2-D bounds, with each head
+        // rendered in isolation against the same no-heads baseline. A
+        // full-height column band would also catch stems and beams sharing
+        // that x band -- that's why this is differential and rect-scoped
+        // rather than a coarse column check that would stay green after
         // deleting every NotationNoteHeadView.
+        //
+        // Rendering only the current head (rather than all heads minus the
+        // current one) makes the delta attributable: a neighbouring head
+        // that also paints inside this rect is absent from both the
+        // single-head render and the no-heads baseline, so it cannot supply
+        // ink for this assertion. The previous baseline stripped ALL heads,
+        // so a missing or displaced head could stay green when a neighbour
+        // supplied ink inside its bounds -- confirmed by fault injection
+        // (see the type doc comment).
         for head in layout.noteHeads {
             let rect = head.paintedBounds(style: viewStyle).offsetBy(dx: 0, dy: yOffset)
             // RenderedNoteHead.paintedBounds has no `.null` return path (unlike RenderedRest's),
@@ -204,7 +218,14 @@ struct DrumTabRenderProbeTests {
             // change that introduces one is caught rather than swallowed.
             #expect(!rect.isNull, "head \(head.id) has a null painted bounds rect")
             guard !rect.isNull else { continue }
-            let delta = inkCount(in: withHeads, rect: rect) - inkCount(in: withoutHeads, rect: rect)
+
+            var singleHead = layout
+            singleHead.noteHeads = [head]
+            let withOnlyHead = try inkMap(
+                of: notationOverlay(singleHead, style: viewStyle).offset(y: yOffset),
+                size: size
+            )
+            let delta = inkCount(in: withOnlyHead, rect: rect) - inkCount(in: withoutHeads, rect: rect)
             #expect(delta > 0, "head \(head.id) contributed no ink in \(rect)")
         }
     }
