@@ -285,6 +285,33 @@ struct NotationRhythmAnalyzerTests {
         #expect(pastMeasure.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
     }
 
+    @Test("terminal DTX onset with a non-clean measure remainder suppresses the whole measure")
+    func terminalDTXUncleanRemainderSuppressesMeasure() throws {
+        // Event 1 (tick 0, beat group 0) resolves cleanly via its candidate.
+        // Event 2 (tick 300, beat group 1) is the terminal onset of its voice.
+        // Its measure remainder (960 - 300 = 660) is neither a binary nor a
+        // dotted duration, so `exactMeasureRemainderResolution` returns nil
+        // and the onset falls through to `.indeterminate`. The warning then
+        // drives `applyConservativeFallback` to mark the entire measure
+        // `.unsupported`, suppressing the cleanly-resolved event 1 as well.
+        let analysis = analyze([
+            event(1, tick: 0, origin: .dtx, candidate: .quarter),
+            event(2, tick: 300, origin: .dtx, interval: .sixtyfourth)
+        ])
+        let terminal = try #require(analysis.notes.first { $0.eventID.rawValue == 2 })
+        let resolved = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
+
+        #expect(terminal.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(analysis.warnings.contains {
+            $0.codes.contains(.indeterminateTerminalDuration)
+        })
+        if case .supported = resolved.rhythm.support {
+            Issue.record("Cleanly-resolved note should have been suppressed by whole-measure fallback")
+        }
+        #expect(analysis.tuplets.isEmpty)
+        #expect(analysis.rests.filter { $0.voice == .upper && $0.visibility == .printed }.isEmpty)
+    }
+
     @Test("a later manual onset is never used as DTX duration evidence")
     func laterManualOnsetDoesNotResolveDTXDuration() throws {
         let trusted = analyze([
