@@ -35,8 +35,7 @@ struct SuspectTrailerRegistryTests {
     /// When a ticket is resolved, remove it here AND delete the trailer from
     /// the golden(s) in the same change.
     private static let openSuspectTickets: Set<String> = [
-        "HPA-145",
-        "HPA-419"
+        "HPA-145"
     ]
 
     @Test("every SUSPECT trailer is listed in openSuspectTickets")

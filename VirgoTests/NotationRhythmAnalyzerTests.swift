@@ -238,7 +238,19 @@ struct NotationRhythmAnalyzerTests {
         })
     }
 
-    @Test("terminal DTX duration is trusted only when evidence fits its resolved group")
+    @Test("terminal DTX duration uses an exact remaining measure span without later evidence")
+    func terminalDTXMeasureRemainder() throws {
+        let analysis = analyze([
+            event(1, tick: 720, origin: .dtx, interval: .sixtyfourth)
+        ])
+        let note = try #require(analysis.notes.first)
+
+        #expect(note.durationTicks == 240)
+        #expect(note.rhythm == NotationRhythm(baseInterval: .quarter))
+        #expect(analysis.warnings.isEmpty)
+    }
+
+    @Test("terminal DTX duration evidence may span beat groups but not its measure")
     func terminalDTXCandidateBoundary() throws {
         let fitting = try #require(analyze([
             event(1, tick: 120, origin: .dtx, interval: .sixtyfourth, candidate: .eighth)
@@ -261,10 +273,16 @@ struct NotationRhythmAnalyzerTests {
             $0.voice != .upper || $0.visibility != .printed
         })
 
-        let crossing = try #require(analyze([
+        let crossGroup = try #require(analyze([
             event(3, tick: 120, origin: .dtx, candidate: .quarter)
         ]).notes.first)
-        #expect(crossing.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(crossGroup.durationTicks == 240)
+        #expect(crossGroup.rhythm == NotationRhythm(baseInterval: .quarter))
+
+        let pastMeasure = try #require(analyze([
+            event(4, tick: 120, origin: .dtx, candidate: .full)
+        ]).notes.first)
+        #expect(pastMeasure.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
     }
 
     @Test("a later manual onset is never used as DTX duration evidence")

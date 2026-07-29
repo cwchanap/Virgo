@@ -1,17 +1,18 @@
 tl-grid ticksPerWholeNote=4 feel=straight
 tl-meas m0 startTick=0 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
-tl-meas m1 startTick=4 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=unsupported[indeterminateTerminalDuration]
+tl-meas m1 startTick=4 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
 
 grid  ticksPerWholeNote=4 tickWidth=50.00 leftPadding=52.00
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
-dims  noteHeadSize=30.00x20.00 totalHeight=610.00 paintedBounds=(99.00,43.00,517.00,195.00)
+dims  noteHeadSize=30.00x20.00 totalHeight=610.00 paintedBounds=(99.00,110.00,517.00,128.00)
 row   0 measures=[m0,m1] contentWidth=900.00
 meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4 contentStartX=152.00
 meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4 contentStartX=416.00
-head  m1 t0000 abs0004 pos=(416.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Half rhythm=Half[indeterminate:indeterminateTerminalDuration] durTicks=1
-head  m1 t0002 abs0006 pos=(516.00,230.00) kick glyph=filledCircle variant=leftBass voice=lower stem=down row=0 lane=1C interval=Quarter rhythm=Quarter[indeterminate:indeterminateTerminalDuration] durTicks=1
+head  m1 t0000 abs0004 pos=(416.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Half rhythm=Half durTicks=2
+head  m1 t0002 abs0006 pos=(516.00,230.00) kick glyph=filledCircle variant=leftBass voice=lower stem=down row=0 lane=1C interval=Half rhythm=Half durTicks=2
 rest  m0 t0000 voice=upper dur=fullMeasure ticks=4 vis=printed pos=(252.00,130.00) tuplet=-
 rest  m0 t0000 voice=lower dur=fullMeasure ticks=4 vis=hiddenDuplicate pos=(252.00,170.00) tuplet=-
+rest  m1 t0000 voice=upper dur=fullMeasure ticks=4 vis=printed pos=(516.00,130.00) tuplet=-
 ledger row=0 start=(398.00,210.00) end=(434.00,210.00)
 ledger row=0 start=(398.00,230.00) end=(434.00,230.00)
 ledger row=0 start=(498.00,210.00) end=(534.00,210.00)
@@ -19,5 +20,3 @@ ledger row=0 start=(498.00,230.00) end=(534.00,230.00)
 bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
-warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=0 measure=2 pos=(506.00,54.00) size=180.00x22.00
-# SUSPECT: HPA-419 — m1's indeterminateTerminalDuration fallback marks the measure unsupported, so its 2 note heads render with 0 stems; this golden pins the fallback, not correctly engraved notation.

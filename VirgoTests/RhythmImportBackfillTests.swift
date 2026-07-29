@@ -127,8 +127,8 @@ struct RhythmImportBackfillTests {
         #expect(projection.controls[0].normalizedTicksPerMeasure == nil)
     }
 
-    @Test("cross-voice onset cannot invent a terminal upper-voice duration")
-    func crossVoiceOnsetStaysIndeterminateThroughBackfillAndLayout() async throws {
+    @Test("cross-voice onset does not shorten an exact terminal upper-voice duration")
+    func crossVoiceOnsetDoesNotShortenTerminalUpperVoiceDuration() async throws {
         let folder = try makeVoiceScopedDurationFixtureFolder()
         let chartURL = folder.appendingPathComponent("first.dtx")
         let chartData = try DTXFileParser.parseChartMetadata(from: chartURL)
@@ -187,11 +187,15 @@ struct RhythmImportBackfillTests {
         let upperNotes = snapshot.notes.filter { $0.sourceLaneID == "12" || $0.sourceLaneID == "11" }
 
         #expect(upperNotes.count == 2)
+        let measureDuration = try #require(snapshot.measures.first?.durationTicks)
+        #expect(upperNotes.allSatisfy { $0.durationTicks == measureDuration })
+        #expect(upperNotes.allSatisfy { $0.rhythm.baseInterval == .full })
         #expect(upperNotes.allSatisfy {
-            $0.rhythm.support == .indeterminate(.indeterminateTerminalDuration)
+            if case .indeterminate = $0.rhythm.support { return false }
+            return true
         })
         guard case let .unsupported(warningCodes) = snapshot.measures.first?.engravingSupport else {
-            Issue.record("Expected the terminal upper voice to mark its measure unsupported")
+            Issue.record("Expected the unresolved lower voice to mark its measure unsupported")
             return
         }
         #expect(warningCodes.contains(.indeterminateTerminalDuration))

@@ -374,16 +374,14 @@ struct DrumTabGoldenTests {
 
             // Differential proof that `.incompleteTuplet` is caused by the
             // 12-position content rather than being ambient: the sentinel
-            // measure holds one plain note and must carry ONLY the
-            // indeterminate code. If a regression started stamping
+            // measure holds one plain full-measure note and must remain
+            // supported. If a regression started stamping
             // `.incompleteTuplet` on every measure, the assertion above
             // would still pass and only this one would catch it.
             let sentinelMeasure = try #require(
                 result.snapshot.measures.first { $0.measureIndex == 1 }
             )
-            #expect(
-                sentinelMeasure.engravingSupport == .unsupported([.indeterminateTerminalDuration])
-            )
+            #expect(sentinelMeasure.engravingSupport == .supported)
 
             // An unsupported measure must not also emit tuplet marks: an
             // engine that renders tuplet brackets while still reporting the

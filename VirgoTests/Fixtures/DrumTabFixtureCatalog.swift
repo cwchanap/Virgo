@@ -31,17 +31,12 @@ enum DrumTabFixtureCatalog {
     /// Must beam as four beat-scoped groups, not one full-measure beam.
     ///
     /// Content lives in DTX measure 0 (not 1) with a one-note sentinel in
-    /// measure 1. `NotationRhythmAnalyzer` cannot infer a duration for the
-    /// last DTX onset in a voice (no following onset anywhere in the chart),
-    /// so a chart's true final measure always resolves
-    /// `.unsupported(indeterminateTerminalDuration)` — which suppresses
-    /// every beam and flag in that measure, not just the one note. Putting
-    /// the content in measure 0 gives its last note a follower (the
-    /// sentinel), so measure 0 resolves `.supported`; the sentinel's own
-    /// measure 1 becomes the new (untested) unsupported terminal measure.
-    /// This also avoids the empty lead-in rest measure that content-in-1
-    /// would add ahead of it (see `sameTimeTrio`'s golden), so the layout
-    /// is exactly the two measures under test.
+    /// measure 1. The sentinel is retained from the original regression
+    /// fixture so the chart shape and cross-measure duration evidence stay
+    /// stable; HPA-419 now lets its own terminal measure resolve from the
+    /// exact remainder to the measure boundary. Starting at measure 0 also
+    /// avoids an empty lead-in rest measure, so the layout is exactly the
+    /// two measures under test.
     static let sixteenthRun = DrumTabFixture(
         name: "sixteenth-run-4-4",
         dtx: chart([
@@ -52,9 +47,8 @@ enum DrumTabFixtureCatalog {
 
     /// Fixture 3: each beat is an eighth plus two sixteenths (positions 0, 2, 3
     /// of the beat), forcing a primary beam plus a partial secondary beam.
-    /// Same trailing-sentinel-measure structure as `sixteenthRun`, and for the
-    /// same reason: measure 0 holds the content so its last onset has a
-    /// follower and resolves `.supported`.
+    /// Same retained trailing-sentinel structure as `sixteenthRun`; both
+    /// measures now resolve supported, including the chart-terminal sentinel.
     static let mixedEighthSixteenth = DrumTabFixture(
         name: "mixed-eighth-sixteenth",
         dtx: chart([
@@ -77,12 +71,10 @@ enum DrumTabFixtureCatalog {
     ///
     /// Both lone notes live in measure 0, on two different lanes/voices
     /// (hi-hat = upper, kick = lower), followed by a one-note-per-voice
-    /// sentinel in measure 1. This is deliberate, not incidental: engraving
-    /// support is scoped per DTX measure (see `sixteenthRun`'s doc comment on
-    /// why a chart's true final measure always suppresses its own
-    /// beams/flags), but *duration inference* for a "terminal" onset is
-    /// scoped per voice and chases the next onset in that same voice,
-    /// wherever it is. Two lone notes in the SAME voice, each needing to be
+    /// sentinel in measure 1. The sentinel keeps independent cross-measure
+    /// duration evidence for both voices and preserves the fixture's original
+    /// shape; HPA-419 now engraves its own terminal measure as well. Two lone
+    /// notes in the SAME voice, each needing to be
     /// the first onset of a fresh "early note, then evenly-spaced quarters"
     /// chain, cannot both live in one chart: the second one's incoming chain
     /// would need to land exactly on its early tick, which — one tick or two
@@ -125,9 +117,8 @@ enum DrumTabFixtureCatalog {
     /// by `variant` (`.openHiHat` / `.closedHiHat` / `.pedalHiHat`). The gate
     /// below checks (glyph, variant) pairs, not (drumType, glyph), so it
     /// actually fails if open/closed/pedal collapse to the same variant.
-    /// No trailing sentinel measure: both gates read note-head glyph/variant,
-    /// which are recorded regardless of the final measure's (always
-    /// unsupported) engraving support -- see `sixteenthRun`'s doc comment.
+    /// No trailing sentinel measure: this fixture directly exercises
+    /// chart-terminal duration inference as well as glyph/variant mapping.
     static let hiHatOpenClosedPedal = DrumTabFixture(
         name: "hihat-open-closed-pedal",
         dtx: chart([
@@ -162,33 +153,10 @@ enum DrumTabFixtureCatalog {
     /// full-measure rest `NotationRestTopologyBuilder` emits for the (empty)
     /// lower voice -- that lower-voice rest is exactly what the differential
     /// needs: it disappears if a control chip is ever mistaken for a
-    /// lower-voice onset. But `NotationLayoutEngine.layout(...)` drops
-    /// *every* rest from a chart's true final measure once that measure
-    /// resolves `.unsupported(...)`, via
-    /// `snapshot.rests.filter { !unsupportedMeasureIndexes.contains(...) }`
-    /// (`NotationLayoutEngine.swift:106-113`; see `sixteenthRun`'s doc
-    /// comment on the terminal-measure trap, confirmed empirically against
-    /// `same-time-trio`'s golden, which shows zero rest lines survive for
-    /// its own final measure despite real gaps in its lower voice). Without
-    /// a sentinel, measure 1 IS that final measure, its rest is stripped,
-    /// and the only rests left in the digest are from the always-empty,
-    /// control-free measure 0 lead-in -- a differential that would still
-    /// read "non-empty" but could never actually detect a control-to-rest
-    /// leak in measure 1.
-    ///
-    /// The measure-2 sentinel (a single hi-hat note, same *upper* voice as
-    /// the content) fixes this by giving measure 1's last upper-voice onset
-    /// (hi-hat, tick 3) a same-voice follower. Duration inference chases the
-    /// next onset in the *same voice* only, scanning across measures
-    /// (`VisualDurationLookup.candidates`, grouping by voice and mapping
-    /// each tick to its next same-voice tick at `VisualDurationLookup.swift:
-    /// 60-69`); with no follower at all, that onset falls through to the
-    /// unconditional indeterminate fallback (`NotationRhythmAnalyzer.swift:
-    /// 283-293`) and drags measure 1 unsupported. With the sentinel, that
-    /// last onset gets an exact one-tick same-voice candidate and resolves
-    /// `.supported` like its neighbors, so measure 1 keeps its own rest;
-    /// measure 2 becomes the new (untested) unsupported terminal measure
-    /// instead.
+    /// lower-voice onset. The measure-2 sentinel is retained so measure 1's
+    /// final upper-voice onset still has explicit cross-measure evidence and
+    /// the fixture shape remains stable. HPA-419 now also resolves the
+    /// sentinel's own terminal duration from the exact measure remainder.
     static let stopChokeDamp = DrumTabFixture(
         name: "stop-choke-damp",
         dtx: chart([
