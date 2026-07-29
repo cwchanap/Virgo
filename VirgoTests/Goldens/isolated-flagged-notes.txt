@@ -1,6 +1,6 @@
 tl-grid ticksPerWholeNote=16 feel=straight
 tl-meas m0 startTick=0 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
-tl-meas m1 startTick=16 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=unsupported[indeterminateTerminalDuration]
+tl-meas m1 startTick=16 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
 
 grid  ticksPerWholeNote=16 tickWidth=28.00 leftPadding=52.00
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
@@ -17,8 +17,8 @@ head  m0 t0008 abs0008 pos=(376.00,110.00) hiHat glyph=cross variant=closedHiHat
 head  m0 t0008 abs0008 pos=(376.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
 head  m0 t0012 abs0012 pos=(488.00,110.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
 head  m0 t0012 abs0012 pos=(488.00,230.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
-head  m1 t0000 abs0016 pos=(152.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Quarter rhythm=Quarter[indeterminate:indeterminateTerminalDuration] durTicks=4
-head  m1 t0000 abs0016 pos=(152.00,550.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=1 lane=13 interval=Quarter rhythm=Quarter[indeterminate:indeterminateTerminalDuration] durTicks=4
+head  m1 t0000 abs0016 pos=(152.00,430.00) hiHat glyph=cross variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Full rhythm=Full durTicks=16
+head  m1 t0000 abs0016 pos=(152.00,550.00) kick glyph=filledCircle variant=standard voice=lower stem=down row=1 lane=13 interval=Full rhythm=Full durTicks=16
 stem  ids=[0] dir=down start=(196.00,230.00) end=(196.00,305.00)
 stem  ids=[1] dir=up start=(247.40,116.38) end=(247.40,41.38)
 stem  ids=[3] dir=down start=(252.00,230.00) end=(252.00,305.00)
@@ -47,4 +47,3 @@ bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=600.00 isFinal=false
 bar   row=1 x=100.00 isFinal=false
 bar   row=1 x=600.00 isFinal=true
-warn  scope=measure:1 codes=[indeterminateTerminalDuration] row=1 measure=2 pos=(242.00,374.00) size=180.00x22.00

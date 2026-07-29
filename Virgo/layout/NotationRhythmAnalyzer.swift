@@ -5,6 +5,11 @@ struct NotationRhythmAnalyzer: Sendable {
         let beatGroupIndex: Int
     }
 
+    struct MeasureVoiceKey: Hashable {
+        let measureIndex: Int
+        let voice: NotationVoice
+    }
+
     struct LocatedEvent {
         let event: RhythmAnalysisEvent
         let beatGroup: RhythmBeatGroup
@@ -67,6 +72,7 @@ struct NotationRhythmAnalyzer: Sendable {
                 && event.position.localTick < measure.durationTicks
                 && event.position.absoluteTick == measure.startTick + event.position.localTick
         }
+        let lastVoiceOnsetTicks = lastOnsetTicksByMeasureAndVoice(events: validEvents)
         var warningCodes = metadataWarningCodes(measures: measures)
         let streams = groupedStreams(
             events: validEvents,
@@ -82,6 +88,10 @@ struct NotationRhythmAnalyzer: Sendable {
             var streamResolutions = resolveStream(
                 streams[key, default: []],
                 measure: measure,
+                lastVoiceOnsetTick: lastVoiceOnsetTicks[MeasureVoiceKey(
+                    measureIndex: key.measureIndex,
+                    voice: key.voice
+                )],
                 ticksPerWholeNote: ticksPerWholeNote
             )
             if case .supported = measure.engravingSupport {
@@ -200,9 +210,23 @@ private extension NotationRhythmAnalyzer {
         }
     }
 
+    func lastOnsetTicksByMeasureAndVoice(
+        events: [RhythmAnalysisEvent]
+    ) -> [MeasureVoiceKey: Int] {
+        Dictionary(grouping: events) {
+            MeasureVoiceKey(
+                measureIndex: $0.position.measureIndex,
+                voice: $0.voice
+            )
+        }.mapValues { events in
+            events.map(\.position.localTick).max() ?? 0
+        }
+    }
+
     func resolveStream(
         _ locatedEvents: [LocatedEvent],
         measure: RhythmMeasure,
+        lastVoiceOnsetTick: Int?,
         ticksPerWholeNote: Int
     ) -> [EventResolution] {
         let dtxOnsets = Set(locatedEvents.compactMap {
@@ -240,6 +264,7 @@ private extension NotationRhythmAnalyzer {
                 event: event,
                 beatGroup: located.beatGroup,
                 measure: measure,
+                mayUseMeasureRemainder: event.position.localTick == lastVoiceOnsetTick,
                 ticksPerWholeNote: ticksPerWholeNote
             )
         }
@@ -249,12 +274,14 @@ private extension NotationRhythmAnalyzer {
         event: RhythmAnalysisEvent,
         beatGroup: RhythmBeatGroup,
         measure: RhythmMeasure,
+        mayUseMeasureRemainder: Bool,
         ticksPerWholeNote: Int
     ) -> EventResolution {
-        let boundary = min(beatGroup.endTick, measure.durationTicks)
+        let measureBoundary = measure.durationTicks
+        let beatGroupBoundary = min(beatGroup.endTick, measureBoundary)
         if let interval = event.visualDurationCandidate,
            let duration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
-           event.position.localTick + duration <= boundary {
+           event.position.localTick + duration <= measureBoundary {
             return EventResolution(
                 event: event,
                 beatGroup: beatGroup,
@@ -267,7 +294,7 @@ private extension NotationRhythmAnalyzer {
         if let interval = event.visualDurationCandidate,
            let baseDuration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
            let compressedDuration = tripletPerformedTicks(baseTicks: baseDuration),
-           event.position.localTick + compressedDuration <= boundary {
+           event.position.localTick + compressedDuration <= beatGroupBoundary {
             return EventResolution(
                 event: event,
                 beatGroup: beatGroup,
@@ -280,15 +307,46 @@ private extension NotationRhythmAnalyzer {
                 tupletID: nil
             )
         }
+        if mayUseMeasureRemainder,
+           let resolution = exactMeasureRemainderResolution(
+               event: event,
+               beatGroup: beatGroup,
+               measureBoundary: measureBoundary,
+               ticksPerWholeNote: ticksPerWholeNote
+           ) {
+            return resolution
+        }
         return EventResolution(
             event: event,
             beatGroup: beatGroup,
             hasFollowingDTXOnset: false,
-            durationTicks: max(boundary - event.position.localTick, 1),
+            durationTicks: max(beatGroupBoundary - event.position.localTick, 1),
             rhythm: NotationRhythm(
                 baseInterval: event.visualDurationCandidate ?? .quarter,
                 support: .indeterminate(.indeterminateTerminalDuration)
             ),
+            tupletID: nil
+        )
+    }
+
+    func exactMeasureRemainderResolution(
+        event: RhythmAnalysisEvent,
+        beatGroup: RhythmBeatGroup,
+        measureBoundary: Int,
+        ticksPerWholeNote: Int
+    ) -> EventResolution? {
+        let remainingDuration = measureBoundary - event.position.localTick
+        let remainingRhythm = classify(
+            spanTicks: remainingDuration,
+            ticksPerWholeNote: ticksPerWholeNote
+        )
+        guard remainingRhythm.support == .supported else { return nil }
+        return EventResolution(
+            event: event,
+            beatGroup: beatGroup,
+            hasFollowingDTXOnset: false,
+            durationTicks: remainingDuration,
+            rhythm: remainingRhythm,
             tupletID: nil
         )
     }
