@@ -7,6 +7,14 @@ import Foundation
 import Testing
 @testable import Virgo
 
+private struct AtomicTransitionSetup {
+    let manager: InputManager
+    let converter: MIDIHostTimeConverter
+    let target: RhythmNoteTarget
+    let timeline: RhythmTimeline
+    let newHostOrigin: UInt64
+}
+
 private final class TimingResultBox: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: NoteMatchResult?
@@ -35,31 +43,17 @@ struct RhythmInputTimingTests {
         let callbackStarted = DispatchSemaphore(value: 0)
         let callbackFinished = DispatchSemaphore(value: 0)
         let resultBox = TimingResultBox()
-        let converter = MIDIHostTimeConverter()
-        let manager = InputManager(timingTransitionCriticalSection: {
+        let setup = makeAtomicTransitionSetup(transitionCriticalSection: {
             transitionEntered.signal()
             releaseTransition.wait()
         })
-        manager.setMIDIMapping([38: .snare])
-        let position = RhythmEventPosition(measureIndex: 0, localTick: 2, absoluteTick: 2)
-        let target = RhythmNoteTarget(
-            eventID: .init(rawValue: 91),
-            drumType: .snare,
-            position: position,
-            targetSecondsAtOneX: 1
-        )
-        let timeline = makeTimeline(measureDurations: [4])
-        let oldHostOrigin = mach_absolute_time()
-        manager.configure(.timeline(targets: [target], timeline: timeline, speed: 1))
-        manager.startListening(songStartTime: Date(), capturedHostTime: oldHostOrigin)
-        let newHostOrigin = converter.hostTimeByAdding(seconds: 10, to: oldHostOrigin)
 
         DispatchQueue.global().async {
-            manager.configureAndStartListening(
-                .timeline(targets: [target], timeline: timeline, speed: 0.5),
+            setup.manager.configureAndStartListening(
+                .timeline(targets: [setup.target], timeline: setup.timeline, speed: 0.5),
                 songStartTime: Date(),
                 elapsedOffset: 0.5,
-                capturedHostTime: newHostOrigin
+                capturedHostTime: setup.newHostOrigin
             )
             transitionFinished.signal()
         }
@@ -67,8 +61,8 @@ struct RhythmInputTimingTests {
         let didEnterTransition = transitionEntered.wait(timeout: .now() + 1) == .success
         DispatchQueue.global().async {
             callbackStarted.signal()
-            let eventHostTime = converter.hostTimeByAdding(seconds: 1.5, to: newHostOrigin)
-            resultBox.store(manager.handleMIDINoteEvent(MIDINoteEvent(
+            let eventHostTime = setup.converter.hostTimeByAdding(seconds: 1.5, to: setup.newHostOrigin)
+            resultBox.store(setup.manager.handleMIDINoteEvent(MIDINoteEvent(
                 sourceID: "atomic-transition",
                 channel: 9,
                 note: 38,
@@ -91,9 +85,37 @@ struct RhythmInputTimingTests {
         #expect(didFinishTransition)
         #expect(didFinishCallback)
         let result = try #require(resultBox.load())
-        #expect(result.matchedEventID == target.eventID)
+        #expect(result.matchedEventID == setup.target.eventID)
         #expect(result.matchedTargetSeconds == 2)
         #expect(abs(try #require(result.hitSongSeconds) - 2) < 0.000_001)
+    }
+
+    /// Builds the InputManager + timeline + host origins used by the atomic-transition test.
+    /// Extracted so the test body shows only the synchronization orchestration.
+    private func makeAtomicTransitionSetup(
+        transitionCriticalSection: @escaping () -> Void
+    ) -> AtomicTransitionSetup {
+        let converter = MIDIHostTimeConverter()
+        let manager = InputManager(timingTransitionCriticalSection: transitionCriticalSection)
+        manager.setMIDIMapping([38: .snare])
+        let target = RhythmNoteTarget(
+            eventID: .init(rawValue: 91),
+            drumType: .snare,
+            position: RhythmEventPosition(measureIndex: 0, localTick: 2, absoluteTick: 2),
+            targetSecondsAtOneX: 1
+        )
+        let timeline = makeTimeline(measureDurations: [4])
+        let oldHostOrigin = mach_absolute_time()
+        manager.configure(.timeline(targets: [target], timeline: timeline, speed: 1))
+        manager.startListening(songStartTime: Date(), capturedHostTime: oldHostOrigin)
+        let newHostOrigin = converter.hostTimeByAdding(seconds: 10, to: oldHostOrigin)
+        return AtomicTransitionSetup(
+            manager: manager,
+            converter: converter,
+            target: target,
+            timeline: timeline,
+            newHostOrigin: newHostOrigin
+        )
     }
 
     @Test("A target after a shortened bar uses cumulative timeline seconds")
