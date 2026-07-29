@@ -372,22 +372,25 @@ struct DrumTabGoldenTests {
                     + "\(codes.map(\.rawValue).sorted())")
             )
 
-            // Differential proof that `.incompleteTuplet` is caused by the
-            // 12-position content rather than being ambient: the sentinel
-            // measure holds one plain full-measure note and must remain
-            // supported. If a regression started stamping
-            // `.incompleteTuplet` on every measure, the assertion above
-            // would still pass and only this one would catch it.
-            let sentinelMeasure = try #require(
-                result.snapshot.measures.first { $0.measureIndex == 1 }
-            )
-            #expect(sentinelMeasure.engravingSupport == .supported)
-
             // An unsupported measure must not also emit tuplet marks: an
             // engine that renders tuplet brackets while still reporting the
             // measure unsupported is a new inconsistency, not a fix.
             #expect(result.layout.tuplets.isEmpty)
         }
+
+        // Differential proof that `.incompleteTuplet` is caused by the
+        // 12-position content rather than being ambient: the sentinel
+        // measure holds one plain full-measure note and must remain
+        // supported. Run unconditionally so the guard survives the day
+        // HPA-145 lands and measure 0 flips to `.supported` -- otherwise
+        // the supported branch would skip this check entirely, and a
+        // regression that stamped `.incompleteTuplet` on every measure
+        // would pass the supported-branch assertion above while breaking
+        // the sentinel silently.
+        let sentinelMeasure = try #require(
+            result.snapshot.measures.first { $0.measureIndex == 1 }
+        )
+        #expect(sentinelMeasure.engravingSupport == .supported)
 
         try GoldenFile.assertMatches(
             NotationLayoutDigest.make(result),
