@@ -73,6 +73,7 @@ struct NotationRhythmAnalyzer: Sendable {
                 && event.position.absoluteTick == measure.startTick + event.position.localTick
         }
         let lastVoiceOnsetTicks = lastOnsetTicksByMeasureAndVoice(events: validEvents)
+        let measureDTXOnsets = dtxOnsetTicksByMeasureAndVoice(events: validEvents)
         var warningCodes = metadataWarningCodes(measures: measures)
         let streams = groupedStreams(
             events: validEvents,
@@ -85,13 +86,12 @@ struct NotationRhythmAnalyzer: Sendable {
 
         for key in streams.keys.sorted(by: streamKeyComesBefore) {
             guard let measure = measuresByIndex[key.measureIndex] else { continue }
+            let voiceKey = MeasureVoiceKey(measureIndex: key.measureIndex, voice: key.voice)
             var streamResolutions = resolveStream(
                 streams[key, default: []],
                 measure: measure,
-                lastVoiceOnsetTick: lastVoiceOnsetTicks[MeasureVoiceKey(
-                    measureIndex: key.measureIndex,
-                    voice: key.voice
-                )],
+                lastVoiceOnsetTick: lastVoiceOnsetTicks[voiceKey],
+                measureDTXOnsets: measureDTXOnsets[voiceKey] ?? [],
                 ticksPerWholeNote: ticksPerWholeNote
             )
             if case .supported = measure.engravingSupport {
@@ -223,10 +223,28 @@ private extension NotationRhythmAnalyzer {
         }
     }
 
+    /// Sorted same-voice DTX onset ticks per measure, used to cap candidate
+    /// evidence in `terminalDTXResolution` so an upward-rounded visual
+    /// candidate cannot overrun a later same-voice onset in a different beat
+    /// group.
+    func dtxOnsetTicksByMeasureAndVoice(
+        events: [RhythmAnalysisEvent]
+    ) -> [MeasureVoiceKey: [Int]] {
+        Dictionary(grouping: events.filter { $0.origin == .dtx }) {
+            MeasureVoiceKey(
+                measureIndex: $0.position.measureIndex,
+                voice: $0.voice
+            )
+        }.mapValues { events in
+            events.map(\.position.localTick).sorted()
+        }
+    }
+
     func resolveStream(
         _ locatedEvents: [LocatedEvent],
         measure: RhythmMeasure,
         lastVoiceOnsetTick: Int?,
+        measureDTXOnsets: [Int],
         ticksPerWholeNote: Int
     ) -> [EventResolution] {
         let dtxOnsets = Set(locatedEvents.compactMap {
@@ -265,6 +283,7 @@ private extension NotationRhythmAnalyzer {
                 beatGroup: located.beatGroup,
                 measure: measure,
                 mayUseMeasureRemainder: event.position.localTick == lastVoiceOnsetTick,
+                measureDTXOnsets: measureDTXOnsets,
                 ticksPerWholeNote: ticksPerWholeNote
             )
         }
@@ -275,10 +294,59 @@ private extension NotationRhythmAnalyzer {
         beatGroup: RhythmBeatGroup,
         measure: RhythmMeasure,
         mayUseMeasureRemainder: Bool,
+        measureDTXOnsets: [Int],
         ticksPerWholeNote: Int
     ) -> EventResolution {
         let measureBoundary = measure.durationTicks
         let beatGroupBoundary = min(beatGroup.endTick, measureBoundary)
+        let nextMeasureDTXOnset = measureDTXOnsets.first { $0 > event.position.localTick }
+
+        // When a later same-voice DTX onset exists elsewhere in the measure
+        // (typically in a following beat group), cap candidate evidence at
+        // that onset so an upward-rounded visual candidate cannot overrun it.
+        // `VisualDurationLookup` derives candidates chart-wide and snaps to
+        // the closest base interval, rounding up on ties, so the candidate
+        // can exceed the actual span to the next onset.
+        if let nextTick = nextMeasureDTXOnset {
+            let span = nextTick - event.position.localTick
+            if let interval = event.visualDurationCandidate,
+               let duration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
+               duration <= span,
+               event.position.localTick + duration <= measureBoundary {
+                return EventResolution(
+                    event: event,
+                    beatGroup: beatGroup,
+                    hasFollowingDTXOnset: false,
+                    durationTicks: duration,
+                    rhythm: NotationRhythm(baseInterval: interval),
+                    tupletID: nil
+                )
+            }
+            let spanRhythm = classify(spanTicks: span, ticksPerWholeNote: ticksPerWholeNote)
+            if spanRhythm.support == .supported {
+                return EventResolution(
+                    event: event,
+                    beatGroup: beatGroup,
+                    hasFollowingDTXOnset: false,
+                    durationTicks: span,
+                    rhythm: spanRhythm,
+                    tupletID: nil
+                )
+            }
+            return EventResolution(
+                event: event,
+                beatGroup: beatGroup,
+                hasFollowingDTXOnset: false,
+                durationTicks: max(min(beatGroupBoundary - event.position.localTick, span), 1),
+                rhythm: NotationRhythm(
+                    baseInterval: event.visualDurationCandidate ?? .quarter,
+                    support: .indeterminate(.indeterminateTerminalDuration)
+                ),
+                tupletID: nil
+            )
+        }
+
+        // No later same-voice DTX onset in the measure — truly terminal.
         if let interval = event.visualDurationCandidate,
            let duration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
            event.position.localTick + duration <= measureBoundary {
@@ -290,6 +358,18 @@ private extension NotationRhythmAnalyzer {
                 rhythm: NotationRhythm(baseInterval: interval),
                 tupletID: nil
             )
+        }
+        // Try the exact measure remainder before the compressed-triplet
+        // fallback so a supported dotted remainder is not masked by an
+        // indeterminate compression that merely fits the beat group.
+        if mayUseMeasureRemainder,
+           let resolution = exactMeasureRemainderResolution(
+               event: event,
+               beatGroup: beatGroup,
+               measureBoundary: measureBoundary,
+               ticksPerWholeNote: ticksPerWholeNote
+           ) {
+            return resolution
         }
         if let interval = event.visualDurationCandidate,
            let baseDuration = durationTicks(for: interval, ticksPerWholeNote: ticksPerWholeNote),
@@ -306,15 +386,6 @@ private extension NotationRhythmAnalyzer {
                 ),
                 tupletID: nil
             )
-        }
-        if mayUseMeasureRemainder,
-           let resolution = exactMeasureRemainderResolution(
-               event: event,
-               beatGroup: beatGroup,
-               measureBoundary: measureBoundary,
-               ticksPerWholeNote: ticksPerWholeNote
-           ) {
-            return resolution
         }
         return EventResolution(
             event: event,
