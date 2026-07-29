@@ -28,7 +28,7 @@ private final class TimingResultBox: @unchecked Sendable {
 @MainActor
 struct RhythmInputTimingTests {
     @Test("Live speed transition exposes one atomic matcher and host-origin snapshot")
-    func liveSpeedTransitionIsAtomicForConcurrentMIDICallback() {
+    func liveSpeedTransitionIsAtomicForConcurrentMIDICallback() throws {
         let transitionEntered = DispatchSemaphore(value: 0)
         let releaseTransition = DispatchSemaphore(value: 0)
         let transitionFinished = DispatchSemaphore(value: 0)
@@ -90,9 +90,10 @@ struct RhythmInputTimingTests {
         #expect(!callbackEscapedTransaction)
         #expect(didFinishTransition)
         #expect(didFinishCallback)
-        #expect(resultBox.load()?.matchedEventID == target.eventID)
-        #expect(resultBox.load()?.matchedTargetSeconds == 2)
-        #expect(resultBox.load()?.hitSongSeconds == 2)
+        let result = try #require(resultBox.load())
+        #expect(result.matchedEventID == target.eventID)
+        #expect(result.matchedTargetSeconds == 2)
+        #expect(abs(try #require(result.hitSongSeconds) - 2) < 0.000_001)
     }
 
     @Test("A target after a shortened bar uses cumulative timeline seconds")
