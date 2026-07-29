@@ -580,4 +580,103 @@ struct NotationRhythmAnalyzerTests {
             codes: [.unsupportedTupletRatio]
         )])
     }
+
+    // MARK: - P1: cross-group candidate cannot overrun a later same-voice onset
+
+    @Test("a cross-group visual candidate cannot overrun a later same-voice DTX onset")
+    func crossGroupCandidateCappedAtNextOnset() throws {
+        // 960-tick 4/4 measure. Same-voice DTX onsets at ticks 120 (beat
+        // group 0) and 300 (beat group 1). The exact span is 180 ticks
+        // (dotted eighth). `VisualDurationLookup` snaps the 180-tick gap
+        // upward on a tie to .quarter (240 ticks). Without the cap the
+        // quarter would be accepted because 120 + 240 <= 960, engraving a
+        // duration that overlaps the onset at 300.
+        let analysis = analyze([
+            event(1, tick: 120, origin: .dtx, interval: .sixtyfourth, candidate: .quarter),
+            event(2, tick: 300, origin: .dtx, interval: .sixtyfourth, candidate: .eighth)
+        ])
+        let first = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
+
+        #expect(first.durationTicks == 180)
+        #expect(first.rhythm == NotationRhythm(baseInterval: .eighth, dotCount: 1))
+        #expect(first.rhythm.support == .supported)
+        #expect(analysis.warnings.isEmpty)
+    }
+
+    @Test("a cross-group candidate that fits the span is still preferred")
+    func crossGroupCandidateFittingSpanRetained() throws {
+        // Same layout as above but the candidate (.eighth = 120) fits within
+        // the 180-tick span, so it should be used as-is rather than replaced
+        // by the exact span.
+        let analysis = analyze([
+            event(1, tick: 120, origin: .dtx, interval: .sixtyfourth, candidate: .eighth),
+            event(2, tick: 300, origin: .dtx, interval: .sixtyfourth, candidate: .eighth)
+        ])
+        let first = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
+
+        #expect(first.durationTicks == 120)
+        #expect(first.rhythm == NotationRhythm(baseInterval: .eighth))
+        #expect(first.rhythm.support == .supported)
+        #expect(analysis.warnings.isEmpty)
+    }
+
+    // MARK: - P2: dotted measure remainder resolved before triplet fallback
+
+    @Test("a dotted measure remainder is resolved before the triplet fallback in compound meter")
+    func dottedRemainderBeforeTripletFallback() throws {
+        // 6/8, 720-tick measure, beat groups 0-360 and 360-720. Final
+        // same-voice onset at tick 360. The visual candidate (.half = 480
+        // ticks at ticksPerWholeNote 960) crosses the measure, but its
+        // compressed duration (320 ticks) fits the second beat group. The
+        // exact remainder (360 ticks) is a supported dotted quarter and
+        // must be preferred over the indeterminate compression.
+        let compoundMeasure = measure(
+            duration: 720,
+            timeSignature: .sixEight,
+            groups: [
+                RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 360, isResidual: false),
+                RhythmBeatGroup(groupIndex: 1, startTick: 360, durationTicks: 360, isResidual: false)
+            ]
+        )
+        let analysis = analyze([
+            event(1, tick: 360, origin: .dtx, interval: .sixtyfourth, candidate: .half)
+        ], rhythmMeasure: compoundMeasure)
+        let note = try #require(analysis.notes.first)
+
+        #expect(note.durationTicks == 360)
+        #expect(note.rhythm == NotationRhythm(baseInterval: .quarter, dotCount: 1))
+        #expect(note.rhythm.support == .supported)
+        #expect(analysis.warnings.isEmpty)
+    }
+
+    @Test("dotted measure remainder parity between candidate and no-candidate cases")
+    func dottedRemainderParity() throws {
+        let compoundMeasure = measure(
+            duration: 720,
+            timeSignature: .sixEight,
+            groups: [
+                RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 360, isResidual: false),
+                RhythmBeatGroup(groupIndex: 1, startTick: 360, durationTicks: 360, isResidual: false)
+            ]
+        )
+        // Same dotted-quarter remainder (360 ticks). With a candidate that
+        // crosses the barline, the exact remainder must still be preferred
+        // over the compressed-triplet fallback — matching the no-candidate
+        // case that already works at chart end.
+        let withCandidate = analyze([
+            event(1, tick: 360, origin: .dtx, interval: .sixtyfourth, candidate: .half)
+        ], rhythmMeasure: compoundMeasure)
+        let withoutCandidate = analyze([
+            event(2, tick: 360, origin: .dtx, interval: .sixtyfourth)
+        ], rhythmMeasure: compoundMeasure)
+
+        #expect(withCandidate.notes.first?.durationTicks == 360)
+        #expect(withCandidate.notes.first?.rhythm == NotationRhythm(baseInterval: .quarter, dotCount: 1))
+        #expect(withCandidate.notes.first?.rhythm.support == .supported)
+        #expect(withoutCandidate.notes.first?.durationTicks == 360)
+        #expect(withoutCandidate.notes.first?.rhythm == NotationRhythm(baseInterval: .quarter, dotCount: 1))
+        #expect(withoutCandidate.notes.first?.rhythm.support == .supported)
+        #expect(withCandidate.warnings.isEmpty)
+        #expect(withoutCandidate.warnings.isEmpty)
+    }
 }
