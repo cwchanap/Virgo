@@ -57,10 +57,16 @@ extension GameplayViewModel {
         }
 
         // Schedule a new timer to apply the speed change after the debounce interval
-        speedChangeTimer = Timer.scheduledTimer(withTimeInterval: speedChangeDebounceInterval, repeats: false) { [weak self] _ in
+        speedChangeTimer = Timer.scheduledTimer(
+            withTimeInterval: speedChangeDebounceInterval,
+            repeats: false
+        ) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else {
-                    Logger.warning("Speed change timer fired after ViewModel deallocation - user's speed change was discarded")
+                    Logger.warning(
+                        "Speed change timer fired after ViewModel deallocation - " +
+                        "user's speed change was discarded"
+                    )
                     return
                 }
 
@@ -164,7 +170,10 @@ extension GameplayViewModel {
         let speedMultiplier = practiceSettings.speedMultiplier
         guard speedMultiplier > 0 else {
             assertionFailure("bgmTimelineElapsedTime called with zero speedMultiplier")
-            Logger.error("bgmTimelineElapsedTime called with zero speedMultiplier - returning bgmOffsetSeconds as fallback")
+            Logger.error(
+                "bgmTimelineElapsedTime called with zero speedMultiplier - " +
+                "returning bgmOffsetSeconds as fallback"
+            )
             return bgmOffsetSeconds
         }
 
