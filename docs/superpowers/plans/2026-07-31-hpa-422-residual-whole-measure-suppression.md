@@ -31,6 +31,7 @@
 - `Virgo/layout/RhythmLayoutSnapshotBuilder.swift` — applies the same shared support projection on the production/fixture snapshot boundary.
 - `Virgo/layout/NotationBeamTopology.swift` — lets warning-only measures produce beam topology.
 - `Virgo/layout/NotationRestTopology.swift` — lets warning-only measures solve printable resolved gaps while keeping complements adjacent to indeterminate spans as hidden spacing.
+- `Virgo/layout/NotationLayoutEngine.swift` — derives hard-fallback filtering from `!permitsEngraving`, not a direct enum pattern match.
 - `Virgo/layout/NotationLayoutEngine+RhythmRendering.swift` — draws measure warnings for both warning-only and unsupported support states.
 
 ### Test and golden files
@@ -53,6 +54,7 @@
 - Modify: `Virgo/models/RhythmMetadata.swift:298-332, 394-397`
 - Modify: `Virgo/layout/NotationBeamTopology.swift:156-165`
 - Modify: `Virgo/layout/NotationRestTopology.swift:541-691`
+- Modify: `Virgo/layout/NotationLayoutEngine.swift:83-112`
 - Modify: `Virgo/layout/NotationLayoutEngine+RhythmRendering.swift:185-211`
 - Modify: `VirgoTests/RhythmMetadataTests.swift`
 - Modify: `VirgoTests/NotationRestTopologyTests.swift`
@@ -66,6 +68,7 @@
 - Produces: `RhythmEngravingSupport.warning([RhythmDiagnosticCode])`.
 - Produces: an exhaustive `RhythmDiagnosticCode.blocksWholeMeasureEngraving: Bool` switch with no `default` (`false` only for `.indeterminateTerminalDuration`).
 - Produces: `RhythmEngravingSupport.permitsEngraving: Bool` and `applyingRuntimeWarnings(_:) -> RhythmEngravingSupport`.
+- Audits: every current `RhythmEngravingSupport` `if case` / `guard case` consumer; no silent third-state fall-through remains.
 - Consumes: existing stable raw-value ordering for diagnostic codes; no persisted representation changes.
 
 - [ ] **Step 1: Write the failing warning-state tests**
@@ -196,11 +199,21 @@ extension RhythmEngravingSupport {
 
 Do not classify a code by `requiredSeverity`: other `.engravingOnly` diagnostics remain blocking under HPA-422. Do not add a `default` branch to `blocksWholeMeasureEngraving`; a new diagnostic must force an explicit policy choice at compile time.
 
-- [ ] **Step 4: Make topology and warning rendering consume `permitsEngraving`**
+- [ ] **Step 4: Complete the pattern-match audit and make consumers use `permitsEngraving`**
 
 Replace the exact `.supported` guard in `NotationBeamTopology.groupEventsByResolvedGroup` with `measure.engravingSupport.permitsEngraving`.
 
 In `NotationRestTopology`, let ordinary gaps in a permitting measure use `permitsEngraving` and the existing exact solver. Thread terminal-span adjacency from `appendExactVoice` into the gap handling: a gap that directly touches an indeterminate span becomes an `.indeterminate(.indeterminateTerminalDuration)` `.hiddenSpacing` event without calling `solveRestPath` or adding `.ambiguousBeatGrouping`. A non-adjacent gap that the solver cannot represent still emits the structural diagnostic and follows normal fallback policy.
+
+Make `NotationLayoutEngine.unsupportedMeasureIndexes` use `!measure.engravingSupport.permitsEngraving`; this is behaviorally equivalent to the old `.unsupported` check but makes hard-fallback filtering deliberate.
+
+Before completing this step, run and resolve every result from:
+
+```bash
+rtk rg -n "case \.supported = measure\.engravingSupport|case \.unsupported = measure\.engravingSupport|case let \.unsupported\(|switch measure\.engravingSupport" Virgo VirgoTests --glob '*.swift'
+```
+
+The required outcomes are: rest/beam/layout-engine guards use the semantic predicate; analyzer, snapshot-builder, and rendering patterns are handled in Task 2 or the explicit three-state switch below; and digest/golden switches remain exhaustive with no `default`.
 
 Update `buildRhythmWarnings` to extract codes from `.warning` and `.unsupported`, while returning no warning for `.supported`:
 
@@ -224,7 +237,7 @@ Then run:
 
 ```bash
 rtk git diff --check
-rtk git diff -- Virgo/models/RhythmMetadata.swift Virgo/layout/NotationBeamTopology.swift Virgo/layout/NotationRestTopology.swift Virgo/layout/NotationLayoutEngine+RhythmRendering.swift VirgoTests
+rtk git diff -- Virgo/models/RhythmMetadata.swift Virgo/layout/NotationBeamTopology.swift Virgo/layout/NotationRestTopology.swift Virgo/layout/NotationLayoutEngine.swift Virgo/layout/NotationLayoutEngine+RhythmRendering.swift VirgoTests
 ```
 
 Expected: only the additive support state and its direct rendering/topology coverage change.
@@ -233,7 +246,8 @@ Expected: only the additive support state and its direct rendering/topology cove
 
 ```bash
 rtk git add Virgo/models/RhythmMetadata.swift Virgo/layout/NotationBeamTopology.swift \
-  Virgo/layout/NotationRestTopology.swift Virgo/layout/NotationLayoutEngine+RhythmRendering.swift \
+  Virgo/layout/NotationRestTopology.swift Virgo/layout/NotationLayoutEngine.swift \
+  Virgo/layout/NotationLayoutEngine+RhythmRendering.swift \
   VirgoTests/RhythmMetadataTests.swift VirgoTests/NotationRestTopologyTests.swift \
   VirgoTests/NotationBeamTopologyMeterTests.swift VirgoTests/RhythmRenderingTests.swift \
   VirgoTests/NotationLayoutDigest.swift VirgoTests/DrumTabGoldenTests.swift
@@ -253,7 +267,8 @@ rtk git commit -m "feat: separate rhythm warnings from fallback support"
 **Interfaces:**
 
 - Consumes: `RhythmEngravingSupport.applyingRuntimeWarnings(_:)` and `permitsEngraving` from Task 1.
-- Produces: `applyConservativeFallback` targeted only through a pre-filtered `fallbackDiagnosticCodesByMeasure` map for projected `.unsupported` measures.
+- Produces: `applyConservativeFallback` targeted only through a pre-filtered `fallbackDiagnosticCodesByMeasure` map for projected non-permitting measures.
+- Produces: `newlyNonPermitting`, derived from pre/post-rest `permitsEngraving` values rather than diagnostic-map membership.
 - Produces: warning-only snapshots for a measure whose only runtime code is `.indeterminateTerminalDuration`.
 - Preserves: the terminal note's `.indeterminate(.indeterminateTerminalDuration)` rhythm and all existing whole-measure behavior for blocking diagnostics.
 
@@ -339,9 +354,26 @@ func measuresWithFallback(
 }
 ```
 
-Derive `fallbackDiagnosticCodesByMeasure` by filtering `diagnosticCodes` to the projected non-permitting measures. Change `applyConservativeFallback` to accept that map, use its keys as its only targets, and obtain `primaryCode(in:)` from the selected measure's mapped codes. It may rewrite resolutions, remove tuplets, and remove reserved rests only for those indexes. Leave `.indeterminate` resolutions intact. Rename `metadataWarningCodes` to `metadataDiagnosticCodes` and seed the reporting set from either `.warning` or `.unsupported` input support; the current timeline only originates the latter, but this keeps the three-state boundary complete.
+Derive `fallbackDiagnosticCodesByMeasure` by filtering `diagnosticCodes` to the projected non-permitting measures. Change `applyConservativeFallback` to accept that map, use its keys as its only targets, and obtain `primaryCode(in:)` from the selected measure's mapped codes. It may rewrite resolutions, remove tuplets, and remove reserved rests only for those indexes. Leave `.indeterminate` resolutions intact. Rename `metadataWarningCodes` to `metadataDiagnosticCodes` and seed the reporting set from either `.warning` or `.unsupported` input support; the current timeline only originates the latter, so this is three-state correctness hardening rather than an HPA-422 behavior change by itself.
 
-After the first `analyzedRests` call appends diagnostics, recompute the projected measures. Re-run fallback only if a measure newly changes from `permitsEngraving == true` to `false`; warning-only additions do not trigger a second fallback. Only in that case, run `analyzedRests` once more. This deliberate at-most-two-pass bound is safe because rest synthesis is deterministic and measure-scoped: unchanged permitting measures receive the same inputs, and measures whose inputs changed are already non-permitting. The final diagnostic output unions both passes and contains every code used for fallback; no third fallback is required. Keep tuplet recognition guarded by `measure.engravingSupport.permitsEngraving` rather than the old binary case.
+After the first `analyzedRests` call appends diagnostics, retain `preRestMeasures`, recompute `postRestMeasures`, and calculate `newlyNonPermitting` from the per-measure transition `pre.permitsEngraving && !post.permitsEngraving`. Re-run fallback only for that set, with its own filtered fallback-code map. A terminal-only warning remains permitting and does not trigger a second fallback; a newly added blocking code on a warning measure does. Only in that case, run `analyzedRests` once more. This deliberate at-most-two-pass bound is safe because rest synthesis is deterministic and measure-scoped: unchanged permitting measures receive the same inputs, and measures whose inputs changed are already non-permitting. The final diagnostic output unions both passes and contains every code used for fallback; no third fallback is required. Keep tuplet recognition guarded by `measure.engravingSupport.permitsEngraving` rather than the old binary case.
+
+```swift
+let preRestMeasures = effectiveMeasures
+let postRestMeasures = measuresWithFallback(measures, diagnosticCodes: diagnosticCodes)
+let preByIndex = Dictionary(uniqueKeysWithValues: preRestMeasures.map {
+    ($0.measureIndex, $0)
+})
+let newlyNonPermitting = Set(postRestMeasures.compactMap { measure in
+    guard !measure.engravingSupport.permitsEngraving,
+          preByIndex[measure.measureIndex]?.engravingSupport.permitsEngraving == true else {
+        return nil
+    }
+    return measure.measureIndex
+})
+```
+
+Use `newlyNonPermitting` to restrict the second-pass `fallbackDiagnosticCodesByMeasure`; do not derive it from `diagnosticCodes.keys`.
 
 - [ ] **Step 4: Make the snapshot builder use the same support projection**
 

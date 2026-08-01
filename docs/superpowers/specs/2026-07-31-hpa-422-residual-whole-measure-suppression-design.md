@@ -74,7 +74,7 @@ The fallback and projection rules are one atomic invariant:
 
 - Project every measure through `applyingRuntimeWarnings(_:)` before selecting fallback targets.
 - Fallback targets are exactly the projected measures where `permitsEngraving == false`; they are never `Set(diagnosticCodes.keys)`.
-- After rest topology contributes more codes, re-project all measures and run a second fallback only for measures that transitioned from permitting engraving to non-permitting engraving. A new warning-only code does not cause a second fallback.
+- After rest topology contributes more codes, re-project all measures and compare the pre- and post-rest `permitsEngraving` values. The transition set is named `newlyNonPermitting`; only its members receive a second fallback. A terminal-only warning remains permitting and does not trigger it, while a newly added blocking code on a warning measure does.
 
 `applyConservativeFallback` receives a `fallbackDiagnosticCodesByMeasure` map, pre-filtered to those computed non-permitting measure indexes. It obtains the existing primary fallback code from that map, so the fallback target and the code used to rewrite its resolutions cannot diverge. For a terminal-only warning, it leaves all `EventResolution` values untouched:
 
@@ -83,7 +83,7 @@ The fallback and projection rules are one atomic invariant:
 - a resolved event in another voice remains `.supported`;
 - reserved tuplet rests are removed only for genuinely unsupported measures.
 
-`measuresWithFallback` uses the shared support-state helper. A measure with only `indeterminateTerminalDuration` becomes `.warning`; a measure with a blocking code becomes `.unsupported`. `metadataDiagnosticCodes` must collect codes from both `.warning` and `.unsupported` input measures so this reporting path remains complete if a future timeline source originates a warning state; current timeline construction still originates only supported or unsupported measures.
+`measuresWithFallback` uses the shared support-state helper. A measure with only `indeterminateTerminalDuration` becomes `.warning`; a measure with a blocking code becomes `.unsupported`. `metadataDiagnosticCodes` must collect codes from both `.warning` and `.unsupported` input measures so this reporting path remains complete if a future timeline source originates a warning state; current timeline construction still originates only supported or unsupported measures. This is correctness hardening for the three-state contract, not a behavioral change for today's timeline-originated inputs.
 
 At most two rest-topology evaluations are deliberate. The first runs after initial diagnostics and fallback; only if it introduces a permitting-to-non-permitting transition does the analyzer apply fallback for that measure and evaluate rests once more. Rest topology is deterministic and measure-scoped: unchanged permitting measures receive unchanged input on the second pass, while changed measures are already non-permitting. Therefore a second-pass code may enlarge the final reported diagnostic union, but it cannot require a third fallback. The final diagnostic output contains every code used for fallback.
 
@@ -99,13 +99,27 @@ This preserves the contract that `RhythmLayoutSnapshotBuilder` is shared by game
 
 All measure-level consumers use the semantic support predicates rather than assuming a binary enum:
 
-- `NotationRestTopologyBuilder` accepts `.warning` as engravable. It may construct printed rests for resolved material, but a gap directly adjacent to an indeterminate terminal span is always emitted as `.hiddenSpacing`: it does not invoke the exact-rest solver and does not add `ambiguousBeatGrouping`. This keeps terminal uncertainty local. A non-adjacent unsolvable gap remains a real structural diagnostic and may still escalate the measure to fallback.
+- `NotationRestTopologyBuilder` accepts `.warning` as engravable. It may construct printed rests for resolved material, but a gap directly adjacent to an indeterminate terminal span is always emitted as `.hiddenSpacing`: it does not invoke the exact-rest solver and does not add `ambiguousBeatGrouping`. `appendExactVoice` retains each clipped exact span's indeterminate flag while it partitions beat-group gaps, then passes `adjacentToIndeterminate` to `appendExactGap` when the gap touches either neighboring span. This keeps terminal uncertainty local. A non-adjacent unsolvable gap remains a real structural diagnostic and may still escalate the measure to fallback.
 - `NotationBeamTopologyBuilder` accepts `.warning` as engravable, allowing resolved notes to participate in normal beam topology.
-- `NotationLayoutEngine` already builds `unsupportedMeasureIndexes` from `.unsupported` only. No engine-core change is needed: it retains current filtering for true fallback measures without excluding a warning-only measure's rests, flags, dots, and tuplets.
+- `NotationLayoutEngine` computes `unsupportedMeasureIndexes` through `!measure.engravingSupport.permitsEngraving`. This remains equivalent to `.unsupported` under the three-state model, but makes the hard-fallback intent explicit and keeps warning-only measures' rests, flags, dots, and tuplets eligible for layout.
 - `buildRhythmWarnings` renders the existing measure warning glyph for both `.warning` and `.unsupported` states.
 - `NotationLayoutDigest` gains a stable `warning[...]` measure representation so golden diffs make the new semantic state visible.
 
 The implementation must update the current exhaustive support switches in `NotationLayoutDigest` and the `tripletGrid` assertion in `DrumTabGoldenTests`, and audit any future `RhythmEngravingSupport` switches without adding a `default`. The compiler's closed-world pressure is intentional. `buildRhythmWarnings` is also a required non-exhaustive consumer update.
+
+### 7.1 Pattern-Match Audit
+
+Adding an enum case does not make `if case` or `guard case` sites fail to compile. Before tests are made green, audit every `RhythmEngravingSupport` pattern match and make these production changes explicitly:
+
+| Site | Required treatment |
+| --- | --- |
+| `NotationRestTopologyBuilder.appendExactGap` | Use `permitsEngraving` for ordinary gaps; receive `adjacentToIndeterminate` from `appendExactVoice` and emit hidden spacing without a diagnostic when it is true. |
+| `NotationBeamTopologyBuilder.groupEventsByResolvedGroup` | Replace its exact `.supported` guard with `permitsEngraving`. |
+| `NotationLayoutEngine.unsupportedMeasureIndexes` | Replace its direct `.unsupported` match with `!permitsEngraving`; the behavior is equivalent now but no longer depends on a silent fall-through. |
+| `NotationRhythmAnalyzer` | Use `permitsEngraving` for tuplet recognition, calculate `newlyNonPermitting` from pre/post projection, and collect metadata codes from `.warning` and `.unsupported`. |
+| `RhythmLayoutSnapshotBuilder` and `buildRhythmWarnings` | Delegate projection to `applyingRuntimeWarnings(_:)`; extract glyph codes with an explicit three-state switch. |
+
+The audit also covers the exhaustive digest and golden-test switches named above. Do not add a `default` to those switches.
 
 The note-level `rhythm.support == .supported` gate remains unchanged. It naturally prevents an indeterminate terminal note from gaining a stem, flag, dot, or beam while allowing its resolved siblings to engrave.
 
