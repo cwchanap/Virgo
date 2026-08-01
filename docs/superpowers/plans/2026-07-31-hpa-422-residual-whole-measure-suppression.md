@@ -41,7 +41,7 @@
 - `VirgoTests/RhythmRenderingTests.swift` — proves warning-only layout retains engraving and renders the warning glyph; true unsupported layout remains suppressed.
 - `VirgoTests/NotationRhythmAnalyzerTests.swift` — direct HPA-422 tests for non-clean remainders and cross-voice terminal uncertainty.
 - `VirgoTests/RhythmLayoutSnapshotBuilderTests.swift` — proves the shared builder projects a terminal-only runtime warning to `.warning`, not `.unsupported`.
-- `VirgoTests/RhythmImportBackfillTests.swift` — verifies the real importer → resolver → snapshot → layout path restores upper-voice stems while retaining the warning.
+- `VirgoTests/RhythmImportBackfillTests.swift` — verifies the real importer → resolver → snapshot → layout path preserves upper full-note support and the warning without imposing an invalid stem expectation.
 - `VirgoTests/NotationLayoutDigest.swift` — serializes the additive support state as `warning[...]` for deterministic golden review.
 - `VirgoTests/DrumTabGoldenTests.swift` — handles the new state exhaustively and rejects it for the still-structural triplet fixture.
 - `VirgoTests/Goldens/sparse-hi-res-lane.txt` — regenerated expected output for the known terminal-only warning fixture.
@@ -267,7 +267,7 @@ Extend `RhythmLayoutSnapshotBuilderTests` with a direct DTX → projection → r
 
 Assert measure `0` is `.warning([.indeterminateTerminalDuration])`, its two upper notes are supported full notes, and its lower note remains indeterminate.
 
-Update `RhythmImportBackfillTests.crossVoiceOnsetDoesNotShortenTerminalUpperVoiceDuration` to assert the same warning support state, one measure warning glyph, and at least one stem containing an upper note-head ID. Retain its assertions that upper full notes require no flag or beam.
+Update `RhythmImportBackfillTests.crossVoiceOnsetDoesNotShortenTerminalUpperVoiceDuration` to assert the same warning support state, one measure warning glyph, two upper noteheads with supported rhythm, and no upper full note rewritten to unsupported. Retain its assertions that upper full notes have no stem, flag, or beam: full notes are intentionally stemless, so those absences do not diagnose suppression.
 
 - [ ] **Step 2: Run the focused tests and confirm they fail under whole-measure fallback**
 
@@ -310,7 +310,7 @@ func measuresWithFallback(
 }
 ```
 
-Change `applyConservativeFallback` to accept the computed unsupported index set. It may rewrite resolutions, remove tuplets, and remove reserved rests only for those indexes. Leave `.indeterminate` resolutions intact.
+Change `applyConservativeFallback` to accept the computed unsupported index set. It may rewrite resolutions, remove tuplets, and remove reserved rests only for those indexes. Leave `.indeterminate` resolutions intact. Update `metadataWarningCodes` to seed the reporting set from either `.warning` or `.unsupported` input support; the current timeline only originates the latter, but this keeps the three-state boundary complete.
 
 After `analyzedRests` appends diagnostics, recompute the projected measures. Re-run fallback only if a measure newly changes from `permitsEngraving == true` to `false`; warning-only additions do not trigger a second fallback. Keep tuplets recognition guarded by `measure.engravingSupport.permitsEngraving` rather than the old binary case.
 
@@ -413,7 +413,7 @@ rtk git diff -- VirgoTests/Goldens
 rtk git diff --check
 ```
 
-Verify `sparse-hi-res-lane.txt` changes its measure state to `warning[indeterminateTerminalDuration]`, retains a measure warning line, restores support/stem output for the resolved note, and keeps the unresolved terminal note indeterminate. Verify `triplet-grid.txt` still names `incompleteTuplet` and remains unsupported. Revert no user changes; only amend generated golden output if the implementation created a nondeterministic or semantically incorrect line.
+Verify `sparse-hi-res-lane.txt` changes its measure state to `warning[indeterminateTerminalDuration]`, retains a measure warning line, restores the resolved half note's supported rhythm, adds the expected `m0` lower full-measure rest, and keeps the unresolved terminal note indeterminate. The resolved half remains intentionally stemless and flagless. Verify `triplet-grid.txt` still names `incompleteTuplet` and remains unsupported. Revert no user changes; only amend generated golden output if the implementation created a nondeterministic or semantically incorrect line.
 
 - [ ] **Step 4: Run normal golden, focused, and full-suite verification**
 
