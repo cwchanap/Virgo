@@ -126,20 +126,14 @@ struct RhythmLayoutSnapshotBuilder {
     ) -> [RhythmMeasure] {
         let warningsByMeasure = Dictionary(uniqueKeysWithValues: warnings.map { ($0.measureIndex, $0.codes) })
         return measures.map { measure in
-            guard let codes = warningsByMeasure[measure.measureIndex], !codes.isEmpty else { return measure }
-            let existingCodes: Set<RhythmDiagnosticCode>
-            if case let .unsupported(existing) = measure.engravingSupport {
-                existingCodes = Set(existing)
-            } else {
-                existingCodes = []
-            }
+            let codes = warningsByMeasure[measure.measureIndex, default: []]
             return RhythmMeasure(
                 measureIndex: measure.measureIndex,
                 startTick: measure.startTick,
                 durationTicks: measure.durationTicks,
                 timeSignature: measure.timeSignature,
                 beatGroups: measure.beatGroups,
-                engravingSupport: .unsupported(Array(existingCodes.union(codes)).sorted { $0.rawValue < $1.rawValue })
+                engravingSupport: measure.engravingSupport.applyingRuntimeWarnings(codes)
             )
         }
     }

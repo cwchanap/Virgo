@@ -190,12 +190,9 @@ struct RhythmImportBackfillTests {
         let measureDuration = try #require(snapshot.measures.first?.durationTicks)
         #expect(upperNotes.allSatisfy { $0.durationTicks == measureDuration })
         #expect(upperNotes.allSatisfy { $0.rhythm.baseInterval == .full })
-        #expect(upperNotes.allSatisfy {
-            if case .indeterminate = $0.rhythm.support { return false }
-            return true
-        })
-        guard case let .unsupported(warningCodes) = snapshot.measures.first?.engravingSupport else {
-            Issue.record("Expected the unresolved lower voice to mark its measure unsupported")
+        #expect(upperNotes.allSatisfy { $0.rhythm.support == .supported })
+        guard case let .warning(warningCodes) = snapshot.measures.first?.engravingSupport else {
+            Issue.record("Expected the unresolved lower voice to mark its measure warning-only")
             return
         }
         #expect(warningCodes.contains(.indeterminateTerminalDuration))
@@ -216,6 +213,8 @@ struct RhythmImportBackfillTests {
             guard case let .event(eventID) = dot.source else { return true }
             return !upperNotes.contains { $0.eventID == eventID }
         })
+        #expect(viewModel.cachedNotationLayout.rhythmWarnings.count == 1)
+        #expect(viewModel.cachedNotationLayout.rhythmWarnings.first?.codes == [.indeterminateTerminalDuration])
         #expect(viewModel.cachedNotationLayout.tuplets.allSatisfy { tuplet in
             Set(tuplet.memberEventIDs).isDisjoint(with: upperNotes.map(\.eventID))
         })

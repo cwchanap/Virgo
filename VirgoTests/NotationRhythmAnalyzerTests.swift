@@ -269,9 +269,6 @@ struct NotationRhythmAnalyzerTests {
         #expect(absentAnalysis.rests.contains {
             $0.voice == .upper && $0.visibility == .hiddenSpacing
         })
-        #expect(absentAnalysis.rests.allSatisfy {
-            $0.voice != .upper || $0.visibility != .printed
-        })
 
         let crossGroup = try #require(analyze([
             event(3, tick: 120, origin: .dtx, candidate: .quarter)
@@ -285,15 +282,14 @@ struct NotationRhythmAnalyzerTests {
         #expect(pastMeasure.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
     }
 
-    @Test("terminal DTX onset with a non-clean measure remainder suppresses the whole measure")
-    func terminalDTXUncleanRemainderSuppressesMeasure() throws {
+    @Test("terminal DTX onset with a non-clean remainder preserves resolved siblings")
+    func terminalDTXUncleanRemainderPreservesResolvedSibling() throws {
         // Event 1 (tick 0, beat group 0) resolves cleanly via its candidate.
         // Event 2 (tick 300, beat group 1) is the terminal onset of its voice.
         // Its measure remainder (960 - 300 = 660) is neither a binary nor a
         // dotted duration, so `exactMeasureRemainderResolution` returns nil
-        // and the onset falls through to `.indeterminate`. The warning then
-        // drives `applyConservativeFallback` to mark the entire measure
-        // `.unsupported`, suppressing the cleanly-resolved event 1 as well.
+        // and the onset falls through to `.indeterminate`. Its warning must
+        // remain local to that onset rather than suppress event 1.
         let analysis = analyze([
             event(1, tick: 0, origin: .dtx, candidate: .quarter),
             event(2, tick: 300, origin: .dtx, interval: .sixtyfourth)
@@ -302,14 +298,30 @@ struct NotationRhythmAnalyzerTests {
         let resolved = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
 
         #expect(terminal.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(resolved.rhythm.support == .supported)
         #expect(analysis.warnings.contains {
-            $0.codes.contains(.indeterminateTerminalDuration)
+            $0.codes == [.indeterminateTerminalDuration]
         })
-        if case .supported = resolved.rhythm.support {
-            Issue.record("Cleanly-resolved note should have been suppressed by whole-measure fallback")
+    }
+
+    @Test("terminal lower voice warning preserves a full upper voice")
+    func terminalLowerVoiceWarningPreservesFullUpperVoice() throws {
+        let analysis = analyze([
+            event(1, tick: 0, voice: .upper, origin: .dtx, interval: .sixtyfourth),
+            event(2, tick: 300, voice: .lower, origin: .dtx, interval: .sixtyfourth)
+        ])
+        let upper = try #require(analysis.notes.first { $0.eventID.rawValue == 1 })
+        let lower = try #require(analysis.notes.first { $0.eventID.rawValue == 2 })
+
+        #expect(upper.durationTicks == 960)
+        #expect(upper.rhythm == NotationRhythm(baseInterval: .full))
+        #expect(lower.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(analysis.warnings.contains {
+            $0.codes == [.indeterminateTerminalDuration]
+        })
+        if case .unsupported = upper.rhythm.support {
+            Issue.record("Terminal lower-voice warning must not rewrite the upper full note")
         }
-        #expect(analysis.tuplets.isEmpty)
-        #expect(analysis.rests.filter { $0.voice == .upper && $0.visibility == .printed }.isEmpty)
     }
 
     @Test("a later manual onset is never used as DTX duration evidence")
@@ -330,9 +342,6 @@ struct NotationRhythmAnalyzerTests {
         #expect(absentDTX.durationTicks == 240)
         #expect(absentDTX.rhythm.baseInterval == .quarter)
         #expect(absentDTX.rhythm.support == .indeterminate(.indeterminateTerminalDuration))
-        #expect(absent.rests.allSatisfy {
-            $0.voice != .upper || $0.visibility != .printed
-        })
     }
 
     @Test("DTX onset inference never crosses a simple-meter beat-group boundary")
