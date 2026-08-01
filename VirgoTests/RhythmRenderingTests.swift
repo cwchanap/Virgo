@@ -378,6 +378,47 @@ struct RhythmRenderingTests {
         #expect(warning.accessibilityLabel.contains("Unsupported rhythm"))
     }
 
+    @Test("warning measures retain engraving and surface their runtime warning")
+    func warningMeasureRetainsEngraving() throws {
+        let notes = [
+            layoutNote(
+                id: 51,
+                tick: 0,
+                noteType: .snare,
+                rhythm: NotationRhythm(baseInterval: .eighth)
+            ),
+            layoutNote(
+                id: 52,
+                tick: 120,
+                noteType: .hiHat,
+                rhythm: NotationRhythm(baseInterval: .eighth)
+            )
+        ]
+        let lowerRest = RhythmLayoutRest(
+            position: position(tick: 240),
+            durationTicks: 240,
+            voice: .lower,
+            rhythm: NotationRhythm(baseInterval: .quarter),
+            visibility: .printed,
+            tupletID: nil
+        )
+        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+            timing: .timeline(try snapshot(
+                measures: [rhythmMeasure(support: .warning([.indeterminateTerminalDuration]))],
+                notes: notes,
+                rests: [lowerRest]
+            ))
+        ))
+        let warning = try #require(layout.rhythmWarnings.first)
+
+        #expect(!layout.beams.isEmpty)
+        #expect(!layout.stems.isEmpty)
+        #expect(layout.rests.contains { $0.voice == .lower && $0.visibility == .printed })
+        #expect(layout.rhythmWarnings.count == 1)
+        #expect(warning.scope == .measure(0))
+        #expect(warning.codes == [.indeterminateTerminalDuration])
+    }
+
     @Test("diagnostic presentation covers stable codes and chart-fatal accessibility")
     func diagnosticPresentationIsStableAndLocalized() throws {
         for code in RhythmDiagnosticCode.allCases {

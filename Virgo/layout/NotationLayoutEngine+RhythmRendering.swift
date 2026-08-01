@@ -189,8 +189,14 @@ extension NotationLayoutEngine {
     ) -> [RenderedRhythmWarning] {
         let renderedByIndex = Dictionary(uniqueKeysWithValues: renderedMeasures.map { ($0.measureIndex, $0) })
         return rhythmMeasures.compactMap { measure in
-            guard case .unsupported(let codes) = measure.engravingSupport,
-                  let rendered = renderedByIndex[measure.measureIndex] else { return nil }
+            let codes: [RhythmDiagnosticCode]
+            switch measure.engravingSupport {
+            case .supported:
+                return nil
+            case let .warning(value), let .unsupported(value):
+                codes = value
+            }
+            guard let rendered = renderedByIndex[measure.measureIndex] else { return nil }
             let staffTop = min(
                 GameplayLayout.StaffLinePosition.line1.absoluteY(for: rendered.row),
                 GameplayLayout.StaffLinePosition.line5.absoluteY(for: rendered.row)

@@ -40,6 +40,8 @@ enum NotationLayoutDigest {
             switch measure.engravingSupport {
             case .supported:
                 engraving = "supported"
+            case let .warning(codes):
+                engraving = "warning[" + codes.map(\.rawValue).sorted().joined(separator: ",") + "]"
             case let .unsupported(codes):
                 engraving = "unsupported[" + codes.map(\.rawValue).sorted().joined(separator: ",") + "]"
             }

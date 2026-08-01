@@ -336,6 +336,10 @@ struct DrumTabGoldenTests {
                 engraved.count == 4,
                 "engraving is supported, so all four triplet groups must render as tuplets"
             )
+        case let .warning(codes):
+            Issue.record(
+                "triplet grid must remain structurally unsupported, got warning codes \(codes.map(\.rawValue).sorted())"
+            )
         case let .unsupported(codes):
             // A bare "codes is non-empty" check would be vacuous: an
             // `.unsupported` measure always names at least one code, so it

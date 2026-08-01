@@ -158,6 +158,24 @@ struct RhythmMetadataTests {
         #expect(ChartRhythmMetadataCodec.decode(unsupported) == .invalid(.unsupportedMetadataVersion))
     }
 
+    @Test("terminal-duration warnings permit engraving while structural warnings block it")
+    func warningSupportProjection() {
+        let warning = RhythmEngravingSupport.supported.applyingRuntimeWarnings([
+            .indeterminateTerminalDuration
+        ])
+        #expect(warning == .warning([.indeterminateTerminalDuration]))
+        #expect(warning.permitsEngraving)
+
+        let blocking = warning.applyingRuntimeWarnings([.incompleteTuplet])
+        #expect(blocking == .unsupported([.incompleteTuplet, .indeterminateTerminalDuration]))
+        #expect(!blocking.permitsEngraving)
+
+        let original = RhythmEngravingSupport.unsupported([.ambiguousBeatGrouping])
+        #expect(original.applyingRuntimeWarnings([.indeterminateTerminalDuration]) == .unsupported([
+            .ambiguousBeatGrouping, .indeterminateTerminalDuration
+        ]))
+    }
+
     private func makeValidMetadata(
         measureLengthOverrides: [MeasureLengthOverride] = []
     ) throws -> ChartRhythmMetadata {

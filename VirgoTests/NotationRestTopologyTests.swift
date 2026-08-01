@@ -398,6 +398,7 @@ extension NotationRestTopologyTests {
 extension NotationRestTopologyTests {
     private func resolvedMeasure(
         duration: Int = 960,
+        support: RhythmEngravingSupport = .supported,
         groups: [RhythmBeatGroup]
     ) -> RhythmMeasure {
         RhythmMeasure(
@@ -406,8 +407,80 @@ extension NotationRestTopologyTests {
             durationTicks: duration,
             timeSignature: .fourFour,
             beatGroups: groups,
-            engravingSupport: .supported
+            engravingSupport: support
         )
+    }
+
+    @Test("warning measures solve exact ordinary gaps without escalating")
+    func warningMeasureUsesExactRestGap() throws {
+        let measure = resolvedMeasure(
+            duration: 240,
+            support: .warning([.indeterminateTerminalDuration]),
+            groups: [RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 240, isResidual: false)]
+        )
+        let result = builder.buildExact(
+            notes: [RestTimelineNote(
+                position: RhythmEventPosition(measureIndex: 0, localTick: 120, absoluteTick: 120),
+                voice: .upper,
+                durationTicks: 120,
+                rhythm: NotationRhythm(baseInterval: .eighth),
+                tupletID: nil
+            )],
+            measures: [measure],
+            reservedTupletRests: [],
+            ticksPerWholeNote: 960
+        )
+        let rest = try #require(result.events.first { $0.voice == .upper && $0.startTick == 0 })
+
+        #expect(rest.durationTicks == 120)
+        #expect(rest.duration == .eighth)
+        #expect(rest.visibility == .printed)
+        #expect(!result.warnings.contains { $0.codes.contains(.ambiguousBeatGrouping) })
+    }
+
+    @Test("terminal uncertainty keeps its adjacent complement as hidden spacing")
+    func terminalUncertaintyDoesNotInventSixtyFourthRest() throws {
+        let measure = resolvedMeasure(
+            duration: 64,
+            support: .warning([.indeterminateTerminalDuration]),
+            groups: [RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 64, isResidual: false)]
+        )
+        let result = builder.buildExact(
+            notes: [
+                RestTimelineNote(
+                    position: RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0),
+                    voice: .upper,
+                    durationTicks: 32,
+                    rhythm: NotationRhythm(baseInterval: .half),
+                    tupletID: nil
+                ),
+                RestTimelineNote(
+                    position: RhythmEventPosition(measureIndex: 0, localTick: 33, absoluteTick: 33),
+                    voice: .upper,
+                    durationTicks: nil,
+                    rhythm: NotationRhythm(
+                        baseInterval: .quarter,
+                        support: .indeterminate(.indeterminateTerminalDuration)
+                    ),
+                    tupletID: nil
+                )
+            ],
+            measures: [measure],
+            reservedTupletRests: [],
+            ticksPerWholeNote: 64
+        )
+        let complement = try #require(result.events.first {
+            $0.voice == .upper && $0.startTick == 32
+        })
+
+        #expect(complement.durationTicks == 1)
+        #expect(complement.duration == .indeterminate)
+        #expect(complement.visibility == .hiddenSpacing)
+        #expect(complement.rhythm?.support == .indeterminate(.indeterminateTerminalDuration))
+        #expect(!result.events.contains {
+            $0.voice == .upper && $0.duration == .sixtyFourth && $0.visibility == .printed
+        })
+        #expect(!result.warnings.contains { $0.codes.contains(.ambiguousBeatGrouping) })
     }
 
     @Test("exact rest DP prefers one dotted token inside a resolved group")
