@@ -86,7 +86,7 @@ struct NotationLayoutEngine {
         )
         let measures = buildMeasures(rhythmMeasures: rhythmMeasures, tabGrid: tabGrid, input: input)
         let unsupportedMeasureIndexes = Set(rhythmMeasures.compactMap { measure -> Int? in
-            if case .unsupported = measure.engravingSupport { return measure.measureIndex }
+            if !measure.engravingSupport.permitsEngraving { return measure.measureIndex }
             return nil
         })
         let noteHeads = buildNoteHeads(

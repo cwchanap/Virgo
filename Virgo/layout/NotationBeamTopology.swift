@@ -157,7 +157,7 @@ struct NotationBeamTopologyBuilder {
         for (index, event) in events.enumerated() {
             let tick = event.timeColumn.tickWithinMeasure
             guard let measure = measuresByIndex[event.timeColumn.measureIndex],
-                  case .supported = measure.engravingSupport,
+                  measure.engravingSupport.permitsEngraving,
                   tick >= 0, tick < measure.durationTicks,
                   let beatGroup = measure.beatGroups.first(where: {
                     tick >= $0.startTick && tick < $0.endTick

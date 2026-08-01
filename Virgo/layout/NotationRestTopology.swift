@@ -508,6 +508,14 @@ extension NotationRestTopologyBuilder {
         let isIndeterminate: Bool
     }
 
+    struct ExactGapContext {
+        let group: RhythmBeatGroup
+        let measure: RhythmMeasure
+        let voice: NotationVoice
+        let ticksPerWholeNote: Int
+        let terminalIndeterminateStarts: Set<Int>
+    }
+
     struct RestToken {
         let ticks: Int
         let baseTicks: Int
@@ -594,6 +602,9 @@ extension NotationRestTopologyBuilder {
         warnings: inout [Int: Set<RhythmDiagnosticCode>]
     ) {
         let spans = exactSpans(notes: notes, measureEnd: measure.durationTicks)
+        let terminalIndeterminateStarts = Set(spans.compactMap { span in
+            span.isIndeterminate && span.end == measure.durationTicks ? span.start : nil
+        })
         for span in spans where span.isIndeterminate {
             events.append(RestTopologyEvent(
                 measureIndex: measure.measureIndex,
@@ -632,14 +643,18 @@ extension NotationRestTopologyBuilder {
                 return lower < upper ? lower..<upper : nil
             }.sorted { $0.lowerBound < $1.lowerBound }
             var cursor = group.startTick
+            let groupGapContext = ExactGapContext(
+                group: group,
+                measure: measure,
+                voice: voice,
+                ticksPerWholeNote: ticksPerWholeNote,
+                terminalIndeterminateStarts: terminalIndeterminateStarts
+            )
             for range in clipped {
                 appendExactGap(
                     start: cursor,
                     end: range.lowerBound,
-                    group: group,
-                    measure: measure,
-                    voice: voice,
-                    ticksPerWholeNote: ticksPerWholeNote,
+                    context: groupGapContext,
                     events: &events,
                     warnings: &warnings
                 )
@@ -648,10 +663,7 @@ extension NotationRestTopologyBuilder {
             appendExactGap(
                 start: cursor,
                 end: group.endTick,
-                group: group,
-                measure: measure,
-                voice: voice,
-                ticksPerWholeNote: ticksPerWholeNote,
+                context: groupGapContext,
                 events: &events,
                 warnings: &warnings
             )
@@ -661,24 +673,37 @@ extension NotationRestTopologyBuilder {
     private func appendExactGap(
         start: Int,
         end: Int,
-        group: RhythmBeatGroup,
-        measure: RhythmMeasure,
-        voice: NotationVoice,
-        ticksPerWholeNote: Int,
+        context: ExactGapContext,
         events: inout [RestTopologyEvent],
         warnings: inout [Int: Set<RhythmDiagnosticCode>]
     ) {
         guard start < end else { return }
-        guard case .supported = measure.engravingSupport,
+        guard !context.terminalIndeterminateStarts.contains(start),
+              !context.terminalIndeterminateStarts.contains(end) else {
+            events.append(RestTopologyEvent(
+                measureIndex: context.measure.measureIndex,
+                voice: context.voice,
+                startTick: start,
+                durationTicks: end - start,
+                duration: .indeterminate,
+                visibility: .hiddenSpacing,
+                rhythm: NotationRhythm(
+                    baseInterval: .quarter,
+                    support: .indeterminate(.indeterminateTerminalDuration)
+                )
+            ))
+            return
+        }
+        guard context.measure.engravingSupport.permitsEngraving,
               let path = solveRestPath(
                 start: start,
                 end: end,
-                group: group,
-                ticksPerWholeNote: ticksPerWholeNote
+                group: context.group,
+                ticksPerWholeNote: context.ticksPerWholeNote
               ) else {
             events.append(RestTopologyEvent(
-                measureIndex: measure.measureIndex,
-                voice: voice,
+                measureIndex: context.measure.measureIndex,
+                voice: context.voice,
                 startTick: start,
                 durationTicks: end - start,
                 duration: .indeterminate,
@@ -688,14 +713,14 @@ extension NotationRestTopologyBuilder {
                     support: .unsupported(.ambiguousBeatGrouping)
                 )
             ))
-            warnings[measure.measureIndex, default: []].insert(.ambiguousBeatGrouping)
+            warnings[context.measure.measureIndex, default: []].insert(.ambiguousBeatGrouping)
             return
         }
         var cursor = start
         for token in path.tokens {
             events.append(RestTopologyEvent(
-                measureIndex: measure.measureIndex,
-                voice: voice,
+                measureIndex: context.measure.measureIndex,
+                voice: context.voice,
                 startTick: cursor,
                 durationTicks: token.ticks,
                 duration: token.legacyDuration,

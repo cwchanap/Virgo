@@ -334,6 +334,37 @@ enum RhythmDiagnosticCode: String, Codable, CaseIterable, Hashable, Sendable {
     }
 }
 
+extension RhythmDiagnosticCode {
+    var blocksWholeMeasureEngraving: Bool {
+        switch self {
+        case .indeterminateTerminalDuration:
+            return false
+        case .malformedTimeSignature,
+                .unsupportedTimeSignature,
+                .malformedFeel,
+                .unsupportedFeel,
+                .malformedMeasureLength,
+                .nonpositiveMeasureLength,
+                .conflictingTimeSignature,
+                .conflictingFeel,
+                .conflictingMeasureLength,
+                .unsupportedMetadataVersion,
+                .arithmeticOverflow,
+                .resolutionLimitExceeded,
+                .measureLimitExceeded,
+                .rhythmMaterializationLimitExceeded,
+                .inexactGridProjection,
+                .inconsistentPersistedTiming,
+                .unsupportedTupletRatio,
+                .unsupportedDotCount,
+                .incompleteTuplet,
+                .ambiguousBeatGrouping,
+                .manualTimelineUnavailable:
+            return true
+        }
+    }
+}
+
 struct PersistedRhythmDiagnostic: Codable, Hashable, Sendable {
     let code: RhythmDiagnosticCode
     let severity: RhythmDiagnosticSeverity
@@ -393,7 +424,43 @@ enum RhythmSemanticSupport: Hashable, Sendable {
 
 enum RhythmEngravingSupport: Hashable, Sendable {
     case supported
+    case warning([RhythmDiagnosticCode])
     case unsupported([RhythmDiagnosticCode])
+}
+
+extension RhythmEngravingSupport {
+    var permitsEngraving: Bool {
+        switch self {
+        case .supported, .warning:
+            true
+        case .unsupported:
+            false
+        }
+    }
+
+    func applyingRuntimeWarnings(_ runtimeCodes: Set<RhythmDiagnosticCode>) -> Self {
+        let existingCodes: Set<RhythmDiagnosticCode>
+        let wasUnsupported: Bool
+        switch self {
+        case .supported:
+            existingCodes = []
+            wasUnsupported = false
+        case let .warning(codes):
+            existingCodes = Set(codes)
+            wasUnsupported = false
+        case let .unsupported(codes):
+            existingCodes = Set(codes)
+            wasUnsupported = true
+        }
+
+        let allCodes = existingCodes.union(runtimeCodes)
+        let stableCodes = allCodes.sorted { $0.rawValue < $1.rawValue }
+        if wasUnsupported { return .unsupported(stableCodes) }
+        guard !stableCodes.isEmpty else { return .supported }
+        return allCodes.contains { $0.blocksWholeMeasureEngraving }
+            ? .unsupported(stableCodes)
+            : .warning(stableCodes)
+    }
 }
 
 struct ChartRhythmMetadata: Codable, Hashable, Sendable {

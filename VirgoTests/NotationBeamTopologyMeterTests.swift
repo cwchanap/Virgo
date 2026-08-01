@@ -2,6 +2,31 @@ import Testing
 @testable import Virgo
 
 extension NotationBeamTopologyTests {
+    @Test("terminal-duration warning measures retain resolved beam groups")
+    func warningMeasureUsesResolvedBeamGroups() {
+        let events = [
+            event(tick: 0, levels: 1, durationTicks: 120, noteHeadID: 1),
+            event(tick: 120, levels: 1, durationTicks: 120, noteHeadID: 2)
+        ]
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 960,
+            timeSignature: .fourFour,
+            beatGroups: [
+                RhythmBeatGroup(groupIndex: 0, startTick: 0, durationTicks: 240, isResidual: false),
+                RhythmBeatGroup(groupIndex: 1, startTick: 240, durationTicks: 240, isResidual: false),
+                RhythmBeatGroup(groupIndex: 2, startTick: 480, durationTicks: 240, isResidual: false),
+                RhythmBeatGroup(groupIndex: 3, startTick: 720, durationTicks: 240, isResidual: false)
+            ],
+            engravingSupport: .warning([.indeterminateTerminalDuration])
+        )
+
+        let result = builder.build(events: events, measures: [measure])
+
+        #expect(result.primaryGroups.map(\.eventIndices) == [[0, 1]])
+    }
+
     @Test("Invalid and non-quarter-divisible grids return empty topology")
     func invalidGridsReturnEmptyTopology() {
         let events = [
