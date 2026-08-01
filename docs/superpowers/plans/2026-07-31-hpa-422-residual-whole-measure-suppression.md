@@ -26,17 +26,17 @@
 
 ### Production files
 
-- `Virgo/models/RhythmMetadata.swift` — owns the additive `.warning` support state, stable code union, blocking classification, and `permitsEngraving` predicate.
+- `Virgo/models/RhythmMetadata.swift` — owns the additive `.warning` support state, stable code union, exhaustive blocking classification, and `permitsEngraving` predicate.
 - `Virgo/layout/NotationRhythmAnalyzer.swift` — narrows conservative fallback to measures whose projected support is truly unsupported, including after rest-topology diagnostics.
 - `Virgo/layout/RhythmLayoutSnapshotBuilder.swift` — applies the same shared support projection on the production/fixture snapshot boundary.
 - `Virgo/layout/NotationBeamTopology.swift` — lets warning-only measures produce beam topology.
-- `Virgo/layout/NotationRestTopology.swift` — lets warning-only measures solve printable rest gaps while preserving per-note indeterminate spacing.
+- `Virgo/layout/NotationRestTopology.swift` — lets warning-only measures solve printable resolved gaps while keeping complements adjacent to indeterminate spans as hidden spacing.
 - `Virgo/layout/NotationLayoutEngine+RhythmRendering.swift` — draws measure warnings for both warning-only and unsupported support states.
 
 ### Test and golden files
 
 - `VirgoTests/RhythmMetadataTests.swift` — verifies code classification, stable state projection, and preservation of pre-existing unsupported state.
-- `VirgoTests/NotationRestTopologyTests.swift` — proves a warning-only measure still yields exact printed rests.
+- `VirgoTests/NotationRestTopologyTests.swift` — proves a warning-only measure yields exact printed resolved rests while terminal-adjacent gaps remain hidden and non-escalating.
 - `VirgoTests/NotationBeamTopologyMeterTests.swift` — proves a warning-only measure still groups beamable notes.
 - `VirgoTests/RhythmRenderingTests.swift` — proves warning-only layout retains engraving and renders the warning glyph; true unsupported layout remains suppressed.
 - `VirgoTests/NotationRhythmAnalyzerTests.swift` — direct HPA-422 tests for non-clean remainders and cross-voice terminal uncertainty.
@@ -50,9 +50,9 @@
 
 **Files:**
 
-- Modify: `Virgo/models/RhythmMetadata.swift:388-397`
+- Modify: `Virgo/models/RhythmMetadata.swift:298-332, 394-397`
 - Modify: `Virgo/layout/NotationBeamTopology.swift:156-165`
-- Modify: `Virgo/layout/NotationRestTopology.swift:666-691`
+- Modify: `Virgo/layout/NotationRestTopology.swift:541-691`
 - Modify: `Virgo/layout/NotationLayoutEngine+RhythmRendering.swift:185-211`
 - Modify: `VirgoTests/RhythmMetadataTests.swift`
 - Modify: `VirgoTests/NotationRestTopologyTests.swift`
@@ -64,7 +64,7 @@
 **Interfaces:**
 
 - Produces: `RhythmEngravingSupport.warning([RhythmDiagnosticCode])`.
-- Produces: `RhythmDiagnosticCode.blocksWholeMeasureEngraving: Bool` (`false` only for `.indeterminateTerminalDuration`).
+- Produces: an exhaustive `RhythmDiagnosticCode.blocksWholeMeasureEngraving: Bool` switch with no `default` (`false` only for `.indeterminateTerminalDuration`).
 - Produces: `RhythmEngravingSupport.permitsEngraving: Bool` and `applyingRuntimeWarnings(_:) -> RhythmEngravingSupport`.
 - Consumes: existing stable raw-value ordering for diagnostic codes; no persisted representation changes.
 
@@ -93,6 +93,8 @@ func warningSupportProjection() {
 ```
 
 Extend `NotationRestTopologyTests` so `resolvedMeasure` accepts an optional support argument and add a `.warning([.indeterminateTerminalDuration])` measure with an exact 120-tick gap. Assert that `buildExact` returns a printed upper-voice eighth rest and no `.ambiguousBeatGrouping` warning.
+
+Add a terminal-boundary rest case with a resolved half span `0...32` and an indeterminate terminal span beginning at `33` in a 64-tick warning measure. Assert the complement at `32...33` is hidden spacing, never a printed sixty-fourth rest, and adds no `.ambiguousBeatGrouping`; this is the explicit non-escalation contract for terminal uncertainty.
 
 Extend `NotationBeamTopologyMeterTests` with two contiguous eighth-note events in a `.warning([.indeterminateTerminalDuration])` 4/4 measure. Assert the topology has one primary group containing both event indices.
 
@@ -129,7 +131,32 @@ enum RhythmEngravingSupport: Hashable, Sendable {
 
 extension RhythmDiagnosticCode {
     var blocksWholeMeasureEngraving: Bool {
-        self != .indeterminateTerminalDuration
+        switch self {
+        case .indeterminateTerminalDuration:
+            return false
+        case .malformedTimeSignature,
+                .unsupportedTimeSignature,
+                .malformedFeel,
+                .unsupportedFeel,
+                .malformedMeasureLength,
+                .nonpositiveMeasureLength,
+                .conflictingTimeSignature,
+                .conflictingFeel,
+                .conflictingMeasureLength,
+                .unsupportedMetadataVersion,
+                .arithmeticOverflow,
+                .resolutionLimitExceeded,
+                .measureLimitExceeded,
+                .rhythmMaterializationLimitExceeded,
+                .inexactGridProjection,
+                .inconsistentPersistedTiming,
+                .unsupportedTupletRatio,
+                .unsupportedDotCount,
+                .incompleteTuplet,
+                .ambiguousBeatGrouping,
+                .manualTimelineUnavailable:
+            return true
+        }
     }
 }
 
@@ -167,11 +194,13 @@ extension RhythmEngravingSupport {
 }
 ```
 
-Do not classify a code by `requiredSeverity`: other `.engravingOnly` diagnostics remain blocking under HPA-422.
+Do not classify a code by `requiredSeverity`: other `.engravingOnly` diagnostics remain blocking under HPA-422. Do not add a `default` branch to `blocksWholeMeasureEngraving`; a new diagnostic must force an explicit policy choice at compile time.
 
 - [ ] **Step 4: Make topology and warning rendering consume `permitsEngraving`**
 
-Replace the exact `.supported` guards in `NotationBeamTopology.groupEventsByResolvedGroup` and `NotationRestTopology.appendExactGap` with `measure.engravingSupport.permitsEngraving`.
+Replace the exact `.supported` guard in `NotationBeamTopology.groupEventsByResolvedGroup` with `measure.engravingSupport.permitsEngraving`.
+
+In `NotationRestTopology`, let ordinary gaps in a permitting measure use `permitsEngraving` and the existing exact solver. Thread terminal-span adjacency from `appendExactVoice` into the gap handling: a gap that directly touches an indeterminate span becomes an `.indeterminate(.indeterminateTerminalDuration)` `.hiddenSpacing` event without calling `solveRestPath` or adding `.ambiguousBeatGrouping`. A non-adjacent gap that the solver cannot represent still emits the structural diagnostic and follows normal fallback policy.
 
 Update `buildRhythmWarnings` to extract codes from `.warning` and `.unsupported`, while returning no warning for `.supported`:
 
@@ -224,7 +253,7 @@ rtk git commit -m "feat: separate rhythm warnings from fallback support"
 **Interfaces:**
 
 - Consumes: `RhythmEngravingSupport.applyingRuntimeWarnings(_:)` and `permitsEngraving` from Task 1.
-- Produces: `applyConservativeFallback` targeted only at projected `.unsupported` measure indexes.
+- Produces: `applyConservativeFallback` targeted only through a pre-filtered `fallbackDiagnosticCodesByMeasure` map for projected `.unsupported` measures.
 - Produces: warning-only snapshots for a measure whose only runtime code is `.indeterminateTerminalDuration`.
 - Preserves: the terminal note's `.indeterminate(.indeterminateTerminalDuration)` rhythm and all existing whole-measure behavior for blocking diagnostics.
 
@@ -288,15 +317,15 @@ Expected: the direct analyzer assertions fail because `applyConservativeFallback
 
 - [ ] **Step 3: Project support before fallback and only fall back for non-permitting measures**
 
-Refactor `NotationRhythmAnalyzer` so it obtains effective measures with the Task 1 helper before each fallback decision. Compute fallback indexes from `!measure.engravingSupport.permitsEngraving`, not from every key in `warningCodes`.
+Refactor `NotationRhythmAnalyzer` so it obtains effective measures with the Task 1 helper before each fallback decision. Rename the all-diagnostic aggregation from `warningCodes` to `diagnosticCodes`, making it clear that it can contain blocking codes as well as codes which project to `.warning`. Compute fallback targets from `!measure.engravingSupport.permitsEngraving`, not from every diagnostic key.
 
 ```swift
 func measuresWithFallback(
     _ measures: [RhythmMeasure],
-    warningCodes: [Int: Set<RhythmDiagnosticCode>]
+    diagnosticCodes: [Int: Set<RhythmDiagnosticCode>]
 ) -> [RhythmMeasure] {
     measures.map { measure in
-        let codes = warningCodes[measure.measureIndex, default: []]
+        let codes = diagnosticCodes[measure.measureIndex, default: []]
         let support = measure.engravingSupport.applyingRuntimeWarnings(codes)
         return RhythmMeasure(
             measureIndex: measure.measureIndex,
@@ -310,9 +339,9 @@ func measuresWithFallback(
 }
 ```
 
-Change `applyConservativeFallback` to accept the computed unsupported index set. It may rewrite resolutions, remove tuplets, and remove reserved rests only for those indexes. Leave `.indeterminate` resolutions intact. Update `metadataWarningCodes` to seed the reporting set from either `.warning` or `.unsupported` input support; the current timeline only originates the latter, but this keeps the three-state boundary complete.
+Derive `fallbackDiagnosticCodesByMeasure` by filtering `diagnosticCodes` to the projected non-permitting measures. Change `applyConservativeFallback` to accept that map, use its keys as its only targets, and obtain `primaryCode(in:)` from the selected measure's mapped codes. It may rewrite resolutions, remove tuplets, and remove reserved rests only for those indexes. Leave `.indeterminate` resolutions intact. Rename `metadataWarningCodes` to `metadataDiagnosticCodes` and seed the reporting set from either `.warning` or `.unsupported` input support; the current timeline only originates the latter, but this keeps the three-state boundary complete.
 
-After `analyzedRests` appends diagnostics, recompute the projected measures. Re-run fallback only if a measure newly changes from `permitsEngraving == true` to `false`; warning-only additions do not trigger a second fallback. Keep tuplets recognition guarded by `measure.engravingSupport.permitsEngraving` rather than the old binary case.
+After the first `analyzedRests` call appends diagnostics, recompute the projected measures. Re-run fallback only if a measure newly changes from `permitsEngraving == true` to `false`; warning-only additions do not trigger a second fallback. Only in that case, run `analyzedRests` once more. This deliberate at-most-two-pass bound is safe because rest synthesis is deterministic and measure-scoped: unchanged permitting measures receive the same inputs, and measures whose inputs changed are already non-permitting. The final diagnostic output unions both passes and contains every code used for fallback; no third fallback is required. Keep tuplet recognition guarded by `measure.engravingSupport.permitsEngraving` rather than the old binary case.
 
 - [ ] **Step 4: Make the snapshot builder use the same support projection**
 
@@ -369,12 +398,13 @@ Expected: no unrelated rhythm or importer files are staged.
 
 - Modify: `VirgoTests/Goldens/sparse-hi-res-lane.txt` (generated by the golden update run)
 - Review only: all other `VirgoTests/Goldens/*.txt` files
+- Verify: `VirgoTests/DrumTabRegressionInvariantTests.swift` (its fixture matrix includes `sparse-hi-res-lane`)
 - Modify if required by the actual reviewed output: existing golden assertion comments in `VirgoTests/DrumTabGoldenTests.swift`
 
 **Interfaces:**
 
 - Consumes: warning-state digest output from Task 1 and localized analyzer/snapshot behavior from Task 2.
-- Produces: a reviewed golden showing `warning[indeterminateTerminalDuration]`, a visible warning, and restored engraving for resolved material in `sparse-hi-res-lane`.
+- Produces: a reviewed golden showing `warning[indeterminateTerminalDuration]`, a visible warning, restored engraving for resolved material, and hidden terminal-adjacent spacing in `sparse-hi-res-lane`.
 - Preserves: `triplet-grid` and other structural fallback goldens as `.unsupported` unless a separately demonstrated pre-existing inconsistency requires a deliberate change.
 
 - [ ] **Step 1: Confirm the expected golden scope before rewriting**
@@ -413,7 +443,7 @@ rtk git diff -- VirgoTests/Goldens
 rtk git diff --check
 ```
 
-Verify `sparse-hi-res-lane.txt` changes its measure state to `warning[indeterminateTerminalDuration]`, retains a measure warning line, restores the resolved half note's supported rhythm, adds the expected `m0` lower full-measure rest, and keeps the unresolved terminal note indeterminate. The resolved half remains intentionally stemless and flagless. Verify `triplet-grid.txt` still names `incompleteTuplet` and remains unsupported. Revert no user changes; only amend generated golden output if the implementation created a nondeterministic or semantically incorrect line.
+Verify `sparse-hi-res-lane.txt` changes its measure state to `warning[indeterminateTerminalDuration]`, retains a measure warning line, restores the resolved half note's supported rhythm, adds the expected `m0` lower full-measure rest, and keeps the unresolved terminal note indeterminate. Its `m0 t32...33` complement must be hidden spacing rather than a printed sixty-fourth rest; the resolved half remains intentionally stemless and flagless. Verify `triplet-grid.txt` still names `incompleteTuplet` and remains unsupported. Revert no user changes; only amend generated golden output if the implementation created a nondeterministic or semantically incorrect line.
 
 - [ ] **Step 4: Run normal golden, focused, and full-suite verification**
 
@@ -423,6 +453,14 @@ Run sequentially:
 rtk xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
   -destination 'platform=macOS' -configuration Debug \
   -only-testing:VirgoTests/DrumTabGoldenTests \
+  -parallel-testing-enabled NO ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -enableCodeCoverage YES -destination-timeout 300 \
+  -derivedDataPath ./DerivedData-hpa422
+
+rtk xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
+  -destination 'platform=macOS' -configuration Debug \
+  -only-testing:VirgoTests/DrumTabRegressionInvariantTests \
   -parallel-testing-enabled NO ONLY_ACTIVE_ARCH=NO \
   CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
   -enableCodeCoverage YES -destination-timeout 300 \
@@ -453,6 +491,8 @@ rtk git status --short
 
 Expected: every normal test command exits zero; the worktree contains only reviewed HPA-422 changes before the final commit.
 
+`DrumTabRegressionInvariantTests` parameterizes across `DrumTabFixtureCatalog.all`, which includes `sparse-hi-res-lane`, so it is a focused regression boundary for this change. `DrumTabRenderProbeTests` and `DrumTabPlayheadAlignmentTests` do not currently use this fixture; the final full `VirgoTests` run retains their coverage without claiming a fixture-specific expected diff.
+
 - [ ] **Step 5: Commit the approved golden regression coverage**
 
 ```bash
@@ -464,7 +504,7 @@ If the reviewed update changes another golden, add only that explicit filename a
 
 ## Plan Self-Review
 
-- **Spec coverage:** Task 1 implements visible, non-suppressing warning state; Task 2 covers both direct analyzer acceptance cases and the shared production path; Task 3 proves the changed real fixture output and that structural fallback remains intact.
+- **Spec coverage:** Task 1 implements visible, non-suppressing warning state plus non-escalating terminal-boundary spacing; Task 2 covers both direct analyzer acceptance cases and the shared production path; Task 3 proves the changed real fixture output and that structural fallback remains intact.
 - **No invented duration:** Task 2 retains the terminal event's existing indeterminate support and changes fallback scope only.
 - **Type consistency:** Every consumer uses `RhythmEngravingSupport.permitsEngraving` and `applyingRuntimeWarnings(_:)`; no second blocking-code classifier is introduced outside `RhythmMetadata.swift`.
 - **Compatibility:** The plan leaves persisted models, import payloads, timing resolution, iPad targeting, and existing `.unsupported` behavior unchanged.
