@@ -1,7 +1,7 @@
 # HPA-422 Residual Whole-Measure Suppression Design
 
 - **Date:** 2026-07-31
-- **Status:** Design approved; awaiting committed-spec review
+- **Status:** Design approved after committed-spec review
 - **Scope:** Keep a visible rhythm warning for an unresolvable terminal DTX duration while preserving the engraving of resolved notes and voices in the same measure.
 - **Linear:** [HPA-422](https://linear.app/cwchanap/issue/HPA-422/residual-whole-measure-suppression-for-non-clean-terminal-remainders)
 - **Related:** [HPA-419](https://linear.app/cwchanap/issue/HPA-419/final-measure-of-every-chart-renders-without-stems-beams-flags-or-rests), [HPA-145](https://linear.app/cwchanap/issue/HPA-145/handle-tuplets-dotted-rhythms-compound-meter-and-dtx-measure-length)
