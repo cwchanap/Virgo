@@ -25,5 +25,5 @@ rest  m1 t0000 voice=lower dur=fullMeasure ticks=12 vis=printed pos=(720.00,170.
 bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=488.00 isFinal=false
 bar   row=0 x=888.00 isFinal=true
-warn  scope=measure:0 codes=[incompleteTuplet,indeterminateTerminalDuration] row=0 measure=1 pos=(242.00,54.00) size=180.00x22.00
+warn  scope=measure:0 kind=unsupported codes=[incompleteTuplet,indeterminateTerminalDuration] row=0 measure=1 pos=(242.00,54.00) size=180.00x22.00
 # SUSPECT: HPA-145 12-grid measure falls back to unsupported engraving; this golden pins the fallback, not engraved triplets.

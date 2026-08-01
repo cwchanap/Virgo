@@ -394,6 +394,7 @@ struct SwiftUIRenderingNotationTests {
             )
             let warning = RenderedRhythmWarning.measure(
                 measureIndex: 0,
+                kind: .unsupported,
                 codes: [.ambiguousBeatGrouping],
                 position: CGPoint(x: 80, y: 20),
                 style: style

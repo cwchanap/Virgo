@@ -18,4 +18,4 @@ rest  m1 t0000 voice=lower dur=fullMeasure ticks=64 vis=printed pos=(516.00,170.
 bar   row=0 x=100.00 isFinal=false
 bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
-warn  scope=measure:0 codes=[indeterminateTerminalDuration] row=0 measure=1 pos=(242.00,54.00) size=180.00x22.00
+warn  scope=measure:0 kind=warning codes=[indeterminateTerminalDuration] row=0 measure=1 pos=(242.00,54.00) size=180.00x22.00

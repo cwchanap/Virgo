@@ -189,11 +189,16 @@ extension NotationLayoutEngine {
     ) -> [RenderedRhythmWarning] {
         let renderedByIndex = Dictionary(uniqueKeysWithValues: renderedMeasures.map { ($0.measureIndex, $0) })
         return rhythmMeasures.compactMap { measure in
+            let kind: RhythmWarningKind
             let codes: [RhythmDiagnosticCode]
             switch measure.engravingSupport {
             case .supported:
                 return nil
-            case let .warning(value), let .unsupported(value):
+            case let .warning(value):
+                kind = .warning
+                codes = value
+            case let .unsupported(value):
+                kind = .unsupported
                 codes = value
             }
             guard let rendered = renderedByIndex[measure.measureIndex] else { return nil }
@@ -203,6 +208,7 @@ extension NotationLayoutEngine {
             )
             return RenderedRhythmWarning.measure(
                 measureIndex: measure.measureIndex,
+                kind: kind,
                 codes: codes,
                 position: CGPoint(
                     x: rendered.contentStartX + min(rendered.width, style.warningSize.width) / 2,

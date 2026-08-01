@@ -66,9 +66,24 @@ enum RhythmWarningScope: Hashable {
     case chartFatal
 }
 
+/// The support state a `RenderedRhythmWarning` was materialized from. The same
+/// diagnostic code (e.g. `.indeterminateTerminalDuration`) can surface from a
+/// measure that keeps engraving (`.warning`) or one that fell back
+/// (`.unsupported`); the title and accessibility label must distinguish them so
+/// an engravable measure is not announced as unsupported.
+enum RhythmWarningKind: Hashable, Sendable {
+    /// Engraving retained; the diagnostic is surfaced as a non-blocking warning.
+    case warning
+    /// Measure fell back to unsupported rendering.
+    case unsupported
+    /// Chart-level fatal diagnostic.
+    case chartFatal
+}
+
 struct RenderedRhythmWarning: Identifiable, Hashable {
     let id: String
     let scope: RhythmWarningScope
+    let kind: RhythmWarningKind
     let codes: [RhythmDiagnosticCode]
     let position: CGPoint
     let rowIndex: Int?
@@ -77,6 +92,7 @@ struct RenderedRhythmWarning: Identifiable, Hashable {
 
     static func measure(
         measureIndex: Int,
+        kind: RhythmWarningKind,
         codes: [RhythmDiagnosticCode],
         position: CGPoint,
         rowIndex: Int? = nil,
@@ -84,8 +100,9 @@ struct RenderedRhythmWarning: Identifiable, Hashable {
     ) -> Self {
         let stableCodes = codes.stableDiagnosticOrder
         return Self(
-            id: "warning-measure-\(measureIndex)-\(stableCodes.map(\.rawValue).joined(separator: "-"))",
+            id: "warning-measure-\(measureIndex)-\(kind)-\(stableCodes.map(\.rawValue).joined(separator: "-"))",
             scope: .measure(measureIndex),
+            kind: kind,
             codes: stableCodes,
             position: position,
             rowIndex: rowIndex,
@@ -103,6 +120,7 @@ struct RenderedRhythmWarning: Identifiable, Hashable {
         return Self(
             id: "warning-chart-fatal-\(codes.map(\.rawValue).joined(separator: "-"))",
             scope: .chartFatal,
+            kind: .chartFatal,
             codes: codes,
             position: position,
             rowIndex: nil,
@@ -112,14 +130,19 @@ struct RenderedRhythmWarning: Identifiable, Hashable {
     }
 
     var title: String {
-        guard let code = codes.first else { return String(localized: "Unsupported rhythm") }
-        return RhythmDiagnosticPresentation(code: code).title
+        switch kind {
+        case .warning:
+            return String(localized: "Rhythm warning")
+        case .unsupported, .chartFatal:
+            guard let code = codes.first else { return String(localized: "Unsupported rhythm") }
+            return RhythmDiagnosticPresentation(code: code).title
+        }
     }
 
     var accessibilityLabel: String {
-        let presentation = codes.first.map(RhythmDiagnosticPresentation.init)
-        let title = presentation?.title ?? String(localized: "Unsupported rhythm")
-        let detail = presentation?.description ?? String(localized: "This rhythm cannot be displayed safely.")
+        let title = self.title
+        let detail = codes.first.map { RhythmDiagnosticPresentation(code: $0).description }
+            ?? String(localized: "This rhythm cannot be displayed safely.")
         if let displayMeasureNumber {
             return String(localized: "\(title), measure \(displayMeasureNumber): \(detail)")
         }

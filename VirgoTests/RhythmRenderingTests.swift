@@ -374,6 +374,7 @@ struct RhythmRenderingTests {
         #expect(unsupported.rests.isEmpty)
         #expect(unsupported.rhythmWarnings.count == 1)
         #expect(warning.scope == .measure(0))
+        #expect(warning.kind == .unsupported)
         #expect(warning.accessibilityLabel.contains("measure 1"))
         #expect(warning.accessibilityLabel.contains("Unsupported rhythm"))
     }
@@ -416,7 +417,12 @@ struct RhythmRenderingTests {
         #expect(layout.rests.contains { $0.voice == .lower && $0.visibility == .printed })
         #expect(layout.rhythmWarnings.count == 1)
         #expect(warning.scope == .measure(0))
+        #expect(warning.kind == .warning)
         #expect(warning.codes == [.indeterminateTerminalDuration])
+        #expect(warning.title == "Rhythm warning")
+        #expect(!warning.accessibilityLabel.contains("Unsupported"))
+        #expect(warning.accessibilityLabel.contains("Rhythm warning"))
+        #expect(warning.accessibilityLabel.contains("measure 1"))
     }
 
     @Test("diagnostic presentation covers stable codes and chart-fatal accessibility")
