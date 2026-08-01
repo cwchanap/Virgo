@@ -56,7 +56,9 @@ The model has two independent questions that should not be conflated:
 - **May this measure engrave?** `.supported` and `.warning` may engrave; `.unsupported` may not.
 - **Should a warning glyph be displayed?** `.warning` and `.unsupported` display one when they carry codes.
 
-A shared, pure classification helper owns these decisions. It receives the original support state and the accumulated analyzer codes, unions codes deterministically, and returns one of the three states. It exposes a semantic predicate such as `permitsEngraving` so callers do not repeat `switch` logic.
+A shared, pure classification helper owns these decisions: `RhythmEngravingSupport.applyingRuntimeWarnings(_:)`. It receives the original support state and the accumulated analyzer codes, unions them, and returns one of the three states. It also exposes `permitsEngraving` so callers do not repeat `switch` logic.
+
+The helper is the sole classifier for runtime warnings. It always returns a canonical code array sorted by `rawValue`, including for `.warning` and `.unsupported`; it preserves an originally unsupported measure as unsupported; and it selects `.warning` only when the merged set contains no blocking diagnostic. Callers must project from the original support state rather than filter a local code set with their own rule.
 
 `indeterminateTerminalDuration` is the sole warning-only runtime code in this change. Every other existing code that currently reaches whole-measure fallback remains blocking by default. This is intentionally narrow: future warning-only diagnostics must opt in explicitly rather than silently weakening established fallback behavior.
 
@@ -66,18 +68,26 @@ A shared, pure classification helper owns these decisions. It receives the origi
 
 `warningCodes` continues to aggregate diagnostics by measure for reporting. It no longer means that every affected measure must be suppressed.
 
-`applyConservativeFallback` derives its target measures from blocking diagnostics only. For a terminal-only warning, it leaves all `EventResolution` values untouched:
+The fallback and projection rules are one atomic invariant:
+
+- Project every measure through `applyingRuntimeWarnings(_:)` before selecting fallback targets.
+- Fallback targets are exactly the projected measures where `permitsEngraving == false`; they are never `Set(warningCodes.keys)`.
+- After rest topology contributes more codes, re-project all measures and run a second fallback only for measures that transitioned from permitting engraving to non-permitting engraving. A new warning-only code does not cause a second fallback.
+
+`applyConservativeFallback` receives those computed non-permitting measure indexes. For a terminal-only warning, it leaves all `EventResolution` values untouched:
 
 - the unresolvable terminal event remains `.indeterminate(.indeterminateTerminalDuration)`;
 - a previously resolved sibling remains `.supported` and retains any recognized tuplet association;
 - a resolved event in another voice remains `.supported`;
 - reserved tuplet rests are removed only for genuinely unsupported measures.
 
-`measuresWithFallback` uses the shared support-state helper. A measure with only `indeterminateTerminalDuration` becomes `.warning`; a measure with a blocking code becomes `.unsupported`. The existing second rest-topology pass remains in place, but only newly blocking diagnostics trigger another conservative fallback.
+`measuresWithFallback` uses the shared support-state helper. A measure with only `indeterminateTerminalDuration` becomes `.warning`; a measure with a blocking code becomes `.unsupported`. `metadataWarningCodes` must collect codes from both `.warning` and `.unsupported` input measures so this reporting path remains complete if a future timeline source originates a warning state; current timeline construction still originates only supported or unsupported measures.
+
+Tuplet recognition and structural diagnosis use `permitsEngraving` rather than an exact `.supported` case. Today this is forward-compatible alignment because timeline input has no warning state, but it keeps the semantic gate correct if that changes.
 
 ### 6.2 `RhythmLayoutSnapshotBuilder`
 
-`RhythmLayoutSnapshotBuilder.rhythmMeasuresApplyingWarnings` delegates to the same helper. It must not independently convert every analyzer warning into `.unsupported`.
+`RhythmLayoutSnapshotBuilder.rhythmMeasuresApplyingWarnings` delegates to the same `applyingRuntimeWarnings(_:)` helper. It must not independently convert every analyzer warning into `.unsupported` or implement a second diagnostic classifier.
 
 This preserves the contract that `RhythmLayoutSnapshotBuilder` is shared by gameplay and `DrumTabFixtureHarness`: a fixture golden cannot pass while production restores whole-measure suppression, or vice versa.
 
@@ -87,15 +97,19 @@ All measure-level consumers use the semantic support predicates rather than assu
 
 - `NotationRestTopologyBuilder` accepts `.warning` as engravable. Its existing per-note logic still converts an indeterminate note to uncertain spacing rather than a printed duration, while it may construct printed rests for resolved material.
 - `NotationBeamTopologyBuilder` accepts `.warning` as engravable, allowing resolved notes to participate in normal beam topology.
-- `NotationLayoutEngine` builds `unsupportedMeasureIndexes` from `.unsupported` only. It therefore retains current filtering for true fallback measures without excluding a warning-only measure's rests, flags, dots, and tuplets.
+- `NotationLayoutEngine` already builds `unsupportedMeasureIndexes` from `.unsupported` only. No engine-core change is needed: it retains current filtering for true fallback measures without excluding a warning-only measure's rests, flags, dots, and tuplets.
 - `buildRhythmWarnings` renders the existing measure warning glyph for both `.warning` and `.unsupported` states.
 - `NotationLayoutDigest` gains a stable `warning[...]` measure representation so golden diffs make the new semantic state visible.
+
+The implementation must update the current exhaustive support switches in `NotationLayoutDigest` and the `tripletGrid` assertion in `DrumTabGoldenTests`, and audit any future `RhythmEngravingSupport` switches without adding a `default`. The compiler's closed-world pressure is intentional. `buildRhythmWarnings` is also a required non-exhaustive consumer update.
 
 The note-level `rhythm.support == .supported` gate remains unchanged. It naturally prevents an indeterminate terminal note from gaining a stem, flag, dot, or beam while allowing its resolved siblings to engrave.
 
 ## 8. Test Plan
 
 ### 8.1 Direct analyzer coverage
+
+`RhythmMetadataTests` first verifies the shared projection matrix: a terminal-only code yields a raw-value-sorted `.warning`, a structural companion escalates the merged sorted codes to `.unsupported`, and an already unsupported input stays unsupported.
 
 `NotationRhythmAnalyzerTests` will contain both HPA-422 acceptance cases directly:
 
@@ -106,13 +120,13 @@ These tests use the pure analyzer helper and do not rely on fixture goldens for 
 
 ### 8.2 Shared-pipeline and renderer coverage
 
-- Update `RhythmImportBackfillTests.crossVoiceOnsetDoesNotShortenTerminalUpperVoiceDuration` to expect `.warning([.indeterminateTerminalDuration])`, a warning glyph, and at least one upper-voice stem. Its upper full notes should still have no flag or beam because that is valid full-note notation, not suppression.
+- Update `RhythmImportBackfillTests.crossVoiceOnsetDoesNotShortenTerminalUpperVoiceDuration` to expect `.warning([.indeterminateTerminalDuration])`, a warning glyph, two rendered upper noteheads, and `.supported` rhythm for the upper full notes. It must not require a stem: full notes deliberately have no stem, flag, or beam, so those absences are valid notation rather than suppression.
 - Add or extend `RhythmLayoutSnapshotBuilderTests` to assert that a terminal-only analyzer warning becomes the warning state rather than unsupported in the shared production builder.
 - Update switch-based rendering and digest tests for the new state. Confirm a structural warning such as `incompleteTuplet` still yields `.unsupported` and remains conservatively suppressed.
 
 ### 8.3 Golden verification
 
-Run the drum-tab golden suite with `TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1`, review every diff, and manually retain only intentional output. The known terminal-only `sparse-hi-res-lane` golden is expected to change from `unsupported[indeterminateTerminalDuration]` to the warning state with restored engraving for its resolved note. Mixed structural fixtures such as `triplet-grid` must remain unsupported because `incompleteTuplet` is still blocking.
+Run the drum-tab golden suite with `TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1`, review every diff, and manually retain only intentional output. The known terminal-only `sparse-hi-res-lane` golden is expected to change from `unsupported[indeterminateTerminalDuration]` to the warning state, restore the resolved half note's supported rhythm, and add its previously suppressed lower-voice full-measure rest in `m0`. That half note remains correctly stemless and flagless. Mixed structural fixtures such as `triplet-grid` must remain unsupported because `incompleteTuplet` is still blocking.
 
 The golden update run intentionally fails after rewriting files. A subsequent normal golden run is the verification signal.
 
@@ -158,4 +172,5 @@ HPA-422 is complete when:
 2. an unresolvable voice leaves resolved voices in its measure engraved;
 3. the unresolved event stays indeterminate and a measure warning remains visible;
 4. structural diagnostics still suppress the entire measure;
-5. the direct analyzer tests, shared pipeline tests, reviewed goldens, and full macOS unit suite pass.
+5. warning-code projection is canonical and is the only classifier used by analyzer fallback and snapshot construction; and
+6. the direct analyzer tests, shared pipeline tests, reviewed goldens, and full macOS unit suite pass.
