@@ -198,10 +198,14 @@ struct RhythmImportBackfillTests {
         #expect(warningCodes.contains(.indeterminateTerminalDuration))
 
         viewModel.setupGameplay(loadPersistedSpeed: false)
-        let upperHeadIDs = Set(viewModel.cachedNotationLayout.noteHeads.compactMap { head in
-            upperNotes.contains { $0.eventID == head.eventID } ? head.id : nil
-        })
-        #expect(!upperHeadIDs.isEmpty)
+        let expectedUpperEventIDs = Set(upperNotes.map(\.eventID))
+        let upperHeads = viewModel.cachedNotationLayout.noteHeads.filter {
+            guard let eventID = $0.eventID else { return false }
+            return expectedUpperEventIDs.contains(eventID)
+        }
+        #expect(Set(upperHeads.compactMap { $0.eventID }) == expectedUpperEventIDs)
+        #expect(upperHeads.count == expectedUpperEventIDs.count)
+        let upperHeadIDs = Set(upperHeads.map(\.id))
         #expect(viewModel.cachedNotationLayout.stems.allSatisfy {
             upperHeadIDs.isDisjoint(with: $0.noteHeadIDs)
         })
