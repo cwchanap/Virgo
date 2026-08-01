@@ -34,6 +34,11 @@ does not mark the ViewModel prepared until `setupGameplay()` returns. Therefore
 the injected error is set before `gameplayRoot` can mount, with only the alert's
 native accessibility presentation remaining asynchronous.
 
+The repository requires test runs to disable parallel testing. The macOS UI
+workflow currently omits that flag from its `test-without-building` command, so
+this design includes the one-line workflow correction as part of the change.
+That keeps the CI full-suite gate aligned with the local test policy.
+
 ## Goal
 
 Prove that the real app presents the user-facing BGM failure alert, including
@@ -113,6 +118,15 @@ does not make the acceptance criteria depend on a specific XCUITest container
 type. The discovery run is required before committing the final query shape,
 because this repository has no existing macOS `.alert` query precedent.
 
+### CI test policy
+
+Update `.github/workflows/ui-tests.yml` so its `xcodebuild
+test-without-building` command includes `-parallel-testing-enabled NO`,
+matching the repository's unit-test workflow and test policy. The same command
+handles both the default full `VirgoUITests` target and the optional focused
+target selected by `TEST_TARGET`, so one flag covers both CI paths. This is a
+workflow-only verification fix; it does not change app behavior.
+
 ### UI test flow
 
 Add a dedicated `GameplayBGMFailureUITests` macOS UI-test class, using the
@@ -174,8 +188,11 @@ Because the project uses `PBXFileSystemSynchronizedRootGroup` for the
   argument and its guarded handling are narrowly scoped test seams.
 - The diff contains only the launch constant and guarded BGM seam, its pure
   unit coverage, the updated launch-argument tests, and the dedicated UI test
-  class.
+  class, plus the one-line `.github/workflows/ui-tests.yml` parallel-testing
+  policy fix.
 - The focused UI test and the full macOS unit-test suite pass with parallel
+  testing disabled.
+- The UI-test workflow invokes its full or focused macOS target with parallel
   testing disabled.
 
 ## Verification
@@ -185,7 +202,9 @@ with `-parallel-testing-enabled NO`, including the accessibility discovery
 spike before finalizing its query shape. Then run the full `VirgoTests` macOS
 suite using the repository's required non-parallel `xcodebuild test` command.
 Review the final diff to confirm the implementation contains only the guarded
-launch seam, pure/unit coverage, launch-argument updates, and the dedicated UI
-test class. CI already runs the full macOS UI-test target in Debug through
-`.github/workflows/ui-tests.yml`; the local gate does not need to repeat the
-entire UI suite before review.
+launch seam, pure/unit coverage, launch-argument updates, the dedicated UI
+test class, and the workflow policy fix. CI must then run the full macOS
+UI-test target in Debug through `.github/workflows/ui-tests.yml`, with
+`-parallel-testing-enabled NO` applied to both its default full-suite and
+focused-test paths. The local gate does not need to repeat the entire UI
+suite because CI now enforces the same non-parallel policy.
