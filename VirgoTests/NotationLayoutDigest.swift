@@ -222,7 +222,8 @@ extension NotationLayoutDigest {
         for warning in layout.rhythmWarnings.sorted(by: byStart(\.position, \.id)) {
             let codes = warning.codes.map(\.rawValue).sorted().joined(separator: ",")
             lines.append(
-                "warn  scope=\(warningScopeText(warning.scope)) codes=[\(codes)] "
+                "warn  scope=\(warningScopeText(warning.scope)) kind=\(warningKindText(warning.kind)) "
+                + "codes=[\(codes)] "
                 + "row=\(warning.rowIndex.map(String.init) ?? "-") "
                 + "measure=\(warning.displayMeasureNumber.map(String.init) ?? "-") "
                 + "pos=\(pt(warning.position)) size=\(f(warning.size.width))x\(f(warning.size.height))"
@@ -275,6 +276,19 @@ extension NotationLayoutDigest {
             return "measure:\(index)"
         case .chartFatal:
             return "chartFatal"
+        }
+    }
+
+    /// Field-by-field text for `RhythmWarningKind`. Locking the kind in the
+    /// digest is what catches a regression that collapses a `.warning` measure
+    /// (engraving retained) into `.unsupported` in `buildRhythmWarnings` — the
+    /// geometry of a warning measure would otherwise be unchanged, so only the
+    /// kind token distinguishes the two.
+    private static func warningKindText(_ kind: RhythmWarningKind) -> String {
+        switch kind {
+        case .warning: return "warning"
+        case .unsupported: return "unsupported"
+        case .chartFatal: return "chartFatal"
         }
     }
 
