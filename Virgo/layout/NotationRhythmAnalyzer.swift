@@ -74,11 +74,11 @@ struct NotationRhythmAnalyzer: Sendable {
         }
         let lastVoiceOnsetTicks = lastOnsetTicksByMeasureAndVoice(events: validEvents)
         let measureDTXOnsets = dtxOnsetTicksByMeasureAndVoice(events: validEvents)
-        var warningCodes = metadataWarningCodes(measures: measures)
+        var diagnosticCodes = metadataDiagnosticCodes(measures: measures)
         let streams = groupedStreams(
             events: validEvents,
             measuresByIndex: measuresByIndex,
-            warningCodes: &warningCodes
+            diagnosticCodes: &diagnosticCodes
         )
         var resolutions: [EventResolution] = []
         var tuplets: [AnalyzedRhythmTuplet] = []
@@ -94,7 +94,7 @@ struct NotationRhythmAnalyzer: Sendable {
                 measureDTXOnsets: measureDTXOnsets[voiceKey] ?? [],
                 ticksPerWholeNote: ticksPerWholeNote
             )
-            if case .supported = measure.engravingSupport {
+            if measure.engravingSupport.permitsEngraving {
                 recognizeTuplets(
                     resolutions: &streamResolutions,
                     measure: measure,
@@ -107,59 +107,61 @@ struct NotationRhythmAnalyzer: Sendable {
                     resolutions: streamResolutions,
                     measure: measure,
                     ticksPerWholeNote: ticksPerWholeNote,
-                    warningCodes: &warningCodes
+                    diagnosticCodes: &diagnosticCodes
                 )
             }
             finalizeIndeterminateDurations(
                 resolutions: &streamResolutions,
-                warningCodes: &warningCodes
+                diagnosticCodes: &diagnosticCodes
             )
             resolutions.append(contentsOf: streamResolutions)
         }
 
+        var effectiveMeasures = measuresWithFallback(measures, diagnosticCodes: diagnosticCodes)
+        let fallbackDiagnosticCodesByMeasure = fallbackDiagnosticCodes(
+            for: effectiveMeasures,
+            diagnosticCodes: diagnosticCodes
+        )
         applyConservativeFallback(
             resolutions: &resolutions,
             tuplets: &tuplets,
             rests: &reservedTupletRests,
-            warningCodes: warningCodes
+            fallbackDiagnosticCodesByMeasure: fallbackDiagnosticCodesByMeasure
         )
         var notes = analyzedNotes(from: resolutions)
-        var effectiveMeasures = measuresWithFallback(measures, warningCodes: warningCodes)
+        let preRestMeasures = effectiveMeasures
         var restsOutput = analyzedRests(
-            from: resolutions,
-            measures: effectiveMeasures,
-            reservedTupletRests: reservedTupletRests,
-            ticksPerWholeNote: ticksPerWholeNote,
-            warningCodes: &warningCodes
+            from: resolutions, measures: effectiveMeasures, reservedTupletRests: reservedTupletRests,
+            ticksPerWholeNote: ticksPerWholeNote, diagnosticCodes: &diagnosticCodes
         )
 
-        let newlyUnsupported = Set(warningCodes.keys).subtracting(
-            Set(effectiveMeasures.compactMap { measure in
-                if case .unsupported = measure.engravingSupport { return measure.measureIndex }
-                return nil
-            })
+        let postRestState = postRestState(
+            from: measures,
+            preRestMeasures: preRestMeasures,
+            diagnosticCodes: diagnosticCodes
         )
-        if !newlyUnsupported.isEmpty {
+        effectiveMeasures = postRestState.measures
+        if !postRestState.newlyNonPermitting.isEmpty {
+            let newlyNonPermittingDiagnosticCodesByMeasure = fallbackDiagnosticCodes(
+                for: effectiveMeasures,
+                diagnosticCodes: diagnosticCodes,
+                restrictedTo: postRestState.newlyNonPermitting
+            )
             applyConservativeFallback(
                 resolutions: &resolutions,
                 tuplets: &tuplets,
                 rests: &reservedTupletRests,
-                warningCodes: warningCodes
+                fallbackDiagnosticCodesByMeasure: newlyNonPermittingDiagnosticCodesByMeasure
             )
             notes = analyzedNotes(from: resolutions)
-            effectiveMeasures = measuresWithFallback(measures, warningCodes: warningCodes)
             restsOutput = analyzedRests(
-                from: resolutions,
-                measures: effectiveMeasures,
-                reservedTupletRests: reservedTupletRests,
-                ticksPerWholeNote: ticksPerWholeNote,
-                warningCodes: &warningCodes
+                from: resolutions, measures: effectiveMeasures, reservedTupletRests: reservedTupletRests,
+                ticksPerWholeNote: ticksPerWholeNote, diagnosticCodes: &diagnosticCodes
             )
+            effectiveMeasures = measuresWithFallback(measures, diagnosticCodes: diagnosticCodes)
         }
 
-        let warnings = warningCodes.keys.sorted().map {
-            RhythmMeasureWarning(measureIndex: $0, codes: warningCodes[$0, default: []])
-        }
+        let warnings = rhythmWarnings(from: diagnosticCodes)
         return NotationRhythmAnalysis(
             notes: notes,
             rests: restsOutput.sorted(by: analyzedRestComesBefore),
@@ -170,10 +172,13 @@ struct NotationRhythmAnalyzer: Sendable {
 }
 
 private extension NotationRhythmAnalyzer {
-    func metadataWarningCodes(measures: [RhythmMeasure]) -> [Int: Set<RhythmDiagnosticCode>] {
+    func metadataDiagnosticCodes(measures: [RhythmMeasure]) -> [Int: Set<RhythmDiagnosticCode>] {
         var result: [Int: Set<RhythmDiagnosticCode>] = [:]
         for measure in measures {
-            if case let .unsupported(codes) = measure.engravingSupport {
+            switch measure.engravingSupport {
+            case .supported:
+                continue
+            case let .warning(codes), let .unsupported(codes):
                 result[measure.measureIndex, default: []].formUnion(codes)
             }
         }
@@ -183,7 +188,7 @@ private extension NotationRhythmAnalyzer {
     func groupedStreams(
         events: [RhythmAnalysisEvent],
         measuresByIndex: [Int: RhythmMeasure],
-        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
+        diagnosticCodes: inout [Int: Set<RhythmDiagnosticCode>]
     ) -> [StreamKey: [LocatedEvent]] {
         var streams: [StreamKey: [LocatedEvent]] = [:]
         for event in events {
@@ -191,7 +196,7 @@ private extension NotationRhythmAnalyzer {
                   let group = measure.beatGroups.first(where: {
                       event.position.localTick >= $0.startTick && event.position.localTick < $0.endTick
                   }) else {
-                warningCodes[event.position.measureIndex, default: []].insert(.ambiguousBeatGrouping)
+                diagnosticCodes[event.position.measureIndex, default: []].insert(.ambiguousBeatGrouping)
                 continue
             }
             let key = StreamKey(
@@ -615,7 +620,7 @@ private extension NotationRhythmAnalyzer {
         resolutions: [EventResolution],
         measure: RhythmMeasure,
         ticksPerWholeNote: Int,
-        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
+        diagnosticCodes: inout [Int: Set<RhythmDiagnosticCode>]
     ) {
         let unresolved = resolutions.filter { $0.tupletID == nil }
         let unsupportedSpan = unresolved.contains {
@@ -627,9 +632,9 @@ private extension NotationRhythmAnalyzer {
         if unsupportedSpan, onsetTicks.count >= 4,
            let distance = distances.first, distance > 0,
            distances.allSatisfy({ $0 == distance }) {
-            warningCodes[measure.measureIndex, default: []].insert(.unsupportedTupletRatio)
+            diagnosticCodes[measure.measureIndex, default: []].insert(.unsupportedTupletRatio)
         } else if unsupportedSpan {
-            warningCodes[measure.measureIndex, default: []].insert(.incompleteTuplet)
+            diagnosticCodes[measure.measureIndex, default: []].insert(.incompleteTuplet)
         }
 
         guard let group = resolutions.first?.beatGroup,
@@ -647,17 +652,17 @@ private extension NotationRhythmAnalyzer {
             return performed > slot
         }
         if overlapping {
-            warningCodes[measure.measureIndex, default: []].insert(.incompleteTuplet)
+            diagnosticCodes[measure.measureIndex, default: []].insert(.incompleteTuplet)
         }
     }
 
     func finalizeIndeterminateDurations(
         resolutions: inout [EventResolution],
-        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
+        diagnosticCodes: inout [Int: Set<RhythmDiagnosticCode>]
     ) {
         for index in resolutions.indices where resolutions[index].tupletID == nil {
             if case .indeterminate(.indeterminateTerminalDuration) = resolutions[index].rhythm.support {
-                warningCodes[resolutions[index].event.position.measureIndex, default: []]
+                diagnosticCodes[resolutions[index].event.position.measureIndex, default: []]
                     .insert(.indeterminateTerminalDuration)
             }
         }
@@ -667,14 +672,14 @@ private extension NotationRhythmAnalyzer {
         resolutions: inout [EventResolution],
         tuplets: inout [AnalyzedRhythmTuplet],
         rests: inout [AnalyzedRhythmRest],
-        warningCodes: [Int: Set<RhythmDiagnosticCode>]
+        fallbackDiagnosticCodesByMeasure: [Int: Set<RhythmDiagnosticCode>]
     ) {
-        let unsupportedMeasures = Set(warningCodes.keys)
+        let unsupportedMeasures = Set(fallbackDiagnosticCodesByMeasure.keys)
         guard !unsupportedMeasures.isEmpty else { return }
         for index in resolutions.indices {
             let measureIndex = resolutions[index].event.position.measureIndex
             guard unsupportedMeasures.contains(measureIndex) else { continue }
-            let code = primaryCode(in: warningCodes[measureIndex, default: []])
+            let code = primaryCode(in: fallbackDiagnosticCodesByMeasure[measureIndex, default: []])
             let fallbackSupport: RhythmSemanticSupport
             switch resolutions[index].rhythm.support {
             case let .indeterminate(indeterminateCode):
@@ -694,18 +699,61 @@ private extension NotationRhythmAnalyzer {
 
     func measuresWithFallback(
         _ measures: [RhythmMeasure],
-        warningCodes: [Int: Set<RhythmDiagnosticCode>]
+        diagnosticCodes: [Int: Set<RhythmDiagnosticCode>]
     ) -> [RhythmMeasure] {
         measures.map { measure in
-            guard let codes = warningCodes[measure.measureIndex], !codes.isEmpty else { return measure }
+            let codes = diagnosticCodes[measure.measureIndex, default: []]
             return RhythmMeasure(
                 measureIndex: measure.measureIndex,
                 startTick: measure.startTick,
                 durationTicks: measure.durationTicks,
                 timeSignature: measure.timeSignature,
                 beatGroups: measure.beatGroups,
-                engravingSupport: .unsupported(stableCodes(codes))
+                engravingSupport: measure.engravingSupport.applyingRuntimeWarnings(codes)
             )
+        }
+    }
+
+    func fallbackDiagnosticCodes(
+        for measures: [RhythmMeasure],
+        diagnosticCodes: [Int: Set<RhythmDiagnosticCode>],
+        restrictedTo measureIndexes: Set<Int>? = nil
+    ) -> [Int: Set<RhythmDiagnosticCode>] {
+        Dictionary(uniqueKeysWithValues: measures.compactMap { measure in
+            guard !measure.engravingSupport.permitsEngraving,
+                  measureIndexes?.contains(measure.measureIndex) ?? true,
+                  let codes = diagnosticCodes[measure.measureIndex],
+                  !codes.isEmpty else {
+                return nil
+            }
+            return (measure.measureIndex, codes)
+        })
+    }
+
+    func postRestState(
+        from measures: [RhythmMeasure],
+        preRestMeasures: [RhythmMeasure],
+        diagnosticCodes: [Int: Set<RhythmDiagnosticCode>]
+    ) -> (measures: [RhythmMeasure], newlyNonPermitting: Set<Int>) {
+        let measures = measuresWithFallback(measures, diagnosticCodes: diagnosticCodes)
+        let preRestMeasuresByIndex = Dictionary(uniqueKeysWithValues: preRestMeasures.map {
+            ($0.measureIndex, $0)
+        })
+        let newlyNonPermitting: Set<Int> = Set(measures.compactMap { measure in
+            guard !measure.engravingSupport.permitsEngraving,
+                  preRestMeasuresByIndex[measure.measureIndex]?.engravingSupport.permitsEngraving == true else {
+                return nil
+            }
+            return measure.measureIndex
+        })
+        return (measures, newlyNonPermitting)
+    }
+
+    func rhythmWarnings(
+        from diagnosticCodes: [Int: Set<RhythmDiagnosticCode>]
+    ) -> [RhythmMeasureWarning] {
+        diagnosticCodes.keys.sorted().map {
+            RhythmMeasureWarning(measureIndex: $0, codes: diagnosticCodes[$0, default: []])
         }
     }
 }
@@ -730,7 +778,7 @@ private extension NotationRhythmAnalyzer {
         measures: [RhythmMeasure],
         reservedTupletRests: [AnalyzedRhythmRest],
         ticksPerWholeNote: Int,
-        warningCodes: inout [Int: Set<RhythmDiagnosticCode>]
+        diagnosticCodes: inout [Int: Set<RhythmDiagnosticCode>]
     ) -> [AnalyzedRhythmRest] {
         let restNotes = resolutions.map { resolution in
             RestTimelineNote(
@@ -749,7 +797,7 @@ private extension NotationRhythmAnalyzer {
             ticksPerWholeNote: ticksPerWholeNote
         )
         for warning in topology.warnings {
-            warningCodes[warning.measureIndex, default: []].formUnion(warning.codes)
+            diagnosticCodes[warning.measureIndex, default: []].formUnion(warning.codes)
         }
         return topology.events.map { event in
             AnalyzedRhythmRest(
