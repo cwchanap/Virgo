@@ -12,4 +12,5 @@ enum LaunchArguments {
     static let resetState = "-ResetState"
     /// Skip seeding sample data after reset - used for tests that assert empty state
     static let skipSeed = "-SkipSeed"
+    static let uiTestingBGMFailure = "-UITestingBGMFailure"
 }
