@@ -233,8 +233,24 @@ extension GameplayViewModel {
 
     // MARK: - BGM Setup
 
+    static func shouldInjectBGMFailure(arguments: [String]) -> Bool {
+        arguments.contains(LaunchArguments.uiTesting)
+            && arguments.contains(LaunchArguments.uiTestingBGMFailure)
+    }
+
     func setupBGMPlayer() {
         guard !hasFatalRhythmTiming else { return }
+
+#if DEBUG
+        if Self.shouldInjectBGMFailure(arguments: ProcessInfo.processInfo.arguments) {
+            let reason = "UI test injected failure"
+            bgmLoadingError = "Failed to load BGM: \(reason)"
+            Logger.error("Failed to setup BGM player: \(reason)")
+            bgmPlayer = nil
+            return
+        }
+#endif
+
         guard let song = cachedSong,
               let bgmFilePath = song.bgmFilePath,
               !bgmFilePath.isEmpty else {
