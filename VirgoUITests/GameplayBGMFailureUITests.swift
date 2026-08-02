@@ -56,7 +56,27 @@ final class GameplayBGMFailureUITests: XCTestCase {
         XCTAssertTrue(okButton.waitForExistence(timeout: 5), "The BGM failure alert should expose an OK button")
         okButton.tap()
 
-        XCTAssertTrue(presentedAlert.waitForNonExistence(timeout: 5), "The BGM failure alert should dismiss")
+        // Verify dismissal via the OK button and sentinel text rather than the
+        // container itself. The window fallback in `waitForPresentedBGMAlert`
+        // uses `containing`, which can match the persistent gameplay window when
+        // the alert is presented beneath its accessibility tree on macOS;
+        // requiring that container to cease existing would wait for the gameplay
+        // window to disappear and fail on the very path the fallback supports.
+        // The OK button and sentinel text are scoped to the alert and reliably
+        // disappear once it dismisses, regardless of which container candidate
+        // was returned.
+        XCTAssertTrue(
+            okButton.waitForNonExistence(timeout: 5),
+            "The BGM failure alert OK button should disappear after tapping OK"
+        )
+        let sentinelText = presentedAlert
+            .descendants(matching: .any)
+            .matching(bgmFailureSentinelPredicate())
+            .firstMatch
+        XCTAssertTrue(
+            sentinelText.waitForNonExistence(timeout: 5),
+            "The BGM failure sentinel text should disappear after dismissing the alert"
+        )
 
         // Scope the gameplay-mounted check to a single Virgo window on macOS so a
         // stale/secondary window can't satisfy the assertion, matching the
@@ -100,11 +120,7 @@ final class GameplayBGMFailureUITests: XCTestCase {
         // sentinel-filtered query finds the correct presentation regardless of
         // ordering and stays semantically tied to the BGM failure across
         // dismissal.
-        let sentinelPredicate = NSPredicate(
-            format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
-            "UI test injected failure",
-            "UI test injected failure"
-        )
+        let sentinelPredicate = bgmFailureSentinelPredicate()
         let candidates = [
             app.alerts.containing(sentinelPredicate).firstMatch,
             app.sheets.containing(sentinelPredicate).firstMatch,
@@ -117,6 +133,18 @@ final class GameplayBGMFailureUITests: XCTestCase {
             return candidate
         }
         return nil
+    }
+
+    /// The BGM failure sentinel predicate — matches any element whose label or
+    /// value contains the UI-test-injected failure string. Shared by the
+    /// presentation lookup and the dismissal verification so both stay tied to
+    /// the same sentinel.
+    private func bgmFailureSentinelPredicate() -> NSPredicate {
+        NSPredicate(
+            format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
+            "UI test injected failure",
+            "UI test injected failure"
+        )
     }
 
     private func assertAccessibleText(
