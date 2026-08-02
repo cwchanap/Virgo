@@ -91,37 +91,32 @@ final class GameplayBGMFailureUITests: XCTestCase {
     }
 
     private func waitForPresentedBGMAlert(timeout: TimeInterval) -> XCUIElement? {
-        let candidates = [
-            app.alerts.firstMatch,
-            app.sheets.firstMatch,
-            app.dialogs.firstMatch,
-            app.windows["Background Music Unavailable"]
-        ]
-        let candidateTimeout = timeout / Double(candidates.count)
-
-        for candidate in candidates where candidate.waitForExistence(timeout: candidateTimeout) {
-            if containsBGMFailureContent(candidate) {
-                return candidate
-            }
-        }
-        return nil
-    }
-
-    /// Validates that a candidate presentation actually contains the injected
-    /// BGM failure sentinel before treating it as the BGM alert. Without this,
-    /// an unrelated system sheet/dialog (the suite already handles setup
-    /// assistants and system dialogs) could be selected and the test would
-    /// prove the wrong presentation dismissed.
-    private func containsBGMFailureContent(_ element: XCUIElement) -> Bool {
-        let predicate = NSPredicate(
+        // Filter each container query by the BGM failure sentinel before
+        // selecting firstMatch. An unfiltered `firstMatch` only ever inspects
+        // the first presentation of each type, so it would miss the BGM alert
+        // when an unrelated sheet/dialog is presented first; and a generic
+        // firstMatch query can retarget to a different presentation after the
+        // BGM alert dismisses, making waitForNonExistence fail. The
+        // sentinel-filtered query finds the correct presentation regardless of
+        // ordering and stays semantically tied to the BGM failure across
+        // dismissal.
+        let sentinelPredicate = NSPredicate(
             format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
             "UI test injected failure",
             "UI test injected failure"
         )
-        return element.descendants(matching: .any)
-            .matching(predicate)
-            .firstMatch
-            .waitForExistence(timeout: 2)
+        let candidates = [
+            app.alerts.containing(sentinelPredicate).firstMatch,
+            app.sheets.containing(sentinelPredicate).firstMatch,
+            app.dialogs.containing(sentinelPredicate).firstMatch,
+            app.windows.containing(sentinelPredicate).firstMatch
+        ]
+        let candidateTimeout = timeout / Double(candidates.count)
+
+        for candidate in candidates where candidate.waitForExistence(timeout: candidateTimeout) {
+            return candidate
+        }
+        return nil
     }
 
     private func assertAccessibleText(
