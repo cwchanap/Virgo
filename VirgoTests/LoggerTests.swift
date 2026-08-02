@@ -77,11 +77,17 @@ struct LaunchArgumentsTests {
         #expect(LaunchArguments.uiTesting == "-UITesting")
         #expect(LaunchArguments.resetState == "-ResetState")
         #expect(LaunchArguments.skipSeed == "-SkipSeed")
+        #expect(LaunchArguments.uiTestingBGMFailure == "-UITestingBGMFailure")
     }
 
     @Test("LaunchArguments constants are unique")
     func testLaunchArgumentsAreUnique() {
-        let args = [LaunchArguments.uiTesting, LaunchArguments.resetState, LaunchArguments.skipSeed]
+        let args = [
+            LaunchArguments.uiTesting,
+            LaunchArguments.resetState,
+            LaunchArguments.skipSeed,
+            LaunchArguments.uiTestingBGMFailure
+        ]
         let uniqueArgs = Set(args)
         #expect(args.count == uniqueArgs.count)
     }
@@ -91,6 +97,7 @@ struct LaunchArgumentsTests {
         #expect(LaunchArguments.uiTesting.hasPrefix("-"))
         #expect(LaunchArguments.resetState.hasPrefix("-"))
         #expect(LaunchArguments.skipSeed.hasPrefix("-"))
+        #expect(LaunchArguments.uiTestingBGMFailure.hasPrefix("-"))
     }
 
     @Test("LaunchArguments constants are non-empty")
@@ -98,6 +105,7 @@ struct LaunchArgumentsTests {
         #expect(!LaunchArguments.uiTesting.isEmpty)
         #expect(!LaunchArguments.resetState.isEmpty)
         #expect(!LaunchArguments.skipSeed.isEmpty)
+        #expect(!LaunchArguments.uiTestingBGMFailure.isEmpty)
     }
 }
 

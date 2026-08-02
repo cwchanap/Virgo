@@ -437,6 +437,18 @@ struct GameplayViewModelBGMCoverageTests {
         #expect(vm.bgmPlayer == nil)
     }
 
+    @Test("BGM failure injection requires both UI testing flags")
+    func shouldInjectBGMFailureRequiresBothFlags() {
+        #expect(
+            GameplayViewModel.shouldInjectBGMFailure(
+                arguments: [LaunchArguments.uiTesting, LaunchArguments.uiTestingBGMFailure]
+            )
+        )
+        #expect(!GameplayViewModel.shouldInjectBGMFailure(arguments: [LaunchArguments.uiTesting]))
+        #expect(!GameplayViewModel.shouldInjectBGMFailure(arguments: [LaunchArguments.uiTestingBGMFailure]))
+        #expect(!GameplayViewModel.shouldInjectBGMFailure(arguments: []))
+    }
+
     @Test("setupBGMPlayer loads a player from a valid WAV file")
     func setupBGMPlayerLoadsFromValidFile() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
