@@ -57,9 +57,36 @@ final class GameplayBGMFailureUITests: XCTestCase {
         okButton.tap()
 
         XCTAssertTrue(presentedAlert.waitForNonExistence(timeout: 5), "The BGM failure alert should dismiss")
+
+        // Scope the gameplay-mounted check to a single Virgo window on macOS so a
+        // stale/secondary window can't satisfy the assertion, matching the
+        // sibling test in GameplayViewUITests.testGameplayDoesNotRenderTabShellSimultaneously.
+        #if os(macOS)
+        let gameplayWindows = app.windows.containing(.any, identifier: "gameplayRoot")
+        XCTAssertEqual(
+            gameplayWindows.count,
+            1,
+            "Gameplay should be mounted in exactly one Virgo window on macOS after dismissing the BGM failure alert"
+        )
+        let gameplayRoot = gameplayWindows.firstMatch.descendants(matching: .any)["gameplayRoot"]
         XCTAssertTrue(
-            app.descendants(matching: .any)["gameplayRoot"].exists,
+            gameplayRoot.waitForExistence(timeout: 5),
             "Gameplay should remain mounted after dismissing the BGM failure alert"
+        )
+        #else
+        XCTAssertTrue(
+            app.descendants(matching: .any)["gameplayRoot"].waitForExistence(timeout: 5),
+            "Gameplay should remain mounted after dismissing the BGM failure alert"
+        )
+        #endif
+
+        XCTAssertFalse(
+            app.otherElements["appTabShell"].exists,
+            "Tab shell should not remain mounted after dismissing the BGM failure alert"
+        )
+        XCTAssertFalse(
+            app.tabBars.firstMatch.exists,
+            "Tab bar should not remain visible after dismissing the BGM failure alert"
         )
     }
 
