@@ -100,9 +100,28 @@ final class GameplayBGMFailureUITests: XCTestCase {
         let candidateTimeout = timeout / Double(candidates.count)
 
         for candidate in candidates where candidate.waitForExistence(timeout: candidateTimeout) {
-            return candidate
+            if containsBGMFailureContent(candidate) {
+                return candidate
+            }
         }
         return nil
+    }
+
+    /// Validates that a candidate presentation actually contains the injected
+    /// BGM failure sentinel before treating it as the BGM alert. Without this,
+    /// an unrelated system sheet/dialog (the suite already handles setup
+    /// assistants and system dialogs) could be selected and the test would
+    /// prove the wrong presentation dismissed.
+    private func containsBGMFailureContent(_ element: XCUIElement) -> Bool {
+        let predicate = NSPredicate(
+            format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@",
+            "UI test injected failure",
+            "UI test injected failure"
+        )
+        return element.descendants(matching: .any)
+            .matching(predicate)
+            .firstMatch
+            .waitForExistence(timeout: 2)
     }
 
     private func assertAccessibleText(
@@ -115,12 +134,10 @@ final class GameplayBGMFailureUITests: XCTestCase {
             substring,
             substring
         )
+        // Search strictly beneath the validated presentation. An app-wide
+        // fallback could find the sentinel in a different presentation and
+        // produce a false positive when an unrelated sheet is also present.
         let scopedText = presentedAlert.descendants(matching: .any).matching(predicate).firstMatch
-        if scopedText.waitForExistence(timeout: 5) {
-            return
-        }
-
-        let appText = app.descendants(matching: .any).matching(predicate).firstMatch
-        XCTAssertTrue(appText.waitForExistence(timeout: 5), failureMessage)
+        XCTAssertTrue(scopedText.waitForExistence(timeout: 5), failureMessage)
     }
 }
