@@ -5,9 +5,11 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
   test:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Run Tests on macOS
     runs-on: macos-latest
 
@@ -176,6 +178,7 @@ jobs:
             -allowProvisioningUpdates
 
   build-ios:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     name: Build (iPad Simulator)
     runs-on: macos-15
 
@@ -209,7 +212,7 @@ jobs:
     name: Upload Coverage to Codecov
     runs-on: macos-latest
     needs: test
-    if: ${{ always() }}
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
 
     steps:
       - name: Checkout coverage commit
