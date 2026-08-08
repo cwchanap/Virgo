@@ -14,38 +14,46 @@
 - Keep `AudioPlaybackService` as the preview playback owner; no repository/coordinator/actor hierarchy.
 - Use the repository's existing `song.id` / `PersistentIdentifier` convention for active song identity and canonical preview file path for cache identity.
 - Identity-bearing service tests insert `Song` objects into `TestContainer.shared.context` before comparing `song.id`.
+- Add one `loadPlayer` closure with a default implementation; do not create an audio-loader protocol.
 - One monotonically increasing `UInt64` generation owns stale-request invalidation; cooperative task cancellation is optional and not required.
 - `isPlaying` becomes true only after the underlying player start succeeds.
+- The previous instant row highlight while a preview is loading is intentionally removed; do not add pending-selection UI in this ticket.
 - A stale completion cannot cache/install a player, mutate published state, start a timer, or deactivate the iOS audio session.
+- A successfully decoded/prepared player remains in the cache if a subsequent `play()` attempt returns `false`; do not add an eviction/reload rule for that transient start failure.
 - `startProgressTimer()` always invalidates the previous timer before creating another.
-- Obsolete `AVAudioPlayerDelegate` callbacks cannot mutate the active player state; active-player callbacks retain their existing behavior.
-- Deterministic stale-load tests use continuation-driven request waiting, not sleeps or bounded `Task.yield()` polling loops.
+- Obsolete `AVAudioPlayerDelegate` callbacks cannot mutate active playback; current-player callbacks retain their existing behavior.
+- Deterministic stale-load tests use continuations, not fixed sleeps or bounded `Task.yield()` polling loops.
+- Apply `.timeLimit(.minutes(1))` to the serialized `AudioPlaybackServiceTests` suite so a missed continuation/request fails instead of hanging indefinitely.
 - Do not include HPA-85 server BGM format work or HPA-579/HPA-580 performance restructuring.
 - Run tests with `-parallel-testing-enabled NO` per repository policy.
 - A non-blocking SwiftLint size warning alone is not a reason to introduce a new type or cross-file abstraction.
 
 ## Existing-test migration map
 
-These current tests encode behavior that changes during HPA-576. Migrate them deliberately instead of mechanically renaming `currentlyPlayingSong`:
+Migrate each existing test once, at the task where its final intended form becomes available. Do not mechanically rename `currentlyPlayingSong` and then rewrite the same test again later.
 
-| Existing test | Owning task | Required change |
+| Existing test | Owning task | Final migration |
 | --- | --- | --- |
-| `testPlayPreviewWithInvalidPath` | Task 1 | Replace optimistic `isPlaying == true` + sleep with controlled loader failure; assert stopped while pending and stopped after failure. |
-| `testTogglePlaybackDifferentSongStartsPlayback` | Task 1 | Use an inserted song + controlled load; assert no playing ID while pending, then playing only after load + start success. |
-| `testPlayPreviewPlayFailureClearsState` | Task 1 | Complete the controlled load explicitly and make `startPlayback` return `false`; no fixed sleep. |
-| `testTogglePlaybackPauseAndResume` | Task 3 | Stop hand-stuffing state. Install the real player through the service, then pause and resume it. |
-| `testPlayPreviewFailureAfterSongSwitchKeepsCurrentState` | Task 2 | Delete it. The generation-driven stale-error regression replaces this hand-mutated sleep test. |
-| `testAudioPlayerDidFinishPlayingStopsPlayback` | Task 3 | Install the callback player through the controlled load/start path before invoking the delegate. |
-| `testAudioPlayerDecodeErrorStopsPlayback` | Task 3 | Install the callback player through the controlled load/start path before invoking the delegate. |
-| `testAudioPlayerBeginInterruptionPausesPlayback` | Task 3 | Install the callback player through the controlled load/start path before invoking the delegate. |
-| `testAudioPlayerEndInterruptionNoStateChangeOnMacOS` | Task 3 | Install the callback player first, then verify the current-player macOS callback remains a no-op. |
-| cached replay / progress / FIFO eviction | Tasks 1/4 | Replace title assertions with `song.id`; keep their real-file coverage unless a touched assertion needs deterministic loader control. |
+| `testTogglePlaybackPauseAndResume` | Task 1 | Install a real player through the controlled loader; then pause/resume the same inserted song. |
+| `testStopResetsPlaybackState` | Task 1 | Start an inserted song through the service, call `stop()`, assert all published state resets. |
+| `testPlayPreviewWithInvalidPath` | Task 1 | Use controlled loader failure; assert stopped while pending and after failure, no fixed sleep. |
+| `testPlayPreviewFailureAfterSongSwitchKeepsCurrentState` | Task 1 | **Delete immediately.** Task 2's deterministic stale-error generation test replaces it; do not migrate it to IDs first. |
+| `testAudioPlayerDidFinishPlayingStopsPlayback` | Task 1 | Install the callback player through the service before invoking the delegate. |
+| `testAudioPlayerDecodeErrorStopsPlayback` | Task 1 | Install the callback player through the service before invoking the delegate. |
+| `testAudioPlayerBeginInterruptionPausesPlayback` | Task 1 | Install the callback player through the service before invoking the delegate. |
+| `testTogglePlaybackDifferentSongStartsPlayback` | Task 1 | Insert the song, use controlled loading, assert no playing identity while pending, then success after real start. |
+| `testPlayPreviewUsesCachedPlayer` | Task 1 | Put the song in `TestSetup.withTestSetup`, compare `currentlyPlaying` to `song.id`; retain the short real-file waits because this is cache/file coverage, not race coordination. |
+| `testPlayPreviewUpdatesProgress` | Task 1 | Keep the real-file/timer coverage; no identity rewrite is required unless compilation reveals a direct old-property reference. |
+| `testPlayPreviewPlayFailureClearsState` | Task 1 | Complete the controlled load explicitly and make `startPlayback` return `false`; assert stopped state and later cached reuse behavior separately. |
+| `testPlayPreviewEvictsOldestCachedPlayer` | Task 1 | Run inside `TestSetup.withTestSetup`, insert all 11 songs, compare active state with `song.id`; retain existing real-file waits/FIFO behavior. |
+| `testAudioPlayerEndInterruptionNoStateChangeOnMacOS` | Task 1 | Install the callback player through the service before invoking the macOS no-op callback. |
+| obsolete-player finish/decode/interruption cases | Task 3 | New negative-path coverage after current-player positive tests already use installed players. |
 
-The purpose of this table is to avoid two failure modes during implementation: retaining sleeps that no longer model the state machine, and making delegate ownership tests pass or fail for the wrong player.
+The purpose of this table is to prevent two failure modes: keeping sleep-driven tests that no longer model the state machine, and testing delegate ownership with a player the service never installed.
 
 ---
 
-### Task 1: Establish stable identity, path-keyed cache, deterministic loading, and truthful initial starts
+### Task 1: Establish stable identity, deterministic loading, path-keyed cache, and truthful initial starts
 
 **Files:**
 - Modify: `VirgoTests/AudioPlaybackServiceTests.swift`
@@ -56,11 +64,23 @@ The purpose of this table is to avoid two failure modes during implementation: r
 - Consumes: `Song.id`, `Song.previewFilePath`, existing `startPlayback: (AVAudioPlayer) -> Bool` injection.
 - Produces: `AudioPlaybackService.currentlyPlaying: PersistentIdentifier?`; initializer parameter `loadPlayer: @escaping @MainActor (URL) async throws -> AVAudioPlayer`; `previewCacheKey(for:)`; path-keyed `audioCache`/`audioCacheOrder`; shared `startInstalledPlayer(_:songID:)` for cached and fresh starts.
 
-This task is an internal checkpoint in one HPA-576 implementation PR. It intentionally does **not** solve stale async completion yet; Task 2 must land before the implementation PR is ready for review. Do not merge or release the Task 1 commit alone.
+This is an internal checkpoint in one HPA-576 implementation PR. It intentionally does **not** close stale async completion yet; Task 2 must land before the implementation PR is ready for review. Do not merge or release the Task 1 commit alone.
 
-- [ ] **Step 1: Add a continuation-driven controlled loader to the service tests.**
+- [ ] **Step 1: Bound the service test suite and add the controlled async loader.**
 
-Place this helper near the existing WAV/player factories in `AudioPlaybackServiceTests.swift`:
+Change the suite declaration to:
+
+```swift
+@Suite(
+    "AudioPlaybackService Tests",
+    .serialized,
+    .timeLimit(.minutes(1))
+)
+@MainActor
+struct AudioPlaybackServiceTests {
+```
+
+Add this helper near the existing WAV/player factories:
 
 ```swift
 @MainActor
@@ -84,7 +104,7 @@ private final class ControlledPlayerLoader {
     }
 
     func waitForRequest(path: String, count: Int = 1) async {
-        let key = URL(fileURLWithPath: path).standardizedFileURL.path
+        let key = canonical(path)
         if requestCount(for: key) >= count { return }
 
         await withCheckedContinuation { continuation in
@@ -106,6 +126,10 @@ private final class ControlledPlayerLoader {
     func fail(path: String, error: Error) {
         guard let continuation = takePendingContinuation(path: path) else { return }
         continuation.resume(throwing: error)
+    }
+
+    private func canonical(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
     }
 
     private func requestCount(for key: String) -> Int {
@@ -133,7 +157,7 @@ private final class ControlledPlayerLoader {
     private func takePendingContinuation(
         path: String
     ) -> CheckedContinuation<AVAudioPlayer, Error>? {
-        let key = URL(fileURLWithPath: path).standardizedFileURL.path
+        let key = canonical(path)
         guard var queue = pending[key], !queue.isEmpty else {
             Issue.record("No pending preview load for \(key)")
             return nil
@@ -150,11 +174,11 @@ private final class ControlledPlayerLoader {
 }
 ```
 
-This removes the review's bounded-yield soft timeout and force-unwrapped continuation queue. `Task.yield()` may still be used once after a controlled completion to let the service's already-resumed main-actor task finish; it must not be used as a polling loop or timeout.
+The suite-level time limit is the hang guard. `waitForRequest` itself remains continuation-driven and contains no polling budget.
 
-- [ ] **Step 2: Add an inserted-song helper for identity assertions.**
+- [ ] **Step 2: Add inserted-song and installed-preview test helpers.**
 
-Keep the existing `makeSong` factory for tests that do not care about SwiftData identity. Add:
+Keep `makeSong` for tests that do not care about persistent identity. Add:
 
 ```swift
 private func insertSong(title: String, previewPath: String? = nil) -> Song {
@@ -164,11 +188,32 @@ private func insertSong(title: String, previewPath: String? = nil) -> Song {
 }
 ```
 
-Call this only inside `TestSetup.withTestSetup { ... }`. Matching `PlaybackServiceTests`, saving is not required just to obtain/use the context-backed `song.id` in the same test.
+Call `insertSong` only inside `TestSetup.withTestSetup { ... }`.
 
-- [ ] **Step 3: Write the duplicate-title and truthful-loading regressions before production changes.**
+Add a helper that starts a preview through the service instead of hand-stuffing published state:
 
-Add the same-title identity/cache regression using inserted songs:
+```swift
+private func startPreview(
+    service: AudioPlaybackService,
+    loader: ControlledPlayerLoader,
+    song: Song,
+    path: String,
+    player: AVAudioPlayer
+) async {
+    service.playPreview(for: song)
+    await loader.waitForRequest(path: path)
+    loader.succeed(path: path, player: player)
+    await Task.yield()
+    #expect(service.currentlyPlaying == song.id)
+    #expect(service.isPlaying)
+}
+```
+
+A single `Task.yield()` after explicitly resuming a continuation is allowed to let the already-unblocked main-actor task finish. Do not use `Task.yield()` in a loop as a timeout.
+
+- [ ] **Step 3: Write identity and truthful-publication tests before changing production code.**
+
+Add a duplicate-title test inside `TestSetup.withTestSetup`:
 
 ```swift
 @Test("same-title songs use distinct preview identities and cache resources")
@@ -185,8 +230,11 @@ func sameTitleSongsUseDistinctPreviewIdentities() async throws {
             try? FileManager.default.removeItem(atPath: firstPath)
             try? FileManager.default.removeItem(atPath: secondPath)
         }
+
         let first = insertSong(title: "Collision", previewPath: firstPath)
         let second = insertSong(title: "Collision", previewPath: secondPath)
+        #expect(first.id != second.id)
+
         let firstPlayer = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: firstPath))
         let secondPlayer = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: secondPath))
 
@@ -197,7 +245,6 @@ func sameTitleSongsUseDistinctPreviewIdentities() async throws {
         loader.succeed(path: firstPath, player: firstPlayer)
         await Task.yield()
         #expect(service.currentlyPlaying == first.id)
-        #expect(service.isPlaying)
 
         service.stop()
         service.playPreview(for: second)
@@ -215,7 +262,7 @@ func sameTitleSongsUseDistinctPreviewIdentities() async throws {
 }
 ```
 
-Rewrite `testPlayPreviewWithInvalidPath` as a controlled loader failure and assert `isPlaying == false` / `currentlyPlaying == nil` both while pending and after failure. Rewrite `testTogglePlaybackDifferentSongStartsPlayback` so the different song is inserted, the service remains stopped while the load is pending, and the ID appears only after controlled success. Rewrite `testPlayPreviewPlayFailureClearsState` so the loader succeeds but `startPlayback` returns `false`, then assert a fully stopped state without sleeping.
+Also add/convert the different-song test so `togglePlayback(for:)` leaves `isPlaying == false` and `currentlyPlaying == nil` while the controlled load is pending, then publishes only after `startPlayback` succeeds.
 
 - [ ] **Step 4: Run the focused suite and verify RED.**
 
@@ -228,17 +275,19 @@ xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
   -destination-timeout 300 -derivedDataPath ./DerivedData
 ```
 
-Expected result: compilation fails because `loadPlayer` and `currentlyPlaying` do not yet have the required interfaces; the old optimistic assertions also conflict with the new tests.
+Expected result: compilation/test failures because `loadPlayer`, persistent-ID preview state, and truthful pending semantics do not exist yet.
 
-- [ ] **Step 5: Reuse Virgo's existing `PersistentIdentifier` naming and add the loader/cache seams.**
+- [ ] **Step 5: Add the loader seam and stable public identity.**
 
-In `AudioPlaybackService.swift`, import SwiftData and replace the title identity:
+In `AudioPlaybackService.swift`, import SwiftData and replace the title property:
 
 ```swift
 @Published var currentlyPlaying: PersistentIdentifier?
+```
 
-private var audioCache: [String: AVAudioPlayer] = [:]
-private var audioCacheOrder: [String] = []
+Add:
+
+```swift
 private let loadPlayer: @MainActor (URL) async throws -> AVAudioPlayer
 private let startPlayback: (AVAudioPlayer) -> Bool
 ```
@@ -264,7 +313,11 @@ init(
 }
 ```
 
-Add the canonical key helper:
+Remove player construction/preparation from `loadAndPlayPreview`; it now awaits `loadPlayer(url)`.
+
+- [ ] **Step 6: Re-key the existing FIFO cache by canonical preview path.**
+
+Add:
 
 ```swift
 private func previewCacheKey(for path: String) -> String {
@@ -272,9 +325,11 @@ private func previewCacheKey(for path: String) -> String {
 }
 ```
 
-Change `tryPlayCachedPreview` / `cacheAudioPlayer` to accept the canonical cache key rather than a title. Keep the ten-entry FIFO behavior unchanged.
+Use that key for `audioCache` lookup, insertion, replacement, and `audioCacheOrder`. Keep `maxCacheSize = 10` and the existing FIFO eviction order unchanged.
 
-- [ ] **Step 6: Add the shared truthful initial-start helper.**
+Do not add a cache wrapper, LRU tracking, or generic key type.
+
+- [ ] **Step 7: Add one shared truthful initial-start path.**
 
 Add:
 
@@ -291,7 +346,6 @@ private func startInstalledPlayer(
     currentTime = 0
 
     guard startPlayback(player) else {
-        player.stop()
         audioPlayer = nil
         currentlyPlaying = nil
         isPlaying = false
@@ -308,13 +362,13 @@ private func startInstalledPlayer(
 }
 ```
 
-Both cached and newly loaded **current** players will ultimately use this helper. Task 2 will add the generation gate that defines "current" for async completions.
+Both cached and newly loaded **current** players eventually use this helper. A newly loaded/prepared player may be inserted into the cache before this start attempt. If `startPlayback` returns `false`, leave the cached resource in place; clear active playback state only.
 
-Do not set `currentlyPlaying` or `isPlaying` before this helper succeeds.
+At Task 1, do not add generation logic yet. The pre-existing stale-completion race remains until Task 2, which is why this task cannot ship independently.
 
-- [ ] **Step 7: Remove optimistic publication from selection/loading paths.**
+- [ ] **Step 8: Make toggle/loading state truthful and update the downloaded row.**
 
-Make `togglePlayback(for:)` only route intent:
+Use:
 
 ```swift
 func togglePlayback(for song: Song) {
@@ -328,11 +382,7 @@ func togglePlayback(for song: Song) {
 }
 ```
 
-Make `playPreview(for:)` clear the previous installed playback state before starting a replacement, but publish no new ID while the load is pending. For a missing preview path, remain stopped. For a cached player, call `startInstalledPlayer(cachedPlayer, songID: song.id)`. For a fresh load, call the injected `loadPlayer` and then the shared start helper.
-
-At this checkpoint the pre-existing stale-completion race still exists for fresh async loads. Do not add temporary `pendingSongID` state just to make Task 1 independently shippable; Task 2 introduces the one final generation mechanism. The implementation PR cannot be marked ready before Task 2 is complete.
-
-- [ ] **Step 8: Change downloaded-row preview highlighting to the existing ID convention.**
+`playPreview(for:)` clears the previous installed playback/timer state before resolving the new preview. Do not set `currentlyPlaying` or `isPlaying` merely because loading started.
 
 In `DownloadedSongsView.isPlaying(_:)`, use:
 
@@ -341,23 +391,36 @@ return audioPlaybackService.isPlaying
     && audioPlaybackService.currentlyPlaying == song.id
 ```
 
-Keep the regular `PlaybackService` branch unchanged:
+Keep the regular `PlaybackService` branch unchanged.
 
-```swift
-return currentlyPlaying == song.id
-```
+- [ ] **Step 9: Migrate existing `AudioPlaybackServiceTests` once and delete the superseded race test now.**
 
-- [ ] **Step 9: Migrate direct property assertions required for Task 1 GREEN.**
+Make all of these changes before expecting Task 1 GREEN:
 
-Replace `currentlyPlayingSong` title assignments/assertions with inserted-song IDs where identity is meaningful. Tests that simply verify `stop()` clearing state may set `currentlyPlaying = insertedSong.id` inside `TestSetup.withTestSetup`.
+1. Delete `testPlayPreviewFailureAfterSongSwitchKeepsCurrentState` outright.
+2. Rewrite `testTogglePlaybackPauseAndResume` using an inserted song and `startPreview(...)`; never manually set playback identity.
+3. Rewrite `testStopResetsPlaybackState` to start a real inserted preview and then call `stop()`.
+4. Rewrite `testPlayPreviewWithInvalidPath` to use `ControlledPlayerLoader.fail(...)`; while pending, assert `isPlaying == false` and `currentlyPlaying == nil`; after failure, assert the same.
+5. Rewrite `testAudioPlayerDidFinishPlayingStopsPlayback` so the exact callback player was installed by `startPreview(...)` before invoking the delegate.
+6. Rewrite `testAudioPlayerDecodeErrorStopsPlayback` the same way.
+7. Rewrite `testAudioPlayerBeginInterruptionPausesPlayback` the same way; after callback, expect `isPlaying == false` while `currentlyPlaying == song.id` remains for resume.
+8. Rewrite `testTogglePlaybackDifferentSongStartsPlayback` with inserted identity + controlled load and truthful pending state.
+9. Rewrite `testPlayPreviewPlayFailureClearsState` with controlled completion and `startPlayback: { _ in false }`; assert stopped state after the explicit completion.
+10. Rewrite `testAudioPlayerEndInterruptionNoStateChangeOnMacOS` so its callback player is installed by the service before the macOS no-op callback.
+11. Wrap `testPlayPreviewUsesCachedPlayer` in `TestSetup.withTestSetup`, insert its song, and compare `currentlyPlaying == song.id`. Retain its existing short real-file waits because they verify actual cached replay after the source file disappears.
+12. Wrap `testPlayPreviewEvictsOldestCachedPlayer` in `TestSetup.withTestSetup`, insert all 11 songs, and replace title comparisons with `song.id`. Retain the existing real-file waits because they exercise the actual ten-entry FIFO/cache behavior rather than scheduling a race.
+13. Keep `testPlayPreviewUpdatesProgress` as real-file/timer coverage unless a direct old-property reference needs a mechanical identity update.
+14. Search `VirgoTests/AudioPlaybackServiceTests.swift` for `currentlyPlayingSong`; Task 1 is not GREEN until zero references remain.
 
-Keep the old `testPlayPreviewFailureAfterSongSwitchKeepsCurrentState` only long enough for the Task 1 suite to compile; Task 2 explicitly deletes it rather than preserving its hand-mutated race model.
+This is intentionally the only migration pass for those tests. Task 3 adds obsolete-player negative cases but does not re-migrate the current-player positive tests.
 
-- [ ] **Step 10: Run focused tests and verify GREEN for the Task 1 checkpoint.**
+- [ ] **Step 10: Run the focused suite and verify GREEN for Task 1's owned behavior.**
 
-Repeat the Step 4 command. Expected result: identity, path cache, missing/failed load, initial start-failure, and different-song loading behavior pass with truthful initial publication. The known stale-load race is not claimed fixed until Task 2.
+Repeat the focused command from Step 4.
 
-- [ ] **Step 11: Commit the identity/cache/loading slice.**
+Expected result: identity, truthful initial publication, cached replay/FIFO, current-player delegate behavior, and migrated existing tests pass. This does **not** mean HPA-576 is complete; stale completion remains intentionally uncovered until Task 2.
+
+- [ ] **Step 11: Commit the identity/cache/loader slice.**
 
 ```bash
 git add Virgo/utilities/AudioPlaybackService.swift \
@@ -373,94 +436,65 @@ git commit -m "fix: make preview playback identity-safe"
 - Modify: `Virgo/utilities/AudioPlaybackService.swift`
 
 **Interfaces:**
-- Consumes: controlled `loadPlayer`, truthful initial-start helper, path cache, and `song.id` identity from Task 1.
-- Produces: private `requestGeneration: UInt64`; generation capture for every `playPreview(for:)`; invalidation in `stop()`; generation-gated success/error completion before cache/install/publish/session cleanup.
+- Consumes: controlled `loadPlayer`, path cache key, truthful start path, and inserted song IDs from Task 1.
+- Produces: private `requestGeneration: UInt64`; generation capture for each `playPreview(for:)`; invalidation in `stop()`; generation-gated success/error completion before cache/install/publication/session cleanup.
 
-- [ ] **Step 1: Delete the superseded hand-mutated stale-error test.**
+- [ ] **Step 1: Add out-of-order completion coverage.**
 
-Remove `testPlayPreviewFailureAfterSongSwitchKeepsCurrentState`. Do not convert its direct published-state mutation to IDs. The tests in Steps 2-3 replace it with real request ordering through the loader seam.
-
-- [ ] **Step 2: Add the out-of-order completion regression with inserted songs.**
+Inside `TestSetup.withTestSetup`, start inserted song A and wait until its load is suspended. Start inserted song B and suspend it too. Complete B first, then A:
 
 ```swift
-@Test("older preview completion cannot replace a newer selection")
-func olderCompletionCannotReplaceNewerSelection() async throws {
-    try await TestSetup.withTestSetup {
-        let loader = ControlledPlayerLoader()
-        let service = AudioPlaybackService(
-            loadPlayer: { try await loader.load($0) },
-            startPlayback: { _ in true }
-        )
-        let firstPath = try makeTemporaryWAVPath(durationSeconds: 1.0)
-        let secondPath = try makeTemporaryWAVPath(durationSeconds: 2.0)
-        defer {
-            try? FileManager.default.removeItem(atPath: firstPath)
-            try? FileManager.default.removeItem(atPath: secondPath)
-        }
-        let first = insertSong(title: "First", previewPath: firstPath)
-        let second = insertSong(title: "Second", previewPath: secondPath)
-        let firstPlayer = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: firstPath))
-        let secondPlayer = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: secondPath))
+loader.succeed(path: secondPath, player: secondPlayer)
+await Task.yield()
+#expect(service.currentlyPlaying == second.id)
+#expect(service.duration == secondPlayer.duration)
 
-        service.playPreview(for: first)
-        await loader.waitForRequest(path: firstPath)
-        service.playPreview(for: second)
-        await loader.waitForRequest(path: secondPath)
-
-        loader.succeed(path: secondPath, player: secondPlayer)
-        await Task.yield()
-        #expect(service.currentlyPlaying == second.id)
-        #expect(service.isPlaying)
-
-        loader.succeed(path: firstPath, player: firstPlayer)
-        await Task.yield()
-        #expect(service.currentlyPlaying == second.id)
-        #expect(service.duration == secondPlayer.duration)
-
-        service.stop()
-        service.playPreview(for: first)
-        await loader.waitForRequest(path: firstPath, count: 2)
-    }
-}
+loader.succeed(path: firstPath, player: firstPlayer)
+await Task.yield()
+#expect(service.currentlyPlaying == second.id)
+#expect(service.duration == secondPlayer.duration)
 ```
 
-The final request proves the stale first completion did not enter the path-keyed cache.
-
-- [ ] **Step 3: Add stop-during-load and stale-error regressions.**
-
-Define the test-local error:
+Then:
 
 ```swift
-enum TestError: Error {
-    case loadFailed
-}
+service.stop()
+service.playPreview(for: first)
+await loader.waitForRequest(path: firstPath, count: 2)
 ```
 
-Add a test that:
+The second request proves stale A was not inserted into the cache.
 
-1. starts inserted song A and waits until its loader request is pending;
-2. calls `service.stop()`;
-3. completes A successfully;
-4. yields once for the resumed task;
-5. asserts `isPlaying == false`, `currentlyPlaying == nil`, `duration == 0`;
-6. calls `playPreview(for: A)` again and waits for loader request count 2, proving the stopped request was not cached.
+- [ ] **Step 2: Add stop-during-load and stale-error coverage.**
 
-Add another test that:
+Add one test that suspends A, calls `stop()`, then completes A. Assert:
 
-1. starts inserted A and suspends it;
-2. starts inserted B and completes B successfully;
-3. verifies B is active;
-4. calls `loader.fail(path: firstPath, error: TestError.loadFailed)`;
-5. yields once;
-6. verifies B remains active and its duration/state are unchanged.
+```swift
+#expect(!service.isPlaying)
+#expect(service.currentlyPlaying == nil)
+#expect(service.duration == 0)
+#expect(service.currentTime == 0)
+```
 
-Do not add an audio-session protocol just to observe `setActive(false)`. The production stale-generation guard must execute before that existing iOS side effect; the generic iPad build in Task 4 verifies the guarded path compiles.
+Start A again and require a second loader request to prove the stopped stale completion did not populate the cache.
 
-- [ ] **Step 4: Run the focused suite and verify RED.**
+Define:
 
-Run the Task 1 non-parallel `AudioPlaybackServiceTests` command. Expected failures: stale success can still replace/cache after B, stop does not invalidate a suspended load, and stale error can still reach current-request cleanup.
+```swift
+enum TestError: Error { case loadFailed }
+```
 
-- [ ] **Step 5: Add one generation counter and central request invalidation.**
+Add a stale-error test: suspend A, start and complete B successfully, then fail A. Assert B remains active and its state does not change.
+
+Do not add an audio-session protocol just to observe iOS deactivation. The production generation guard must return before the existing audio-session cleanup, and the generic iPad build in Task 4 protects compilation of that branch.
+
+- [ ] **Step 3: Run the focused suite and verify RED.**
+
+Run the Task 1 focused command.
+
+Expected result: stale success/error/stop tests fail on the pre-generation implementation because old async work can still cache or mutate state.
+
+- [ ] **Step 4: Add generation advancement and generation-neutral cleanup.**
 
 In `AudioPlaybackService.swift`:
 
@@ -477,19 +511,27 @@ private func invalidatePreviewRequests() {
 }
 ```
 
-Make `playPreview(for:)` obtain:
+Extract one generation-neutral cleanup helper for the installed playback state:
 
 ```swift
-let generation = nextRequestGeneration()
+private func clearCurrentPlayback() {
+    audioPlayer?.stop()
+    audioPlayer = nil
+    isPlaying = false
+    currentlyPlaying = nil
+    currentTime = 0
+    duration = 0
+    stopProgressTimer()
+}
 ```
 
-before replacement cleanup. Pass the captured generation only into the fresh async load path. A cached start is synchronous, but advancing the generation still invalidates any older in-flight load before the cache start occurs.
+`playPreview(for:)` obtains `let generation = nextRequestGeneration()` before calling `clearCurrentPlayback()`. `stop()` calls `invalidatePreviewRequests()` and then `clearCurrentPlayback()`.
 
-Make `stop()` call `invalidatePreviewRequests()` before the existing cleanup. Keep cleanup itself generation-neutral so one operation does not accidentally advance twice.
+Do not let `clearCurrentPlayback()` advance the generation itself; callers own that decision.
 
-- [ ] **Step 6: Gate fresh success before cache/install/publication.**
+- [ ] **Step 5: Gate loaded success before cache/install/publication.**
 
-Pass `generation` through `loadAndPlayPreview`. After `loadPlayer(url)` returns and before **any** cache/start/state mutation:
+Pass the captured generation through the async load path. Immediately after a player is returned:
 
 ```swift
 guard generation == requestGeneration else {
@@ -498,99 +540,49 @@ guard generation == requestGeneration else {
 }
 ```
 
-Only then call `cacheAudioPlayer(player, for: cacheKey)` and `startInstalledPlayer(player, songID: songID)`.
+This guard occurs **before**:
 
-This is the final stale-cache boundary; do not retain or add a title/ID fallback guard around the cache.
+- `cacheAudioPlayer`;
+- `audioPlayer = player`;
+- `currentlyPlaying`/`isPlaying`/duration/current-time writes;
+- progress timer startup.
 
-- [ ] **Step 7: Gate fresh-load errors before state and iOS session cleanup.**
+After the guard, cache the loaded/prepared resource and call `startInstalledPlayer(_:songID:)`.
 
-Change the error handler to accept the captured generation and begin with:
+- [ ] **Step 6: Gate errors before state mutation and iOS session deactivation.**
+
+Make the error path receive the request generation and begin its stateful handling with:
 
 ```swift
 guard generation == requestGeneration else { return }
 ```
 
-Only a current request may clear playback state or execute the existing iOS `AVAudioSession.sharedInstance().setActive(false)` error cleanup.
+Logging may occur before that guard, but only a current request may clear active state or execute the existing iOS `AVAudioSession.sharedInstance().setActive(false)` cleanup.
 
-- [ ] **Step 8: Run focused tests and verify GREEN.**
+- [ ] **Step 7: Run focused tests and verify GREEN.**
 
-Repeat the focused service suite command. The out-of-order completion, stop-during-load, stale-error, duplicate-title, truthful-start, and path-cache tests must all pass without fixed race sleeps or bounded-yield polling.
+Repeat the non-parallel service suite.
 
-- [ ] **Step 9: Commit the stale-request slice.**
+Expected result: out-of-order success, stop-during-load, stale-error, duplicate-title, cache/FIFO, and all migrated existing tests pass.
+
+- [ ] **Step 8: Commit the stale-request slice.**
 
 ```bash
 git add Virgo/utilities/AudioPlaybackService.swift VirgoTests/AudioPlaybackServiceTests.swift
 git commit -m "fix: ignore stale preview load completions"
 ```
 
-### Task 3: Make resume, timer ownership, and delegate ownership truthful
+### Task 3: Make resume, timer ownership, and obsolete-player callbacks safe
 
 **Files:**
 - Modify: `VirgoTests/AudioPlaybackServiceTests.swift`
 - Modify: `Virgo/utilities/AudioPlaybackService.swift`
 
 **Interfaces:**
-- Consumes: current-generation installed player and `startPlayback` seam from Tasks 1-2.
-- Produces: safe `resume()`; single active progress timer; player-identity guard on all delegate callbacks; active-player delegate tests that install the actual callback player.
+- Consumes: current-generation installed player and truthful initial-start path from Tasks 1-2.
+- Produces: safe `resume()`; single active progress timer; installed-player identity guard on all delegate callbacks; separate obsolete-player negative coverage.
 
-- [ ] **Step 1: Add a test helper that installs the real player through the service.**
-
-Add:
-
-```swift
-private func startPreview(
-    service: AudioPlaybackService,
-    loader: ControlledPlayerLoader,
-    song: Song,
-    path: String,
-    player: AVAudioPlayer
-) async {
-    service.playPreview(for: song)
-    await loader.waitForRequest(path: path)
-    loader.succeed(path: path, player: player)
-    await Task.yield()
-    #expect(service.currentlyPlaying == song.id)
-    #expect(service.isPlaying)
-}
-```
-
-Use only inserted songs with this helper.
-
-- [ ] **Step 2: Rewrite every existing active-player delegate test before adding the ownership guard.**
-
-For `testAudioPlayerDidFinishPlayingStopsPlayback`:
-
-1. create an inserted song, controlled loader, service with `startPlayback: { _ in true }`, path, and player;
-2. call `await startPreview(...)` so `audioPlayer === player`;
-3. invoke `service.audioPlayerDidFinishPlaying(player, successfully: true)`;
-4. `await Task.yield()`;
-5. assert `isPlaying == false`, `currentlyPlaying == nil`, `currentTime == 0`, and `duration == 0`.
-
-Rewrite `testAudioPlayerDecodeErrorStopsPlayback` the same way and assert the installed player is stopped/cleared.
-
-Rewrite `testAudioPlayerBeginInterruptionPausesPlayback` the same way and assert `isPlaying == false` while `currentlyPlaying == song.id` remains available for resume.
-
-Rewrite `testAudioPlayerEndInterruptionNoStateChangeOnMacOS` so the callback player is the installed current player; on macOS, calling `audioPlayerEndInterruption(player, withOptions: 0)` must leave the active state unchanged.
-
-Delete the old pattern that manually sets published fields and then passes a player that the service never installed. Once the ownership guard exists, that pattern tests only the negative path and cannot prove current-player behavior.
-
-- [ ] **Step 3: Rewrite the existing pause/resume toggle test to use a real installed player.**
-
-Create an inserted song + controlled load, start it through `startPreview`, then:
-
-```swift
-service.togglePlayback(for: song)
-#expect(!service.isPlaying)
-#expect(service.currentlyPlaying == song.id)
-
-service.togglePlayback(for: song)
-#expect(service.isPlaying)
-#expect(service.currentlyPlaying == song.id)
-```
-
-This preserves the original pause/resume contract without relying on a nonexistent player.
-
-- [ ] **Step 4: Add missing resume-failure regressions.**
+- [ ] **Step 1: Add missing resume-failure tests.**
 
 Add:
 
@@ -604,7 +596,7 @@ func resumeWithoutPlayerStaysStopped() {
 }
 ```
 
-Add a resume-start-failure test. Use a controlled loader and a `startPlayback` closure that succeeds exactly once:
+Add a failed-resume test using an inserted song + controlled loader. Make `startPlayback` succeed exactly once:
 
 ```swift
 var attempts = 0
@@ -617,9 +609,9 @@ let service = AudioPlaybackService(
 )
 ```
 
-Start an inserted song successfully, call `pause()`, then `resume()`. Assert the failed resume clears `isPlaying`, `currentlyPlaying`, current/duration, and the installed player/timer state rather than publishing a fake resume.
+Start successfully, call `pause()`, then `resume()`. Expect the failed resume to clear playing identity/current/duration/player timer state rather than publish a fake resume.
 
-- [ ] **Step 5: Add timer single-owner coverage on the real lifecycle.**
+- [ ] **Step 2: Add timer ownership coverage on the real lifecycle.**
 
 Add the test-only reflection helper:
 
@@ -629,7 +621,7 @@ private func progressTimer(in service: AudioPlaybackService) -> Timer? {
 }
 ```
 
-Exercise **play → pause → resume**, not `resume()` while already playing:
+Use a service whose `startPlayback` returns `true` for initial start and resume. After a real installed preview:
 
 ```swift
 let firstTimer = progressTimer(in: service)
@@ -643,13 +635,11 @@ let resumedTimer = progressTimer(in: service)
 #expect(firstTimer !== resumedTimer)
 ```
 
-The service for this test uses a `startPlayback` seam that returns `true` for both initial start and resume.
+- [ ] **Step 3: Add obsolete-player callbacks as separate negative-path tests.**
 
-- [ ] **Step 6: Add obsolete-player delegate regressions as separate negative-path tests.**
+Start inserted song A/player A through the service, then replace it with inserted song B/player B. Invoke A's callbacks after B is active.
 
-Start inserted song A/player A, then replace it with inserted song B/player B. Invoke callbacks with A after B is active.
-
-At minimum cover finish and interruption-begin explicitly:
+At minimum assert finish and interruption-begin separately:
 
 ```swift
 service.audioPlayerDidFinishPlaying(firstPlayer, successfully: true)
@@ -663,13 +653,17 @@ await Task.yield()
 #expect(service.isPlaying)
 ```
 
-Also invoke `audioPlayerDecodeErrorDidOccur(firstPlayer, error: TestError.loadFailed)` and `audioPlayerEndInterruption(firstPlayer, withOptions: 0)` in a focused ownership test and assert B remains active. Keep these separate from the active-player tests in Step 2 so both positive and negative delegate contracts are visible.
+Also invoke `audioPlayerDecodeErrorDidOccur(firstPlayer, error: TestError.loadFailed)` and `audioPlayerEndInterruption(firstPlayer, withOptions: 0)` in focused ownership coverage; B must remain active.
 
-- [ ] **Step 7: Run the focused suite and verify RED.**
+Do not merge these with the current-player positive tests from Task 1. Both contracts must remain visible.
 
-Run the same non-parallel `AudioPlaybackServiceTests` command. Before production changes, expect failures for missing-player/failed resume semantics, timer replacement, and obsolete-player delegate callbacks. The rewritten active-player delegate tests should still exercise and preserve the current positive behavior.
+- [ ] **Step 4: Run the focused suite and verify RED.**
 
-- [ ] **Step 8: Make `resume()` reflect the real player start.**
+Run the same non-parallel service suite.
+
+Expected failures: missing/failed resume semantics, timer replacement, and obsolete-player callbacks.
+
+- [ ] **Step 5: Make `resume()` truthful.**
 
 Implement:
 
@@ -690,9 +684,9 @@ func resume() {
 }
 ```
 
-`clearCurrentPlayback()` is the generation-neutral cleanup helper introduced while centralizing replacement state in Task 2. `resume()` is not a new load and must not advance `requestGeneration`.
+`clearCurrentPlayback()` is generation-neutral. Resume is not a new load and must not advance `requestGeneration`.
 
-- [ ] **Step 9: Enforce single timer ownership.**
+- [ ] **Step 6: Make progress timer ownership explicit.**
 
 Make the first line of `startProgressTimer()`:
 
@@ -700,44 +694,44 @@ Make the first line of `startProgressTimer()`:
 stopProgressTimer()
 ```
 
-Then schedule the existing 0.1-second timer unchanged.
+Then schedule the existing 0.1-second repeating timer unchanged.
 
-- [ ] **Step 10: Guard every delegate state mutation by installed-player identity.**
+- [ ] **Step 7: Guard every delegate mutation by installed-player identity.**
 
-Inside each existing `Task { @MainActor in ... }` body, add:
+Inside each `Task { @MainActor in ... }` body, before any state mutation:
 
 ```swift
 guard player === self.audioPlayer else { return }
 ```
 
-Apply it before calling `stop()`, `pause()`, or `resume()` in:
+Apply to:
 
 - `audioPlayerDidFinishPlaying`;
 - `audioPlayerDecodeErrorDidOccur`;
 - `audioPlayerBeginInterruption`;
 - `audioPlayerEndInterruption`.
 
-The decode error may still be logged before the guard, but stale players cannot mutate service state.
+Decode errors may still be logged before the guard, but obsolete players cannot stop/pause/resume current state.
 
-- [ ] **Step 11: Run focused tests and verify GREEN.**
+- [ ] **Step 8: Run focused tests and verify GREEN.**
 
-Repeat the focused service suite. Confirm:
+Repeat the service suite. Confirm:
 
-- current-player finish/decode/interruption tests pass through a player actually installed by the service;
+- current-player finish/decode/interruption tests from Task 1 still pass;
 - obsolete-player callbacks are ignored;
-- pause/resume uses a real player;
-- failed/missing resume stays stopped;
+- pause/resume uses a real installed player;
+- missing/failed resume stays stopped;
 - play → pause → resume replaces the timer safely;
-- all Task 1-2 identity/cache/generation tests remain green.
+- all identity/cache/generation tests remain green.
 
-- [ ] **Step 12: Commit the lifecycle slice.**
+- [ ] **Step 9: Commit the lifecycle slice.**
 
 ```bash
 git add Virgo/utilities/AudioPlaybackService.swift VirgoTests/AudioPlaybackServiceTests.swift
 git commit -m "fix: make preview playback lifecycle truthful"
 ```
 
-### Task 4: Run UI-boundary and repository verification gates
+### Task 4: Run UI-boundary, repository, and platform verification gates
 
 **Files:**
 - Verify: `Virgo/views/DownloadedSongsView.swift`
@@ -746,14 +740,14 @@ git commit -m "fix: make preview playback lifecycle truthful"
 - Verify: all files changed in Tasks 1-3
 
 **Interfaces:**
-- Consumes: final `currentlyPlaying`, stable cache/load lifecycle, generation gate, and existing downloaded-song view wiring.
-- Produces: evidence that the service change compiles through SwiftUI callers on macOS/iPadOS and does not require broader view architecture changes.
+- Consumes: final `currentlyPlaying`, path-keyed cache, generation gate, truthful playback lifecycle, and existing downloaded-song wiring.
+- Produces: evidence that HPA-576's focused behavior is green, the SwiftUI callers still mount, iPad code compiles, and any unrelated full-suite instability is distinguished from a branch regression with a fresh main baseline only when necessary.
 
 - [ ] **Step 1: Keep the UI test surface narrow.**
 
-Do not add a new XCUITest. Existing `SecondWaveCoverageTests` and `SwiftUIRenderingLibraryAndResultsTests` already mount `DownloadedSongsView`/`SongsTabView`. Update them only if compilation or a direct old-property reference requires it. Do not add a production test helper solely to inspect a background color or SF Symbol.
+Do not add a new XCUITest. Existing `SecondWaveCoverageTests` and `SwiftUIRenderingLibraryAndResultsTests` mount `DownloadedSongsView`/`SongsTabView`. Update them only if compilation or a direct old-property reference requires a mechanical change. Do not add production test hooks solely to inspect a row background or SF Symbol.
 
-- [ ] **Step 2: Run focused service tests.**
+- [ ] **Step 2: Run the focused service tests — hard green gate.**
 
 ```bash
 xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
@@ -764,9 +758,9 @@ xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
   -destination-timeout 300 -derivedDataPath ./DerivedData
 ```
 
-Expected result: all identity, stale-generation, startup/resume, cache, timer, and active/obsolete delegate regressions pass.
+Expected result: `AudioPlaybackServiceTests` pass with zero failures/timeouts.
 
-- [ ] **Step 3: Run directly affected SwiftUI coverage.**
+- [ ] **Step 3: Run directly affected SwiftUI coverage — hard green gate.**
 
 ```bash
 xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
@@ -778,9 +772,11 @@ xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
   -destination-timeout 300 -derivedDataPath ./DerivedData
 ```
 
-Expected result: downloaded/song-tab rendering continues to compile and mount with the ID-based preview service.
+Expected result: both directly affected rendering suites pass.
 
-- [ ] **Step 4: Run the full macOS unit suite.**
+- [ ] **Step 4: Run the full macOS unit suite; baseline only if it fails.**
+
+Run:
 
 ```bash
 xcodebuild test \
@@ -798,9 +794,42 @@ xcodebuild test \
   -derivedDataPath ./DerivedData
 ```
 
-Expected result: `TEST SUCCEEDED`.
+Primary expected result: `TEST SUCCEEDED`. Do not weaken this expectation preemptively.
 
-- [ ] **Step 5: Compile the iPadOS path.**
+If the branch run fails with an unrelated SwiftData/test-host crash or another failure outside the touched behavior, **then** run the identical command on a clean `origin/main` worktree before changing HPA-576 scope:
+
+```bash
+baseline_dir="$(mktemp -d /tmp/virgo-hpa576-main.XXXXXX)"
+git worktree add --detach "$baseline_dir" origin/main
+(
+  cd "$baseline_dir"
+  xcodebuild test \
+    -project Virgo.xcodeproj \
+    -scheme Virgo \
+    -destination 'platform=macOS' \
+    -configuration Debug \
+    -only-testing:VirgoTests \
+    -parallel-testing-enabled NO \
+    ONLY_ACTIVE_ARCH=NO \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGNING_ALLOWED=NO \
+    -enableCodeCoverage YES \
+    -destination-timeout 300 \
+    -derivedDataPath ./DerivedData
+)
+baseline_status=$?
+git worktree remove "$baseline_dir"
+exit "$baseline_status"
+```
+
+Interpretation:
+
+- If `main` passes, the branch full-suite failure is blocking; investigate it before handoff.
+- If `main` reproduces the **same** unrelated failure signature, record it as pre-existing and do not pull that fix into HPA-576.
+- A baseline reproduction never waives a focused HPA-576 failure. Steps 2-3 remain hard green gates.
+- Do not treat a different random failure on `main` as proof that a branch-specific failure is safe.
+
+- [ ] **Step 5: Compile the iPadOS path — hard green gate.**
 
 ```bash
 xcodebuild build \
@@ -813,7 +842,7 @@ xcodebuild build \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-Expected result: build succeeds, including the generation-gated iOS audio-session error path.
+Expected result: build succeeds, including the generation-gated `#if os(iOS)` audio-session error path.
 
 - [ ] **Step 6: Run lint and diff hygiene.**
 
@@ -829,21 +858,36 @@ git status --short
 
 Expected result: no serious SwiftLint violations in touched files and no whitespace errors.
 
-`AudioPlaybackService.swift` is already close to the repository's size-warning thresholds. Treat warnings and errors differently:
+`AudioPlaybackService.swift` is already near the repository's size-warning thresholds. Treat warnings and errors differently:
 
 - a new non-serious `type_body_length` / `file_length` warning is reported but does not justify a media abstraction or access-widening refactor by itself;
-- if a serious lint **error** appears, first reduce local verbosity or move behavior only when it can be extracted without widening private state or inventing a new architecture;
+- if a serious lint **error** appears, first reduce local verbosity or make only the smallest extraction that preserves encapsulation;
 - do not create `AudioPlaybackService+...` files speculatively just because the warning threshold is crossed.
 
-- [ ] **Step 7: Review scope against HPA-576 before handoff.**
+- [ ] **Step 7: Review final scope against HPA-576.**
 
-The final production diff should contain only the local preview state-machine correction and ID-based downloaded-row check. Explicitly verify that it does **not** add AVAudioEngine, BGM `.ogg` conversion, actor pools, generalized caching/media abstractions, persistence migrations, compatibility code, or unrelated view refactors.
+The production diff should contain only the local preview state-machine correction and ID-based downloaded-row check. Explicitly verify that it does **not** add:
 
-Also verify the test diff no longer contains the old hand-mutated stale-error sleep test or active delegate tests that invoke callbacks on a player the service never installed.
+- `AVAudioEngine` or another audio framework;
+- BGM `.ogg` conversion/decoder work;
+- actor pools or generalized cancellation infrastructure;
+- cache/media repository abstractions;
+- pending-selection/loading UI;
+- persistence migrations or compatibility code;
+- unrelated view refactors.
 
-- [ ] **Step 8: Commit any verification-only rendering-test adjustments if required.**
+Also verify the test diff:
 
-If Steps 2-6 required mechanical updates in existing rendering tests because of the renamed property, commit only those files:
+- contains no `currentlyPlayingSong` references;
+- deleted the old hand-mutated stale-error sleep test in Task 1;
+- current-player delegate tests install their callback player through the service;
+- obsolete-player tests remain separate;
+- loader-driven waits are continuation-based and bounded by the suite `.timeLimit`;
+- real-file cache/progress/FIFO sleeps remain only where they observe AVFoundation/cache behavior rather than coordinate race order.
+
+- [ ] **Step 8: Commit only mechanical rendering-test adjustments if verification required them.**
+
+If Steps 1-6 required changes in existing rendering tests because of the property rename, commit only those files:
 
 ```bash
 git add VirgoTests/SecondWaveCoverageTests.swift \
@@ -851,19 +895,23 @@ git add VirgoTests/SecondWaveCoverageTests.swift \
 git commit -m "test: align preview playback UI coverage"
 ```
 
-If neither file changed, skip this commit rather than creating an empty commit.
+If neither file changed, skip this commit.
 
 ## Plan self-review checklist
 
-Before implementation handoff, re-read the design and this plan and verify:
+Before implementation handoff, re-read the design and verify:
 
-- every identity assertion uses an inserted song and `song.id`;
-- the cache key is resource path, never title or song ID;
-- Task 1 publishes no fake loading state;
+- every identity-bearing service test inserts songs and compares `song.id`;
+- active selection identity is `PersistentIdentifier`; cache identity is canonical preview path;
+- Task 1 publishes no fake playing identity/state while loading;
+- Task 1 deletes the old stale-error race test instead of migrating it twice;
+- Task 1 migrates cached replay and FIFO tests before its GREEN checkpoint;
+- Task 1 current-player delegate tests install the actual callback player;
 - Task 2 guards before cache/install/publication and before stale-error audio-session cleanup;
-- the old hand-mutated stale-error test is removed rather than renamed;
-- Task 3 current-player delegate tests install the callback player through the service;
-- obsolete-player tests remain separate and prove the negative path;
-- the timer test uses play → pause → resume;
-- `ControlledPlayerLoader` has continuation-driven request waiting and no `!` on missing pending work;
-- no task introduces HPA-85 work, off-main redesign, media abstractions, or migration/compatibility infrastructure.
+- a start failure clears active state but does not evict an already-decoded cached resource;
+- Task 3 keeps obsolete-player tests separate from current-player positive behavior;
+- timer ownership uses play → pause → resume;
+- `ControlledPlayerLoader` has no force unwrap on pending work and no polling timeout loop;
+- the suite time limit turns missing continuation progress into a test timeout instead of an infinite hang;
+- the full-suite gate expects success first and uses an identical clean-main baseline only after an unrelated failure;
+- no task introduces HPA-85 work, off-main redesign, media abstractions, pending UI, or migration/compatibility infrastructure.
