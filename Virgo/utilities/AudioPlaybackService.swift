@@ -119,8 +119,17 @@ class AudioPlaybackService: NSObject, ObservableObject {
     }
 
     func resume() {
+        guard let player = audioPlayer, currentlyPlaying != nil else {
+            clearCurrentPlayback()
+            return
+        }
+
+        guard startPlayback(player) else {
+            clearCurrentPlayback()
+            return
+        }
+
         isPlaying = true
-        audioPlayer?.play()
         startProgressTimer()
     }
 
@@ -135,6 +144,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
     }
 
     private func startProgressTimer() {
+        stopProgressTimer()
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.updateProgress()
@@ -292,6 +302,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
 extension AudioPlaybackService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
+            guard player === self.audioPlayer else { return }
             self.stop()
         }
     }
@@ -302,18 +313,21 @@ extension AudioPlaybackService: AVAudioPlayerDelegate {
                 Logger.audioPlayback("Audio player decode error: \(error)")
                 Logger.audioPlayback("Audio decode error: \(error.localizedDescription)")
             }
+            guard player === self.audioPlayer else { return }
             self.stop()
         }
     }
 
     nonisolated func audioPlayerBeginInterruption(_ player: AVAudioPlayer) {
         Task { @MainActor in
+            guard player === self.audioPlayer else { return }
             self.pause()
         }
     }
 
     nonisolated func audioPlayerEndInterruption(_ player: AVAudioPlayer, withOptions flags: Int) {
         Task { @MainActor in
+            guard player === self.audioPlayer else { return }
             // Optionally resume playback after interruption
             #if os(iOS)
             if flags == AVAudioSession.InterruptionOptions.shouldResume.rawValue {
