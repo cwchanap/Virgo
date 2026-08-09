@@ -128,7 +128,7 @@ extension AudioPlaybackServiceTests {
             )
 
             service.audioPlayerDidFinishPlaying(firstPlayer, successfully: true)
-            await Task.yield()
+            await service.waitForDelegateCallback()
 
             #expect(service.currentlyPlaying == second.id)
             #expect(service.isPlaying)
@@ -170,7 +170,7 @@ extension AudioPlaybackServiceTests {
             )
 
             service.audioPlayerBeginInterruption(firstPlayer)
-            await Task.yield()
+            await service.waitForDelegateCallback()
 
             #expect(service.currentlyPlaying == second.id)
             #expect(service.isPlaying)
@@ -212,13 +212,13 @@ extension AudioPlaybackServiceTests {
             )
 
             service.audioPlayerDecodeErrorDidOccur(firstPlayer, error: TestError.loadFailed)
-            await Task.yield()
+            await service.waitForDelegateCallback()
 
             #expect(service.currentlyPlaying == second.id)
             #expect(service.isPlaying)
 
             service.audioPlayerEndInterruption(firstPlayer, withOptions: 0)
-            await Task.yield()
+            await service.waitForDelegateCallback()
 
             #expect(service.currentlyPlaying == second.id)
             #expect(service.isPlaying)

@@ -25,11 +25,17 @@ class AudioPlaybackService: NSObject, ObservableObject {
     private var audioCacheOrder: [String] = []
     private let maxCacheSize = 10
     private var requestGeneration: UInt64 = 0
-    private let loadPlayer: @MainActor (URL) async throws -> AVAudioPlayer
+    // Test-only: continuations resumed when a delegate callback's Task completes,
+    // replacing nondeterministic Task.yield() in tests. Always empty in production.
+    private var delegateCallbackWaiters: [CheckedContinuation<Void, Never>] = []
+    // Non-isolated: AVAudioPlayer file loading and prepareToPlay run off the
+    // main actor so compressed-preview decoding does not block the UI thread.
+    // Player installation and playback remain on MainActor via startInstalledPlayer.
+    private let loadPlayer: (URL) async throws -> AVAudioPlayer
     private let startPlayback: (AVAudioPlayer) -> Bool
 
     init(
-        loadPlayer: @escaping @MainActor (URL) async throws -> AVAudioPlayer = { url in
+        loadPlayer: @escaping (URL) async throws -> AVAudioPlayer = { url in
             let player = try AVAudioPlayer(contentsOf: url)
             player.volume = 1.0
             _ = player.prepareToPlay()
@@ -79,12 +85,20 @@ class AudioPlaybackService: NSObject, ObservableObject {
             return
         }
 
-        // Try to play from cache first
-        if tryPlayCachedPreview(for: song, previewPath: previewPath) {
+        // Try cached player first — synchronous activation with generation guard.
+        let cacheKey = previewCacheKey(for: previewPath)
+        if let cachedPlayer = audioCache[cacheKey] {
+            activatePreviewPlayer(
+                cachedPlayer,
+                song: song,
+                previewPath: previewPath,
+                generation: generation,
+                shouldCache: false
+            )
             return
         }
 
-        // Load and play in background
+        // Cache miss — load and play in background.
         loadAndPlayPreview(song: song, previewPath: previewPath, generation: generation)
     }
 
@@ -161,6 +175,23 @@ class AudioPlaybackService: NSObject, ObservableObject {
     /// only reached via the progress timer lifecycle (start/stop/pause/resume).
     var progressTimerForTesting: Timer? { progressTimer }
 
+    /// Test-only: awaits completion of the next delegate callback's Task.
+    /// Replaces nondeterministic Task.yield() after calling nonisolated
+    /// AVAudioPlayerDelegate methods that spawn Task { @MainActor in ... }.
+    func waitForDelegateCallback() async {
+        await withCheckedContinuation { continuation in
+            delegateCallbackWaiters.append(continuation)
+        }
+    }
+
+    private func resumeDelegateCallbackWaiters() {
+        let waiters = delegateCallbackWaiters
+        delegateCallbackWaiters.removeAll()
+        for waiter in waiters {
+            waiter.resume()
+        }
+    }
+
     private func updateProgress() {
         guard let player = audioPlayer else { return }
         currentTime = player.currentTime
@@ -172,22 +203,6 @@ class AudioPlaybackService: NSObject, ObservableObject {
         Logger.audioPlayback("No preview file available for song: \(song.title)")
         isPlaying = false
         currentlyPlaying = nil
-    }
-
-    private func tryPlayCachedPreview(for song: Song, previewPath: String) -> Bool {
-        let cacheKey = previewCacheKey(for: previewPath)
-        guard let cachedPlayer = audioCache[cacheKey] else { return false }
-
-        if startInstalledPlayer(cachedPlayer, songID: song.id) {
-            Logger.audioPlayback("Started playing cached preview for: \(song.title)")
-            return true
-        }
-
-        // A failed play() can be transient — retain the cached resource so a
-        // later retry can reuse it without reloading. HPA-576 adds no
-        // eviction/reload-on-start-failure rule.
-        Logger.audioPlayback("Failed to start cached audio playback")
-        return false
     }
 
     private func loadAndPlayPreview(
@@ -205,23 +220,42 @@ class AudioPlaybackService: NSObject, ObservableObject {
 
                 let player = try await loadPlayer(url)
 
-                guard generation == requestGeneration else {
-                    player.stop()
-                    return
-                }
-
-                setupAndPlayNewPlayer(player: player, song: song, previewPath: previewPath)
+                activatePreviewPlayer(
+                    player,
+                    song: song,
+                    previewPath: previewPath,
+                    generation: generation,
+                    shouldCache: true
+                )
             } catch {
                 handlePlaybackError(error, song: song, generation: generation)
             }
         }
     }
 
-    private func setupAndPlayNewPlayer(player: AVAudioPlayer, song: Song, previewPath: String) {
+    /// Single shared activation path for both cached and freshly loaded players.
+    /// Validates the current generation before any audio activation, preserving
+    /// cancellation when stop() or a newer request invalidates playback.
+    /// A failed start does not trigger a second activation sequence — the caller
+    /// can retry via a new playPreview request.
+    private func activatePreviewPlayer(
+        _ player: AVAudioPlayer,
+        song: Song,
+        previewPath: String,
+        generation: UInt64,
+        shouldCache: Bool
+    ) {
+        guard generation == requestGeneration else {
+            player.stop()
+            return
+        }
+
         // Cache the decoded/prepared player before the start attempt. A failed
         // play() can be transient and does not prove the resource is invalid, so
         // HPA-576 retains the cached entry even when start fails.
-        cacheAudioPlayer(player, for: previewPath)
+        if shouldCache {
+            cacheAudioPlayer(player, for: previewPath)
+        }
 
         guard startInstalledPlayer(player, songID: song.id) else {
             Logger.audioPlayback("Failed to start audio playback")
@@ -309,6 +343,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
 extension AudioPlaybackService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
+            defer { self.resumeDelegateCallbackWaiters() }
             guard player === self.audioPlayer else { return }
             self.stop()
         }
@@ -316,6 +351,7 @@ extension AudioPlaybackService: AVAudioPlayerDelegate {
 
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         Task { @MainActor in
+            defer { self.resumeDelegateCallbackWaiters() }
             if let error = error {
                 Logger.audioPlayback("Audio player decode error: \(error)")
                 Logger.audioPlayback("Audio decode error: \(error.localizedDescription)")
@@ -327,6 +363,7 @@ extension AudioPlaybackService: AVAudioPlayerDelegate {
 
     nonisolated func audioPlayerBeginInterruption(_ player: AVAudioPlayer) {
         Task { @MainActor in
+            defer { self.resumeDelegateCallbackWaiters() }
             guard player === self.audioPlayer else { return }
             self.pause()
         }
@@ -334,6 +371,7 @@ extension AudioPlaybackService: AVAudioPlayerDelegate {
 
     nonisolated func audioPlayerEndInterruption(_ player: AVAudioPlayer, withOptions flags: Int) {
         Task { @MainActor in
+            defer { self.resumeDelegateCallbackWaiters() }
             guard player === self.audioPlayer else { return }
             // Optionally resume playback after interruption
             #if os(iOS)

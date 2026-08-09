@@ -267,7 +267,7 @@ struct AudioPlaybackServiceTests {
             service.currentTime = 3.2
 
             service.audioPlayerDidFinishPlaying(player, successfully: true)
-            await Task.yield()
+            await service.waitForDelegateCallback()
 
             #expect(service.isPlaying == false)
             #expect(service.currentlyPlaying == nil)
@@ -298,7 +298,7 @@ struct AudioPlaybackServiceTests {
             )
 
             service.audioPlayerDecodeErrorDidOccur(player, error: NSError(domain: "Test", code: -1))
-            await Task.yield()
+            await service.waitForDelegateCallback()
 
             #expect(service.isPlaying == false)
             #expect(service.currentlyPlaying == nil)
@@ -327,7 +327,7 @@ struct AudioPlaybackServiceTests {
             )
 
             service.audioPlayerBeginInterruption(player)
-            await Task.yield()
+            await service.waitForDelegateCallback()
 
             #expect(service.isPlaying == false)
             #expect(service.currentlyPlaying == song.id)
@@ -587,7 +587,7 @@ struct AudioPlaybackServiceTests {
             )
 
             service.audioPlayerEndInterruption(player, withOptions: 0)
-            await Task.yield()
+            await service.waitForDelegateCallback()
 
             #expect(service.isPlaying == true)
             #expect(service.currentlyPlaying == song.id)
