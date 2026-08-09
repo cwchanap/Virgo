@@ -70,7 +70,7 @@ struct ChartPracticeStateLoaderTests {
         await loader.load(chart: chart)
         #expect(resolutionCount == 1)
 
-        // Simulate a rhythm backfill: mutate a timing-affecting field in place
+        // Simulate an in-place timing mutation: change a timing-affecting field
         // without changing the chart's persistent identity.
         chart.timeSignature = .threeFour
 
@@ -93,7 +93,7 @@ struct ChartPracticeStateLoaderTests {
         await loader.load(chart: chart)
         #expect(resolutionCount == 1)
 
-        // Simulate a notes backfill: append a note and bump the revision.
+        // Simulate an in-place note mutation: append a note and bump the revision.
         chart.notes.append(Note(
             interval: .quarter,
             noteType: .bass,
