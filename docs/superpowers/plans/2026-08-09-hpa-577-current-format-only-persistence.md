@@ -50,7 +50,7 @@ Update stale comments that say BOM-less UTF-8 would be lossily decoded as UTF-16
 
 - [ ] **Step 2: Add one graph-level boundary regression with current audio files.**
 
-Add this shape to `LocalDTXFixtureImporterTests.swift` using the existing `makeTempDirectory()` helper:
+Add this test to `LocalDTXFixtureImporterTests.swift` using the existing `makeTempDirectory()` helper:
 
 ```swift
 @Test("re-import refreshes audio paths without repairing persisted graph data")
@@ -139,16 +139,37 @@ func reImportRefreshesOnlyAudioPaths() throws {
 
 This fixture intentionally contains a control event the old repair path can populate, while also providing real current audio files that `refreshAudioPaths` should find.
 
-Retain/rename the existing nil-offset test so the no-repair policy covers both offset states:
+Rename the existing nil-offset policy test and remove its legacy-upgrade framing:
 
 ```swift
 @Test("re-import leaves an unset BGM start offset unset")
 func reImportLeavesUnsetBGMStartOffsetUnset() throws {
-    // Existing test body may stay, but remove legacy-upgrade wording.
+    let context = TestContainer.isolatedContainer().context
+    let fixtureURL = try soukyuuFixtureURL()
+    let existing = Song(
+        title: "蒼穹への翔歌",
+        artist: "existing",
+        bpm: 165.55,
+        duration: "3:50",
+        genre: "DTX Import",
+        timeSignature: .fourFour,
+        isServerImported: true,
+        serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
+        bgmFilePath: fixtureURL.appendingPathComponent("bgm.m4a").path,
+        previewFilePath: fixtureURL.appendingPathComponent("preview.mp3").path,
+        bgmStartOffsetSeconds: nil
+    )
+    context.insert(existing)
+    try context.save()
+
+    let returned = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
+
+    #expect(returned === existing)
+    #expect(returned.bgmStartOffsetSeconds == nil)
 }
 ```
 
-The non-nil offset case is now folded into `reImportRefreshesOnlyAudioPaths`; the separate non-clobber test may be deleted as redundant after the new test is green.
+The non-nil offset case is folded into `reImportRefreshesOnlyAudioPaths`; delete the old separate non-clobber test after the new test is green.
 
 - [ ] **Step 3: Run the focused suites and verify the intended RED signal.**
 
@@ -218,7 +239,7 @@ Expected:
 - current audio paths re-resolve;
 - removed current assets clear persisted paths;
 - stale duration is unchanged;
-- BGM start offset is not mutated;
+- BGM start offset is not mutated for nil or non-nil states;
 - repeated import does not add/replace charts or notes;
 - source controls are not injected into the existing chart;
 - no duplicate graph is created.
