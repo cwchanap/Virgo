@@ -299,10 +299,6 @@ struct ContentView: View {
         do {
             let song = try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(into: modelContext)
             if let song {
-                try LocalDTXFixtureImporter.backfillBundledRhythmTimingIfNeeded(
-                    for: song,
-                    in: modelContext
-                )
                 Logger.database("Seeded local DTX fixture: \(song.title)")
             }
         } catch {
