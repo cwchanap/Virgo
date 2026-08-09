@@ -183,8 +183,10 @@ class AudioPlaybackService: NSObject, ObservableObject {
             return true
         }
 
+        // A failed play() can be transient — retain the cached resource so a
+        // later retry can reuse it without reloading. HPA-576 adds no
+        // eviction/reload-on-start-failure rule.
         Logger.audioPlayback("Failed to start cached audio playback")
-        evictCachedPlayer(for: cacheKey)
         return false
     }
 
@@ -216,12 +218,16 @@ class AudioPlaybackService: NSObject, ObservableObject {
     }
 
     private func setupAndPlayNewPlayer(player: AVAudioPlayer, song: Song, previewPath: String) {
+        // Cache the decoded/prepared player before the start attempt. A failed
+        // play() can be transient and does not prove the resource is invalid, so
+        // HPA-576 retains the cached entry even when start fails.
+        cacheAudioPlayer(player, for: previewPath)
+
         guard startInstalledPlayer(player, songID: song.id) else {
             Logger.audioPlayback("Failed to start audio playback")
             return
         }
 
-        cacheAudioPlayer(player, for: previewPath)
         Logger.audioPlayback("Started playing preview for: \(song.title)")
     }
 
@@ -297,12 +303,6 @@ class AudioPlaybackService: NSObject, ObservableObject {
 
         audioCache[cacheKey] = player
         audioCacheOrder.append(cacheKey)
-    }
-
-    private func evictCachedPlayer(for cacheKey: String) {
-        audioCache[cacheKey]?.stop()
-        audioCache.removeValue(forKey: cacheKey)
-        audioCacheOrder.removeAll { $0 == cacheKey }
     }
 }
 
