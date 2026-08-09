@@ -280,7 +280,9 @@ A non-canonical historical key is ignored rather than rewritten.
 
 Today a DTX-origin chart with missing rhythm metadata resolves with `.legacy` availability and no canonical timeline; non-DTX/manual/sample charts also use missing-metadata fallback logic. This runtime behavior is separate from the import/startup backfills HPA-577 deletes.
 
-Do **not** claim HPA-577 guarantees old DTX rows fail visibly or are automatically blocked: current UI/runtime code may continue through legacy fallback behavior. That is acceptable because old development data is explicitly unsupported and may be reset. It is not a reason to add a store version detector, and it is not a reason to delete `resolveMissing` in this ticket.
+`ChartPracticeState` currently treats `.legacy` availability as non-fatal rather than surfacing a timing-unavailable badge. Therefore HPA-577 must **not** claim that stale DTX rows already fail visibly or are automatically blocked. Old development data is simply unsupported/resettable, and the existing runtime fallback remains as-is.
+
+That is still not a reason to add a store version detector, and it is not a reason to delete `resolveMissing` in this ticket.
 
 ### 7. Tests describe supported behavior, not upgrades
 
