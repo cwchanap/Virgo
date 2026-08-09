@@ -28,6 +28,10 @@ class AudioPlaybackService: NSObject, ObservableObject {
     // Test-only: continuations resumed when a delegate callback's Task completes,
     // replacing nondeterministic Task.yield() in tests. Always empty in production.
     private var delegateCallbackWaiters: [CheckedContinuation<Void, Never>] = []
+    // Test-only: latches delegate callbacks that completed before a waiter
+    // registered, so a late waitForDelegateCallback returns immediately instead
+    // of hanging. Always zero in production.
+    private var latchedDelegateCallbackCount = 0
     private let loadPlayer: @MainActor (URL) async throws -> AVAudioPlayer
     private let startPlayback: (AVAudioPlayer) -> Bool
 
@@ -175,9 +179,16 @@ class AudioPlaybackService: NSObject, ObservableObject {
     /// Test-only: awaits completion of the next delegate callback's Task.
     /// Replaces nondeterministic Task.yield() after calling nonisolated
     /// AVAudioPlayerDelegate methods that spawn Task { @MainActor in ... }.
+    /// If the callback already completed before registration, the latched
+    /// count is consumed and the method returns immediately.
     func waitForDelegateCallback() async {
         await withCheckedContinuation { continuation in
-            delegateCallbackWaiters.append(continuation)
+            if latchedDelegateCallbackCount > 0 {
+                latchedDelegateCallbackCount -= 1
+                continuation.resume()
+            } else {
+                delegateCallbackWaiters.append(continuation)
+            }
         }
     }
 
@@ -186,6 +197,10 @@ class AudioPlaybackService: NSObject, ObservableObject {
         delegateCallbackWaiters.removeAll()
         for waiter in waiters {
             waiter.resume()
+        }
+        // Latch completions that arrived with no waiter registered.
+        if waiters.isEmpty {
+            latchedDelegateCallbackCount += 1
         }
     }
 
