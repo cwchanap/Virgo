@@ -40,6 +40,8 @@ extension AudioPlaybackServiceTests {
             service.stop()
             service.playPreview(for: first)
             await loader.waitForRequest(path: firstPath, count: 2)
+            // Settle the pending load so no checked continuation remains suspended.
+            await loader.fail(path: firstPath, error: TestError.loadFailed)
         }
     }
 
@@ -69,6 +71,8 @@ extension AudioPlaybackServiceTests {
 
             service.playPreview(for: song)
             await loader.waitForRequest(path: previewPath, count: 2)
+            // Settle the pending load so no checked continuation remains suspended.
+            await loader.fail(path: previewPath, error: TestError.loadFailed)
         }
     }
 
