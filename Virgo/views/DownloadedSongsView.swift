@@ -57,7 +57,8 @@ struct DownloadedSongsView: View {
     private func isPlaying(_ song: Song) -> Bool {
         // Check if playing via preview audio (for server-imported songs with preview)
         if song.isServerImported && song.previewFilePath != nil {
-            return audioPlaybackService.isPlaying && audioPlaybackService.currentlyPlayingSong == song.title
+            return audioPlaybackService.isPlaying
+                && audioPlaybackService.currentlyPlaying == song.id
         }
         // Check if playing via regular playback service
         return currentlyPlaying == song.id

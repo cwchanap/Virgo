@@ -8,11 +8,12 @@
 import Foundation
 import AVFoundation
 import SwiftUI
+import SwiftData
 
 @MainActor
 class AudioPlaybackService: NSObject, ObservableObject {
     @Published var isPlaying = false
-    @Published var currentlyPlayingSong: String?
+    @Published var currentlyPlaying: PersistentIdentifier?
     @Published var currentTime: TimeInterval = 0
     @Published var duration: TimeInterval = 0
 
@@ -23,9 +24,19 @@ class AudioPlaybackService: NSObject, ObservableObject {
     private var audioCache: [String: AVAudioPlayer] = [:]
     private var audioCacheOrder: [String] = []
     private let maxCacheSize = 10
+    private let loadPlayer: @MainActor (URL) async throws -> AVAudioPlayer
     private let startPlayback: (AVAudioPlayer) -> Bool
 
-    init(startPlayback: @escaping (AVAudioPlayer) -> Bool = { $0.play() }) {
+    init(
+        loadPlayer: @escaping @MainActor (URL) async throws -> AVAudioPlayer = { url in
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.volume = 1.0
+            _ = player.prepareToPlay()
+            return player
+        },
+        startPlayback: @escaping (AVAudioPlayer) -> Bool = { $0.play() }
+    ) {
+        self.loadPlayer = loadPlayer
         self.startPlayback = startPlayback
         super.init()
         if !TestEnvironment.isRunningTests {
@@ -59,13 +70,15 @@ class AudioPlaybackService: NSObject, ObservableObject {
     }
 
     func playPreview(for song: Song) {
+        stop()
+
         guard let previewPath = song.previewFilePath else {
             handleNoPreviewFile(for: song)
             return
         }
 
         // Try to play from cache first
-        if tryPlayCachedPreview(for: song) {
+        if tryPlayCachedPreview(for: song, previewPath: previewPath) {
             return
         }
 
@@ -77,7 +90,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
         audioPlayer?.stop()
         audioPlayer = nil
         isPlaying = false
-        currentlyPlayingSong = nil
+        currentlyPlaying = nil
         currentTime = 0
         duration = 0
         stopProgressTimer()
@@ -96,20 +109,11 @@ class AudioPlaybackService: NSObject, ObservableObject {
     }
 
     func togglePlayback(for song: Song) {
-        if currentlyPlayingSong == song.title && isPlaying {
+        if currentlyPlaying == song.id && isPlaying {
             pause()
-        } else if currentlyPlayingSong == song.title && !isPlaying {
+        } else if currentlyPlaying == song.id {
             resume()
         } else {
-            // Stop any currently playing audio immediately
-            audioPlayer?.stop()
-            stopProgressTimer()
-
-            // Set UI state IMMEDIATELY for responsive feedback (like download button pattern)
-            currentlyPlayingSong = song.title
-            isPlaying = true
-
-            // Then start audio playback in background
             playPreview(for: song)
         }
     }
@@ -137,39 +141,23 @@ class AudioPlaybackService: NSObject, ObservableObject {
     private func handleNoPreviewFile(for song: Song) {
         Logger.audioPlayback("No preview file available for song: \(song.title)")
         isPlaying = false
-        currentlyPlayingSong = nil
+        currentlyPlaying = nil
     }
 
-    private func tryPlayCachedPreview(for song: Song) -> Bool {
-        guard let cachedPlayer = audioCache[song.title] else { return false }
+    private func tryPlayCachedPreview(for song: Song, previewPath: String) -> Bool {
+        let cacheKey = previewCacheKey(for: previewPath)
+        guard let cachedPlayer = audioCache[cacheKey] else { return false }
 
-        audioPlayer = cachedPlayer
-        audioPlayer?.delegate = self
-        audioPlayer?.currentTime = 0
-        duration = cachedPlayer.duration
-        currentTime = 0
-        startProgressTimer()
-
-        let playResult = startPlayback(cachedPlayer)
-        if playResult {
-            isPlaying = true
-            currentlyPlayingSong = song.title
+        if startInstalledPlayer(cachedPlayer, songID: song.id) {
             Logger.audioPlayback("Started playing cached preview for: \(song.title)")
         } else {
-            isPlaying = false
-            currentlyPlayingSong = nil
-            stopProgressTimer()
             Logger.audioPlayback("Failed to start cached audio playback")
         }
 
-        return playResult
+        return true
     }
 
     private func loadAndPlayPreview(song: Song, previewPath: String) {
-        // Set loading state first
-        isPlaying = true
-        currentlyPlayingSong = song.title
-
         Task {
             do {
                 let url = URL(fileURLWithPath: previewPath)
@@ -178,35 +166,19 @@ class AudioPlaybackService: NSObject, ObservableObject {
                 try AVAudioSession.sharedInstance().setActive(true)
                 #endif
 
-                let player = try AVAudioPlayer(contentsOf: url)
-                player.volume = 1.0
-                _ = player.prepareToPlay()
+                let player = try await loadPlayer(url)
 
-                await setupAndPlayNewPlayer(player: player, song: song)
+                setupAndPlayNewPlayer(player: player, song: song, previewPath: previewPath)
             } catch {
-                await handlePlaybackError(error, song: song)
+                handlePlaybackError(error, song: song)
             }
         }
     }
 
-    @MainActor
-    private func setupAndPlayNewPlayer(player: AVAudioPlayer, song: Song) {
-        cacheAudioPlayer(player, for: song.title)
+    private func setupAndPlayNewPlayer(player: AVAudioPlayer, song: Song, previewPath: String) {
+        cacheAudioPlayer(player, for: previewPath)
 
-        // Only set as current player if user hasn't switched songs
-        guard currentlyPlayingSong == song.title else { return }
-
-        audioPlayer = player
-        audioPlayer?.delegate = self
-        duration = player.duration
-        currentTime = 0
-        startProgressTimer()
-
-        let playResult = startPlayback(player)
-        if !playResult {
-            isPlaying = false
-            currentlyPlayingSong = nil
-            stopProgressTimer()
+        guard startInstalledPlayer(player, songID: song.id) else {
             Logger.audioPlayback("Failed to start audio playback")
             return
         }
@@ -214,15 +186,14 @@ class AudioPlaybackService: NSObject, ObservableObject {
         Logger.audioPlayback("Started playing preview for: \(song.title)")
     }
 
-    @MainActor
     private func handlePlaybackError(_ error: Error, song: Song) {
         Logger.audioPlayback("Failed to play preview audio: \(error)")
         Logger.audioPlayback("Failed to play preview for \(song.title): \(error.localizedDescription)")
 
         // Only reset state if user hasn't switched songs
-        if currentlyPlayingSong == song.title {
+        if currentlyPlaying == song.id {
             isPlaying = false
-            currentlyPlayingSong = nil
+            currentlyPlaying = nil
         }
 
         #if os(iOS)
@@ -236,13 +207,45 @@ class AudioPlaybackService: NSObject, ObservableObject {
 
     // MARK: - Audio Caching
 
-    private func cacheAudioPlayer(_ player: AVAudioPlayer, for songTitle: String) {
-        let isReplacingExistingEntry = audioCache[songTitle] != nil
+    private func previewCacheKey(for path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.path
+    }
 
-        if let existingPlayer = audioCache[songTitle], existingPlayer !== player {
+    @discardableResult
+    private func startInstalledPlayer(
+        _ player: AVAudioPlayer,
+        songID: PersistentIdentifier
+    ) -> Bool {
+        audioPlayer = player
+        player.delegate = self
+        player.currentTime = 0
+        duration = player.duration
+        currentTime = 0
+
+        guard startPlayback(player) else {
+            audioPlayer = nil
+            currentlyPlaying = nil
+            isPlaying = false
+            duration = 0
+            currentTime = 0
+            stopProgressTimer()
+            return false
+        }
+
+        currentlyPlaying = songID
+        isPlaying = true
+        startProgressTimer()
+        return true
+    }
+
+    private func cacheAudioPlayer(_ player: AVAudioPlayer, for previewPath: String) {
+        let cacheKey = previewCacheKey(for: previewPath)
+        let isReplacingExistingEntry = audioCache[cacheKey] != nil
+
+        if let existingPlayer = audioCache[cacheKey], existingPlayer !== player {
             existingPlayer.stop()
         }
-        audioCacheOrder.removeAll { $0 == songTitle }
+        audioCacheOrder.removeAll { $0 == cacheKey }
 
         // Manage cache size
         if !isReplacingExistingEntry && audioCache.count >= maxCacheSize {
@@ -254,8 +257,8 @@ class AudioPlaybackService: NSObject, ObservableObject {
             }
         }
 
-        audioCache[songTitle] = player
-        audioCacheOrder.append(songTitle)
+        audioCache[cacheKey] = player
+        audioCacheOrder.append(cacheKey)
     }
 }
 
