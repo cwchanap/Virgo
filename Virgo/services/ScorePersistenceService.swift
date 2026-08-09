@@ -23,8 +23,6 @@ final class ScorePersistenceService {
     }
 
     nonisolated static let maxRecentAttempts = 10
-    private static let migrationFlagKey = "DidMigrateHighScoresToSwiftData"
-    private static let legacyHighScoreKey = "HighScorePerChart"
 
     private let modelContext: ModelContext
     private let saveContext: @Sendable (ModelContext) throws -> Void
@@ -133,46 +131,6 @@ final class ScorePersistenceService {
             }
     }
 
-    /// One-time migration of legacy UserDefaults high scores into Chart.bestScore.
-    /// Guarded by a flag so it runs at most once; idempotent and never lowers a best.
-    func migrateLegacyHighScores(charts: [Chart], from userDefaults: UserDefaults) {
-        guard !userDefaults.bool(forKey: Self.migrationFlagKey) else { return }
-
-        let legacy = readLegacyScores(from: userDefaults)
-        if !legacy.isEmpty {
-            var updated: [(chart: Chart, previousBest: Int)] = []
-            for chart in charts {
-                guard let resolution = PersistentIdentifierPersistenceKey.resolve(
-                    for: chart.persistentModelID,
-                    in: legacy,
-                    logPrefix: "ScorePersistenceService"
-                ), resolution.value > chart.bestScore else {
-                    continue
-                }
-                updated.append((chart, chart.bestScore))
-                chart.bestScore = resolution.value
-            }
-
-            if !updated.isEmpty {
-                do {
-                    try saveContext(modelContext)
-                } catch {
-                    Logger.error(
-                        "ScorePersistenceService: failed to save migrated high scores: \(error.localizedDescription)"
-                    )
-                    // Restore each chart's bestScore to its pre-migration value.
-                    for entry in updated {
-                        entry.chart.bestScore = entry.previousBest
-                    }
-                    return // leave the flag unset so migration retries next launch
-                }
-            }
-        }
-
-        userDefaults.removeObject(forKey: Self.legacyHighScoreKey)
-        userDefaults.set(true, forKey: Self.migrationFlagKey)
-    }
-
     // MARK: - Private
 
     private func pruneOldRecords(for chart: Chart) {
@@ -186,20 +144,6 @@ final class ScorePersistenceService {
         }
     }
 
-    private func readLegacyScores(from userDefaults: UserDefaults) -> [String: Int] {
-        guard let raw = userDefaults.dictionary(forKey: Self.legacyHighScoreKey) else { return [:] }
-        var scores: [String: Int] = [:]
-        for (key, value) in raw {
-            if let intValue = value as? Int {
-                scores[key] = intValue
-            } else if let numberValue = value as? NSNumber {
-                scores[key] = numberValue.intValue
-            } else {
-                Logger.warning("ScorePersistenceService: dropping non-numeric legacy value for key \(key)")
-            }
-        }
-        return scores
-    }
 }
 
 extension ScorePersistenceService {
