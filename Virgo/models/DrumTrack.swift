@@ -185,7 +185,7 @@ final class Chart {
 
     /// A cheap, relationship-free fingerprint of the timing-affecting state
     /// that ``ChartPracticeStateLoader`` and SwiftUI `.task` modifiers use to
-    /// detect in-place mutations (e.g. rhythm backfill) without traversing
+    /// detect in-place timing mutations without traversing
     /// SwiftData relationships. Reads only ``timingRevision`` — a chart-owned
     /// stored scalar — so this is safe to evaluate during view rendering.
     var timingFingerprint: ChartTimingFingerprint {
