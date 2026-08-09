@@ -24,6 +24,7 @@ class AudioPlaybackService: NSObject, ObservableObject {
     private var audioCache: [String: AVAudioPlayer] = [:]
     private var audioCacheOrder: [String] = []
     private let maxCacheSize = 10
+    private var requestGeneration: UInt64 = 0
     private let loadPlayer: @MainActor (URL) async throws -> AVAudioPlayer
     private let startPlayback: (AVAudioPlayer) -> Bool
 
@@ -70,7 +71,8 @@ class AudioPlaybackService: NSObject, ObservableObject {
     }
 
     func playPreview(for song: Song) {
-        stop()
+        let generation = nextRequestGeneration()
+        clearCurrentPlayback()
 
         guard let previewPath = song.previewFilePath else {
             handleNoPreviewFile(for: song)
@@ -83,10 +85,15 @@ class AudioPlaybackService: NSObject, ObservableObject {
         }
 
         // Load and play in background
-        loadAndPlayPreview(song: song, previewPath: previewPath)
+        loadAndPlayPreview(song: song, previewPath: previewPath, generation: generation)
     }
 
     func stop() {
+        invalidatePreviewRequests()
+        clearCurrentPlayback()
+    }
+
+    private func clearCurrentPlayback() {
         audioPlayer?.stop()
         audioPlayer = nil
         isPlaying = false
@@ -94,6 +101,15 @@ class AudioPlaybackService: NSObject, ObservableObject {
         currentTime = 0
         duration = 0
         stopProgressTimer()
+    }
+
+    private func nextRequestGeneration() -> UInt64 {
+        requestGeneration &+= 1
+        return requestGeneration
+    }
+
+    private func invalidatePreviewRequests() {
+        requestGeneration &+= 1
     }
 
     func pause() {
@@ -157,7 +173,11 @@ class AudioPlaybackService: NSObject, ObservableObject {
         return true
     }
 
-    private func loadAndPlayPreview(song: Song, previewPath: String) {
+    private func loadAndPlayPreview(
+        song: Song,
+        previewPath: String,
+        generation: UInt64
+    ) {
         Task {
             do {
                 let url = URL(fileURLWithPath: previewPath)
@@ -168,9 +188,14 @@ class AudioPlaybackService: NSObject, ObservableObject {
 
                 let player = try await loadPlayer(url)
 
+                guard generation == requestGeneration else {
+                    player.stop()
+                    return
+                }
+
                 setupAndPlayNewPlayer(player: player, song: song, previewPath: previewPath)
             } catch {
-                handlePlaybackError(error, song: song)
+                handlePlaybackError(error, song: song, generation: generation)
             }
         }
     }
@@ -186,9 +211,11 @@ class AudioPlaybackService: NSObject, ObservableObject {
         Logger.audioPlayback("Started playing preview for: \(song.title)")
     }
 
-    private func handlePlaybackError(_ error: Error, song: Song) {
+    private func handlePlaybackError(_ error: Error, song: Song, generation: UInt64) {
         Logger.audioPlayback("Failed to play preview audio: \(error)")
         Logger.audioPlayback("Failed to play preview for \(song.title): \(error.localizedDescription)")
+
+        guard generation == requestGeneration else { return }
 
         // Only reset state if user hasn't switched songs
         if currentlyPlaying == song.id {
