@@ -5,7 +5,6 @@
 //  Tests for:
 //  - Array.removingDuplicates() extension (order, deduplication, edge cases)
 //  - GameplayLayout.NotePosition gap positions (spaceBetween1And2, spaceBetweenLine1AndBelow)
-//  - PersistentIdentifierPersistenceKey.Resolution.needsMigration
 //
 
 import Testing
@@ -111,63 +110,5 @@ struct GameplayLayoutNotePositionGapTests {
     @Test("spaceBetweenLine1AndBelow yOffset is positive (below staff baseline)")
     func testSpaceBetweenLine1AndBelowIsPositive() {
         #expect(GameplayLayout.NotePosition.spaceBetweenLine1AndBelow.yOffset > 0)
-    }
-}
-
-// MARK: - PersistentIdentifierPersistenceKey.Resolution.needsMigration
-
-@Suite("PersistentIdentifierPersistenceKey Resolution Tests")
-struct PersistentIdentifierResolutionTests {
-
-    @Test("needsMigration is false when canonicalKey equals matchedKey")
-    func testNeedsMigrationFalseWhenKeysEqual() {
-        let resolution = PersistentIdentifierPersistenceKey.Resolution(
-            canonicalKey: "key-abc",
-            matchedKey: "key-abc",
-            value: 42
-        )
-        #expect(resolution.needsMigration == false)
-    }
-
-    @Test("needsMigration is true when canonicalKey differs from matchedKey")
-    func testNeedsMigrationTrueWhenKeysDiffer() {
-        let resolution = PersistentIdentifierPersistenceKey.Resolution(
-            canonicalKey: "canonical-key",
-            matchedKey: "legacy-key",
-            value: "some-value"
-        )
-        #expect(resolution.needsMigration == true)
-    }
-
-    @Test("needsMigration is false for empty string keys that match")
-    func testNeedsMigrationFalseForEmptyMatchingKeys() {
-        let resolution = PersistentIdentifierPersistenceKey.Resolution(
-            canonicalKey: "",
-            matchedKey: "",
-            value: 0
-        )
-        #expect(resolution.needsMigration == false)
-    }
-
-    @Test("needsMigration is true even for single character difference")
-    func testNeedsMigrationTrueForMinorKeyDifference() {
-        let resolution = PersistentIdentifierPersistenceKey.Resolution(
-            canonicalKey: "key-v2",
-            matchedKey: "key-v1",
-            value: true
-        )
-        #expect(resolution.needsMigration == true)
-    }
-
-    @Test("Resolution stores the value regardless of migration state")
-    func testResolutionStoresValue() {
-        let resolution = PersistentIdentifierPersistenceKey.Resolution(
-            canonicalKey: "new-key",
-            matchedKey: "old-key",
-            value: 999
-        )
-        #expect(resolution.value == 999)
-        #expect(resolution.canonicalKey == "new-key")
-        #expect(resolution.matchedKey == "old-key")
     }
 }

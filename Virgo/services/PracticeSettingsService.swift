@@ -57,9 +57,6 @@ final class PracticeSettingsService: ObservableObject {
                 speeds[key] = doubleValue
             } else if let numberValue = value as? NSNumber {
                 speeds[key] = numberValue.doubleValue
-            } else if let stringValue = value as? String,
-                      let parsedValue = Double(stringValue) {
-                speeds[key] = parsedValue
             }
         }
 
@@ -139,20 +136,8 @@ final class PracticeSettingsService: ObservableObject {
         }
 
         let key = persistenceKey(for: chartID)
-        var speeds = readPersistedSpeeds()
-        guard let resolved = PersistentIdentifierPersistenceKey.resolve(
-            for: chartID,
-            in: speeds,
-            logPrefix: "PracticeSettingsService"
-        ) else {
+        guard let savedSpeed = readPersistedSpeeds()[key] else {
             return 1.0
-        }
-        let savedSpeed = resolved.value
-
-        if resolved.needsMigration {
-            speeds.removeValue(forKey: resolved.matchedKey)
-            speeds[resolved.canonicalKey] = savedSpeed
-            userDefaults.set(speeds, forKey: settingsKey)
         }
 
         // Validate loaded value is within bounds and finite
