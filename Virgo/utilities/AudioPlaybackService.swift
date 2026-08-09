@@ -28,14 +28,11 @@ class AudioPlaybackService: NSObject, ObservableObject {
     // Test-only: continuations resumed when a delegate callback's Task completes,
     // replacing nondeterministic Task.yield() in tests. Always empty in production.
     private var delegateCallbackWaiters: [CheckedContinuation<Void, Never>] = []
-    // Non-isolated: AVAudioPlayer file loading and prepareToPlay run off the
-    // main actor so compressed-preview decoding does not block the UI thread.
-    // Player installation and playback remain on MainActor via startInstalledPlayer.
-    private let loadPlayer: (URL) async throws -> AVAudioPlayer
+    private let loadPlayer: @MainActor (URL) async throws -> AVAudioPlayer
     private let startPlayback: (AVAudioPlayer) -> Bool
 
     init(
-        loadPlayer: @escaping (URL) async throws -> AVAudioPlayer = { url in
+        loadPlayer: @escaping @MainActor (URL) async throws -> AVAudioPlayer = { url in
             let player = try AVAudioPlayer(contentsOf: url)
             player.volume = 1.0
             _ = player.prepareToPlay()
