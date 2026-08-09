@@ -157,6 +157,10 @@ class AudioPlaybackService: NSObject, ObservableObject {
         progressTimer = nil
     }
 
+    /// Test-only accessor for verifying timer state. In production this state is
+    /// only reached via the progress timer lifecycle (start/stop/pause/resume).
+    var progressTimerForTesting: Timer? { progressTimer }
+
     private func updateProgress() {
         guard let player = audioPlayer else { return }
         currentTime = player.currentTime
@@ -176,11 +180,12 @@ class AudioPlaybackService: NSObject, ObservableObject {
 
         if startInstalledPlayer(cachedPlayer, songID: song.id) {
             Logger.audioPlayback("Started playing cached preview for: \(song.title)")
-        } else {
-            Logger.audioPlayback("Failed to start cached audio playback")
+            return true
         }
 
-        return true
+        Logger.audioPlayback("Failed to start cached audio playback")
+        evictCachedPlayer(for: cacheKey)
+        return false
     }
 
     private func loadAndPlayPreview(
@@ -211,13 +216,12 @@ class AudioPlaybackService: NSObject, ObservableObject {
     }
 
     private func setupAndPlayNewPlayer(player: AVAudioPlayer, song: Song, previewPath: String) {
-        cacheAudioPlayer(player, for: previewPath)
-
         guard startInstalledPlayer(player, songID: song.id) else {
             Logger.audioPlayback("Failed to start audio playback")
             return
         }
 
+        cacheAudioPlayer(player, for: previewPath)
         Logger.audioPlayback("Started playing preview for: \(song.title)")
     }
 
@@ -227,11 +231,8 @@ class AudioPlaybackService: NSObject, ObservableObject {
 
         guard generation == requestGeneration else { return }
 
-        // Only reset state if user hasn't switched songs
-        if currentlyPlaying == song.id {
-            isPlaying = false
-            currentlyPlaying = nil
-        }
+        isPlaying = false
+        currentlyPlaying = nil
 
         #if os(iOS)
         do {
@@ -296,6 +297,12 @@ class AudioPlaybackService: NSObject, ObservableObject {
 
         audioCache[cacheKey] = player
         audioCacheOrder.append(cacheKey)
+    }
+
+    private func evictCachedPlayer(for cacheKey: String) {
+        audioCache[cacheKey]?.stop()
+        audioCache.removeValue(forKey: cacheKey)
+        audioCacheOrder.removeAll { $0 == cacheKey }
     }
 }
 
