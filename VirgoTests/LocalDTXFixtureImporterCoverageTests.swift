@@ -218,34 +218,6 @@ struct LocalDTXFixtureImporterCoverageTests {
         #expect(song.title == "NoColon")
     }
 
-    // MARK: - Refresh path edge
-
-    @Test("re-import leaves BGM offset nil when SET.def is unreadable")
-    func reImportLeavesBGMOffsetNilWhenSETDefUnreadable() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        let songId = tempDir.lastPathComponent
-        let legacy = Song(
-            title: "Legacy", artist: "x", bpm: 120.0, duration: "1:00", genre: "DTX Import",
-            timeSignature: .fourFour, isServerImported: true, serverSongId: songId,
-            bgmFilePath: nil, previewFilePath: nil, bgmStartOffsetSeconds: nil
-        )
-        context.insert(legacy)
-        try context.save()
-        // SET.def as a directory → decodeSETFile returns nil on the refresh path →
-        // refreshBGMStartOffsetIfMissing returns early without backfilling.
-        try FileManager.default.createDirectory(
-            at: tempDir.appendingPathComponent("SET.def", isDirectory: true),
-            withIntermediateDirectories: true
-        )
-
-        let refreshed = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-
-        #expect(refreshed === legacy)
-        #expect(refreshed.bgmStartOffsetSeconds == nil, "Unreadable SET.def must not backfill")
-    }
-
     // MARK: - Bundled import entry point
 
     @Test("importBundledSoukyuuIfAvailable returns nil when the bundle has no SET.def")
@@ -317,15 +289,14 @@ struct LocalDTXFixtureImporterCoverageTests {
         #expect(try context.fetch(FetchDescriptor<Song>()).isEmpty, "The delete must be durable")
     }
 
-    @Test("importBundledSoukyuuIfAvailable still refreshes an existing record marked deleted")
-    func importBundledSoukyuuRefreshesExistingEvenIfMarkedDeleted() throws {
+    @Test("importBundledSoukyuuIfAvailable returns an existing stable-ID record marked deleted")
+    func importBundledSoukyuuReturnsExistingStableIDRecordEvenIfMarkedDeleted() throws {
         // If the song still exists (e.g. a delete that did not persist) but the
-        // tombstone was recorded, the importer must fall through to the normal
-        // path and refresh/return the existing record rather than skip. Otherwise
-        // the self-healing refresh logic (audio paths, BGM offset, duration) would
-        // be bypassed whenever the tombstone and a live record briefly coexist.
+        // tombstone was recorded, the importer returns the existing stable-ID
+        // record. The tombstone remains in force while the live record remains
+        // available to the user.
         let context = TestContainer.isolatedContainer().context
-        let bundle = try makeBundle(named: "RefreshExistingBundle", withFixture: true)
+        let bundle = try makeBundle(named: "ExistingDeletedBundle", withFixture: true)
         defer { cleanupBundle(bundle) }
         let store = makeIsolatedDeletionStore()
 
@@ -341,7 +312,9 @@ struct LocalDTXFixtureImporterCoverageTests {
             into: context, bundle: bundle, deletionStore: store
         )
 
-        #expect(second === first, "An existing record must be refreshed, not skipped")
+        #expect(second === first, "An existing stable-ID record must be returned, not duplicated")
+        #expect(store.isDeleted(songId: LocalDTXFixtureImporter.soukyuuSongId))
+        #expect(try context.fetch(FetchDescriptor<Song>()).count == 1)
     }
 
     @Test("importBundledSoukyuuIfAvailable re-seeds after the deletion tombstone is cleared")

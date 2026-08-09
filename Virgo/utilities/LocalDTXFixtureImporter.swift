@@ -57,7 +57,6 @@ enum LocalDTXFixtureImporter {
             from: folderURL,
             songId: songId,
             into: context,
-            performLegacySourceRefreshes: true,
             save: { try $0.save() }
         ).song
     }
@@ -72,7 +71,6 @@ enum LocalDTXFixtureImporter {
             from: folderURL,
             songId: folderURL.lastPathComponent,
             into: context,
-            performLegacySourceRefreshes: true,
             save: save
         )
     }
@@ -83,15 +81,9 @@ enum LocalDTXFixtureImporter {
         from folderURL: URL,
         songId: String,
         into context: ModelContext,
-        performLegacySourceRefreshes: Bool,
         save: (ModelContext) throws -> Void
     ) throws -> LocalDTXFixtureImportResult {
         if let existingSong = try existingSong(with: songId, in: context) {
-            try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
-            if performLegacySourceRefreshes {
-                try refreshDurationIfStale(for: existingSong, from: folderURL, in: context)
-                try refreshControlEventsIfMissing(for: existingSong, from: folderURL, in: context)
-            }
             return LocalDTXFixtureImportResult(song: existingSong, warnings: [])
         }
 
@@ -186,8 +178,8 @@ enum LocalDTXFixtureImporter {
         // because the only dedupe key is `serverSongId`. If the user removed the
         // bundled Soukyuu song AND it is no longer present, skip re-seeding so the
         // Delete action is durable. If the record still exists (e.g. a delete that
-        // did not persist), fall through to the normal path so the self-healing
-        // refresh logic (audio paths, BGM offset, duration) still repairs it.
+        // did not persist), fall through to the normal path so the existing
+        // stable-ID record is returned unchanged.
         if deletionStore.isDeleted(songId: soukyuuSongId),
            try existingSong(with: soukyuuSongId, in: context) == nil {
             Logger.info(
@@ -221,7 +213,6 @@ enum LocalDTXFixtureImporter {
             from: setURL.deletingLastPathComponent(),
             songId: soukyuuSongId,
             into: context,
-            performLegacySourceRefreshes: false,
             save: { try $0.save() }
         ).song
     }
@@ -301,66 +292,6 @@ enum LocalDTXFixtureImporter {
     private static func existingSong(with songId: String, in context: ModelContext) throws -> Song? {
         try context.fetch(FetchDescriptor<Song>())
             .first { $0.serverSongId == songId }
-    }
-
-    @MainActor
-    private static func refreshAudioPaths(for song: Song, from folderURL: URL, in context: ModelContext) throws {
-        var didChange = false
-
-        // Re-resolve both audio paths from disk. If a previously-recorded asset is no
-        // longer present in the bundle, clear it to nil rather than leaving a dangling
-        // reference that would silently disable BGM/preview at playback time. This is
-        // the symmetric case to the "refresh stale bgm.ogg -> bgm.m4a" fix in
-        // CLAUDE.md's gameplay regression notes.
-        let bgmPath = existingAudioPath(named: "bgm.m4a", in: folderURL)
-        if song.bgmFilePath != bgmPath {
-            if bgmPath == nil, let stalePath = song.bgmFilePath {
-                Logger.warning("DTX fixture: bgm.m4a no longer bundled — clearing stale path \(stalePath)")
-            }
-            song.bgmFilePath = bgmPath
-            didChange = true
-        }
-        let previewPath = existingAudioPath(named: "preview.mp3", in: folderURL)
-        if song.previewFilePath != previewPath {
-            if previewPath == nil, let stalePath = song.previewFilePath {
-                Logger.warning("DTX fixture: preview.mp3 no longer bundled — clearing stale path \(stalePath)")
-            }
-            song.previewFilePath = previewPath
-            didChange = true
-        }
-        if didChange {
-            try context.save()
-        }
-    }
-
-    /// Recomputes `Song.duration` from the fixture's charts and migrates any
-    /// stale value persisted by an older importer version.
-    ///
-    /// `GameplayViewModel.calculateTrackDurationInSeconds` trusts `Song.duration`
-    /// verbatim, so a record created before the BPM-derived duration fix (which
-    /// hard-coded 2 sec/measure and overstated tempo-divergent charts such as the
-    /// 165.55-BPM Soukyuu fixture as "5:14") keeps that wrong value across app
-    /// upgrades unless the refresh path recomputes it. Mirrors the fresh-import
-    /// derivation exactly and only writes (and saves) when the persisted value
-    /// actually differs, so a correct record is left untouched.
-    @MainActor
-    private static func refreshDurationIfStale(
-        for song: Song,
-        from folderURL: URL,
-        in context: ModelContext
-    ) throws {
-        guard let setContent = decodeSETFile(at: folderURL.appendingPathComponent(setFilename)) else { return }
-        let setList = SETList(content: setContent)
-
-        let importedCharts = try loadImportedCharts(from: folderURL, setList: setList)
-        guard !importedCharts.isEmpty else { return }
-
-        let recomputed = formatDuration(
-            Int(calculateDuration(from: importedCharts))
-        )
-        guard song.duration != recomputed else { return }
-        song.duration = recomputed
-        try context.save()
     }
 
     /// Backfills control events on existing charts that were imported before

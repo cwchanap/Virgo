@@ -56,29 +56,81 @@ struct LocalDTXFixtureImporterTests {
         #expect(songs.count == 1)
     }
 
-    @Test("refreshes stale Soukyuu audio paths when already imported")
-    func refreshesStaleSoukyuuAudioPathsWhenAlreadyImported() throws {
+    @Test("re-import by stable ID returns the existing graph without repair")
+    func reImportByStableIDDoesNotRepairExistingGraph() throws {
         let context = TestContainer.isolatedContainer().context
-        let fixtureURL = try soukyuuFixtureURL()
-        let staleSong = Song(
-            title: "蒼穹への翔歌",
-            artist: "hapadona feat. Suno AI",
-            bpm: 165.55,
-            duration: "3:50",
+        let tempDir = try makeTempDirectory()
+
+        try """
+        #TITLE: Current Source
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """.write(
+            to: tempDir.appendingPathComponent("SET.def"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        try """
+        #TITLE: Current Source
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00012: 01000000
+        #00022: 16000000
+        """.write(
+            to: tempDir.appendingPathComponent("chart.dtx"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let staleBGM = "/legacy/bgm.ogg"
+        let existing = Song(
+            title: "Legacy Local State",
+            artist: "Legacy Artist",
+            bpm: 90,
+            duration: "9:59",
             genre: "DTX Import",
             timeSignature: .fourFour,
-            isServerImported: true,
-            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
-            bgmFilePath: fixtureURL.appendingPathComponent("bgm.ogg").path,
-            previewFilePath: nil
+            isServerImported: false,
+            serverSongId: tempDir.lastPathComponent,
+            bgmFilePath: staleBGM,
+            previewFilePath: "/legacy/preview.mp3"
         )
-        context.insert(staleSong)
+        let chart = Chart(difficulty: .easy, level: 50, song: existing)
+        let note = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0,
+            chart: chart
+        )
+        chart.notes = [note]
+        existing.charts = [chart]
+        context.insert(existing)
+        context.insert(chart)
+        context.insert(note)
         try context.save()
 
-        let song = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
+        #expect(chart.rhythmMetadataData == nil)
+        #expect(chart.safeControlEvents.isEmpty)
 
-        #expect(song.bgmFilePath?.hasSuffix("bgm.m4a") == true)
-        #expect(song.previewFilePath?.hasSuffix("preview.mp3") == true)
+        let returned = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+
+        #expect(returned === existing)
+        #expect(returned.duration == "9:59")
+        #expect(returned.bgmFilePath == staleBGM)
+        #expect(returned.previewFilePath == "/legacy/preview.mp3")
+        #expect(returned.isServerImported == false)
+        #expect(returned.charts.count == 1)
+        #expect(returned.charts.first === chart)
+        #expect(chart.safeNotes.count == 1)
+        #expect(chart.safeNotes.first === note)
+        #expect(chart.safeControlEvents.isEmpty)
+        #expect(chart.rhythmMetadataData == nil)
+        #expect(try context.fetch(FetchDescriptor<Song>()).count == 1)
+        #expect(try context.fetch(FetchDescriptor<Chart>()).count == 1)
     }
 
     @Test("importSong drops charts whose difficulty label is not recognized")
@@ -108,139 +160,6 @@ struct LocalDTXFixtureImporterTests {
 
         #expect(song.charts.count == 1, "Only the BASIC chart should import; CHALLENGE must be dropped")
         #expect(song.charts.first?.difficulty == .easy)
-    }
-
-    @Test("re-import clears stale audio paths when the bundled audio is removed")
-    func refreshClearsStaleAudioPathsWhenAssetsRemoved() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-
-        let setDef = """
-        #TITLE: Stale Fixture
-        #L1LABEL: BASIC
-        #L1FILE: chart.dtx
-        """
-        // UTF-16 to match the bundled fixture format (see comment above).
-        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
-        let chartContent = "#TITLE: Stale Fixture\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
-        try chartContent.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
-        // Simulate a bundle that ships with audio assets.
-        try Data().write(to: tempDir.appendingPathComponent("bgm.m4a"))
-        try Data().write(to: tempDir.appendingPathComponent("preview.mp3"))
-
-        let first = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-        #expect(first.bgmFilePath?.hasSuffix("bgm.m4a") == true, "Initial import should record bgm.m4a")
-        #expect(first.previewFilePath?.hasSuffix("preview.mp3") == true, "Initial import should record preview.mp3")
-
-        // Remove the assets to simulate a stale-bundle / missing-asset regression.
-        // Re-import must not leave a dangling path that would silently disable BGM.
-        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("bgm.m4a"))
-        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("preview.mp3"))
-
-        let refreshed = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-
-        #expect(refreshed === first, "Re-import should return the existing song")
-        #expect(refreshed.bgmFilePath == nil, "Stale bgm path must be cleared when bgm.m4a is absent")
-        #expect(refreshed.previewFilePath == nil, "Stale preview path must be cleared when preview.mp3 is absent")
-    }
-
-    @Test("re-import leaves missing legacy song BGM offset untouched")
-    func reImportLeavesMissingLegacyBGMStartOffsetUntouched() throws {
-        let context = TestContainer.isolatedContainer().context
-        let fixtureURL = try soukyuuFixtureURL()
-
-        // New timing stores a raw anchor on Chart metadata. The song-wide seconds
-        // offset remains legacy-only and must not be created by a source refresh.
-        let legacy = Song(
-            title: "蒼穹への翔歌",
-            artist: "legacy",
-            bpm: 165.55,
-            duration: "3:50",
-            genre: "DTX Import",
-            timeSignature: .fourFour,
-            isServerImported: true,
-            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
-            bgmFilePath: fixtureURL.appendingPathComponent("bgm.m4a").path,
-            previewFilePath: fixtureURL.appendingPathComponent("preview.mp3").path,
-            bgmStartOffsetSeconds: nil
-        )
-        context.insert(legacy)
-        try context.save()
-
-        let refreshed = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
-
-        #expect(refreshed === legacy, "Re-import should return the existing song, not a duplicate")
-        #expect(refreshed.bgmStartOffsetSeconds == nil)
-    }
-
-    @Test("re-import refreshes stale duration on an existing legacy record")
-    func reImportRefreshesStaleDuration() throws {
-        let context = TestContainer.isolatedContainer().context
-        let fixtureURL = try soukyuuFixtureURL()
-
-        // Simulate a legacy record created by the old importer, which hard-coded
-        // 2 sec/measure (only correct at 120 BPM) and overstated the 165.55-BPM
-        // Soukyuu fixture as "5:14". calculateTrackDurationInSeconds trusts
-        // Song.duration verbatim, so without a refresh-path recomputation this
-        // stale value would persist across upgrades and gameplay progress would
-        // keep running past the audio end.
-        let legacy = Song(
-            title: "蒼穹への翔歌",
-            artist: "legacy",
-            bpm: 165.55,
-            duration: "5:14",
-            genre: "DTX Import",
-            timeSignature: .fourFour,
-            isServerImported: true,
-            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
-            bgmFilePath: fixtureURL.appendingPathComponent("bgm.m4a").path,
-            previewFilePath: fixtureURL.appendingPathComponent("preview.mp3").path
-        )
-        context.insert(legacy)
-        try context.save()
-
-        let refreshed = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
-
-        #expect(refreshed === legacy, "Re-import should return the existing song, not a duplicate")
-        #expect(
-            refreshed.duration == "3:46",
-            "Stale '5:14' duration must be recomputed from the canonical timeline on re-import"
-        )
-    }
-
-    @Test("re-import does not clobber an already-set BGM start offset")
-    func reImportDoesNotClobberExistingBGMStartOffset() throws {
-        let context = TestContainer.isolatedContainer().context
-        let fixtureURL = try soukyuuFixtureURL()
-
-        // An existing record that already has a positive offset must be left
-        // alone — the re-import path no longer backfills `bgmStartOffsetSeconds`
-        // (the legacy `refreshBGMStartOffsetIfMissing` / `setBGMStartOffsetIfUnset`
-        // helpers were removed when the rhythm timeline became the authoritative
-        // BGM anchor). The offset set at construction is preserved verbatim.
-        let existing = Song(
-            title: "蒼穹への翔歌",
-            artist: "existing",
-            bpm: 165.55,
-            duration: "3:50",
-            genre: "DTX Import",
-            timeSignature: .fourFour,
-            isServerImported: true,
-            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
-            bgmFilePath: fixtureURL.appendingPathComponent("bgm.m4a").path,
-            previewFilePath: fixtureURL.appendingPathComponent("preview.mp3").path,
-            bgmStartOffsetSeconds: 0.42
-        )
-        context.insert(existing)
-        try context.save()
-
-        let refreshed = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
-
-        #expect(refreshed === existing)
-        #expect(
-            refreshed.bgmStartOffsetSeconds == 0.42,
-            "An already-set offset must not be overwritten by re-import"
-        )
     }
 
     @Test("importSong decodes a BOM-less UTF-8 SET.def without lossy UTF-16 garbage")
