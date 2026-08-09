@@ -19,7 +19,7 @@
 - Keep `refreshAudioPaths`; it is current filesystem-path resolution, not migration. Do not replace it with a bundle-relative path redesign in this ticket.
 - Keep current save-failure handling for fresh imports and current scores. Failure recovery for current writes is not backward compatibility.
 - Keep `BundledFixtureDeletionStore`; durable user deletion of the bundled demo is current product behavior.
-- Keep `RhythmTimelineResolver.resolveMissing` and `.legacy` runtime fallback behavior; HPA-577 deletes import/startup backfill, not runtime fallback.
+- Keep `RhythmTimelineResolver.resolveMissing` and `.legacy` runtime fallback behavior; HPA-577 deletes import/startup backfill, not runtime fallback. Do not claim `.legacy` is automatically blocked by `ChartPracticeState`; current code treats it as non-fatal.
 - `ServerSongDownloader.songAlreadyExists` title/artist fallbacks are **not HPA-577 work**. HPA-578 explicitly owns deleting them and making `serverSongId` the current server-import identity contract.
 - Do not change server catalog refresh behavior (HPA-578), performance/actor placement (HPA-579/HPA-580), server BGM format work (HPA-85), or broad historical documentation/test consolidation (HPA-583).
 - Update only live `CLAUDE.md` guidance that becomes false because this ticket deletes production APIs. `AGENTS.md` is a symlink to `CLAUDE.md`; do not edit both.
@@ -410,6 +410,8 @@ rg -n 'func resolveMissing|availability: \.legacy' Virgo/utilities/RhythmTimelin
 ```
 
 Expected: the current runtime fallback still exists. Do not remove it in HPA-577.
+
+Do not add an assertion that `.legacy` is unavailable in `ChartPracticeState`; current code treats `.legacy` as non-fatal.
 
 - [ ] **Step 8: Run retained fixture/rhythm suites.**
 
