@@ -1,6 +1,6 @@
 # HPA-576: Preview Playback Identity and Request Safety
 
-**Date:** 2026-08-08  
+**Date:** 2026-08-08<br>
 **Status:** Approved design — implementation not started
 
 ## Context
