@@ -210,29 +210,6 @@ extension AudioPlaybackServiceTests {
     }
 
     private func makeSettlementPlayer() throws -> AVAudioPlayer {
-        let sampleRate: UInt32 = 8_000
-        let sampleCount: UInt32 = 800
-        let dataSize = sampleCount * 2
-        var data = Data()
-
-        func append<T: FixedWidthInteger>(_ value: T) {
-            var littleEndian = value.littleEndian
-            withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
-        }
-
-        data.append("RIFF".data(using: .ascii)!)
-        append(UInt32(36) + dataSize)
-        data.append("WAVEfmt ".data(using: .ascii)!)
-        append(UInt32(16))
-        append(UInt16(1))
-        append(UInt16(1))
-        append(sampleRate)
-        append(sampleRate * 2)
-        append(UInt16(2))
-        append(UInt16(16))
-        data.append("data".data(using: .ascii)!)
-        append(dataSize)
-        data.append(Data(repeating: 0, count: Int(dataSize)))
-        return try AVAudioPlayer(data: data)
+        try makeSilentAudioPlayer()
     }
 }
