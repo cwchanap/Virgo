@@ -283,89 +283,6 @@ struct ScorePersistenceServiceTests {
         }
     }
 
-    @Test("migrateLegacyHighScores copies legacy bests into Chart.bestScore once")
-    func testMigrateLegacyHighScores() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = try makeTestChart()
-            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
-            let (userDefaults, _) = TestUserDefaults.makeIsolated()
-
-            let key = PersistentIdentifierPersistenceKey.canonicalKey(
-                for: chart.persistentModelID, logPrefix: "Test"
-            )
-            userDefaults.set([key: 3300], forKey: "HighScorePerChart")
-
-            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
-
-            #expect(chart.bestScore == 3300)
-            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
-            #expect(userDefaults.dictionary(forKey: "HighScorePerChart") == nil)
-        }
-    }
-
-    @Test("migrateLegacyHighScores is idempotent and never lowers an existing best")
-    func testMigrateLegacyHighScoresIdempotent() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = try makeTestChart()
-            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
-            let (userDefaults, _) = TestUserDefaults.makeIsolated()
-
-            let key = PersistentIdentifierPersistenceKey.canonicalKey(
-                for: chart.persistentModelID, logPrefix: "Test"
-            )
-            userDefaults.set([key: 1000], forKey: "HighScorePerChart")
-            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
-            #expect(chart.bestScore == 1000)
-
-            // A second run with a different dict must be ignored (flag already set).
-            userDefaults.set([key: 9999], forKey: "HighScorePerChart")
-            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
-            #expect(chart.bestScore == 1000)
-        }
-    }
-
-    @Test("migrateLegacyHighScores with no legacy data still sets the flag")
-    func testMigrateLegacyHighScoresNoLegacyData() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = try makeTestChart()
-            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
-            let (userDefaults, _) = TestUserDefaults.makeIsolated()
-
-            // No "HighScorePerChart" key set at all.
-            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
-
-            #expect(chart.bestScore == 0)
-            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
-        }
-    }
-
-    @Test("migrateLegacyHighScores accepts NSNumber values and ignores non-numeric entries")
-    func testMigrateLegacyHighScoresReadsNSNumberValues() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = try makeTestChart()
-            let otherChart = try makeTestChart(difficulty: .hard)
-            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
-            let (userDefaults, _) = TestUserDefaults.makeIsolated()
-
-            let key = PersistentIdentifierPersistenceKey.canonicalKey(
-                for: chart.persistentModelID, logPrefix: "Test"
-            )
-            let ignoredKey = PersistentIdentifierPersistenceKey.canonicalKey(
-                for: otherChart.persistentModelID, logPrefix: "Test"
-            )
-            userDefaults.set(
-                [key: NSDecimalNumber(value: 4400), ignoredKey: "not numeric"],
-                forKey: "HighScorePerChart"
-            )
-
-            service.migrateLegacyHighScores(charts: [chart, otherChart], from: userDefaults)
-
-            #expect(chart.bestScore == 4400)
-            #expect(otherChart.bestScore == 0)
-            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
-        }
-    }
-
     @Test("makeInMemory adopts detached charts before recording attempts")
     func testMakeInMemoryRecordsDetachedChart() async throws {
         try await TestSetup.withTestSetup {
@@ -412,48 +329,6 @@ struct ScorePersistenceServiceTests {
         }
     }
 
-    @Test("migrateLegacyHighScores skips legacy scores lower than current best")
-    func testMigrateLegacyHighScoresIgnoresLowerScores() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = try makeTestChart()
-            chart.bestScore = 5000
-            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
-            let (userDefaults, _) = TestUserDefaults.makeIsolated()
-
-            let key = PersistentIdentifierPersistenceKey.canonicalKey(
-                for: chart.persistentModelID, logPrefix: "Test"
-            )
-            userDefaults.set([key: 3000], forKey: "HighScorePerChart")
-
-            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
-
-            #expect(chart.bestScore == 5000)
-            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
-        }
-    }
-
-    @Test("migrateLegacyHighScores clears stale legacy data when nothing is updated")
-    func testMigrateLegacyHighScoresClearsLegacyDataWithoutUpdates() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = try makeTestChart()
-            chart.bestScore = 5000
-            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
-            let (userDefaults, _) = TestUserDefaults.makeIsolated()
-
-            let key = PersistentIdentifierPersistenceKey.canonicalKey(
-                for: chart.persistentModelID,
-                logPrefix: "Test"
-            )
-            userDefaults.set([key: 100], forKey: "HighScorePerChart")
-
-            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
-
-            #expect(chart.bestScore == 5000)
-            #expect(userDefaults.dictionary(forKey: "HighScorePerChart") == nil)
-            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == true)
-        }
-    }
-
     @Test("RecordResult cases compare by value")
     func testRecordResultEquatableCases() {
         #expect(ScorePersistenceService.RecordResult.newBest == .newBest)
@@ -461,26 +336,6 @@ struct ScorePersistenceServiceTests {
         #expect(ScorePersistenceService.RecordResult.saveFailed == .saveFailed)
         #expect(ScorePersistenceService.RecordResult.newBest != .recorded)
         #expect(ScorePersistenceService.RecordResult.recorded != .saveFailed)
-    }
-
-    @Test("migrateLegacyHighScores returns early when migration flag is already set")
-    func testMigrateLegacyHighScoresSkipsWhenFlagAlreadySet() async throws {
-        try await TestSetup.withTestSetup {
-            let chart = try makeTestChart()
-            chart.bestScore = 1000
-            let service = ScorePersistenceService(modelContext: TestContainer.shared.context)
-            let (userDefaults, _) = TestUserDefaults.makeIsolated()
-
-            let key = PersistentIdentifierPersistenceKey.canonicalKey(
-                for: chart.persistentModelID, logPrefix: "Test"
-            )
-            userDefaults.set([key: 9999], forKey: "HighScorePerChart")
-            userDefaults.set(true, forKey: "DidMigrateHighScoresToSwiftData")
-
-            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
-
-            #expect(chart.bestScore == 1000)
-        }
     }
 
     // MARK: - Save-failure rollback tests
@@ -634,33 +489,4 @@ struct ScorePersistenceServiceTests {
         }
     }
 
-    @Test("migrateLegacyHighScores rollback on save failure preserves original bests and leaves flag unset")
-    func testMigrateLegacyHighScoresRollbackOnSaveFailure() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let chart = try makeTestChart()
-            chart.bestScore = 200
-            try context.save()
-
-            let service = ScorePersistenceService(
-                modelContext: context,
-                saveContext: { _ in throw SaveHookError.forced }
-            )
-            let (userDefaults, _) = TestUserDefaults.makeIsolated()
-
-            let key = PersistentIdentifierPersistenceKey.canonicalKey(
-                for: chart.persistentModelID, logPrefix: "Test"
-            )
-            userDefaults.set([key: 5000], forKey: "HighScorePerChart")
-
-            service.migrateLegacyHighScores(charts: [chart], from: userDefaults)
-
-            // bestScore must be restored — save failed, property-level rollback kicks in.
-            #expect(chart.bestScore == 200)
-            // Flag must NOT be set — migration should retry on next launch.
-            #expect(userDefaults.bool(forKey: "DidMigrateHighScoresToSwiftData") == false)
-            // Legacy data must NOT be deleted — it's the only copy until migration succeeds.
-            #expect(userDefaults.dictionary(forKey: "HighScorePerChart") != nil)
-        }
-    }
 }

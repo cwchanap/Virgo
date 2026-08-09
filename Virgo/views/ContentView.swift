@@ -24,7 +24,6 @@ struct ContentView: View {
         ContentStartupPolicy.shouldPrepareBeforeFirstRender(arguments: ProcessInfo.processInfo.arguments)
     @State private var startupSongsOverride: [Song]?
 
-    @State private var databaseService: DatabaseMaintenanceService?
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -70,33 +69,8 @@ struct ContentView: View {
                     startupSongs = fetchLiveSongs()
                     startupSongsOverride = startupSongs
                 }
-                if databaseService == nil {
-                    databaseService = DatabaseMaintenanceService(modelContext: modelContext)
-                }
-                databaseService?.performInitialMaintenance(songs: startupSongs ?? displayedSongs)
-                // Re-fetch live charts after maintenance: performInitialMaintenance may delete
-                // duplicate songs, making the @Query snapshot stale. Using a fresh fetch avoids
-                // traversing charts on deleted Song objects that could fault or crash.
-                // Only migrate legacy scores when the fetch succeeds — an empty result from a
-                // failed fetch would cause migrateLegacyHighScores to delete the legacy
-                // UserDefaults data and set the migration flag without migrating anything.
-                do {
-                    let liveCharts = try modelContext.fetch(FetchDescriptor<Chart>())
-                    ScorePersistenceService(modelContext: modelContext)
-                        .migrateLegacyHighScores(
-                            charts: liveCharts,
-                            from: .standard
-                        )
-                } catch {
-                    Logger.error(
-                        "ContentView: failed to fetch charts for legacy migration: \(error.localizedDescription)"
-                    )
-                }
                 serverSongService.setModelContext(modelContext)
                 let serverSongService = serverSongService
-                if startupSongsOverride != nil {
-                    startupSongsOverride = fetchLiveSongs()
-                }
                 isPreparingStartupData = false
                 Task { @MainActor in
                     _ = await serverSongService.loadServerSongs()
