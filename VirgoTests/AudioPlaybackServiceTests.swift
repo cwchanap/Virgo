@@ -465,6 +465,40 @@ struct AudioPlaybackServiceTests {
         #expect(service.currentTime == 0)
     }
 
+    @Test("cached player survives a transient startPlayback failure without reload")
+    func cachedPlayerSurvivesTransientStartFailure() async throws {
+        try await TestSetup.withTestSetup {
+            let loader = ControlledPlayerLoader()
+            var startAttempts = 0
+            let service = AudioPlaybackService(
+                loadPlayer: { try await loader.load($0) },
+                startPlayback: { _ in
+                    startAttempts += 1
+                    return startAttempts == 2 // fail first, succeed second
+                }
+            )
+            let previewPath = try makeTemporaryWAVPath(durationSeconds: 1.0)
+            defer { try? FileManager.default.removeItem(atPath: previewPath) }
+
+            let song = insertSong(title: "Transient Start Failure", previewPath: previewPath)
+            let player = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: previewPath))
+
+            // First attempt: load succeeds but startPlayback fails.
+            service.playPreview(for: song)
+            await loader.waitForRequest(path: previewPath)
+            await loader.succeed(path: previewPath, player: player)
+
+            #expect(service.isPlaying == false)
+            #expect(service.currentlyPlaying == nil)
+
+            // Second attempt: cache hit, startPlayback succeeds — no reload.
+            service.playPreview(for: song)
+            #expect(service.isPlaying == true)
+            #expect(service.currentlyPlaying == song.id)
+            #expect(loader.requests.count == 1)
+        }
+    }
+
     @Test("playPreview evicts oldest cached player after exceeding cache limit")
     func testPlayPreviewEvictsOldestCachedPlayer() async throws {
         try await TestSetup.withTestSetup {
