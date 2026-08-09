@@ -2,7 +2,7 @@
 //  PersistentIdentifierPersistenceKey.swift
 //  Virgo
 //
-//  Backward-compatible persistence key resolution for SwiftData identifiers.
+//  Current-format persistence key generation for SwiftData identifiers.
 //
 
 import Foundation
@@ -10,16 +10,6 @@ import SwiftData
 import CryptoKit
 
 enum PersistentIdentifierPersistenceKey {
-    struct Resolution<Value> {
-        let canonicalKey: String
-        let matchedKey: String
-        let value: Value
-
-        var needsMigration: Bool {
-            canonicalKey != matchedKey
-        }
-    }
-
     static func canonicalKey(for identifier: PersistentIdentifier, logPrefix: String) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -40,49 +30,5 @@ enum PersistentIdentifierPersistenceKey {
         let hashString = digest.compactMap { String(format: "%02x", $0) }.joined()
         Logger.warning("\(logPrefix): Using SHA-256 fallback key for chart \(stableIdentifier.prefix(40))")
         return "chart_\(String(hashString.prefix(32)))"
-    }
-
-    static func resolve<Value>(
-        for identifier: PersistentIdentifier,
-        in persistedValues: [String: Value],
-        logPrefix: String
-    ) -> Resolution<Value>? {
-        let canonicalKey = canonicalKey(for: identifier, logPrefix: logPrefix)
-        if let value = persistedValues[canonicalKey] {
-            return Resolution(canonicalKey: canonicalKey, matchedKey: canonicalKey, value: value)
-        }
-
-        for (candidateKey, value) in persistedValues where candidateKey != canonicalKey {
-            if normalizeJSONKey(candidateKey) == canonicalKey {
-                Logger.debug("\(logPrefix): Migrating legacy persistence key to canonical format")
-                return Resolution(canonicalKey: canonicalKey, matchedKey: candidateKey, value: value)
-            }
-        }
-
-        let decoder = JSONDecoder()
-        for (candidateKey, value) in persistedValues where candidateKey != canonicalKey {
-            guard let candidateData = candidateKey.data(using: .utf8),
-                  let decodedIdentifier = try? decoder.decode(PersistentIdentifier.self, from: candidateData),
-                  decodedIdentifier == identifier else {
-                continue
-            }
-
-            Logger.debug("\(logPrefix): Migrating legacy persistence key to canonical format")
-            return Resolution(canonicalKey: canonicalKey, matchedKey: candidateKey, value: value)
-        }
-
-        return nil
-    }
-
-    private static func normalizeJSONKey(_ key: String) -> String? {
-        guard let data = key.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              JSONSerialization.isValidJSONObject(object),
-              let normalizedData = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
-              let normalizedKey = String(data: normalizedData, encoding: .utf8) else {
-            return nil
-        }
-
-        return normalizedKey
     }
 }
