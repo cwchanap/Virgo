@@ -2,31 +2,33 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Delete Virgo's pre-release startup/persistence compatibility paths so the app supports only data written by the current build while preserving fresh fixture import, current score/history persistence, current practice settings, bundled-fixture deletion, and UI-test reset/seeding.
+**Goal:** Delete Virgo's pre-release startup/persistence compatibility paths while preserving current fixture audio-path resolution, fresh fixture import, current score/history persistence, current practice settings, bundled-fixture deletion, and UI-test reset/seeding.
 
-**Architecture:** Keep the existing owners (`ContentView`, `LocalDTXFixtureImporter`, `ScorePersistenceService`, `PracticeSettingsService`) and remove upgrade behavior from them. Stable IDs provide narrow idempotence: a matching existing local fixture row and graph are returned unchanged. Do not replace removed compatibility with migration/version/dedup infrastructure.
+**Architecture:** Keep the existing owners (`ContentView`, `LocalDTXFixtureImporter`, `ScorePersistenceService`, `PracticeSettingsService`) and delete only historical upgrade behavior. Stable IDs keep fixture import idempotent. Existing fixture rows may update BGM/preview filesystem paths because those paths are absolute and consumed directly; other persisted fields/relationships are not repaired. Do not replace removed compatibility with migration/version/dedup infrastructure.
 
-**Tech Stack:** Swift, SwiftUI, SwiftData, Swift Testing, Xcode 26.1.1, `xcodebuild`.
+**Tech Stack:** Swift, SwiftUI, SwiftData, Swift Testing, XCTest UI testing, Xcode 26.1.1, `xcodebuild`.
 
 **Design:** `docs/superpowers/specs/2026-08-09-hpa-577-current-format-only-persistence-design.md`
 
 ## Global Constraints
 
-- Breaking local SwiftData/UserDefaults changes are accepted. Old development data may be reset.
+- Breaking local SwiftData/UserDefaults representation changes are accepted. Old development data may be reset.
 - Do not add schema/version registries, migration coordinators, compatibility adapters, generic deduplication, or automatic destructive production reset.
 - Keep `ContentView` as the startup composition point; do not create a startup coordinator/use-case layer.
 - Keep `LocalDTXFixtureImporter` as the local fixture owner; do not create a fixture repository/reconciliation engine.
+- Keep `refreshAudioPaths`; it is current filesystem-path resolution, not migration. Do not replace it with a bundle-relative path redesign in this ticket.
 - Keep current save-failure handling for fresh imports and current scores. Failure recovery for current writes is not backward compatibility.
 - Keep `BundledFixtureDeletionStore`; durable user deletion of the bundled demo is current product behavior.
+- Keep `RhythmTimelineResolver.resolveMissing` and `.legacy` runtime fallback behavior; HPA-577 deletes import/startup backfill, not runtime fallback.
 - `ServerSongDownloader.songAlreadyExists` title/artist fallbacks are **not HPA-577 work**. HPA-578 explicitly owns deleting them and making `serverSongId` the current server-import identity contract.
 - Do not change server catalog refresh behavior (HPA-578), performance/actor placement (HPA-579/HPA-580), server BGM format work (HPA-85), or broad historical documentation/test consolidation (HPA-583).
 - Update only live `CLAUDE.md` guidance that becomes false because this ticket deletes production APIs. `AGENTS.md` is a symlink to `CLAUDE.md`; do not edit both.
-- Run macOS tests with `-parallel-testing-enabled NO`, matching CI.
+- Run macOS unit/UI tests with parallel testing disabled, matching CI.
 - The Xcode project uses file-system-synchronized groups. Do not hand-edit `Virgo.xcodeproj/project.pbxproj` for file deletions/renames unless a build proves it is required.
 
 ---
 
-## Task 1: Collapse local fixture re-import to stable-ID identity
+## Task 1: Make repeated fixture import path-current but model-repair-free
 
 **Files:**
 - Modify: `Virgo/utilities/LocalDTXFixtureImporter.swift`
@@ -34,17 +36,25 @@
 - Modify: `VirgoTests/LocalDTXFixtureImporterCoverageTests.swift`
 
 **Interfaces:**
-- Consumes: existing `LocalDTXFixtureImporter.importSong(from:into:)`, `existingSong(with:in:)`, current DTX parser/projection.
-- Produces: repeated import for the same `serverSongId` returns the existing `Song` and existing graph unchanged; fresh import behavior is unchanged.
-- Deferred to Task 2: deleting `importSong(from:songId:into:)`. Keep it temporarily because `LocalDTXControlBackfillTests.swift` still has callers.
+- Consumes: `LocalDTXFixtureImporter.importSong(from:into:)`, `existingSong(with:in:)`, `refreshAudioPaths`, current DTX parser/projection.
+- Produces: repeated import for the same `serverSongId` re-resolves only BGM/preview paths, returns the same persisted `Song`/graph, and performs no duration/control/rhythm repair.
+- Deferred to Task 2: deleting `importSong(from:songId:into:)`. Keep it temporarily because control-backfill tests still have callers.
 
-- [ ] **Step 1: Replace song-only repair tests with one graph-level no-repair regression.**
+- [ ] **Step 1: Keep current audio-path removal coverage and replace legacy path framing.**
 
-In `VirgoTests/LocalDTXFixtureImporterTests.swift`, add a deterministic temporary fixture whose source is capable of creating rhythm/control data:
+Retain `refreshClearsStaleAudioPathsWhenAssetsRemoved`; it protects current behavior because persisted absolute paths must be cleared when the current fixture no longer contains those assets.
+
+Delete the old `refreshesStaleSoukyuuAudioPathsWhenAlreadyImported` test if it remains framed specifically as an `bgm.ogg -> bgm.m4a` upgrade. The richer policy test in Step 2 will cover current absolute-path relocation instead.
+
+Update stale comments that say BOM-less UTF-8 would be lossily decoded as UTF-16. The current importer gates UTF-16 on a BOM, so those comments are no longer accurate. Do not change the tested encoding solely because of comment cleanup.
+
+- [ ] **Step 2: Add one graph-level boundary regression with current audio files.**
+
+Add this shape to `LocalDTXFixtureImporterTests.swift` using the existing `makeTempDirectory()` helper:
 
 ```swift
-@Test("re-import by stable ID returns the existing graph without repair")
-func reImportByStableIDDoesNotRepairExistingGraph() throws {
+@Test("re-import refreshes audio paths without repairing persisted graph data")
+func reImportRefreshesOnlyAudioPaths() throws {
     let context = TestContainer.isolatedContainer().context
     let tempDir = try makeTempDirectory()
 
@@ -72,7 +82,11 @@ func reImportByStableIDDoesNotRepairExistingGraph() throws {
         encoding: .utf8
     )
 
-    let staleBGM = "/legacy/bgm.ogg"
+    let currentBGM = tempDir.appendingPathComponent("bgm.m4a")
+    let currentPreview = tempDir.appendingPathComponent("preview.mp3")
+    try Data().write(to: currentBGM)
+    try Data().write(to: currentPreview)
+
     let existing = Song(
         title: "Legacy Local State",
         artist: "Legacy Artist",
@@ -82,8 +96,9 @@ func reImportByStableIDDoesNotRepairExistingGraph() throws {
         timeSignature: .fourFour,
         isServerImported: false,
         serverSongId: tempDir.lastPathComponent,
-        bgmFilePath: staleBGM,
-        previewFilePath: "/legacy/preview.mp3"
+        bgmFilePath: "/old-container/bgm.m4a",
+        previewFilePath: "/old-container/preview.mp3",
+        bgmStartOffsetSeconds: 0.42
     )
     let chart = Chart(difficulty: .easy, level: 50, song: existing)
     let note = Note(
@@ -106,10 +121,11 @@ func reImportByStableIDDoesNotRepairExistingGraph() throws {
     let returned = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
 
     #expect(returned === existing)
+    #expect(returned.bgmFilePath == currentBGM.path)
+    #expect(returned.previewFilePath == currentPreview.path)
     #expect(returned.duration == "9:59")
-    #expect(returned.bgmFilePath == staleBGM)
-    #expect(returned.previewFilePath == "/legacy/preview.mp3")
     #expect(returned.isServerImported == false)
+    #expect(returned.bgmStartOffsetSeconds == 0.42)
     #expect(returned.charts.count == 1)
     #expect(returned.charts.first === chart)
     #expect(chart.safeNotes.count == 1)
@@ -121,25 +137,20 @@ func reImportByStableIDDoesNotRepairExistingGraph() throws {
 }
 ```
 
-This source contains a control event and valid current DTX data. The test therefore proves that re-import deliberately does **not** fill missing graph data.
+This fixture intentionally contains a control event the old repair path can populate, while also providing real current audio files that `refreshAudioPaths` should find.
 
-Remove/fold tests whose desired result is specifically historical repair:
+Retain/rename the existing nil-offset test so the no-repair policy covers both offset states:
 
-- `refreshesStaleSoukyuuAudioPathsWhenAlreadyImported`
-- `refreshClearsStaleAudioPathsWhenAssetsRemoved`
-- `reImportRefreshesStaleDuration`
-- `reImportLeavesMissingLegacyBGMStartOffsetUntouched`
-- `reImportDoesNotClobberExistingBGMStartOffset`
+```swift
+@Test("re-import leaves an unset BGM start offset unset")
+func reImportLeavesUnsetBGMStartOffsetUnset() throws {
+    // Existing test body may stay, but remove legacy-upgrade wording.
+}
+```
 
-Keep fresh-import correctness tests and simple stable-ID duplicate prevention.
+The non-nil offset case is now folded into `reImportRefreshesOnlyAudioPaths`; the separate non-clobber test may be deleted as redundant after the new test is green.
 
-In `LocalDTXFixtureImporterCoverageTests.swift`:
-
-- rename the “existing record marked deleted is refreshed” test to describe returning the existing stable-ID record;
-- assert identity/current tombstone semantics only;
-- delete the unreadable-SET refresh-path test because an existing stable-ID row should no longer decode `SET.def`.
-
-- [ ] **Step 2: Run the focused suites and verify RED.**
+- [ ] **Step 3: Run the focused suites and verify the intended RED signal.**
 
 ```bash
 xcodebuild test \
@@ -156,33 +167,39 @@ xcodebuild test \
   -derivedDataPath ./DerivedData
 ```
 
-Expected: the graph-level policy test fails because current re-import refreshes stale song fields and can populate missing controls.
+Expected before production changes:
 
-- [ ] **Step 3: Make the existing-ID branch return immediately.**
+- **FAIL:** `returned.duration == "9:59"`, because `refreshDurationIfStale` recomputes it.
+- **FAIL:** `chart.safeControlEvents.isEmpty`, because `refreshControlEventsIfMissing` populates controls.
+- **PASS already:** BGM/preview paths resolve to `currentBGM.path` / `currentPreview.path`; this behavior is retained.
+- **PASS already:** `rhythmMetadataData == nil` in the direct importer path. This assertion pins the direct-import boundary but is not a RED signal; Task 2 removes the separate startup rhythm backfill.
 
-Simplify the private `importSongResult` path so the existing-ID branch is exactly:
+Do not accept a RED run caused only by an unrelated fixture/setup failure. The two named historical-repair assertions are the expected failures.
+
+- [ ] **Step 4: Simplify the existing-ID branch while keeping audio path resolution.**
+
+In `LocalDTXFixtureImporter.swift`, remove `performLegacySourceRefreshes` from the private import function and all callers.
+
+The existing-ID path becomes exactly:
 
 ```swift
 if let existingSong = try existingSong(with: songId, in: context) {
+    try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
     return LocalDTXFixtureImportResult(song: existingSong, warnings: [])
 }
 ```
 
-Remove `performLegacySourceRefreshes` from the private function signature/callers.
+Stop calling and delete `refreshDurationIfStale`.
 
-Stop calling:
+Stop calling `refreshControlEventsIfMissing`, but leave its private body until Task 2, where the control/rhythm compatibility surface and its tests are deleted together.
 
-```swift
-refreshAudioPaths(...)
-refreshDurationIfStale(...)
-refreshControlEventsIfMissing(...)
-```
+This creates an **intentional one-checkpoint dead-code window** for `refreshControlEventsIfMissing`: it is private, uncalled, and scheduled for deletion in the immediately following task. Do not rewire it merely because it still exists after Task 1.
 
-Delete `refreshAudioPaths` and `refreshDurationIfStale` now if they have no caller. `refreshControlEventsIfMissing` may remain temporarily as dead compatibility code until Task 2 deletes the whole control/rhythm backfill surface.
+Keep `refreshAudioPaths` unchanged apart from removing obsolete `bgm.ogg` migration wording in its comments. Its contract is current path resolution/asset disappearance.
 
-Do not add a replacement `refreshExistingSong`, diff, validation, or repair helper.
+Do not add a replacement `refreshExistingSong`, graph diff, validation, or repair helper.
 
-- [ ] **Step 4: Keep the custom `songId:` overload until Task 2.**
+- [ ] **Step 5: Keep the custom `songId:` overload until Task 2.**
 
 Do **not** delete:
 
@@ -190,26 +207,29 @@ Do **not** delete:
 static func importSong(from folderURL: URL, songId: String, into context: ModelContext) throws -> Song
 ```
 
-in this checkpoint. `LocalDTXControlBackfillTests.swift` still uses it; deleting it here would make Task 1 fail to compile before Task 2 rewrites/removes those callers.
+in this checkpoint. Remaining control-backfill tests still use it; deleting it here would make Task 1 fail to compile before Task 2 rewrites/removes those callers.
 
-- [ ] **Step 5: Rerun focused tests and verify GREEN.**
+- [ ] **Step 6: Rerun focused tests and verify GREEN.**
 
-Run the Step 2 command again.
+Run the Step 3 command again.
 
 Expected:
 
-- fresh import still persists current data;
-- repeated stable-ID import returns unchanged song/chart/note state;
+- current audio paths re-resolve;
+- removed current assets clear persisted paths;
+- stale duration is unchanged;
+- BGM start offset is not mutated;
+- repeated import does not add/replace charts or notes;
 - source controls are not injected into the existing chart;
 - no duplicate graph is created.
 
-- [ ] **Step 6: Commit the checkpoint.**
+- [ ] **Step 7: Commit the checkpoint.**
 
 ```bash
 git add Virgo/utilities/LocalDTXFixtureImporter.swift \
   VirgoTests/LocalDTXFixtureImporterTests.swift \
   VirgoTests/LocalDTXFixtureImporterCoverageTests.swift
-git commit -m "refactor: make local fixture re-import identity only"
+git commit -m "refactor: limit fixture re-import to current audio paths"
 ```
 
 ---
@@ -221,13 +241,13 @@ git commit -m "refactor: make local fixture re-import identity only"
 - Delete: `Virgo/utilities/RhythmBackfillVersionStore.swift`
 - Modify/rename: `VirgoTests/LocalDTXControlBackfillTests.swift`
 - Modify/rename: `VirgoTests/RhythmImportBackfillTests.swift`
-- Modify: `VirgoTests/LocalDTXFixtureImporterTests.swift` if its comments name the old suites
+- Modify: `VirgoTests/LocalDTXFixtureImporterTests.swift` if its comments name old suites
 - Modify: `Virgo/views/ContentView.swift`
 - Modify: `Virgo/utilities/ContentStartupPolicy.swift`
 
 **Interfaces:**
-- Consumes: Task 1's identity-only importer and current `DTXChartPersistenceProjection` fresh-import path.
-- Produces: no local control/rhythm upgrade API or UserDefaults version marker; current fresh projections remain the only persisted rhythm source.
+- Consumes: Task 1's path-current/model-repair-free importer and current `DTXChartPersistenceProjection` fresh-import path.
+- Produces: no import/startup control/rhythm upgrade API or UserDefaults version marker; current fresh projections remain the only persisted canonical rhythm source.
 
 - [ ] **Step 1: Inventory backfill-only symbols and custom-ID callers.**
 
@@ -244,13 +264,14 @@ Classify every hit as:
 - current behavior test to rewrite around fresh import/projection;
 - remaining `songId:` convenience-overload caller to rewrite before deleting the overload.
 
-- [ ] **Step 2: Reduce control tests to current fresh-import behavior.**
+Do **not** classify `RhythmTimelineResolver.resolveMissing` or `.legacy` runtime fallback as part of this deletion.
+
+- [ ] **Step 2: Reduce control tests to fresh current import.**
 
 In `LocalDTXControlBackfillTests.swift`, retain current behavior such as:
 
 - fresh import populates `controlEvents`;
-- multi-difficulty fresh import routes controls to the correct chart;
-- any other test whose setup begins from a current DTX source and does not require an existing legacy row.
+- multi-difficulty fresh import routes controls to the correct charts.
 
 Delete compatibility contracts such as:
 
@@ -260,13 +281,13 @@ Delete compatibility contracts such as:
 - multi-difficulty backfill routing;
 - MASTER/REAL backfill routing.
 
-Rewrite any retained `songId: tempDir.lastPathComponent` call that merely duplicates default identity to:
+Rewrite retained calls that pass `songId: tempDir.lastPathComponent` merely to reproduce default identity:
 
 ```swift
 try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
 ```
 
-If the remaining file only covers current import, rename it:
+If the remaining file only covers current import, rename it narrowly:
 
 ```bash
 git mv VirgoTests/LocalDTXControlBackfillTests.swift \
@@ -275,7 +296,7 @@ git mv VirgoTests/LocalDTXControlBackfillTests.swift \
 
 - [ ] **Step 3: Reduce rhythm tests to current projection/import behavior.**
 
-In `RhythmImportBackfillTests.swift`, keep tests that directly protect current behavior, including:
+In `RhythmImportBackfillTests.swift`, keep tests that directly protect current behavior:
 
 - fresh-import rollback after save failure;
 - canonical DTX projection timing;
@@ -298,7 +319,7 @@ git mv VirgoTests/RhythmImportBackfillTests.swift \
   VirgoTests/RhythmImportTests.swift
 ```
 
-- [ ] **Step 4: Delete production backfill code.**
+- [ ] **Step 4: Delete production backfill code and version state.**
 
 From `LocalDTXFixtureImporter.swift`, delete:
 
@@ -310,6 +331,8 @@ From `LocalDTXFixtureImporter.swift`, delete:
 - `RhythmBackfillCandidate`;
 - `RhythmBackfillProjectionKey`;
 - source-matching/sorting/apply helpers used only by backfill.
+
+Keep `refreshAudioPaths` / `existingAudioPath`.
 
 Delete:
 
@@ -331,11 +354,11 @@ if let song {
 
 Delete the call to `backfillBundledRhythmTimingIfNeeded`.
 
-In `ContentStartupPolicy.shouldImportBundledLocalDTXFixtures`, replace wording that promises refresh of old rows with the current contract: startup seeds when allowed; an existing stable-ID row is returned unchanged.
+In `ContentStartupPolicy.shouldImportBundledLocalDTXFixtures`, replace wording that promises historical refresh with the current contract: startup seeds when allowed; an existing stable-ID row may only re-resolve current audio paths.
 
-- [ ] **Step 6: Delete the custom `songId:` overload only now.**
+- [ ] **Step 6: Delete the custom `songId:` overload only after its callers are gone.**
 
-After Steps 2–5, run:
+Run:
 
 ```bash
 rg -n 'importSong\(.*songId:' Virgo VirgoTests
@@ -349,9 +372,7 @@ Then delete:
 static func importSong(from folderURL: URL, songId: String, into context: ModelContext) throws -> Song
 ```
 
-Do not keep an unused overload solely for removed compatibility tests.
-
-- [ ] **Step 7: Verify backfill/version symbols are gone.**
+- [ ] **Step 7: Verify backfill/version symbols are gone but runtime fallback remains.**
 
 ```bash
 rg -n \
@@ -360,6 +381,14 @@ rg -n \
 ```
 
 Expected: no hits.
+
+Then:
+
+```bash
+rg -n 'func resolveMissing|availability: \.legacy' Virgo/utilities/RhythmTimelineResolver.swift
+```
+
+Expected: the current runtime fallback still exists. Do not remove it in HPA-577.
 
 - [ ] **Step 8: Run retained fixture/rhythm suites.**
 
@@ -380,9 +409,9 @@ xcodebuild test \
   -derivedDataPath ./DerivedData
 ```
 
-If a test file was not renamed because its retained scope still justifies the old name, use its actual suite name instead of renaming solely for this command.
+If a test file was not renamed, use its actual suite name instead of renaming solely for this command.
 
-Expected: fresh import/projection behavior passes without any backfill API.
+Expected: fresh import/projection behavior passes with audio path resolution intact and no backfill API.
 
 - [ ] **Step 9: Commit the checkpoint.**
 
@@ -404,7 +433,7 @@ git commit -m "refactor: delete local rhythm compatibility paths"
 
 **Interfaces:**
 - Consumes: current `ContentStartupPolicy`, current SwiftData score model and `recordAttempt` behavior.
-- Produces: startup performs no historical local repair/score migration; current score writes and rollback semantics remain unchanged.
+- Produces: startup performs no historical local repair/score migration; current seed/reset bridge and current score writes/rollback remain unchanged.
 
 - [ ] **Step 1: Delete the database-maintenance startup path.**
 
@@ -479,9 +508,9 @@ rg -n \
 
 Expected: no hits.
 
-This source-symbol gate plus compilation is the proof that the old startup path is gone. Do not add a production startup seam or source-parser test merely to prove absence of deleted code.
+This source-symbol gate plus compilation proves the historical startup path is gone. Do not add a production startup seam or source-parser test solely to prove absence of deleted code.
 
-- [ ] **Step 6: Run current score and startup-policy coverage.**
+- [ ] **Step 6: Run current score and startup-policy unit coverage.**
 
 ```bash
 xcodebuild test \
@@ -500,9 +529,45 @@ xcodebuild test \
 
 Expected: current score/history and startup policy remain green.
 
-`AppShellCoverageTests` is a regression check for retained startup decisions, **not** the proof of maintenance deletion; Step 5 plus successful compilation provides that proof.
+`AppShellCoverageTests` guards retained startup decisions; Step 5 plus successful compilation is the proof that maintenance/migration code is absent.
 
-- [ ] **Step 7: Commit the checkpoint.**
+- [ ] **Step 7: Run the existing macOS UI-test target against the startup rewrite.**
+
+The repository has a separate PR workflow for `VirgoUITests`, and those tests launch with `-UITesting` / `-ResetState`. Match that workflow instead of relying only on unit coverage.
+
+Build for testing:
+
+```bash
+xcodebuild build-for-testing \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Then run:
+
+```bash
+xcodebuild test-without-building \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  -parallel-testing-enabled NO \
+  -only-testing:VirgoUITests \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  -enableCodeCoverage YES \
+  -destination-timeout 600
+```
+
+Expected: all existing `VirgoUITests` pass, including reset/seed navigation and gameplay BGM-failure flows.
+
+- [ ] **Step 8: Commit the checkpoint.**
 
 ```bash
 git add -A Virgo/views/ContentView.swift Virgo/services VirgoTests
@@ -599,7 +664,7 @@ if let doubleValue = value as? Double {
 
 Delete the `String -> Double` branch because the current writer stores numeric values.
 
-Update `testLoadSpeedDecodesNSNumberAndStringValues` into an NSNumber/numeric-current-representation test; remove the string payload assertion.
+Update `testLoadSpeedDecodesNSNumberAndStringValues` into an NSNumber/current-numeric-representation test; remove the string payload assertion.
 
 - [ ] **Step 4: Reduce `PersistentIdentifierPersistenceKey` to current key generation.**
 
@@ -671,7 +736,7 @@ git commit -m "refactor: remove persistence key compatibility"
 
 ---
 
-## Task 5: Update live guidance and verify current-format-only behavior
+## Task 5: Update live guidance and perform final current-format audit
 
 **Files:**
 - Modify: `CLAUDE.md`
@@ -680,8 +745,8 @@ git commit -m "refactor: remove persistence key compatibility"
 - Do not sweep: historical files under `docs/superpowers/specs`, `docs/superpowers/plans`, or `docs/Project_Architecture_Blueprint.md`
 
 **Interfaces:**
-- Consumes: Tasks 1–4 final production surface.
-- Produces: always-on agent guidance matches the live code; full macOS/iPad verification passes; HPA-578 server-download fallback remains untouched.
+- Consumes: Tasks 1–4 final production surface and Task 3's UI-test evidence.
+- Produces: live agent guidance matches the code; removed compatibility is absent; retained audio-path/runtime-fallback behavior remains; full macOS unit/iPad verification passes.
 
 - [ ] **Step 1: Remove stale live API guidance from `CLAUDE.md`.**
 
@@ -690,8 +755,8 @@ In **Rhythm & Notation Pipeline**, replace the paragraph that says `RhythmBackfi
 ```markdown
 Normalized tick fields are persisted on `Note` and `ChartControlEvent` during current DTX import.
 Virgo does not backfill older imported development rows after representation changes; reset/reseed
-local development data instead. `RhythmMetronomeSchedule` derives the metronome schedule from the
-same timeline, so timing changes affect audio and notation together.
+local development data instead. Runtime missing-metadata fallback remains separate from import-time
+backfill. `RhythmMetronomeSchedule` derives the metronome schedule from the same timeline.
 ```
 
 In **Services Layer**:
@@ -700,30 +765,49 @@ In **Services Layer**:
 - change the `ScorePersistenceService` bullet so it describes current `ScoreRecord`, recent attempts, and full-speed best-score behavior only;
 - remove the claim that it migrates `HighScorePerChart`.
 
-Do not edit `AGENTS.md` separately; repository guidance states it is a symlink to `CLAUDE.md`.
+For local fixture guidance, keep the current rule that BGM/preview paths may be re-resolved from current assets, but remove historical `bgm.ogg -> bgm.m4a` migration framing where it is presented as live architecture.
 
-- [ ] **Step 2: Audit removed concepts in live code/tests/guidance.**
+Do not edit `AGENTS.md` separately.
+
+- [ ] **Step 2: Audit removed compatibility concepts.**
 
 ```bash
 rg -n \
-  'DatabaseMaintenanceService|performInitialMaintenance|migrateLegacyHighScores|HighScorePerChart|DidMigrateHighScoresToSwiftData|performLegacySourceRefreshes|refreshAudioPaths|refreshDurationIfStale|refreshControlEventsIfMissing|backfillBundledRhythmTimingIfNeeded|backfillRhythmTiming|RhythmBackfillVersion(Store|Storing)|PersistentIdentifierPersistenceKey\.resolve|needsMigration' \
+  'DatabaseMaintenanceService|performInitialMaintenance|migrateLegacyHighScores|HighScorePerChart|DidMigrateHighScoresToSwiftData|performLegacySourceRefreshes|refreshDurationIfStale|refreshControlEventsIfMissing|backfillBundledRhythmTimingIfNeeded|backfillRhythmTiming|RhythmBackfillVersion(Store|Storing)|PersistentIdentifierPersistenceKey\.resolve|needsMigration' \
   Virgo VirgoTests CLAUDE.md
 ```
 
 Expected: no hits.
 
-Then search for stale live promises:
+`refreshAudioPaths` is intentionally **not** in this removal search.
+
+Verify it remains:
 
 ```bash
-rg -n 'self-healing refresh|legacy .*backfill|refresh(es|ed|ing)? .*fixture|upgrade path' \
+rg -n 'refreshAudioPaths|existingAudioPath' \
+  Virgo/utilities/LocalDTXFixtureImporter.swift VirgoTests/LocalDTXFixtureImporterTests.swift
+```
+
+Expected: production path resolution and current tests still reference the retained behavior.
+
+Verify runtime fallback remains:
+
+```bash
+rg -n 'func resolveMissing|availability: \.legacy' Virgo/utilities/RhythmTimelineResolver.swift
+```
+
+Expected: hits remain.
+
+- [ ] **Step 3: Search for stale live promises and review manually.**
+
+```bash
+rg -n 'self-healing refresh|legacy .*backfill|upgrade path|bgm\.ogg.*bgm\.m4a' \
   Virgo VirgoTests CLAUDE.md
 ```
 
-Review each hit manually and reword/delete only if it describes HPA-577 behavior that no longer exists.
+Reword/delete only statements that describe removed HPA-577 upgrade behavior. Do not sweep historical docs.
 
-Do **not** run this as a historical-doc cleanup over `docs/`; HPA-583 owns that work.
-
-- [ ] **Step 3: Confirm the HPA-578 residual was not accidentally pulled into this diff.**
+- [ ] **Step 4: Confirm HPA-578 server-download fallback was not pulled into this diff.**
 
 ```bash
 git diff --exit-code main...HEAD -- Virgo/utilities/ServerSongDownloader.swift
@@ -731,9 +815,7 @@ git diff --exit-code main...HEAD -- Virgo/utilities/ServerSongDownloader.swift
 
 Expected: no diff for `ServerSongDownloader.swift`.
 
-The current title/artist fallback is intentionally left for HPA-578, whose scope explicitly deletes it.
-
-- [ ] **Step 4: Check the implementation remains deletion-first.**
+- [ ] **Step 5: Check the implementation remains deletion-first.**
 
 ```bash
 git diff --stat main...HEAD
@@ -742,13 +824,12 @@ git diff --check main...HEAD
 
 Expected:
 
-- substantially more compatibility code/tests removed than replacement code added;
+- substantially more historical compatibility code/tests removed than replacement code added;
+- `refreshAudioPaths` remains small and local;
 - no whitespace errors;
 - no new migration/version/dedup abstraction.
 
-If the implementation adds a framework comparable in size to what it deletes, simplify before continuing.
-
-- [ ] **Step 5: Run the complete macOS unit suite used by CI.**
+- [ ] **Step 6: Run the complete macOS unit suite used by CI.**
 
 Generate local endpoint config if needed using the repository's existing script/environment, then run:
 
@@ -771,7 +852,9 @@ xcodebuild test \
 
 Expected: all `VirgoTests` pass.
 
-- [ ] **Step 6: Build the iPad Simulator target used by CI.**
+Task 3 already ran the complete `VirgoUITests` target after the startup rewrite. If Tasks 4–5 unexpectedly modify `ContentView`, launch arguments, seed/reset behavior, or UI-facing gameplay startup, rerun the Task 3 UI-test command before completion. Otherwise do not pay for a duplicate full UI run.
+
+- [ ] **Step 7: Build the iPad Simulator target used by CI.**
 
 ```bash
 xcodebuild build \
@@ -786,7 +869,7 @@ xcodebuild build \
 
 Expected: build succeeds with iPad-only target settings unchanged.
 
-- [ ] **Step 7: Run a clean/reset-store smoke.**
+- [ ] **Step 8: Run a clean/reset-store smoke.**
 
 Using a clean development store/UserDefaults or the existing UI-test reset path, verify:
 
@@ -798,27 +881,29 @@ Using a clean development store/UserDefaults or the existing UI-test reset path,
 6. play a chart and record a score; current `ScoreRecord`/`bestScore` behavior works;
 7. save/reload a practice speed using the current canonical key.
 
-Do not test preservation of data from an old build; HPA-577 explicitly drops that contract.
+Do not test preservation of historical model data. Audio filesystem paths are the explicit exception: repeated fixture import may update them to current assets.
 
-- [ ] **Step 8: Update the implementation PR description.**
+- [ ] **Step 9: Update the implementation PR description.**
 
 State explicitly:
 
-- old local development SwiftData/UserDefaults may require reset;
+- old local development SwiftData/UserDefaults representation may require reset;
 - no migration/recovery framework was added;
-- stable-ID local re-import returns existing song **and graph** unchanged;
+- stable-ID local re-import re-resolves only BGM/preview filesystem paths and otherwise does not repair the persisted graph;
+- `refreshAudioPaths` was intentionally retained because absolute paths are consumed directly;
 - HPA-578 still owns `ServerSongDownloader` title/artist fallback removal;
+- `RhythmTimelineResolver.resolveMissing` / `.legacy` runtime fallback remains out of scope;
 - `CLAUDE.md` live guidance was updated for deleted APIs;
-- macOS tests and iPad build results.
+- focused RED assertions, macOS unit/UI test results, and iPad build results.
 
-- [ ] **Step 9: Commit any final narrow cleanup.**
+- [ ] **Step 10: Commit final narrow guidance cleanup.**
 
 ```bash
 git add CLAUDE.md Virgo VirgoTests
 git commit -m "docs: align guidance with current persistence model"
 ```
 
-Skip this commit only if `CLAUDE.md` and adjacent live comments required no changes; based on current main, `CLAUDE.md` does require changes.
+Skip this commit only if no file changed in Task 5; based on current main, `CLAUDE.md` does require changes.
 
 ---
 
@@ -827,10 +912,13 @@ Skip this commit only if `CLAUDE.md` and adjacent live comments required no chan
 - [ ] `ContentView` has no normal-startup historical repair/migration pass.
 - [ ] `DatabaseMaintenanceService` is deleted, not relocated.
 - [ ] Legacy score migration and legacy practice-key resolution are deleted.
-- [ ] Local fixture re-import is stable-ID identity only for both song fields and the existing graph.
-- [ ] The graph-level regression proves controls/rhythm/chart/note state are not repaired on re-import.
+- [ ] Local fixture re-import retains `refreshAudioPaths` and does not repair duration/identity/graph/rhythm data.
+- [ ] Current audio-path relocation and asset-removal behavior remains tested.
+- [ ] The Task 1 RED run fails specifically on duration repair and control-event backfill before production changes, then passes after removal.
+- [ ] BGM start offset non-clobbering remains covered for nil and non-nil states.
 - [ ] Fresh local import remains transactional and writes the full current representation.
 - [ ] Rhythm/control backfill and its UserDefaults version marker are deleted.
+- [ ] `RhythmTimelineResolver.resolveMissing` / `.legacy` runtime fallback remains untouched.
 - [ ] The custom `importSong(from:songId:into:)` overload is deleted only after Task 2 removes/reworks its remaining callers.
 - [ ] Bundled-fixture deletion/reset behavior remains intact.
 - [ ] Current score save-failure rollback remains intact.
@@ -840,5 +928,6 @@ Skip this commit only if `CLAUDE.md` and adjacent live comments required no chan
 - [ ] Compatibility-only tests are deleted; retained tests describe current behavior.
 - [ ] No replacement migration/dedup/version abstraction appears in the diff.
 - [ ] Full macOS unit tests pass with parallel testing disabled.
+- [ ] Existing macOS `VirgoUITests` pass after the startup rewrite.
 - [ ] iPad Simulator build passes.
-- [ ] PR notes the intentional breaking local-data policy.
+- [ ] PR notes the intentional breaking local-data policy and the retained current audio-path exception.
