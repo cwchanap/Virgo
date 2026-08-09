@@ -10,100 +10,6 @@ import AVFoundation
 )
 @MainActor
 struct AudioPlaybackServiceTests {
-    @MainActor
-    private final class ControlledPlayerLoader {
-        private struct RequestWaiter {
-            let count: Int
-            let continuation: CheckedContinuation<Void, Never>
-        }
-
-        private var pending: [String: [CheckedContinuation<AVAudioPlayer, Error>]] = [:]
-        private var waiters: [String: [RequestWaiter]] = [:]
-        private(set) var requests: [String] = []
-
-        func load(_ url: URL) async throws -> AVAudioPlayer {
-            let key = url.standardizedFileURL.path
-            requests.append(key)
-            resumeSatisfiedWaiters(for: key)
-            return try await withCheckedThrowingContinuation { continuation in
-                pending[key, default: []].append(continuation)
-            }
-        }
-
-        func waitForRequest(path: String, count: Int = 1) async {
-            let key = canonical(path)
-            if requestCount(for: key) >= count { return }
-
-            await withCheckedContinuation { continuation in
-                if requestCount(for: key) >= count {
-                    continuation.resume()
-                } else {
-                    waiters[key, default: []].append(
-                        RequestWaiter(count: count, continuation: continuation)
-                    )
-                }
-            }
-        }
-
-        func succeed(path: String, player: AVAudioPlayer) {
-            guard let continuation = takePendingContinuation(path: path) else { return }
-            continuation.resume(returning: player)
-        }
-
-        func fail(path: String, error: Error) {
-            guard let continuation = takePendingContinuation(path: path) else { return }
-            continuation.resume(throwing: error)
-        }
-
-        private func canonical(_ path: String) -> String {
-            URL(fileURLWithPath: path).standardizedFileURL.path
-        }
-
-        private func requestCount(for key: String) -> Int {
-            requests.lazy.filter { $0 == key }.count
-        }
-
-        private func resumeSatisfiedWaiters(for key: String) {
-            let count = requestCount(for: key)
-            let registered = waiters.removeValue(forKey: key) ?? []
-            var remaining: [RequestWaiter] = []
-
-            for waiter in registered {
-                if count >= waiter.count {
-                    waiter.continuation.resume()
-                } else {
-                    remaining.append(waiter)
-                }
-            }
-
-            if !remaining.isEmpty {
-                waiters[key] = remaining
-            }
-        }
-
-        private func takePendingContinuation(
-            path: String
-        ) -> CheckedContinuation<AVAudioPlayer, Error>? {
-            let key = canonical(path)
-            guard var queue = pending[key], !queue.isEmpty else {
-                Issue.record("No pending preview load for \(key)")
-                return nil
-            }
-
-            let continuation = queue.removeFirst()
-            if queue.isEmpty {
-                pending.removeValue(forKey: key)
-            } else {
-                pending[key] = queue
-            }
-            return continuation
-        }
-    }
-
-    enum TestError: Error {
-        case loadFailed
-    }
-
     private func appendLittleEndian<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
         var littleEndian = value.littleEndian
         withUnsafeBytes(of: &littleEndian) { bytes in
@@ -177,8 +83,7 @@ struct AudioPlaybackServiceTests {
     ) async {
         service.playPreview(for: song)
         await loader.waitForRequest(path: path)
-        loader.succeed(path: path, player: player)
-        await Task.yield()
+        await loader.succeed(path: path, player: player)
         #expect(service.currentlyPlaying == song.id)
         #expect(service.isPlaying)
     }
@@ -243,15 +148,13 @@ struct AudioPlaybackServiceTests {
             #expect(!service.isPlaying)
             #expect(service.currentlyPlaying == nil)
             await loader.waitForRequest(path: firstPath)
-            loader.succeed(path: firstPath, player: firstPlayer)
-            await Task.yield()
+            await loader.succeed(path: firstPath, player: firstPlayer)
             #expect(service.currentlyPlaying == first.id)
 
             service.stop()
             service.playPreview(for: second)
             await loader.waitForRequest(path: secondPath)
-            loader.succeed(path: secondPath, player: secondPlayer)
-            await Task.yield()
+            await loader.succeed(path: secondPath, player: secondPlayer)
 
             #expect(service.currentlyPlaying == second.id)
             #expect(service.duration == secondPlayer.duration)
@@ -339,8 +242,7 @@ struct AudioPlaybackServiceTests {
         #expect(service.isPlaying == false)
         #expect(service.currentlyPlaying == nil)
         await loader.waitForRequest(path: invalidPath)
-        loader.fail(path: invalidPath, error: NSError(domain: "Test", code: -1))
-        await Task.yield()
+        await loader.fail(path: invalidPath, error: NSError(domain: "Test", code: -1))
 
         #expect(service.isPlaying == false)
         #expect(service.currentlyPlaying == nil)
@@ -467,8 +369,7 @@ struct AudioPlaybackServiceTests {
             #expect(service.isPlaying == false)
             #expect(service.currentlyPlaying == nil)
             await loader.waitForRequest(path: newPath)
-            loader.succeed(path: newPath, player: newPlayer)
-            await Task.yield()
+            await loader.succeed(path: newPath, player: newPlayer)
 
             #expect(service.isPlaying == true)
             #expect(service.currentlyPlaying == newSong.id)
@@ -550,8 +451,7 @@ struct AudioPlaybackServiceTests {
         #expect(service.isPlaying == false)
         #expect(service.currentlyPlaying == nil)
         await loader.waitForRequest(path: previewPath)
-        loader.succeed(path: previewPath, player: player)
-        await Task.yield()
+        await loader.succeed(path: previewPath, player: player)
 
         #expect(service.isPlaying == false)
         #expect(service.currentlyPlaying == nil)
@@ -684,13 +584,11 @@ extension AudioPlaybackServiceTests {
             service.playPreview(for: second)
             await loader.waitForRequest(path: secondPath)
 
-            loader.succeed(path: secondPath, player: secondPlayer)
-            await Task.yield()
+            await loader.succeed(path: secondPath, player: secondPlayer)
             #expect(service.currentlyPlaying == second.id)
             #expect(service.duration == secondPlayer.duration)
 
-            loader.succeed(path: firstPath, player: firstPlayer)
-            await Task.yield()
+            await loader.succeed(path: firstPath, player: firstPlayer)
             #expect(service.currentlyPlaying == second.id)
             #expect(service.duration == secondPlayer.duration)
 
@@ -717,8 +615,7 @@ extension AudioPlaybackServiceTests {
             service.playPreview(for: song)
             await loader.waitForRequest(path: previewPath)
             service.stop()
-            loader.succeed(path: previewPath, player: player)
-            await Task.yield()
+            await loader.succeed(path: previewPath, player: player)
 
             #expect(!service.isPlaying)
             #expect(service.currentlyPlaying == nil)
@@ -754,13 +651,11 @@ extension AudioPlaybackServiceTests {
             service.playPreview(for: second)
             await loader.waitForRequest(path: secondPath)
 
-            loader.succeed(path: secondPath, player: secondPlayer)
-            await Task.yield()
+            await loader.succeed(path: secondPath, player: secondPlayer)
             #expect(service.currentlyPlaying == second.id)
             #expect(service.duration == secondPlayer.duration)
 
-            loader.fail(path: firstPath, error: TestError.loadFailed)
-            await Task.yield()
+            await loader.fail(path: firstPath, error: TestError.loadFailed)
 
             #expect(service.isPlaying)
             #expect(service.currentlyPlaying == second.id)
