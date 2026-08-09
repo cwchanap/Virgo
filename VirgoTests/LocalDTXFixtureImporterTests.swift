@@ -342,8 +342,8 @@ struct LocalDTXFixtureImporterTests {
         #expect(RhythmTimelineResolver().resolve(chart: chart).availability == .fatal)
     }
 
-    // Control-event import/backfill/routing tests live in
-    // LocalDTXControlBackfillTests.swift, extracted to keep this file under the
+    // Control-event import/routing tests live in
+    // LocalDTXControlImportTests.swift, extracted to keep this file under the
     // SwiftLint file-length limit.
 
     @discardableResult
