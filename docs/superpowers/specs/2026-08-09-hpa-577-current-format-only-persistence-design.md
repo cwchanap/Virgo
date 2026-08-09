@@ -1,7 +1,7 @@
 # HPA-577: Current-Format-Only Startup and Persistence
 
 **Date:** 2026-08-09  
-**Status:** Draft design for review — implementation not started
+**Status:** Draft design for review — revised after review, implementation not started
 
 ## Context
 
@@ -17,118 +17,88 @@ The current code still carries several upgrade paths from earlier development it
 
 Those paths are useful only if old local state must be preserved. Keeping them makes startup and importer behavior harder to reason about, expands the test surface, and encourages new compatibility code whenever the current representation changes.
 
-HPA-577 should remove that policy, not replace it with a different migration framework.
+HPA-577 removes that policy rather than replacing it with another migration framework.
 
 ## Decision summary
 
-Support exactly one representation: the representation written by the current build.
+Support exactly one local representation: the representation written by the current build.
 
-- Normal startup does not inspect or repair old data.
+- Normal startup does not inspect or repair old local data.
 - Current bundled/local fixture import remains idempotent by stable `serverSongId`.
-- Re-import of an already-present stable ID returns the existing row unchanged; it does not repair it.
-- A fresh fixture import writes the complete current `Song`/`Chart`/`Note`/`ChartControlEvent` graph in one transaction.
+- Re-import of an already-present stable ID returns the existing row and graph unchanged; it does not repair song fields, controls, or rhythm data.
+- A fresh fixture import writes the complete current `Song`/`Chart`/`Note`/`ChartControlEvent` graph transactionally.
 - Scores use only current SwiftData `ScoreRecord` + `Chart.bestScore` persistence.
 - Per-chart practice settings read/write only the current canonical persistence key.
-- Old development stores/settings that do not match the current representation are reset manually or by the existing test reset path.
+- Old development stores/settings that do not match the current representation are reset rather than upgraded.
+- Operational repository guidance (`CLAUDE.md`, also exposed through the `AGENTS.md` symlink) must stop naming production APIs removed by this ticket when implementation lands.
 
-This is intentionally deletion-first. Do not add schema versions, compatibility adapters, generalized deduplication, or automatic store reset detection.
+This is intentionally deletion-first. Do not add schema versions, compatibility adapters, generalized deduplication, or automatic store-reset detection.
 
 ## Approaches considered
 
-### A. Disable compatibility at startup but leave the old code in place
+### A. Disable compatibility calls but leave the old implementation
 
-Remove the calls from `ContentView`, but keep `DatabaseMaintenanceService`, fixture refresh/backfill helpers, migration resolvers, and their tests.
+Remove the startup calls but keep `DatabaseMaintenanceService`, fixture refresh/backfill helpers, migration resolvers, and their tests.
 
-**Pros**
+**Rejected.** This minimizes the immediate diff but leaves dead behavior, dead tests, and an attractive path for accidentally restoring compatibility later.
 
-- Smallest immediate production diff.
-- Easy to restore an old migration temporarily.
+### B. Delete compatibility paths and keep narrow current-format identity
 
-**Cons**
+Remove upgrade behavior while preserving current creators, stable-ID lookup, test reset/seeding, score persistence, and current settings persistence.
 
-- Leaves dead behavior and dead tests that still cost maintenance time.
-- Future contributors can accidentally call the compatibility code again.
-- Does not satisfy HPA-577's deletion-first goal.
+**Selected.** This is the smallest long-term design and matches the project's accepted breaking-data policy.
 
-**Decision:** Reject.
+### C. Add store/version detection and automatic reset/reseed
 
-### B. Delete compatibility paths and keep only current-format idempotence
+Detect an old representation and automatically clear or migrate it.
 
-Remove old repair/migration behavior while preserving current-format creation, stable-ID lookup, test reset/seeding, and current persistence APIs.
-
-**Pros**
-
-- Smallest long-term architecture.
-- Makes startup and importer behavior deterministic.
-- Matches the roadmap guardrail that breaking development data is acceptable.
-- Reduces tests by deleting behavior the product no longer supports.
-
-**Cons**
-
-- A developer with an old local store may need to delete/reset it.
-- Re-import no longer self-heals a stale persisted fixture row.
-
-**Decision:** Recommended and selected.
-
-### C. Detect stale data and automatically reset/reseed it
-
-Introduce a store/version marker and automatically clear/recreate incompatible state.
-
-**Pros**
-
-- Smoother transition between development builds.
-
-**Cons**
-
-- Reintroduces the exact version/migration coordination HPA-577 is intended to remove.
-- Adds state and failure modes for a pre-release application with disposable local data.
-- Creates pressure to preserve the mechanism indefinitely.
-
-**Decision:** Reject.
+**Rejected.** This recreates permanent version/migration coordination for disposable pre-release data.
 
 ## Goals
 
-1. Remove historical maintenance from the normal startup path.
+1. Remove historical maintenance from normal startup.
 2. Make local fixture import current-format-only and stable-ID idempotent.
 3. Remove legacy score migration and persistence-key migration behavior.
 4. Delete tests/helpers whose only purpose is preserving old local representations.
 5. Keep fresh/reset-store behavior and current user-facing persistence behavior intact.
+6. Keep the always-on agent guidance accurate when deleted symbols disappear.
 
-## Non-goals
+## Non-goals and ownership boundaries
 
 - No SwiftData schema/migration framework.
 - No automatic incompatible-store detection or destructive production reset.
 - No generic song deduplication or title/artist normalization.
 - No redesign of `ScorePersistenceService`, `PracticeSettingsService`, `ContentView`, or SwiftData ownership.
-- No server catalog refresh redesign; HPA-578 owns that work.
+- No server catalog snapshot redesign; HPA-578 owns that work.
+- **No `ServerSongDownloader.songAlreadyExists` cleanup in HPA-577.** Its exact title/artist and case-insensitive fallbacks for rows lacking `serverSongId` are a known residual compatibility path, and HPA-578 already explicitly owns deleting those fallbacks and making `serverSongId` the current server-import identity contract.
 - No off-main parsing/performance work; HPA-579/HPA-580 own that decision.
-- No broad test-suite/documentation consolidation; HPA-583 owns the final cleanup pass.
+- No broad test-suite or historical documentation consolidation; HPA-583 owns that final cleanup.
 - No server BGM format work; HPA-85 remains separate.
+
+The HPA-578 residual is named here so HPA-577 implementers do not silently expand scope or leave the ownership ambiguous.
 
 ## Design
 
 ### 1. Remove the startup upgrade pipeline
 
-`ContentView.onAppear` should retain only startup work that serves the current build:
+`ContentView.onAppear` keeps only startup work needed by the current build:
 
-- UI-test reset/seed policy.
-- bundled current-format fixture seed.
-- `ServerSongService` model-context setup and catalog load.
-- the existing short-lived `startupSongsOverride` used to bridge synchronous seed/reset work to the live `@Query`.
+- UI-test reset/seed policy;
+- bundled current-format fixture seed;
+- `ServerSongService` model-context setup and catalog load;
+- the short-lived `startupSongsOverride` bridge used after synchronous seed/reset work.
 
 Delete:
 
 - `@State private var databaseService: DatabaseMaintenanceService?`;
-- creation/invocation of `DatabaseMaintenanceService`;
+- construction/invocation of `DatabaseMaintenanceService`;
 - the post-maintenance chart re-fetch;
-- `ScorePersistenceService.migrateLegacyHighScores(...)` startup invocation and its error branch;
+- `ScorePersistenceService.migrateLegacyHighScores(...)` and its startup error branch;
 - comments that describe startup maintenance/migration.
 
-Do **not** extract a startup coordinator merely to make this deletion look architectural. The existing `ContentStartupPolicy` is sufficient.
+Do **not** extract a startup coordinator. `ContentStartupPolicy` already owns the relevant decision logic.
 
-`DatabaseMaintenanceService.swift` is then unused and should be deleted together with `DatabaseMaintenanceServiceTests.swift`.
-
-The removed service behavior is not replaced:
+`DatabaseMaintenanceService.swift` and `DatabaseMaintenanceServiceTests.swift` are deleted. None of their behavior moves elsewhere:
 
 - `genre == "DTX Import"` is no longer backfilled into `isServerImported`;
 - `Chart.level == 50` is no longer rewritten by difficulty;
@@ -141,13 +111,13 @@ Current creators are responsible for writing valid current data.
 
 `LocalDTXFixtureImporter` already has the correct narrow identity boundary: `serverSongId`.
 
-Keep the lookup:
+Keep:
 
 ```swift
 private static func existingSong(with songId: String, in context: ModelContext) throws -> Song?
 ```
 
-When it finds an existing row, return that row immediately:
+When it finds an existing row, return it immediately:
 
 ```swift
 if let existingSong = try existingSong(with: songId, in: context) {
@@ -155,7 +125,13 @@ if let existingSong = try existingSong(with: songId, in: context) {
 }
 ```
 
-The existing row is **not** a source for upgrade work. Do not re-resolve audio paths, recompute duration, backfill control events, or reconstruct rhythm metadata.
+The existing row and its relationships are not sources for upgrade work. Re-import must not:
+
+- re-resolve audio paths;
+- recompute duration;
+- add or replace charts;
+- add missing control events;
+- rewrite rhythm metadata or normalized tick fields.
 
 Fresh import remains the source of truth for the current representation:
 
@@ -165,21 +141,19 @@ Fresh import remains the source of truth for the current representation:
 4. create current `Chart` objects;
 5. persist canonical rhythm metadata, notes, and control events from `DTXChartPersistenceProjection`;
 6. save once;
-7. roll the context back if the save/build path throws.
+7. roll back the context if graph creation/save throws.
 
-This preserves current correctness while deleting upgrade behavior.
+#### Bundled fixture deletion remains current behavior
 
-#### Bundled fixture deletion behavior remains current functionality
+`BundledFixtureDeletionStore` is a product rule, not compatibility infrastructure.
 
-`BundledFixtureDeletionStore` is not a compatibility mechanism. It represents the current product rule that a user-deleted bundled demo should not be recreated on every launch.
-
-Keep these semantics:
+Keep:
 
 - tombstone + missing row -> skip seed;
 - tombstone cleared + missing row -> seed current fixture;
-- existing stable-ID row -> return it without mutation.
+- existing stable-ID row -> return it unchanged.
 
-Update comments/tests that currently call the last case a “refresh”; after HPA-577 it is simply stable-ID idempotence.
+Comments/tests that currently describe the final case as a “refresh” should be rewritten as stable-ID idempotence.
 
 #### Compatibility code to delete
 
@@ -194,23 +168,47 @@ Remove from `LocalDTXFixtureImporter`:
 - rhythm-backfill-only error cases;
 - rhythm-backfill plan/candidate/equivalence/source-matching/apply helpers.
 
-Delete `RhythmBackfillVersionStore.swift` and its protocol. No version marker replaces it.
+Delete `RhythmBackfillVersionStore.swift` and its protocol. No version marker replaces them.
 
-The custom `importSong(from:songId:into:)` convenience overload should also be deleted if, after compatibility tests are removed, it has no remaining current caller. Tests that simply need the folder's stable ID should use `importSong(from:into:)`.
+The custom `importSong(from:songId:into:)` overload is compatibility-test plumbing once backfill callers are gone. **Do not delete it in the first fixture checkpoint while `LocalDTXControlBackfillTests` still calls it.** Rewrite/delete those callers in the control/rhythm cleanup checkpoint, then delete the overload when `rg` confirms it has no current caller.
 
-`ContentView.seedLocalDTXFixtures()` should import the bundled fixture and log success; it should no longer invoke a timing backfill afterward.
+`ContentView.seedLocalDTXFixtures()` imports the bundled fixture and logs success; it no longer invokes timing backfill.
 
-`ContentStartupPolicy.shouldImportBundledLocalDTXFixtures` documentation should describe idempotent seeding, not “refreshing” older rows.
+`ContentStartupPolicy.shouldImportBundledLocalDTXFixtures` should describe idempotent seeding, not refreshing old rows.
 
-### 3. Keep current score persistence; delete score migration
+### 3. Pin no-repair behavior across song and graph state
 
-`ScorePersistenceService` remains the owner of current score behavior:
+A song-field-only regression is insufficient because the current compatibility path also repairs control/rhythm-related graph state.
+
+Use one richer stable-ID policy test through the real DTX import path. Build a deterministic temporary fixture containing a playable chart and a control event, then pre-insert a row with the same stable ID but intentionally stale/incomplete graph state:
+
+- stale `Song.duration` and audio paths;
+- one existing `Chart` with the matching difficulty/level;
+- existing note(s) left exactly as inserted;
+- empty `controlEvents` even though the source fixture contains a control;
+- `rhythmMetadataData == nil`.
+
+Call `importSong(from:into:)` and assert:
+
+- the exact same `Song` instance is returned;
+- one `Song` row remains;
+- the same existing chart remains and no new chart is inserted;
+- stale song fields remain unchanged;
+- the existing note collection remains unchanged;
+- `controlEvents` remains empty;
+- `rhythmMetadataData` remains `nil`.
+
+This is the explicit policy pin that prevents a future “helpful” importer repair from returning. The separate removal of `ContentView`'s timing-backfill call plus an `rg` gate proves startup cannot repair the missing rhythm payload either.
+
+### 4. Keep current score persistence; delete legacy score migration
+
+`ScorePersistenceService` keeps current behavior:
 
 - record a `ScoreRecord`;
 - update `Chart.bestScore` for eligible full-speed runs;
 - return recent attempt DTOs;
 - prune old attempt history;
-- restore in-memory mutations when the current save fails.
+- restore pending mutations when the current save fails.
 
 Delete only the historical migration surface:
 
@@ -218,22 +216,22 @@ Delete only the historical migration surface:
 - `legacyHighScoreKey` (`HighScorePerChart`);
 - `migrateLegacyHighScores`;
 - `readLegacyScores`;
-- migration-specific rollback tests and fixtures.
+- migration-specific rollback/tests/fixtures.
 
-Do not alter current `recordAttempt` rollback semantics. A failure while saving current data is a current correctness concern, not backward compatibility.
+Current `recordAttempt` rollback remains. Failed current writes are a correctness concern, not backward compatibility.
 
-### 4. Remove legacy persistence-key resolution
+### 5. Remove legacy persistence-key resolution
 
-The current persistence-key representation is `PersistentIdentifierPersistenceKey.canonicalKey(...)`. Keep that function because current call sites use it.
+Keep `PersistentIdentifierPersistenceKey.canonicalKey(...)`, because current persistence uses it.
 
-Delete historical key resolution:
+Delete:
 
 - `PersistentIdentifierPersistenceKey.Resolution`;
 - `resolve(...)`;
 - `normalizeJSONKey(...)`;
-- tests that exist only to exercise `needsMigration`/legacy key matching.
+- compatibility-only resolver tests.
 
-`PracticeSettingsService.loadSpeed(for:)` should perform one exact lookup using the canonical key:
+`PracticeSettingsService.loadSpeed(for:)` performs one exact canonical lookup:
 
 ```swift
 let key = persistenceKey(for: chartID)
@@ -242,80 +240,80 @@ guard let savedSpeed = readPersistedSpeeds()[key] else {
 }
 ```
 
-Keep validation/clamping and numeric UserDefaults bridging needed by the current representation. Remove the string-value fallback if no current writer produces strings; current writes store numeric values.
+Keep finite/range validation and numeric (`Double`/`NSNumber`) UserDefaults bridging needed by the current representation. Remove the string-value fallback because the current writer stores numeric values.
 
-A non-canonical historical key is ignored rather than rewritten. This is the intended breaking behavior.
+A non-canonical historical key is ignored rather than rewritten.
 
-### 5. Tests describe supported behavior, not historical upgrades
+### 6. Tests describe supported behavior, not upgrades
 
-Delete tests whose contract is “old state is repaired.” Do not preserve them as disabled tests.
+Delete tests whose contract is “old state is repaired.” Do not keep them disabled.
 
-#### Delete entirely
+Delete entirely:
 
-- `VirgoTests/DatabaseMaintenanceServiceTests.swift`.
-- timing-backfill/version-store-specific tests once the production API is gone.
-- duplicated `PersistentIdentifierPersistenceKey.Resolution` suites.
-- legacy score-migration tests.
+- `VirgoTests/DatabaseMaintenanceServiceTests.swift`;
+- timing-backfill/version-store-specific tests;
+- duplicate `PersistentIdentifierPersistenceKey.Resolution` suites;
+- legacy score-migration tests;
 - legacy practice-key migration helpers/tests.
 
-#### Retain or adapt
-
-Keep current-format tests for:
+Retain/adapt current-format coverage for:
 
 - fresh local fixture import;
-- canonical timing/control-event persistence on fresh import;
+- canonical timing/control persistence on fresh import;
 - fresh-import rollback on save failure;
-- error handling for missing/unreadable/malformed current fixture input;
+- missing/unreadable/malformed current fixture input;
 - bundled fixture deletion tombstone behavior;
-- current `ScoreRecord`/best-score/recent-attempt behavior;
-- current practice-speed save/load/clamp behavior.
+- current score/best/recent-attempt behavior;
+- current practice-speed save/load/clamp behavior;
+- the richer stable-ID no-repair policy above.
 
-Tests that currently mix a useful current behavior with a backfill setup should be rewritten to start from a fresh current-format import rather than preserving the backfill API just for the test.
+Tests that use a backfill API merely as setup should be rewritten around a fresh current projection. Do not keep production compatibility APIs for test convenience.
 
-Where a test file becomes misleading after compatibility tests are deleted, a narrow rename such as `LocalDTXControlBackfillTests.swift` -> `LocalDTXControlImportTests.swift` or `RhythmImportBackfillTests.swift` -> `RhythmImportTests.swift` is acceptable. Do not perform broader suite consolidation; leave that for HPA-583.
+Narrow file renames such as `LocalDTXControlBackfillTests.swift` -> `LocalDTXControlImportTests.swift` and `RhythmImportBackfillTests.swift` -> `RhythmImportTests.swift` are acceptable if the retained file no longer tests backfill. Broader suite consolidation belongs to HPA-583.
 
-#### Add one explicit no-repair regression
+### 7. Keep the live agent brief accurate
 
-Pin the new policy with a small test:
+`CLAUDE.md` is operational repository guidance and `AGENTS.md` is a symlink to it. It is not merely historical architecture documentation.
 
-1. insert a `Song` using the same stable ID as a fixture;
-2. deliberately give it stale values such as an old duration/audio path;
-3. call `importSong(from:into:)`;
-4. assert the same persisted row is returned;
-5. assert no duplicate row is created;
-6. assert the stale fields are unchanged.
+When implementation deletes the production APIs, update only the live statements that would become false:
 
-This prevents a future “helpful” refresh path from silently reintroducing migration behavior.
+- remove the `RhythmBackfillVersionStore` paragraph/instruction from the rhythm pipeline section and state that current imports persist normalized data directly; old imported development rows are reset rather than renormalized;
+- remove `DatabaseMaintenanceService` from the services list;
+- remove the claim that `ScorePersistenceService` performs the `HighScorePerChart` migration.
 
-For practice settings, replace the legacy-key migration test with one current-policy regression: a non-canonical key is ignored and the default speed is returned.
+Do not sweep old files under `docs/superpowers/specs`, `docs/superpowers/plans`, or `docs/Project_Architecture_Blueprint.md`; HPA-583 still owns broad/historical documentation consolidation.
+
+This narrow update prevents later agents from recreating deleted compatibility APIs from stale always-on guidance.
 
 ## Breaking local-data policy
 
-HPA-577 intentionally changes upgrade behavior.
+After HPA-577, an older development store/settings domain may contain stale song metadata, historical duplicates, old chart levels, old fixture controls/timing, legacy high scores, or non-canonical settings keys.
 
-After this change, a local store/settings domain created by an older development build may contain:
+Virgo does not repair those states. Reset the development store/UserDefaults and let the current build create fresh data.
 
-- `Song` rows missing newly required/current metadata;
-- historical duplicate rows;
-- old chart levels;
-- old fixture duration/audio/control/timing values;
-- `HighScorePerChart` UserDefaults;
-- non-canonical practice-setting keys.
-
-Virgo does not attempt to repair those states. Delete/reset the development store/UserDefaults and let the current build create fresh data.
-
-The application should not add a production “migration failed, reset now” flow in this ticket. That would turn a pre-release development convenience into permanent infrastructure.
+Do not add a production “migration failed, reset now” flow.
 
 ## Failure behavior
 
 Current-format failures remain visible and local:
 
-- missing/unreadable `SET.def` continues to fail/return as today;
-- fresh fixture graph creation rolls back on a thrown save/build error;
-- current score save failures continue to return `.saveFailed` and restore pending mutations;
-- unsupported/corrupt current practice-setting values fall back through existing validation rules.
+- missing/unreadable `SET.def` continues to fail/return as current code specifies;
+- fresh fixture graph creation rolls back on thrown build/save errors;
+- current score save failures return `.saveFailed` and restore pending mutations;
+- unsupported/corrupt current practice-setting values use current validation/fallback rules.
 
-What disappears is only the attempt to turn an old representation into a new one.
+What disappears is only conversion of an old representation into a new one.
+
+## Verification policy
+
+For the startup deletion, the primary proof is deliberately simple:
+
+1. source search shows `DatabaseMaintenanceService`, `performInitialMaintenance`, `migrateLegacyHighScores`, and legacy score keys no longer exist in production/tests;
+2. the app and focused current tests compile/pass;
+3. the full macOS test suite passes;
+4. the iPad Simulator build passes.
+
+`AppShellCoverageTests` may still run to guard current startup policy, but it is **not** claimed to prove that `ContentView.onAppear` no longer performs maintenance. Do not add a new runtime seam or source-parser test solely to prove absence of deleted code.
 
 ## Expected file impact
 
@@ -329,6 +327,7 @@ What disappears is only the attempt to turn an old representation into a new one
 - Modify: `Virgo/utilities/LocalDTXFixtureImporter.swift`
 - Delete: `Virgo/utilities/RhythmBackfillVersionStore.swift`
 - Modify: `Virgo/utilities/ContentStartupPolicy.swift` (comment only)
+- Modify: `CLAUDE.md` (narrow live-guidance cleanup only)
 
 ### Tests
 
@@ -342,7 +341,7 @@ What disappears is only the attempt to turn an old representation into a new one
 - Modify/rename: `VirgoTests/LocalDTXControlBackfillTests.swift`
 - Modify/rename: `VirgoTests/RhythmImportBackfillTests.swift`
 
-The project uses file-system-synchronized groups, so implementation should not hand-edit `project.pbxproj` for these file additions/deletions unless Xcode proves it is necessary.
+The Xcode project uses file-system-synchronized groups, so implementation should not hand-edit `project.pbxproj` for these deletions/renames unless a build proves it is necessary.
 
 ## Acceptance criteria
 
@@ -350,20 +349,24 @@ The project uses file-system-synchronized groups, so implementation should not h
 - [ ] `DatabaseMaintenanceService` and its tests no longer exist.
 - [ ] `ScorePersistenceService` contains only current SwiftData score persistence behavior.
 - [ ] `HighScorePerChart` / `DidMigrateHighScoresToSwiftData` migration code is gone.
-- [ ] Existing local fixture rows are matched only by stable ID and returned without repair.
+- [ ] Existing local fixture rows are matched only by stable ID and returned without song or graph repair.
+- [ ] The no-repair regression proves stale song fields, existing charts/notes, empty controls, and missing rhythm metadata remain unchanged on repeated import.
 - [ ] Fresh fixture import still writes canonical current charts, notes, controls, rhythm metadata, duration, and audio paths.
 - [ ] Rhythm backfill/version-store production code is gone.
 - [ ] `PersistentIdentifierPersistenceKey` no longer resolves/migrates historical key encodings.
-- [ ] Current per-chart practice settings still round-trip through the canonical key; historical key variants are ignored.
+- [ ] Current practice settings round-trip through the canonical key; historical key variants are ignored.
 - [ ] Bundled fixture deletion remains durable and reset/reseed behavior still works.
+- [ ] The custom `importSong(from:songId:into:)` overload is removed only after Task 2 eliminates its remaining backfill-test callers.
+- [ ] `ServerSongDownloader` title/artist fallback cleanup remains explicitly owned by HPA-578 and is not implemented here.
+- [ ] `CLAUDE.md` contains no live guidance instructing agents to use APIs deleted by HPA-577.
 - [ ] Compatibility-only tests/comments are deleted or rewritten around current behavior.
 - [ ] Full macOS unit tests pass with parallel testing disabled.
 - [ ] iPad Simulator build passes.
-- [ ] The implementation/PR explicitly states that old local development data may require reset.
+- [ ] The implementation PR states that old local development data may require reset.
 
 ## Review guardrails
 
-During implementation/review, reject changes that add any of the following merely to compensate for the deleted paths:
+Reject changes that add any of the following merely to compensate for deleted compatibility paths:
 
 - schema/version registries;
 - migration coordinators;
@@ -373,4 +376,6 @@ During implementation/review, reject changes that add any of the following merel
 - compatibility adapters for old UserDefaults keys;
 - new cross-cutting test infrastructure.
 
-If a current-format creator is found to write invalid state, fix that creator directly in the smallest owning scope instead of adding a repair pass.
+Also reject scope creep that deletes the server-download title/artist fallbacks in this ticket; HPA-578 already owns that exact cleanup.
+
+If a current-format creator writes invalid state, fix that creator directly in its smallest owning scope instead of adding a repair pass.
