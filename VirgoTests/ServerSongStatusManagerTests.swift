@@ -286,18 +286,23 @@ struct ServerSongStatusManagerTests {
             let container = TestContainer.shared.container
             let manager = ServerSongStatusManager()
 
-            let bgmPath = "/tmp/virgo-test-bgm-\(UUID().uuidString).ogg"
-            let previewPath = "/tmp/virgo-test-preview-\(UUID().uuidString).mp3"
-            let didCreateBGM = FileManager.default.createFile(atPath: bgmPath, contents: Data("bgm".utf8))
-            let didCreatePreview = FileManager.default.createFile(atPath: previewPath, contents: Data("preview".utf8))
+            let bgmURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("virgo-test-bgm-\(UUID().uuidString).ogg")
+            let previewURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("virgo-test-preview-\(UUID().uuidString).mp3")
+            let didCreateBGM = FileManager.default.createFile(atPath: bgmURL.path, contents: Data("bgm".utf8))
+            let didCreatePreview = FileManager.default.createFile(
+                atPath: previewURL.path,
+                contents: Data("preview".utf8)
+            )
             #expect(didCreateBGM)
             #expect(didCreatePreview)
-            #expect(FileManager.default.fileExists(atPath: bgmPath))
-            #expect(FileManager.default.fileExists(atPath: previewPath))
+            #expect(FileManager.default.fileExists(atPath: bgmURL.path))
+            #expect(FileManager.default.fileExists(atPath: previewURL.path))
 
             defer {
-                try? FileManager.default.removeItem(atPath: bgmPath)
-                try? FileManager.default.removeItem(atPath: previewPath)
+                try? FileManager.default.removeItem(at: bgmURL)
+                try? FileManager.default.removeItem(at: previewURL)
             }
 
             let serverSong = ServerSong(
@@ -315,16 +320,16 @@ struct ServerSongStatusManagerTests {
                 bpm: 120.0,
                 duration: "2:00",
                 genre: "DTX Import",
-                bgmFilePath: bgmPath,
-                previewFilePath: previewPath
+                bgmFilePath: bgmURL.path,
+                previewFilePath: previewURL.path
             )
             context.insert(localSong)
             try context.save()
 
             let deleteSuccess = await manager.deleteLocalSong(localSong, container: container)
             #expect(deleteSuccess)
-            #expect(FileManager.default.fileExists(atPath: bgmPath) == false)
-            #expect(FileManager.default.fileExists(atPath: previewPath) == false)
+            #expect(FileManager.default.fileExists(atPath: bgmURL.path) == false)
+            #expect(FileManager.default.fileExists(atPath: previewURL.path) == false)
 
             let verificationContext = ModelContext(container)
             let updatedServerSong = try fetchServerSong(songId: "file-delete-song", context: verificationContext)
