@@ -56,8 +56,8 @@ struct LocalDTXFixtureImporterTests {
         #expect(songs.count == 1)
     }
 
-    @Test("re-import by stable ID returns the existing graph without repair")
-    func reImportByStableIDDoesNotRepairExistingGraph() throws {
+    @Test("re-import refreshes audio paths without repairing persisted graph data")
+    func reImportRefreshesOnlyAudioPaths() throws {
         let context = TestContainer.isolatedContainer().context
         let tempDir = try makeTempDirectory()
 
@@ -85,7 +85,11 @@ struct LocalDTXFixtureImporterTests {
             encoding: .utf8
         )
 
-        let staleBGM = "/legacy/bgm.ogg"
+        let currentBGM = tempDir.appendingPathComponent("bgm.m4a")
+        let currentPreview = tempDir.appendingPathComponent("preview.mp3")
+        try Data().write(to: currentBGM)
+        try Data().write(to: currentPreview)
+
         let existing = Song(
             title: "Legacy Local State",
             artist: "Legacy Artist",
@@ -95,8 +99,9 @@ struct LocalDTXFixtureImporterTests {
             timeSignature: .fourFour,
             isServerImported: false,
             serverSongId: tempDir.lastPathComponent,
-            bgmFilePath: staleBGM,
-            previewFilePath: "/legacy/preview.mp3"
+            bgmFilePath: "/old-container/bgm.m4a",
+            previewFilePath: "/old-container/preview.mp3",
+            bgmStartOffsetSeconds: 0.42
         )
         let chart = Chart(difficulty: .easy, level: 50, song: existing)
         let note = Note(
@@ -119,10 +124,11 @@ struct LocalDTXFixtureImporterTests {
         let returned = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
 
         #expect(returned === existing)
+        #expect(returned.bgmFilePath == currentBGM.path)
+        #expect(returned.previewFilePath == currentPreview.path)
         #expect(returned.duration == "9:59")
-        #expect(returned.bgmFilePath == staleBGM)
-        #expect(returned.previewFilePath == "/legacy/preview.mp3")
         #expect(returned.isServerImported == false)
+        #expect(returned.bgmStartOffsetSeconds == 0.42)
         #expect(returned.charts.count == 1)
         #expect(returned.charts.first === chart)
         #expect(chart.safeNotes.count == 1)
@@ -131,6 +137,67 @@ struct LocalDTXFixtureImporterTests {
         #expect(chart.rhythmMetadataData == nil)
         #expect(try context.fetch(FetchDescriptor<Song>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<Chart>()).count == 1)
+    }
+
+    @Test("re-import clears stale audio paths when current assets are removed")
+    func refreshClearsStaleAudioPathsWhenAssetsRemoved() throws {
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+
+        let setDef = """
+        #TITLE: Stale Fixture
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """
+        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
+        let chartContent =
+            "#TITLE: Stale Fixture\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
+        try chartContent.write(
+            to: tempDir.appendingPathComponent("chart.dtx"),
+            atomically: true,
+            encoding: .utf8
+        )
+        try Data().write(to: tempDir.appendingPathComponent("bgm.m4a"))
+        try Data().write(to: tempDir.appendingPathComponent("preview.mp3"))
+
+        let first = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+        #expect(first.bgmFilePath?.hasSuffix("bgm.m4a") == true)
+        #expect(first.previewFilePath?.hasSuffix("preview.mp3") == true)
+
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("bgm.m4a"))
+        try FileManager.default.removeItem(at: tempDir.appendingPathComponent("preview.mp3"))
+
+        let returned = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+
+        #expect(returned === first)
+        #expect(returned.bgmFilePath == nil)
+        #expect(returned.previewFilePath == nil)
+    }
+
+    @Test("re-import leaves an unset BGM start offset unset")
+    func reImportLeavesUnsetBGMStartOffsetUnset() throws {
+        let context = TestContainer.isolatedContainer().context
+        let fixtureURL = try soukyuuFixtureURL()
+        let existing = Song(
+            title: "蒼穹への翔歌",
+            artist: "existing",
+            bpm: 165.55,
+            duration: "3:50",
+            genre: "DTX Import",
+            timeSignature: .fourFour,
+            isServerImported: true,
+            serverSongId: LocalDTXFixtureImporter.soukyuuSongId,
+            bgmFilePath: fixtureURL.appendingPathComponent("bgm.m4a").path,
+            previewFilePath: fixtureURL.appendingPathComponent("preview.mp3").path,
+            bgmStartOffsetSeconds: nil
+        )
+        context.insert(existing)
+        try context.save()
+
+        let returned = try LocalDTXFixtureImporter.importSong(from: fixtureURL, into: context)
+
+        #expect(returned === existing)
+        #expect(returned.bgmStartOffsetSeconds == nil)
     }
 
     @Test("importSong drops charts whose difficulty label is not recognized")
@@ -147,9 +214,8 @@ struct LocalDTXFixtureImporterTests {
         #L2LABEL: CHALLENGE
         #L2FILE: chart2.dtx
         """
-        // SET.def is written as UTF-16 to match the bundled fixture format: the
-        // importer's `decodeSETFile` tries `.utf16` first and a UTF-8 SET.def would be
-        // lossily decoded as garbage CJK, hiding chart references.
+        // Exercise the bundled fixture's UTF-16 format. The importer only selects
+        // UTF-16 when a BOM is present; BOM-less sources take the UTF-8/Shift-JIS path.
         try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
         let chart1 = "#TITLE: Partial Drop\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
         try chart1.write(to: tempDir.appendingPathComponent("chart1.dtx"), atomically: true, encoding: .utf8)

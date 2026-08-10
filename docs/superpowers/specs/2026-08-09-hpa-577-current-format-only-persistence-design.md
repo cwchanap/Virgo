@@ -1,6 +1,6 @@
 # HPA-577: Current-Format-Only Startup and Persistence
 
-**Date:** 2026-08-09  
+**Date:** 2026-08-09
 **Status:** Draft design for review — revised after second review, implementation not started
 
 ## Context
