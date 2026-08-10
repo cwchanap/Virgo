@@ -18,8 +18,10 @@ struct ServerSongServiceTests {
         let cacheSaveStarted = DispatchSemaphore(value: 0)
         let cacheSavePermission = DispatchSemaphore(value: 0)
 
-        static func wait(on semaphore: DispatchSemaphore) {
-            semaphore.wait()
+        static func wait(on semaphore: DispatchSemaphore, timeout: TimeInterval = 10) {
+            if semaphore.wait(timeout: .now() + timeout) != .success {
+                Issue.record("Semaphore coordination timed out after \(timeout)s")
+            }
         }
     }
 
@@ -88,6 +90,69 @@ struct ServerSongServiceTests {
         let (defaults, _) = TestUserDefaults.makeIsolated(suiteName: name)
         if withR2 { defaults.set("https://r2.example", forKey: ServerConfig.r2BaseURLKey) }
         return ServerConfig(userDefaults: defaults)
+    }
+
+    private struct RaceWiring {
+        let service: ServerSongService
+    }
+
+    private func makeRaceWiring(
+        coordinator: DeletionRefreshRaceCoordinator,
+        context: ModelContext
+    ) -> RaceWiring {
+        let statusManager = ServerSongStatusManager(
+            saveContext: { backgroundContext in
+                coordinator.deletionSaveStarted.signal()
+                DeletionRefreshRaceCoordinator.wait(on: coordinator.deletionSavePermission)
+                defer { coordinator.deletionSaveCompleted.signal() }
+                try backgroundContext.save()
+            }
+        )
+        let fetcher = MockSimfileFetcher(all: [.stub(id: "overlap")])
+        let cache = ServerSongCache(
+            fetcher: fetcher,
+            statusManager: statusManager,
+            saveContext: { replacementContext in
+                coordinator.cacheSaveStarted.signal()
+                DeletionRefreshRaceCoordinator.wait(on: coordinator.cacheSavePermission)
+                try replacementContext.save()
+            }
+        )
+        let service = ServerSongService(cache: cache, statusManager: statusManager)
+        service.setModelContext(context)
+        return RaceWiring(service: service)
+    }
+
+    private struct RaceSongData {
+        let localSong: Song
+    }
+
+    private func seedRaceSongs(into context: ModelContext) throws -> RaceSongData {
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+        let cachedSong = ServerSong(
+            songId: "overlap",
+            title: "Overlap",
+            artist: "Race",
+            bpm: 120,
+            isDownloaded: true,
+            bgmDownloaded: true,
+            previewDownloaded: true
+        )
+        let localSong = Song(
+            title: "Overlap",
+            artist: "Race",
+            bpm: 120,
+            duration: "3:00",
+            genre: "DTX Import",
+            isServerImported: true,
+            serverSongId: "overlap",
+            bgmFilePath: temporaryDirectory.appendingPathComponent("virgo-overlap-bgm.ogg").path,
+            previewFilePath: temporaryDirectory.appendingPathComponent("virgo-overlap-preview.mp3").path
+        )
+        context.insert(cachedSong)
+        context.insert(localSong)
+        try context.save()
+        return RaceSongData(localSong: localSong)
     }
 
     @Test("loadServerSongs without model context is a no-op")
@@ -274,52 +339,9 @@ struct ServerSongServiceTests {
             let context = TestContainer.shared.context
             let container = TestContainer.shared.container
             let coordinator = DeletionRefreshRaceCoordinator()
-            let temporaryDirectory = FileManager.default.temporaryDirectory
 
-            let statusManager = ServerSongStatusManager(
-                saveContext: { backgroundContext in
-                    coordinator.deletionSaveStarted.signal()
-                    coordinator.deletionSavePermission.wait()
-                    defer { coordinator.deletionSaveCompleted.signal() }
-                    try backgroundContext.save()
-                }
-            )
-            let fetcher = MockSimfileFetcher(all: [.stub(id: "overlap")])
-            let cache = ServerSongCache(
-                fetcher: fetcher,
-                statusManager: statusManager,
-                saveContext: { replacementContext in
-                    coordinator.cacheSaveStarted.signal()
-                    coordinator.cacheSavePermission.wait()
-                    try replacementContext.save()
-                }
-            )
-            let service = ServerSongService(cache: cache, statusManager: statusManager)
-            service.setModelContext(context)
-
-            let cachedSong = ServerSong(
-                songId: "overlap",
-                title: "Overlap",
-                artist: "Race",
-                bpm: 120,
-                isDownloaded: true,
-                bgmDownloaded: true,
-                previewDownloaded: true
-            )
-            let localSong = Song(
-                title: "Overlap",
-                artist: "Race",
-                bpm: 120,
-                duration: "3:00",
-                genre: "DTX Import",
-                isServerImported: true,
-                serverSongId: "overlap",
-                bgmFilePath: temporaryDirectory.appendingPathComponent("virgo-overlap-bgm.ogg").path,
-                previewFilePath: temporaryDirectory.appendingPathComponent("virgo-overlap-preview.mp3").path
-            )
-            context.insert(cachedSong)
-            context.insert(localSong)
-            try context.save()
+            let wiring = makeRaceWiring(coordinator: coordinator, context: context)
+            let songs = try seedRaceSongs(into: context)
 
             // Keep the detached deletion paused before persistence. The refresh
             // then snapshots the still-present local song and blocks at its own
@@ -338,12 +360,12 @@ struct ServerSongServiceTests {
             }
 
             let deletionTask = Task { @MainActor in
-                await service.deleteLocalSong(localSong)
+                await wiring.service.deleteLocalSong(songs.localSong)
             }
             await deletionReady.value
 
             let refreshTask = Task { @MainActor in
-                await service.refreshCatalog()
+                await wiring.service.refreshCatalog()
             }
 
             await refreshTask.value
