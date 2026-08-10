@@ -7,10 +7,6 @@ import Foundation
 @MainActor
 // swiftlint:disable:next type_body_length
 struct ServerSongServiceTests {
-    private enum SaveHookError: Error {
-        case forced
-    }
-
     /// In-memory `FileDownloading` keyed by absolute URL; can throw for missing keys.
     private final class MockFileDownloader: FileDownloading, @unchecked Sendable {
         var responses: [String: Data] = [:]
@@ -318,14 +314,23 @@ struct ServerSongServiceTests {
         }
     }
 
-    @Test("downloadAndImportSong success marks song downloaded and refreshes status")
-    func testDownloadAndImportSongSuccessRefreshesStatus() async throws {
+    @Test("download success delegates cache status without direct cache write")
+    func testDownloadSuccessDoesNotAuthorCapturedServerSong() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
             let downloader = MockServerSongDownloader()
             downloader.result = (true, nil)
             let statusManager = MockServerSongStatusManager()
-            let service = ServerSongService(downloader: downloader, statusManager: statusManager)
+            var serviceSaveHookCalls = 0
+
+            let service = ServerSongService(
+                downloader: downloader,
+                statusManager: statusManager,
+                saveModelContext: { context in
+                    serviceSaveHookCalls += 1
+                    try context.save()
+                }
+            )
             service.setModelContext(context)
 
             let serverSong = ServerSong(songId: "download-ok", title: "OK", artist: "Artist", bpm: 120.0)
@@ -335,46 +340,10 @@ struct ServerSongServiceTests {
             let success = await service.downloadAndImportSong(serverSong)
 
             #expect(success)
-            #expect(serverSong.isDownloaded == true)
-            #expect(service.errorMessage == nil)
-            #expect(service.warningMessage == nil)
-            #expect(service.downloadingSongs.isEmpty)
+            #expect(serverSong.isDownloaded == false)
+            #expect(serviceSaveHookCalls == 0)
             #expect(statusManager.refreshDownloadStatusCalled)
             #expect(downloader.receivedSongIDs == ["download-ok"])
-        }
-    }
-
-    @Test("downloadAndImportSong remains successful when status save throws")
-    func testDownloadAndImportSongSuccessWhenStatusSaveThrows() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let downloader = MockServerSongDownloader()
-            downloader.result = (true, nil)
-            let statusManager = MockServerSongStatusManager()
-            var saveAttempts = 0
-
-            let service = ServerSongService(
-                downloader: downloader,
-                statusManager: statusManager,
-                saveModelContext: { _ in
-                    saveAttempts += 1
-                    throw SaveHookError.forced
-                }
-            )
-            service.setModelContext(context)
-
-            let serverSong = ServerSong(songId: "download-save-throws", title: "Saved", artist: "Artist", bpm: 140.0)
-            context.insert(serverSong)
-            try context.save()
-
-            let success = await service.downloadAndImportSong(serverSong)
-
-            #expect(success)
-            #expect(serverSong.isDownloaded == true)
-            #expect(service.errorMessage == nil)
-            #expect(saveAttempts == 1)
-            #expect(statusManager.refreshDownloadStatusCalled)
-            #expect(downloader.receivedSongIDs == ["download-save-throws"])
         }
     }
 
@@ -435,7 +404,8 @@ struct ServerSongServiceTests {
                 bpm: 120.0,
                 duration: "3:00",
                 genre: "DTX Import",
-                isServerImported: true
+                isServerImported: true,
+                serverSongId: "service-delete"
             )
             context.insert(serverSong)
             context.insert(importedSong)
