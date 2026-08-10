@@ -145,8 +145,8 @@ layout, so the stages must be understood in order:
 
 Normalized tick fields are persisted on `Note` and `ChartControlEvent` during current DTX import.
 Virgo does not backfill older imported development rows after representation changes; reset/reseed
-local development data instead. `RhythmMetronomeSchedule` derives the metronome schedule from the
-same timeline, so timing changes affect audio and notation together.
+local development data instead. Runtime missing-metadata fallback remains separate from import-time
+backfill. `RhythmMetronomeSchedule` derives the metronome schedule from the same timeline.
 
 ### Drum Tab Golden Coverage
 `VirgoTests/Fixtures/DrumTabFixtureCatalog*.swift` holds 11 DTX fixtures driven through the real
@@ -278,7 +278,7 @@ BGM (`AVAudioPlayer`) and metronome are synchronized using a common `CFAbsoluteT
 
 ### Gameplay Regression Debugging Lessons
 - Treat gameplay timing, BGM audio, notation layout, row scrolling, and input timing as one system when investigating sync drift or lag. `GameplayViewModel` is the hub to inspect first because it fans out to the playhead, current row, scoring, metronome configuration, BGM clock, and input timing.
-- For DTX fixture audio on macOS, do not rely on OGG playback through `AVAudioPlayer`. Store a playable audio path such as `bgm.m4a` in `Song.bgmFilePath`; reset/reseed local development data after changing fixture audio paths so stale persisted `bgm.ogg` paths do not silently disable BGM.
+- For DTX fixture audio on macOS, do not rely on OGG playback through `AVAudioPlayer`. Persist a playable path such as `bgm.m4a`; stable-ID re-import re-resolves BGM/preview paths from current fixture assets and clears paths for missing assets. Reset/reseed local development data after non-path representation changes.
 - Gameplay layout must know the available row width before `setupGameplay()` builds the first visible notation layout. Seed the GeometryReader width before setup, and keep pre-setup row-width updates from building throwaway layouts; otherwise the user sees a first layout and then a later repack with different measure grouping.
 - On macOS UI tests, `app.windows.count` can include auxiliary XCTest/accessibility windows. To check whether gameplay and the tab shell are mounted simultaneously, assert one window contains `gameplayRoot` and assert `appTabShell`/tab bars are absent instead of asserting the raw window count.
 - Swift Testing method selectors can report "Executed 0 tests" when the generated test name does not match the guessed selector. Prefer suite/class selectors for focused verification unless the exact selector is already proven.

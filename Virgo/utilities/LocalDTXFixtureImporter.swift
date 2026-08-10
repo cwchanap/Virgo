@@ -67,6 +67,7 @@ enum LocalDTXFixtureImporter {
         save: (ModelContext) throws -> Void
     ) throws -> LocalDTXFixtureImportResult {
         if let existingSong = try existingSong(with: songId, in: context) {
+            try refreshAudioPaths(for: existingSong, from: folderURL, in: context)
             return LocalDTXFixtureImportResult(song: existingSong, warnings: [])
         }
 
@@ -275,6 +276,40 @@ enum LocalDTXFixtureImporter {
     private static func existingSong(with songId: String, in context: ModelContext) throws -> Song? {
         try context.fetch(FetchDescriptor<Song>())
             .first { $0.serverSongId == songId }
+    }
+
+    @MainActor
+    private static func refreshAudioPaths(
+        for song: Song,
+        from folderURL: URL,
+        in context: ModelContext
+    ) throws {
+        var didChange = false
+
+        // Re-resolve persisted absolute paths from the fixture's current assets. If
+        // an asset disappeared, clear its stale path instead of leaving playback with
+        // a dangling filesystem reference.
+        let bgmPath = existingAudioPath(named: "bgm.m4a", in: folderURL)
+        if song.bgmFilePath != bgmPath {
+            if bgmPath == nil, let stalePath = song.bgmFilePath {
+                Logger.warning("DTX fixture: bgm.m4a no longer bundled — clearing stale path \(stalePath)")
+            }
+            song.bgmFilePath = bgmPath
+            didChange = true
+        }
+
+        let previewPath = existingAudioPath(named: "preview.mp3", in: folderURL)
+        if song.previewFilePath != previewPath {
+            if previewPath == nil, let stalePath = song.previewFilePath {
+                Logger.warning("DTX fixture: preview.mp3 no longer bundled — clearing stale path \(stalePath)")
+            }
+            song.previewFilePath = previewPath
+            didChange = true
+        }
+
+        if didChange {
+            try context.save()
+        }
     }
 
     private static func decodeSETFile(at url: URL) -> String? {
