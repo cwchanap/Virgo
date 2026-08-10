@@ -1,86 +1,84 @@
 # HPA-578: Complete Catalog Snapshot Refresh
 
 **Date:** 2026-08-09
-**Status:** Draft design for review — planning only, implementation not started
+**Status:** Draft design for review — revised after reference-lifetime review; implementation not started
 
 ## Context
 
-HPA-578 is the remaining Phase A work in the Virgo runtime/performance roadmap after HPA-576 and HPA-577. It is unblocked and independent of the HPA-579 profiling gate, while HPA-580 and HPA-581 must not start until that profiling decision exists.
+HPA-578 is the remaining Phase A work in the Virgo runtime/performance roadmap after HPA-576 and HPA-577. It is unblocked and independent of the HPA-579 profiling gate.
 
-Virgo currently treats `ServerSong` / `ServerChart` as a partly persistent catalog and partly mutable sync state:
+Today `ServerSong` / `ServerChart` behave partly like replaceable catalog metadata and partly like durable mutable state:
 
-- `ServerSongCache.refreshCatalog` page-walks the backend, inserts only unseen IDs, backfills legacy chart URLs, prunes stale IDs, silently tolerates duplicate IDs, saves, then runs a second download-status reconciliation pass.
-- Existing cache rows are deliberately preserved, so current server edits to title, artist, BPM, duration, chart level, URL, encoding, and media availability can remain stale indefinitely.
-- An incomplete page walk can still partially insert fetched rows.
-- `ServerSongStatusManager.pruneCachedSong` may delete a locally imported `Song` and its audio merely because the current server catalog no longer contains that ID.
-- `ServerSongDownloader` and `ServerSongStatusManager` still fall back to title/artist matching for historical rows without `serverSongId`.
-- `ServerSongCache.loadServerSongs` converts a SwiftData fetch failure into an empty list, and `ServerSongService.loadServerSongs` converts cache failure into another empty list, making failure indistinguishable from a valid empty cache.
+- `ServerSongCache.refreshCatalog` inserts unseen IDs, preserves existing rows, backfills legacy chart URLs, prunes IDs missing from the server, tolerates duplicate responses, saves, then performs a second status reconciliation.
+- Existing cache rows therefore keep stale server metadata indefinitely.
+- An incomplete page walk can partially insert new rows.
+- `ServerSongStatusManager.pruneCachedSong` can delete a locally imported `Song` and its audio because a catalog ID disappeared.
+- `ServerSongDownloader` and `ServerSongStatusManager` still use title/artist fallback identity for rows without `serverSongId`.
+- `ServerSongService.downloadAndImportSong` holds a `ServerSong` model across a long `await`, then writes `serverSong.isDownloaded = true`. Full cache replacement would make that captured model disposable while the download is still in flight.
+- `ServerSongService.loadServerSongs()` returns an array that `ContentView` discards; the live catalog is already owned by SwiftUI `@Query`.
 
-HPA-577 established Virgo's current-format-only policy: old development representations may be reset rather than migrated. HPA-578 applies the same policy to the server catalog. The cache should represent one complete current server snapshot, and local imported songs should use `Song.serverSongId` as the only server identity.
+HPA-577 established the current-format-only policy: old development representations may be reset rather than migrated. HPA-578 applies the same policy to server catalog metadata.
 
 ## Decision summary
 
-Treat the server catalog as replaceable metadata, not as a synchronized user-data store.
+Treat `ServerSong` / `ServerChart` as replaceable cache metadata and `Song` as durable local application data.
 
-1. Fetch and validate one complete DTO snapshot before touching SwiftData.
-2. Reject incomplete pagination, changing `totalCount`, count mismatches, or duplicate server IDs.
-3. Build new `ServerSong` / `ServerChart` models from the validated DTOs using `SimfileMapper`.
-4. Project current download/BGM/preview flags from local server-imported `Song` rows by `serverSongId` before insertion.
-5. Delete the old catalog rows and insert the new snapshot in one `ModelContext` mutation phase, call `save()` exactly once, and roll back on save failure.
-6. Never delete or rewrite local `Song`, `Chart`, `Note`, `ScoreRecord`, or audio files as part of catalog replacement.
-7. Delete legacy catalog backfill, additive-upsert, title/artist fallback, and single-file compatibility paths instead of preserving them.
-8. Use the existing `ServerSongService.isLoading`, plus one small failure flag, to distinguish empty/loading/failed catalog presentation. Do not introduce a catalog state framework.
+1. Fetch and validate one complete DTO snapshot before any SwiftData mutation.
+2. Reject incomplete pagination, changing `totalCount`, over/under-counts, and duplicate server IDs.
+3. Map the validated DTOs through `SimfileMapper`.
+4. Project download/BGM/preview flags from local server-imported `Song` rows by exact `serverSongId`.
+5. Delete old `ServerSong` rows, insert the mapped snapshot, and save exactly once. Roll back on save failure.
+6. Never delete or rewrite local `Song`, `Chart`, `Note`, `ScoreRecord`, or audio because a catalog ID disappeared.
+7. Never author cache download flags through a `ServerSong` reference that survived an `await`; download completion triggers stable-ID status reconciliation instead.
+8. Delete catalog compatibility: URL backfill, additive upsert, title/artist identity fallback, stale pruning, and the single-file `ServerSong` convenience initializer.
+9. Keep startup catalog loading non-throwing. `@Query` owns the rows; startup work only reconciles download flags.
+10. Surface **manual refresh** failure with the existing alert plus one `catalogRefreshFailed` Boolean. Do not add a catalog state machine.
+11. Share one empty/loading/failed placeholder branch between list and grid layouts.
 
 ## Approaches considered
 
-### A. Keep additive refresh and patch more metadata fields
+### A. Keep additive refresh and patch more fields
 
-Update every field on matching IDs, preserve stale pruning, keep the legacy URL backfill, and add more duplicate/incomplete-page guards.
+Update matching rows in place and keep compatibility/prune behavior.
 
-**Rejected.** This continues to make cache replacement behave like a synchronization engine. It also keeps two code paths for creating current metadata: fresh insertion and mutation/backfill of an old row. The cache contains no user-authored state worth preserving, so replacement is simpler and more correct.
+**Rejected.** It preserves two ways to create current cache metadata and retains the ownership bug where server catalog changes can affect local durable data.
 
-### B. Validate a full snapshot, then replace the cache in one save
+### B. Validate one complete snapshot, then replace cache metadata
 
-Fetch all plain DTOs first, validate them, map them to new models, restore only derived download flags by stable ID, and replace the old cache rows in one mutation/save phase.
+Fetch plain DTOs, validate them, map new cache models, project local status, then replace only cache rows in one save.
 
-**Selected.** This matches the data ownership model: server metadata is replaceable, local `Song` data is durable application data. It eliminates most compatibility code and gives failure a clear non-destructive boundary.
+**Selected.** This is the smallest design that matches the actual ownership model.
 
-### C. Add a repository/sync coordinator, staging store, generation table, or two-phase swap
+### C. Add a repository, staging store, generations, or two-phase swap
 
-Introduce a new catalog repository and persistent generations so the app can stage a snapshot and atomically flip between versions.
-
-**Rejected.** Virgo is pre-release and the catalog is a manual cache. A validated in-memory DTO snapshot plus one SwiftData save provides the required behavior without permanent synchronization infrastructure.
+**Rejected.** The catalog is a manual pre-release cache. A validated in-memory snapshot plus one SwiftData save is sufficient.
 
 ## Goals
 
-1. Current server metadata fully replaces stale cached metadata after a successful manual refresh.
-2. Any fetch, pagination, validation, or save failure leaves the previously persisted catalog intact.
-3. Duplicate server IDs are treated as invalid input rather than deduplicated.
-4. Download flags survive cache replacement by deriving them from current local songs with matching stable server IDs.
-5. Local downloaded/imported songs and audio remain untouched when catalog entries disappear.
-6. Initial cache-load failure is visibly different from a valid empty catalog.
-7. Historical catalog compatibility code and tests are deleted rather than carried forward.
+- Successful refresh exactly reflects current server metadata.
+- Failed/incomplete/duplicate snapshots leave the previous persisted cache untouched.
+- Local imported songs and audio survive catalog removals.
+- Download state is derived from current local rows using stable IDs.
+- In-flight downloads remain safe if the cache is refreshed while they are awaiting network/file work.
+- Manual refresh failure is visibly distinguishable from a valid empty catalog.
+- Compatibility code is deleted rather than deprecated.
 
-## Non-goals and ownership boundaries
+## Non-goals
 
-- No automatic/background catalog refresh.
-- No incremental sync token, ETag, merge policy, offline queue, or retry scheduler.
-- No new repository/use-case layer around `ServerSongService`.
-- No separate SwiftData container, staging table, generation model, or transaction coordinator.
-- No change to Apollo/GraphQL schema or generated code.
-- No change to locally imported song/chart/note/score persistence beyond identity matching in server-management code.
-- No audio-format fix; HPA-85 owns server BGM playback format behavior.
-- No off-main parsing or file-work change; HPA-579/HPA-580 own that decision.
-- No broad test-suite/documentation consolidation; HPA-583 owns the final cleanup pass.
-- No attempt to preserve old development cache rows that lack current IDs/URLs. Reset/reload is the supported path.
+- Background/automatic refresh.
+- Incremental sync tokens, ETags, merge policies, retry queues, repository/use-case layers, staging databases, or generation models.
+- Off-main parsing/file changes; HPA-579/HPA-580 own that decision.
+- Server BGM format changes; HPA-85 owns that work.
+- Broad test/document cleanup; HPA-583 owns the final consolidation.
+- New catalog sorting behavior. The current sorted array returned by `ServerSongCache.loadServerSongs` is discarded by `ContentView`; it does not control the live `@Query` order today.
 
 ## Design
 
-### 1. Fetch a complete plain-DTO snapshot before mutation
+### 1. Validate a complete plain-DTO snapshot before mutation
 
-Keep network orchestration inside `ServerSongCache`; `SimfileFetching` remains the backend seam. Do not move this work to a new repository.
+Keep orchestration in `ServerSongCache` and keep `SimfileFetching` as the backend seam.
 
-Replace the current `(simfiles, isComplete)` result with a throwing complete-snapshot helper:
+Add one catalog-specific error type:
 
 ```swift
 enum ServerSongCatalogRefreshError: LocalizedError, Equatable {
@@ -91,25 +89,24 @@ enum ServerSongCatalogRefreshError: LocalizedError, Equatable {
 }
 ```
 
-The exact error text should be user-readable because `ServerSongService` already surfaces refresh errors through `errorMessage`.
+`fetchCompleteSnapshot(maxPages:)` rules:
 
-`fetchCompleteSnapshot(maxPages:)` follows these rules:
+1. First page establishes `expectedTotalCount`.
+2. Every later page must report that same count.
+3. `totalCount == 0` with zero rows is a valid empty snapshot.
+4. Validate each DTO ID as it arrives; the first duplicate throws immediately.
+5. Append only validated DTOs.
+6. Empty page before expected count throws `incompleteSnapshot`.
+7. Exceeding expected count throws `unexpectedSnapshotCount`.
+8. Reaching `maxPages` before expected count throws `incompleteSnapshot`.
+9. Final row count must equal `expectedTotalCount` exactly.
+10. Network errors propagate unchanged.
 
-1. Fetch page 1 and capture its `totalCount` as the expected snapshot count.
-2. Require every subsequent page to report the same `totalCount`. If it changes during the walk, fail and let the user refresh again.
-3. A first page with `totalCount == 0` and zero rows is a valid empty snapshot.
-4. Validate each received DTO ID as pages arrive. On the first repeated `dto.id`, throw `duplicateSongID` immediately; do not wait for count validation or silently deduplicate it.
-5. Append only validated DTOs and use the accumulated raw DTO count as the pagination completion signal. Do not use unique-ID count to decide whether the walk is complete.
-6. An empty page before the expected count is reached is `incompleteSnapshot`.
-7. Hitting the existing defensive `maxPages` bound before reaching the expected count is `incompleteSnapshot`.
-8. Require the accumulated DTO count never to exceed `totalCount`; an overfilled response is `unexpectedSnapshotCount`.
-9. After the walk, require the accumulated DTO count to equal `totalCount` exactly.
+No `ModelContext.insert` or `delete` occurs before this helper returns successfully.
 
-Network errors from `SimfileFetching` propagate unchanged. All of this happens before any `ModelContext.insert` / `delete` call.
+### 2. Make status projection exact-ID-only
 
-### 2. Reuse one small status projection, keyed only by `serverSongId`
-
-`ServerSongStatusManager` already owns the meaning of the three cache status flags. Keep that ownership, but make the reusable core non-persisting:
+Extract the non-persisting core already inside `ServerSongStatusManager.refreshDownloadStatus`:
 
 ```swift
 @MainActor
@@ -120,41 +117,65 @@ func applyDownloadStatus(
 ) -> Bool
 ```
 
-The method:
+It considers only `isServerImported` local rows with non-nil `serverSongId`, groups by exact ID, and sets:
 
-- considers only local rows with `isServerImported == true` and non-nil `serverSongId`;
-- groups them by exact `serverSongId`;
-- sets `isDownloaded` when at least one local row exists for the ID;
-- sets `bgmDownloaded` when any matching row has `bgmFilePath != nil`;
-- sets `previewDownloaded` when any matching row has `previewFilePath != nil`;
-- returns whether it changed any supplied `ServerSong` flag.
+- `isDownloaded` if any local row matches;
+- `bgmDownloaded` if any matching row has `bgmFilePath`;
+- `previewDownloaded` if any matching row has `previewFilePath`.
 
-There is deliberately no title/artist dictionary and no normalization fallback.
+`refreshDownloadStatus(modelContext:)` remains the persisted wrapper for non-catalog callers: fetch current rows, call `applyDownloadStatus`, save only if values changed, roll back/log on failure.
 
-`refreshDownloadStatus(modelContext:)` remains available for existing non-catalog callers. It fetches current local/cache rows, delegates to `applyDownloadStatus`, and saves only if values changed.
+Delete title/artist identity from status/deletion flows. During Task 1, `matchesServerSong` may remain only as a temporary dependency of `pruneCachedSong`; Task 2 deletes both together.
 
-`ServerSongCache.refreshCatalog` uses `applyDownloadStatus` on the newly mapped, not-yet-saved cache models. This is the important part: status reconciliation becomes part of the catalog replacement's one save instead of a second post-save transaction.
+### 3. Replace only cache metadata in one save
 
-### 3. Replace only cache rows in one mutation/save phase
+After validation:
 
-After the DTO snapshot has been fetched and validated:
+1. Fetch local `Song` rows for status projection.
+2. Fetch existing `ServerSong` cache rows.
+3. Map DTOs with `SimfileMapper.makeServerSong(from:)`.
+4. Apply download flags to those new models.
+5. Delete every existing `ServerSong`; cascade owns `ServerChart` cleanup.
+6. Insert every replacement `ServerSong` and `ServerChart`.
+7. Call injected `saveContext` exactly once.
+8. On save failure, `rollback()` and rethrow.
 
-1. Fetch local `Song` rows needed for status projection.
-2. Fetch the existing `ServerSong` cache rows.
-3. Convert every DTO through `SimfileMapper.makeServerSong(from:)`.
-4. Apply stable-ID download state to those new models.
-5. Delete every existing `ServerSong`. Its cascade relationship owns `ServerChart` deletion.
-6. Insert every new `ServerSong` and its mapped `ServerChart` rows.
-7. Call the injected `saveContext` exactly once.
-8. If save throws, call `modelContext.rollback()` and rethrow.
+Do not call `pruneCachedSong`. Do not delete local songs or audio. Do not run a second post-save status reconciliation.
 
-No local `Song` is deleted or modified in this path. No audio file is removed. A server ID disappearing from the catalog only means there is no current `ServerSong` cache row for it. If the ID appears in a later valid snapshot, status projection will mark it downloaded again from the still-present local `Song`.
+A catalog ID disappearing means only that its cache metadata is absent. If the ID returns later, the still-present local `Song(serverSongId:)` will project downloaded state back onto the new cache row.
 
-Delete `ServerSongStatusManager.pruneCachedSong`; complete cache replacement no longer has a reason to call it.
+### 4. Treat cache model references as ephemeral across awaits
 
-The level-scale warning may remain because it validates current server data and does not preserve an old representation.
+Full replacement means a `ServerSong` reference is valid only until an operation suspends unless the caller explicitly re-resolves it.
 
-### 4. Delete catalog compatibility and fallback identity
+`ServerSongDownloader.downloadAndImportSong` already does the correct thing: it creates `ServerSongSnapshot` before its first long await and uses that value snapshot for chart/audio work.
+
+`ServerSongService.downloadAndImportSong` must stop doing this after the downloader returns:
+
+```swift
+serverSong.isDownloaded = true
+try saveModelContext(modelContext)
+```
+
+Those writes author derived cache state through a model object that may have been deleted/replaced during the download.
+
+On successful import, the service should only:
+
+```swift
+await refreshDownloadStatus()
+```
+
+The imported local `Song` carries `serverSongId`, so status reconciliation finds whichever current cache row owns that ID.
+
+Consequences:
+
+- remove the stored `saveModelContext` property from `ServerSongService`; keep the initializer parameter only because it is injected into the cache/status manager constructors;
+- delete the service test whose only contract is the direct post-download status save;
+- add a regression that replaces the cache row while a mocked download is in flight and proves completion updates the replacement row through status reconciliation without invoking the service save hook.
+
+`deleteDownloadedSong` does **not** need a re-fetch in this ticket. Its `ServerSongStatusManager.deleteDownloadedSong` body has no suspension point and is `@MainActor`; once entered, a refresh cannot interleave until it returns. If that method later gains an `await`, its reference lifetime should be re-reviewed then.
+
+### 5. Delete remaining compatibility surfaces
 
 #### `ServerSongCache`
 
@@ -162,141 +183,122 @@ Delete:
 
 - `backfillLegacyChartURLs`;
 - `matchingDtxFile`;
-- additive existing-ID preservation;
-- incomplete-walk partial insertion;
-- duplicate-ID recovery/deduplication comments and behavior;
-- post-save `refreshDownloadStatus` call.
-
-A valid current snapshot always rebuilds charts from DTO `fileURL` / encoding through `SimfileMapper`.
-
-#### `ServerSongDownloader`
-
-`ServerSongDownloader.songAlreadyExists` keeps only the targeted `Song.serverSongId == snapshot.songId` check.
-
-Delete both legacy fallbacks:
-
-- exact title/artist match when `serverSongId == nil`;
-- case-insensitive in-memory title/artist match.
-
-A local/manual/historical row with the same title and artist but no matching current server ID does not block a server import.
+- additive existing-row preservation;
+- partial insertion on incomplete walks;
+- duplicate recovery/deduplication;
+- stale prune loop;
+- post-save status refresh.
 
 #### `ServerSongStatusManager`
 
-All server-status matching becomes exact stable-ID matching. Simplify:
+Delete title/artist matching helpers and parameters. Task 2 also deletes:
 
-- `deleteDownloadedSong` selects `isServerImported` rows whose `serverSongId == serverSong.songId`;
-- `deleteLocalSong` updates cache flags only when the deleted local song has a `serverSongId`;
-- remaining-row checks compare that exact ID only;
-- remove title/artist fallback helpers and parameters.
+- `pruneCachedSong`;
+- `isAlreadyDownloaded` if it has no remaining caller after prune removal;
+- already-dead `hasBGMFile`;
+- already-dead `hasPreviewFile`;
+- `matchesServerSong` after its final prune caller disappears.
 
-Local deletion still deletes the selected local row and its owned audio using the existing file manager rules; this is user-initiated deletion, not catalog refresh.
+#### `ServerSongDownloader`
+
+`Song.serverSongId == snapshot.songId` becomes the only duplicate check. Delete exact and case-insensitive title/artist fallback legs.
 
 #### `ServerSongService`
 
-Delete the pre-download guard that rejects cached charts with an empty `fileURL` and tells the user to refresh. That guard exists only to support an old cache representation. Current invalid/missing URLs continue to fail through the normal downloader error path.
+Delete the pre-download empty-`fileURL` “refresh first” compatibility guard. Current invalid URLs fail through `ServerSongDownloader.processChart` / `ServerSongImportError`.
 
-#### `ServerSong` model
+#### `ServerSong`
 
-Delete the `ServerSong(filename:title:artist:bpm:difficultyLevel:size:isDownloaded:)` single-file convenience initializer and its compatibility-only model tests. Current catalog construction uses the `songId` initializer through `SimfileMapper`; the repository survey found no current production caller for the legacy initializer.
+Delete the legacy single-file convenience initializer and compatibility-only model tests.
 
-### 5. Make initial load failure observable without a state framework
+### 6. Simplify startup load; make refresh failure visible
 
-The live UI already reads `@Query var serverSongs`; the array returned from `ServerSongService.loadServerSongs()` is ignored by `ContentView`. Remove the misleading result contract instead of inventing another in-memory source of truth.
+The catalog row source is `ContentView`'s `@Query`, not the value returned by the service.
 
-Change the cache load boundary to:
+Delete `ServerSongCache.loadServerSongs`. It is not needed to load the live catalog.
 
-```swift
-func loadServerSongs(modelContext: ModelContext) async throws
-```
-
-It performs a real SwiftData fetch (so fetch failure propagates) and retains the current status reconciliation call. It does not convert fetch failure to `[]`.
-
-Change the service boundary to:
+Change the service method to a result-less, non-throwing startup reconciliation:
 
 ```swift
-func loadServerSongs() async
+func loadServerSongs() async {
+    guard modelContext != nil else { return }
+    isLoading = true
+    defer { isLoading = false }
+    await refreshDownloadStatus()
+}
 ```
 
-Use existing `isLoading` and add only:
+This keeps the existing startup call and existing `isLoading` surface without inventing a second catalog source or a SwiftData “probe fetch.”
+
+Add:
 
 ```swift
-@Published private(set) var catalogLoadFailed = false
+@Published private(set) var catalogRefreshFailed = false
 ```
 
-Behavior:
+Only manual refresh owns this flag:
 
-- start load: `isLoading = true`, clear `errorMessage`;
-- load success: `catalogLoadFailed = false`;
-- load failure: `catalogLoadFailed = true`, set `errorMessage` to `Failed to load server songs: ...`, log the error;
-- always finish with `isLoading = false`;
-- successful manual refresh also clears `catalogLoadFailed`;
-- failed manual refresh sets it, while leaving any previously cached rows visible.
+- refresh start: clear prior `errorMessage`;
+- refresh success: `catalogRefreshFailed = false`;
+- refresh failure: `catalogRefreshFailed = true`, set existing refresh error alert;
+- always end with `isRefreshing = false`.
 
-`ContentView` calls `await serverSongService.loadServerSongs()` without assigning a result.
+Initial reconciliation failure inside `ServerSongStatusManager` remains logged by that existing component; HPA-578 does not add a second error channel for `@Query`/SwiftData failure.
 
-`ServerSongsView` keeps the existing cache rows as the first priority. Only when `serverSongs.isEmpty` does it distinguish:
+### 7. Use one shared empty/loading/failed placeholder
 
-1. `isLoading || isRefreshing` → loading placeholder;
-2. `catalogLoadFailed` → failed placeholder (`Couldn’t load server songs` / `Tap refresh to try again`);
-3. otherwise → valid empty-catalog placeholder.
+Keep non-empty cached rows as first priority. When there are no rows, both list and grid render one shared property:
 
-The existing header refresh button and alert are sufficient retry/error affordances. Do not add a second retry controller or state enum.
+```swift
+@ViewBuilder
+private var serverSongsPlaceholder: some View {
+    if serverSongService.isLoading || serverSongService.isRefreshing {
+        loadingRow
+    } else if serverSongService.catalogRefreshFailed {
+        failedState
+    } else {
+        emptyState
+    }
+}
+```
 
-### 6. Focused regression coverage
+`serverList` applies `.listRowBackground(Color.clear)` to this property. `gridPlaceholder` simply returns the same property. This structurally prevents list/grid state-order drift.
 
-#### Complete replacement
+Keep accessibility identifiers on loading, failed, and valid-empty states.
 
-Seed cache rows `a` and stale `z`, plus a local server-imported `Song(serverSongId: "a")`. Refresh with DTOs containing changed `a` and new `b`.
+### 8. Test migration must precede behavior changes
 
-Assert:
+Task 1 changes shared identity semantics, so old fixtures that depend on title/artist fallback must be made current-ID fixtures **before** the production change.
 
-- cache IDs become exactly `a` and `b`;
-- `a` receives the DTO's new title/artist/BPM/duration/chart URL/encoding/media availability;
-- `z` disappears only from `ServerSong` / `ServerChart` cache rows;
-- the local `Song(serverSongId: "a")` still exists unchanged;
-- matching `a` has download/BGM/preview flags projected from the local row;
-- the injected cache `saveContext` is called once and no post-save status refresh is invoked.
+At minimum migrate:
 
-#### Non-destructive failures
+- `ServerSongCatalogRefreshTests.testAdditiveAndPrune`: matching local row gets `serverSongId: "a"`;
+- `ServerSongCatalogRefreshTests.testBackfillLegacyChartURLs`: matching local row gets `serverSongId: "a"`;
+- current-match fixtures in `ServerSongStatusManagerTests`, including `setupGroupedSongs` and `testRefreshDownloadStatusUpdatesFlags`.
 
-For each of these, seed an old persisted cache row first and assert it remains unchanged with no partial new rows:
+`ServerSongCacheCoverageTests` contains no local `Song` fixture used for download-status matching today, so there is no identity fixture to migrate there; it is still included in the shared checkpoint regression command because it exercises the cache/status integration.
 
-- backend request throws;
-- an empty page arrives before `totalCount` is satisfied;
-- later page reports a different `totalCount`;
-- response contains duplicate IDs;
-- mapped mutation reaches save but the injected save hook throws (rollback restores the old cache).
+Task 1 GREEN verification runs the shared affected suites, not only `ServerSongStatusManagerTests`:
 
-Also cover a valid empty snapshot: it clears only the server cache and preserves local songs.
+- `ServerSongStatusManagerTests`
+- `ServerSongStatusDeletionStoreTests`
+- `ServerSongCatalogRefreshTests`
+- `ServerSongCacheCoverageTests`
+- `ServerSongServiceTests`
 
-#### Stable identity
+Downloader/model suites join once their code changes in Task 3; final verification runs all server-management suites together.
 
-Update `ServerSongStatusManagerTests` fixtures to carry explicit current `serverSongId` values. Add assertions that same-title/artist rows with a different or nil ID do not affect download status or deletion.
+### 9. Live guidance
 
-Keep the existing downloader stable-ID duplicate test and distinct-server-ID/same-title test. Replace the two legacy fallback tests with one current-policy test proving that a nil-ID local song with the same title/artist does not block a server import.
+Update only the active `CLAUDE.md` server-song section when implementation lands:
 
-Delete backfill-only cache coverage and legacy single-file model tests.
+- refresh is validated full-snapshot replacement;
+- server cache rows are disposable metadata;
+- local songs are never pruned because a catalog ID disappears;
+- `Song.serverSongId` is the stable server identity;
+- download completion derives cache flags through status reconciliation rather than directly authoring a retained `ServerSong` object.
 
-#### Failure presentation
-
-`ServerSongServiceTests` should prove:
-
-- cache load error ends loading, sets `catalogLoadFailed`, and exposes an error message;
-- successful load clears a previous failure;
-- refresh failure is visible and does not claim success;
-- successful refresh clears the failure flag.
-
-Do not build a new SwiftUI test harness solely for the placeholder. Keep the view branch small and exercise it through existing compile/UI smoke coverage.
-
-### 7. Keep live repository guidance accurate
-
-`CLAUDE.md` is operational guidance (`AGENTS.md` points to it) and currently says `ServerSongCache` refresh is additive. Update only that live section when implementation lands:
-
-- catalog refresh is manual, validated, and full-snapshot replacement;
-- `ServerSong` / `ServerChart` are replaceable cache metadata;
-- local `Song.serverSongId` is the stable server identity and local rows are not pruned by catalog replacement.
-
-Do not clean old historical plan documents in this ticket; HPA-583 owns that cleanup.
+Do not edit historical plans; HPA-583 owns that cleanup.
 
 ## Expected file impact
 
@@ -316,27 +318,24 @@ Focused tests:
 - `VirgoTests/ServerSongCatalogRefreshTests.swift`
 - `VirgoTests/ServerSongCacheCoverageTests.swift`
 - `VirgoTests/ServerSongStatusManagerTests.swift`
+- `VirgoTests/ServerSongStatusDeletionStoreTests.swift`
 - `VirgoTests/ServerSongDownloaderTests.swift`
 - `VirgoTests/ServerSongServiceTests.swift`
 - `VirgoTests/ServerSongModelTests.swift`
+- existing song-tab coverage for the shared placeholder compile/render surface
 
-No new production file or SwiftData model is required.
+No new production file or model is required.
 
-## Acceptance mapping
+## Acceptance criteria
 
-- **Complete valid DTO snapshot replaces cache metadata through one context mutation/save phase:** Sections 1–3 and replacement/save-count tests.
-- **Failed, incomplete, or duplicate-ID responses are non-destructive and visible:** Sections 1, 5, and non-destructive failure tests.
-- **Current server metadata replaces stale cached metadata:** Section 3 replacement behavior.
-- **Download state is reconciled from current local songs by stable server ID:** Section 2.
-- **Legacy catalog backfill and fallback matching code is deleted:** Section 4.
-- **Focused cache/service tests cover replacement and failure without sync infrastructure:** Section 6.
-
-## Self-review against Virgo guardrails
-
-- No backward-compatibility mechanism is introduced; compatibility code is deleted.
-- No repository, coordinator, migration framework, or synchronization protocol is added.
-- No background work, retry system, or server API change is added.
-- Local user/application data is outside the cache replacement transaction.
-- Status projection reuses the existing status manager rather than creating a parallel abstraction.
-- Failure UI uses existing service/view structure plus one Boolean, not a new state machine framework.
-- HPA-579/HPA-580 performance scope and HPA-85 audio scope remain untouched.
+- [ ] A complete valid DTO snapshot replaces all `ServerSong` / `ServerChart` cache metadata through one mutation phase and one save.
+- [ ] Fetch, pagination, duplicate-ID, count, and save failures leave the previous cache intact.
+- [ ] Current server metadata replaces stale cached metadata.
+- [ ] Local downloaded/imported songs and audio are never removed by catalog replacement.
+- [ ] Download/BGM/preview flags are projected from local rows using exact `serverSongId` only.
+- [ ] Download completion does not mutate a `ServerSong` reference after its long await; a mid-download refresh remains safe.
+- [ ] Legacy catalog backfill, stale prune, title/artist fallback, empty-URL refresh prompt, and single-file compatibility initializer are deleted.
+- [ ] `loadServerSongs()` is result-less and non-throwing; `@Query` remains the catalog row source.
+- [ ] Failed manual refresh is visible through the existing alert and `catalogRefreshFailed`; successful refresh clears the flag.
+- [ ] List and grid share one loading/failed/empty placeholder branch.
+- [ ] Focused and full server-management tests pass without adding sync/repository infrastructure.
