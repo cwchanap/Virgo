@@ -59,80 +59,28 @@ struct LocalDTXFixtureImporterTests {
     @Test("re-import refreshes audio paths without repairing persisted graph data")
     func reImportRefreshesOnlyAudioPaths() throws {
         let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-
-        try """
-        #TITLE: Current Source
-        #L1LABEL: BASIC
-        #L1FILE: chart.dtx
-        """.write(
-            to: tempDir.appendingPathComponent("SET.def"),
-            atomically: true,
-            encoding: .utf8
+        let fixture = try makeCurrentSourceFixtureFolder()
+        let preexisting = try insertPreexistingSong(
+            serverSongId: fixture.folder.lastPathComponent,
+            into: context
         )
-
-        try """
-        #TITLE: Current Source
-        #ARTIST: Tester
-        #BPM: 120
-        #DLEVEL: 50
-        #VIRGO_CONTROL: 1
-        #00012: 01000000
-        #00022: 16000000
-        """.write(
-            to: tempDir.appendingPathComponent("chart.dtx"),
-            atomically: true,
-            encoding: .utf8
-        )
-
-        let currentBGM = tempDir.appendingPathComponent("bgm.m4a")
-        let currentPreview = tempDir.appendingPathComponent("preview.mp3")
-        try Data().write(to: currentBGM)
-        try Data().write(to: currentPreview)
-
-        let existing = Song(
-            title: "Legacy Local State",
-            artist: "Legacy Artist",
-            bpm: 90,
-            duration: "9:59",
-            genre: "DTX Import",
-            timeSignature: .fourFour,
-            isServerImported: false,
-            serverSongId: tempDir.lastPathComponent,
-            bgmFilePath: "/old-container/bgm.m4a",
-            previewFilePath: "/old-container/preview.mp3",
-            bgmStartOffsetSeconds: 0.42
-        )
-        let chart = Chart(difficulty: .easy, level: 50, song: existing)
-        let note = Note(
-            interval: .quarter,
-            noteType: .snare,
-            measureNumber: 1,
-            measureOffset: 0,
-            chart: chart
-        )
-        chart.notes = [note]
-        existing.charts = [chart]
-        context.insert(existing)
-        context.insert(chart)
-        context.insert(note)
-        try context.save()
+        let chart = preexisting.chart
 
         #expect(chart.rhythmMetadataData == nil)
         #expect(chart.safeControlEvents.isEmpty)
 
-        let returned = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+        let returned = try LocalDTXFixtureImporter.importSong(from: fixture.folder, into: context)
 
-        #expect(returned === existing)
-        #expect(returned.bgmFilePath == currentBGM.path)
-        #expect(returned.previewFilePath == currentPreview.path)
+        #expect(returned === preexisting.song)
+        #expect(returned.bgmFilePath == fixture.bgmURL.path)
+        #expect(returned.previewFilePath == fixture.previewURL.path)
         #expect(returned.duration == "9:59")
         #expect(returned.isServerImported == false)
         #expect(returned.bgmStartOffsetSeconds == 0.42)
         #expect(returned.charts.count == 1)
         #expect(returned.charts.first === chart)
         #expect(chart.safeNotes.count == 1)
-        #expect(chart.safeNotes.first === note)
+        #expect(chart.safeNotes.first === preexisting.note)
         #expect(chart.safeControlEvents.isEmpty)
         #expect(chart.rhythmMetadataData == nil)
         #expect(try context.fetch(FetchDescriptor<Song>()).count == 1)
@@ -443,5 +391,85 @@ struct LocalDTXFixtureImporterTests {
             .appendingPathComponent("virgo-dtx-test-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private struct CurrentSourceFixture {
+        let folder: URL
+        let bgmURL: URL
+        let previewURL: URL
+    }
+
+    private func makeCurrentSourceFixtureFolder() throws -> CurrentSourceFixture {
+        let folder = try makeTempDirectory()
+
+        try """
+        #TITLE: Current Source
+        #L1LABEL: BASIC
+        #L1FILE: chart.dtx
+        """.write(
+            to: folder.appendingPathComponent("SET.def"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        try """
+        #TITLE: Current Source
+        #ARTIST: Tester
+        #BPM: 120
+        #DLEVEL: 50
+        #VIRGO_CONTROL: 1
+        #00012: 01000000
+        #00022: 16000000
+        """.write(
+            to: folder.appendingPathComponent("chart.dtx"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let bgmURL = folder.appendingPathComponent("bgm.m4a")
+        let previewURL = folder.appendingPathComponent("preview.mp3")
+        try Data().write(to: bgmURL)
+        try Data().write(to: previewURL)
+        return CurrentSourceFixture(folder: folder, bgmURL: bgmURL, previewURL: previewURL)
+    }
+
+    private struct PreexistingSong {
+        let song: Song
+        let chart: Chart
+        let note: Note
+    }
+
+    private func insertPreexistingSong(
+        serverSongId: String,
+        into context: ModelContext
+    ) throws -> PreexistingSong {
+        let existing = Song(
+            title: "Legacy Local State",
+            artist: "Legacy Artist",
+            bpm: 90,
+            duration: "9:59",
+            genre: "DTX Import",
+            timeSignature: .fourFour,
+            isServerImported: false,
+            serverSongId: serverSongId,
+            bgmFilePath: "/old-container/bgm.m4a",
+            previewFilePath: "/old-container/preview.mp3",
+            bgmStartOffsetSeconds: 0.42
+        )
+        let chart = Chart(difficulty: .easy, level: 50, song: existing)
+        let note = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0,
+            chart: chart
+        )
+        chart.notes = [note]
+        existing.charts = [chart]
+        context.insert(existing)
+        context.insert(chart)
+        context.insert(note)
+        try context.save()
+        return PreexistingSong(song: existing, chart: chart, note: note)
     }
 }
