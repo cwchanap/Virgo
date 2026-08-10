@@ -505,42 +505,42 @@ Expand focused coverage only to the file whose retained instrumentation changed.
 
 - [ ] **Step 1: Post one complete HPA-579 result comment**
 
-Use exactly these sections and fill them with the measured values from Tasks 1-5:
+Use these exact sections. Every value comes from Tasks 1-5; copy the measured value or the explicit limitation, rather than inserting a guessed value.
 
 ```markdown
 ## Profiling result
 
 ### Environment
-- Commit: <literal measured commit SHA>
-- Machine: <literal hardware summary>
-- OS: <literal macOS version>
-- Xcode/Instruments: <literal versions>
-- Configuration: Release / macOS
+- Commit: paste the exact `git rev-parse HEAD` output captured in Task 1.
+- Machine: paste the `system_profiler` hardware summary captured in Task 1.
+- OS: paste the `sw_vers` version captured in Task 1.
+- Xcode/Instruments: paste the `xcodebuild -version` and `xcrun xctrace version` outputs captured in Task 1.
+- Configuration: Release / macOS.
 
 ### Representative chart
-- Song/chart: <literal identity>
-- Notes: <measured count>
-- Controls: <measured count>
-- Measures: <measured count>
-- Rendered rows: <measured count>
+- Song/chart: use the identity selected in Task 1 Step 4.
+- Notes: use the measured note count from Task 1 Step 4.
+- Controls: use the measured control-event count from Task 1 Step 4.
+- Measures: use the measured measure count from Task 1 Step 4.
+- Rendered rows: use the measured row count from Task 1 Step 4.
 
 ### Measurements
-- Local DTX file -> parse/projection: <median and range>; dominant stacks: <named stacks>
-- Server bytes -> decode/parse/projection: <median and range or explicit unavailable limitation>; dominant stacks: <named stacks>
-- Inter-chart policy delay: <chart-count-derived fixed delay>
-- Chart selection -> gameplay prepared: <median and range>; dominant stage: <named stage>
-- Width relayout processing: <median and range>; 100 ms debounce reported separately
-- Mount/playback: <SwiftUI invalidation pattern and main-thread observations>
-- Scrolling: <concrete responsiveness observation>
-- Peak live memory: <measured value>
+- Local DTX file -> parse/projection: report the Task 2 median and range plus the dominant named stacks.
+- Server bytes -> decode/parse/projection: report the Task 2 median/range and dominant stacks; if the server path was unavailable, state the concrete availability limitation and the evidence used instead.
+- Inter-chart policy delay: report `max(0, processedChartCount - 1) * 100 ms` using the measured chart count.
+- Chart selection -> gameplay prepared: report the Task 3 median/range and dominant named stage.
+- Width relayout processing: report the Task 4 median/range; report the fixed 100 ms debounce separately.
+- Mount/playback: summarize the Task 5 SwiftUI invalidation pattern and main-thread observations.
+- Scrolling: record the Task 5 concrete responsiveness observation.
+- Peak live memory: record the Task 5 measured peak value.
 
 ### Decisions
-- HPA-580: Proceed | Narrow | Close as unnecessary — <evidence-backed reason>
-- HPA-581: Proceed | Narrow | Close as unnecessary — <evidence-backed reason>
-- HPA-584 baseline: <concise repeatable baseline>
+- HPA-580: write exactly one of Proceed, Narrow, or Close as unnecessary, followed by the evidence-backed reason.
+- HPA-581: write exactly one of Proceed, Narrow, or Close as unnecessary, followed by the evidence-backed reason.
+- HPA-584 baseline: summarize the repeatable representative-chart, mount, playback, scrolling, and memory baseline from Tasks 1 and 5.
 ```
 
-The angle-bracket entries above are the **result values produced by the preceding tasks**, not planning guesses. Do not invent missing numbers; when a server-specific measurement cannot be run, state the concrete limitation and what evidence was available instead.
+Do not invent missing numbers. A real measurement limitation is part of the result and should be written explicitly.
 
 - [ ] **Step 2: Apply the HPA-580 decision**
 
