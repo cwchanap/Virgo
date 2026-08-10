@@ -2,37 +2,27 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace Virgo's additive/compatibility-heavy server catalog refresh with one validated complete snapshot replacement that preserves local songs, reconciles download state by stable server ID, and surfaces load/refresh failures.
+**Goal:** Replace Virgo's additive/compatibility-heavy server catalog refresh with one validated complete snapshot replacement that preserves local songs, uses exact server IDs for derived download state, and remains safe when a refresh occurs during an in-flight download.
 
-**Architecture:** Keep `ServerSongService` as the public facade and `ServerSongCache` as the GraphQL-to-SwiftData cache owner. Fetch and validate all `SimfileDTO` values before context mutation, reuse `ServerSongStatusManager` for a non-persisting stable-ID status projection, then replace `ServerSong` / `ServerChart` rows with one `ModelContext.save()`. Delete legacy fallback/backfill paths rather than creating sync or migration infrastructure.
+**Architecture:** Keep `ServerSongService` as the screen facade and `ServerSongCache` as the GraphQL-to-SwiftData cache owner. Fetch/validate all DTOs before mutation, map a complete replacement, project local download state by exact `serverSongId`, and save once. Treat `ServerSong` references as ephemeral across awaits: download completion never directly mutates the captured cache model and instead reconciles whichever current cache row owns the imported song ID.
 
 **Tech Stack:** Swift 6, SwiftUI, SwiftData, Swift Testing, Apollo-backed `SimfileFetching`, Xcode/xcodebuild.
 
 ## Global Constraints
 
-- Support the current development data format only; old development cache representations may be reset.
-- Catalog refresh remains manual. Do not add background sync, retry scheduling, ETags, sync tokens, offline queues, or merge policies.
-- Do not add a repository/use-case layer, staging database, generation table, transaction coordinator, or new SwiftData model.
-- Fetch and validate the complete DTO snapshot before any `ModelContext.insert` or `ModelContext.delete` call.
-- A successful catalog replacement performs one context mutation phase and exactly one save; rollback on save failure.
-- Catalog replacement may delete only `ServerSong` / `ServerChart` cache metadata. It must not delete or rewrite local `Song`, `Chart`, `Note`, `ScoreRecord`, or audio files.
-- `Song.serverSongId` is the current server identity contract. Do not preserve title/artist fallback matching.
-- Keep `ServerSongService` as the screen-facing facade; do not redesign the broader service architecture.
-- Do not move parsing/file work off-main in this ticket; HPA-579/HPA-580 own performance decisions.
-- Do not change server BGM format behavior; HPA-85 remains separate.
-- Do not broaden test/document cleanup beyond HPA-578-specific compatibility tests; HPA-583 owns final consolidation.
-- macOS 14+ and iPadOS remain supported; do not add iPhone targeting or iPhone-only assumptions.
-
-## Review Hardening
-
-The design is unchanged. This revision tightens the implementation contract in four places:
-
-1. **Identity cleanup is a call-graph delete, not a local edit.** Task 1 names every title/artist fallback helper that must disappear from `ServerSongStatusManager`; Task 3 names both fallback legs in `ServerSongDownloader.songAlreadyExists`.
-2. **Old-contract tests are migrated at the owning checkpoint.** Each task includes a named delete/rewrite inventory so the full suite does not first turn red at final verification.
-3. **Initial loading state is required in both server-song layouts.** `serverList` and `gridPlaceholder` must both branch `loading -> failed -> valid empty` when no rows exist.
-4. **Residual verification searches the old identity graph, not just the obvious backfill symbols.** Final `rg` checks include the matcher helpers, title/artist lookup dictionary, nil-ID fallback, and the legacy empty-URL service message.
-
-The four catalog validation error cases remain separate. They represent distinct bad snapshots and make focused tests/debugging clearer; no additional error framework is introduced.
+- Support the current development data format only; old cache representations may be reset/reloaded.
+- Catalog refresh remains manual.
+- Do not add sync tokens, ETags, merge policies, retry queues, repository/use-case layers, staging databases, generation models, or transaction coordinators.
+- Fetch and validate the complete DTO snapshot before any `ModelContext.insert` or `ModelContext.delete`.
+- A successful replacement performs one context mutation phase and exactly one cache save; roll back on save failure.
+- Catalog refresh may delete only `ServerSong` / `ServerChart` cache metadata. It must not delete/rewrite local `Song`, `Chart`, `Note`, `ScoreRecord`, or audio files.
+- `Song.serverSongId` is the only current server identity contract. Do not preserve title/artist fallback matching.
+- Never mutate a `ServerSong` reference after a long `await` unless it has been re-resolved; HPA-578 chooses reconciliation instead of re-fetch for download completion.
+- Keep `ServerSongService` as the screen-facing facade.
+- Do not move parsing/file work off-main; HPA-579/HPA-580 own that decision.
+- Do not change BGM format behavior; HPA-85 remains separate.
+- Do not add catalog sorting in this ticket. The existing sorted array returned by cache load is discarded and does not currently order the live `@Query`.
+- macOS 14+ and iPadOS remain supported; no iPhone targeting.
 
 ---
 
@@ -40,36 +30,40 @@ The four catalog validation error cases remain separate. They represent distinct
 
 **Production files modified:**
 
-- `Virgo/utilities/ServerSongStatusManager.swift` — stable-ID-only download-state projection and deletion/status matching.
-- `Virgo/utilities/ServerSongCache.swift` — complete page validation, one-save cache replacement, and throwing cache-load access.
-- `Virgo/utilities/ServerSongDownloader.swift` — stable-ID-only duplicate detection.
-- `Virgo/utilities/ServerSongService.swift` — remove legacy URL guard and expose catalog load/refresh failure state.
-- `Virgo/models/DrumTrack.swift` — remove the legacy single-file `ServerSong` convenience initializer.
-- `Virgo/views/ContentView.swift` — call the result-less catalog load API.
-- `Virgo/views/ServerSongsView.swift` — distinguish loading, failed, and valid-empty states in both list/grid layouts.
-- `CLAUDE.md` — replace the now-false additive-cache guidance with current snapshot semantics.
+- `Virgo/utilities/ServerSongStatusManager.swift` — exact-ID status projection/deletion; remove fallback graph and stale catalog pruning.
+- `Virgo/utilities/ServerSongCache.swift` — complete snapshot validation and one-save replacement; remove cache load API.
+- `Virgo/utilities/ServerSongDownloader.swift` — exact-ID-only duplicate detection.
+- `Virgo/utilities/ServerSongService.swift` — reference-safe download completion, result-less startup reconciliation, refresh-failure flag.
+- `Virgo/models/DrumTrack.swift` — remove legacy single-file `ServerSong` initializer.
+- `Virgo/views/ContentView.swift` — call result-less startup reconciliation.
+- `Virgo/views/ServerSongsView.swift` — one shared loading/failed/empty placeholder.
+- `CLAUDE.md` — current snapshot/cache ownership guidance.
 
 **Focused tests modified:**
 
 - `VirgoTests/ServerSongStatusManagerTests.swift`
+- `VirgoTests/ServerSongStatusDeletionStoreTests.swift`
 - `VirgoTests/ServerSongCatalogRefreshTests.swift`
 - `VirgoTests/ServerSongCacheCoverageTests.swift`
-- `VirgoTests/ServerSongDownloaderTests.swift`
 - `VirgoTests/ServerSongServiceTests.swift`
+- `VirgoTests/ServerSongDownloaderTests.swift`
 - `VirgoTests/ServerSongModelTests.swift`
+- existing `SongsTabCoverageTests` for the shared placeholder compile/render surface
 
-No new production file is required.
+No new production file/model is required.
 
 ---
 
-## Task 1: Collapse status/deletion identity to exact `serverSongId`
+## Task 1: Establish exact-ID projection and make download completion reference-safe
 
 **Files:**
 - Modify: `Virgo/utilities/ServerSongStatusManager.swift`
+- Modify: `Virgo/utilities/ServerSongService.swift`
 - Modify: `VirgoTests/ServerSongStatusManagerTests.swift`
+- Modify: `VirgoTests/ServerSongCatalogRefreshTests.swift`
+- Modify: `VirgoTests/ServerSongServiceTests.swift`
 
 **Interfaces:**
-- Consumes: `Song.isServerImported`, `Song.serverSongId`, `Song.bgmFilePath`, `Song.previewFilePath`, and the three `ServerSong` download flags.
 - Produces:
   ```swift
   @MainActor
@@ -79,7 +73,7 @@ No new production file is required.
       from localSongs: [Song]
   ) -> Bool
   ```
-- Produces one remaining-row helper used by local deletion:
+- Produces:
   ```swift
   private static func hasOtherImportedSong(
       serverSongId: String,
@@ -87,36 +81,44 @@ No new production file is required.
       context: ModelContext
   ) throws -> Bool
   ```
+- Keeps `refreshDownloadStatus(modelContext:)` as the persisted wrapper.
+- Changes successful `ServerSongService.downloadAndImportSong` completion to call status reconciliation only; it no longer authors/saves `serverSong.isDownloaded` directly.
 
-### Exact matcher-deletion inventory
+### Task 1 test migration — do this before production semantics change
 
-By the end of this task, delete the title/artist identity graph from `ServerSongStatusManager.swift`:
+- [ ] **Step 1: Make existing cross-suite server-match fixtures explicit IDs**
 
-- `matchedLocalSongs(for:byServerSongId:byTitleArtist:)`
-- `matchesServerSong(_:serverSong:)`
-- instance `matchesSongIdentity(...)`
-- static `matchesSongIdentity(...)`
-- instance `matchesServerSongByServerSongId(...)`
-- static `matchesServerSongByServerSongId(...)`
-- instance `checkForOtherMatchingSongs(...)`
-- static `checkForOtherMatchingSongs(...)`
-- `songTitle` / `songArtist` parameters captured for `deleteLocalSong` cache-status reconciliation
-- the `byTitleArtist` dictionary in `refreshDownloadStatus`
+In `ServerSongCatalogRefreshTests.swift`:
 
-`isAlreadyDownloaded`, `hasBGMFile`, and `hasPreviewFile` are compatibility/prune helpers. Keep only what is needed to compile `pruneCachedSong` during this checkpoint; Task 2 deletes `pruneCachedSong` and then removes any now-unreferenced helpers.
+- `testAdditiveAndPrune`: change the local matching row to include `serverSongId: "a"`.
+- `testBackfillLegacyChartURLs`: change the local matching row to include `serverSongId: "a"`.
 
-### Test migration for Task 1
+In `ServerSongStatusManagerTests.swift`:
 
-Before making production changes, update current server fixtures in `ServerSongStatusManagerTests.swift` so a row intended to match a server song carries its exact `serverSongId`. In particular:
+- `setupGroupedSongs`: both server-imported rows use `serverSongId: "song-group"`.
+- `testRefreshDownloadStatusUpdatesFlags`: matching local row uses the exact matching server ID.
+- Any other fixture intended to represent a current server import must carry the expected `serverSongId`; a nil-ID row may remain only when the test explicitly proves nil-ID rows do **not** match.
 
-| Existing coverage | Action |
-|---|---|
-| `setupGroupedSongs` imported rows | Rewrite both imported rows with `serverSongId: "song-group"`; keep the non-imported row without a server ID. |
-| `testRefreshDownloadStatusUpdatesFlags` | Rewrite the matching local row with the matching server ID; title/artist should no longer be the matching contract. |
-| deletion tests that intentionally model server imports | Give each current server-imported local row the expected server ID. |
-| any test whose only purpose is nil-ID title/artist fallback | Delete or replace with an explicit “same title does not match without ID” regression. |
+`ServerSongCacheCoverageTests` currently has no local `Song` fixture used for download-status matching, so no ID fixture migration is needed there.
 
-- [ ] **Step 1: Add RED stable-ID projection and deletion regressions**
+- [ ] **Step 2: Run the affected suites before behavior changes**
+
+```bash
+xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -only-testing:VirgoTests/ServerSongStatusManagerTests \
+  -only-testing:VirgoTests/ServerSongStatusDeletionStoreTests \
+  -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
+  -only-testing:VirgoTests/ServerSongCacheCoverageTests \
+  -only-testing:VirgoTests/ServerSongServiceTests \
+  -parallel-testing-enabled NO
+```
+
+Expected: PASS. This proves the fixture migration itself did not change current behavior.
+
+- [ ] **Step 3: Add RED exact-ID status/deletion regressions**
 
 Add to `ServerSongStatusManagerTests.swift`:
 
@@ -125,35 +127,30 @@ Add to `ServerSongStatusManagerTests.swift`:
 func testApplyDownloadStatusUsesOnlyServerSongId() async throws {
     try await TestSetup.withTestSetup {
         let manager = ServerSongStatusManager()
-        let target = ServerSong(
-            songId: "target-id",
-            title: "Same Title",
-            artist: "Same Artist",
-            bpm: 120
-        )
+        let current = ServerSong(songId: "current", title: "Same", artist: "Artist", bpm: 120)
         let titleOnly = ServerSong(
-            songId: "title-only-id",
-            title: "Legacy Title",
-            artist: "Legacy Artist",
+            songId: "other",
+            title: "Legacy",
+            artist: "Artist",
             bpm: 120,
             isDownloaded: true,
             bgmDownloaded: true,
             previewDownloaded: true
         )
-        let currentMatch = Song(
-            title: "Renamed Locally",
-            artist: "Different Artist",
+        let exact = Song(
+            title: "Renamed",
+            artist: "Different",
             bpm: 120,
             duration: "3:00",
             genre: "DTX Import",
             isServerImported: true,
-            serverSongId: "target-id",
-            bgmFilePath: "/tmp/target.ogg",
-            previewFilePath: "/tmp/target.mp3"
+            serverSongId: "current",
+            bgmFilePath: "/tmp/current.ogg",
+            previewFilePath: "/tmp/current.mp3"
         )
-        let legacyTitleOnly = Song(
-            title: "Legacy Title",
-            artist: "Legacy Artist",
+        let nilID = Song(
+            title: "Legacy",
+            artist: "Artist",
             bpm: 120,
             duration: "3:00",
             genre: "DTX Import",
@@ -163,15 +160,12 @@ func testApplyDownloadStatusUsesOnlyServerSongId() async throws {
             previewFilePath: "/tmp/legacy.mp3"
         )
 
-        let changed = manager.applyDownloadStatus(
-            to: [target, titleOnly],
-            from: [currentMatch, legacyTitleOnly]
-        )
+        let changed = manager.applyDownloadStatus(to: [current, titleOnly], from: [exact, nilID])
 
         #expect(changed)
-        #expect(target.isDownloaded)
-        #expect(target.bgmDownloaded)
-        #expect(target.previewDownloaded)
+        #expect(current.isDownloaded)
+        #expect(current.bgmDownloaded)
+        #expect(current.previewDownloaded)
         #expect(titleOnly.isDownloaded == false)
         #expect(titleOnly.bgmDownloaded == false)
         #expect(titleOnly.previewDownloaded == false)
@@ -183,7 +177,7 @@ func testDeleteDownloadedSongRequiresServerSongId() async throws {
     try await TestSetup.withTestSetup {
         let context = TestContainer.shared.context
         let manager = ServerSongStatusManager()
-        let serverSong = ServerSong(
+        let cached = ServerSong(
             songId: "current-id",
             title: "Same Title",
             artist: "Same Artist",
@@ -199,28 +193,22 @@ func testDeleteDownloadedSongRequiresServerSongId() async throws {
             isServerImported: true,
             serverSongId: nil
         )
-        context.insert(serverSong)
+        context.insert(cached)
         context.insert(titleOnly)
         try context.save()
 
-        let success = await manager.deleteDownloadedSong(
-            serverSong,
-            modelContext: context
-        )
-
-        #expect(success)
+        #expect(await manager.deleteDownloadedSong(cached, modelContext: context))
         TestAssertions.assertNotDeleted(titleOnly, in: context)
-        #expect(serverSong.isDownloaded == false)
     }
 }
 
-@Test("deleteLocalSong with no serverSongId does not mutate same-title server cache")
-func testDeleteLocalSongWithoutServerIDSkipsCacheIdentityFallback() async throws {
+@Test("deleteLocalSong with no serverSongId does not mutate same-title cache flags")
+func testDeleteLocalSongWithoutServerIDSkipsCacheFallback() async throws {
     try await TestSetup.withTestSetup {
         let context = TestContainer.shared.context
         let container = TestContainer.shared.container
         let manager = ServerSongStatusManager()
-        let serverSong = ServerSong(
+        let cached = ServerSong(
             songId: "server-id",
             title: "Same Title",
             artist: "Same Artist",
@@ -238,40 +226,29 @@ func testDeleteLocalSongWithoutServerIDSkipsCacheIdentityFallback() async throws
             isServerImported: false,
             serverSongId: nil
         )
-        context.insert(serverSong)
+        context.insert(cached)
         context.insert(local)
         try context.save()
 
         #expect(await manager.deleteLocalSong(local, container: container))
 
         let verification = ModelContext(container)
-        let cached = try #require(
+        let remaining = try #require(
             verification.fetch(FetchDescriptor<ServerSong>())
                 .first { $0.songId == "server-id" }
         )
-        #expect(cached.isDownloaded)
-        #expect(cached.bgmDownloaded)
-        #expect(cached.previewDownloaded)
+        #expect(remaining.isDownloaded)
+        #expect(remaining.bgmDownloaded)
+        #expect(remaining.previewDownloaded)
     }
 }
 ```
 
-- [ ] **Step 2: Run the focused suite and verify RED**
+Expected RED: `applyDownloadStatus` does not exist and current nil-ID title/artist fallback affects deletion/status paths.
 
-```bash
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -only-testing:VirgoTests/ServerSongStatusManagerTests \
-  -parallel-testing-enabled NO
-```
+- [ ] **Step 4: Extract `applyDownloadStatus` and make persisted refresh delegate to it**
 
-Expected: FAIL because `applyDownloadStatus(to:from:)` does not exist and current deletion/status paths still accept title/artist fallback matching.
-
-- [ ] **Step 3: Add the reusable status projector**
-
-Add to `ServerSongStatusManager.swift`:
+Add:
 
 ```swift
 @MainActor
@@ -310,11 +287,11 @@ func applyDownloadStatus(
 }
 ```
 
-Refactor `refreshDownloadStatus(modelContext:)` to fetch local/server rows, call this method, and keep the existing save/rollback behavior only when it returns `true`.
+Refactor `refreshDownloadStatus(modelContext:)` to fetch local/cache rows, call this method, and save only when it returns `true`. Keep existing rollback/logging around the save.
 
-- [ ] **Step 4: Make user-initiated deletion exact-ID-only**
+- [ ] **Step 5: Collapse user-initiated deletion to exact IDs**
 
-Change `deleteDownloadedSong` selection to:
+Use:
 
 ```swift
 let songsToDelete = allSongs.filter { song in
@@ -322,34 +299,9 @@ let songsToDelete = allSongs.filter { song in
 }
 ```
 
-In `deleteLocalSong`, stop capturing lowercased title/artist. Capture only:
+In `deleteLocalSong`, stop capturing title/artist for cache identity. If `song.serverSongId` is nil, delete the local row normally but do not mutate any server cache flags.
 
-```swift
-let songServerSongId = song.serverSongId
-let songId = song.persistentModelID
-```
-
-After deleting `songToDelete`, update server cache flags only when `songServerSongId` is non-nil:
-
-```swift
-if let serverSongId = songServerSongId {
-    let hasOther = try Self.hasOtherImportedSong(
-        serverSongId: serverSongId,
-        excludingSongId: songId,
-        context: backgroundContext
-    )
-    if !hasOther {
-        let cachedSongs = try backgroundContext.fetch(FetchDescriptor<ServerSong>())
-        for cached in cachedSongs where cached.songId == serverSongId {
-            cached.isDownloaded = false
-            cached.bgmDownloaded = false
-            cached.previewDownloaded = false
-        }
-    }
-}
-```
-
-Add exactly this helper:
+Use one remaining-row helper:
 
 ```swift
 private static func hasOtherImportedSong(
@@ -365,30 +317,163 @@ private static func hasOtherImportedSong(
 }
 ```
 
-Delete the old `updateServerSongStatus` / `checkForOtherMatchingSongs` wrapper/static graph rather than forwarding through old title/artist parameters.
+When no other imported row remains for the ID, fetch current `ServerSong` rows and clear flags only on rows whose `songId == serverSongId`.
 
-- [ ] **Step 5: Delete all migrated matcher symbols and run a checkpoint audit**
+Delete now-obsolete title/artist reconciliation helpers:
+
+- `matchedLocalSongs`
+- instance/static `matchesSongIdentity`
+- instance/static `matchesServerSongByServerSongId`
+- instance/static `checkForOtherMatchingSongs`
+- `byTitleArtist` dictionary
+- title/artist parameters/captures used only for identity
+
+**Do not delete `matchesServerSong` yet.** `pruneCachedSong -> isAlreadyDownloaded -> matchesServerSong` still uses it until Task 2 removes pruning.
+
+- [ ] **Step 6: Add a RED download-completion reference-lifetime regression**
+
+Extend the test `MockServerSongDownloader` with a callback and yield:
+
+```swift
+var beforeReturn: (@MainActor (ServerSong, ModelContainer) -> Void)?
+
+@MainActor
+override func downloadAndImportSong(
+    _ serverSong: ServerSong,
+    container: ModelContainer
+) async -> (Bool, String?) {
+    receivedSongIDs.append(serverSong.songId)
+    await Task.yield()
+    beforeReturn?(serverSong, container)
+    return result
+}
+```
+
+Add this service regression:
+
+```swift
+@Test("download completion reconciles the replacement cache row after suspension")
+func testDownloadCompletionUsesCurrentCacheRow() async throws {
+    try await TestSetup.withTestSetup {
+        let context = TestContainer.shared.context
+        let downloader = MockServerSongDownloader()
+        downloader.result = (true, nil)
+        var serviceSaveHookCalls = 0
+
+        let statusManager = ServerSongStatusManager()
+        let service = ServerSongService(
+            downloader: downloader,
+            statusManager: statusManager,
+            saveModelContext: { context in
+                serviceSaveHookCalls += 1
+                try context.save()
+            }
+        )
+        service.setModelContext(context)
+
+        let original = ServerSong(
+            songId: "race-id",
+            title: "Race",
+            artist: "Artist",
+            bpm: 120
+        )
+        context.insert(original)
+        try context.save()
+
+        downloader.beforeReturn = { captured, _ in
+            let local = Song(
+                title: "Race",
+                artist: "Artist",
+                bpm: 120,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "race-id"
+            )
+            context.insert(local)
+            context.delete(captured)
+            context.insert(ServerSong(
+                songId: "race-id",
+                title: "Race Updated",
+                artist: "Artist",
+                bpm: 130
+            ))
+            try? context.save()
+        }
+
+        #expect(await service.downloadAndImportSong(original))
+
+        let current = try #require(
+            context.fetch(FetchDescriptor<ServerSong>())
+                .first { $0.songId == "race-id" }
+        )
+        #expect(current.title == "Race Updated")
+        #expect(current.isDownloaded)
+        #expect(serviceSaveHookCalls == 0)
+    }
+}
+```
+
+Against current code, the service save hook is invoked after the await because it still directly writes/saves the captured `serverSong`.
+
+- [ ] **Step 7: Remove direct post-await cache authoring from `ServerSongService`**
+
+Delete from the success path:
+
+```swift
+serverSong.isDownloaded = true
+try saveModelContext(modelContext)
+```
+
+The success path becomes:
+
+```swift
+if success {
+    await refreshDownloadStatus()
+}
+```
+
+Remove the stored property:
+
+```swift
+private let saveModelContext: (ModelContext) throws -> Void
+```
+
+Keep the initializer parameter `saveModelContext`; it still configures the default `ServerSongStatusManager` and `ServerSongCache` dependencies.
+
+Update service tests:
+
+- `testDownloadAndImportSongSuccessRefreshesStatus`: stop asserting that the service directly sets the passed `serverSong.isDownloaded`; assert success, cleared tracking state, and `refreshDownloadStatusCalled`.
+- Delete `testDownloadAndImportSongSuccessWhenStatusSaveThrows`; its only contract is the service-owned direct save that is being removed.
+- Keep downloader failure, already-downloaded, already-downloading, and missing-context coverage.
+
+- [ ] **Step 8: Checkpoint matcher audit**
 
 ```bash
 rg -n \
-  'matchedLocalSongs|matchesServerSong\(|matchesSongIdentity|matchesServerSongByServerSongId|checkForOtherMatchingSongs|byTitleArtist|songTitle|songArtist' \
+  'matchedLocalSongs|matchesSongIdentity|matchesServerSongByServerSongId|checkForOtherMatchingSongs|byTitleArtist|songTitle|songArtist' \
   Virgo/utilities/ServerSongStatusManager.swift
 ```
 
-Expected: no identity-fallback matches. A logging/message use of title/artist unrelated to identity would need explicit review before keeping it; do not keep the old matcher parameters.
+Expected: no identity-fallback matches.
 
-- [ ] **Step 6: Run status tests and verify GREEN**
+Do **not** include `matchesServerSong` in this Task 1 audit; Task 2 removes its final prune caller.
+
+- [ ] **Step 9: Run the shared affected suites and verify GREEN**
 
 Run the command from Step 2.
 
-Expected: PASS. Exact IDs drive status/deletion; same-title/artist nil-ID rows do not.
+Expected: PASS, including the new reference-lifetime regression.
 
-- [ ] **Step 7: Commit the checkpoint**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add Virgo/utilities/ServerSongStatusManager.swift \
-  VirgoTests/ServerSongStatusManagerTests.swift
-git commit -m "refactor: use stable server IDs for catalog status"
+  Virgo/utilities/ServerSongService.swift \
+  VirgoTests/ServerSongStatusManagerTests.swift \
+  VirgoTests/ServerSongCatalogRefreshTests.swift \
+  VirgoTests/ServerSongServiceTests.swift
+git commit -m "refactor: make server catalog state ID-derived"
 ```
 
 ---
@@ -403,76 +488,77 @@ git commit -m "refactor: use stable server IDs for catalog status"
 - Modify: `CLAUDE.md`
 
 **Interfaces:**
-- Consumes: `SimfileFetching.fetchSimfiles`, `SimfileMapper.makeServerSong`, and Task 1's `applyDownloadStatus(to:from:)`.
+- Consumes `SimfileFetching.fetchSimfiles`, `SimfileMapper.makeServerSong`, and Task 1's `applyDownloadStatus`.
 - Produces:
   ```swift
   enum ServerSongCatalogRefreshError: LocalizedError, Equatable
   ```
-- Produces a throwing private `fetchCompleteSnapshot(maxPages:)` and a one-save `refreshCatalog(modelContext:)`.
+- Produces a private throwing `fetchCompleteSnapshot(maxPages:)`.
 
-### Named catalog-test migration
+### Task 2 existing-test migration
 
-Apply these changes in `ServerSongCatalogRefreshTests.swift` as part of this task:
+Apply these exact ownership changes in `ServerSongCatalogRefreshTests.swift`:
 
-| Existing test | Action |
+| Existing test | Action in Task 2 |
 |---|---|
-| `testInsertsNew` | Keep; it remains valid from an empty cache. |
-| `testAdditiveAndPrune` | Replace with `testCompleteRefreshReplacesCacheOnly`. |
-| `testNoPruneOnTruncatedWalk` | Replace with `testTruncatedWalkIsNonDestructive`; incomplete data must throw and insert nothing. |
-| `testBackfillLegacyChartURLs` | Delete. |
+| `testInsertsNew` | Keep; it remains valid complete-snapshot insertion coverage. |
+| `testAdditiveAndPrune` | Replace with complete replacement: changed metadata is overwritten, stale cache ID removed, matching local `Song` preserved. |
+| `testNoPruneOnTruncatedWalk` | Replace with a throwing/non-destructive truncated-walk test. No partial insertion. |
+| `testBackfillLegacyChartURLs` | Delete; current snapshot mapping replaces legacy backfill. |
 | `testBackfillLegacyChartEncoding` | Delete. |
 | `testNoBackfillWhenFileURLPresent` | Delete. |
 | `testBackfillAndPruneSameRefresh` | Delete. |
-| `testRefreshCatalogThrowsOnFetchError` | Replace/strengthen as `testFetchFailureIsNonDestructive`. |
-| `testRefreshCatalogRollsBackOnSaveFailure` | Rewrite to seed an old cache row and assert rollback restores that row. |
-| `testDuplicateDTOsDontCrash` | Replace with `testDuplicateIDsRejectSnapshot`. |
+| `testRefreshCatalogThrowsOnFetchError` | Strengthen by seeding old cache and asserting it remains unchanged. |
+| `testRefreshCatalogRollsBackOnSaveFailure` | Strengthen by seeding old cache and asserting rollback restores it. |
+| `testDuplicateDTOsDontCrash` | Replace with duplicate-ID rejection. |
 | `testDuplicateDTOsBackfillSafe` | Delete. |
-| `testCrossPageDuplicatesDoNotMarkCompleteEarly` | Delete; duplicates are now invalid immediately, not tolerated pagination input. |
-| `testLoadServerSongsReconcilesDownloadStatus` | Keep for Task 4, but rewrite there for the result-less load API. |
+| `testCrossPageDuplicatesDoNotMarkCompleteEarly` | Replace with duplicate-ID rejection; duplicates are no longer tolerated. |
+| `testLoadServerSongsReconcilesDownloadStatus` | Leave for Task 4, where the obsolete cache-load API is deleted. |
 
-Apply these changes in `ServerSongCacheCoverageTests.swift`:
+In `ServerSongCacheCoverageTests.swift`, keep only `testLevelScaleWarning`; delete all backfill/duplicate-recovery-only cases and the `DuplicateBackfillFetcher`.
 
-- keep `testLevelScaleWarning`;
-- delete all `Backfill...` tests and duplicate-backfill warning coverage because the production backfill path is deleted rather than preserved.
+- [ ] **Step 1: Add/replace RED complete-replacement coverage**
 
-- [ ] **Step 1: Add/replace the complete-replacement regression**
+Use a test that seeds:
 
-Use a test that seeds cache `a` + stale `z` and a local `Song(serverSongId: "a")`, then refreshes with changed `a` + new `b`. Assert exact cache IDs `["a", "b"]`, all changed metadata/chart URL/encoding/media fields, projected download flags, and that the local `Song` metadata/audio paths remain untouched.
+- old cache `a` with stale metadata;
+- stale cache `z`;
+- local `Song(serverSongId: "a")` with BGM/preview paths;
+- DTO snapshot containing changed `a` and new `b`.
 
-The critical assertions are:
+After refresh assert:
 
 ```swift
+let cacheRows = try context.fetch(FetchDescriptor<ServerSong>())
+let byID = Dictionary(uniqueKeysWithValues: cacheRows.map { ($0.songId, $0) })
 #expect(Set(byID.keys) == ["a", "b"])
 #expect(byID["a"]?.title == "NEW")
-#expect(byID["a"]?.artist == "NEW ARTIST")
 #expect(byID["a"]?.bpm == 150)
-#expect(byID["a"]?.durationSeconds == 222)
 #expect(byID["a"]?.charts.first?.fileURL == "https://r2/a/new-bas.dtx")
-#expect(byID["a"]?.charts.first?.fileEncoding == "UTF_8")
 #expect(byID["a"]?.isDownloaded == true)
 #expect(byID["a"]?.bgmDownloaded == true)
 #expect(byID["a"]?.previewDownloaded == true)
 
-let localRows = try context.fetch(FetchDescriptor<Song>())
-let preserved = try #require(localRows.first { $0.serverSongId == "a" })
-#expect(preserved.title == "Local A")
-#expect(preserved.duration == "9:59")
-#expect(preserved.bgmFilePath == "/tmp/a.ogg")
-#expect(preserved.previewFilePath == "/tmp/a.mp3")
+let local = try #require(
+    context.fetch(FetchDescriptor<Song>())
+        .first { $0.serverSongId == "a" }
+)
+#expect(local.title == "Local A")
+#expect(local.bgmFilePath == "/tmp/a.ogg")
+#expect(local.previewFilePath == "/tmp/a.mp3")
 ```
 
-- [ ] **Step 2: Add exact invalid-snapshot fetchers**
+Current additive behavior must fail the changed-metadata assertion.
 
-Keep the existing `TruncatingFetcher`. Add suite-local duplicate and changing-count fetchers:
+- [ ] **Step 2: Add deterministic invalid-snapshot fetchers**
+
+Keep `TruncatingFetcher`. Add:
 
 ```swift
 private final class DuplicateIdFetcher: SimfileFetching, @unchecked Sendable {
     func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
         if page == 1 {
-            return SimfilePage(
-                simfiles: [.stub(id: "dup"), .stub(id: "dup")],
-                totalCount: 2
-            )
+            return SimfilePage(simfiles: [.stub(id: "dup"), .stub(id: "dup")], totalCount: 2)
         }
         return SimfilePage(simfiles: [], totalCount: 2)
     }
@@ -483,12 +569,9 @@ private final class DuplicateIdFetcher: SimfileFetching, @unchecked Sendable {
 private final class ChangingTotalCountFetcher: SimfileFetching, @unchecked Sendable {
     func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
         switch page {
-        case 1:
-            return SimfilePage(simfiles: [.stub(id: "a")], totalCount: 2)
-        case 2:
-            return SimfilePage(simfiles: [.stub(id: "b")], totalCount: 3)
-        default:
-            return SimfilePage(simfiles: [], totalCount: 3)
+        case 1: return SimfilePage(simfiles: [.stub(id: "a")], totalCount: 2)
+        case 2: return SimfilePage(simfiles: [.stub(id: "b")], totalCount: 3)
+        default: return SimfilePage(simfiles: [], totalCount: 3)
         }
     }
 
@@ -506,20 +589,29 @@ private final class RecordingStatusManager: ServerSongStatusManager {
 }
 ```
 
-- [ ] **Step 3: Add non-destructive RED tests**
+- [ ] **Step 3: Add RED non-destructive failure tests**
 
-For truncated pagination, duplicate IDs, changing `totalCount`, and request failure:
+For each test, seed `ServerSong(songId: "old", title: "OLD", ...)` and save it before calling refresh:
 
-1. persist `ServerSong(songId: "old", title: "OLD", ...)`;
-2. call `refreshCatalog` with the invalid fetcher;
-3. expect the corresponding error;
-4. fetch cache rows and assert the only row remains `old` with unchanged metadata.
+```swift
+await #expect(throws: ServerSongCatalogRefreshError.self) {
+    try await cache.refreshCatalog(modelContext: context)
+}
+let rows = try context.fetch(FetchDescriptor<ServerSong>())
+#expect(rows.map(\.songId) == ["old"])
+#expect(rows.first?.title == "OLD")
+```
 
-For a valid empty snapshot, seed one cache row plus one local `Song`, refresh from `MockSimfileFetcher(all: [])`, and assert the server cache is empty while the local `Song` remains present with its audio path.
+Cover separately:
 
-For save failure, seed `old`, inject a throwing `saveContext`, call refresh with a valid non-empty DTO snapshot, and assert rollback leaves only `old`.
+- truncated empty page before count is satisfied;
+- duplicate ID;
+- changing `totalCount`;
+- network fetch error (expect original `URLError` rather than catalog error);
+- save failure + rollback;
+- valid empty snapshot clears only `ServerSong` cache while preserving local `Song`.
 
-- [ ] **Step 4: Add a RED one-save/no-post-reconcile test**
+- [ ] **Step 4: Add RED one-save/no-post-reconcile coverage**
 
 ```swift
 @Test("Complete refresh saves once and does not run post-save status refresh")
@@ -538,22 +630,22 @@ func testCompleteRefreshUsesOneSave() async throws {
         ))
         try context.save()
 
-        var cacheSaveCount = 0
-        let statusManager = RecordingStatusManager()
+        var saveCount = 0
+        let status = RecordingStatusManager()
         let cache = ServerSongCache(
             fetcher: MockSimfileFetcher(all: [.stub(id: "a")]),
-            statusManager: statusManager,
+            statusManager: status,
             pageSize: 10,
             saveContext: { context in
-                cacheSaveCount += 1
+                saveCount += 1
                 try context.save()
             }
         )
 
         try await cache.refreshCatalog(modelContext: context)
 
-        #expect(cacheSaveCount == 1)
-        #expect(statusManager.refreshDownloadStatusCallCount == 0)
+        #expect(saveCount == 1)
+        #expect(status.refreshDownloadStatusCallCount == 0)
         let row = try #require(context.fetch(FetchDescriptor<ServerSong>()).first)
         #expect(row.isDownloaded)
         #expect(row.bgmDownloaded)
@@ -561,22 +653,24 @@ func testCompleteRefreshUsesOneSave() async throws {
 }
 ```
 
-- [ ] **Step 5: Run catalog tests and verify RED**
+- [ ] **Step 5: Run cache/status/service shared suites and verify RED**
 
 ```bash
 xcodebuild test \
   -project Virgo.xcodeproj \
   -scheme Virgo \
   -destination 'platform=macOS' \
+  -only-testing:VirgoTests/ServerSongStatusManagerTests \
+  -only-testing:VirgoTests/ServerSongStatusDeletionStoreTests \
   -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
+  -only-testing:VirgoTests/ServerSongCacheCoverageTests \
+  -only-testing:VirgoTests/ServerSongServiceTests \
   -parallel-testing-enabled NO
 ```
 
-Expected: stale metadata remains stale in current code, invalid snapshots are tolerated/partially applied, and post-save status reconciliation is still invoked.
+Expected: replacement/validation/one-save tests fail against additive refresh.
 
-- [ ] **Step 6: Add explicit refresh validation errors**
-
-At file scope in `ServerSongCache.swift`:
+- [ ] **Step 6: Add explicit refresh errors**
 
 ```swift
 enum ServerSongCatalogRefreshError: LocalizedError, Equatable {
@@ -600,9 +694,7 @@ enum ServerSongCatalogRefreshError: LocalizedError, Equatable {
 }
 ```
 
-- [ ] **Step 7: Replace page walking with complete-snapshot validation**
-
-Replace `fetchAllPages` with:
+- [ ] **Step 7: Replace `fetchAllPages` with complete validation**
 
 ```swift
 private func fetchCompleteSnapshot(maxPages: Int = 100) async throws -> [SimfileDTO] {
@@ -662,11 +754,9 @@ private func fetchCompleteSnapshot(maxPages: Int = 100) async throws -> [Simfile
 }
 ```
 
-A first page with zero rows and `totalCount == 0` is valid. Duplicate IDs fail before count mismatch; unique-ID count is never used as the completion condition.
+Duplicate IDs fail before count mismatch. Zero rows with expected count zero are valid.
 
-- [ ] **Step 8: Replace cache rows in one mutation phase and one save**
-
-Rewrite `refreshCatalog(modelContext:)` around the validated snapshot:
+- [ ] **Step 8: Replace cache rows in one mutation/save phase**
 
 ```swift
 func refreshCatalog(modelContext: ModelContext) async throws {
@@ -686,12 +776,12 @@ func refreshCatalog(modelContext: ModelContext) async throws {
 
     statusManager.applyDownloadStatus(to: replacement, from: localSongs)
 
-    for serverSong in existingCache {
-        modelContext.delete(serverSong)
+    for row in existingCache {
+        modelContext.delete(row)
     }
-    for serverSong in replacement {
-        modelContext.insert(serverSong)
-        for chart in serverSong.charts {
+    for row in replacement {
+        modelContext.insert(row)
+        for chart in row.charts {
             modelContext.insert(chart)
         }
     }
@@ -705,48 +795,54 @@ func refreshCatalog(modelContext: ModelContext) async throws {
 }
 ```
 
-Delete `backfillLegacyChartURLs`, `matchingDtxFile`, old `fetchAllPages`, additive insertion, duplicate recovery, stale-prune loops/comments, and the post-save `refreshDownloadStatus` call.
+Delete URL backfill, additive insertion, incomplete partial insertion, duplicate recovery, stale prune calls, and post-save status refresh.
 
-- [ ] **Step 9: Delete obsolete catalog-driven local pruning and its helper tail**
+- [ ] **Step 9: Delete stale-prune and now-dead status helpers**
 
-Delete `ServerSongStatusManager.pruneCachedSong` after `ServerSongCache` no longer calls it. Then run:
+Delete unconditionally from `ServerSongStatusManager.swift`:
 
-```bash
-rg -n 'isAlreadyDownloaded|hasBGMFile|hasPreviewFile|pruneCachedSong' \
-  Virgo/utilities/ServerSongStatusManager.swift Virgo/utilities/ServerSongCache.swift
-```
+- `pruneCachedSong`
+- `hasBGMFile` (already dead today)
+- `hasPreviewFile` (already dead today)
 
-Delete `isAlreadyDownloaded`, `hasBGMFile`, or `hasPreviewFile` if they have no remaining current caller. Do not replace catalog-driven local deletion with another cleanup path.
+Then delete after their final prune caller disappears:
 
-- [ ] **Step 10: Delete compatibility-only cache tests and keep current-data coverage**
+- `isAlreadyDownloaded`
+- `matchesServerSong`
 
-Apply the named migration table above. Do not retain disabled/skipped backfill tests.
+Do not replace them with another stale-catalog cleanup path.
 
-- [ ] **Step 11: Update live repository guidance**
+- [ ] **Step 10: Delete compatibility-only cache tests**
 
-In `CLAUDE.md` under `### Server Song Management`, replace the additive-cache bullet with:
+Apply the Task 2 migration table above. `ServerSongCacheCoverageTests` should retain only current-data coverage such as level-scale warning.
+
+- [ ] **Step 11: Update live guidance**
+
+In `CLAUDE.md`, replace additive-cache guidance with:
 
 ```markdown
-- `ServerSongCache`: SwiftData-backed catalog cache. Manual refresh first validates a complete GraphQL DTO snapshot, then replaces `ServerSong` / `ServerChart` cache metadata in one save. Local downloaded `Song` rows are preserved and download flags are projected by `Song.serverSongId`.
+- `ServerSongCache`: SwiftData-backed replaceable catalog metadata. Manual refresh validates a complete GraphQL DTO snapshot, projects local download state by exact `Song.serverSongId`, then replaces `ServerSong` / `ServerChart` rows in one save. Catalog removal never deletes local imported songs or audio.
 ```
 
-Do not edit historical planning documents in this implementation ticket.
+Also state that download completion reconciles status by stable ID rather than directly mutating a retained cache object.
 
-- [ ] **Step 12: Run focused cache suites and verify GREEN**
+- [ ] **Step 12: Run shared suites and verify GREEN**
+
+Run the command from Step 5.
+
+Expected: PASS.
+
+- [ ] **Step 13: Audit the stale-prune/matcher checkpoint**
 
 ```bash
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
-  -only-testing:VirgoTests/ServerSongCacheCoverageTests \
-  -parallel-testing-enabled NO
+rg -n \
+  'pruneCachedSong|isAlreadyDownloaded|hasBGMFile|hasPreviewFile|matchesServerSong\(' \
+  Virgo/utilities/ServerSongStatusManager.swift
 ```
 
-Expected: PASS, including exact replacement, non-destructive failures, duplicate rejection, local-song preservation, valid empty snapshot, rollback, and one-save/no-post-reconcile assertions.
+Expected: no matches.
 
-- [ ] **Step 13: Commit the checkpoint**
+- [ ] **Step 14: Commit**
 
 ```bash
 git add Virgo/utilities/ServerSongCache.swift \
@@ -770,26 +866,20 @@ git commit -m "refactor: replace server catalog from complete snapshot"
 - Modify: `VirgoTests/ServerSongModelTests.swift`
 
 **Interfaces:**
-- Consumes: current `ServerSongSnapshot.songId` / `Song.serverSongId` identity.
-- Produces: duplicate detection based solely on exact server ID.
-- Removes: the two nil-ID title/artist legs of `songAlreadyExists`, the old-empty-URL service repair prompt, and legacy single-file `ServerSong` construction.
+- Duplicate detection becomes exact `serverSongId` only.
+- Removes legacy empty-URL repair prompt and single-file model initializer.
 
-### Named compatibility-test migration
+- [ ] **Step 1: Replace legacy downloader fallback tests with current-policy RED coverage**
 
-| Existing test | Action |
-|---|---|
-| `ServerSongDownloaderTests.testDuplicateDetectionByServerSongId` | Keep. |
-| `ServerSongDownloaderTests.testAllowsDistinctServerSongsWithSameTitleArtist` | Keep. |
-| `ServerSongDownloaderTests.testRejectsImportWhenLegacySongMatchesTitleArtist` | Delete/replace with the same-title nil-ID row **does not block** current import regression below. |
-| `ServerSongDownloaderTests.testRejectsImportWhenLegacySongMatchesCaseInsensitive` | Delete; case-insensitive fallback is deleted, not supported. |
-| `ServerSongServiceTests.testDownloadAndImportSongRejectsLegacyEmptyChartURL` | Delete with the service guard. Downloader invalid-URL coverage remains the owner of malformed current chart URLs. |
-| `ServerSongModelTests.testServerSongLegacyInitializer` | Delete with convenience initializer. |
-| `ServerSongModelTests.testServerSongIDExtraction` | Delete with convenience initializer. |
+Delete:
 
-- [ ] **Step 1: Add the RED current-policy downloader test**
+- `testRejectsImportWhenLegacySongMatchesTitleArtist`
+- `testRejectsImportWhenLegacySongMatchesCaseInsensitive`
+
+Add:
 
 ```swift
-@Test("downloadAndImportSong ignores same-title local rows without the current server ID")
+@Test("downloadAndImportSong ignores same-title local rows without current server ID")
 func testSameTitleWithoutServerIDDoesNotBlockImport() async throws {
     let mock = MockFileDownloader()
     let config = makeConfig(
@@ -837,20 +927,9 @@ func testSameTitleWithoutServerIDDoesNotBlockImport() async throws {
 }
 ```
 
-Current code should fail with `Song already exists in database` because the exact/case-insensitive title/artist fallback still runs for nil-ID local rows.
+Current code fails because title/artist fallback reports “Song already exists in database.”
 
-- [ ] **Step 2: Run downloader tests and verify RED**
-
-```bash
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -only-testing:VirgoTests/ServerSongDownloaderTests \
-  -parallel-testing-enabled NO
-```
-
-- [ ] **Step 3: Reduce `songAlreadyExists` to one stable-ID query**
+- [ ] **Step 2: Reduce `songAlreadyExists` to one targeted ID query**
 
 ```swift
 @MainActor
@@ -866,57 +945,49 @@ private func songAlreadyExists(
 }
 ```
 
-Delete both old legs:
+Keep current tests proving same ID rejects and distinct IDs with identical title/artist remain allowed.
 
-1. exact `title == snapshot.title && artist == snapshot.artist && serverSongId == nil` fetch;
-2. case-insensitive scan across nil-ID rows.
+- [ ] **Step 3: Delete the service's legacy empty-URL guard and owning test**
 
-- [ ] **Step 4: Delete the old-empty-URL service guard and its owning test**
-
-Remove the `ServerSongService.downloadAndImportSong` block whose message is:
+Remove the `ServerSongService.downloadAndImportSong` block that produces:
 
 ```text
 Please refresh the catalog first — this entry needs updated chart URLs
 ```
 
-Delete `ServerSongServiceTests.testDownloadAndImportSongRejectsLegacyEmptyChartURL` in the same checkpoint.
+Delete `ServerSongServiceTests.testDownloadAndImportSongRejectsLegacyEmptyChartURL`.
 
-Do not add a replacement guard. `ServerSongDownloader.processChart` / `ServerSongImportError.invalidChartURL` remains the current-data failure path and already has downloader-level empty-URL coverage.
+Keep the downloader's existing empty-URL error coverage; invalid current URLs still fail through `ServerSongImportError`.
 
-- [ ] **Step 5: Delete the legacy single-file `ServerSong` initializer and tests**
+- [ ] **Step 4: Delete the legacy single-file model initializer/tests**
 
-Delete:
+Delete `ServerSong(filename:title:artist:bpm:difficultyLevel:size:isDownloaded:)` from `DrumTrack.swift`.
 
-```swift
-convenience init(
-    filename: String,
-    title: String,
-    artist: String,
-    bpm: Double,
-    difficultyLevel: Int,
-    size: Int,
-    isDownloaded: Bool = false
-)
-```
+Delete from `ServerSongModelTests.swift`:
 
-Delete `testServerSongLegacyInitializer` and `testServerSongIDExtraction`. Retain current `songId:` initializer, media, BPM, genre, and duration coverage.
+- `testServerSongLegacyInitializer`
+- `testServerSongIDExtraction`
 
-- [ ] **Step 6: Run downloader/model/service suites and verify GREEN**
+- [ ] **Step 5: Run all server-management suites**
 
 ```bash
 xcodebuild test \
   -project Virgo.xcodeproj \
   -scheme Virgo \
   -destination 'platform=macOS' \
+  -only-testing:VirgoTests/ServerSongStatusManagerTests \
+  -only-testing:VirgoTests/ServerSongStatusDeletionStoreTests \
+  -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
+  -only-testing:VirgoTests/ServerSongCacheCoverageTests \
+  -only-testing:VirgoTests/ServerSongServiceTests \
   -only-testing:VirgoTests/ServerSongDownloaderTests \
   -only-testing:VirgoTests/ServerSongModelTests \
-  -only-testing:VirgoTests/ServerSongServiceTests \
   -parallel-testing-enabled NO
 ```
 
 Expected: PASS.
 
-- [ ] **Step 7: Run the compatibility call-graph audit**
+- [ ] **Step 6: Audit all compatibility identity surfaces**
 
 ```bash
 rg -n \
@@ -928,14 +999,14 @@ Expected: no matches.
 
 ```bash
 rg -n \
-  'matchesSongIdentity|matchesServerSongByServerSongId|matchedLocalSongs|byTitleArtist|serverSongId == nil|titleArtistPredicate|noServerIdPredicate' \
+  'matchedLocalSongs|matchesSongIdentity|matchesServerSongByServerSongId|byTitleArtist|titleArtistPredicate|noServerIdPredicate' \
   Virgo/utilities/ServerSongStatusManager.swift \
   Virgo/utilities/ServerSongDownloader.swift
 ```
 
-Expected: no matches. If a new nil-ID check is introduced for non-identity behavior, review it explicitly rather than accepting it as an audit exception.
+Expected: no matches.
 
-- [ ] **Step 8: Commit the checkpoint**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add Virgo/utilities/ServerSongDownloader.swift \
@@ -944,212 +1015,142 @@ git add Virgo/utilities/ServerSongDownloader.swift \
   VirgoTests/ServerSongDownloaderTests.swift \
   VirgoTests/ServerSongServiceTests.swift \
   VirgoTests/ServerSongModelTests.swift
-git commit -m "refactor: remove legacy server catalog matching"
+git commit -m "refactor: remove legacy server catalog compatibility"
 ```
 
 ---
 
-## Task 4: Surface catalog load/refresh failure in the existing service and view
+## Task 4: Simplify startup reconciliation and share refresh-failure presentation
 
 **Files:**
 - Modify: `Virgo/utilities/ServerSongCache.swift`
 - Modify: `Virgo/utilities/ServerSongService.swift`
 - Modify: `Virgo/views/ContentView.swift`
 - Modify: `Virgo/views/ServerSongsView.swift`
-- Modify: `VirgoTests/ServerSongServiceTests.swift`
 - Modify: `VirgoTests/ServerSongCatalogRefreshTests.swift`
+- Modify: `VirgoTests/ServerSongServiceTests.swift`
+- Verify: `VirgoTests/SongsTabCoverageTests.swift`
 
 **Interfaces:**
-- Changes cache load to:
+- Removes `ServerSongCache.loadServerSongs`.
+- Changes service load to:
   ```swift
-  func loadServerSongs(modelContext: ModelContext) async throws
-  ```
-- Produces service state/API:
-  ```swift
-  @Published private(set) var catalogLoadFailed = false
   func loadServerSongs() async
   ```
-- Keeps existing `isLoading`, `isRefreshing`, and `errorMessage`.
+  with no return value and no throwing path.
+- Adds:
+  ```swift
+  @Published private(set) var catalogRefreshFailed = false
+  ```
+- Adds one shared `serverSongsPlaceholder` view property.
 
-### Named load/failure test migration
+### Task 4 test migration
 
 | Existing test | Action |
 |---|---|
-| `ServerSongServiceTests.testLoadServerSongsWithoutModelContext` | Rewrite for void API: call `await service.loadServerSongs()` and assert no loading/error/failure state is introduced. |
-| `ServerSongServiceTests.testLoadServerSongsWithContextUsesCacheResult` | Delete; live catalog rows come from `@Query`, not a service-returned array. |
-| `ServerSongServiceTests.testLoadServerSongsHandlesCacheError` | Replace with `testLoadFailureIsVisible`. |
-| `ServerSongServiceTests.testServiceRefreshCatalog` | Rewrite to `context.fetch(FetchDescriptor<ServerSong>())` after `await service.refreshCatalog()`, not a returned `loadServerSongs` array. |
-| `ServerSongCatalogRefreshTests.testLoadServerSongsReconcilesDownloadStatus` | Rewrite to call result-less cache load, then fetch the persisted `ServerSong` and assert its stale flag was corrected. |
+| `ServerSongCatalogRefreshTests.testLoadServerSongsReconcilesDownloadStatus` | Delete; cache no longer owns load/reconciliation. Status-manager suites own projection behavior. |
+| `ServerSongServiceTests.testLoadServerSongsWithoutModelContext` | Rewrite for void API: call method, assert loading ends and no status refresh occurs. |
+| `testLoadServerSongsWithContextUsesCacheResult` | Replace with service startup reconciliation delegation using `MockServerSongStatusManager.refreshDownloadStatusCalled`. |
+| `testLoadServerSongsHandlesCacheError` | Delete; startup load is intentionally non-throwing and no cache fetch probe remains. |
+| `testServiceRefreshCatalog` | After refresh, assert IDs with `context.fetch(FetchDescriptor<ServerSong>())`; do not call load for an array. |
+| `testRefreshCatalogCallsCache` | Keep and add `catalogRefreshFailed == false`. |
+| `testRefreshCatalogFailureSetsError` | Keep and add `catalogRefreshFailed == true`. |
 
-- [ ] **Step 1: Change the mock cache to a result-less throwing load API**
+- [ ] **Step 1: Remove load behavior from `MockServerSongCache` and add RED service-state tests**
 
-In `ServerSongServiceTests.swift`:
+Delete `loadResult` and the `loadServerSongs` override from `MockServerSongCache`.
 
-```swift
-@MainActor
-private final class MockServerSongCache: ServerSongCache {
-    var loadError: Error?
-    private(set) var loadCallCount = 0
-    var refreshError: Error?
-    private(set) var refreshCallCount = 0
-
-    init() { super.init(fetcher: MockSimfileFetcher()) }
-
-    override func loadServerSongs(modelContext: ModelContext) async throws {
-        loadCallCount += 1
-        if let loadError { throw loadError }
-    }
-
-    override func refreshCatalog(modelContext: ModelContext) async throws {
-        refreshCallCount += 1
-        if let refreshError { throw refreshError }
-    }
-}
-```
-
-- [ ] **Step 2: Add RED load/failure-state tests**
+Use the existing `MockServerSongStatusManager` to test startup reconciliation:
 
 ```swift
-@Test("loadServerSongs exposes cache failure instead of an empty result")
-func testLoadFailureIsVisible() async throws {
-    struct LoadFailure: LocalizedError {
-        var errorDescription: String? { "synthetic load failure" }
-    }
-
+@Test("loadServerSongs reconciles status without owning a catalog array")
+func testLoadServerSongsReconcilesStatus() async throws {
     try await TestSetup.withTestSetup {
-        let cache = MockServerSongCache()
-        cache.loadError = LoadFailure()
-        let service = ServerSongService(cache: cache)
+        let status = MockServerSongStatusManager()
+        let service = ServerSongService(statusManager: status)
         service.setModelContext(TestContainer.shared.context)
 
         await service.loadServerSongs()
 
-        #expect(cache.loadCallCount == 1)
+        #expect(status.refreshDownloadStatusCalled)
         #expect(service.isLoading == false)
-        #expect(service.catalogLoadFailed)
-        #expect(service.errorMessage?.text.contains("Failed to load server songs") == true)
-        #expect(service.errorMessage?.text.contains("synthetic load failure") == true)
-    }
-}
-
-@Test("successful catalog load clears prior failure state")
-func testSuccessfulLoadClearsFailure() async throws {
-    struct LoadFailure: LocalizedError {
-        var errorDescription: String? { "first failure" }
-    }
-
-    try await TestSetup.withTestSetup {
-        let cache = MockServerSongCache()
-        let service = ServerSongService(cache: cache)
-        service.setModelContext(TestContainer.shared.context)
-
-        cache.loadError = LoadFailure()
-        await service.loadServerSongs()
-        #expect(service.catalogLoadFailed)
-
-        cache.loadError = nil
-        await service.loadServerSongs()
-        #expect(service.catalogLoadFailed == false)
-        #expect(service.isLoading == false)
-        #expect(cache.loadCallCount == 2)
     }
 }
 ```
 
-Update the existing refresh failure test to assert `catalogLoadFailed == true`; update successful refresh coverage to assert it is `false`.
-
-- [ ] **Step 3: Rewrite the existing load/reconcile and service-refresh tests before changing signatures**
-
-`ServerSongCatalogRefreshTests.testLoadServerSongsReconcilesDownloadStatus` becomes:
+Update the missing-context test:
 
 ```swift
-try await cache.loadServerSongs(modelContext: context)
-let loaded = try #require(
-    context.fetch(FetchDescriptor<ServerSong>())
-        .first { $0.songId == "orphan" }
-)
-#expect(loaded.isDownloaded == false)
-```
+@Test("loadServerSongs without model context is a no-op")
+func testLoadServerSongsWithoutModelContext() async {
+    let status = MockServerSongStatusManager()
+    let service = ServerSongService(statusManager: status)
 
-`ServerSongServiceTests.testServiceRefreshCatalog` should fetch directly from the context after refresh:
+    await service.loadServerSongs()
 
-```swift
-await service.refreshCatalog()
-let songs = try context.fetch(FetchDescriptor<ServerSong>())
-#expect(Set(songs.map(\.songId)) == ["x", "y"])
-```
-
-Rewrite `testLoadServerSongsWithoutModelContext` as:
-
-```swift
-let service = ServerSongService()
-await service.loadServerSongs()
-#expect(service.isLoading == false)
-#expect(service.catalogLoadFailed == false)
-#expect(service.errorMessage == nil)
-```
-
-Delete `testLoadServerSongsWithContextUsesCacheResult`; the new mock call-count/success tests cover delegation without reintroducing an array contract.
-
-- [ ] **Step 4: Run service/catalog load tests and verify RED**
-
-```bash
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -only-testing:VirgoTests/ServerSongServiceTests \
-  -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
-  -parallel-testing-enabled NO
-```
-
-Expected: FAIL until the result-less load API and `catalogLoadFailed` state exist.
-
-- [ ] **Step 5: Make cache load propagate SwiftData fetch failure**
-
-```swift
-func loadServerSongs(modelContext: ModelContext) async throws {
-    _ = try modelContext.fetch(FetchDescriptor<ServerSong>())
-    await statusManager.refreshDownloadStatus(modelContext: modelContext)
+    #expect(status.refreshDownloadStatusCalled == false)
+    #expect(service.isLoading == false)
 }
 ```
 
-Do not create a second in-memory catalog array.
-
-- [ ] **Step 6: Implement minimal service state transitions**
-
-Add:
+Update refresh tests to assert the new flag:
 
 ```swift
-@Published private(set) var catalogLoadFailed = false
+#expect(service.catalogRefreshFailed == false) // successful refresh
+#expect(service.catalogRefreshFailed)          // failed refresh
 ```
+
+- [ ] **Step 2: Delete `ServerSongCache.loadServerSongs`**
+
+Remove the cache method completely. `@Query` is the catalog row source; `ServerSongStatusManager` owns reconciliation.
+
+Delete `ServerSongCatalogRefreshTests.testLoadServerSongsReconcilesDownloadStatus` with it.
+
+- [ ] **Step 3: Make service load void/non-throwing and refresh own failure state**
 
 Implement:
 
 ```swift
 func loadServerSongs() async {
+    guard modelContext != nil else { return }
+    isLoading = true
+    defer { isLoading = false }
+    await refreshDownloadStatus()
+}
+```
+
+Add:
+
+```swift
+@Published private(set) var catalogRefreshFailed = false
+```
+
+Refactor refresh:
+
+```swift
+func refreshCatalog() async {
     guard let modelContext else { return }
 
-    isLoading = true
+    isRefreshing = true
     errorMessage = nil
-    defer { isLoading = false }
+    defer { isRefreshing = false }
 
     do {
-        try await cache.loadServerSongs(modelContext: modelContext)
-        catalogLoadFailed = false
+        try await cache.refreshCatalog(modelContext: modelContext)
+        catalogRefreshFailed = false
     } catch {
-        catalogLoadFailed = true
+        catalogRefreshFailed = true
         errorMessage = AlertMessage(
-            "Failed to load server songs: \(error.localizedDescription)"
+            "Failed to refresh server songs: \(error.localizedDescription)"
         )
-        Logger.error("Failed to load server songs: \(error)")
+        Logger.error("Failed to refresh catalog: \(error)")
     }
 }
 ```
 
-In `refreshCatalog()`, use `defer { isRefreshing = false }`, set `catalogLoadFailed = false` after a successful cache refresh, and set it to `true` in the existing catch block.
+Do not add an initial-load error flag or SwiftData probe fetch.
 
-- [ ] **Step 7: Update `ContentView` to the result-less load**
+- [ ] **Step 4: Update `ContentView` and refresh service test**
 
 Change:
 
@@ -1163,35 +1164,62 @@ to:
 await serverSongService.loadServerSongs()
 ```
 
-No other startup changes belong to HPA-578.
-
-- [ ] **Step 8: Require loading/failed/empty branching in both layouts**
-
-In `ServerSongsView.serverList`, when `serverSongs.isEmpty`, the branch must be:
+In `testServiceRefreshCatalog`, verify the live persisted source:
 
 ```swift
-if serverSongService.isLoading || serverSongService.isRefreshing {
-    loadingRow.listRowBackground(Color.clear)
-} else if serverSongService.catalogLoadFailed {
-    failedState.listRowBackground(Color.clear)
-} else {
-    emptyState.listRowBackground(Color.clear)
+await service.refreshCatalog()
+let songs = try context.fetch(FetchDescriptor<ServerSong>())
+#expect(Set(songs.map(\.songId)) == ["x", "y"])
+```
+
+- [ ] **Step 5: Share one placeholder branch between list and grid**
+
+In `ServerSongsView`, use one property:
+
+```swift
+@ViewBuilder
+private var serverSongsPlaceholder: some View {
+    if serverSongService.isLoading || serverSongService.isRefreshing {
+        loadingRow
+    } else if serverSongService.catalogRefreshFailed {
+        failedState
+    } else {
+        emptyState
+    }
 }
 ```
 
-In `gridPlaceholder`, independently require the same state order:
+List:
 
 ```swift
-if serverSongService.isLoading || serverSongService.isRefreshing {
-    loadingRow
-} else if serverSongService.catalogLoadFailed {
-    failedState
+if !serverSongs.isEmpty {
+    ForEach(serverSongs, id: \.songId) { serverSong in
+        // existing row
+    }
 } else {
-    emptyState
+    serverSongsPlaceholder
+        .listRowBackground(Color.clear)
 }
 ```
 
-Add:
+Grid:
+
+```swift
+@ViewBuilder
+private var gridPlaceholder: some View {
+    serverSongsPlaceholder
+}
+```
+
+Add/keep these identifiers:
+
+```swift
+.accessibilityIdentifier("serverSongsLoadingState")
+.accessibilityIdentifier("serverSongsLoadErrorState")
+.accessibilityIdentifier("serverSongsEmptyState")
+```
+
+`failedState` copy:
 
 ```swift
 private var failedState: some View {
@@ -1199,7 +1227,7 @@ private var failedState: some View {
         Image(systemName: "exclamationmark.icloud")
             .font(.system(size: 50))
             .foregroundColor(theme.secondary)
-        Text("Couldn’t load server songs")
+        Text("Couldn’t refresh server songs")
             .font(.title2)
             .foregroundColor(theme.primary)
         Text("Tap refresh to try again")
@@ -1213,11 +1241,9 @@ private var failedState: some View {
 }
 ```
 
-Add `.accessibilityIdentifier("serverSongsLoadingState")` to `loadingRow` and `.accessibilityIdentifier("serverSongsEmptyState")` to `emptyState`.
+Keep non-empty cached rows visible after a failed refresh; the existing alert communicates the failure while the previous snapshot remains usable.
 
-Keep non-empty cached rows visible after failed refresh; the existing alert communicates the refresh failure while the previous valid snapshot remains usable.
-
-- [ ] **Step 9: Run service and server-tab unit coverage and verify GREEN**
+- [ ] **Step 6: Run service/view coverage**
 
 ```bash
 xcodebuild test \
@@ -1225,48 +1251,68 @@ xcodebuild test \
   -scheme Virgo \
   -destination 'platform=macOS' \
   -only-testing:VirgoTests/ServerSongServiceTests \
-  -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
   -only-testing:VirgoTests/SongsTabCoverageTests \
   -parallel-testing-enabled NO
 ```
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit the checkpoint**
-
-```bash
-git add Virgo/utilities/ServerSongCache.swift \
-  Virgo/utilities/ServerSongService.swift \
-  Virgo/views/ContentView.swift \
-  Virgo/views/ServerSongsView.swift \
-  VirgoTests/ServerSongServiceTests.swift \
-  VirgoTests/ServerSongCatalogRefreshTests.swift
-git commit -m "fix: surface server catalog load failures"
-```
-
----
-
-## Final Verification
-
-- [ ] **Run all HPA-578 focused suites together**
+- [ ] **Step 7: Run all server-management suites again**
 
 ```bash
 xcodebuild test \
   -project Virgo.xcodeproj \
   -scheme Virgo \
   -destination 'platform=macOS' \
+  -only-testing:VirgoTests/ServerSongStatusManagerTests \
+  -only-testing:VirgoTests/ServerSongStatusDeletionStoreTests \
   -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
   -only-testing:VirgoTests/ServerSongCacheCoverageTests \
-  -only-testing:VirgoTests/ServerSongStatusManagerTests \
-  -only-testing:VirgoTests/ServerSongDownloaderTests \
   -only-testing:VirgoTests/ServerSongServiceTests \
+  -only-testing:VirgoTests/ServerSongDownloaderTests \
   -only-testing:VirgoTests/ServerSongModelTests \
   -parallel-testing-enabled NO
 ```
 
 Expected: PASS.
 
-- [ ] **Run the complete macOS unit suite with repository-required parallel testing disabled**
+- [ ] **Step 8: Commit**
+
+```bash
+git add Virgo/utilities/ServerSongCache.swift \
+  Virgo/utilities/ServerSongService.swift \
+  Virgo/views/ContentView.swift \
+  Virgo/views/ServerSongsView.swift \
+  VirgoTests/ServerSongCatalogRefreshTests.swift \
+  VirgoTests/ServerSongServiceTests.swift
+git commit -m "fix: simplify server catalog refresh state"
+```
+
+---
+
+## Final Verification
+
+- [ ] **Run all HPA-578/server-management focused suites**
+
+```bash
+xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -only-testing:VirgoTests/ServerSongStatusManagerTests \
+  -only-testing:VirgoTests/ServerSongStatusDeletionStoreTests \
+  -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
+  -only-testing:VirgoTests/ServerSongCacheCoverageTests \
+  -only-testing:VirgoTests/ServerSongServiceTests \
+  -only-testing:VirgoTests/ServerSongDownloaderTests \
+  -only-testing:VirgoTests/ServerSongModelTests \
+  -only-testing:VirgoTests/SongsTabCoverageTests \
+  -parallel-testing-enabled NO
+```
+
+Expected: PASS.
+
+- [ ] **Run the complete macOS unit suite**
 
 ```bash
 xcodebuild test \
@@ -1286,7 +1332,7 @@ xcodebuild test \
 
 Expected: PASS.
 
-- [ ] **Build the iPad simulator target**
+- [ ] **Build iPad simulator compatibility**
 
 ```bash
 xcodebuild -project Virgo.xcodeproj -scheme Virgo \
@@ -1295,7 +1341,7 @@ xcodebuild -project Virgo.xcodeproj -scheme Virgo \
 
 Expected: BUILD SUCCEEDED. Do not use an iPhone destination.
 
-- [ ] **Run lint and diff checks**
+- [ ] **Run lint/diff checks**
 
 ```bash
 swiftlint lint
@@ -1304,7 +1350,7 @@ git diff --check main...HEAD
 
 Expected: no SwiftLint errors and no whitespace errors.
 
-- [ ] **Run the broad residual compatibility audit**
+- [ ] **Residual compatibility audit**
 
 ```bash
 rg -n \
@@ -1316,7 +1362,7 @@ Expected: no matches.
 
 ```bash
 rg -n \
-  'matchesSongIdentity|matchesServerSongByServerSongId|matchedLocalSongs|byTitleArtist|serverSongId == nil|titleArtistPredicate|noServerIdPredicate' \
+  'matchedLocalSongs|matchesSongIdentity|matchesServerSongByServerSongId|byTitleArtist|titleArtistPredicate|noServerIdPredicate' \
   Virgo/utilities/ServerSongStatusManager.swift \
   Virgo/utilities/ServerSongDownloader.swift
 ```
@@ -1324,19 +1370,14 @@ rg -n \
 Expected: no matches.
 
 ```bash
-rg -n 'testDownloadAndImportSongRejectsLegacyEmptyChartURL|testRejectsImportWhenLegacySongMatches|testNoPruneOnTruncatedWalk|testDuplicateDTOsDontCrash|testCrossPageDuplicatesDoNotMarkCompleteEarly' \
-  VirgoTests
+rg -n 'serverSong\.isDownloaded\s*=\s*true|loadServerSongs\(modelContext:' \
+  Virgo/utilities/ServerSongService.swift \
+  Virgo/utilities/ServerSongCache.swift
 ```
 
-Expected: no matches; the old-contract tests were deleted/replaced at their owning checkpoints.
+Expected: no matches. Download flags are status-projected, and cache no longer owns a load API.
 
-```bash
-rg -n 'refreshCatalog\(|loadServerSongs\(|applyDownloadStatus\(' Virgo VirgoTests
-```
-
-Expected: only current service/cache/status paths and focused tests.
-
-- [ ] **Review the final production diff for scope**
+- [ ] **Review production diff for scope**
 
 ```bash
 git diff --stat main...HEAD
@@ -1351,4 +1392,12 @@ git diff main...HEAD -- \
   CLAUDE.md
 ```
 
-Confirm the diff contains no sync framework, no local-song migration/pruning during catalog refresh, no title/artist server identity fallback, no off-main performance work, and no unrelated HPA-583 cleanup.
+Confirm:
+
+- no local song/audio pruning from catalog refresh;
+- no cache-object mutation after the download await;
+- no title/artist server identity fallback;
+- no sync/repository/staging infrastructure;
+- no initial-load error probe/state machine;
+- no unrelated catalog sorting change;
+- no HPA-579/HPA-580 performance work.
