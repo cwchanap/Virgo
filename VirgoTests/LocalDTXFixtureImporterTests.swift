@@ -83,6 +83,19 @@ struct LocalDTXFixtureImporterTests {
         #expect(chart.safeNotes.first === preexisting.note)
         #expect(chart.safeControlEvents.isEmpty)
         #expect(chart.rhythmMetadataData == nil)
+
+        // HPA-577: re-import must not rewrite song-level metadata. The source fixture
+        // produces title "Current Source", artist "Tester", bpm 120, genre "DTX Import"
+        // (hardcoded by the importer), and timeSignature .fourFour (projection default
+        // when no #VIRGO_TIME_SIGNATURE is present) — all deliberately different from
+        // the persisted legacy values below, so these assertions complete the
+        // executable definition of the "paths only" re-import boundary.
+        #expect(returned.title == "Legacy Local State")
+        #expect(returned.artist == "Legacy Artist")
+        #expect(returned.bpm == 90)
+        #expect(returned.genre == "Legacy Genre")
+        #expect(returned.timeSignature == .sixEight)
+
         #expect(try context.fetch(FetchDescriptor<Song>()).count == 1)
         #expect(try context.fetch(FetchDescriptor<Chart>()).count == 1)
     }
@@ -448,8 +461,8 @@ struct LocalDTXFixtureImporterTests {
             artist: "Legacy Artist",
             bpm: 90,
             duration: "9:59",
-            genre: "DTX Import",
-            timeSignature: .fourFour,
+            genre: "Legacy Genre",
+            timeSignature: .sixEight,
             isServerImported: false,
             serverSongId: serverSongId,
             bgmFilePath: "/old-container/bgm.m4a",

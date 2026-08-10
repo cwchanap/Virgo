@@ -163,7 +163,8 @@ enum LocalDTXFixtureImporter {
         // bundled Soukyuu song AND it is no longer present, skip re-seeding so the
         // Delete action is durable. If the record still exists (e.g. a delete that
         // did not persist), fall through to the normal path so the existing
-        // stable-ID record is returned unchanged.
+        // stable-ID record retains its persisted graph while BGM/preview paths
+        // are re-resolved from current fixture assets.
         if deletionStore.isDeleted(songId: soukyuuSongId),
            try existingSong(with: soukyuuSongId, in: context) == nil {
             Logger.info(
