@@ -31,7 +31,13 @@ struct ServerSongsView: View {
     private var serverList: some View {
         List {
             if !serverSongs.isEmpty {
-                ForEach(serverSongs, id: \.songId) { serverSong in
+                // Key by persistentModelID so a catalog refresh (which deletes
+                // and re-inserts ServerSong rows with the same logical songId)
+                // produces new view identities. This forces SwiftUI to recreate
+                // the @StateObject relationship loader in ServerSongInfoView
+                // instead of leaving it bound to the now-deleted pre-refresh
+                // model with stale chart-derived @State.
+                ForEach(serverSongs, id: \.persistentModelID) { serverSong in
                     ServerSongRow(
                         serverSong: serverSong,
                         isLoading: serverSongService.isDownloading(serverSong),
@@ -59,7 +65,7 @@ struct ServerSongsView: View {
             } else {
                 ScrollView {
                     LazyVGrid(columns: SongsGrid.columns, spacing: Spacing.md) {
-                        ForEach(serverSongs, id: \.songId) { serverSong in
+                        ForEach(serverSongs, id: \.persistentModelID) { serverSong in
                             ServerSongCard(
                                 serverSong: serverSong,
                                 isLoading: serverSongService.isDownloading(serverSong),
