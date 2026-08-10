@@ -153,6 +153,12 @@ class ServerSongService: ObservableObject {
         deletingSongs.remove(songKey)
         if !success {
             errorMessage = AlertMessage("Failed to delete local song")
+        } else {
+            // A refresh may have projected flags from the local song before the
+            // detached deletion committed. Reconcile the current cache row now
+            // that deletion has completed instead of leaving that replacement
+            // with stale downloaded state.
+            await refreshDownloadStatus()
         }
 
         return success

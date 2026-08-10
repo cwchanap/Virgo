@@ -7,6 +7,22 @@ import Foundation
 @MainActor
 // swiftlint:disable:next type_body_length
 struct ServerSongServiceTests {
+    /// Coordinates a real detached deletion save with the cache replacement save.
+    /// The two save closures block at their exact persistence boundaries so the
+    /// test observes the replacement row after the deletion/refresh overlap,
+    /// rather than asserting only that a mock method was called.
+    private final class DeletionRefreshRaceCoordinator: @unchecked Sendable {
+        let deletionSaveStarted = DispatchSemaphore(value: 0)
+        let deletionSavePermission = DispatchSemaphore(value: 0)
+        let deletionSaveCompleted = DispatchSemaphore(value: 0)
+        let cacheSaveStarted = DispatchSemaphore(value: 0)
+        let cacheSavePermission = DispatchSemaphore(value: 0)
+
+        static func wait(on semaphore: DispatchSemaphore) {
+            semaphore.wait()
+        }
+    }
+
     /// In-memory `FileDownloading` keyed by absolute URL; can throw for missing keys.
     private final class MockFileDownloader: FileDownloading, @unchecked Sendable {
         var responses: [String: Data] = [:]
@@ -249,6 +265,101 @@ struct ServerSongServiceTests {
             #expect(success)
             #expect(service.errorMessage == nil)
             #expect(service.deletingSongs.isEmpty)
+        }
+    }
+
+    @Test("local deletion reconciles a replacement cache row after refresh overlap")
+    func testDeleteLocalSongReconcilesReplacementAfterRefreshOverlap() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let container = TestContainer.shared.container
+            let coordinator = DeletionRefreshRaceCoordinator()
+            let temporaryDirectory = FileManager.default.temporaryDirectory
+
+            let statusManager = ServerSongStatusManager(
+                saveContext: { backgroundContext in
+                    coordinator.deletionSaveStarted.signal()
+                    coordinator.deletionSavePermission.wait()
+                    defer { coordinator.deletionSaveCompleted.signal() }
+                    try backgroundContext.save()
+                }
+            )
+            let fetcher = MockSimfileFetcher(all: [.stub(id: "overlap")])
+            let cache = ServerSongCache(
+                fetcher: fetcher,
+                statusManager: statusManager,
+                saveContext: { replacementContext in
+                    coordinator.cacheSaveStarted.signal()
+                    coordinator.cacheSavePermission.wait()
+                    try replacementContext.save()
+                }
+            )
+            let service = ServerSongService(cache: cache, statusManager: statusManager)
+            service.setModelContext(context)
+
+            let cachedSong = ServerSong(
+                songId: "overlap",
+                title: "Overlap",
+                artist: "Race",
+                bpm: 120,
+                isDownloaded: true,
+                bgmDownloaded: true,
+                previewDownloaded: true
+            )
+            let localSong = Song(
+                title: "Overlap",
+                artist: "Race",
+                bpm: 120,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "overlap",
+                bgmFilePath: temporaryDirectory.appendingPathComponent("virgo-overlap-bgm.ogg").path,
+                previewFilePath: temporaryDirectory.appendingPathComponent("virgo-overlap-preview.mp3").path
+            )
+            context.insert(cachedSong)
+            context.insert(localSong)
+            try context.save()
+
+            // Keep the detached deletion paused before persistence. The refresh
+            // then snapshots the still-present local song and blocks at its own
+            // replacement save, guaranteeing the intended interleaving.
+            let deletionReady = Task.detached {
+                DeletionRefreshRaceCoordinator.wait(on: coordinator.deletionSaveStarted)
+            }
+            let arbiter = Task.detached {
+                DeletionRefreshRaceCoordinator.wait(on: coordinator.cacheSaveStarted)
+                coordinator.deletionSavePermission.signal()
+                DeletionRefreshRaceCoordinator.wait(on: coordinator.deletionSaveCompleted)
+                // The service reconciliation saves the now-cleared replacement
+                // row after the cache save resumes, using the same injected hook.
+                coordinator.deletionSavePermission.signal()
+                coordinator.cacheSavePermission.signal()
+            }
+
+            let deletionTask = Task { @MainActor in
+                await service.deleteLocalSong(localSong)
+            }
+            await deletionReady.value
+
+            let refreshTask = Task { @MainActor in
+                await service.refreshCatalog()
+            }
+
+            await refreshTask.value
+            _ = await deletionTask.value
+            await arbiter.value
+
+            let verificationContext = ModelContext(container)
+            let replacement = try #require(
+                verificationContext.fetch(FetchDescriptor<ServerSong>())
+                    .first { $0.songId == "overlap" }
+            )
+            #expect(replacement.isDownloaded == false)
+            #expect(replacement.bgmDownloaded == false)
+            #expect(replacement.previewDownloaded == false)
+            let remainingSongs = try verificationContext.fetch(FetchDescriptor<Song>())
+            #expect(remainingSongs.isEmpty)
         }
     }
 
