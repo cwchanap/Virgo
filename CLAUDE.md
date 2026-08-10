@@ -217,8 +217,8 @@ The song catalog is fetched over GraphQL; the legacy REST configuration layer wa
 `ServerSongService` is the public facade (coordinator) over four focused utilities under `utilities/`:
 - `ServerSongDownloader`: Downloads DTX/audio files from the public R2 URLs in the catalog response
 - `ServerSongFileManager`: Local file system operations for downloaded songs
-- `ServerSongCache`: SwiftData-backed catalog cache; fetches and persists `ServerSong` records through `ModelContext` (refresh is manual and additive — no in-memory store)
-- `ServerSongStatusManager`: Tracks download/delete state and syncs with SwiftData
+- `ServerSongCache`: SwiftData-backed catalog cache; manual refresh validates a complete GraphQL snapshot, projects download status by exact `Song.serverSongId`, and replaces server cache metadata in one save. A vanished catalog ID never prunes local songs or audio.
+- `ServerSongStatusManager`: Tracks download/delete state and syncs with SwiftData. Download completion reconciles status through the current cache/context rather than directly mutating a retained cache object.
 - `DTXAPIClient`: now **only** a `FileDownloading` implementation (raw HTTP GET). It no longer does
   catalog access or server-URL configuration.
 

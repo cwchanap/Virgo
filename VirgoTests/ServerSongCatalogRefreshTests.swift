@@ -12,14 +12,70 @@ struct ServerSongCatalogRefreshTests {
     private final class TruncatingFetcher: SimfileFetching, @unchecked Sendable {
         let all: [SimfileDTO]
         let pageSize: Int
-        init(all: [SimfileDTO], pageSize: Int) { self.all = all; self.pageSize = pageSize }
+
+        init(all: [SimfileDTO], pageSize: Int) {
+            self.all = all
+            self.pageSize = pageSize
+        }
+
         func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
             if page == 1 {
                 return SimfilePage(simfiles: Array(all.prefix(self.pageSize)), totalCount: all.count)
             }
             return SimfilePage(simfiles: [], totalCount: all.count)
         }
-        func fetchSimfile(id: String) async throws -> SimfileDTO? { all.first { $0.id == id } }
+
+        func fetchSimfile(id: String) async throws -> SimfileDTO? {
+            all.first { $0.id == id }
+        }
+    }
+
+    /// SimfileFetcher whose first page deterministically contains a duplicate ID.
+    private final class DuplicateIDFetcher: SimfileFetching, @unchecked Sendable {
+        let duplicateID: String
+
+        init(duplicateID: String) {
+            self.duplicateID = duplicateID
+        }
+
+        func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
+            guard page == 1 else {
+                return SimfilePage(simfiles: [], totalCount: 2)
+            }
+            let dto = SimfileDTO.stub(id: duplicateID)
+            return SimfilePage(simfiles: [dto, dto], totalCount: 2)
+        }
+
+        func fetchSimfile(id: String) async throws -> SimfileDTO? {
+            id == duplicateID ? .stub(id: duplicateID) : nil
+        }
+    }
+
+    /// SimfileFetcher that changes totalCount on page 2 after a valid first page.
+    private final class ChangingTotalCountFetcher: SimfileFetching, @unchecked Sendable {
+        func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
+            switch page {
+            case 1:
+                return SimfilePage(simfiles: [.stub(id: "a")], totalCount: 2)
+            case 2:
+                return SimfilePage(simfiles: [.stub(id: "b")], totalCount: 3)
+            default:
+                return SimfilePage(simfiles: [], totalCount: 3)
+            }
+        }
+
+        func fetchSimfile(id: String) async throws -> SimfileDTO? {
+            [.stub(id: "a"), .stub(id: "b")].first { $0.id == id }
+        }
+    }
+
+    @MainActor
+    private final class RecordingStatusManager: ServerSongStatusManager, @unchecked Sendable {
+        private(set) var refreshDownloadStatusCallCount = 0
+
+        override func refreshDownloadStatus(modelContext: ModelContext) async {
+            refreshDownloadStatusCallCount += 1
+        }
     }
 
     @Test("Inserts new simfiles on refresh")
@@ -37,209 +93,205 @@ struct ServerSongCatalogRefreshTests {
         }
     }
 
-    @Test("Leaves existing ids untouched and prunes stale ids")
-    func testAdditiveAndPrune() async throws {
+    @Test("Replaces the complete snapshot and preserves local imported songs")
+    func testCompleteReplacementOverwritesMetadataAndPreservesLocalSong() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            // Seed an existing entry "a" (downloaded, with a matching local Song so the
-            // download-status reconciliation keeps it downloaded) and a stale "z".
-            let existing = ServerSong(songId: "a", title: "OLD", artist: "A", bpm: 120, isDownloaded: true)
-            let localSong = Song(
-                title: "OLD", artist: "A", bpm: 120, duration: "3:30", genre: "DTX Import",
-                isServerImported: true, serverSongId: "a"
+            let oldChart = ServerChart(
+                difficulty: "basic",
+                difficultyLabel: "BASIC",
+                level: 30,
+                filename: "old-bas.dtx",
+                size: 100,
+                fileURL: "https://r2/a/old-bas.dtx"
             )
-            let stale = ServerSong(songId: "z", title: "Z", artist: "A", bpm: 120)
-            context.insert(existing); context.insert(localSong); context.insert(stale)
+            let existing = ServerSong(
+                songId: "a",
+                title: "OLD",
+                artist: "A",
+                bpm: 120,
+                charts: [oldChart],
+                isDownloaded: true,
+                bgmDownloaded: true,
+                previewDownloaded: true
+            )
+            let stale = ServerSong(songId: "z", title: "STALE", artist: "Z", bpm: 100)
+            let localSong = Song(
+                title: "Local A",
+                artist: "A",
+                bpm: 120,
+                duration: "3:30",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "a",
+                bgmFilePath: "/tmp/a.ogg",
+                previewFilePath: "/tmp/a.mp3"
+            )
+            context.insert(existing)
+            context.insert(oldChart)
+            context.insert(stale)
+            context.insert(localSong)
             try context.save()
 
-            let fetcher = MockSimfileFetcher(all: [.stub(id: "a", title: "NEW"), .stub(id: "b")])
+            let changedA = SimfileDTO.stub(id: "a", title: "NEW")
+            let changedAWithNewBPM = SimfileDTO(
+                id: changedA.id,
+                title: changedA.title,
+                artist: changedA.artist,
+                bpm: 150,
+                genre: changedA.genre,
+                tags: changedA.tags,
+                durationSeconds: changedA.durationSeconds,
+                updatedAt: changedA.updatedAt,
+                dtxFiles: [
+                    DtxFileDTO(
+                        label: "BASIC",
+                        level: 30,
+                        fileURL: "https://r2/a/new-bas.dtx",
+                        fileSizeBytes: 100,
+                        encoding: .shiftJIS
+                    )
+                ],
+                fileKeys: ["bgm.ogg", "preview.mp3"]
+            )
+            let fetcher = MockSimfileFetcher(all: [changedAWithNewBPM, .stub(id: "b")])
             let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
+
             try await cache.refreshCatalog(modelContext: context)
 
-            let songs = try context.fetch(FetchDescriptor<ServerSong>())
-            let byId = Dictionary(uniqueKeysWithValues: songs.map { ($0.songId, $0) })
-            #expect(Set(byId.keys) == ["a", "b"])            // z pruned, b added
-            #expect(byId["a"]?.title == "OLD")               // existing NOT overwritten
-            #expect(byId["a"]?.isDownloaded == true)
+            let rows = try context.fetch(FetchDescriptor<ServerSong>())
+            let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.songId, $0) })
+            #expect(Set(byID.keys) == ["a", "b"])
+            #expect(byID["a"]?.title == "NEW")
+            #expect(byID["a"]?.bpm == 150)
+            #expect(byID["a"]?.charts.first?.fileURL == "https://r2/a/new-bas.dtx")
+            #expect(byID["a"]?.isDownloaded == true)
+            #expect(byID["a"]?.bgmDownloaded == true)
+            #expect(byID["a"]?.previewDownloaded == true)
+
+            let local = try #require(
+                context.fetch(FetchDescriptor<Song>())
+                    .first { $0.serverSongId == "a" }
+            )
+            #expect(local.title == "Local A")
+            #expect(local.bgmFilePath == "/tmp/a.ogg")
+            #expect(local.previewFilePath == "/tmp/a.mp3")
         }
     }
 
-    @Test("Does NOT prune when page-walk is truncated (empty page before totalCount)")
-    func testNoPruneOnTruncatedWalk() async throws {
+    @Test("Rejects and preserves cache on a truncated snapshot")
+    func testTruncatedSnapshotThrowsAndPreservesCache() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            // Seed two songs; the fetcher will only return "a" on page 1 then an
-            // empty page 2 (truncation). "z" must NOT be pruned.
-            let songA = ServerSong(songId: "a", title: "A", artist: "X", bpm: 120)
-            let songZ = ServerSong(songId: "z", title: "Z", artist: "X", bpm: 120)
-            context.insert(songA); context.insert(songZ)
+            let old = ServerSong(songId: "old", title: "OLD", artist: "A", bpm: 120)
+            context.insert(old)
             try context.save()
 
             let fetcher = TruncatingFetcher(all: [.stub(id: "a"), .stub(id: "b")], pageSize: 1)
             let cache = ServerSongCache(fetcher: fetcher, pageSize: 1)
-            try await cache.refreshCatalog(modelContext: context)
 
-            let songs = try context.fetch(FetchDescriptor<ServerSong>())
-            let ids = Set(songs.map(\.songId))
-            // "z" survives because the walk was incomplete; "b" was inserted from page 1.
-            #expect(ids.contains("z"), "Stale song must survive truncated walk")
+            do {
+                try await cache.refreshCatalog(modelContext: context)
+                Issue.record("Expected incomplete snapshot error")
+            } catch let error as ServerSongCatalogRefreshError {
+                #expect(error == .incompleteSnapshot(expected: 2, actual: 1))
+            } catch {
+                Issue.record("Unexpected error: \(error)")
+            }
+
+            let rows = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(rows.count == 1)
+            #expect(rows.first?.songId == "old")
+            #expect(rows.first?.title == "OLD")
         }
     }
 
-    @Test("Backfills empty fileURL on legacy charts without clobbering user state")
-    func testBackfillLegacyChartURLs() async throws {
+    @Test("Rejects duplicate IDs and preserves cache")
+    func testDuplicateIDsThrowAndPreserveCache() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            // Seed a legacy "a" entry: downloaded, with a chart whose fileURL
-            // predated the column (""), as SwiftData lightweight migration would
-            // produce for REST-catalog upgraders.
-            let legacyChart = ServerChart(
-                difficulty: "basic",
-                difficultyLabel: "BASIC",
-                level: 30,
-                filename: "bas.dtx",
-                size: 100,
-                fileURL: "",
-                fileEncoding: "SHIFT_JIS"
-            )
-            let legacy = ServerSong(
-                songId: "a",
-                title: "OLD TITLE",
-                artist: "A",
-                bpm: 120,
-                charts: [legacyChart],
-                isDownloaded: true
-            )
-            // Matching local Song so refreshDownloadStatus reconciles isDownloaded
-            // to true (mirrors testAdditiveAndPrune); isolates the backfill check
-            // from the download-status reconciliation path.
-            let localSong = Song(title: "OLD TITLE", artist: "A", bpm: 120,
-                                 duration: "3:30", genre: "DTX Import", isServerImported: true,
-                                 serverSongId: "a")
-            context.insert(legacy); context.insert(legacyChart); context.insert(localSong)
+            let old = ServerSong(songId: "old", title: "OLD", artist: "A", bpm: 120)
+            context.insert(old)
             try context.save()
 
-            let fetcher = MockSimfileFetcher(all: [.stub(id: "a", title: "NEW TITLE")])
-            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
-            try await cache.refreshCatalog(modelContext: context)
+            let cache = ServerSongCache(fetcher: DuplicateIDFetcher(duplicateID: "dup"), pageSize: 2)
 
-            let songs = try context.fetch(FetchDescriptor<ServerSong>())
-            let songA = try #require(songs.first { $0.songId == "a" })
-            // fileURL backfilled from the DTO (download would otherwise throw invalidChartURL).
-            #expect(songA.charts.first?.fileURL == "https://r2/a/bas.dtx")
-            #expect(songA.charts.first?.fileEncoding == "SHIFT_JIS")
-            // Additive contract preserved: existing entry not replaced.
-            #expect(songA.title == "OLD TITLE")
-            #expect(songA.isDownloaded == true)
+            do {
+                try await cache.refreshCatalog(modelContext: context)
+                Issue.record("Expected duplicate ID error")
+            } catch let error as ServerSongCatalogRefreshError {
+                #expect(error == .duplicateSongID("dup"))
+            } catch {
+                Issue.record("Unexpected error: \(error)")
+            }
+
+            let rows = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(rows.count == 1)
+            #expect(rows.first?.songId == "old")
         }
     }
 
-    @Test("Backfills fileEncoding alongside fileURL when DTO differs")
-    func testBackfillLegacyChartEncoding() async throws {
+    @Test("Rejects a changing totalCount and preserves cache")
+    func testChangingTotalCountThrowsAndPreservesCache() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            // Legacy chart carries the migration default ("SHIFT_JIS"); the DTO
-            // reports UTF_8. Backfill must correct both fileURL and fileEncoding.
-            let legacyChart = ServerChart(
-                difficulty: "basic", difficultyLabel: "BASIC", level: 30,
-                filename: "bas.dtx", size: 100, fileURL: "", fileEncoding: "SHIFT_JIS"
-            )
-            let legacy = ServerSong(
-                songId: "a", title: "OLD", artist: "A", bpm: 120,
-                charts: [legacyChart], isDownloaded: false
-            )
-            context.insert(legacy); context.insert(legacyChart)
+            let old = ServerSong(songId: "old", title: "OLD", artist: "A", bpm: 120)
+            context.insert(old)
             try context.save()
 
-            let fetcher = MockSimfileFetcher(all: [.stub(id: "a", encoding: .utf8)])
-            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
-            try await cache.refreshCatalog(modelContext: context)
+            let cache = ServerSongCache(fetcher: ChangingTotalCountFetcher(), pageSize: 1)
 
-            let songA = try context.fetch(FetchDescriptor<ServerSong>()).first { $0.songId == "a" }
-            let chart = try #require(songA?.charts.first)
-            #expect(chart.fileURL == "https://r2/a/bas.dtx")
-            #expect(chart.fileEncoding == "UTF_8")
+            do {
+                try await cache.refreshCatalog(modelContext: context)
+                Issue.record("Expected changing totalCount error")
+            } catch let error as ServerSongCatalogRefreshError {
+                #expect(error == .totalCountChanged(expected: 2, actual: 3))
+            } catch {
+                Issue.record("Unexpected error: \(error)")
+            }
+
+            let rows = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(rows.count == 1)
+            #expect(rows.first?.songId == "old")
         }
     }
 
-    @Test("Leaves charts with a fileURL untouched (no double-backfill)")
-    func testNoBackfillWhenFileURLPresent() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let chart = ServerChart(
-                difficulty: "basic", difficultyLabel: "BASIC", level: 30,
-                filename: "bas.dtx", size: 100,
-                fileURL: "https://example/legacy.dtx", fileEncoding: "SHIFT_JIS"
-            )
-            let song = ServerSong(
-                songId: "a", title: "OLD", artist: "A", bpm: 120, charts: [chart]
-            )
-            context.insert(song); context.insert(chart)
-            try context.save()
-
-            let fetcher = MockSimfileFetcher(all: [.stub(id: "a")])
-            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
-            try await cache.refreshCatalog(modelContext: context)
-
-            let songA = try context.fetch(FetchDescriptor<ServerSong>()).first { $0.songId == "a" }
-            // Non-empty fileURL is preserved — backfill must not overwrite it.
-            #expect(songA?.charts.first?.fileURL == "https://example/legacy.dtx")
-        }
-    }
-
-    @Test("Backfills legacy charts AND prunes stale entries in the same refresh without crash")
-    func testBackfillAndPruneSameRefresh() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            // Song "a": legacy chart with empty fileURL — needs backfill.
-            let legacyChart = ServerChart(
-                difficulty: "basic", difficultyLabel: "BASIC", level: 30,
-                filename: "bas.dtx", size: 100, fileURL: "", fileEncoding: "SHIFT_JIS"
-            )
-            let legacy = ServerSong(
-                songId: "a", title: "LEGACY", artist: "A", bpm: 120,
-                charts: [legacyChart], isDownloaded: false
-            )
-            // Song "z": stale — absent from server, will be pruned.
-            let stale = ServerSong(songId: "z", title: "STALE", artist: "Z", bpm: 120)
-            context.insert(legacy); context.insert(legacyChart); context.insert(stale)
-            try context.save()
-
-            // Server only returns "a"; "z" is stale and should be pruned.
-            let fetcher = MockSimfileFetcher(all: [.stub(id: "a")])
-            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
-            // Must not crash when backfilling "a" and pruning "z" in one pass.
-            try await cache.refreshCatalog(modelContext: context)
-
-            let songs = try context.fetch(FetchDescriptor<ServerSong>())
-            let byId = Dictionary(uniqueKeysWithValues: songs.map { ($0.songId, $0) })
-            #expect(Set(byId.keys) == ["a"], "Only 'a' should remain; 'z' pruned")
-            let chart = try #require(byId["a"]?.charts.first)
-            #expect(chart.fileURL == "https://r2/a/bas.dtx", "Legacy chart backfilled")
-        }
-    }
-
-    @Test("Propagates fetch errors from refreshCatalog")
+    @Test("Propagates fetch errors and preserves old cache")
     func testRefreshCatalogThrowsOnFetchError() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
+            let old = ServerSong(songId: "old", title: "OLD", artist: "A", bpm: 120)
+            context.insert(old)
+            try context.save()
+
             let fetcher = MockSimfileFetcher(all: [])
             fetcher.error = URLError(.notConnectedToInternet)
             let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
 
-            await #expect(throws: Error.self) {
+            do {
                 try await cache.refreshCatalog(modelContext: context)
+                Issue.record("Expected fetch error")
+            } catch let error as URLError {
+                #expect(error.code == .notConnectedToInternet)
+            } catch {
+                Issue.record("Unexpected error: \(error)")
             }
+
+            let rows = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(rows.count == 1)
+            #expect(rows.first?.songId == "old")
         }
     }
 
-    @Test("Rolls back inserted songs when saveContext fails")
+    @Test("Restores old cache rows when replacement save fails")
     func testRefreshCatalogRollsBackOnSaveFailure() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            let fetcher = MockSimfileFetcher(all: [.stub(id: "a"), .stub(id: "b")])
+            let old = ServerSong(songId: "old", title: "OLD", artist: "A", bpm: 120)
+            context.insert(old)
+            try context.save()
 
-            // saveContext always fails
+            let fetcher = MockSimfileFetcher(all: [.stub(id: "a"), .stub(id: "b")])
             let cache = ServerSongCache(fetcher: fetcher, pageSize: 10) { _ in
                 throw URLError(.cannotWriteToFile)
             }
@@ -248,149 +300,81 @@ struct ServerSongCatalogRefreshTests {
                 try await cache.refreshCatalog(modelContext: context)
             }
 
-            // After rollback, the context must not contain phantom unsaved inserts.
-            // A fetch in the same context includes unsaved inserts, so if rollback
-            // worked the result should be empty.
-            let songs = try context.fetch(FetchDescriptor<ServerSong>())
-            #expect(songs.isEmpty, "Context must be empty after rollback — no phantom inserts")
+            let rows = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(rows.count == 1)
+            #expect(rows.first?.songId == "old")
+            #expect(rows.first?.title == "OLD")
         }
     }
 
-    @Test("Handles duplicate DTO IDs from server without crash")
-    func testDuplicateDTOsDontCrash() async throws {
+    @Test("Clears server cache for a valid empty snapshot but preserves local songs")
+    func testValidEmptySnapshotClearsOnlyServerCache() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            // Simulate a server bug returning the same simfile on two pages.
-            let fetcher = DuplicateIdFetcher(
-                duplicates: [.stub(id: "a"), .stub(id: "a"), .stub(id: "b")],
-                pageSize: 2
+            let old = ServerSong(songId: "old", title: "OLD", artist: "A", bpm: 120)
+            let local = Song(
+                title: "Local Old",
+                artist: "A",
+                bpm: 120,
+                duration: "3:30",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "old",
+                bgmFilePath: "/tmp/old.ogg",
+                previewFilePath: "/tmp/old.mp3"
             )
-            let cache = ServerSongCache(fetcher: fetcher, pageSize: 2)
-
-            // Must not crash from uniqueKeysWithValues on duplicate keys
-            try await cache.refreshCatalog(modelContext: context)
-
-            let songs = try context.fetch(FetchDescriptor<ServerSong>())
-            let ids = Set(songs.map(\.songId))
-            // Only one entry per unique ID
-            #expect(ids == ["a", "b"], "Duplicate DTOs must produce only one entry per unique ID")
-            #expect(songs.count == 2, "Expected exactly 2 songs, got \(songs.count)")
-        }
-    }
-
-    @Test("Handles duplicate DTO IDs in backfill without crash")
-    func testDuplicateDTOsBackfillSafe() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            // Legacy chart with empty fileURL — needs backfill
-            let legacyChart = ServerChart(
-                difficulty: "basic", difficultyLabel: "BASIC", level: 30,
-                filename: "bas.dtx", size: 100, fileURL: "", fileEncoding: "SHIFT_JIS"
-            )
-            let legacy = ServerSong(
-                songId: "a", title: "OLD", artist: "A", bpm: 120,
-                charts: [legacyChart], isDownloaded: false
-            )
-            context.insert(legacy); context.insert(legacyChart)
+            context.insert(old)
+            context.insert(local)
             try context.save()
 
-            // Server returns "a" twice — backfill must not crash on duplicate keys
-            let fetcher = DuplicateIdFetcher(
-                duplicates: [.stub(id: "a"), .stub(id: "a")],
-                pageSize: 2
-            )
-            let cache = ServerSongCache(fetcher: fetcher, pageSize: 2)
+            let cache = ServerSongCache(fetcher: MockSimfileFetcher(all: []), pageSize: 10)
             try await cache.refreshCatalog(modelContext: context)
 
-            let songA = try context.fetch(FetchDescriptor<ServerSong>()).first { $0.songId == "a" }
-            #expect(songA?.charts.first?.fileURL == "https://r2/a/bas.dtx", "Backfill must succeed despite duplicate DTOs")
+            #expect(try context.fetch(FetchDescriptor<ServerSong>()).isEmpty)
+            let remainingLocal = try context.fetch(FetchDescriptor<Song>())
+            let preserved = try #require(remainingLocal.first { $0.serverSongId == "old" })
+            #expect(preserved.title == "Local Old")
+            #expect(preserved.bgmFilePath == "/tmp/old.ogg")
+            #expect(preserved.previewFilePath == "/tmp/old.mp3")
         }
     }
 
-    /// Fetcher that returns duplicate simfile IDs to simulate server pagination bugs.
-    /// Returns all items in one page. `totalCount` is set to the **unique** count so
-    /// the walk completes after one page (the server knows its own unique count).
-    private final class DuplicateIdFetcher: SimfileFetching, @unchecked Sendable {
-        let duplicates: [SimfileDTO]
-        let pageSize: Int
-        init(duplicates: [SimfileDTO], pageSize: Int) {
-            self.duplicates = duplicates; self.pageSize = pageSize
-        }
-        func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
-            let uniqueCount = Set(duplicates.map(\.id)).count
-            return SimfilePage(simfiles: duplicates, totalCount: uniqueCount)
-        }
-        func fetchSimfile(id: String) async throws -> SimfileDTO? { duplicates.first { $0.id == id } }
-    }
+    @Test("Replaces cache with one save and no post-save status refresh")
+    func testReplacementUsesOneSaveWithoutPostSaveStatusRefresh() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let local = Song(
+                title: "Local A",
+                artist: "A",
+                bpm: 120,
+                duration: "3:30",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "a",
+                bgmFilePath: "/tmp/a.ogg",
+                previewFilePath: "/tmp/a.mp3"
+            )
+            context.insert(local)
+            try context.save()
 
-    /// Fetcher that returns duplicate IDs *across pages*, simulating a server bug
-    /// where the same simfile appears on multiple pages. The raw result count
-    /// reaches totalCount before all unique IDs are fetched.
-    private final class CrossPageDuplicateFetcher: SimfileFetching, @unchecked Sendable {
-        /// All unique DTOs the server knows about.
-        let allUnique: [SimfileDTO]
-        let pageSize: Int
-        /// Total count reported by the server (unique count).
-        let totalCount: Int
-
-        init(allUnique: [SimfileDTO], pageSize: Int) {
-            self.allUnique = allUnique
-            self.pageSize = pageSize
-            self.totalCount = allUnique.count
-        }
-
-        func fetchSimfiles(page: Int, pageSize: Int, search: String?) async throws -> SimfilePage {
-            // Page 1: returns first pageSize items + one duplicate from the "next"
-            // page to simulate a server pagination bug that duplicates entries.
-            // Page 2: returns the remaining unique items.
-            // Page 3+: empty.
-            if page == 1 {
-                let items = Array(allUnique.prefix(pageSize))
-                // If there are more items, duplicate an item already on this page
-                // to simulate a server pagination bug where the same simfile
-                // appears twice within a single page.
-                if allUnique.count > pageSize {
-                    var page = items
-                    page.append(items[0]) // duplicate first item of current page
-                    return SimfilePage(simfiles: page, totalCount: totalCount)
+            var cacheSaveCount = 0
+            let statusManager = RecordingStatusManager()
+            let cache = ServerSongCache(
+                fetcher: MockSimfileFetcher(all: [.stub(id: "a")]),
+                statusManager: statusManager,
+                pageSize: 10,
+                saveContext: { context in
+                    cacheSaveCount += 1
+                    try context.save()
                 }
-                return SimfilePage(simfiles: items, totalCount: totalCount)
-            } else if page == 2 {
-                let remaining = Array(allUnique.dropFirst(pageSize))
-                return SimfilePage(simfiles: remaining, totalCount: totalCount)
-            }
-            return SimfilePage(simfiles: [], totalCount: totalCount)
-        }
-
-        func fetchSimfile(id: String) async throws -> SimfileDTO? { allUnique.first { $0.id == id } }
-    }
-
-    @Test("Duplicate IDs across pages do not mark walk complete prematurely")
-    func testCrossPageDuplicatesDoNotMarkCompleteEarly() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            // Seed existing songs for "a", "b", "c". All three should survive pruning.
-            let songA = ServerSong(songId: "a", title: "A", artist: "X", bpm: 120)
-            let songB = ServerSong(songId: "b", title: "B", artist: "X", bpm: 120)
-            let songC = ServerSong(songId: "c", title: "C", artist: "X", bpm: 120)
-            context.insert(songA); context.insert(songB); context.insert(songC)
-            try context.save()
-
-            // 3 unique items, pageSize 2. Page 1 returns [a, b, b(dup)] → raw=3,
-            // unique=2. Old code: results.count(3) >= totalCount(3) → premature complete.
-            // New code: seenIds.count(2) >= totalCount(3) → false, keeps paging.
-            // Page 2 returns [c] → seenIds.count(3) >= totalCount(3) → complete.
-            let fetcher = CrossPageDuplicateFetcher(
-                allUnique: [.stub(id: "a"), .stub(id: "b"), .stub(id: "c")],
-                pageSize: 2
             )
-            let cache = ServerSongCache(fetcher: fetcher, pageSize: 2)
+
             try await cache.refreshCatalog(modelContext: context)
 
-            let songs = try context.fetch(FetchDescriptor<ServerSong>())
-            let ids = Set(songs.map(\.songId))
-            // All three songs must survive — no premature pruning.
-            #expect(ids == ["a", "b", "c"], "All unique IDs must survive when duplicates delay completion")
+            #expect(cacheSaveCount == 1)
+            #expect(statusManager.refreshDownloadStatusCallCount == 0)
+            let row = try #require(context.fetch(FetchDescriptor<ServerSong>()).first)
+            #expect(row.isDownloaded)
         }
     }
 

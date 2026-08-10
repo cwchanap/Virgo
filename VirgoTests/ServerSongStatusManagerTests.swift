@@ -495,79 +495,6 @@ struct ServerSongStatusManagerTests {
         }
     }
 
-    @Test("pruneCachedSong removes the ServerSong record")
-    func testPruneRemovesRecord() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let song = ServerSong(songId: "prune-me", title: "P", artist: "A", bpm: 120)
-            context.insert(song); try context.save()
-
-            await ServerSongStatusManager().pruneCachedSong(song, modelContext: context)
-
-            let remaining = try context.fetch(FetchDescriptor<ServerSong>())
-            #expect(remaining.isEmpty)
-        }
-    }
-
-    @Test("pruneCachedSong deletes local Song when ServerSong is downloaded")
-    func testPruneRemovesDownloadedSongAndLocalSong() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let serverSong = ServerSong(
-                songId: "prune-dl", title: "PruneDL", artist: "X", bpm: 120, isDownloaded: true
-            )
-            let localSong = Song(
-                title: "PruneDL", artist: "X", bpm: 120, duration: "3:30", genre: "DTX Import",
-                isServerImported: true, serverSongId: "prune-dl"
-            )
-            context.insert(serverSong); context.insert(localSong)
-            try context.save()
-
-            await ServerSongStatusManager().pruneCachedSong(serverSong, modelContext: context)
-
-            let remainingServer = try context.fetch(FetchDescriptor<ServerSong>())
-            #expect(remainingServer.isEmpty, "ServerSong record must be deleted")
-
-            let remainingLocal = try context.fetch(FetchDescriptor<Song>())
-            let orphanedLocal = remainingLocal.contains {
-                $0.title == "PruneDL" && $0.artist == "X" && $0.isServerImported
-            }
-            #expect(!orphanedLocal, "Downloaded local Song must also be deleted")
-        }
-    }
-
-    @Test("pruneCachedSong deletes local Song when isDownloaded is stale false")
-    func testPruneRemovesLocalSongDespiteStaleIsDownloadedFlag() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-
-            // Simulates status drift: isDownloaded=false but a matching
-            // server-imported local Song still exists.  This can happen when
-            // refreshCatalog prunes BEFORE refreshDownloadStatus reconciles flags.
-            let serverSong = ServerSong(
-                songId: "stale-flag", title: "StaleFlag", artist: "Y", bpm: 130,
-                isDownloaded: false
-            )
-            let localSong = Song(
-                title: "StaleFlag", artist: "Y", bpm: 130, duration: "2:00",
-                genre: "DTX Import", isServerImported: true, serverSongId: "stale-flag"
-            )
-            context.insert(serverSong); context.insert(localSong)
-            try context.save()
-
-            await ServerSongStatusManager().pruneCachedSong(serverSong, modelContext: context)
-
-            let remainingServer = try context.fetch(FetchDescriptor<ServerSong>())
-            #expect(remainingServer.isEmpty, "ServerSong record must be deleted")
-
-            let remainingLocal = try context.fetch(FetchDescriptor<Song>())
-            let orphanedLocal = remainingLocal.contains {
-                $0.title == "StaleFlag" && $0.artist == "Y" && $0.isServerImported
-            }
-            #expect(!orphanedLocal, "Local Song must be deleted despite stale isDownloaded=false")
-        }
-    }
-
     @Test("refreshDownloadStatus ignores local songs that are not server-imported")
     func testRefreshDownloadStatusIgnoresNonServerImportedSongs() async throws {
         try await TestSetup.withTestSetup {
@@ -764,30 +691,6 @@ struct ServerSongStatusManagerTests {
         }
     }
 
-    @Test("pruneCachedSong rolls back context when save fails")
-    func testPruneCachedSongRollbackOnSaveFailure() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let manager = ServerSongStatusManager(saveContext: { _ in throw SaveHookError.forced })
-
-            let serverSong = ServerSong(
-                songId: "prune-save-fail",
-                title: "PruneSaveFail",
-                artist: "Z",
-                bpm: 120,
-                isDownloaded: false
-            )
-            context.insert(serverSong)
-            try context.save()
-
-            await manager.pruneCachedSong(serverSong, modelContext: context)
-
-            // ServerSong must still exist after rollback
-            let remaining = try context.fetch(FetchDescriptor<ServerSong>())
-            #expect(remaining.count == 1, "ServerSong should remain after rollback on save failure")
-            #expect(remaining.first?.songId == "prune-save-fail")
-        }
-    }
 }
 
 extension ServerSongStatusManagerTests {

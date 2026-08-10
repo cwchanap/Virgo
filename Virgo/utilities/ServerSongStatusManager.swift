@@ -131,46 +131,6 @@ class ServerSongStatusManager: @unchecked Sendable {
         }
     }
 
-    /// Remove a cached server song that is no longer on the server: delete any
-    /// downloaded local Song + files for the same title/artist, then delete the
-    /// ServerSong/ServerChart records and the by-songId audio files.
-    @MainActor
-    func pruneCachedSong(_ serverSong: ServerSong, modelContext: ModelContext) async {
-        let songId = serverSong.songId
-
-        // Derive from local database rather than relying on the potentially-stale
-        // `isDownloaded` flag.  During `refreshCatalog`, pruning runs BEFORE
-        // `refreshDownloadStatus`, so the flag may not reflect reality yet.
-        let hasLocalSong: Bool
-        do {
-            let localSongs = try modelContext.fetch(FetchDescriptor<Song>())
-            hasLocalSong = isAlreadyDownloaded(serverSong, in: localSongs)
-        } catch {
-            Logger.error("Prune: failed to query local songs, assuming none: \(error)")
-            hasLocalSong = false
-        }
-
-        if serverSong.isDownloaded || hasLocalSong {
-            let deleted = await deleteDownloadedSong(serverSong, modelContext: modelContext)
-            guard deleted else {
-                // If we can't clean up the downloaded local song, abort the prune
-                // to avoid orphaning the local Song + audio files.
-                Logger.error("Prune aborted: failed to delete downloaded song \(serverSong.title)")
-                return
-            }
-        }
-
-        modelContext.delete(serverSong)
-        do {
-            try saveContext(modelContext)
-        } catch {
-            modelContext.rollback()
-            Logger.error("Failed to persist pruned song deletion: \(error)")
-            return
-        }
-        fileManager.deleteFiles(forSongId: songId)
-    }
-
     /// Delete associated BGM and preview files for a song
     private func deleteAssociatedFiles(bgmPath: String?, previewPath: String?) {
         Self.deleteAssociatedFiles(bgmPath: bgmPath, previewPath: previewPath, fileManager: fileManager)
@@ -210,24 +170,6 @@ class ServerSongStatusManager: @unchecked Sendable {
             }
         }
         return changed
-    }
-
-    private func isAlreadyDownloaded(_ serverSong: ServerSong, in localSongs: [Song]) -> Bool {
-        return localSongs.contains { localSong in
-            // Only match server-imported songs to avoid false positives from
-            // local/sample songs that share the same title and artist.
-            localSong.isServerImported && matchesServerSong(localSong, serverSong: serverSong)
-        }
-    }
-
-    /// Match a local Song to a ServerSong, preferring stable serverSongId when available.
-    private func matchesServerSong(_ song: Song, serverSong: ServerSong) -> Bool {
-        if let songServerId = song.serverSongId {
-            return songServerId == serverSong.songId
-        }
-        // Legacy fallback for songs imported before serverSongId was added
-        return song.title.lowercased() == serverSong.title.lowercased() &&
-            song.artist.lowercased() == serverSong.artist.lowercased()
     }
 
     // MARK: - Static Helpers (single source of truth; safe for Task.detached)
