@@ -98,13 +98,12 @@ The exact error text should be user-readable because `ServerSongService` already
 1. Fetch page 1 and capture its `totalCount` as the expected snapshot count.
 2. Require every subsequent page to report the same `totalCount`. If it changes during the walk, fail and let the user refresh again.
 3. A first page with `totalCount == 0` and zero rows is a valid empty snapshot.
-4. Continue while the accumulated raw DTO count is below `totalCount`.
-5. An empty page before the expected count is reached is `incompleteSnapshot`.
-6. Hitting the existing defensive `maxPages` bound before reaching the expected count is `incompleteSnapshot`.
-7. After the walk, require the raw DTO count to equal `totalCount`; an overfilled response is `unexpectedSnapshotCount`.
-8. Validate uniqueness with a `Set<String>`. On the first repeated `dto.id`, throw `duplicateSongID`.
-
-Do not use unique-ID count as the pagination completion signal. A duplicated page must not make an incomplete snapshot look complete.
+4. Validate each received DTO ID as pages arrive. On the first repeated `dto.id`, throw `duplicateSongID` immediately; do not wait for count validation or silently deduplicate it.
+5. Append only validated DTOs and use the accumulated raw DTO count as the pagination completion signal. Do not use unique-ID count to decide whether the walk is complete.
+6. An empty page before the expected count is reached is `incompleteSnapshot`.
+7. Hitting the existing defensive `maxPages` bound before reaching the expected count is `incompleteSnapshot`.
+8. Require the accumulated DTO count never to exceed `totalCount`; an overfilled response is `unexpectedSnapshotCount`.
+9. After the walk, require the accumulated DTO count to equal `totalCount` exactly.
 
 Network errors from `SimfileFetching` propagate unchanged. All of this happens before any `ModelContext.insert` / `delete` call.
 
@@ -256,7 +255,7 @@ Assert:
 - `z` disappears only from `ServerSong` / `ServerChart` cache rows;
 - the local `Song(serverSongId: "a")` still exists unchanged;
 - matching `a` has download/BGM/preview flags projected from the local row;
-- the injected cache `saveContext` is called once.
+- the injected cache `saveContext` is called once and no post-save status refresh is invoked.
 
 #### Non-destructive failures
 
