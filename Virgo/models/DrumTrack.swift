@@ -392,40 +392,6 @@ final class ServerSong {
         // No need to manually set back-references as it causes duplication
     }
 
-    // Legacy compatibility for single-file DTX
-    convenience init(
-        filename: String,
-        title: String,
-        artist: String,
-        bpm: Double,
-        difficultyLevel: Int,
-        size: Int,
-        isDownloaded: Bool = false
-    ) {
-        // Initialize without charts first
-        self.init(
-            songId: filename.replacingOccurrences(of: ".dtx", with: ""),
-            title: title,
-            artist: artist,
-            bpm: bpm,
-            charts: [],
-            isDownloaded: isDownloaded,
-            hasBGM: false,
-            hasPreview: false
-        )
-        
-        // Create and add the chart after initialization
-        let chart = ServerChart(
-            difficulty: "medium",
-            difficultyLabel: "STANDARD",
-            level: difficultyLevel,
-            filename: filename,
-            size: size,
-            serverSong: self
-        )
-        self.charts.append(chart)
-    }
-
 }
 
 // MARK: - Extensions

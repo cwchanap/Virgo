@@ -4,7 +4,7 @@
 //
 //  Tests for Chart and Song model computed properties, default values,
 //  explicit level initialisation, timeSignature setter, difficultyColor,
-//  ServerSong legacy convenience init, and static sampleData properties.
+//  ServerSong defaults and static sampleData properties.
 //
 
 import Testing
@@ -324,117 +324,121 @@ struct SongComputedPropertyTests {
     }
 }
 
-// MARK: - ServerSong Legacy Convenience Initializer
+// MARK: - ServerSong Current Initializer
 
-@Suite("ServerSong Legacy Init Tests")
-struct ServerSongLegacyInitTests {
+@Suite("ServerSong Current Init Tests")
+struct ServerSongCurrentInitTests {
 
-    @Test("Legacy init strips .dtx extension to derive songId")
-    func testSongIdStripsExtension() {
+    @Test("Current init stores the explicit server song ID")
+    func testStoresExplicitServerSongID() {
         let song = ServerSong(
-            filename: "track.dtx",
+            songId: "track",
             title: "Track",
             artist: "Artist",
-            bpm: 120.0,
-            difficultyLevel: 50,
-            size: 1024
+            bpm: 120.0
         )
         #expect(song.songId == "track")
     }
 
-    @Test("Legacy init creates exactly one chart")
+    @Test("Current init stores exactly one chart")
     func testCreatesOneChart() {
+        let chart = ServerChart(
+            difficulty: "medium", difficultyLabel: "STANDARD", level: 60,
+            filename: "song.dtx", size: 2048
+        )
         let song = ServerSong(
-            filename: "song.dtx",
+            songId: "song",
             title: "T",
             artist: "A",
             bpm: 120.0,
-            difficultyLevel: 60,
-            size: 2048
+            charts: [chart]
         )
         #expect(song.charts.count == 1)
     }
 
-    @Test("Legacy init chart has difficulty 'medium' and label 'STANDARD'")
+    @Test("Current init chart has difficulty 'medium' and label 'STANDARD'")
     func testChartDifficultyAndLabel() {
+        let inputChart = ServerChart(
+            difficulty: "medium", difficultyLabel: "STANDARD", level: 55,
+            filename: "song.dtx", size: 512
+        )
         let song = ServerSong(
-            filename: "song.dtx",
+            songId: "song",
             title: "T",
             artist: "A",
             bpm: 120.0,
-            difficultyLevel: 55,
-            size: 512
+            charts: [inputChart]
         )
         let chart = song.charts[0]
         #expect(chart.difficulty == "medium")
         #expect(chart.difficultyLabel == "STANDARD")
     }
 
-    @Test("Legacy init chart stores provided difficultyLevel and size")
+    @Test("Current init chart stores provided level and size")
     func testChartLevelAndSize() {
+        let inputChart = ServerChart(
+            difficulty: "medium", difficultyLabel: "STANDARD", level: 95,
+            filename: "extreme.dtx", size: 8192
+        )
         let song = ServerSong(
-            filename: "extreme.dtx",
+            songId: "extreme",
             title: "T",
             artist: "A",
             bpm: 200.0,
-            difficultyLevel: 95,
-            size: 8192
+            charts: [inputChart]
         )
         let chart = song.charts[0]
         #expect(chart.level == 95)
         #expect(chart.size == 8192)
     }
 
-    @Test("Legacy init chart filename matches original filename")
+    @Test("Current init chart filename matches provided filename")
     func testChartFilenameMatchesOriginal() {
         let filename = "mytrack.dtx"
+        let chart = ServerChart(
+            difficulty: "medium", difficultyLabel: "STANDARD", level: 40,
+            filename: filename, size: 256
+        )
         let song = ServerSong(
-            filename: filename,
+            songId: "mytrack",
             title: "T",
             artist: "A",
             bpm: 120.0,
-            difficultyLevel: 40,
-            size: 256
+            charts: [chart]
         )
         #expect(song.charts[0].filename == filename)
     }
 
-    @Test("Legacy init isDownloaded defaults to false")
+    @Test("Current init isDownloaded defaults to false")
     func testIsDownloadedDefaultsFalse() {
         let song = ServerSong(
-            filename: "song.dtx",
+            songId: "song",
             title: "T",
             artist: "A",
-            bpm: 120.0,
-            difficultyLevel: 50,
-            size: 1024
+            bpm: 120.0
         )
         #expect(song.isDownloaded == false)
     }
 
-    @Test("Legacy init isDownloaded can be set to true")
+    @Test("Current init isDownloaded can be set to true")
     func testIsDownloadedCanBeTrue() {
         let song = ServerSong(
-            filename: "song.dtx",
+            songId: "song",
             title: "T",
             artist: "A",
             bpm: 120.0,
-            difficultyLevel: 50,
-            size: 1024,
             isDownloaded: true
         )
         #expect(song.isDownloaded == true)
     }
 
-    @Test("Legacy init stores title, artist, and bpm on song")
+    @Test("Current init stores title, artist, and bpm on song")
     func testSongProperties() {
         let song = ServerSong(
-            filename: "jazz.dtx",
+            songId: "jazz",
             title: "Jazz Piece",
             artist: "Jazz Trio",
-            bpm: 95.0,
-            difficultyLevel: 35,
-            size: 4096
+            bpm: 95.0
         )
         #expect(song.title == "Jazz Piece")
         #expect(song.artist == "Jazz Trio")

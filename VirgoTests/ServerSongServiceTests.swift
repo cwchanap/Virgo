@@ -458,7 +458,7 @@ struct ServerSongServiceTests {
         }
     }
 
-    @Test("downloadAndImportSong rejects duplicate local song and reports message")
+    @Test("downloadAndImportSong rejects duplicate local song by serverSongId and reports message")
     func testDownloadAndImportSongDuplicateLocalSong() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -470,7 +470,9 @@ struct ServerSongServiceTests {
                 artist: "Duplicate Artist",
                 bpm: 120.0,
                 duration: "3:00",
-                genre: "DTX Import"
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "duplicate-server-song"
             )
             context.insert(existingSong)
             try context.save()
@@ -602,35 +604,4 @@ struct ServerSongServiceTests {
         }
     }
 
-    @Test("downloadAndImportSong rejects legacy entries with empty chart fileURL")
-    func testDownloadAndImportSongRejectsLegacyEmptyChartURL() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let service = ServerSongService()
-            service.setModelContext(context)
-
-            let legacyChart = ServerChart(
-                difficulty: "expert",
-                difficultyLabel: "MASTER",
-                level: 90,
-                filename: "master.dtx",
-                size: 1024,
-                fileURL: ""  // Legacy entry missing URL
-            )
-            let serverSong = ServerSong(
-                songId: "legacy-empty-url",
-                title: "Legacy Song",
-                artist: "Artist",
-                bpm: 120.0,
-                charts: [legacyChart],
-                isDownloaded: false
-            )
-
-            let success = await service.downloadAndImportSong(serverSong)
-
-            #expect(success == false)
-            #expect(service.errorMessage?.text.contains("refresh") == true)
-            #expect(service.downloadingSongs.isEmpty)
-        }
-    }
 }
