@@ -3,6 +3,71 @@ import SwiftData
 import Foundation
 @testable import Virgo
 
+private struct ReplacementFixture {
+    let changedAWithNewBPM: SimfileDTO
+}
+
+private func seedReplacementFixture(into context: ModelContext) throws -> ReplacementFixture {
+    let oldChart = ServerChart(
+        difficulty: "basic",
+        difficultyLabel: "BASIC",
+        level: 30,
+        filename: "old-bas.dtx",
+        size: 100,
+        fileURL: "https://r2/a/old-bas.dtx"
+    )
+    let existing = ServerSong(
+        songId: "a",
+        title: "OLD",
+        artist: "A",
+        bpm: 120,
+        charts: [oldChart],
+        isDownloaded: true,
+        bgmDownloaded: true,
+        previewDownloaded: true
+    )
+    let stale = ServerSong(songId: "z", title: "STALE", artist: "Z", bpm: 100)
+    let localSong = Song(
+        title: "Local A",
+        artist: "A",
+        bpm: 120,
+        duration: "3:30",
+        genre: "DTX Import",
+        isServerImported: true,
+        serverSongId: "a",
+        bgmFilePath: "/tmp/a.ogg",
+        previewFilePath: "/tmp/a.mp3"
+    )
+    context.insert(existing)
+    context.insert(oldChart)
+    context.insert(stale)
+    context.insert(localSong)
+    try context.save()
+
+    let changedA = SimfileDTO.stub(id: "a", title: "NEW")
+    let changedAWithNewBPM = SimfileDTO(
+        id: changedA.id,
+        title: changedA.title,
+        artist: changedA.artist,
+        bpm: 150,
+        genre: changedA.genre,
+        tags: changedA.tags,
+        durationSeconds: changedA.durationSeconds,
+        updatedAt: changedA.updatedAt,
+        dtxFiles: [
+            DtxFileDTO(
+                label: "BASIC",
+                level: 30,
+                fileURL: "https://r2/a/new-bas.dtx",
+                fileSizeBytes: 100,
+                encoding: .shiftJIS
+            )
+        ],
+        fileKeys: ["bgm.ogg", "preview.mp3"]
+    )
+    return ReplacementFixture(changedAWithNewBPM: changedAWithNewBPM)
+}
+
 @Suite("ServerSong Catalog Refresh Tests", .serialized)
 @MainActor
 struct ServerSongCatalogRefreshTests {
@@ -97,64 +162,9 @@ struct ServerSongCatalogRefreshTests {
     func testCompleteReplacementOverwritesMetadataAndPreservesLocalSong() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            let oldChart = ServerChart(
-                difficulty: "basic",
-                difficultyLabel: "BASIC",
-                level: 30,
-                filename: "old-bas.dtx",
-                size: 100,
-                fileURL: "https://r2/a/old-bas.dtx"
-            )
-            let existing = ServerSong(
-                songId: "a",
-                title: "OLD",
-                artist: "A",
-                bpm: 120,
-                charts: [oldChart],
-                isDownloaded: true,
-                bgmDownloaded: true,
-                previewDownloaded: true
-            )
-            let stale = ServerSong(songId: "z", title: "STALE", artist: "Z", bpm: 100)
-            let localSong = Song(
-                title: "Local A",
-                artist: "A",
-                bpm: 120,
-                duration: "3:30",
-                genre: "DTX Import",
-                isServerImported: true,
-                serverSongId: "a",
-                bgmFilePath: "/tmp/a.ogg",
-                previewFilePath: "/tmp/a.mp3"
-            )
-            context.insert(existing)
-            context.insert(oldChart)
-            context.insert(stale)
-            context.insert(localSong)
-            try context.save()
+            let fixture = try seedReplacementFixture(into: context)
 
-            let changedA = SimfileDTO.stub(id: "a", title: "NEW")
-            let changedAWithNewBPM = SimfileDTO(
-                id: changedA.id,
-                title: changedA.title,
-                artist: changedA.artist,
-                bpm: 150,
-                genre: changedA.genre,
-                tags: changedA.tags,
-                durationSeconds: changedA.durationSeconds,
-                updatedAt: changedA.updatedAt,
-                dtxFiles: [
-                    DtxFileDTO(
-                        label: "BASIC",
-                        level: 30,
-                        fileURL: "https://r2/a/new-bas.dtx",
-                        fileSizeBytes: 100,
-                        encoding: .shiftJIS
-                    )
-                ],
-                fileKeys: ["bgm.ogg", "preview.mp3"]
-            )
-            let fetcher = MockSimfileFetcher(all: [changedAWithNewBPM, .stub(id: "b")])
+            let fetcher = MockSimfileFetcher(all: [fixture.changedAWithNewBPM, .stub(id: "b")])
             let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
 
             try await cache.refreshCatalog(modelContext: context)
