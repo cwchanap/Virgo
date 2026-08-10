@@ -51,7 +51,8 @@ private func setupGroupedSongs(
         bpm: 128.0,
         duration: "2:50",
         genre: "DTX Import",
-        isServerImported: true
+        isServerImported: true,
+        serverSongId: "song-group"
     )
     let secondImported = Song(
         title: "Grouped Song",
@@ -59,7 +60,8 @@ private func setupGroupedSongs(
         bpm: 128.0,
         duration: "2:50",
         genre: "DTX Import",
-        isServerImported: true
+        isServerImported: true,
+        serverSongId: "song-group"
     )
     let nonImported = Song(
         title: "Grouped Song",
@@ -106,7 +108,8 @@ struct ServerSongStatusManagerTests {
                 bpm: 120.0,
                 duration: "3:00",
                 genre: "DTX Import",
-                isServerImported: true
+                isServerImported: true,
+                serverSongId: "server-song-a"
             )
             let nonImportedMatch = Song(
                 title: "Song A",
@@ -161,7 +164,8 @@ struct ServerSongStatusManagerTests {
                 bpm: 130.0,
                 duration: "4:00",
                 genre: "Rock",
-                isServerImported: true
+                isServerImported: true,
+                serverSongId: "server-song-curated"
             )
             context.insert(curatedSong)
             try context.save()
@@ -187,6 +191,7 @@ struct ServerSongStatusManagerTests {
                 duration: "4:00",
                 genre: "DTX Import",
                 isServerImported: true,
+                serverSongId: "match-song",
                 bgmFilePath: "/tmp/test-match.ogg",
                 previewFilePath: "/tmp/test-match.mp3"
             )
@@ -320,6 +325,7 @@ struct ServerSongStatusManagerTests {
                 bpm: 120.0,
                 duration: "2:00",
                 genre: "DTX Import",
+                serverSongId: "file-delete-song",
                 bgmFilePath: bgmURL.path,
                 previewFilePath: previewURL.path
             )
@@ -412,7 +418,8 @@ struct ServerSongStatusManagerTests {
                 bpm: 120.0,
                 duration: "2:00",
                 genre: "DTX Import",
-                isServerImported: true
+                isServerImported: true,
+                serverSongId: "save-failure-song"
             )
             context.insert(localSong)
             try context.save()
@@ -460,6 +467,7 @@ struct ServerSongStatusManagerTests {
                 duration: "2:00",
                 genre: "DTX Import",
                 isServerImported: true,
+                serverSongId: "refresh-save-failure",
                 bgmFilePath: "/tmp/refresh-failure.ogg",
                 previewFilePath: "/tmp/refresh-failure.mp3"
             )
@@ -510,7 +518,7 @@ struct ServerSongStatusManagerTests {
             )
             let localSong = Song(
                 title: "PruneDL", artist: "X", bpm: 120, duration: "3:30", genre: "DTX Import",
-                isServerImported: true
+                isServerImported: true, serverSongId: "prune-dl"
             )
             context.insert(serverSong); context.insert(localSong)
             try context.save()
@@ -542,7 +550,7 @@ struct ServerSongStatusManagerTests {
             )
             let localSong = Song(
                 title: "StaleFlag", artist: "Y", bpm: 130, duration: "2:00",
-                genre: "DTX Import", isServerImported: true
+                genre: "DTX Import", isServerImported: true, serverSongId: "stale-flag"
             )
             context.insert(serverSong); context.insert(localSong)
             try context.save()
@@ -778,6 +786,128 @@ struct ServerSongStatusManagerTests {
             let remaining = try context.fetch(FetchDescriptor<ServerSong>())
             #expect(remaining.count == 1, "ServerSong should remain after rollback on save failure")
             #expect(remaining.first?.songId == "prune-save-fail")
+        }
+    }
+}
+
+extension ServerSongStatusManagerTests {
+    @Test("applyDownloadStatus matches only current serverSongId")
+    func testApplyDownloadStatusUsesOnlyServerSongId() async throws {
+        try await TestSetup.withTestSetup {
+            let manager = ServerSongStatusManager()
+            let current = ServerSong(songId: "current", title: "Same", artist: "Artist", bpm: 120)
+            let titleOnly = ServerSong(
+                songId: "other",
+                title: "Legacy",
+                artist: "Artist",
+                bpm: 120,
+                isDownloaded: true,
+                bgmDownloaded: true,
+                previewDownloaded: true
+            )
+            let exact = Song(
+                title: "Renamed",
+                artist: "Different",
+                bpm: 120,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: "current",
+                bgmFilePath: "/tmp/current.ogg",
+                previewFilePath: "/tmp/current.mp3"
+            )
+            let nilID = Song(
+                title: "Legacy",
+                artist: "Artist",
+                bpm: 120,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: nil,
+                bgmFilePath: "/tmp/legacy.ogg",
+                previewFilePath: "/tmp/legacy.mp3"
+            )
+
+            let changed = manager.applyDownloadStatus(to: [current, titleOnly], from: [exact, nilID])
+
+            #expect(changed)
+            #expect(current.isDownloaded)
+            #expect(current.bgmDownloaded)
+            #expect(current.previewDownloaded)
+            #expect(titleOnly.isDownloaded == false)
+            #expect(titleOnly.bgmDownloaded == false)
+            #expect(titleOnly.previewDownloaded == false)
+        }
+    }
+
+    @Test("deleteDownloadedSong ignores same-title rows without matching serverSongId")
+    func testDeleteDownloadedSongRequiresServerSongId() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let manager = ServerSongStatusManager()
+            let cached = ServerSong(
+                songId: "current-id",
+                title: "Same Title",
+                artist: "Same Artist",
+                bpm: 120,
+                isDownloaded: true
+            )
+            let titleOnly = Song(
+                title: "Same Title",
+                artist: "Same Artist",
+                bpm: 120,
+                duration: "3:00",
+                genre: "DTX Import",
+                isServerImported: true,
+                serverSongId: nil
+            )
+            context.insert(cached)
+            context.insert(titleOnly)
+            try context.save()
+
+            #expect(await manager.deleteDownloadedSong(cached, modelContext: context))
+            TestAssertions.assertNotDeleted(titleOnly, in: context)
+        }
+    }
+
+    @Test("deleteLocalSong with no serverSongId does not mutate same-title cache flags")
+    func testDeleteLocalSongWithoutServerIDSkipsCacheFallback() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let container = TestContainer.shared.container
+            let manager = ServerSongStatusManager()
+            let cached = ServerSong(
+                songId: "server-id",
+                title: "Same Title",
+                artist: "Same Artist",
+                bpm: 120,
+                isDownloaded: true,
+                bgmDownloaded: true,
+                previewDownloaded: true
+            )
+            let local = Song(
+                title: "Same Title",
+                artist: "Same Artist",
+                bpm: 120,
+                duration: "3:00",
+                genre: "Local",
+                isServerImported: false,
+                serverSongId: nil
+            )
+            context.insert(cached)
+            context.insert(local)
+            try context.save()
+
+            #expect(await manager.deleteLocalSong(local, container: container))
+
+            let verification = ModelContext(container)
+            let remaining = try #require(
+                verification.fetch(FetchDescriptor<ServerSong>())
+                    .first { $0.songId == "server-id" }
+            )
+            #expect(remaining.isDownloaded)
+            #expect(remaining.bgmDownloaded)
+            #expect(remaining.previewDownloaded)
         }
     }
 }

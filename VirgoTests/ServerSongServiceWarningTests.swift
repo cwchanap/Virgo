@@ -21,7 +21,7 @@ extension ServerSongServiceTests {
             let success = await service.downloadAndImportSong(serverSong)
 
             #expect(success)
-            #expect(serverSong.isDownloaded == true)
+            #expect(serverSong.isDownloaded == false)
             #expect(service.errorMessage == nil)
             #expect(service.warningMessage != nil)
             #expect(service.warningMessage?.text.contains("chart.dtx") == true)
