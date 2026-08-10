@@ -1,11 +1,29 @@
 import Foundation
 import SwiftData
 
+enum ServerSongCatalogRefreshError: LocalizedError, Equatable {
+    case totalCountChanged(expected: Int, actual: Int)
+    case incompleteSnapshot(expected: Int, actual: Int)
+    case unexpectedSnapshotCount(expected: Int, actual: Int)
+    case duplicateSongID(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .totalCountChanged(let expected, let actual):
+            return "Catalog changed during refresh (expected \(expected) items, server now reports \(actual))."
+        case .incompleteSnapshot(let expected, let actual):
+            return "Catalog refresh was incomplete (expected \(expected) items, received \(actual))."
+        case .unexpectedSnapshotCount(let expected, let actual):
+            return "Catalog refresh returned an unexpected item count (expected \(expected), received \(actual))."
+        case .duplicateSongID(let id):
+            return "Catalog refresh returned duplicate song ID '\(id)'."
+        }
+    }
+}
+
 /// Loads and refreshes the cached server-song catalog from the GraphQL backend.
-/// Refresh is manual and additive: new ids are inserted, existing ids are left
-/// untouched (except for a one-time backfill of legacy charts missing a
-/// `fileURL` — see `backfillLegacyChartURLs`), and ids absent from the server
-/// are pruned (with local files).
+/// Refresh is manual and replaces the cached catalog metadata from a validated
+/// complete snapshot. Local imported ``Song`` rows and their audio are retained.
 @MainActor
 class ServerSongCache {
     private let fetcher: SimfileFetching
@@ -37,12 +55,10 @@ class ServerSongCache {
         return songs
     }
 
-    /// Manual catalog refresh: page-walk PUBLISHED, insert new, prune stale.
+    /// Manual catalog refresh: validate and replace the complete server snapshot.
     func refreshCatalog(modelContext: ModelContext) async throws {
-        let (serverDTOs, isComplete) = try await fetchAllPages()
-        let serverIds = Set(serverDTOs.map(\.id))
+        let serverDTOs = try await fetchCompleteSnapshot()
 
-        // Warn if levels appear to be on a 0-10 scale instead of the expected 0-100.
         let allLevels = serverDTOs.flatMap(\.dtxFiles).map(\.level)
         if let maxLevel = allLevels.max(), maxLevel <= 10, !allLevels.isEmpty {
             Logger.warning(
@@ -51,47 +67,20 @@ class ServerSongCache {
             )
         }
 
-        let existing = try modelContext.fetch(FetchDescriptor<ServerSong>())
-        let existingIds = Set(existing.map(\.songId))
+        let localSongs = try modelContext.fetch(FetchDescriptor<Song>())
+        let existingCache = try modelContext.fetch(FetchDescriptor<ServerSong>())
+        let replacement = serverDTOs.map { SimfileMapper.makeServerSong(from: $0) }
 
-        // Backfill charts on legacy entries whose `fileURL` column was defaulted
-        // to "" by SwiftData lightweight migration (REST-catalog era). Without
-        // this, `downloadAndImportSong` throws `invalidChartURL` for every chart
-        // and the song can never be downloaded. Only charts missing a URL are
-        // touched; other fields and user state (isDownloaded, etc.) are preserved.
-        //
-        // Must run BEFORE pruning: `existing` still holds valid SwiftData
-        // references at this point. After pruning, deleted objects in the
-        // array would fault or crash when accessing `song.charts`.
-        backfillLegacyChartURLs(existing: existing, dtos: serverDTOs)
+        statusManager.applyDownloadStatus(to: replacement, from: localSongs)
 
-        // Only prune stale ids when the page-walk completed fully. An incomplete
-        // walk (e.g. a transient empty page mid-walk) must NOT trigger destructive
-        // deletes of songs that may still be valid on the server.
-        if isComplete {
-            for song in existing where !serverIds.contains(song.songId) {
-                await statusManager.pruneCachedSong(song, modelContext: modelContext)
+        for row in existingCache {
+            modelContext.delete(row)
+        }
+        for row in replacement {
+            modelContext.insert(row)
+            for chart in row.charts {
+                modelContext.insert(chart)
             }
-        } else {
-            Logger.warning(
-                "Catalog refresh incomplete (\(serverDTOs.count) fetched); skipping prune to avoid data loss"
-            )
-        }
-
-        // Insert only new ids; never overwrite existing entries.
-        // Track inserted ids to skip duplicates within the same fetch batch.
-        var insertedIds = Set<String>()
-        for dto in serverDTOs where !existingIds.contains(dto.id) && !insertedIds.contains(dto.id) {
-            insertedIds.insert(dto.id)
-            let song = SimfileMapper.makeServerSong(from: dto)
-            modelContext.insert(song)
-            for chart in song.charts { modelContext.insert(chart) }
-        }
-        if insertedIds.count < serverDTOs.count - existingIds.intersection(serverIds).count {
-            Logger.warning(
-                "Skipped \(serverDTOs.count - insertedIds.count - existingIds.intersection(serverIds).count) " +
-                "duplicate DTO(s) during catalog insert"
-            )
         }
 
         do {
@@ -100,81 +89,63 @@ class ServerSongCache {
             modelContext.rollback()
             throw error
         }
-        await statusManager.refreshDownloadStatus(modelContext: modelContext)
     }
 
-    /// Walks all pages, returning the accumulated DTOs and whether the walk
-    /// reached `totalCount` (true) or stopped early on an empty page (false).
-    /// Guards against infinite loops from a misconfigured backend that reports
-    /// `totalCount` higher than the cumulative results but never returns an empty page.
-    private func fetchAllPages(maxPages: Int = 100) async throws -> (simfiles: [SimfileDTO], isComplete: Bool) {
+    private func fetchCompleteSnapshot(maxPages: Int = 100) async throws -> [SimfileDTO] {
         var results: [SimfileDTO] = []
-        var seenIds = Set<String>()
-        var page = 1
-        while page <= maxPages {
-            let pageResult = try await fetcher.fetchSimfiles(page: page, pageSize: pageSize, search: nil)
-            results.append(contentsOf: pageResult.simfiles)
-            seenIds.formUnion(pageResult.simfiles.map(\.id))
-            if seenIds.count >= pageResult.totalCount { return (results, true) }
-            if pageResult.simfiles.isEmpty { return (results, false) }
-            page += 1
-        }
-        Logger.warning(
-            "Catalog page-walk hit maxPages limit (\(maxPages)); returning \(results.count) results as incomplete"
-        )
-        return (results, false)
-    }
+        var seenIDs = Set<String>()
+        var expectedTotalCount: Int?
 
-    /// Patches `fileURL`/`fileEncoding` on legacy `ServerChart`s that predate
-    /// those columns (defaulted to "" / "SHIFT_JIS" by SwiftData lightweight
-    /// migration). Safe because `ServerChart` holds only catalog metadata — no
-    /// user state lives on it. Charts that already have a URL are left alone so
-    /// the additive refresh contract is unchanged for non-legacy entries.
-    private func backfillLegacyChartURLs(existing: [ServerSong], dtos: [SimfileDTO]) {
-        // Use grouping + first to avoid crashing on duplicate DTO IDs (pagination bugs,
-        // data inconsistencies). Logs a warning so the issue is visible.
-        var dtoById: [String: SimfileDTO] = [:]
-        for dto in dtos {
-            if dtoById[dto.id] != nil {
-                Logger.warning("Duplicate simfile ID '\(dto.id)' in server response; using first occurrence")
-            }
-            if dtoById[dto.id] == nil {
-                dtoById[dto.id] = dto
-            }
-        }
-        var backfilled = 0
-        for song in existing {
-            guard song.charts.contains(where: { $0.fileURL.isEmpty }) else { continue }
-            guard let dto = dtoById[song.songId] else {
-                Logger.warning(
-                    "Backfill skipped: legacy song \(song.songId) has empty chart fileURL " +
-                    "but is absent from the server DTO set"
-                )
-                continue
-            }
-            for chart in song.charts where chart.fileURL.isEmpty {
-                guard let match = Self.matchingDtxFile(for: chart, in: dto.dtxFiles) else {
-                    Logger.warning(
-                        "Backfill skipped: no DTO chart match for \(song.songId)/\(chart.difficultyLabel)"
+        for page in 1...maxPages {
+            let pageResult = try await fetcher.fetchSimfiles(
+                page: page,
+                pageSize: pageSize,
+                search: nil
+            )
+
+            if let expectedTotalCount {
+                guard pageResult.totalCount == expectedTotalCount else {
+                    throw ServerSongCatalogRefreshError.totalCountChanged(
+                        expected: expectedTotalCount,
+                        actual: pageResult.totalCount
                     )
-                    continue
                 }
-                chart.fileURL = match.fileURL
-                chart.fileEncoding = match.encoding.rawValue
-                backfilled += 1
+            } else {
+                expectedTotalCount = pageResult.totalCount
+            }
+
+            for dto in pageResult.simfiles {
+                guard seenIDs.insert(dto.id).inserted else {
+                    throw ServerSongCatalogRefreshError.duplicateSongID(dto.id)
+                }
+                results.append(dto)
+            }
+
+            let expected = expectedTotalCount ?? 0
+            guard results.count <= expected else {
+                throw ServerSongCatalogRefreshError.unexpectedSnapshotCount(
+                    expected: expected,
+                    actual: results.count
+                )
+            }
+            if results.count == expected {
+                break
+            }
+            guard !pageResult.simfiles.isEmpty else {
+                throw ServerSongCatalogRefreshError.incompleteSnapshot(
+                    expected: expected,
+                    actual: results.count
+                )
             }
         }
-        if backfilled > 0 {
-            Logger.database("Backfilled fileURL/fileEncoding for \(backfilled) legacy chart(s)")
-        }
-    }
 
-    /// Matches a legacy chart to its DTO counterpart. Single-chart songs match
-    /// trivially; otherwise prefer the stable `difficultyLabel`, then the
-    /// filename derived from the DTO's URL.
-    private static func matchingDtxFile(for chart: ServerChart, in files: [DtxFileDTO]) -> DtxFileDTO? {
-        if files.count == 1 { return files.first }
-        if let byLabel = files.first(where: { $0.label == chart.difficultyLabel }) { return byLabel }
-        return files.first { URL(string: $0.fileURL)?.lastPathComponent == chart.filename }
+        let expected = expectedTotalCount ?? 0
+        guard results.count == expected else {
+            throw ServerSongCatalogRefreshError.incompleteSnapshot(
+                expected: expected,
+                actual: results.count
+            )
+        }
+        return results
     }
 }
