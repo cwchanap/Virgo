@@ -231,7 +231,7 @@ struct ServerSongStatusManagerTests {
         }
     }
 
-    @Test("deleteLocalSong updates server download status only after last server-imported match is removed")
+    @Test("deleteLocalSong + refreshDownloadStatus clears server status only after last server-imported match is removed")
     func testDeleteLocalSongUpdatesStatusAfterLastMatch() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -248,6 +248,10 @@ struct ServerSongStatusManagerTests {
             let firstDeleteSuccess = await manager.deleteLocalSong(firstImported, container: container)
             #expect(firstDeleteSuccess)
 
+            // deleteLocalSong only deletes the durable Song; the cache flags
+            // are reconciled by refreshDownloadStatus on the main context.
+            await manager.refreshDownloadStatus(modelContext: context)
+
             let verificationContext1 = ModelContext(container)
             let firstDeletedSong = try fetchSong(songId: firstImportedId, context: verificationContext1)
             let serverAfterFirstDelete = try fetchServerSong(songId: "song-group", context: verificationContext1)
@@ -256,6 +260,8 @@ struct ServerSongStatusManagerTests {
 
             let secondDeleteSuccess = await manager.deleteLocalSong(secondImported, container: container)
             #expect(secondDeleteSuccess)
+
+            await manager.refreshDownloadStatus(modelContext: context)
 
             let verificationContext2 = ModelContext(container)
             let secondDeletedSong = try fetchSong(songId: secondImportedId, context: verificationContext2)
@@ -336,6 +342,10 @@ struct ServerSongStatusManagerTests {
             #expect(deleteSuccess)
             #expect(FileManager.default.fileExists(atPath: bgmURL.path) == false)
             #expect(FileManager.default.fileExists(atPath: previewURL.path) == false)
+
+            // deleteLocalSong only deletes the durable Song; refreshDownloadStatus
+            // projects the cleared flags onto the cache on the main context.
+            await manager.refreshDownloadStatus(modelContext: context)
 
             let verificationContext = ModelContext(container)
             let updatedServerSong = try fetchServerSong(songId: "file-delete-song", context: verificationContext)
@@ -650,7 +660,7 @@ struct ServerSongStatusManagerTests {
         }
     }
 
-    @Test("deleteLocalSong clears all server song status flags including bgm and preview")
+    @Test("deleteLocalSong + refreshDownloadStatus clears all server song status flags including bgm and preview")
     func testDeleteLocalSongClearsAllStatusFlags() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
@@ -682,6 +692,10 @@ struct ServerSongStatusManagerTests {
 
             let success = await manager.deleteLocalSong(localSong, container: container)
             #expect(success)
+
+            // deleteLocalSong only deletes the durable Song; refreshDownloadStatus
+            // projects the cleared flags onto the cache on the main context.
+            await manager.refreshDownloadStatus(modelContext: context)
 
             let verificationContext = ModelContext(container)
             let updatedServer = try fetchServerSong(songId: "flag-test-id", context: verificationContext)

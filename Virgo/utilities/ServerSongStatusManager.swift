@@ -83,15 +83,13 @@ class ServerSongStatusManager: @unchecked Sendable {
                 let bgmFilePath = songToDelete.bgmFilePath
                 let previewFilePath = songToDelete.previewFilePath
 
+                // Only delete the durable local Song here. The server cache
+                // status flags are reconciled exclusively by the caller's
+                // post-success `refreshDownloadStatus()` on the main context.
+                // Mutating cache rows in this detached context raced with
+                // `refreshCatalog`'s cache replacement: a stale cache write
+                // could fail the combined save and roll back the Song deletion.
                 backgroundContext.delete(songToDelete)
-
-                if let songServerSongId {
-                    _ = try Self.updateServerSongStatus(
-                        songServerSongId: songServerSongId,
-                        songId: songId,
-                        context: backgroundContext
-                    )
-                }
 
                 try saveContext(backgroundContext)
 
@@ -198,48 +196,6 @@ class ServerSongStatusManager: @unchecked Sendable {
         }
         if let previewPath {
             fileManager.deleteFile(at: previewPath, label: "preview")
-        }
-    }
-
-    private static func updateServerSongStatus(
-        songServerSongId: String,
-        songId: PersistentIdentifier,
-        context: ModelContext
-    ) throws -> Bool {
-        guard try !hasOtherImportedSong(
-            serverSongId: songServerSongId,
-            excludingSongId: songId,
-            context: context
-        ) else {
-            return false
-        }
-
-        let allServerSongs = try context.fetch(FetchDescriptor<ServerSong>())
-
-        var hasUpdates = false
-        for serverSong in allServerSongs where serverSong.songId == songServerSongId {
-            if serverSong.isDownloaded || serverSong.bgmDownloaded || serverSong.previewDownloaded {
-                serverSong.isDownloaded = false
-                serverSong.bgmDownloaded = false
-                serverSong.previewDownloaded = false
-                hasUpdates = true
-            }
-        }
-
-        return hasUpdates
-    }
-
-    private static func hasOtherImportedSong(
-        serverSongId: String,
-        excludingSongId: PersistentIdentifier,
-        context: ModelContext
-    ) throws -> Bool {
-        let remainingSongs = try context.fetch(FetchDescriptor<Song>())
-
-        return remainingSongs.contains { otherSong in
-            otherSong.persistentModelID != excludingSongId &&
-                otherSong.isServerImported &&
-                otherSong.serverSongId == serverSongId
         }
     }
 }
