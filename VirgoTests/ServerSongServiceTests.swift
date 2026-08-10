@@ -23,20 +23,10 @@ struct ServerSongServiceTests {
 
     @MainActor
     private final class MockServerSongCache: ServerSongCache {
-        var loadResult: Result<[ServerSong], Error> = .success([])
         var refreshError: Error?
         var refreshCallCount = 0
 
         init() { super.init(fetcher: MockSimfileFetcher()) }
-
-        override func loadServerSongs(modelContext: ModelContext) async throws -> [ServerSong] {
-            switch loadResult {
-            case .success(let songs):
-                return songs
-            case .failure(let error):
-                throw error
-            }
-        }
 
         override func refreshCatalog(modelContext: ModelContext) async throws {
             refreshCallCount += 1
@@ -84,13 +74,15 @@ struct ServerSongServiceTests {
         return ServerConfig(userDefaults: defaults)
     }
 
-    @Test("loadServerSongs returns empty list when modelContext is not set")
+    @Test("loadServerSongs without model context is a no-op")
     func testLoadServerSongsWithoutModelContext() async {
-        let service = ServerSongService()
+        let status = MockServerSongStatusManager()
+        let service = ServerSongService(statusManager: status)
 
-        let songs = await service.loadServerSongs()
+        await service.loadServerSongs()
 
-        #expect(songs.isEmpty)
+        #expect(status.refreshDownloadStatusCalled == false)
+        #expect(service.isLoading == false)
     }
 
     @Test("refreshCatalog is a no-op when modelContext is not set")
@@ -102,37 +94,18 @@ struct ServerSongServiceTests {
         #expect(service.errorMessage == nil)
     }
 
-    @Test("loadServerSongs returns cache data when context is available")
-    func testLoadServerSongsWithContextUsesCacheResult() async throws {
+    @Test("loadServerSongs reconciles status without owning catalog rows")
+    func testLoadServerSongsReconcilesStatus() async throws {
         try await TestSetup.withTestSetup {
             let context = TestContainer.shared.context
-            let cache = MockServerSongCache()
-            let expectedSong = ServerSong(songId: "cached-song", title: "Cached", artist: "Artist", bpm: 120.0)
-            cache.loadResult = .success([expectedSong])
+            let status = MockServerSongStatusManager()
 
-            let service = ServerSongService(cache: cache)
+            let service = ServerSongService(statusManager: status)
             service.setModelContext(context)
 
-            let songs = await service.loadServerSongs()
-            #expect(songs.count == 1)
-            #expect(songs.first?.songId == "cached-song")
-        }
-    }
-
-    @Test("loadServerSongs returns empty list when cache throws")
-    func testLoadServerSongsHandlesCacheError() async throws {
-        struct ExpectedError: Error {}
-
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let cache = MockServerSongCache()
-            cache.loadResult = .failure(ExpectedError())
-
-            let service = ServerSongService(cache: cache)
-            service.setModelContext(context)
-
-            let songs = await service.loadServerSongs()
-            #expect(songs.isEmpty)
+            await service.loadServerSongs()
+            #expect(status.refreshDownloadStatusCalled)
+            #expect(service.isLoading == false)
         }
     }
 
@@ -149,6 +122,7 @@ struct ServerSongServiceTests {
             #expect(cache.refreshCallCount == 1)
             #expect(service.isRefreshing == false)
             #expect(service.errorMessage == nil)
+            #expect(service.catalogRefreshFailed == false)
         }
     }
 
@@ -162,7 +136,7 @@ struct ServerSongServiceTests {
 
             await service.refreshCatalog()
 
-            let songs = await service.loadServerSongs()
+            let songs = try context.fetch(FetchDescriptor<ServerSong>())
             #expect(Set(songs.map(\.songId)) == ["x", "y"])
         }
     }
@@ -186,6 +160,7 @@ struct ServerSongServiceTests {
             #expect(service.isRefreshing == false)
             #expect(service.errorMessage?.text.contains("Failed to refresh server songs") == true)
             #expect(service.errorMessage?.text.contains("boom") == true)
+            #expect(service.catalogRefreshFailed)
         }
     }
 

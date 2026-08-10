@@ -41,10 +41,9 @@ struct ServerSongsView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
                 }
-            } else if serverSongService.isRefreshing {
-                loadingRow.listRowBackground(Color.clear)
             } else {
-                emptyState.listRowBackground(Color.clear)
+                serverSongsPlaceholder
+                    .listRowBackground(Color.clear)
             }
         }
         .listStyle(PlainListStyle())
@@ -74,10 +73,16 @@ struct ServerSongsView: View {
         }
     }
 
-    @ViewBuilder
     private var gridPlaceholder: some View {
-        if serverSongService.isRefreshing {
+        serverSongsPlaceholder
+    }
+
+    @ViewBuilder
+    private var serverSongsPlaceholder: some View {
+        if serverSongService.isLoading || serverSongService.isRefreshing {
             loadingRow
+        } else if serverSongService.catalogRefreshFailed {
+            failedState
         } else {
             emptyState
         }
@@ -89,6 +94,25 @@ struct ServerSongsView: View {
             Text("Loading server songs...")
                 .foregroundColor(theme.secondary)
         }
+        .accessibilityIdentifier("serverSongsLoadingState")
+    }
+
+    private var failedState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.icloud")
+                .font(.system(size: 50))
+                .foregroundColor(theme.secondary)
+            Text("Couldn’t refresh server songs")
+                .font(.title2)
+                .foregroundColor(theme.primary)
+            Text("Tap refresh to try again")
+                .font(.body)
+                .foregroundColor(theme.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+        .accessibilityIdentifier("serverSongsRefreshErrorState")
     }
 
     @ViewBuilder
@@ -107,6 +131,7 @@ struct ServerSongsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
+        .accessibilityIdentifier("serverSongsEmptyState")
     }
 
     private func downloadSong(_ serverSong: ServerSong) {

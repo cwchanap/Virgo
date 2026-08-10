@@ -73,7 +73,7 @@ struct ContentView: View {
                 let serverSongService = serverSongService
                 isPreparingStartupData = false
                 Task { @MainActor in
-                    _ = await serverSongService.loadServerSongs()
+                    await serverSongService.loadServerSongs()
                 }
                 // Clear the startup snapshot on the next run loop tick so displayedSongs
                 // falls back to the live @Query, which reflects subsequent mutations

@@ -14,6 +14,7 @@ struct AlertMessage: Identifiable {
 class ServerSongService: ObservableObject {
     @Published var isLoading = false
     @Published var isRefreshing = false
+    @Published private(set) var catalogRefreshFailed = false
     @Published var errorMessage: AlertMessage?
     @Published var warningMessage: AlertMessage?
     @Published var downloadingSongs: Set<String> = []
@@ -47,14 +48,11 @@ class ServerSongService: ObservableObject {
 
     // MARK: - Public API
 
-    func loadServerSongs() async -> [ServerSong] {
-        guard let modelContext = modelContext else { return [] }
-        do {
-            return try await cache.loadServerSongs(modelContext: modelContext)
-        } catch {
-            Logger.error("Failed to load server songs: \(error)")
-            return []
-        }
+    func loadServerSongs() async {
+        guard modelContext != nil else { return }
+        isLoading = true
+        defer { isLoading = false }
+        await refreshDownloadStatus()
     }
 
     func refreshCatalog() async {
@@ -62,15 +60,16 @@ class ServerSongService: ObservableObject {
 
         isRefreshing = true
         errorMessage = nil
+        defer { isRefreshing = false }
 
         do {
             try await cache.refreshCatalog(modelContext: modelContext)
+            catalogRefreshFailed = false
         } catch {
+            catalogRefreshFailed = true
             errorMessage = AlertMessage("Failed to refresh server songs: \(error.localizedDescription)")
             Logger.error("Failed to refresh catalog: \(error)")
         }
-
-        isRefreshing = false
     }
 
     func downloadAndImportSong(_ serverSong: ServerSong) async -> Bool {
