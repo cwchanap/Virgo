@@ -7,6 +7,30 @@ private struct ReplacementFixture {
     let changedAWithNewBPM: SimfileDTO
 }
 
+private func makeChangedAWithNewBPM() -> SimfileDTO {
+    let base = SimfileDTO.stub(id: "a", title: "NEW")
+    return SimfileDTO(
+        id: base.id,
+        title: base.title,
+        artist: base.artist,
+        bpm: 150,
+        genre: base.genre,
+        tags: base.tags,
+        durationSeconds: base.durationSeconds,
+        updatedAt: base.updatedAt,
+        dtxFiles: [
+            DtxFileDTO(
+                label: "BASIC",
+                level: 30,
+                fileURL: "https://r2/a/new-bas.dtx",
+                fileSizeBytes: 100,
+                encoding: .shiftJIS
+            )
+        ],
+        fileKeys: ["bgm.ogg", "preview.mp3"]
+    )
+}
+
 private func seedReplacementFixture(into context: ModelContext) throws -> ReplacementFixture {
     let oldChart = ServerChart(
         difficulty: "basic",
@@ -44,28 +68,7 @@ private func seedReplacementFixture(into context: ModelContext) throws -> Replac
     context.insert(localSong)
     try context.save()
 
-    let changedA = SimfileDTO.stub(id: "a", title: "NEW")
-    let changedAWithNewBPM = SimfileDTO(
-        id: changedA.id,
-        title: changedA.title,
-        artist: changedA.artist,
-        bpm: 150,
-        genre: changedA.genre,
-        tags: changedA.tags,
-        durationSeconds: changedA.durationSeconds,
-        updatedAt: changedA.updatedAt,
-        dtxFiles: [
-            DtxFileDTO(
-                label: "BASIC",
-                level: 30,
-                fileURL: "https://r2/a/new-bas.dtx",
-                fileSizeBytes: 100,
-                encoding: .shiftJIS
-            )
-        ],
-        fileKeys: ["bgm.ogg", "preview.mp3"]
-    )
-    return ReplacementFixture(changedAWithNewBPM: changedAWithNewBPM)
+    return ReplacementFixture(changedAWithNewBPM: makeChangedAWithNewBPM())
 }
 
 @Suite("ServerSong Catalog Refresh Tests", .serialized)
