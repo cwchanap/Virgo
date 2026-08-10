@@ -139,6 +139,7 @@ struct RhythmImportTests {
             chart: chart,
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
+        defer { viewModel.cleanup() }
         await viewModel.loadChartData()
         let snapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
         let upperNotes = snapshot.notes.filter { $0.sourceLaneID == "12" || $0.sourceLaneID == "11" }
@@ -179,7 +180,6 @@ struct RhythmImportTests {
         #expect(viewModel.cachedNotationLayout.tuplets.allSatisfy { tuplet in
             Set(tuplet.memberEventIDs).isDisjoint(with: upperNotes.map(\.eventID))
         })
-        viewModel.cleanup()
     }
 
     private enum TestFailure: Error, Equatable {
