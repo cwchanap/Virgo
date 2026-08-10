@@ -481,18 +481,18 @@ struct ServerSongDownloaderTests {
         }
     }
 
-    @Test("downloadAndImportSong rejects import when legacy song matches title/artist")
-    func testRejectsImportWhenLegacySongMatchesTitleArtist() async throws {
+    @Test("downloadAndImportSong allows current server ID when same-title local song has no server ID")
+    func testAllowsImportWhenSameTitleArtistSongHasNoServerID() async throws {
         let mock = MockFileDownloader()
-        let config = makeConfig("ServerSongDownloaderTests.legacy.\(UUID().uuidString)", withR2: false)
+        let config = makeConfig("ServerSongDownloaderTests.currentid.\(UUID().uuidString)", withR2: false)
         let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
 
         try await TestSetup.withTestSetup {
             let container = TestContainer.shared.container
             let context = TestContainer.shared.context
 
-            // Insert a legacy song with NO serverSongId
-            let legacy = Song(
+            // Insert a local song with no serverSongId.
+            let localSong = Song(
                 title: "Legacy Song",
                 artist: "Legacy Artist",
                 bpm: 100.0,
@@ -501,12 +501,12 @@ struct ServerSongDownloaderTests {
                 isServerImported: false,
                 serverSongId: nil
             )
-            context.insert(legacy)
+            context.insert(localSong)
             try context.save()
 
-            // Try to import a server song with the same title/artist
+            // Import a current-format server song with the same title/artist but a server ID.
             let serverSong = ServerSong(
-                songId: "new-server-id",
+                songId: "current-server-id",
                 title: "Legacy Song",
                 artist: "Legacy Artist",
                 bpm: 110.0,
@@ -515,47 +515,15 @@ struct ServerSongDownloaderTests {
             )
 
             let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
-            #expect(success == false)
-            #expect(errorMessage == "Song already exists in database")
-        }
-    }
-
-    @Test("downloadAndImportSong rejects import when legacy song matches title/artist with different case")
-    func testRejectsImportWhenLegacySongMatchesCaseInsensitive() async throws {
-        let mock = MockFileDownloader()
-        let config = makeConfig("ServerSongDownloaderTests.cicase.\(UUID().uuidString)", withR2: false)
-        let downloader = ServerSongDownloader(downloader: mock, fileManager: ServerSongFileManager(), config: config)
-
-        try await TestSetup.withTestSetup {
-            let container = TestContainer.shared.container
-            let context = TestContainer.shared.context
-
-            // Insert a legacy song with mixed-case title/artist and NO serverSongId
-            let legacy = Song(
-                title: "LEGACY SONG",
-                artist: "legacy artist",
-                bpm: 100.0,
-                duration: "2:30",
-                genre: "Rock",
-                isServerImported: false,
-                serverSongId: nil
+            #expect(
+                success,
+                "A same-title/artist local row without serverSongId must not block import: \(errorMessage ?? "nil")"
             )
-            context.insert(legacy)
-            try context.save()
+            #expect(errorMessage == nil)
 
-            // Try to import a server song whose title/artist differs only by case
-            let serverSong = ServerSong(
-                songId: "case-insensitive-id",
-                title: "legacy song",
-                artist: "Legacy Artist",
-                bpm: 110.0,
-                charts: [],
-                isDownloaded: false
-            )
-
-            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
-            #expect(success == false)
-            #expect(errorMessage == "Song already exists in database")
+            let verificationContext = ModelContext(container)
+            let songs = try verificationContext.fetch(FetchDescriptor<Song>())
+            #expect(songs.contains { $0.serverSongId == "current-server-id" })
         }
     }
 }

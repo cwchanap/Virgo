@@ -80,34 +80,11 @@ class ServerSongDownloader {
 
     @MainActor
     private func songAlreadyExists(snapshot: ServerSongSnapshot, in context: ModelContext) throws -> Bool {
-        // Check by stable serverSongId first (targeted fetch, avoids loading all songs)
         let songId = snapshot.songId
-        let serverIdPredicate = #Predicate<Song> { song in
+        let predicate = #Predicate<Song> { song in
             song.serverSongId == songId
         }
-        if !(try context.fetch(FetchDescriptor<Song>(predicate: serverIdPredicate)).isEmpty) { return true }
-
-        // Fallback: exact title/artist match for legacy songs without serverSongId.
-        // Only matches songs that have no serverSongId so that distinct server
-        // songs sharing the same title/artist are not treated as duplicates.
-        let title = snapshot.title
-        let artist = snapshot.artist
-        let titleArtistPredicate = #Predicate<Song> { song in
-            song.title == title && song.artist == artist && song.serverSongId == nil
-        }
-        if !(try context.fetch(FetchDescriptor<Song>(predicate: titleArtistPredicate)).isEmpty) { return true }
-
-        // Final fallback: case-insensitive match for legacy songs without serverSongId.
-        // #Predicate cannot call .lowercased(), so this secondary check runs in
-        // memory over the small set of songs that lack a serverSongId.
-        let noServerIdPredicate = #Predicate<Song> { song in
-            song.serverSongId == nil
-        }
-        let legacySongs = try context.fetch(FetchDescriptor<Song>(predicate: noServerIdPredicate))
-        return legacySongs.contains { song in
-            song.title.lowercased() == snapshot.title.lowercased() &&
-                song.artist.lowercased() == snapshot.artist.lowercased()
-        }
+        return !(try context.fetch(FetchDescriptor<Song>(predicate: predicate))).isEmpty
     }
 
     private func createSong(from snapshot: ServerSongSnapshot) -> Song {

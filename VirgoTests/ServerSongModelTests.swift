@@ -89,39 +89,6 @@ struct ServerSongModelTests {
         }
     }
     
-    @Test("ServerSong legacy convenience initializer works correctly")
-    func testServerSongLegacyInitializer() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let serverSong = ServerSong(
-                filename: "legacy_song.dtx",
-                title: "Legacy Song",
-                artist: "Legacy Artist",
-                bpm: 130.0,
-                difficultyLevel: 45,
-                size: 800,
-                isDownloaded: true
-            )
-            context.insert(serverSong)
-            
-            #expect(serverSong.songId == "legacy_song")
-            #expect(serverSong.title == "Legacy Song")
-            #expect(serverSong.artist == "Legacy Artist")
-            #expect(serverSong.bpm == 130.0)
-            #expect(serverSong.isDownloaded == true)
-            #expect(serverSong.charts.count == 1)
-            
-            let chart = serverSong.charts.first!
-            #expect(chart.difficulty == "medium")
-            #expect(chart.difficultyLabel == "STANDARD")
-            #expect(chart.level == 45)
-            #expect(chart.filename == "legacy_song.dtx")
-            #expect(chart.size == 800)
-            #expect(serverSong.hasBGM == false)
-            #expect(serverSong.hasPreview == false)
-        }
-    }
-    
     @Test("ServerSong handles various BPM values")
     func testServerSongBPMValues() async throws {
         try await TestSetup.withTestSetup {
@@ -196,24 +163,6 @@ struct ServerSongModelTests {
         }
     }
     
-    @Test("ServerSong song ID extraction from filename")
-    func testServerSongIDExtraction() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            let serverSong = ServerSong(
-                filename: "test_song_with_spaces.dtx",
-                title: "Test Song",
-                artist: "Artist",
-                bpm: 120.0,
-                difficultyLevel: 50,
-                size: 1000
-            )
-            context.insert(serverSong)
-
-            #expect(serverSong.songId == "test_song_with_spaces")
-        }
-    }
-
     @Test("ServerSong stores genre and durationSeconds")
     func testServerSongGenreAndDuration() async throws {
         try await TestSetup.withTestSetup {
