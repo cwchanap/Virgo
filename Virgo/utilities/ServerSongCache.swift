@@ -43,18 +43,6 @@ class ServerSongCache {
         self.saveContext = saveContext
     }
 
-    /// Load the cached catalog. No network — refresh is explicit (see `refreshCatalog`).
-    /// Reconciles download flags against the local `Song` store so that songs
-    /// removed outside this service (maintenance, debug clear) don't appear stale.
-    func loadServerSongs(modelContext: ModelContext) async throws -> [ServerSong] {
-        let descriptor = FetchDescriptor<ServerSong>(
-            sortBy: [SortDescriptor(\.lastUpdated, order: .reverse)]
-        )
-        let songs = (try? modelContext.fetch(descriptor)) ?? []
-        await statusManager.refreshDownloadStatus(modelContext: modelContext)
-        return songs
-    }
-
     /// Manual catalog refresh: validate and replace the complete server snapshot.
     func refreshCatalog(modelContext: ModelContext) async throws {
         let serverDTOs = try await fetchCompleteSnapshot()

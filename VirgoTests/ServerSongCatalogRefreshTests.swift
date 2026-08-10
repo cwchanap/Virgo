@@ -378,30 +378,4 @@ struct ServerSongCatalogRefreshTests {
         }
     }
 
-    @Test("loadServerSongs reconciles stale download status against local store")
-    func testLoadServerSongsReconcilesDownloadStatus() async throws {
-        try await TestSetup.withTestSetup {
-            let context = TestContainer.shared.context
-            // Seed a ServerSong marked as downloaded but with NO matching local Song
-            // (simulating a local Song deleted outside this service path).
-            let serverSong = ServerSong(
-                songId: "orphan",
-                title: "Orphan",
-                artist: "X",
-                bpm: 120,
-                isDownloaded: true
-            )
-            context.insert(serverSong)
-            try context.save()
-
-            let fetcher = MockSimfileFetcher()
-            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
-
-            let loaded = try await cache.loadServerSongs(modelContext: context)
-            #expect(loaded.count == 1)
-            // refreshDownloadStatus should have corrected the stale flag.
-            #expect(loaded.first?.isDownloaded == false,
-                    "Stale isDownloaded must be reconciled on load")
-        }
-    }
 }
