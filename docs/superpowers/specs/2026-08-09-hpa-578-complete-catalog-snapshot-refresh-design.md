@@ -1,7 +1,7 @@
 # HPA-578: Complete Catalog Snapshot Refresh
 
 **Date:** 2026-08-09
-**Status:** Draft design for review — revised after reference-lifetime review; implementation not started
+**Status:** Implemented — revised after reference-lifetime review; implementation landed in HPA-578 (see plan `2026-08-09-hpa-578-complete-catalog-snapshot-refresh.md`). Subsequent race fix `eb3e758` removed detached-context cache mutation from `deleteLocalSong`; the plan's Step 5 has been updated to match.
 
 ## Context
 

@@ -289,7 +289,7 @@ Refactor `refreshDownloadStatus(modelContext:)` to fetch local/cache rows, call 
 
 - [ ] **Step 5: Collapse user-initiated deletion to exact IDs**
 
-Use:
+For `deleteDownloadedSong`, use:
 
 ```swift
 let songsToDelete = allSongs.filter { song in
@@ -297,23 +297,20 @@ let songsToDelete = allSongs.filter { song in
 }
 ```
 
-`deleteLocalSong` stops capturing title/artist for identity. If the deleted song has no `serverSongId`, skip server-cache mutation. Otherwise use:
+`deleteDownloadedSong` stops capturing title/artist for identity and clears the matching `ServerSong` flags in the same `@MainActor` transaction (no suspension point, so no reference-lifetime hazard).
+
+For `deleteLocalSong`, the detached background operation must be **local-data-only**: it deletes and saves only the durable `Song` (plus the bundled-fixture tombstone and file cleanup). It must **not** mutate `ServerSong` cache rows in the detached context. Mutating cache rows there raced with `refreshCatalog`'s cache replacement on the main context — a stale cache write could fail the combined save and roll back the `Song` deletion (see fix `eb3e758`).
+
+Cache reconciliation is the caller's responsibility. After `statusManager.deleteLocalSong` succeeds, `ServerSongService.deleteLocalSong` calls `refreshDownloadStatus()` on the main context, which re-projects local rows onto whichever cache rows currently own each ID:
 
 ```swift
-private static func hasOtherImportedSong(
-    serverSongId: String,
-    excludingSongId: PersistentIdentifier,
-    context: ModelContext
-) throws -> Bool {
-    try context.fetch(FetchDescriptor<Song>()).contains { song in
-        song.persistentModelID != excludingSongId &&
-            song.isServerImported &&
-            song.serverSongId == serverSongId
-    }
+let success = await statusManager.deleteLocalSong(song, container: container)
+if success {
+    await refreshDownloadStatus()
 }
 ```
 
-When no imported row remains, clear flags only on fetched cache rows whose `songId` equals that exact ID.
+Do not reintroduce `hasOtherImportedSong` / `updateServerSongStatus` helpers in the detached path. If the deleted `Song` has no `serverSongId`, `refreshDownloadStatus` simply finds no local match for any cache ID and leaves flags unchanged.
 
 Delete now-obsolete fallback graph:
 
