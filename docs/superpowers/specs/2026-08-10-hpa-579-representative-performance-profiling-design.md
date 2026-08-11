@@ -5,77 +5,70 @@
 
 ## Context
 
-HPA-579 is the Phase B evidence gate in the Virgo runtime/performance roadmap. HPA-576, HPA-577, and HPA-578 have landed, so this is now the first unblocked roadmap item. Its purpose is not to optimize Virgo directly; it decides whether HPA-580 and HPA-581 are worth implementing, narrowing, or closing, and it establishes the baseline HPA-584 will use later.
+HPA-579 is the Phase B evidence gate in the Virgo runtime/performance roadmap. HPA-576, HPA-577, and HPA-578 have landed. This spike decides whether HPA-580 and HPA-581 should proceed, narrow, or close, and records the eager-render baseline HPA-584 will repeat later.
 
-The current code has several plausible costs, but the roadmap explicitly treats them as hypotheses rather than commitments:
+The suspected costs are real code paths, not conclusions:
 
-- `ServerSongDownloader.processChart` is `@MainActor`. After `downloadData` returns it decodes DTX bytes, parses chart metadata, builds the persistence projection, creates SwiftData models, and inserts them. Its multi-chart loop also suspends for an unconditional 100 ms between charts.
-- `LocalDTXFixtureImporter.importSongResult` and `loadImportedCharts` are `@MainActor`. Current local import performs SET/file checks, DTX file reads, parsing, projection, duration calculation, model construction, and save from that isolation context.
-- `GameplayView.prepareGameplay` awaits `GameplayViewModel.loadChartData`, seeds row width, and calls `setupGameplay`. `loadChartData` traverses SwiftData relationships, sorts notes, resolves rhythm timing, and builds `GameplayRhythmRuntime`; `makeRhythmRuntime` builds note targets, a `RhythmLayoutSnapshot`, and a metronome schedule. `setupGameplay` then computes drum beats and cached layout data, including `NotationLayoutEngine` work.
-- Width changes are intentionally trailing-edge debounced by 100 ms. After the debounce fires, `cacheNotationLayout` and `cacheBeatPositions` rebuild the notation-dependent caches on the main actor.
-- `GameplaySheetMusicView` receives the broad `GameplayViewModel`. Its static notation subtree iterates the full cached notation layout while playback updates observable state frequently. `staticStaffLinesView` and `notationStaffLinesView` are cached as `AnyView`, which caches view descriptions rather than rendered output.
+- `ServerSongDownloader.processChart` is `@MainActor`; after network download it decodes, parses, projects, creates SwiftData models, and the multi-chart loop also suspends for a fixed 100 ms between charts.
+- `LocalDTXFixtureImporter.importSongResult` / `loadImportedCharts` are `@MainActor`; a fresh import reads and parses files, projects rhythm data, creates models, and saves. Re-importing the same `serverSongId` exits early after audio-path refresh, so repeat measurements require a genuinely fresh store.
+- `GameplayView.prepareGameplay` runs `loadChartData`, seeds row width, then calls `setupGameplay`; rhythm resolution and notation layout are therefore plausible main-actor costs.
+- Width changes are trailing-edge debounced by 100 ms, and `updateRowWidth` clamps widths to `GameplayLayout.maxRowWidth` (900pt) before deciding whether a relayout is needed.
+- `GameplaySheetMusicView` receives the broad observable view model while playback changes live state frequently, so broad static-canvas invalidation is plausible but must be measured.
 
-These facts make HPA-580/HPA-581 plausible, but not automatically justified.
+## Decision
 
-## Decision summary
+Use one small, repeatable **Instruments-first** profiling session.
 
-Use one small, repeatable, **Instruments-first** profiling pass on the largest/densest real chart currently available.
+1. **Profile through Xcode's Profile action.** Virgo's shared scheme profiles the `Release` configuration. `xcodebuild -configuration Release` remains a compile check only; the authoritative traces come from Product > Profile so the app is built and signed for profiling.
+2. **Require an attach/symbolication gate before collecting numbers.** Time Profiler must record the Profile-action app and show symbolicated Virgo frames. If it cannot, fix the profiling setup before measuring.
+3. **Run an info-level unified log stream while measuring.** Temporary `Logger.info` markers use the existing `com.cwchanap.Virgo` subsystem and are visible with:
 
-1. Make a Release macOS run the authoritative baseline. Record the exact commit, Mac hardware, OS, Xcode version, and configuration. Debug traces may be used for diagnosis but must be labeled and must not override Release behavior.
-2. Select the representative chart in two stages. First compare pre-gameplay complexity using existing chart data: note count, control-event count, and measure count. Only when candidates are close should they be prepared at the same recorded row width and compared by rendered row count. If no denser current server/downloaded chart is available, use the densest chart that is actually shipped in the bundled Soukyuu fixture; in the current tree that is MASTER (`Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx`). `SET.def` references REAL / `real.dtx`, but that file is not shipped and the importer drops the missing entry.
-3. Start with Time Profiler plus SwiftUI instrumentation. Add temporary `ContinuousClock` measurements only when Instruments cannot isolate a decision-relevant boundary cleanly.
-4. Measure the four scenarios required by HPA-579:
-   - DTX bytes/file available -> decode, parse, and persistence projection complete;
-   - chart selection -> gameplay prepared;
-   - width change -> notation relayout complete;
-   - largest-chart mount/playback -> main-thread activity, SwiftUI update activity, scrolling responsiveness, and peak memory.
-5. Treat the 100 ms inter-chart sleep as explicit wall-clock policy overhead, not parser CPU time. Report it separately. A sleep-only finding cannot justify an HPA-580 off-main **Proceed** decision.
-6. Do not create a benchmark target, metrics service, CI performance gate, dashboard, generalized signpost layer, or retained trace repository.
-7. Record final numbers and Proceed/Narrow/Close decisions in a Linear comment on HPA-579. Do not commit Instruments traces. Temporary source instrumentation is reverted before HPA-579 closes unless a retained signpost proves necessary to interpret an otherwise unmeasurable boundary.
+   ```bash
+   log stream --level info --predicate 'subsystem == "com.cwchanap.Virgo"'
+   ```
+
+4. **Pick the representative chart using the visible per-chart note count.** Do not build a selection metric system. Choose the highest-note-count real chart available in the current library. If no downloaded/current chart is clearly larger, use the present bundled Soukyuu MASTER chart (`Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx`). `SET.def` references REAL / `real.dtx`, but that file is absent and the importer drops it.
+5. **Capture the remaining baseline counts only after the chart is selected.** One disposable `Logger.info` marker after `setupGameplay()` records note count, control count, measure count, row width, and rendered rows for HPA-584. These values are baseline metadata, not candidate-selection machinery.
+6. **Measure only four decisions:** fresh DTX parse/projection, gameplay preparation, width relayout, and largest-chart mount/playback/scrolling/memory.
+7. **Keep deliberate latency separate from CPU work.** The 100 ms inter-chart `Task.sleep` and 100 ms width debounce are reported separately from parse/layout processing.
+8. **Record one evidence-backed decision for HPA-580 and HPA-581 in Linear.** The repository should normally return to a docs-only diff when the spike is finished.
 
 ## Approaches considered
 
-### A. Build a permanent benchmark harness first
+### Instruments first, disposable local markers — selected
 
-Create dedicated performance tests or a benchmark target for import, layout, and rendering.
+Profile the real Release app, use Time Profiler / SwiftUI / Allocations for end-to-end behavior, and add local `ContinuousClock` or `Logger.info` markers only where the trace cannot isolate a required boundary.
 
-**Rejected.** HPA-579 is a decision spike. A harness would front-load architecture and maintenance before proving any ongoing measurement need, and it still would not capture real SwiftUI invalidation or interactive scrolling well.
+This preserves the real actor and SwiftUI behavior without creating a performance subsystem.
 
-### B. Instruments first, temporary clocks only for ambiguous boundaries
+### Permanent benchmark harness — rejected
 
-Profile the real app in Release, use stack attribution for the broad behavior, and add local timing around only the boundaries that remain ambiguous.
+A benchmark target, metrics layer, CI gate, dashboard, or generalized signpost framework would be new machinery for a one-shot decision and would still miss real SwiftUI invalidation and interactive scrolling.
 
-**Selected.** This gives end-to-end evidence, preserves the real main-actor/SwiftUI behavior, and keeps instrumentation disposable.
+### XCTest timing only — rejected as primary method
 
-### C. XCTest microbenchmarks only
+Microbenchmarks can isolate pure functions but cannot answer the main HPA-581 questions about main-thread preparation, SwiftUI updates, mounting, and scrolling. They may be used only as a secondary aid if an existing test already exposes a useful pure boundary.
 
-Time parser/layout functions under tests and decide from those numbers.
+## Representative chart contract
 
-**Rejected as the primary method.** Unit timing can isolate pure functions but misses the main questions in HPA-581: chart preparation on the UI actor, SwiftUI update fan-out, mounting, scrolling, and playback-time invalidation. A one-off test may still be used as a secondary aid if it is the fastest way to compare candidate real charts or isolate parser/projection cost.
+- Use a real chart available in the current app data, not a small synthetic golden fixture.
+- Choose by the largest visible `Chart.notesCount`; do not infer density from BASIC/MASTER/REAL labels.
+- Do not add a multi-metric ranking or rendered-row tie-breaker. The goal is a representative worst current chart, not an exact benchmark leaderboard.
+- If no current/downloaded chart is clearly larger, use Soukyuu MASTER / `mas.dtx`, the densest chart file actually shipped in that bundled fixture today.
+- After the chosen chart is prepared, record:
+  - notes;
+  - controls;
+  - measures;
+  - concrete profiling row width;
+  - rendered rows.
 
-## Representative chart selection
+If two visible candidates are effectively tied, pick either consistently and record which one was used. Do not spend the spike proving an exact ordering.
 
-The benchmark input must be a real chart, not one of the small synthetic golden fixtures used to pin individual notation semantics.
+## Measurement contract
 
-Selection rules:
+### Environment and profiling mode
 
-1. Use current app data available on the profiling machine.
-2. First-pass candidate comparison uses values available before gameplay preparation:
-   - `Chart.notesCount` / loaded note count;
-   - `Chart.safeControlEvents.count`;
-   - measure count from the existing loaded chart relationship data or the maximum valid note measure.
-3. Choose the candidate that is directionally largest/densest across those three values. Exact weighting is unnecessary; the goal is to avoid accidentally profiling an easy chart.
-4. If two or more candidates are close on the first three values, prepare only those contenders at the same recorded row width, compare rendered row count, and use that as a tie-breaker. Do not require rendered rows for every candidate before choosing a shortlist.
-5. Record the selected song/chart identity, note/control/measure counts, profiling row width, and rendered row count in the HPA-579 result comment so HPA-584 can repeat the same baseline.
-6. If the current catalog has no locally available chart that is clearly denser, use the densest **present** bundled Soukyuu chart. In the current tree the stable fallback is MASTER / `mas.dtx`. `SET.def` also references REAL / `real.dtx`, but `real.dtx` is absent and `LocalDTXFixtureImporter.loadImportedCharts` intentionally drops that missing chart.
-
-Do not infer that `REAL` or `MASTER` is densest solely from the difficulty label when a quick count is available. The MASTER fallback is a property of the currently shipped fixture files, not a general difficulty-order assumption.
-
-## Measurement protocol
-
-### Environment capture
-
-Before measuring, capture the literal output of:
+Record:
 
 ```bash
 git rev-parse HEAD
@@ -85,216 +78,150 @@ xcodebuild -version
 xcrun xctrace version
 ```
 
-Build/profile the macOS target in Release. Simulator timings are not used as performance evidence; a physical iPad may be used as an optional confirmation if readily available, but it is not required for this spike.
+Run one warm-up and three measured repetitions for short boundaries. Use the median and observed range. If the three runs disagree on the dominant stage, collect two additional runs rather than introducing statistical infrastructure.
 
-For short duration boundaries, perform one warm-up and three measured runs. Record the median and observed range. If the three runs disagree on which stage is dominant, collect two additional runs rather than inventing a statistical framework.
+### Scenario 1 — fresh DTX file/bytes to persistence projection
 
-### Scenario 1 — DTX file/bytes to persistence projection
+**Local path:** measure `LocalDTXFixtureImporter.loadImportedCharts` from immediately before `DTXFileParser.parseChartMetadata(from:)` through completion of `persistenceProjection()`.
 
-This scenario decides the off-main portion of HPA-580.
+A fresh local import is mandatory. `importSongResult` exits early when the same `serverSongId` already exists, so each local warm-up/measured run must start after the app is quit and the development SwiftData store plus bundled-fixture tombstone have been cleared. This destructive reset is intentionally performed only after the gameplay scenarios are complete.
 
-#### Local fixture path
+A local-import run is valid only if the Time Profiler trace contains the symbolicated `LocalDTXFixtureImporter.loadImportedCharts` / DTX parser path (or a temporary parse marker when source timing is required). A run that takes the existing-song fast path is void and must not contribute to the HPA-580 decision.
 
-Measure the current work in `LocalDTXFixtureImporter.loadImportedCharts` from immediately before:
+**Server path:** when an importable server song is available, measure `ServerSongDownloader.processChart` after `downloadData(from:)` returns through `persistenceProjection()`. Network time is excluded. If no usable server import exists on the profiling machine, state that limitation instead of fabricating a measurement.
 
-```swift
-DTXFileParser.parseChartMetadata(from: chartURL)
-```
-
-through completion of:
-
-```swift
-let projection = try data.persistenceProjection()
-```
-
-This slice intentionally includes the local chart file read/decode performed by `parseChartMetadata(from:)` and the pure projection work, but not SwiftData model mutation/save.
-
-#### Server path
-
-Measure `ServerSongDownloader.processChart` from immediately after:
-
-```swift
-let data = try await downloader.downloadData(from: url)
-```
-
-through completion of:
-
-```swift
-let projection = try chartData.persistenceProjection()
-```
-
-This excludes network time while retaining the decode + parse + projection work HPA-580 could move off-main.
-
-Use Time Profiler first. If the exact start/end is hard to distinguish, add temporary local `ContinuousClock` timestamps around only these slices.
-
-Also inspect the whole import trace so the result can distinguish:
-
-- parser/projection CPU;
-- main-actor SwiftData model construction/save;
-- network/file latency;
-- the deliberate 100 ms inter-chart sleeps.
-
-The fixed sleep is reported separately as `100 ms * (processed chart count - 1)`. It is a latency policy, not a main-thread CPU cost, and by itself is not evidence for moving parser/projection work off-main.
+Report the fixed inter-chart delay separately as `max(0, processedChartCount - 1) * 100 ms`.
 
 ### Scenario 2 — chart selection to gameplay prepared
 
-Measure the user-visible preparation interval beginning when `GameplayView.prepareGameplay(initialRowWidth:)` starts real work and ending when `GameplayViewModel.isGameplayPrepared` becomes true.
+Measure from real work beginning in `GameplayView.prepareGameplay(initialRowWidth:)` through `isGameplayPrepared == true`.
 
-Use Time Profiler call stacks to attribute the interval to the existing stages:
+Use Time Profiler to attribute the interval among the existing stages:
 
-1. `GameplayViewModel.loadChartData`
-   - SwiftData relationship reads/copies;
-   - note sorting;
-   - `RhythmTimelineResolver.resolve`;
-   - `makeRhythmRuntime`, including note targets, `RhythmLayoutSnapshotBuilder`, and `RhythmMetronomeSchedule`.
-2. `GameplayViewModel.setupGameplay`
-   - `computeDrumBeats`;
-   - `computeCachedLayoutData` / `cacheNotationLayout` / `cacheBeatPositions`;
-   - BGM setup and remaining timing/input setup.
+- SwiftData relationship access/copy;
+- note sorting;
+- `RhythmTimelineResolver.resolve` / `makeRhythmRuntime` / `RhythmLayoutSnapshotBuilder`;
+- `computeCachedLayoutData` / `cacheNotationLayout` / `cacheBeatPositions`;
+- BGM and remaining setup.
 
-Only add nested temporary clock measurements when the sampled stacks cannot answer which stage dominates. If timing the outer calls, measure `updateRowWidth(initialRowWidth)` separately or start the `setupGameplay` interval immediately before `setupGameplay()` so the labels match the code being timed.
-
-Do not assume HPA-581 is justified merely because the total interval is noticeable. If BGM setup, SwiftData relationship loading, or another non-HPA-581 stage dominates, the HPA-581 decision must reflect that.
+If temporary clocks are required, label `loadChartData`, `updateRowWidth`, and `setupGameplay` separately. Do not log a combined interval as `setupGameplay`.
 
 ### Scenario 3 — width change to notation relayout
 
-The current resize path intentionally waits for the 100 ms trailing-edge debounce before rebuilding. Measure two values and keep them conceptually separate:
+The resolved width is `max(900, width)`. A sequence that stays entirely at or below 900pt is a guaranteed no-op.
 
-- **processing cost:** time spent after the debounce callback enters `cacheNotationLayout` through completion of `cacheBeatPositions`;
-- **user-visible settling time:** last width event to the completed layout, explicitly labeled as including the known 100 ms debounce.
+Choose resize endpoints that cross distinct resolved widths and visibly change row packing. At least one endpoint must exceed 900pt. Measure:
 
-HPA-581's off-main relayout decision is based on the processing cost and any observed main-thread hitch, not on the deliberate debounce constant.
+- processing cost from `cacheNotationLayout` through `cacheBeatPositions` after the debounce fires;
+- user-visible settling time separately, labeled as including the fixed 100 ms debounce.
 
-Exercise at least one resize that changes row packing on the representative chart; a width change that produces an identical layout is not useful evidence.
+If the profiling machine cannot produce a width transition that changes row packing, record the limitation instead of timing a no-op.
 
-### Scenario 4 — mount, playback, SwiftUI updates, scrolling, memory
+### Scenario 4 — mount, playback, scrolling, memory
 
-Profile the representative chart while:
+On the representative chart:
 
-1. opening gameplay and letting the full notation mount;
-2. starting playback;
-3. allowing the playhead to advance across rows;
-4. manually scrolling through the notation while playback remains active;
-5. continuing long enough to observe steady-state update behavior.
+1. open gameplay and let the notation mount;
+2. start playback;
+3. let the playhead advance across rows;
+4. manually scroll while playback remains active;
+5. observe at least 30 seconds of steady playback.
 
-Use the SwiftUI instrument plus Time Profiler to answer:
+Use SwiftUI + Time Profiler to determine whether the static notation subtree broadly re-evaluates on live playback changes and whether any main-thread notation stacks correlate with visible hitches. Record peak live memory using Allocations or the Xcode memory gauge.
 
-- Does the static notation subtree re-evaluate broadly on frequent playback changes, or are updates effectively limited to playhead/scroll state?
-- Are notation `ForEach` construction/layout stacks repeatedly prominent during steady playback?
-- Are there main-thread stalls that correspond to visible scrolling or playhead hitches?
-- Is initial mount cost materially larger than steady playback cost?
-
-Record peak live memory for this scenario using Instruments Allocations or the Xcode memory gauge. The goal is a repeatable HPA-584 baseline, not a leak audit.
-
-Do not add row virtualization during this ticket.
+This is the HPA-584 eager-render baseline, not a leak audit and not permission to add virtualization.
 
 ## Decision rubric
 
-No universal millisecond threshold is introduced from one developer machine. Decisions are based on trace-backed dominance and observable user impact.
+No universal millisecond threshold is introduced from one machine. Decisions depend on trace-backed dominance and visible impact.
 
 ### HPA-580 — DTX parsing/file work
 
-Record one of:
+- **Proceed:** decode/parse/projection or blocking file work is a material main-thread contributor and moving that measured slice off-main is likely to remove a visible stall.
+- **Narrow:** only a measured subset of the proposed off-main work is justified.
+- **Policy-only Narrow:** movable parse/file work is not material, but removing the fixed 100 ms inter-chart sleep is worthwhile. In this case HPA-580 is rewritten to sleep removal only and all off-main parser/projection requirements are removed.
+- **Close as unnecessary:** the representative import is responsive and neither the movable slice nor a small policy cleanup has sufficient value.
 
-- **Proceed** when decode/parse/projection or blocking file work is a material main-thread contributor on the representative import and moving that measured slice off-main is likely to remove a visible stall.
-- **Narrow** when only a measured subset of the proposed off-main work is justified, for example local file read + projection but not server parsing.
-- **Policy-only Narrow** when the movable CPU/file slice is not material but the fixed 100 ms inter-chart sleep is the only worthwhile latency cleanup. In that case update HPA-580 so its remaining scope is explicitly removal of the sleep with **no off-main parser/projection work**; the sleep alone must never be reported as an off-main Proceed result.
-- **Close as unnecessary** when the representative import is responsive and neither the movable CPU/file slice nor a small policy cleanup has sufficient value.
-
-Do not treat SwiftData mutation cost as evidence for moving SwiftData models off-main; HPA-580 explicitly keeps model mutation on the main actor.
+The sleep alone can never justify an off-main **Proceed**. SwiftData mutation cost is not evidence for moving SwiftData models across actors.
 
 ### HPA-581 — gameplay preparation/static rendering
 
-Record one of:
+- **Proceed:** measured rhythm/layout preparation, relayout, or broad static-canvas invalidation is a material current cost with visible impact.
+- **Narrow:** only a smaller measured subset has value, such as width relayout or static-view observation cleanup.
+- **Close as unnecessary:** the largest real chart prepares, resizes, mounts, plays, and scrolls responsively without material rhythm/layout or broad static-rendering cost.
 
-- **Proceed** when rhythm/layout preparation, relayout, or broad static-canvas invalidation is a material main-thread/rendering cost with visible impact.
-- **Narrow** when only part of the proposed work is supported—for example layout preparation is fine but broad SwiftUI observation/`AnyView` cleanup has clear value, or only width relayout is expensive.
-- **Close as unnecessary** when the largest real chart prepares, resizes, mounts, plays, and scrolls responsively without material rhythm/layout or broad static-rendering cost.
-
-A maintainability-only narrowing must stay small: remove presentation caching or narrow observation only where the trace/code structure gives current value. Do not use HPA-579 as justification for a new screen architecture.
+A maintainability-only narrowing must stay small; HPA-579 does not justify a new screen architecture.
 
 ### HPA-584 — baseline only
 
-HPA-579 does not decide virtualization. Record enough of the current eager-render baseline to repeat later:
+Record the chosen chart identity, note/control/measure counts, profiling width, rendered rows, initial mount behavior, steady playback update behavior, scrolling observation, peak memory, and relevant trace notes. HPA-579 does not decide virtualization.
 
-- representative chart identity and complexity counts;
-- initial mount behavior;
-- steady playback SwiftUI update behavior;
-- scrolling responsiveness observations;
-- peak live memory;
-- relevant trace notes.
+## Result template
 
-## Result ownership
-
-The authoritative result is one concise Linear comment on HPA-579. Use this structure:
+Post one authoritative comment on HPA-579:
 
 ```markdown
 ## Profiling result
 
 ### Environment
-- Commit / machine / OS / Xcode / configuration
+- Commit / machine / OS / Xcode / Instruments / Release macOS
 
 ### Representative chart
-- Song/chart identity
+- Song/chart
 - Notes / controls / measures
 - Profiling row width / rendered rows
 
 ### Measurements
-- DTX file/bytes -> projection: median + range, dominant stacks
-- Gameplay selection -> prepared: median + range, dominant stacks
-- Width relayout processing: median + range; debounce reported separately
-- Mount/playback: SwiftUI update behavior, scrolling observations, peak memory
+- Local DTX file -> parse/projection: median + range, dominant stacks
+- Server bytes -> decode/parse/projection: median + range or explicit unavailable limitation
+- Inter-chart policy delay: fixed delay reported separately
+- Chart selection -> gameplay prepared: median + range, dominant stage
+- Width relayout processing: median + range; 100 ms debounce reported separately
+- Mount/playback: SwiftUI update pattern and main-thread observations
+- Scrolling: concrete responsiveness observation
+- Peak live memory
 
 ### Decisions
-- HPA-580: Proceed | Narrow | Policy-only Narrow | Close as unnecessary — evidence-backed reason
-- HPA-581: Proceed | Narrow | Close as unnecessary — evidence-backed reason
+- HPA-580: Proceed | Narrow | Policy-only Narrow | Close as unnecessary — reason
+- HPA-581: Proceed | Narrow | Close as unnecessary — reason
 - HPA-584 baseline: concise repeatable baseline
 ```
 
-If a ticket is **Narrow**, update that ticket's description before implementation so its acceptance criteria match the evidence. A policy-only HPA-580 Narrow must explicitly remove off-main parser/projection requirements. If the decision is **Close as unnecessary**, close the ticket with the HPA-579 comment as the reason. If **Proceed**, leave the ticket scope intact unless the trace identifies a more precise boundary.
+When a downstream ticket is Narrow, update its description and acceptance criteria before implementation. When it is Close as unnecessary, close it with the HPA-579 evidence as the reason.
 
 ## Temporary instrumentation policy
 
-Temporary timing code is acceptable only when Instruments cannot isolate an important boundary.
-
-- Keep it local to the measured function.
-- Do not add a generalized metrics helper.
-- Do not change actor isolation merely to measure it.
-- Do not commit Instruments `.trace` bundles.
-- Revert temporary timing/logging code before HPA-579 closes unless a retained `os_signpost` interval is clearly necessary for future HPA-584 comparison and is negligible to maintain.
-- If a retained signpost is justified, keep only the smallest named interval(s) around the ambiguous boundary and explain the retention in the HPA-579 result comment.
-
-## Expected repository impact
-
-This planning PR is documentation-only:
-
-- `docs/superpowers/specs/2026-08-10-hpa-579-representative-performance-profiling-design.md`
-- `docs/superpowers/plans/2026-08-10-hpa-579-representative-performance-profiling.md`
-
-Execution of HPA-579 should normally finish with no production source diff. The measured findings live in Linear. A tiny retained signpost change is allowed only if the spike proves it necessary.
+- Reuse `Logger.info`; do not add a timing helper.
+- Add `ContinuousClock` only around a boundary Instruments cannot isolate cleanly.
+- Keep temporary instrumentation local to the measured function.
+- Do not change actor isolation to measure it.
+- Do not commit `.trace` bundles, DerivedData, screenshots, or ad-hoc metrics exports.
+- Before discarding temporary source changes, save a patch to `/tmp/hpa579-instrumentation.patch` so a repeated run does not require recreating the markers.
+- Revert temporary timing/logging before HPA-579 closes unless a tiny retained signpost is explicitly justified by the evidence and is negligible to maintain.
 
 ## Non-goals
 
-- Production optimization in HPA-579.
-- A permanent benchmark target or performance-test suite.
-- CI performance gates or dashboards.
+- Production optimization inside HPA-579.
+- Permanent benchmark/performance-test infrastructure.
+- CI performance gates, dashboards, or metrics services.
 - Parallel chart downloads.
 - Moving SwiftData models or `ModelContext` across actors.
-- Rewriting rhythm, notation, metronome, or parser algorithms.
+- Rewriting parser, rhythm, notation, or metronome algorithms.
 - BGM `.ogg` compatibility work; HPA-85 remains separate.
-- Row virtualization; HPA-584 owns that later decision.
+- Row virtualization; HPA-584 owns that decision.
 - Broad test/document cleanup; HPA-583 remains the closeout ticket.
 
 ## Acceptance criteria
 
-- [ ] The largest/densest currently available real chart is identified from pre-gameplay note/control/measure counts; rendered rows are recorded after preparation and used only as a tie-breaker when needed.
-- [ ] The bundled fallback points to a chart file that is present in the current tree; currently Soukyuu MASTER / `mas.dtx`, with the missing REAL entry recorded rather than selected.
-- [ ] Commit, hardware/device, OS, Xcode, and build configuration are recorded.
-- [ ] DTX file/bytes -> decode/parse/projection is measured without conflating network latency or the fixed inter-chart sleep.
-- [ ] Chart selection -> gameplay prepared is measured and attributed to existing stages with timing labels matching the actual intervals.
-- [ ] Width relayout processing cost is measured separately from the intentional 100 ms debounce.
-- [ ] Largest-chart mount/playback records main-thread activity, SwiftUI update behavior, scrolling responsiveness, and peak memory.
-- [ ] HPA-580 and HPA-581 each receive an explicit evidence-backed decision; a sleep-only HPA-580 result is policy-only Narrow, never off-main Proceed.
-- [ ] A concise repeatable baseline is recorded for HPA-584.
-- [ ] No benchmark framework, dashboard, CI gate, virtualization, or speculative production optimization is added.
-- [ ] Temporary instrumentation is removed unless a minimal retained signpost is explicitly justified by the measurement itself.
+- [ ] Product > Profile records the Release app and shows symbolicated Virgo frames before measurements begin.
+- [ ] An info-level `com.cwchanap.Virgo` log stream is running for temporary markers.
+- [ ] The representative real chart is selected by visible note count, with Soukyuu MASTER / `mas.dtx` as the current bundled fallback.
+- [ ] Baseline control/measure/width/rendered-row values are recorded only after the chart is selected.
+- [ ] Every measured local import starts from a fresh store/tombstone state and proves the real parse path executed.
+- [ ] DTX CPU/file work is not conflated with network time or the fixed inter-chart sleep.
+- [ ] Gameplay preparation is attributed to existing stages with correctly labeled temporary intervals when needed.
+- [ ] Width relayout uses distinct resolved widths; an all-<=900pt no-op is never counted as a measurement.
+- [ ] Mount/playback records SwiftUI update behavior, scrolling responsiveness, and peak memory.
+- [ ] HPA-580 and HPA-581 receive explicit evidence-backed decisions using the rubric above.
+- [ ] HPA-584 receives a repeatable eager-render baseline.
+- [ ] Temporary instrumentation is removed by default and no benchmark framework, CI gate, or virtualization is introduced.
