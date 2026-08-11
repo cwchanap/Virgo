@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Measure Virgo's current representative import, gameplay preparation, relayout, and steady rendering costs, then make explicit Proceed/Narrow/Close decisions for HPA-580 and HPA-581 and capture the baseline HPA-584 will repeat.
+**Goal:** Measure Virgo's current representative import, gameplay preparation, relayout, and steady rendering costs, then make explicit evidence-backed decisions for HPA-580 and HPA-581 and capture the baseline HPA-584 will repeat.
 
 **Architecture:** This is an evidence spike, not a production refactor. Profile the real Release app with Instruments first, add temporary local `ContinuousClock` measurements only when a decision-relevant boundary is ambiguous, record findings in Linear, and revert temporary instrumentation before closing the ticket unless the measurement itself proves one tiny retained signpost is necessary.
 
@@ -12,6 +12,7 @@
 
 - HPA-579 does not optimize production code.
 - Use the largest/densest real chart currently available; do not substitute a small synthetic golden fixture.
+- Select candidate charts from pre-gameplay note/control/measure counts first. Use rendered row count only after preparation as a tie-breaker for close candidates.
 - Release macOS behavior is the authoritative baseline. Label any Debug trace separately.
 - Record the exact commit, Mac hardware, OS, Xcode version, configuration, and representative chart complexity.
 - Start with Instruments. Add temporary timing code only when stack attribution is insufficient.
@@ -19,7 +20,7 @@
 - Do not move SwiftData models or `ModelContext` across actors.
 - Do not rewrite rhythm, notation, metronome, parser, or import algorithms.
 - Do not parallelize chart downloads.
-- Report the fixed 100 ms inter-chart sleep separately from parser/projection CPU time.
+- Report the fixed 100 ms inter-chart sleep separately from parser/projection CPU time. A sleep-only finding cannot justify off-main work.
 - Do not add row virtualization; HPA-584 owns that later decision.
 - Do not change BGM `.ogg` compatibility behavior; HPA-85 remains separate.
 - Do not commit Instruments `.trace` bundles.
@@ -47,6 +48,11 @@
 
 - `Virgo/views/subviews/GameplaySheetMusicView.swift` — static notation, playhead, auto-scroll, and broad view-model observation.
 
+**Existing chart-selection data to reuse:**
+
+- `Chart.notesCount` and `Chart.safeControlEvents` in `Virgo/models/DrumTrack.swift`.
+- `ChartRelationshipData.measureCount` in `Virgo/utilities/SwiftDataRelationshipLoader.swift` where that loader is already available; otherwise derive the maximum valid note measure from the already loaded chart relationship rather than adding a new metric model.
+
 **Result destination:**
 
 - Linear HPA-579 comment — authoritative benchmark context, measurements, decisions, and HPA-584 baseline.
@@ -60,10 +66,11 @@ No new production file is expected.
 
 **Files:**
 - Read: `Virgo/Fixtures/soukyuu_e_no_shouka/SET.def`
+- Read: `Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx`
 - Read: current locally available/imported chart data through the app
 - No source modification expected
 
-**Produces:** A recorded environment block and one named representative chart with note/control/measure/row counts.
+**Produces:** A recorded environment block and one named representative chart with note/control/measure counts plus a post-preparation rendered-row baseline.
 
 - [ ] **Step 1: Start from the current HPA-579 branch and confirm the source baseline**
 
@@ -108,26 +115,29 @@ Expected: `** BUILD SUCCEEDED **`.
 
 Do not use simulator timings as performance evidence.
 
-- [ ] **Step 4: Identify the densest currently available real chart**
+- [ ] **Step 4: Identify the densest currently available real chart without requiring gameplay first**
 
-Open the current app data and compare real chart candidates by:
+First compare candidate charts using values already available from the loaded chart model/relationship data:
 
-- note count;
-- control-event count;
-- measure count;
-- rendered row count after gameplay preparation.
+- `chart.notesCount` (or the equivalent already loaded valid-note count);
+- `chart.safeControlEvents.count`;
+- measure count from existing `ChartRelationshipData.measureCount` or the maximum valid note measure from the loaded relationship.
 
-Use the candidate that is directionally largest/densest across those values. Do not choose by difficulty label alone.
+Use the candidate that is directionally largest/densest across those three values. Exact weighting is unnecessary. Do not choose by difficulty label alone.
 
-If the current server/downloaded library has no clearly denser real chart, use the bundled fixture:
+If two or more candidates are close on those first three values, prepare only those contenders at the **same recorded row width**, then compare `cachedNotationLayout` rendered row count as a tie-breaker. Rendered rows are not a prerequisite for shortlisting every chart.
+
+If the current server/downloaded library has no clearly denser real chart, use the densest chart that is actually present in the bundled Soukyuu fixture. In the current tree the stable fallback is:
 
 ```text
 song: soukyuu_e_no_shouka
-chart: REAL
-file: Virgo/Fixtures/soukyuu_e_no_shouka/real.dtx
+chart: MASTER
+file: Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx
 ```
 
-Record the selected song/chart identity and all four complexity counts. The same identity/counts become the HPA-584 repeat baseline.
+`SET.def` references `#L5FILE real.dtx`, but `real.dtx` is not shipped. `LocalDTXFixtureImporter.loadImportedCharts` therefore drops the REAL entry with its existing missing-file warning. MASTER and REAL both map to `.expert`, so the present MASTER chart is the bundled expert chart that actually imports today.
+
+Record the selected song/chart identity and note/control/measure counts now. After preparing the selected chart at the recorded profiling width, record rendered row count as the HPA-584 repeat baseline.
 
 - [ ] **Step 5: Warm the app once before timed runs**
 
@@ -217,8 +227,11 @@ Record it as **inter-chart policy latency**, not parse/projection CPU and not ma
 Classify the observed import work using the design rubric:
 
 - **Proceed candidate:** movable file/decode/parse/projection work is a material main-thread contributor with visible impact.
-- **Narrow candidate:** only a subset is justified, such as local file/projection work or removal of the fixed sleep.
-- **Close candidate:** representative import is responsive and the movable slice is not material.
+- **Narrow candidate:** only a measured subset of off-main work is justified, such as local file/projection work but not server parsing.
+- **Policy-only Narrow candidate:** movable file/decode/parse/projection work is not material, but the fixed 100 ms inter-chart sleep is the only worthwhile latency cleanup. This is explicitly **not** an off-main result.
+- **Close candidate:** representative import is responsive and neither the movable slice nor a small policy cleanup is material enough to keep HPA-580 open.
+
+The fixed sleep alone must never produce an HPA-580 **Proceed** decision. If it is the only useful finding, later rewrite HPA-580 to a sleep-removal-only scope with all off-main parser/projection requirements removed rather than pretending the profiling gate justified concurrency work.
 
 Also explicitly note if SwiftData mutation/save dominates, because HPA-580 cannot solve that by moving models across actors.
 
@@ -277,14 +290,18 @@ Do not add clocks if the call tree already identifies the dominant stage.
 
 - [ ] **Step 3: If attribution remains ambiguous, add temporary outer/nested clocks only around existing calls**
 
-For the outer view boundary, temporarily record:
+For the outer view boundary, temporarily record three correctly labeled intervals:
 
 ```swift
 let hpa579Clock = ContinuousClock()
 let hpa579PrepareStart = hpa579Clock.now
 await vm.loadChartData()
 let hpa579AfterLoad = hpa579Clock.now
+
 vm.updateRowWidth(initialRowWidth)
+let hpa579AfterWidth = hpa579Clock.now
+
+let hpa579SetupStart = hpa579Clock.now
 vm.setupGameplay()
 let hpa579Prepared = hpa579Clock.now
 
@@ -292,9 +309,14 @@ Logger.info(
     "HPA-579 gameplay loadChartData: \(hpa579PrepareStart.duration(to: hpa579AfterLoad))"
 )
 Logger.info(
-    "HPA-579 gameplay setupGameplay: \(hpa579AfterLoad.duration(to: hpa579Prepared))"
+    "HPA-579 gameplay updateRowWidth: \(hpa579AfterLoad.duration(to: hpa579AfterWidth))"
+)
+Logger.info(
+    "HPA-579 gameplay setupGameplay: \(hpa579SetupStart.duration(to: hpa579Prepared))"
 )
 ```
+
+During initial preparation `updateRowWidth` is expected to be cheap because gameplay is not yet prepared, but it is still labeled separately rather than contaminating the `setupGameplay` interval.
 
 If `setupGameplay` is the expensive half and Time Profiler still cannot distinguish layout from BGM/timing setup, add a temporary clock immediately around `computeCachedLayoutData()` only. Do not instrument every helper.
 
@@ -519,10 +541,11 @@ Use these exact sections. Every value comes from Tasks 1-5; copy the measured va
 
 ### Representative chart
 - Song/chart: use the identity selected in Task 1 Step 4.
-- Notes: use the measured note count from Task 1 Step 4.
-- Controls: use the measured control-event count from Task 1 Step 4.
-- Measures: use the measured measure count from Task 1 Step 4.
-- Rendered rows: use the measured row count from Task 1 Step 4.
+- Notes: use the pre-gameplay note count from Task 1 Step 4.
+- Controls: use the pre-gameplay control-event count from Task 1 Step 4.
+- Measures: use the pre-gameplay measure count from Task 1 Step 4.
+- Profiling row width: use the concrete width recorded when preparing the selected chart.
+- Rendered rows: use the post-preparation rendered row count from Task 1 Step 4.
 
 ### Measurements
 - Local DTX file -> parse/projection: report the Task 2 median and range plus the dominant named stacks.
@@ -535,7 +558,7 @@ Use these exact sections. Every value comes from Tasks 1-5; copy the measured va
 - Peak live memory: record the Task 5 measured peak value.
 
 ### Decisions
-- HPA-580: write exactly one of Proceed, Narrow, or Close as unnecessary, followed by the evidence-backed reason.
+- HPA-580: write exactly one of Proceed, Narrow, Policy-only Narrow, or Close as unnecessary, followed by the evidence-backed reason.
 - HPA-581: write exactly one of Proceed, Narrow, or Close as unnecessary, followed by the evidence-backed reason.
 - HPA-584 baseline: summarize the repeatable representative-chart, mount, playback, scrolling, and memory baseline from Tasks 1 and 5.
 ```
@@ -546,11 +569,16 @@ Do not invent missing numbers. A real measurement limitation is part of the resu
 
 If **Proceed**:
 - keep HPA-580 open;
-- update its description only if the trace identifies a narrower exact boundary than the current issue already states.
+- update its description only if the trace identifies a narrower exact off-main boundary than the current issue already states.
 
 If **Narrow**:
-- update HPA-580's problem/scope/acceptance criteria so implementation contains only the measured justified slice;
+- update HPA-580's problem/scope/acceptance criteria so implementation contains only the measured justified off-main slice;
 - explicitly remove unmeasured off-main work from its required scope.
+
+If **Policy-only Narrow**:
+- use this only when the fixed inter-chart sleep is the only worthwhile finding and parser/projection off-main work is not justified;
+- update HPA-580 so its remaining implementation scope is removal of the fixed sleep only;
+- remove off-main parser/projection requirements and acceptance criteria rather than describing the sleep cleanup as concurrency/performance-preparation work.
 
 If **Close as unnecessary**:
 - close HPA-580 as canceled/not planned according to the team's normal status semantics;
@@ -574,7 +602,7 @@ If **Close as unnecessary**:
 
 - [ ] **Step 4: Preserve the HPA-584 baseline without starting HPA-584**
 
-Ensure the HPA-579 result contains the representative chart identity/counts, mount behavior, steady playback update behavior, scrolling observation, and peak memory. HPA-584 will repeat those values after any approved gameplay work.
+Ensure the HPA-579 result contains the representative chart identity, pre-gameplay counts, profiling row width, rendered row count, mount behavior, steady playback update behavior, scrolling observation, and peak memory. HPA-584 will repeat those values after any approved gameplay work.
 
 Do not implement or design virtualization in this task.
 
@@ -583,7 +611,7 @@ Do not implement or design virtualization in this task.
 HPA-579 is complete when:
 
 - all four required scenarios have evidence;
-- HPA-580 has Proceed/Narrow/Close;
+- HPA-580 has Proceed/Narrow/Policy-only Narrow/Close;
 - HPA-581 has Proceed/Narrow/Close;
 - HPA-584 has a repeatable baseline;
 - temporary instrumentation is removed or a retained signpost is explicitly justified.
