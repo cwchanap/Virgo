@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remove the unconditional 100 ms delay between serial server-chart imports while preserving request order, cancellation behavior, failure semantics, SwiftData ownership, and post-chart audio downloads.
+**Goal:** Remove the unconditional 100 ms delay between serial server-chart imports while preserving request order, cancellation error classification, failure semantics, SwiftData ownership, and post-chart audio downloads.
 
-**Architecture:** Keep `ServerSongDownloader` exactly as the current serial main-actor pipeline. Replace the throwing sleep between charts with `Task.checkCancellation()`, which retains the useful cancellation checkpoint without intentional latency. Strengthen existing downloader tests around exact request order; do not add timing thresholds, injected clocks, configurable throttles, or concurrency infrastructure.
+**Architecture:** Keep `ServerSongDownloader` as the current serial main-actor pipeline. Delete the fixed sleep and stale throttle comment with no replacement cancellation primitive; serialization already comes from awaiting `processChart(...)`. Strengthen existing downloader tests around exact request order; do not add timing thresholds, injected clocks, configurable throttles, or concurrency infrastructure.
 
 **Tech Stack:** Swift, Swift Concurrency, SwiftData, Swift Testing, Xcode/xcodebuild, SwiftLint.
 
@@ -13,7 +13,8 @@
 - HPA-579's decision is **Policy-only Narrow**: do not move parser/projection/file/SwiftData work off-main.
 - Chart downloads/imports remain serial and preserve `snapshot.charts` order.
 - Keep `ServerSongDownloader.processCharts` and `processChart` on the main actor.
-- Preserve `CancellationError` as an abort signal rather than a chart-specific failure.
+- Preserve the existing error classification: `CancellationError` thrown by chart processing aborts the import rather than becoming a chart-specific failure.
+- Do not create a new between-chart cancellation checkpoint or test contract after deleting the sleep.
 - Preserve partial-chart success, all-chart failure, warning aggregation, save/rollback, and audio behavior.
 - Do not add parallel downloads, a rate limiter, scheduler, sleeper abstraction, injected clock, or performance benchmark framework.
 - Do not add elapsed-time assertions for the removed 100 ms policy delay.
@@ -27,19 +28,19 @@
   - strengthen the existing four-difficulty import test so request order is explicit.
   - existing cancellation/partial-failure/all-failure tests remain the behavioral regression gates.
 - Modify `Virgo/utilities/ServerSongDownloader.swift`
-  - replace only the fixed inter-chart sleep/comment with a zero-latency cancellation checkpoint.
+  - remove only the fixed inter-chart sleep/comment and the now-unused `enumerated()` index.
 - No new production or test files.
 
 ---
 
-### Task 1: Pin the existing serial request contract
+### Task 1: Pin the existing request-order contract
 
 **Files:**
 - Modify: `VirgoTests/ServerSongDownloaderTests.swift:73-141`
 
 **Interfaces:**
 - Consumes: existing `MockFileDownloader.requestedURLs`, `makeMultiDifficultyServerSong()`, and `ServerSongDownloader.downloadAndImportSong(_:container:)`.
-- Produces: an exact request-order assertion protecting chart serialization and the chart-before-audio boundary.
+- Produces: an exact request-order assertion protecting snapshot order and the chart-before-audio boundary.
 
 This ticket removes intentional latency rather than fixing incorrect output. Do not create a production timing seam merely to force a red test. First strengthen the existing characterization test; it is expected to pass on current `main` and after the production edit.
 
@@ -67,7 +68,7 @@ with:
 )
 ```
 
-Do not add a duration measurement. This assertion protects the semantic contract that matters: every chart request completes in source order before optional audio requests begin.
+Do not describe this assertion as proof that the 100 ms delay was removed. It protects only the semantic request sequence; the source audit in Task 2 proves the policy deletion.
 
 - [ ] **Step 2: Run the focused characterization suite before production changes**
 
@@ -95,6 +96,8 @@ Expected: PASS. In particular, confirm these existing tests remain green:
 - `testDownloadAndImportSongFailsWhenAllChartsFail`
 - `testCancellationErrorPropagation`
 
+The cancellation test proves only that a `CancellationError` thrown during chart processing aborts the import. It does not exercise the inter-chart sleep and must not be used to justify a replacement checkpoint.
+
 - [ ] **Step 3: Commit the characterization change**
 
 ```bash
@@ -104,17 +107,17 @@ git commit -m "test: pin server chart request order"
 
 ---
 
-### Task 2: Remove the delay without losing the cancellation checkpoint
+### Task 2: Delete the fixed inter-chart delay
 
 **Files:**
 - Modify: `Virgo/utilities/ServerSongDownloader.swift:101-123`
 - Test: `VirgoTests/ServerSongDownloaderTests.swift`
 
 **Interfaces:**
-- Consumes: `snapshot.charts`, existing `processChart(_:for:in:serverDurationSeconds:)`, and Swift's `Task.checkCancellation()`.
+- Consumes: `snapshot.charts` and existing `processChart(_:for:in:serverDurationSeconds:)`.
 - Produces: the same serial `[String]` warning result from `processCharts`, but without the fixed 100 ms pause between chart iterations.
 
-- [ ] **Step 1: Replace the fixed sleep with the cancellation-only check**
+- [ ] **Step 1: Delete the throttle policy and now-unused index**
 
 Change this loop prefix:
 
@@ -128,12 +131,15 @@ for (index, chartSnapshot) in snapshot.charts.enumerated() {
 to:
 
 ```swift
-for (index, chartSnapshot) in snapshot.charts.enumerated() {
-    if index > 0 { try Task.checkCancellation() }
+for chartSnapshot in snapshot.charts {
     do {
 ```
 
-Do not change the loop to parallel tasks. Do not move `processChart` off-main. Do not alter the catch ordering.
+Leave the loop body and catch ordering unchanged.
+
+Do **not** insert `Task.checkCancellation()` as a replacement. Once the deliberate 100 ms gap is deleted, HPA-580 does not require a new between-chart cancellation observation point. Do not add cancellation-gap test machinery to manufacture that requirement.
+
+Do not change the loop to parallel tasks. Do not move `processChart` off-main.
 
 - [ ] **Step 2: Audit that the deleted policy is actually gone**
 
@@ -151,7 +157,7 @@ Also inspect the diff:
 git diff -- Virgo/utilities/ServerSongDownloader.swift VirgoTests/ServerSongDownloaderTests.swift
 ```
 
-Expected production diff: one stale comment removed and one sleep replaced by `Task.checkCancellation()`; no unrelated refactor.
+Expected production diff: the loop no longer uses `enumerated()`, and the stale throttle comment plus fixed sleep are gone. There should be no replacement checkpoint or unrelated refactor.
 
 - [ ] **Step 3: Run the focused downloader suite**
 
@@ -180,7 +186,7 @@ The exact-order assertion must still report:
 easy.dtx -> medium.dtx -> hard.dtx -> expert.dtx -> bgm.ogg -> preview.mp3
 ```
 
-The cancellation test must still fail the import when its downloader throws `CancellationError`, rather than counting cancellation as a recoverable chart failure.
+The existing cancellation test must still fail the import when its downloader throws `CancellationError`, rather than counting cancellation as a recoverable chart failure. Do not claim it verifies any between-chart cancellation window.
 
 - [ ] **Step 4: Run the complete nonparallel unit suite**
 
@@ -239,11 +245,13 @@ git log --oneline main..HEAD
 
 Confirm:
 
-- [ ] the only production behavior change is fixed-delay removal plus the cancellation-only checkpoint;
+- [ ] the only production behavior change is deletion of the fixed inter-chart delay and now-unused loop index;
+- [ ] no replacement cancellation checkpoint was introduced;
 - [ ] request ordering remains exact and serial;
 - [ ] optional audio still follows all chart requests;
+- [ ] `CancellationError` thrown by chart processing still aborts the import rather than becoming a recoverable chart failure;
 - [ ] no actor isolation, parser/projection, SwiftData, retry, or concurrency architecture changed;
-- [ ] no timing threshold or sleeper/clock abstraction was added;
+- [ ] no timing threshold, cancellation-gap test, or sleeper/clock abstraction was added;
 - [ ] focused downloader tests passed nonparallel;
 - [ ] full `VirgoTests` passed nonparallel;
 - [ ] SwiftLint and `git diff --check` completed successfully;
