@@ -22,14 +22,14 @@ These facts make HPA-580/HPA-581 plausible, but not automatically justified.
 Use one small, repeatable, **Instruments-first** profiling pass on the largest/densest real chart currently available.
 
 1. Make a Release macOS run the authoritative baseline. Record the exact commit, Mac hardware, OS, Xcode version, and configuration. Debug traces may be used for diagnosis but must be labeled and must not override Release behavior.
-2. Select the representative chart by current chart complexity, not by filename alone. Prefer the real chart with the largest combination of note/control count and measure count that is available in the current app data. If no denser current server/downloaded chart is available, use the bundled Soukyuu fixture's REAL chart (`Virgo/Fixtures/soukyuu_e_no_shouka/real.dtx`).
+2. Select the representative chart in two stages. First compare pre-gameplay complexity using existing chart data: note count, control-event count, and measure count. Only when candidates are close should they be prepared at the same recorded row width and compared by rendered row count. If no denser current server/downloaded chart is available, use the densest chart that is actually shipped in the bundled Soukyuu fixture; in the current tree that is MASTER (`Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx`). `SET.def` references REAL / `real.dtx`, but that file is not shipped and the importer drops the missing entry.
 3. Start with Time Profiler plus SwiftUI instrumentation. Add temporary `ContinuousClock` measurements only when Instruments cannot isolate a decision-relevant boundary cleanly.
 4. Measure the four scenarios required by HPA-579:
    - DTX bytes/file available -> decode, parse, and persistence projection complete;
    - chart selection -> gameplay prepared;
    - width change -> notation relayout complete;
    - largest-chart mount/playback -> main-thread activity, SwiftUI update activity, scrolling responsiveness, and peak memory.
-5. Treat the 100 ms inter-chart sleep as explicit wall-clock policy overhead, not parser CPU time. Report it separately.
+5. Treat the 100 ms inter-chart sleep as explicit wall-clock policy overhead, not parser CPU time. Report it separately. A sleep-only finding cannot justify an HPA-580 off-main **Proceed** decision.
 6. Do not create a benchmark target, metrics service, CI performance gate, dashboard, generalized signpost layer, or retained trace repository.
 7. Record final numbers and Proceed/Narrow/Close decisions in a Linear comment on HPA-579. Do not commit Instruments traces. Temporary source instrumentation is reverted before HPA-579 closes unless a retained signpost proves necessary to interpret an otherwise unmeasurable boundary.
 
@@ -60,15 +60,16 @@ The benchmark input must be a real chart, not one of the small synthetic golden 
 Selection rules:
 
 1. Use current app data available on the profiling machine.
-2. Compare candidate real charts by at least:
-   - note count;
-   - control-event count;
-   - measure count / rendered row count.
-3. Use the candidate that is directionally largest/densest across those values. Exact weighting is unnecessary; the goal is to avoid accidentally profiling an easy chart.
-4. Record the song/chart identity and the counts in the HPA-579 result comment so HPA-584 can repeat the same baseline.
-5. If the current catalog has no locally available chart that is clearly denser, use the bundled Soukyuu REAL chart as the stable fallback.
+2. First-pass candidate comparison uses values available before gameplay preparation:
+   - `Chart.notesCount` / loaded note count;
+   - `Chart.safeControlEvents.count`;
+   - measure count from the existing loaded chart relationship data or the maximum valid note measure.
+3. Choose the candidate that is directionally largest/densest across those three values. Exact weighting is unnecessary; the goal is to avoid accidentally profiling an easy chart.
+4. If two or more candidates are close on the first three values, prepare only those contenders at the same recorded row width, compare rendered row count, and use that as a tie-breaker. Do not require rendered rows for every candidate before choosing a shortlist.
+5. Record the selected song/chart identity, note/control/measure counts, profiling row width, and rendered row count in the HPA-579 result comment so HPA-584 can repeat the same baseline.
+6. If the current catalog has no locally available chart that is clearly denser, use the densest **present** bundled Soukyuu chart. In the current tree the stable fallback is MASTER / `mas.dtx`. `SET.def` also references REAL / `real.dtx`, but `real.dtx` is absent and `LocalDTXFixtureImporter.loadImportedCharts` intentionally drops that missing chart.
 
-Do not infer that `REAL` or `MASTER` is densest solely from the difficulty label when a quick count is available.
+Do not infer that `REAL` or `MASTER` is densest solely from the difficulty label when a quick count is available. The MASTER fallback is a property of the currently shipped fixture files, not a general difficulty-order assumption.
 
 ## Measurement protocol
 
@@ -133,7 +134,7 @@ Also inspect the whole import trace so the result can distinguish:
 - network/file latency;
 - the deliberate 100 ms inter-chart sleeps.
 
-The fixed sleep is reported separately as `100 ms * (processed chart count - 1)`. It is a latency policy, not a main-thread CPU cost.
+The fixed sleep is reported separately as `100 ms * (processed chart count - 1)`. It is a latency policy, not a main-thread CPU cost, and by itself is not evidence for moving parser/projection work off-main.
 
 ### Scenario 2 — chart selection to gameplay prepared
 
@@ -151,7 +152,7 @@ Use Time Profiler call stacks to attribute the interval to the existing stages:
    - `computeCachedLayoutData` / `cacheNotationLayout` / `cacheBeatPositions`;
    - BGM setup and remaining timing/input setup.
 
-Only add nested temporary clock measurements when the sampled stacks cannot answer which stage dominates.
+Only add nested temporary clock measurements when the sampled stacks cannot answer which stage dominates. If timing the outer calls, measure `updateRowWidth(initialRowWidth)` separately or start the `setupGameplay` interval immediately before `setupGameplay()` so the labels match the code being timed.
 
 Do not assume HPA-581 is justified merely because the total interval is noticeable. If BGM setup, SwiftData relationship loading, or another non-HPA-581 stage dominates, the HPA-581 decision must reflect that.
 
@@ -196,8 +197,9 @@ No universal millisecond threshold is introduced from one developer machine. Dec
 Record one of:
 
 - **Proceed** when decode/parse/projection or blocking file work is a material main-thread contributor on the representative import and moving that measured slice off-main is likely to remove a visible stall.
-- **Narrow** when only a subset is justified—for example local file read + projection but not server parsing, or only the fixed inter-chart sleep is worth removing.
-- **Close as unnecessary** when the representative import is responsive and the movable CPU/file slice is not a material main-thread cost.
+- **Narrow** when only a measured subset of the proposed off-main work is justified, for example local file read + projection but not server parsing.
+- **Policy-only Narrow** when the movable CPU/file slice is not material but the fixed 100 ms inter-chart sleep is the only worthwhile latency cleanup. In that case update HPA-580 so its remaining scope is explicitly removal of the sleep with **no off-main parser/projection work**; the sleep alone must never be reported as an off-main Proceed result.
+- **Close as unnecessary** when the representative import is responsive and neither the movable CPU/file slice nor a small policy cleanup has sufficient value.
 
 Do not treat SwiftData mutation cost as evidence for moving SwiftData models off-main; HPA-580 explicitly keeps model mutation on the main actor.
 
@@ -234,7 +236,8 @@ The authoritative result is one concise Linear comment on HPA-579. Use this stru
 
 ### Representative chart
 - Song/chart identity
-- Notes / controls / measures / rendered rows
+- Notes / controls / measures
+- Profiling row width / rendered rows
 
 ### Measurements
 - DTX file/bytes -> projection: median + range, dominant stacks
@@ -243,12 +246,12 @@ The authoritative result is one concise Linear comment on HPA-579. Use this stru
 - Mount/playback: SwiftUI update behavior, scrolling observations, peak memory
 
 ### Decisions
-- HPA-580: Proceed | Narrow | Close as unnecessary — evidence-backed reason
+- HPA-580: Proceed | Narrow | Policy-only Narrow | Close as unnecessary — evidence-backed reason
 - HPA-581: Proceed | Narrow | Close as unnecessary — evidence-backed reason
 - HPA-584 baseline: concise repeatable baseline
 ```
 
-If a ticket is **Narrow**, update that ticket's description before implementation so its acceptance criteria match the evidence. If the decision is **Close as unnecessary**, close the ticket with the HPA-579 comment as the reason. If **Proceed**, leave the ticket scope intact unless the trace identifies a more precise boundary.
+If a ticket is **Narrow**, update that ticket's description before implementation so its acceptance criteria match the evidence. A policy-only HPA-580 Narrow must explicitly remove off-main parser/projection requirements. If the decision is **Close as unnecessary**, close the ticket with the HPA-579 comment as the reason. If **Proceed**, leave the ticket scope intact unless the trace identifies a more precise boundary.
 
 ## Temporary instrumentation policy
 
@@ -284,13 +287,14 @@ Execution of HPA-579 should normally finish with no production source diff. The 
 
 ## Acceptance criteria
 
-- [ ] The largest/densest currently available real chart is identified and recorded with repeatable complexity counts.
+- [ ] The largest/densest currently available real chart is identified from pre-gameplay note/control/measure counts; rendered rows are recorded after preparation and used only as a tie-breaker when needed.
+- [ ] The bundled fallback points to a chart file that is present in the current tree; currently Soukyuu MASTER / `mas.dtx`, with the missing REAL entry recorded rather than selected.
 - [ ] Commit, hardware/device, OS, Xcode, and build configuration are recorded.
 - [ ] DTX file/bytes -> decode/parse/projection is measured without conflating network latency or the fixed inter-chart sleep.
-- [ ] Chart selection -> gameplay prepared is measured and attributed to existing stages.
+- [ ] Chart selection -> gameplay prepared is measured and attributed to existing stages with timing labels matching the actual intervals.
 - [ ] Width relayout processing cost is measured separately from the intentional 100 ms debounce.
 - [ ] Largest-chart mount/playback records main-thread activity, SwiftUI update behavior, scrolling responsiveness, and peak memory.
-- [ ] HPA-580 and HPA-581 each receive an explicit Proceed, Narrow, or Close as unnecessary decision backed by observed evidence.
+- [ ] HPA-580 and HPA-581 each receive an explicit evidence-backed decision; a sleep-only HPA-580 result is policy-only Narrow, never off-main Proceed.
 - [ ] A concise repeatable baseline is recorded for HPA-584.
 - [ ] No benchmark framework, dashboard, CI gate, virtualization, or speculative production optimization is added.
 - [ ] Temporary instrumentation is removed unless a minimal retained signpost is explicitly justified by the measurement itself.
