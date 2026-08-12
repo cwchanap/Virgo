@@ -1,6 +1,6 @@
 # HPA-580: Remove the Fixed Inter-Chart Import Delay
 
-**Date:** 2026-08-11  
+**Date:** 2026-08-11
 **Status:** Proposed
 
 ## Context
