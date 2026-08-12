@@ -124,8 +124,16 @@ struct ServerSongDownloaderTests {
             #expect(importedCharts.contains { $0.difficulty == .hard })
             #expect(importedCharts.contains { $0.difficulty == .expert })
 
-            #expect(mock.requestedURLs.contains("\(r2Base)/multi-diff/bgm.ogg"))
-            #expect(mock.requestedURLs.contains("\(r2Base)/multi-diff/preview.mp3"))
+            #expect(
+                mock.requestedURLs == [
+                    "\(r2Base)/multi-diff/easy.dtx",
+                    "\(r2Base)/multi-diff/medium.dtx",
+                    "\(r2Base)/multi-diff/hard.dtx",
+                    "\(r2Base)/multi-diff/expert.dtx",
+                    "\(r2Base)/multi-diff/bgm.ogg",
+                    "\(r2Base)/multi-diff/preview.mp3"
+                ]
+            )
         }
     }
 
