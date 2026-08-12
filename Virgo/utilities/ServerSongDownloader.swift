@@ -110,9 +110,7 @@ class ServerSongDownloader {
         var failedCharts: [String] = []
         var warnings: [String] = []
         let serverDuration = snapshot.durationSeconds
-        for (index, chartSnapshot) in snapshot.charts.enumerated() {
-            // Throttle chart downloads to avoid overwhelming the server.
-            if index > 0 { try await Task.sleep(nanoseconds: 100_000_000) }
+        for chartSnapshot in snapshot.charts {
             do {
                 if let warning = try await processChart(
                     chartSnapshot,
@@ -123,8 +121,6 @@ class ServerSongDownloader {
                     warnings.append(warning)
                 }
                 successCount += 1
-            } catch is CancellationError {
-                throw CancellationError()
             } catch {
                 Logger.warning("Failed to process chart \(chartSnapshot.filename): \(error.localizedDescription)")
                 failedCharts.append(chartSnapshot.filename)
