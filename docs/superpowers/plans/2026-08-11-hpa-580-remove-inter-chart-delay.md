@@ -2,58 +2,30 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Remove the unconditional 100 ms delay between serial server-chart imports while preserving request order, cancellation error classification, failure semantics, SwiftData ownership, and post-chart audio downloads.
+**Goal:** Remove the fixed 100 ms delay between serial server-chart imports and delete the cancellation branch that becomes production-dead with it.
 
-**Architecture:** Keep `ServerSongDownloader` as the current serial main-actor pipeline. Delete the fixed sleep and stale throttle comment with no replacement cancellation primitive; serialization already comes from awaiting `processChart(...)`. Strengthen existing downloader tests around exact request order; do not add timing thresholds, injected clocks, configurable throttles, or concurrency infrastructure.
+**Architecture:** Keep the existing main-actor, serial `ServerSongDownloader` pipeline. Awaiting `processChart(...)` provides serialization. Do not replace the deleted sleep with any checkpoint, throttle, scheduler, timing seam, or concurrency abstraction.
 
-**Tech Stack:** Swift, Swift Concurrency, SwiftData, Swift Testing, Xcode/xcodebuild, SwiftLint.
+**Tech Stack:** Swift, SwiftData, Swift Testing, xcodebuild, SwiftLint.
 
-## Global Constraints
+## Scope facts
 
-- HPA-579's decision is **Policy-only Narrow**: do not move parser/projection/file/SwiftData work off-main.
-- Chart downloads/imports remain serial and preserve `snapshot.charts` order.
-- Keep `ServerSongDownloader.processCharts` and `processChart` on the main actor.
-- Preserve the existing error classification: `CancellationError` thrown by chart processing aborts the import rather than becoming a chart-specific failure.
-- Do not create a new between-chart cancellation checkpoint or test contract after deleting the sleep.
-- Preserve partial-chart success, all-chart failure, warning aggregation, save/rollback, and audio behavior.
-- Do not add parallel downloads, a rate limiter, scheduler, sleeper abstraction, injected clock, or performance benchmark framework.
-- Do not add elapsed-time assertions for the removed 100 ms policy delay.
-- Run tests with `-parallel-testing-enabled NO` per repository policy.
+- HPA-579 decided **Policy-only Narrow**: parser/projection/SwiftData stay where they are.
+- `DTXAPIClient` is the only production `FileDownloading` implementation and wraps cancellation as `DTXAPIError.networkError`.
+- `ServerSongsView` discards the import `Task` handle, so the current UI cannot cancel an in-flight import.
+- Therefore, after deleting the throwing sleep, `catch is CancellationError` in `processCharts` is mock-only dead code. Real cancellation support is a separate ticket if ever needed.
+- The default URL session already caps connections per host at 2, and optional BGM/preview downloads run consecutively without an artificial delay. Do not invent a replacement throttle.
 
 ---
 
-## File map
-
-- Modify `VirgoTests/ServerSongDownloaderTests.swift`
-  - strengthen the existing four-difficulty import test so request order is explicit.
-  - existing cancellation/partial-failure/all-failure tests remain the behavioral regression gates.
-- Modify `Virgo/utilities/ServerSongDownloader.swift`
-  - remove only the fixed inter-chart sleep/comment and the now-unused `enumerated()` index.
-- No new production or test files.
-
----
-
-### Task 1: Pin the existing request-order contract
+### Task 1: Pin request order before changing production
 
 **Files:**
-- Modify: `VirgoTests/ServerSongDownloaderTests.swift:73-141`
+- Modify: `VirgoTests/ServerSongDownloaderTests.swift`
 
-**Interfaces:**
-- Consumes: existing `MockFileDownloader.requestedURLs`, `makeMultiDifficultyServerSong()`, and `ServerSongDownloader.downloadAndImportSong(_:container:)`.
-- Produces: an exact request-order assertion protecting snapshot order and the chart-before-audio boundary.
+- [ ] **Step 1: Tighten the existing four-chart request assertion**
 
-This ticket removes intentional latency rather than fixing incorrect output. Do not create a production timing seam merely to force a red test. First strengthen the existing characterization test; it is expected to pass on current `main` and after the production edit.
-
-- [ ] **Step 1: Replace loose audio-request checks with the exact request sequence**
-
-In `testDownloadAndImportSongMapsDifficultiesAndDownloadsOptionalFiles()`, replace:
-
-```swift
-#expect(mock.requestedURLs.contains("\(r2Base)/multi-diff/bgm.ogg"))
-#expect(mock.requestedURLs.contains("\(r2Base)/multi-diff/preview.mp3"))
-```
-
-with:
+In `testDownloadAndImportSongMapsDifficultiesAndDownloadsOptionalFiles()`, replace the two `contains` assertions for BGM/preview with:
 
 ```swift
 #expect(
@@ -68,11 +40,9 @@ with:
 )
 ```
 
-Do not describe this assertion as proof that the 100 ms delay was removed. It protects only the semantic request sequence; the source audit in Task 2 proves the policy deletion.
+This is characterization only. It should pass before and after HPA-580 and protects request order, not elapsed time.
 
-- [ ] **Step 2: Run the focused characterization suite before production changes**
-
-Run:
+- [ ] **Step 2: Run the focused suite**
 
 ```bash
 xcodebuild test \
@@ -89,14 +59,7 @@ xcodebuild test \
   -derivedDataPath ./DerivedData
 ```
 
-Expected: PASS. In particular, confirm these existing tests remain green:
-
-- `testDownloadAndImportSongMapsDifficultiesAndDownloadsOptionalFiles`
-- `testDownloadAndImportSongSucceedsWithPartialChartFailure`
-- `testDownloadAndImportSongFailsWhenAllChartsFail`
-- `testCancellationErrorPropagation`
-
-The cancellation test proves only that a `CancellationError` thrown during chart processing aborts the import. It does not exercise the inter-chart sleep and must not be used to justify a replacement checkpoint.
+Expected: PASS, including the existing partial-failure and all-chart-failure tests.
 
 - [ ] **Step 3: Commit the characterization change**
 
@@ -107,19 +70,15 @@ git commit -m "test: pin server chart request order"
 
 ---
 
-### Task 2: Delete the fixed inter-chart delay
+### Task 2: Delete the delay and mock-only cancellation branch
 
 **Files:**
-- Modify: `Virgo/utilities/ServerSongDownloader.swift:101-123`
-- Test: `VirgoTests/ServerSongDownloaderTests.swift`
+- Modify: `Virgo/utilities/ServerSongDownloader.swift`
+- Modify: `VirgoTests/ServerSongDownloaderTests.swift`
 
-**Interfaces:**
-- Consumes: `snapshot.charts` and existing `processChart(_:for:in:serverDurationSeconds:)`.
-- Produces: the same serial `[String]` warning result from `processCharts`, but without the fixed 100 ms pause between chart iterations.
+- [ ] **Step 1: Simplify the chart loop**
 
-- [ ] **Step 1: Delete the throttle policy and now-unused index**
-
-Change this loop prefix:
+Change:
 
 ```swift
 for (index, chartSnapshot) in snapshot.charts.enumerated() {
@@ -135,128 +94,89 @@ for chartSnapshot in snapshot.charts {
     do {
 ```
 
-Leave the loop body and catch ordering unchanged.
+Leave `processChart(...)`, warning collection, success counting, and all-chart failure logic unchanged.
 
-Do **not** insert `Task.checkCancellation()` as a replacement. Once the deliberate 100 ms gap is deleted, HPA-580 does not require a new between-chart cancellation observation point. Do not add cancellation-gap test machinery to manufacture that requirement.
+- [ ] **Step 2: Delete the dead cancellation special case**
 
-Do not change the loop to parallel tasks. Do not move `processChart` off-main.
+Remove:
 
-- [ ] **Step 2: Audit that the deleted policy is actually gone**
+```swift
+} catch is CancellationError {
+    throw CancellationError()
+```
 
-Run:
+The production downloader cannot currently surface a bare `CancellationError`; do not replace this branch with another cancellation mechanism in HPA-580.
+
+- [ ] **Step 3: Delete the synthetic cancellation test**
+
+Remove `testCancellationErrorPropagation()` and its local `CancellingDownloader` mock from `ServerSongDownloaderTests.swift`.
+
+Do not add a new cancellation-gap test. Making production cancellation real requires separate changes in `DTXAPIClient` and caller task ownership.
+
+- [ ] **Step 4: Source-audit the deletion**
 
 ```bash
-git grep -n -E 'Task\.sleep|100_000_000|Throttle chart downloads' -- Virgo/utilities/ServerSongDownloader.swift
+git grep -n -E 'Task\.sleep|100_000_000|Throttle chart downloads|catch is CancellationError' -- \
+  Virgo/utilities/ServerSongDownloader.swift
+git grep -n 'testCancellationErrorPropagation' -- VirgoTests/ServerSongDownloaderTests.swift
 ```
 
-Expected: no output.
+Expected: both commands return no output.
 
-Also inspect the diff:
+- [ ] **Step 5: Run the required regression gate**
 
-```bash
-git diff -- Virgo/utilities/ServerSongDownloader.swift VirgoTests/ServerSongDownloaderTests.swift
-```
+Run the same nonparallel `ServerSongDownloaderTests` command from Task 1.
 
-Expected production diff: the loop no longer uses `enumerated()`, and the stale throttle comment plus fixed sleep are gone. There should be no replacement checkpoint or unrelated refactor.
+Expected: PASS. Confirm:
 
-- [ ] **Step 3: Run the focused downloader suite**
+- exact chart request order remains easy → medium → hard → expert;
+- BGM then preview remain after all charts;
+- partial chart failure still imports the valid chart;
+- all-chart failure still fails the import.
 
-Run:
-
-```bash
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -configuration Debug \
-  -only-testing:VirgoTests/ServerSongDownloaderTests \
-  -parallel-testing-enabled NO \
-  ONLY_ACTIVE_ARCH=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGNING_ALLOWED=NO \
-  -destination-timeout 300 \
-  -derivedDataPath ./DerivedData
-```
-
-Expected: PASS.
-
-The exact-order assertion must still report:
-
-```text
-easy.dtx -> medium.dtx -> hard.dtx -> expert.dtx -> bgm.ogg -> preview.mp3
-```
-
-The existing cancellation test must still fail the import when its downloader throws `CancellationError`, rather than counting cancellation as a recoverable chart failure. Do not claim it verifies any between-chart cancellation window.
-
-- [ ] **Step 4: Run the complete nonparallel unit suite**
-
-Run:
-
-```bash
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -configuration Debug \
-  -only-testing:VirgoTests \
-  -parallel-testing-enabled NO \
-  ONLY_ACTIVE_ARCH=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGNING_ALLOWED=NO \
-  -enableCodeCoverage YES \
-  -destination-timeout 300 \
-  -derivedDataPath ./DerivedData
-```
-
-Expected: all non-known-issue unit tests pass.
-
-- [ ] **Step 5: Run static checks**
+- [ ] **Step 6: Run static checks**
 
 ```bash
 swiftlint lint --quiet
 git diff --check
-git grep -n -E 'Task\.sleep|100_000_000|Throttle chart downloads' -- Virgo/utilities/ServerSongDownloader.swift
 ```
 
-Expected:
+Expected: no new serious SwiftLint violation and no whitespace errors.
 
-- SwiftLint exits successfully; pre-existing warning-level debt may be reported but no new serious violation is introduced.
-- `git diff --check` prints nothing.
-- the final `git grep` prints nothing.
+- [ ] **Step 7: Optional full-suite diagnostic**
 
-- [ ] **Step 6: Commit the production change**
+A full `VirgoTests` run is **not** the HPA-580 gate because clean `main` has a documented nondeterministic SwiftData `\Chart.difficulty` detached-context crash.
+
+If you run the full suite and it fails, run the identical command on a clean `main` worktree/check-out before classifying the failure. Treat focused downloader failures or failures reproducible only on the HPA-580 branch as regressions; do not spend this ticket fixing the known shared-container flake.
+
+- [ ] **Step 8: Commit the production/dead-test deletion**
 
 ```bash
-git add Virgo/utilities/ServerSongDownloader.swift
+git add Virgo/utilities/ServerSongDownloader.swift VirgoTests/ServerSongDownloaderTests.swift
 git commit -m "perf: remove inter-chart import delay"
 ```
 
 ---
 
-## Final review checklist
-
-Before making the implementation PR ready for review, compare the complete branch against `main`:
+## Final review
 
 ```bash
-git diff --stat main...HEAD
 git diff main...HEAD -- Virgo/utilities/ServerSongDownloader.swift VirgoTests/ServerSongDownloaderTests.swift
-git log --oneline main..HEAD
+git diff --check
 ```
 
 Confirm:
 
-- [ ] the only production behavior change is deletion of the fixed inter-chart delay and now-unused loop index;
-- [ ] no replacement cancellation checkpoint was introduced;
-- [ ] request ordering remains exact and serial;
-- [ ] optional audio still follows all chart requests;
-- [ ] `CancellationError` thrown by chart processing still aborts the import rather than becoming a recoverable chart failure;
-- [ ] no actor isolation, parser/projection, SwiftData, retry, or concurrency architecture changed;
-- [ ] no timing threshold, cancellation-gap test, or sleeper/clock abstraction was added;
-- [ ] focused downloader tests passed nonparallel;
-- [ ] full `VirgoTests` passed nonparallel;
-- [ ] SwiftLint and `git diff --check` completed successfully;
-- [ ] source audit finds no stale inter-chart delay constant/comment.
+- [ ] no inter-chart delay, throttle comment, or unused loop index remains;
+- [ ] no mock-only cancellation catch/test remains;
+- [ ] chart processing is still serial through awaited `processChart(...)`;
+- [ ] no changes were made to `DTXAPIClient`, `ServerSongsView`, actor isolation, parser/projection, or SwiftData ownership;
+- [ ] no clock/sleeper, rate limiter, parallel downloader, or elapsed-time threshold was added;
+- [ ] focused `ServerSongDownloaderTests` passed nonparallel.
 
-## Linear closeout
+## Non-goals
 
-After implementation verification, post the implementation PR and verification summary to HPA-580. The issue can move to Done when the implementation PR lands. HPA-581 remains the next independent Phase C performance task; do not fold gameplay preparation/static rendering into this branch.
+- Off-main import work.
+- Parallel downloads or replacement throttling infrastructure.
+- Timing/benchmark infrastructure.
+- Making production import cancellation cooperative; that requires separate `DTXAPIClient` and task-ownership work.
