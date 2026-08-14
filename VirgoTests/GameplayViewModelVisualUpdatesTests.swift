@@ -22,7 +22,7 @@ struct GameplayViewModelVisualUpdatesTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
         let didStart = await CombineTestUtilities.performAndWait(
@@ -85,7 +85,7 @@ struct GameplayViewModelVisualUpdatesTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
         // At 120 BPM in 4/4, one beat is 0.5s. The playhead should hold
@@ -123,7 +123,7 @@ struct GameplayViewModelVisualUpdatesTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
         // At 120 BPM in 3/4, one beat is 0.5s and the next measure starts
@@ -153,7 +153,7 @@ struct GameplayViewModelVisualUpdatesTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
         viewModel.updateContinuousVisualsForTesting(elapsedTime: 1.00)
@@ -180,7 +180,7 @@ struct GameplayViewModelVisualUpdatesTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.isPlaying = false
         let position = viewModel.calculatePurpleBarPosition()
@@ -200,7 +200,7 @@ struct GameplayViewModelVisualUpdatesTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let measure = try #require(viewModel.cachedNotationLayout.measures.first)
         let position = try #require(
@@ -227,7 +227,7 @@ struct GameplayViewModelVisualUpdatesTests {
 
         await viewModel.loadChartData()
         viewModel.cachedLayoutRowWidth = 620
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let measureRows = Dictionary(
             uniqueKeysWithValues: viewModel.cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
@@ -250,7 +250,7 @@ struct GameplayViewModelVisualUpdatesTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
         viewModel.pausedElapsedTime = 2.0
 
@@ -277,7 +277,7 @@ struct GameplayViewModelVisualUpdatesTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
         // calculateNotationPurpleBarPosition directly returns nil when measure doesn't exist
@@ -299,7 +299,7 @@ struct GameplayViewModelVisualUpdatesTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
         let clampedPosition = try #require(
@@ -327,7 +327,7 @@ struct GameplayViewModelVisualUpdatesTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
         let position = try #require(
@@ -356,7 +356,7 @@ struct GameplayViewModelVisualUpdatesTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
         viewModel.currentRow = 2
 
@@ -384,7 +384,7 @@ struct GameplayViewModelVisualUpdatesTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
         viewModel.currentRow = 1
 
@@ -412,7 +412,7 @@ struct GameplayViewModelVisualUpdatesTests {
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Find the first measure that lives on a row > 0; we need the playhead to land in it.
         let firstNonZeroRowMeasure = viewModel.cachedNotationLayout.measures

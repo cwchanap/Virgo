@@ -90,7 +90,7 @@ struct GameplayViewTests {
         let metronome = ScheduledMetronomeSpy()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.startPlayback()
         viewModel.startBGMPlayback(track: try #require(viewModel.track))
 

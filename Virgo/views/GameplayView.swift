@@ -120,7 +120,7 @@ struct GameplayView: View {
         // Seed the sheet width before setupGameplay builds the first visible notation layout.
         vm.updateRowWidth(initialRowWidth)
         // setupGameplay loads the persisted speed for this chart (SC-06)
-        vm.setupGameplay()
+        await vm.setupGameplay()
         guard vm.isGameplayPrepared else { return }
         // Setup InputManager delegate and metronome subscription after viewModel is ready
         vm.inputManager.delegate = vm.inputHandler

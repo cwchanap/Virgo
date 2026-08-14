@@ -21,7 +21,7 @@ struct GameplayViewModelScoringTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.isPlaying = true
         defer { viewModel.cleanup() }
         let target = try #require(viewModel.cachedRhythmNoteTargets.first)
@@ -43,7 +43,7 @@ struct GameplayViewModelScoringTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.isPlaying = true
         defer { viewModel.cleanup() }
         let position = RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0)
@@ -81,7 +81,7 @@ struct GameplayViewModelScoringTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
         defer { viewModel.cleanup() }
         let target = try #require(viewModel.cachedRhythmNoteTargets.first)
@@ -109,7 +109,7 @@ struct GameplayViewModelScoringTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
         defer { viewModel.cleanup() }
         let target = try #require(viewModel.cachedRhythmNoteTargets.first)
@@ -138,7 +138,7 @@ struct GameplayViewModelScoringTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
         defer { viewModel.cleanup() }
         let target = try #require(viewModel.cachedRhythmNoteTargets.first)
@@ -191,7 +191,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Reach a combo milestone by injecting 10 perfect hits to trigger showMilestoneAnimation
@@ -235,7 +235,7 @@ struct GameplayViewModelScoringTests {
             completionScheduler: GameplayViewModelTestHarness.immediateCompletionScheduler()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Before reaching the end, completion is not scheduled.
@@ -281,7 +281,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Schedule completion by driving playback to the end.
@@ -316,7 +316,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Schedule completion by driving playback to the end.
@@ -351,7 +351,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.isPlaying = true
 
         // Simulate the OLD grace-period first-tick behaviour: scan everything as missed.
@@ -385,7 +385,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // First scan covers the full track
@@ -407,7 +407,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Scan up to a mid-point position (before any notes are expected)
@@ -437,7 +437,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Advance the cursor to the end
@@ -462,7 +462,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Build a non-zero combo so a miss can break it
@@ -487,7 +487,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Combo is 0 already (no hits placed)
@@ -509,7 +509,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Inject a hit so the score is > 0 and exceeds the default high score of 0
@@ -529,7 +529,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Seed a high score so the next session can't beat it
         chart.bestScore = 99999
@@ -552,7 +552,7 @@ struct GameplayViewModelScoringTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         viewModel.scoreEngine.processHit(accuracy: .perfect)

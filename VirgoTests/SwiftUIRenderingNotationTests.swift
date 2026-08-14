@@ -72,7 +72,7 @@ struct SwiftUIRenderingNotationTests {
                 noteCount: 0
             )
             await viewModel.loadChartData()
-            viewModel.setupGameplay(loadPersistedSpeed: false)
+            await viewModel.setupGameplay(loadPersistedSpeed: false)
             guard let printed = viewModel.cachedNotationLayout.rests.first(where: \.isPrinted),
                   let hidden = viewModel.cachedNotationLayout.rests.first(where: { !$0.isPrinted }) else {
                 Issue.record("Expected one printed and one hidden full-measure rest")

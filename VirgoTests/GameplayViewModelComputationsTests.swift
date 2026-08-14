@@ -17,7 +17,7 @@ private enum CoverageHelpers {
     static func preparedVM(noteCount: Int = 4) async -> GameplayViewModel {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: noteCount)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         return vm
     }
 
@@ -26,7 +26,7 @@ private enum CoverageHelpers {
         chart.notes.forEach { $0.originKind = .dtx }
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         return vm
     }
 
@@ -61,7 +61,7 @@ struct GameplayViewModelComputationsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         let baseline = vm.cachedLayoutRowWidth
         vm.updateRowWidth(.nan)
@@ -93,7 +93,7 @@ struct GameplayViewModelComputationsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         let beat = try #require(vm.cachedDrumBeats.first { abs($0.timePosition - 0.25) < 0.0001 })
         let cached = try #require(vm.cachedBeatPositions[beat.id])
@@ -121,7 +121,7 @@ struct GameplayViewModelComputationsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         let beat = try #require(vm.cachedDrumBeats.first { abs($0.timePosition - 3.0) < 0.0001 })
         let before = try #require(vm.cachedBeatPositions[beat.id])
@@ -159,7 +159,7 @@ struct GameplayViewModelComputationsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         vm.cachedDrumBeats = [DrumBeat(
             id: 9_999,
             drums: [.snare],
@@ -190,7 +190,7 @@ struct GameplayViewModelComputationsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         #expect(vm.cachedNotationLayout.hasRenderableContent)
         #expect(!vm.cachedNotationLayout.hasPlayableContent)
@@ -324,7 +324,7 @@ struct GameplayViewModelComputationsTests {
                                 measureNumber: 10, measureOffset: 0.0))
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.isPlaying = true
@@ -350,7 +350,7 @@ struct GameplayViewModelComputationsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         vm.isPlaying = true
 
         vm.scanForMissedNotes(upToTimePosition: 5.0)
@@ -376,7 +376,7 @@ struct GameplayViewModelComputationsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         // Build combo with the first note, then auto-miss the second via a scan
         // playhead well past it.
@@ -505,7 +505,7 @@ struct ComputationsVisualUpdatesTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         vm.isPlaying = true
 
         vm.updateContinuousVisualsForTesting(elapsedTime: 4.0)
@@ -544,7 +544,7 @@ struct ComputationsVisualUpdatesTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         vm.isPlaying = true
 
         #expect(vm.cachedNotationLayout.hasRenderableContent)
@@ -565,7 +565,7 @@ struct ComputationsVisualUpdatesTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         // Force the legacy path by clearing the notation layout.
         vm.installNotationLayout(.empty)

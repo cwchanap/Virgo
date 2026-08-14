@@ -29,7 +29,7 @@ struct GameplayViewModelPlaybackTimingTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Fresh start (no BGM, metronome-only)
         let startCallTime = CFAbsoluteTimeGetCurrent()
@@ -85,7 +85,7 @@ struct GameplayViewModelPlaybackTimingTests {
         let metronome = ScheduledMetronomeSpy()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let pausedElapsedTime = 2.25
         viewModel.pausedElapsedTime = pausedElapsedTime
@@ -118,7 +118,7 @@ struct GameplayViewModelPlaybackTimingTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Start playback
         viewModel.startPlayback()
@@ -148,7 +148,7 @@ struct GameplayViewModelPlaybackTimingTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Start playback
         viewModel.startPlayback()
@@ -176,7 +176,7 @@ struct GameplayViewModelPlaybackTimingTests {
         let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Get base BPM (should be 120.0 for test charts without songs)
         guard let track = viewModel.track else {
@@ -197,7 +197,7 @@ struct GameplayViewModelPlaybackTimingTests {
 
         // Set speed to 50%
         viewModel.practiceSettings.setSpeed(0.5)
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         #expect(
             abs(viewModel.effectiveBPM() - (baseBPM * 0.5)) < tolerance,
             "At 50% speed, effective BPM should be half of base BPM"
@@ -209,7 +209,7 @@ struct GameplayViewModelPlaybackTimingTests {
 
         // Set speed to 150%
         viewModel.practiceSettings.setSpeed(1.5)
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         #expect(
             abs(viewModel.effectiveBPM() - (baseBPM * 1.5)) < tolerance,
             "At 150% speed, effective BPM should be 1.5x base BPM"
@@ -230,7 +230,7 @@ struct GameplayViewModelPlaybackTimingTests {
         let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Start playback at default speed
         viewModel.startPlayback()
@@ -275,7 +275,7 @@ struct GameplayViewModelPlaybackTimingTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         guard let track = viewModel.track else {
             throw TestError.trackMissing
@@ -317,7 +317,7 @@ struct GameplayViewModelPlaybackTimingTests {
         viewModel.practiceSettings.setSpeed(0.5)
 
         // Use loadPersistedSpeed: false to preserve the preconfigured speed
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let baseBPM = track.bpm
         let effectiveBPM = viewModel.effectiveBPM()
@@ -341,7 +341,7 @@ struct GameplayViewModelPlaybackTimingTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Test 1: Normal speed (100%)
         viewModel.startPlayback()

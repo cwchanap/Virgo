@@ -209,9 +209,11 @@ extension GameplayViewModel {
         cachedBeatIndices = Array(cachedDrumBeats.indices)
     }
 
-    func computeCachedLayoutData() {
+    func computeCachedLayoutData(prepareNotation: Bool = true) {
         guard let track = track else {
-            cacheNotationLayout()
+            if prepareNotation {
+                cacheNotationLayout()
+            }
             return
         }
 
@@ -247,8 +249,10 @@ extension GameplayViewModel {
             measurePositionMap[0] = measure0
         }
 
-        cacheNotationLayout()
-        cacheBeatPositions()
+        if prepareNotation {
+            cacheNotationLayout()
+            cacheBeatPositions()
+        }
     }
 
     /// Reports the sheet music view's currently available row width. If this changes
@@ -312,19 +316,7 @@ extension GameplayViewModel {
             return
         }
 
-        // Use default positions in tests to avoid reading developer's local
-        // UserDefaults overrides, which would make layout non-deterministic
-        // across contributor machines.  Position overrides are independently
-        // tested in DrumNotationSettingsManager unit tests.
-        let notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
-        if TestEnvironment.isRunningTests {
-            notePositionOverrides = Dictionary(
-                uniqueKeysWithValues: DrumType.allCases.map { ($0, $0.notePosition) }
-            )
-        } else {
-            notePositionOverrides = DrumNotationSettingsManager.loadPositions()
-        }
-
+        let notePositionOverrides = notationNotePositionOverrides()
         let resolvedRowWidth = max(GameplayLayout.maxRowWidth, cachedLayoutRowWidth)
         let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: resolvedRowWidth)
         let input: NotationLayoutInput
@@ -366,6 +358,94 @@ extension GameplayViewModel {
                 (noteHeadID, (x: Double(position.x), y: Double(position.y)))
             }
         )
+    }
+
+    /// Builds the immutable timeline-only request while all chart/runtime state
+    /// remains on the main actor. The detached worker receives no model values.
+    func makeTimelineNotationPreparationRequest() -> GameplayNotationPreparationRequest? {
+        guard let snapshot = cachedRhythmRuntime.layoutSnapshot else { return nil }
+        let beatPositionsByID: [UInt64: RhythmEventPosition] = Dictionary(
+            uniqueKeysWithValues: cachedDrumBeats.compactMap { beat in
+                guard let position = beat.rhythmPosition else { return nil }
+                return (beat.id, position)
+            }
+        )
+        return GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: cachedLayoutMeasureCount,
+            style: .gameplayDefault.with(
+                rowWidth: max(GameplayLayout.maxRowWidth, cachedLayoutRowWidth)
+            ),
+            notePositionOverrides: notationNotePositionOverrides(),
+            beatPositionsByID: beatPositionsByID
+        )
+    }
+
+    /// Runs only the pure timeline request off-main and returns to this main
+    /// actor for one generation-checked coherent install.
+    func prepareTimelineNotation(
+        _ request: GameplayNotationPreparationRequest,
+        generation: UInt64
+    ) async {
+        let task = Task { @MainActor [weak self] in
+            let prepared = await Task.detached(priority: .userInitiated) {
+                GameplayNotationPreparer.prepare(request)
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            _ = self.applyPreparedNotation(prepared, generation: generation)
+        }
+        notationPreparationTask = task
+        await task.value
+        if notationLayoutGeneration == generation {
+            notationPreparationTask = nil
+        }
+    }
+
+    /// Applies one prepared timeline result through the existing notation
+    /// installation funnel. A stale result changes no cache or readiness state.
+    @discardableResult
+    func applyPreparedNotation(
+        _ prepared: GameplayNotationPreparedState,
+        generation: UInt64
+    ) -> Bool {
+        guard generation == notationLayoutGeneration else { return false }
+        guard installNotationLayout(prepared.layout, generation: generation) else { return false }
+
+        if cachedNotationHasRenderableContent {
+            cachedMeasureRowMap = Dictionary(
+                uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
+            )
+            cachedNotationMeasuresByIndex = Dictionary(
+                uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0) }
+            )
+            cacheNotationMeasurePositionMap()
+        } else {
+            cachedMeasureRowMap = [:]
+            cachedNotationMeasuresByIndex = [:]
+        }
+
+        logDroppedNotesIfAny()
+        cachedNotationNoteHeadPositions = Dictionary(
+            uniqueKeysWithValues: cachedNotationLayout.noteHeadPositionsByID.map { noteHeadID, position in
+                (noteHeadID, (x: Double(position.x), y: Double(position.y)))
+            }
+        )
+        cachedBeatPositions = Dictionary(
+            uniqueKeysWithValues: prepared.beatPositionsByID.map { beatID, position in
+                (beatID, (x: Double(position.x), y: Double(position.y)))
+            }
+        )
+        isGameplayPrepared = true
+        return true
+    }
+
+    /// Use default positions in tests so notation remains deterministic across
+    /// contributor machines; production reads the persisted override map here.
+    private func notationNotePositionOverrides() -> [DrumType: GameplayLayout.NotePosition] {
+        if TestEnvironment.isRunningTests {
+            return Dictionary(uniqueKeysWithValues: DrumType.allCases.map { ($0, $0.notePosition) })
+        }
+        return DrumNotationSettingsManager.loadPositions()
     }
 
     /// Rebuilds `measurePositionMap` from the current notation layout's measures.

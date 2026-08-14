@@ -45,7 +45,7 @@ struct GameplayViewModelFullSpeedScoringTests {
                 scorePersistence: service
             )
             await vm.loadChartData()
-            vm.setupGameplay(loadPersistedSpeed: false)
+            await vm.setupGameplay(loadPersistedSpeed: false)
             vm.sessionAtFullSpeed = true
             for _ in 0..<4 { vm.scoreEngine.processHit(accuracy: .perfect, timingError: 0) }
 
@@ -69,7 +69,7 @@ struct GameplayViewModelFullSpeedScoringTests {
                 scorePersistence: service
             )
             await vm.loadChartData()
-            vm.setupGameplay(loadPersistedSpeed: false)
+            await vm.setupGameplay(loadPersistedSpeed: false)
             vm.sessionAtFullSpeed = false
             for _ in 0..<4 { vm.scoreEngine.processHit(accuracy: .perfect, timingError: 0) }
 
@@ -94,7 +94,7 @@ struct GameplayViewModelFullSpeedScoringTests {
                 scorePersistence: ScorePersistenceService(modelContext: TestContainer.shared.context)
             )
             await vm.loadChartData()
-            vm.setupGameplay(loadPersistedSpeed: false)
+            await vm.setupGameplay(loadPersistedSpeed: false)
 
             vm.startPlayback()
 
@@ -115,7 +115,7 @@ struct GameplayViewModelFullSpeedScoringTests {
                 scorePersistence: ScorePersistenceService(modelContext: TestContainer.shared.context)
             )
             await vm.loadChartData()
-            vm.setupGameplay(loadPersistedSpeed: false)
+            await vm.setupGameplay(loadPersistedSpeed: false)
 
             vm.startPlayback()
             #expect(vm.sessionAtFullSpeed == true) // fresh start at full speed
@@ -139,7 +139,7 @@ struct GameplayViewModelFullSpeedScoringTests {
                 scorePersistence: ScorePersistenceService(modelContext: TestContainer.shared.context)
             )
             await vm.loadChartData()
-            vm.setupGameplay(loadPersistedSpeed: false)
+            await vm.setupGameplay(loadPersistedSpeed: false)
             vm.startPlayback()
             #expect(vm.sessionAtFullSpeed == true)
 

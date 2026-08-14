@@ -75,7 +75,7 @@ struct RhythmTimelineIntegrationTests {
         )
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let selectedEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "D1" })
         let layoutSnapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
@@ -186,7 +186,7 @@ struct RhythmTimelineIntegrationTests {
         #expect(viewModel.cachedRhythmRuntime.noteByEventID.count == 2)
         #expect(viewModel.cachedRhythmRuntime.diagnostics.isEmpty)
 
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let timeline = try #require(viewModel.cachedRhythmRuntime.timeline)
         #expect(viewModel.cachedLayoutMeasureCount == timeline.measures.count)
@@ -208,7 +208,7 @@ struct RhythmTimelineIntegrationTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.isPlaying = true
 
         viewModel.updateContinuousVisualsForTesting(elapsedTime: 1.49)
@@ -239,7 +239,7 @@ struct RhythmTimelineIntegrationTests {
         let metronome = ScheduledMetronomeSpy()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: settings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(abs(viewModel.cachedTrackDuration - 7) < 0.0001)
         #expect(abs(viewModel.bgmOffsetSeconds - 5) < 0.0001)
@@ -260,7 +260,7 @@ struct RhythmTimelineIntegrationTests {
         let metronome = ScheduledMetronomeSpy()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.pausedElapsedTime = 1.51
 
         viewModel.startPlayback()
@@ -281,7 +281,7 @@ struct RhythmTimelineIntegrationTests {
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 1)
         player.currentTime = player.duration
         viewModel.bgmPlayer = player
@@ -306,7 +306,7 @@ struct RhythmTimelineIntegrationTests {
         let metronome = ScheduledMetronomeSpy()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 1)
         player.currentTime = player.duration
         viewModel.bgmPlayer = player
@@ -328,7 +328,7 @@ struct RhythmTimelineIntegrationTests {
         metronome.playbackTime = 2
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 1)
         player.currentTime = player.duration
         viewModel.bgmPlayer = player
@@ -405,7 +405,7 @@ struct RhythmTimelineIntegrationTests {
         let practiceState = ChartPracticeState(chart: chart)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         viewModel.startPlayback()
         viewModel.startBGMPlayback(track: try #require(viewModel.track))
 

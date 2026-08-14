@@ -33,7 +33,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func startPlaybackMIDIGateNoPreference() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.inputManager.requiresMIDISourceForGameplay = true
@@ -56,7 +56,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
         vm.inputManager = inputManager
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.startPlayback()
@@ -72,7 +72,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func startPlaybackFreshFullSpeed() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.startPlayback()
@@ -85,7 +85,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func startPlaybackFreshNonFullSpeed() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.practiceSettings.setSpeed(0.75)
@@ -99,7 +99,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func startPlaybackResumeViaBGMTimeline() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
@@ -121,7 +121,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func disconnectNoOpWhenGatingOff() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.handleSelectedMIDISourceDisconnect()
@@ -134,7 +134,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func disconnectPausesWhenPlaying() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.inputManager.requiresMIDISourceForGameplay = true
@@ -150,7 +150,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func disconnectMessageWhenNotPlaying() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.inputManager.requiresMIDISourceForGameplay = true
@@ -166,7 +166,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func restartPlaybackWhilePlaying() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.startPlayback()
@@ -186,7 +186,7 @@ struct GameplayViewModelPlaybackCoverage2Tests {
     func cleanupClearsAllResources() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         vm.bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
         vm.setupMetronomeSubscription()
         vm.startPlayback()
@@ -210,7 +210,7 @@ struct GameplayViewModelBGMCoverageTests {
     func resetPlaybackStateZeroesFields() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.currentBeat = 5
@@ -261,7 +261,7 @@ struct GameplayViewModelBGMCoverageTests {
     func enforceMinSpeedNilWithoutBGM() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         #expect(vm.enforceBGMMinimumSpeedIfNeeded() == nil)
@@ -271,7 +271,7 @@ struct GameplayViewModelBGMCoverageTests {
     func enforceMinSpeedClampsLowSpeed() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
@@ -284,7 +284,7 @@ struct GameplayViewModelBGMCoverageTests {
     func enforceMinSpeedNilAboveMinimum() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer()

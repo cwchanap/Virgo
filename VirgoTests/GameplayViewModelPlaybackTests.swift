@@ -20,7 +20,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         #expect(viewModel.isPlaying == false)
 
@@ -41,7 +41,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let toggleSuccess = await CombineTestUtilities.performAndWait(
             action: { metronome.toggle(bpm: viewModel.effectiveBPM(), timeSignature: .fourFour) },
@@ -70,7 +70,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let initialBPM = viewModel.effectiveBPM()
         otherSettings.setSpeed(0.75)
@@ -88,7 +88,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
 
@@ -124,7 +124,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Start and simulate some progress
         viewModel.startPlayback()
@@ -150,7 +150,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
         viewModel.skipToEnd()
@@ -169,7 +169,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Do NOT call startPlayback() — isPlaying is false.
         viewModel.skipToEnd()
@@ -189,7 +189,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Simulate mid-song position state (mimics what the metronome callback would set)
@@ -246,7 +246,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Input manager should exist after setup (they are non-optional)
         // Just verify they are initialized by accessing them
@@ -263,7 +263,7 @@ struct GameplayViewModelPlaybackTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Verify initial state
         #expect(viewModel.isPlaying == false)

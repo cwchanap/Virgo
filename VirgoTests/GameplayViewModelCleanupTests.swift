@@ -21,7 +21,7 @@ struct GameplayViewModelCleanupTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.setupMetronomeSubscription()
         viewModel.startPlayback()
 
@@ -48,6 +48,34 @@ struct GameplayViewModelCleanupTests {
         #expect(viewModel.playbackTimer == nil)
     }
 
+    @Test("cleanup invalidates an in-flight notation completion")
+    func cleanupInvalidatesInFlightNotationCompletion() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        let prepared = GameplayNotationPreparedState(
+            layout: viewModel.cachedNotationLayout,
+            beatPositionsByID: viewModel.cachedBeatPositions.reduce(into: [UInt64: CGPoint]()) { result, entry in
+                result[entry.key] = CGPoint(x: entry.value.x, y: entry.value.y)
+            }
+        )
+        let inFlightGeneration = viewModel.beginNotationPreparation()
+        let layoutBeforeCleanup = viewModel.cachedNotationLayout
+        viewModel.cleanup()
+
+        #expect(!viewModel.isGameplayPrepared)
+        #expect(viewModel.notationLayoutGeneration != inFlightGeneration)
+        #expect(!viewModel.applyPreparedNotation(prepared, generation: inFlightGeneration))
+        #expect(viewModel.cachedNotationLayout.measures.isEmpty == layoutBeforeCleanup.measures.isEmpty)
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty == layoutBeforeCleanup.noteHeads.isEmpty)
+        #expect(!viewModel.isGameplayPrepared)
+    }
+
     @Test("cleanup() cancels and clears any pending completion task")
     func testCleanupCancelsCompletionTask() async throws {
         // Regression guard for P2: if the user dismisses gameplay during the
@@ -58,7 +86,7 @@ struct GameplayViewModelCleanupTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         // Inject a sentinel cancellable to simulate the grace-period completion
@@ -81,7 +109,7 @@ struct GameplayViewModelCleanupTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Set various state values
         viewModel.currentBeat = 10
@@ -114,7 +142,7 @@ struct GameplayViewModelCleanupTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Set speed
         viewModel.updateSpeed(0.75)
@@ -153,7 +181,7 @@ struct GameplayViewModelCleanupTests {
         // --- Simulate playing Chart A at 1.5x speed ---
         let vmA = GameplayViewModel(chart: chartA, metronome: metronome, practiceSettings: sharedSettings)
         await vmA.loadChartData()
-        vmA.setupGameplay()
+        await vmA.setupGameplay()
         vmA.updateSpeed(1.5)
         // Wait for trailing-edge debounce timer to fire
         try await Task.sleep(nanoseconds: 300_000_000)
@@ -241,7 +269,7 @@ struct GameplayViewModelCleanupTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
         #expect(viewModel.lastScheduledPlaybackStartTime != nil,

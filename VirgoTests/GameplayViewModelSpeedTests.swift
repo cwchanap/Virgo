@@ -37,7 +37,7 @@ struct GameplayViewModelSpeedTests {
     func pausedSpeedChangeReconfiguresTimelineMatcher() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
         let originalTargets = vm.cachedRhythmNoteTargets
         let target = try #require(originalTargets.dropFirst().first)
@@ -58,7 +58,7 @@ struct GameplayViewModelSpeedTests {
     func playingSpeedChangeKeepsTimelineIdentity() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         let originalTargets = vm.cachedRhythmNoteTargets
         let target = try #require(originalTargets.dropFirst().first)
         vm.inputManager.setMIDIMapping([midiNote(for: target.drumType): target.drumType])
@@ -110,7 +110,7 @@ struct GameplayViewModelSpeedTests {
         let settings = GameplayViewModelCoverageTestSupport.makeSettings()
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4, settings: settings)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         settings.setSpeed(0.75)
@@ -123,7 +123,7 @@ struct GameplayViewModelSpeedTests {
     func updateSettings_differentReference_isNoOp() async {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         let before = vm.effectiveBPM()
@@ -249,7 +249,7 @@ struct GameplayViewModelSpeedTests {
     func updateSpeed_clampsBGMMinimum() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
         player.prepareToPlay()
         vm.bgmPlayer = player
@@ -270,7 +270,7 @@ struct GameplayViewModelSpeedTests {
             practiceSettings: settings
         )
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.isPlaying = true
@@ -283,7 +283,7 @@ struct GameplayViewModelSpeedTests {
     func updateSpeed_paused_scalesElapsedAndProgress() async {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.pausedElapsedTime = 4.0
@@ -297,7 +297,7 @@ struct GameplayViewModelSpeedTests {
     func updateSpeed_paused_zeroDuration_setsProgressZero() async {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.track = nil
@@ -313,7 +313,7 @@ struct GameplayViewModelSpeedTests {
     func updateSpeed_metronomeEnabled_updatesBPM() async {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         vm.metronome.isEnabled = true
@@ -334,7 +334,7 @@ struct GameplayViewModelSpeedTests {
             practiceSettings: settings
         )
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
         player.prepareToPlay()
         vm.bgmPlayer = player
@@ -356,7 +356,7 @@ struct GameplayViewModelSpeedTests {
             practiceSettings: settings
         )
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         vm.bgmPlayer = nil
         vm.pausedElapsedTime = 0.25
         vm.playbackStartTime = Date(timeIntervalSinceNow: -4)
@@ -393,7 +393,7 @@ struct GameplayViewModelSpeedTests {
             practiceSettings: settings
         )
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 5)
         player.currentTime = 2
         vm.bgmPlayer = player
@@ -415,7 +415,7 @@ struct GameplayViewModelSpeedTests {
             practiceSettings: settings
         )
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
         player.prepareToPlay()
         vm.bgmPlayer = player
