@@ -46,7 +46,7 @@ struct GameplayLayout {
     }
 
     // MARK: - Note Positions (including spaces between staff lines)
-    enum NotePosition: CaseIterable {
+    enum NotePosition: CaseIterable, Sendable {
         // Extended positions above staff
         case aboveLine9      // Far above staff
         case aboveLine8

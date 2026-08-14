@@ -136,7 +136,7 @@ enum NoteType: String, Codable, CaseIterable {
     case cowbell = "Cowbell"
 }
 
-enum DrumType: Hashable, CaseIterable {
+enum DrumType: Hashable, CaseIterable, Sendable {
     case kick, snare, hiHat, hiHatPedal, crash, ride, tom1, tom2, tom3, cowbell
 
     var description: String {
