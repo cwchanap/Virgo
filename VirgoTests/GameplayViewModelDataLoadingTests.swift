@@ -14,22 +14,27 @@ import SwiftUI
 @MainActor
 struct GameplayViewModelDataLoadingTests {
 
-    @Test("no-track notation reset advances the generation")
-    func noTrackNotationResetAdvancesGeneration() {
-        let chart = Chart(difficulty: .easy)
+    @Test("no-track notation reset replaces an existing layout")
+    func noTrackNotationResetAdvancesGeneration() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 1)
         let viewModel = GameplayViewModel(
             chart: chart,
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
+        await viewModel.loadChartData()
+        viewModel.cacheNotationLayout()
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
 
         let initialGeneration = viewModel.notationLayoutGeneration
+        viewModel.track = nil
         viewModel.computeCachedLayoutData()
 
         #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
+        #expect(!viewModel.cachedNotationLayout.hasRenderableContent)
         #expect(viewModel.cachedNotationLayout.measures.isEmpty)
     }
 
-    @Test("fatal rhythm timing reset advances the generation")
+    @Test("fatal rhythm timing reset replaces an existing layout")
     func fatalRhythmTimingResetAdvancesGeneration() async throws {
         let chart = Chart(difficulty: .medium)
         chart.rhythmMetadataData = Data([0xFF, 0x00, 0xFE])
@@ -41,11 +46,14 @@ struct GameplayViewModelDataLoadingTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
+        viewModel.cacheNotationLayout()
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
 
         let initialGeneration = viewModel.notationLayoutGeneration
         viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
+        #expect(!viewModel.cachedNotationLayout.hasRenderableContent)
         #expect(viewModel.cachedNotationLayout.measures.isEmpty)
         #expect(viewModel.hasFatalRhythmTiming)
     }
