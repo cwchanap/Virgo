@@ -71,3 +71,58 @@ Supplemental migrated-call-site coverage also passed:
 ## Concerns / follow-up
 
 The async worker phase is intentionally out of scope for Task 1. Its request allocation and `cleanup()` stale-result invalidation must continue to advance this same `notationLayoutGeneration` counter rather than introducing another token or counter.
+
+## Review-fix round 1
+
+### Findings addressed
+
+1. Reset coverage now loads and installs a renderable layout before each reset. The no-track case clears `track` before `computeCachedLayoutData()`; the fatal case calls `cacheNotationLayout()` before `setupGameplay()`. Both assert the renderable precondition, a single generation advance, and an empty/non-renderable result. The uniqueness test now installs two differing layouts (`.empty` then the saved renderable layout) and asserts consecutive generations and resulting content.
+2. The read-only test now uses generic overload classification: `notationLayoutGeneration` must resolve to the `KeyPath`/read-only overload, while the known writable `nextBeatId` must resolve to the `ReferenceWritableKeyPath`/writable overload. If the generation setter becomes externally writable, the first assertion changes to `.writable` and fails.
+
+### TDD evidence
+
+The correction was test-only on top of the already-implemented Task 1 production code. The predecessor baseline `b31bd41` provides the RED characterization for this exact focused command: exit 65 with `error: value of type 'GameplayViewModel' has no member 'notationLayoutGeneration'` and `Testing cancelled because the build failed.` The corrected tests therefore remain unbuildable on the pre-Task1 implementation while now exercising distinct reset/install semantics.
+
+RED command:
+
+```text
+xcodebuild test -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' -configuration Debug \
+  -only-testing:VirgoTests/GameplayViewModelLayoutComputationsTests \
+  -only-testing:VirgoTests/GameplayViewModelDataLoadingTests \
+  -parallel-testing-enabled NO ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300 -derivedDataPath ./DerivedData
+```
+
+Observed RED output: exit 65; four `error: value of type 'GameplayViewModel' has no member 'notationLayoutGeneration'` diagnostics; `Testing cancelled because the build failed.`
+
+Final focused command (parallel testing disabled):
+
+```text
+xcodebuild test -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' -configuration Debug \
+  -only-testing:VirgoTests/GameplayViewModelLayoutComputationsTests \
+  -only-testing:VirgoTests/GameplayViewModelDataLoadingTests \
+  -parallel-testing-enabled NO ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300 -derivedDataPath ./DerivedData
+```
+
+```text
+✔ Test run with 41 tests in 2 suites passed after 1.577 seconds.
+** TEST SUCCEEDED **
+```
+
+### Changed files
+
+- `VirgoTests/GameplayViewModelLayoutComputationsTests.swift`
+- `VirgoTests/GameplayViewModelDataLoadingTests.swift`
+
+### Review-fix self-review
+
+- `git diff --check` passed.
+- Targeted SwiftLint exited 0 with 3 pre-existing warnings and 0 serious violations.
+- No production files changed; the one-generation install funnel and synchronous MainActor behavior are unchanged.
+
+### Commit
+
+- `4ead51e test(HPA-581): strengthen notation generation coverage`
