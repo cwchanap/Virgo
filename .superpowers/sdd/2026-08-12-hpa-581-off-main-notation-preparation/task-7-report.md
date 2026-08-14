@@ -66,8 +66,9 @@ started because the required packing-changing resize never occurred.
 - Temporary DerivedData, the temporary Swift package clone, and the screenshot
   were removed.
 - `git diff --check`: passed.
-- The report is the only intended tracked change for Task 7; clean-worktree
-  status will be verified after the report commit.
+- Post-commit `git status --porcelain=v1 --branch` showed no changed or
+  untracked paths; the tracked tree is clean and the branch is `[ahead 19]`
+  of its configured origin branch.
 
 ## Follow-up
 
