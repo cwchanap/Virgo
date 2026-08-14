@@ -164,6 +164,6 @@ Tests updated for the removed initializer/API and boundary assertions:
 
 - The full `VirgoTests` suite was not required for this value-boundary task;
   the exact Task 4 groups and the narrow caller suites passed.
-- Task 3's separate Release profiling gate remains blocked by the documented
-  GUI/Accessibility shield; this Task 4 implementation does not claim new
-  profiling evidence.
+- Task 3 concluded `GATE: PROCEED` via headless Release evidence at `c3af370`.
+  The compositor/visible-UI limitation remains documented; this Task 4 report
+  adds no interactive GUI profiling evidence.
