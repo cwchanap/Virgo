@@ -2,6 +2,8 @@ import CoreGraphics
 import Testing
 @testable import Virgo
 
+private final class ReferenceIdentityProbe {}
+
 @Suite("Gameplay Notation Preparation")
 struct GameplayNotationPreparationTests {
     @Test("request and prepared state are Sendable values")
@@ -90,23 +92,50 @@ struct GameplayNotationPreparationTests {
         )
         let prepared = GameplayNotationPreparer.prepare(request)
 
-        let requestLabels = Set(Mirror(reflecting: request).children.compactMap(\.label))
-        let resultLabels = Set(Mirror(reflecting: prepared).children.compactMap(\.label))
-        let forbiddenLabels = [
-            "model",
-            "modelID",
-            "objectID",
-            "sourceObjectID",
-            "sourceObjectIdentifier"
-        ]
+        let requestIdentityFindings = reflectedIdentityFindings(in: request)
+        let resultIdentityFindings = reflectedIdentityFindings(in: prepared)
+        #expect(requestIdentityFindings.isEmpty, "request findings: \(requestIdentityFindings)")
+        #expect(resultIdentityFindings.isEmpty, "result findings: \(resultIdentityFindings)")
 
-        for label in forbiddenLabels {
-            #expect(!requestLabels.contains(label))
-            #expect(!resultLabels.contains(label))
-        }
+        let objectIdentityProbe: Any = ["renamedPayload": ObjectIdentifier(ReferenceIdentityProbe())]
+        let referenceModelProbe: Any = ["renamedPayload": ReferenceIdentityProbe()]
+        #expect(!reflectedIdentityFindings(in: objectIdentityProbe).isEmpty)
+        #expect(!reflectedIdentityFindings(in: referenceModelProbe).isEmpty)
     }
 
     private func requireSendable<T: Sendable>(_: T.Type) {}
+
+    private func reflectedIdentityFindings(in value: Any) -> [String] {
+        var findings: [String] = []
+        collectReflectedIdentityFindings(in: value, path: "root", findings: &findings)
+        return findings
+    }
+
+    private func collectReflectedIdentityFindings(
+        in value: Any,
+        path: String,
+        findings: inout [String]
+    ) {
+        if value is ObjectIdentifier {
+            findings.append("\(path): ObjectIdentifier")
+            return
+        }
+
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .class {
+            findings.append("\(path): \(String(reflecting: type(of: value)))")
+            return
+        }
+
+        for (index, child) in mirror.children.enumerated() {
+            let childName = child.label ?? "[\(index)]"
+            collectReflectedIdentityFindings(
+                in: child.value,
+                path: "\(path).\(childName)",
+                findings: &findings
+            )
+        }
+    }
 
     private func makeSnapshot(
         measures: [RhythmMeasure],
