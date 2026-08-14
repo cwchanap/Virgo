@@ -42,7 +42,7 @@ struct GameplaySheetMusicMountingTests {
         try await TestSetup.withTestSetup {
             let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
             await viewModel.loadChartData()
-            viewModel.setupGameplay(loadPersistedSpeed: false)
+            await viewModel.setupGameplay(loadPersistedSpeed: false)
 
             let heads = viewModel.cachedNotationLayout.noteHeads
             try #require(!heads.isEmpty, "fixture must render note heads for this probe to be non-vacuous")

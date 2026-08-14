@@ -23,7 +23,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
         viewModel.pausePlayback()
@@ -43,7 +43,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
         #expect(viewModel.isPlaying == true)
@@ -68,7 +68,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Start fresh playback
         viewModel.startPlayback()
@@ -126,7 +126,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // First cycle: start -> pause -> resume
         viewModel.startPlayback()
@@ -178,7 +178,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Ensure no BGM player is loaded (metronome-only session)
         #expect(viewModel.bgmPlayer == nil, "This test requires metronome-only session (no BGM)")
@@ -248,7 +248,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
         viewModel.handlePlaybackCompletion()

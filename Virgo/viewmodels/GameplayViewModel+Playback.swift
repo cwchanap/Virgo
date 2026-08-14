@@ -321,6 +321,10 @@ extension GameplayViewModel {
     }
 
     func cleanup() {
+        // Invalidate the shared notation generation before tearing down runtime
+        // state so a completion that returns afterward cannot resurrect the view.
+        beginNotationPreparation()
+
         // Cancel any pending debounced speed changes before saving/cleanup
         // to prevent timer firing after cleanup and corrupting state
         speedChangeTimer?.invalidate()

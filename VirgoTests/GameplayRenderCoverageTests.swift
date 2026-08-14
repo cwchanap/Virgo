@@ -297,7 +297,7 @@ struct GameplayRenderCoverageTests {
             let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
             defer { vm.cleanup() }
             await vm.loadChartData()
-            vm.setupGameplay()
+            await vm.setupGameplay()
 
             // Verify the crash note head is above the highest staff line (line5).
             // In screen coordinates, above-line5 means a smaller Y value.

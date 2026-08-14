@@ -155,7 +155,7 @@ struct RhythmImportTests {
         }
         #expect(warningCodes.contains(.indeterminateTerminalDuration))
 
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         let expectedUpperEventIDs = Set(upperNotes.map(\.eventID))
         let upperHeads = viewModel.cachedNotationLayout.noteHeads.filter {
             guard let eventID = $0.eventID else { return false }

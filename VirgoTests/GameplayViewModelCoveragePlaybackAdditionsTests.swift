@@ -14,7 +14,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testLiveScoreSnapshotReflectsCurrentScore() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         vm.isPlaying = true
@@ -40,7 +40,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testHandlePlaybackCompletionCapturesFinalScoreSnapshot() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         vm.startPlayback()
@@ -70,7 +70,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testHandlePlaybackCompletionSetsSessionResults() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
         vm.startPlayback()
 
@@ -103,7 +103,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testRestartPlaybackWhenNotPlayingDoesNotStartPlayback() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
 
         #expect(vm.isPlaying == false)
         vm.pausedElapsedTime = 5.0
@@ -150,7 +150,7 @@ struct GameplayViewModelPlaybackCoverageTests {
 
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
 
         vm.isPlaying = true
         vm.playbackStartTime = Date()
@@ -238,7 +238,7 @@ struct GameplayViewModelPlaybackCoverageTests {
         )
 
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         let started = await CombineTestUtilities.performAndWait(
             action: { metronome.toggle(bpm: vm.effectiveBPM(), timeSignature: .fourFour) },
@@ -265,7 +265,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testPausePlaybackFallsBackToPlaybackStartTime() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         vm.isPlaying = true
@@ -285,7 +285,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testPausePlaybackFallbackNoDoubleCount() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         // Simulate resume state: pausedElapsedTime = 3.0 s
@@ -312,7 +312,7 @@ struct GameplayViewModelPlaybackCoverageTests {
         chart.notes.forEach { $0.originKind = .dtx }
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         // Simulate resume state: pausedElapsedTime = 3.0 s
@@ -338,7 +338,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testPauseDuringScheduledStartWindowClampsToZero() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         // Simulate fresh start with playbackStartTime in the future
@@ -358,7 +358,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testPauseDuringScheduledStartWindowPreservesExistingOffset() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         // Simulate resume path: playbackStartTime is backdated the same way
@@ -381,7 +381,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testCalculateElapsedTimeClampsNegativeBeforeScheduledStart() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         // Fresh start: playbackStartTime is 0.05 s in the future (buffer priming).
@@ -399,7 +399,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testFiniteMissScanIgnoredWhilePaused() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         vm.startPlayback()
@@ -416,7 +416,7 @@ struct GameplayViewModelPlaybackCoverageTests {
     func testInfiniteMissScanFlushesRemainingMissesWhilePaused() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         vm.startPlayback()

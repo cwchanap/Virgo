@@ -50,7 +50,7 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
 
         let initialGeneration = viewModel.notationLayoutGeneration
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
         #expect(!viewModel.cachedNotationLayout.hasRenderableContent)
@@ -127,7 +127,7 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.isDataLoaded)
         #expect(!viewModel.isGameplayPrepared)
 
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Verify computed data is populated
         #expect(viewModel.isGameplayPrepared)
@@ -151,7 +151,7 @@ struct GameplayViewModelDataLoadingTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedDrumBeats.count == 2)
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
@@ -173,7 +173,7 @@ struct GameplayViewModelDataLoadingTests {
         )
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
         #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
@@ -202,7 +202,7 @@ struct GameplayViewModelDataLoadingTests {
         )
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedControlEvents.count == 1)
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
@@ -243,7 +243,7 @@ struct GameplayViewModelDataLoadingTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         // Normalization merges both notes into a single DrumBeat
         #expect(viewModel.cachedDrumBeats.count == 1,
@@ -264,7 +264,7 @@ struct GameplayViewModelDataLoadingTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedNotationHasRenderableContent)
     }
@@ -275,7 +275,7 @@ struct GameplayViewModelDataLoadingTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
@@ -302,7 +302,7 @@ struct GameplayViewModelDataLoadingTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         // Call setupGameplay without loading data first
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Should not crash, but data should remain empty since track is nil
         #expect(viewModel.cachedDrumBeats.isEmpty)
@@ -322,7 +322,7 @@ struct GameplayViewModelDataLoadingTests {
         // Create new ViewModel (simulating reopening gameplay for this chart)
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Poll for the expected speed/BPM state with a bounded timeout instead of
         // relying on a fixed sleep. The clamp/speed-load path is synchronous in
@@ -363,7 +363,7 @@ struct GameplayViewModelDataLoadingTests {
         // --- Session A: play at 50% and cleanup ---
         let vmA = GameplayViewModel(chart: chartA, metronome: metronome, practiceSettings: sharedSettings)
         await vmA.loadChartData()
-        vmA.setupGameplay(loadPersistedSpeed: false)
+        await vmA.setupGameplay(loadPersistedSpeed: false)
         vmA.updateSpeed(0.5)
         // Wait for trailing-edge debounce timer to fire
         try await Task.sleep(nanoseconds: 300_000_000)
@@ -380,7 +380,7 @@ struct GameplayViewModelDataLoadingTests {
         // 2. Create ViewModel for Song B
         let vmB = GameplayViewModel(chart: chartB, metronome: metronome, practiceSettings: sharedSettings)
         await vmB.loadChartData()
-        vmB.setupGameplay()  // loads persisted speed for chartB (none saved → stays 1.0)
+        await vmB.setupGameplay()  // loads persisted speed for chartB (none saved → stays 1.0)
 
         #expect(sharedSettings.speedMultiplier == 1.0, "Song B should use default speed since none was saved")
 
@@ -408,7 +408,7 @@ struct GameplayViewModelDataLoadingTests {
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // The layout must use the DEFAULT snare position (.line3), NOT the
         // persisted override (.aboveLine9).  In tests, TestEnvironment.isRunningTests
@@ -445,7 +445,7 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.cachedNotationLayout.measures.isEmpty,
                 "Pre-setup width seeding should not build a throwaway notation layout")
 
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         #expect(viewModel.cachedLayoutRowWidth == 1200,
                 "setupGameplay should build the first visible layout with the seeded width")

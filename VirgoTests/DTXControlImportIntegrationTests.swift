@@ -111,7 +111,7 @@ struct DTXControlImportIntegrationTests {
         )
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let timeline = try #require(viewModel.cachedRhythmRuntime.timeline)
         let snapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)

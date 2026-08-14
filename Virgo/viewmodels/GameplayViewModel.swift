@@ -194,6 +194,10 @@ final class GameplayViewModel {
     /// the way they always have. Use `updateRowWidth(_:)` to set this from the view.
     var cachedLayoutRowWidth: CGFloat = GameplayLayout.maxRowWidth
 
+    /// Retained handle for the optional off-main timeline notation preparation.
+    /// Cancellation only saves work; generation checks remain the correctness rule.
+    var notationPreparationTask: Task<Void, Never>?
+
     // MARK: - Visual State
     /// Current purple bar position (x, y)
     var purpleBarPosition: (x: Double, y: Double)?
@@ -338,12 +342,32 @@ final class GameplayViewModel {
     }
     #endif
 
-    /// Installs a notation layout and advances the single generation used to
-    /// identify the current static notation projection.
-    func installNotationLayout(_ layout: NotationLayout) {
-        notationLayoutGeneration &+= 1
+    /// Installs a notation layout through the single generation used to identify
+    /// the current static notation projection. Worker results pass their already
+    /// allocated generation so applying one does not create a second identity.
+    @discardableResult
+    func installNotationLayout(
+        _ layout: NotationLayout,
+        generation: UInt64? = nil
+    ) -> Bool {
+        if let generation {
+            guard generation == notationLayoutGeneration else { return false }
+        } else {
+            notationLayoutGeneration &+= 1
+        }
         notationLayoutStorage = layout
         cachedNotationHasRenderableContent = layout.hasRenderableContent
+        return true
+    }
+
+    /// Invalidates any in-flight timeline preparation and allocates the next
+    /// identity on the same counter used by the static notation child.
+    @discardableResult
+    func beginNotationPreparation() -> UInt64 {
+        notationPreparationTask?.cancel()
+        notationPreparationTask = nil
+        notationLayoutGeneration &+= 1
+        return notationLayoutGeneration
     }
 
     /// Production default: a background-queue `DispatchSourceTimer` whose handler
@@ -405,14 +429,17 @@ final class GameplayViewModel {
     /// - Parameter loadPersistedSpeed: Whether to load the saved speed for this chart.
     ///   Pass `false` to use a preconfigured speed instead of the saved value.
     ///   Defaults to `true` to load saved speed (SC-06: Remember last-used speed).
-    func setupGameplay(loadPersistedSpeed: Bool = true) {
+    func setupGameplay(loadPersistedSpeed: Bool = true) async {
         isGameplayPrepared = false
+        let setupGeneration = beginNotationPreparation()
         guard let track = track else {
             Logger.error("setupGameplay() called but track is nil - data not loaded yet")
             return
         }
         guard !hasFatalRhythmTiming else {
-            installNotationLayout(.empty)
+            // The setup request already allocated this generation. Reuse it for
+            // the fatal reset so the existing reset remains one installation.
+            _ = installNotationLayout(.empty, generation: setupGeneration)
             cachedNotationNoteHeadPositions = [:]
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]
@@ -446,7 +473,8 @@ final class GameplayViewModel {
         }
 
         computeDrumBeats()
-        computeCachedLayoutData()
+        let preparesTimelineOffMain = cachedRhythmRuntime.availability == .valid
+        computeCachedLayoutData(prepareNotation: !preparesTimelineOffMain)
         setupBGMPlayer()
         // Apply clamped speed if BGM minimum enforcement returns a value
         if let clampedSpeed = enforceBGMMinimumSpeedIfNeeded() {
@@ -460,7 +488,16 @@ final class GameplayViewModel {
         metronome.configure(bpm: effectiveBPM(), timeSignature: track.timeSignature)
         configureInputTiming(speed: practiceSettings.speedMultiplier)
         setupInterruptionHandling()
-        isGameplayPrepared = true
+
+        guard preparesTimelineOffMain,
+              let request = makeTimelineNotationPreparationRequest() else {
+            if preparesTimelineOffMain {
+                computeCachedLayoutData()
+            }
+            isGameplayPrepared = true
+            return
+        }
+        await prepareTimelineNotation(request, generation: setupGeneration)
     }
 
     /// Sets up audio interruption handling to pause playback on phone calls, Siri, etc.

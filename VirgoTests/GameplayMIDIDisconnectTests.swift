@@ -111,7 +111,7 @@ struct GameplayMIDIDisconnectTests {
             selectedSourceAvailable: false
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
 
@@ -144,7 +144,7 @@ struct GameplayMIDIDisconnectTests {
             selectedSourceAvailable: false
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
 
@@ -189,7 +189,7 @@ struct GameplayMIDIDisconnectTests {
 
         viewModel.inputManager = manager
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
 
@@ -224,7 +224,7 @@ struct GameplayMIDIDisconnectTests {
             selectedSourceAvailable: true
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         #expect(viewModel.inputManager.getKeyboardMapping()["x"] == .snare)
         #expect(viewModel.inputManager.getMIDIMapping()[38] == .snare)
@@ -270,7 +270,7 @@ struct GameplayMIDIDisconnectTests {
             selectedSourceAvailable: true
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         viewModel.handleSelectedMIDISourceDisconnect()
@@ -303,7 +303,7 @@ struct GameplayMIDIDisconnectTests {
             selectedSourceAvailable: false
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
 
@@ -337,7 +337,7 @@ struct GameplayMIDIDisconnectTests {
         viewModel.inputManager.delegate = viewModel.inputHandler
         viewModel.wireInputHandler()
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         viewModel.inputManager.handleSelectedSourceDisconnect(sourceID: "coremidi:2")
@@ -372,7 +372,7 @@ struct GameplayMIDIDisconnectTests {
         viewModel.inputManager.delegate = viewModel.inputHandler
         viewModel.wireInputHandler()
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
         viewModel.startPlayback()
 
         viewModel.inputManager.handleSelectedSourceDisconnect(sourceID: "coremidi:2")
@@ -405,7 +405,7 @@ struct GameplayMIDIDisconnectTests {
             selectedSourceAvailable: false
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.startPlayback()
 

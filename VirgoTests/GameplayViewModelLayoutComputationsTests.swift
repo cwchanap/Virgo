@@ -65,6 +65,88 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
     }
 
+    @Test("stale timeline preparation cannot install layout or readiness")
+    func staleTimelinePreparationCannotInstallLayoutOrReadiness() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+
+        let prepared = try makePreparedTimelineState(for: viewModel)
+        let initialLayout = viewModel.cachedNotationLayout
+        let workerGeneration = viewModel.beginNotationPreparation()
+        let newerGeneration = viewModel.beginNotationPreparation()
+
+        #expect(newerGeneration == workerGeneration &+ 1)
+        #expect(!viewModel.applyPreparedNotation(prepared, generation: workerGeneration))
+        #expect(viewModel.notationLayoutGeneration == newerGeneration)
+        #expect(viewModel.cachedNotationLayout.measures.isEmpty == initialLayout.measures.isEmpty)
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty == initialLayout.noteHeads.isEmpty)
+        #expect(viewModel.cachedBeatPositions.isEmpty)
+        #expect(!viewModel.isGameplayPrepared)
+    }
+
+    @Test("current timeline preparation installs without a second generation")
+    func currentTimelinePreparationInstallsWithoutSecondGeneration() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+
+        let prepared = try makePreparedTimelineState(for: viewModel)
+        let generation = viewModel.beginNotationPreparation()
+        #expect(viewModel.applyPreparedNotation(prepared, generation: generation))
+
+        #expect(viewModel.notationLayoutGeneration == generation)
+        #expect(viewModel.isGameplayPrepared)
+        #expect(viewModel.cachedNotationLayout.noteHeads.map(\.eventID) == prepared.layout.noteHeads.map(\.eventID))
+        let installedMeasures = viewModel.cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
+        let preparedMeasures = prepared.layout.measures.map { ($0.measureIndex, $0.row) }
+        #expect(installedMeasures.count == preparedMeasures.count)
+        for (installed, expected) in zip(installedMeasures, preparedMeasures) {
+            #expect(installed.0 == expected.0)
+            #expect(installed.1 == expected.1)
+        }
+        #expect(viewModel.cachedBeatPositions.count == prepared.beatPositionsByID.count)
+        for (beatID, position) in prepared.beatPositionsByID {
+            let cached = try #require(viewModel.cachedBeatPositions[beatID])
+            #expect(cached.x == Double(position.x))
+            #expect(cached.y == Double(position.y))
+        }
+
+        let staticInput = GameplayView(chart: chart, metronome: viewModel.metronome)
+            .staticNotationInput(viewModel: viewModel)
+        #expect(staticInput.generation == generation)
+    }
+
+    @Test("timeline setup preserves pinned row and coordinate maps")
+    func timelineSetupPreservesPinnedRowAndCoordinateMaps() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8, measuresCount: 2)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+
+        #expect(viewModel.cachedMeasureRowMap == [0: 0, 1: 0])
+        #expect(viewModel.cachedNotationNoteHeadPositions.count == viewModel.cachedNotationLayout.noteHeads.count)
+        #expect(viewModel.cachedBeatPositions.count == viewModel.cachedDrumBeats.count)
+        for noteHead in viewModel.cachedNotationLayout.noteHeads {
+            let cached = try #require(viewModel.cachedNotationNoteHeadPositions[noteHead.id])
+            #expect(cached.x == Double(noteHead.position.x))
+            #expect(cached.y == Double(noteHead.position.y))
+        }
+        for beat in viewModel.cachedDrumBeats {
+            #expect(viewModel.cachedBeatPositions[beat.id] != nil)
+        }
+    }
+
     @Test("playback updates retain the static notation input until a layout install")
     func playbackUpdatesRetainStaticNotationInputUntilLayoutInstall() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
@@ -73,7 +155,7 @@ struct GameplayViewModelLayoutComputationsTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         defer { viewModel.cleanup() }
 
         let gameplayView = GameplayView(chart: chart, metronome: viewModel.metronome)
@@ -136,7 +218,7 @@ struct GameplayViewModelLayoutComputationsTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         defer { viewModel.cleanup() }
 
         let targets = viewModel.cachedRhythmNoteTargets
@@ -179,7 +261,7 @@ struct GameplayViewModelLayoutComputationsTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let noteHead = try #require(viewModel.cachedNotationLayout.noteHeads.first)
         let renderedMeasure = try #require(viewModel.cachedNotationMeasuresByIndex[0])
@@ -228,7 +310,7 @@ struct GameplayViewModelLayoutComputationsTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let target = try #require(viewModel.cachedRhythmNoteTargets.first)
         let timeline = try #require(viewModel.cachedRhythmTimeline)
@@ -261,7 +343,7 @@ struct GameplayViewModelLayoutComputationsTests {
         )
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let snapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
         let rest = try #require(snapshot.rests.first { $0.visibility == .printed && $0.tupletID != nil })
@@ -303,7 +385,7 @@ struct GameplayViewModelLayoutComputationsTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
         #expect(viewModel.cachedRhythmRuntime.diagnostics.map(\.code) == [.manualTimelineUnavailable])
@@ -348,7 +430,7 @@ struct GameplayViewModelLayoutComputationsTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Verify beat positions are cached
         #expect(!viewModel.cachedBeatPositions.isEmpty)
@@ -449,7 +531,7 @@ struct GameplayViewModelLayoutComputationsTests {
             practiceSettings: practiceSettings
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         let duration = viewModel.calculateTrackDuration()
 
@@ -480,7 +562,7 @@ struct GameplayViewModelLayoutComputationsTests {
         )
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         let duration = viewModel.calculateTrackDuration()
 
@@ -497,7 +579,7 @@ struct GameplayViewModelLayoutComputationsTests {
         let practiceSettings = PracticeSettingsService(userDefaults: userDefaults)
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         let baseDuration = viewModel.calculateTrackDuration()
         viewModel.updateSpeed(0.5)
@@ -515,7 +597,7 @@ struct GameplayViewModelLayoutComputationsTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Measure 0 should always exist in map
         #expect(viewModel.measurePositionMap[0] != nil)
@@ -538,7 +620,7 @@ struct GameplayViewModelLayoutComputationsTests {
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Sanity: layout actually produced multiple rows.
         let maxRow = viewModel.cachedNotationLayout.measures.map { $0.row }.max() ?? 0
@@ -567,7 +649,7 @@ struct GameplayViewModelLayoutComputationsTests {
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // If the notation layout is active, cachedMeasureRowMap must be populated.
         if !viewModel.cachedNotationLayout.noteHeads.isEmpty {
@@ -589,7 +671,7 @@ struct GameplayViewModelLayoutComputationsTests {
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         let initialRowWidth = viewModel.cachedLayoutRowWidth
 
@@ -608,6 +690,29 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(viewModel.cachedLayoutRowWidth == initialRowWidth,
                 "Returning to initial width should restore cached width")
     }
+}
+
+@MainActor
+private func makePreparedTimelineState(
+    for viewModel: GameplayViewModel
+) throws -> GameplayNotationPreparedState {
+    let snapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
+    let beatPositionsByID: [UInt64: RhythmEventPosition] = Dictionary(
+        uniqueKeysWithValues: viewModel.cachedDrumBeats.compactMap { beat in
+            guard let position = beat.rhythmPosition else { return nil }
+            return (beat.id, position)
+        }
+    )
+    let request = GameplayNotationPreparationRequest(
+        snapshot: snapshot,
+        minimumMeasureCount: viewModel.cachedLayoutMeasureCount,
+        style: .gameplayDefault.with(rowWidth: max(GameplayLayout.maxRowWidth, viewModel.cachedLayoutRowWidth)),
+        notePositionOverrides: Dictionary(
+            uniqueKeysWithValues: DrumType.allCases.map { ($0, $0.notePosition) }
+        ),
+        beatPositionsByID: beatPositionsByID
+    )
+    return GameplayNotationPreparer.prepare(request)
 }
 
 private enum NotationLayoutGenerationAccess: Equatable { case readOnly, writable }

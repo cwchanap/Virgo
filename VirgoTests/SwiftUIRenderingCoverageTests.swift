@@ -141,7 +141,7 @@ struct SwiftUIRenderingCoverageTests {
                 noteCount: 0
             )
             await emptyViewModel.loadChartData()
-            emptyViewModel.setupGameplay()
+            await emptyViewModel.setupGameplay()
 
             let gameplayView = GameplayView(chart: emptyViewModel.chart, metronome: emptyViewModel.metronome)
             #expect(gameplayView.usesNotationLayout(viewModel: emptyViewModel))
@@ -182,7 +182,7 @@ struct SwiftUIRenderingCoverageTests {
             }
             let denseViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: denseChart)
             await denseViewModel.loadChartData()
-            denseViewModel.setupGameplay()
+            await denseViewModel.setupGameplay()
 
             #expect(gameplayView.usesNotationLayout(viewModel: denseViewModel))
             #expect(gameplayView.sheetContentWidth(viewModel: denseViewModel) > GameplayLayout.maxRowWidth)
@@ -201,7 +201,7 @@ struct SwiftUIRenderingCoverageTests {
                 noteCount: 0
             )
             await restOnlyViewModel.loadChartData()
-            restOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
+            await restOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
 
             let controlOnlyChart = Chart(difficulty: .medium)
             controlOnlyChart.controlEvents.append(ChartControlEvent(
@@ -212,15 +212,15 @@ struct SwiftUIRenderingCoverageTests {
             ))
             let controlOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: controlOnlyChart)
             await controlOnlyViewModel.loadChartData()
-            controlOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
+            await controlOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
 
             let playableViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
             await playableViewModel.loadChartData()
-            playableViewModel.setupGameplay(loadPersistedSpeed: false)
+            await playableViewModel.setupGameplay(loadPersistedSpeed: false)
 
             let legacyEmptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 0)
             await legacyEmptyViewModel.loadChartData()
-            legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)
+            await legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)
             legacyEmptyViewModel.installNotationLayout(.empty)
 
             let gameplayView = GameplayView(chart: playableViewModel.chart, metronome: playableViewModel.metronome)

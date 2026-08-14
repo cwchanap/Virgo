@@ -344,7 +344,7 @@ struct ScoringIntegrationTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         let target = try #require(viewModel.cachedRhythmNoteTargets.first)
         let configuration = try #require(viewModel.inputTimingConfiguration(speed: 1))
         let result = InputTimingMatcher(configuration: configuration).calculateNoteMatch(

@@ -63,7 +63,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
 
         // Override cachedSong with a known "2:30" duration = 150 seconds.
         let song = Song(title: "T", artist: "A", bpm: 120.0, duration: "2:30", genre: "Rock")
@@ -79,7 +79,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
 
         let song = Song(title: "T", artist: "A", bpm: 120.0, duration: "0:00", genre: "Rock")
         vm.cachedSong = song
@@ -96,7 +96,7 @@ struct GameplayViewModelCoverageAdditionsTests {
     func testCalculateElapsedTimeFallbackToPlaybackStartTime() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         // Force playing state without starting the metronome so
@@ -121,7 +121,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
 
         vm.wireInputHandler()
         vm.startPlayback()
@@ -153,7 +153,7 @@ struct GameplayViewModelCoverageAdditionsTests {
     func testRecordHitIgnoredWhenNotPlaying() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         #expect(vm.isPlaying == false)
@@ -185,7 +185,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8, settings: settings)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         let bpmBefore = vm.effectiveBPM()
         #expect(abs(bpmBefore - 120.0) < 0.001, "Pre-condition: effectiveBPM should be 120 at 1× speed")
@@ -214,7 +214,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8, settings: settings)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         vm.sessionAtFullSpeed = true
         vm.isPlaying = true
@@ -233,7 +233,7 @@ struct GameplayViewModelCoverageAdditionsTests {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4, settings: settings)
         defer { vm.cleanup() }
         await vm.loadChartData()
-        vm.setupGameplay(loadPersistedSpeed: false)
+        await vm.setupGameplay(loadPersistedSpeed: false)
 
         vm.startPlayback()
 
@@ -253,7 +253,7 @@ struct GameplayViewModelCoverageAdditionsTests {
             )
             defer { vm.cleanup() }
             await vm.loadChartData()
-            vm.setupGameplay(loadPersistedSpeed: false)
+            await vm.setupGameplay(loadPersistedSpeed: false)
             vm.isPlaying = true
             vm.sessionAtFullSpeed = true
             vm.scoreEngine.processHit(accuracy: .perfect, timingError: 0)

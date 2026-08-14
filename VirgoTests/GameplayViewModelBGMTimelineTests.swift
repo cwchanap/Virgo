@@ -20,7 +20,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.bgmOffsetSeconds = 1.2
         viewModel.pausedElapsedTime = 0.4
@@ -39,7 +39,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         let didReschedule = viewModel.rescheduleBGMForSpeedChange(commonStartTime: CFAbsoluteTimeGetCurrent())
         #expect(didReschedule == false, "Reschedule should be a no-op without an active BGM player")
@@ -54,7 +54,7 @@ struct GameplayViewModelBGMTimelineTests {
         let practiceSettings = GameplayViewModelTestHarness.createTestPracticeSettings()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         viewModel.practiceSettings.setSpeed(1.0)
         viewModel.pausedElapsedTime = 2.0
@@ -85,7 +85,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         // Simulate active playback state while metronome time is unavailable.
         // This forces the fallback speed-change path (metronome.getCurrentPlaybackTime() == nil).
@@ -112,7 +112,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         viewModel.bgmOffsetSeconds = 0.5
         viewModel.practiceSettings.setSpeed(0.5)
@@ -129,7 +129,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 5.0)
         player.currentTime = 2.0
@@ -160,7 +160,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 5.0)
         player.currentTime = 2.0
@@ -208,7 +208,7 @@ struct GameplayViewModelBGMTimelineTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         let bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 90.0)
         bgmPlayer.currentTime = 45.0
         viewModel.bgmPlayer = bgmPlayer
@@ -242,7 +242,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 5.0)
         player.currentTime = 2.0
@@ -280,7 +280,7 @@ struct GameplayViewModelBGMTimelineTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Note at start of measure 1 should have 0 offset
         #expect(viewModel.bgmOffsetSeconds == 0.0)
@@ -303,7 +303,7 @@ struct GameplayViewModelBGMTimelineTests {
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
 
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Should have non-zero offset since first note is not at start
         #expect(viewModel.bgmOffsetSeconds > 0.0)
@@ -332,7 +332,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: GameplayViewModelTestHarness.createTestMetronome())
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         #expect(abs(viewModel.bgmOffsetSeconds - 0.9) < 0.001)
 
@@ -369,7 +369,7 @@ struct GameplayViewModelBGMTimelineTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         #expect(abs(viewModel.bgmOffsetSeconds) < 0.001,
                "An explicit 0.0 BGM offset must be honored, not replaced by the first-note heuristic")
@@ -409,7 +409,7 @@ struct GameplayViewModelBGMTimelineTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         #expect(viewModel.cachedRhythmTimeline == nil,
                 "A legacy DTX-origin chart with no metadata must not materialize a timeline")
@@ -444,7 +444,7 @@ struct GameplayViewModelBGMTimelineTests {
         practiceSettingsFull.setSpeed(1.0)
         let viewModelFull = GameplayViewModel(chart: chart, metronome: metronomeFull, practiceSettings: practiceSettingsFull)
         await viewModelFull.loadChartData()
-        viewModelFull.setupGameplay(loadPersistedSpeed: false)
+        await viewModelFull.setupGameplay(loadPersistedSpeed: false)
         let offsetAt100 = viewModelFull.bgmOffsetSeconds
 
         let metronomeHalf = GameplayViewModelTestHarness.createTestMetronome()
@@ -452,7 +452,7 @@ struct GameplayViewModelBGMTimelineTests {
         practiceSettingsHalf.setSpeed(0.5)
         let viewModelHalf = GameplayViewModel(chart: chart, metronome: metronomeHalf, practiceSettings: practiceSettingsHalf)
         await viewModelHalf.loadChartData()
-        viewModelHalf.setupGameplay(loadPersistedSpeed: false)
+        await viewModelHalf.setupGameplay(loadPersistedSpeed: false)
         let offsetAt50 = viewModelHalf.bgmOffsetSeconds
 
         #expect(offsetAt100 > 0.0, "BGM offset should be positive when first note is not at beginning")
@@ -483,7 +483,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Inject an in-memory BGM player so the clamp path is exercised
         // deterministically regardless of whether BGM test assets exist on disk.
@@ -515,7 +515,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Inject an in-memory BGM player so the rate assertions are deterministic.
         let bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 10.0)
@@ -551,7 +551,7 @@ struct GameplayViewModelBGMTimelineTests {
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
         await viewModel.loadChartData()
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         let highClampedRate = viewModel.clampedBGMRate(for: 2.5)
         #expect(highClampedRate == 2.0, "BGM rate should clamp to 2.0 when speed exceeds 200%")
@@ -585,7 +585,7 @@ struct GameplayViewModelBGMTimelineTests {
         // Inject a mock BGM player so the clamp behavior is deterministically
         // exercised. Without this, bgmPlayer is nil and no clamp ever runs.
         viewModel.bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 10.0)
-        viewModel.setupGameplay()
+        await viewModel.setupGameplay()
 
         // Wait for async setup
         try await Task.sleep(nanoseconds: 50_000_000)

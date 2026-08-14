@@ -32,7 +32,7 @@ struct DrumTabPlayheadAlignmentTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.setupGameplay(loadPersistedSpeed: false)
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
         // Guard teardown immediately after setup so cleanup runs on both the
         // success path and any throwing `#require` below — the explicit call
         // that used to live at the end of the test was skipped whenever an

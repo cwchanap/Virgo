@@ -38,7 +38,7 @@ struct GameplayViewModelPatchCoverageTests {
     func testPlaybackProgressThrottling() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         vm.isPlaying = true
@@ -64,7 +64,7 @@ struct GameplayViewModelPatchCoverageTests {
     func testPurpleBarPositionMovesAcrossSubBeatTicks() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         vm.isPlaying = true
@@ -81,7 +81,7 @@ struct GameplayViewModelPatchCoverageTests {
         chart.notes.forEach { $0.originKind = .dtx }
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         let song = SwiftUICoverageFixtures.makeSong(bgmFilePath: nil, previewFilePath: nil)
@@ -115,7 +115,7 @@ struct GameplayViewModelPatchCoverageTests {
     func testCalculateElapsedTimeUsesBGMPlaybackTime() async throws {
         let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         defer { vm.cleanup() }
 
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 5)

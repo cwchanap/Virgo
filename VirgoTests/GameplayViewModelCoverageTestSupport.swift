@@ -62,7 +62,7 @@ enum GameplayViewModelCoverageTestSupport {
         let chart = makeChart(noteCount: 4, interval: .eighth, measureOffset: 0.125)
         let vm = makeViewModel(chart: chart)
         await vm.loadChartData()
-        vm.setupGameplay()
+        await vm.setupGameplay()
         return vm
     }
 }
