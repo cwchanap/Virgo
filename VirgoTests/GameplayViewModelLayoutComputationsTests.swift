@@ -36,24 +36,33 @@ struct GameplayViewModelLayoutComputationsTests {
             chart: Chart(difficulty: .easy),
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
-        let readOnlyKeyPath: KeyPath<GameplayViewModel, UInt64> = \GameplayViewModel.notationLayoutGeneration
 
-        #expect(viewModel[keyPath: readOnlyKeyPath] == 0)
+        #expect(notationLayoutGenerationAccess(\GameplayViewModel.notationLayoutGeneration) == .readOnly)
+        #expect(notationLayoutGenerationAccess(\GameplayViewModel.nextBeatId) == .writable)
+        #expect(viewModel.notationLayoutGeneration == 0)
     }
 
     @Test("two notation layout installations receive different generations")
-    func notationLayoutInstallationsReceiveDifferentGenerations() {
-        let chart = Chart(difficulty: .easy)
+    func notationLayoutInstallationsReceiveDifferentGenerations() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 1)
         let viewModel = GameplayViewModel(
             chart: chart,
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
+        await viewModel.loadChartData()
+        viewModel.cacheNotationLayout()
+        let renderableLayout = viewModel.cachedNotationLayout
+        #expect(renderableLayout.hasRenderableContent)
 
         viewModel.installNotationLayout(.empty)
-        let firstGeneration = viewModel.notationLayoutGeneration
-        viewModel.installNotationLayout(.empty)
+        let emptyGeneration = viewModel.notationLayoutGeneration
+        #expect(!viewModel.cachedNotationLayout.hasRenderableContent)
 
-        #expect(viewModel.notationLayoutGeneration != firstGeneration)
+        viewModel.installNotationLayout(renderableLayout)
+        let renderableGeneration = viewModel.notationLayoutGeneration
+
+        #expect(renderableGeneration == emptyGeneration &+ 1)
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
     }
 
     @Test func testComputeDrumBeats() async throws {
@@ -571,4 +580,18 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(viewModel.cachedLayoutRowWidth == initialRowWidth,
                 "Returning to initial width should restore cached width")
     }
+}
+
+private enum NotationLayoutGenerationAccess: Equatable { case readOnly, writable }
+
+private func notationLayoutGenerationAccess<Root>(
+    _: KeyPath<Root, UInt64>
+) -> NotationLayoutGenerationAccess {
+    .readOnly
+}
+
+private func notationLayoutGenerationAccess<Root>(
+    _: ReferenceWritableKeyPath<Root, UInt64>
+) -> NotationLayoutGenerationAccess {
+    .writable
 }
