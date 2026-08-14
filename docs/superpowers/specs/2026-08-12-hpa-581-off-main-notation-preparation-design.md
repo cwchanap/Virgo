@@ -1,101 +1,177 @@
-# HPA-581: Off-Main Gameplay Notation Preparation and Static Rendering Design
+# HPA-581: Gameplay Notation Preparation and Static Rendering Design
 
 **Date:** 2026-08-12  
 **Status:** Proposed
 
 ## Context
 
-HPA-579 established the evidence gate for this work on Release macOS using `soukyuu_e_no_shouka` MASTER (2,870 notes, 156 measures, 900 pt row width):
+HPA-579 profiled Release macOS with `soukyuu_e_no_shouka` MASTER (2,870 notes, 156 measures, 900 pt row width) and recorded:
 
 - chart selection → gameplay prepared: median **267.857 ms**;
 - production `GameplayView` initial mount: **4,890.729 ms**;
-- named Release frames showed cached layout/notation and beat-position preparation as the dominant preparation stage;
+- layout/notation and beat-position preparation dominated the preparation slice;
 - rhythm resolution and BGM setup were secondary;
-- parser/projection work was not the gameplay hot path;
-- width-relayout processing was not measured because real display widths tested remained at the 900 pt layout floor;
-- HPA-579 therefore marked **HPA-581 = Proceed**, limited to measured gameplay preparation/static-render work.
+- real host widths tested did not produce a measurable packing-changing relayout;
+- HPA-581: **Proceed**, limited to measured gameplay preparation/static-render work and explicitly excluding virtualization/new screen architecture.
 
-The current code matches that profile:
+The current code has two separate costs:
 
-- `GameplayViewModel` is `@MainActor` and `setupGameplay()` synchronously calls `computeCachedLayoutData()`;
-- `cacheNotationLayout()` invokes `NotationLayoutEngine().layout(input:)` on the main actor;
-- `cacheBeatPositions()` then walks the rendered layout on the main actor;
-- timeline-native layout already consumes `RhythmLayoutSnapshot`, but that snapshot still carries `ObjectIdentifier` through `RhythmLayoutNote.sourceObjectID`, and `RenderedNoteHead` carries it into rendered values;
-- the legacy `NotationLayoutInput` case still contains SwiftData `Note` objects and must not cross actors;
-- `GameplaySheetMusicView` renders its static sheet through methods on `GameplayView` while the view model also caches staff-line SwiftUI views as `AnyView`.
+1. **Recurring playback invalidation:** `GameplaySheetMusicView` is an extension on `GameplayView`; its container reads live `GameplayViewModel` state while static helpers still traverse/derive from `cachedNotationLayout`. The view model also caches staff-line `AnyView`s that do not cache rendered pixels.
+2. **One-time preparation stall:** `setupGameplay()` performs notation layout and beat-position preparation synchronously on `@MainActor` before the prepared sheet becomes visible.
 
-This design targets those seams only. It does not introduce a new screen architecture and does not attempt row virtualization; HPA-584 owns that decision after re-profiling.
+The first cost has a direct recurring user-visible payoff and can be fixed without concurrency. The second has measured main-actor CPU cost, but moving it off-main does **not by itself shorten the loading wait** if readiness still awaits the result. Its user benefit is main-actor responsiveness during loading, not a guaranteed lower chart-selection-to-ready duration.
+
+HPA-581 itself allows narrowing to the smallest maintainability subset when broader work no longer has clear value. Therefore implementation is deliberately ordered so the cheap recurring win lands first and Release profiling decides whether the async migration remains worth its call-site/lifecycle churn.
 
 ## Goals
 
-1. Move the measured timeline-native notation layout and beat-position derivation off `@MainActor`.
-2. Keep SwiftData relationship access, rhythm resolution, model lookup maps, observable state changes, and audio/input setup on `@MainActor`.
-3. Cross the actor boundary through one immutable Sendable request and one immutable prepared result.
-4. Use one generation counter to prevent stale asynchronous preparation from becoming active.
-5. Never publish a first layout whose request width is already known to be stale.
-6. Install the complete prepared notation state coherently.
-7. Make the static notation subtree a real Equatable child that depends on immutable layout data rather than the full gameplay view model.
-8. Keep playhead and auto-scroll dependencies narrow.
-9. Remove `staticStaffLinesView`, `notationStaffLinesView`, and their `AnyView` caching.
-10. Preserve notation geometry, timing/input mappings, resize behavior, accessibility, and existing rendering regressions.
+1. Remove broad static-notation observation from the 30 Hz playback path.
+2. Make every installed notation-layout change advance one enforced layout generation.
+3. Remove `staticStaffLinesView` / `notationStaffLinesView` and their `AnyView` caching.
+4. Keep O(note/measure) static derivations behind the Equatable static-child boundary rather than recomputing them on every playhead update.
+5. Re-profile before introducing async setup churn.
+6. If the measured preparation work remains material, move only timeline-native notation layout + beat-position derivation off `@MainActor` through one immutable value boundary.
+7. Keep SwiftData extraction, rhythm resolution, model lookup maps, observable assignment, legacy layout, audio, and input on `@MainActor`.
+8. Use one generation counter for stale async completion when/if the worker phase proceeds.
+9. Preserve notation geometry, timing/input mappings, resize behavior, accessibility, fatal timing, and session controls.
 
 ## Non-goals
 
-- Moving SwiftData `Chart`, `Song`, `Note`, `ChartControlEvent`, `ModelContext`, or model identity across actors.
-- Moving `RhythmTimelineResolver` or `RhythmLayoutSnapshotBuilder` off-main without new profiling evidence. HPA-579 found rhythm resolution secondary to notation preparation.
-- Making the legacy `NotationLayoutInput` Sendable. Its `.legacy` case intentionally contains SwiftData `Note` values.
-- Rewriting `NotationLayoutEngine`, `NotationRhythmAnalyzer`, `RhythmTimelineBuilder`, or gameplay timing algorithms.
-- Creating a notation actor, scheduler, repository/use-case layer, worker pool, or generic async job framework.
-- Adding a permanent benchmark harness or CI performance gate.
-- Adding lazy row virtualization. HPA-584 owns that decision.
-- Moving post-prepared live width relayout off-main without evidence. The mandatory width rule in this design concerns freshness across the new **initial async preparation gap**, not speculative live-resize optimization.
-- Promising that this ticket removes the 4.89 s eager initial mount. Static-observation isolation should stop broad repeated work during playback, but the initial 2,870-note tree remains eager until post-change profiling justifies HPA-584.
+- Row virtualization. HPA-584 owns that post-HPA-581 decision.
+- A notation actor, scheduler, registry, repository/use-case layer, worker pool, benchmark harness, or CI performance gate.
+- `@unchecked Sendable`.
+- Making `NotationLayoutInput` Sendable; its legacy case contains SwiftData `Note` models.
+- Moving `RhythmTimelineResolver` or `RhythmLayoutSnapshotBuilder` off-main without new evidence.
+- Moving SwiftData models, `ModelContext`, `ObjectIdentifier`, or SwiftUI views across actors.
+- Adding a pre-readiness row-width retry/state machine. Initial preparation uses the width seeded immediately before setup; if geometry changes while an async request is in flight, the existing post-ready debounce performs the normal repack.
+- Preserving exact per-model legacy dropped-note identity after `sourceObjectID` is removed. Legacy diagnostics may degrade to count + representative metadata; timeline diagnostics retain stable `RhythmEventID` identity.
+- Promising that HPA-581 eliminates the **4.89 s** eager initial mount. Static isolation targets repeated invalidation; HPA-584 decides virtualization from the post-change profile.
 
 ## Decision
 
-### 1. Keep extraction, rhythm resolution, and runtime model lookup on MainActor
+### 1. Ship static isolation first, without concurrency
 
-`loadChartData()` continues to:
+The first implementation phase is intentionally synchronous.
 
-1. read SwiftData relationships;
-2. copy the model values already used by gameplay;
-3. run `RhythmTimelineResolver`;
-4. build `GameplayRhythmRuntime` and `RhythmLayoutSnapshot`;
-5. retain `noteByEventID`, `positionByNoteObjectID`, and other model-reference lookup dictionaries only in the main-actor runtime.
+`GameplaySheetMusicView` becomes a small observable container that extracts only:
 
-This is intentionally narrower than the conceptual maximum scope in HPA-581. HPA-579 did not show rhythm resolution as the dominant cost, so moving it would add Sendable surface without evidence.
+- live playhead position;
+- `currentRow` / `isPlaying` for auto-scroll;
+- immutable installed notation/static input;
+- O(1) content frame scalars derived directly from the installed layout.
 
-`RhythmLayoutSnapshotBuilder` also remains on `@MainActor`. The worker begins only after the timeline snapshot exists.
+A file-local `GameplayStaticNotationView: View, Equatable` owns the complete static tree.
 
-### 2. Make the timeline layout value graph semantically safe for the worker
+It receives immutable values, never `GameplayViewModel`, and equality compares only the installed layout generation. It is used through `.equatable()` (or the equivalent EquatableView boundary). Do **not** use `.id(generation)`; changing identity remounts the tree instead of suppressing body evaluation.
 
-`RhythmLayoutSnapshot` is the right conceptual boundary, but the current graph still contains model identity:
+The playhead child receives only `CGPoint?` (or the existing equivalent tuple).
+
+Auto-scroll remains in the container.
+
+### 2. Put all O(n) static derivation behind that boundary
+
+The current sheet container computes values that are pure functions of installed layout:
+
+- notation measure-position mapping;
+- row count;
+- `spacingAboveLine5`, which scans note heads;
+- printed-rest filtering;
+- row-anchor construction.
+
+If the container continues doing this while reading live playhead state, the Equatable child only avoids the large `ForEach` tree; it does not avoid those scans/allocations.
+
+Therefore:
+
+- move `rowAnchorColumn` inside `GameplayStaticNotationView`;
+- compute notation measure positions, row count, top spacing, printed rests, bar/clef descriptors, and similar O(n) static values inside the static child's body so they execute only when its generation changes;
+- keep the container's frame calculations limited to O(1) stored layout properties (`contentWidth`, `totalHeight`, `paintedBounds`/top inset) plus legacy fallback scalars;
+- do **not** duplicate all of those derivations into a second cache merely for architecture symmetry.
+
+If implementation naturally produces one small immutable static-projection value at the install seam, storing it is acceptable, but the required invariant is **no O(note/measure) walk in the 30 Hz container body**, not a particular cache type.
+
+This is a narrower solution than precomputing every row/rest/clef value into `GameplayNotationPreparedState`, while addressing the review's actual cost.
+
+### 3. Enforce layout generation through one install funnel
+
+Equatable correctness cannot depend on every current/future writer remembering to bump a separate counter.
+
+Current production layout resets/installs happen through multiple paths (normal layout, no-track reset, fatal-timing reset). Introduce one view-model install seam, conceptually:
+
+```swift
+func installNotationLayout(_ layout: NotationLayout) {
+    notationLayoutStorage = layout
+    notationLayoutGeneration &+= 1
+}
+```
+
+Exact storage spelling may differ, but:
+
+- `notationLayoutGeneration` is not externally settable;
+- production code cannot assign the backing notation layout without going through the install seam;
+- normal install, empty/no-track reset, fatal-timing reset, and later async-worker install all use the same funnel;
+- tests cover each reset/install path advancing generation.
+
+A read-only `cachedNotationLayout` compatibility accessor may remain if that avoids unnecessary consumer churn.
+
+This single point is the correctness contract for `GameplayStaticNotationView.==`.
+
+### 4. Remove presentation caches
+
+Delete:
+
+- `staticStaffLinesView`;
+- `notationStaffLinesView`;
+- `cacheNotationStaffLinesView()` and its `AnyView` creation.
+
+`StaffLinesBackgroundView` is already a normal SwiftUI value view. Construct it from immutable static inputs inside `GameplayStaticNotationView`.
+
+### 5. Re-profile before async setup migration
+
+After static isolation, repeat the representative Release profile before changing `setupGameplay()` to async.
+
+Record separately:
+
+- chart selection → gameplay prepared;
+- main-thread samples during preparation;
+- initial notation mount;
+- playback/static-body activity.
+
+The decision is:
+
+- **Proceed with off-main preparation** if timeline notation layout + beat-position work is still a material main-actor stall. The expected user benefit is a responsive loading/window/dismiss surface while CPU work runs, not necessarily shorter readiness wall-clock.
+- **Narrow/close HPA-581 after static isolation** only if the new evidence shows that preparation work is no longer material enough to justify the widespread async call-site/lifecycle change. This is allowed by HPA-581's own implementation gate.
+
+HPA-584 does **not** jump ahead merely because its 4.89 s baseline is larger. It remains the follow-up once HPA-581 reaches its evidence-based close point.
+
+### 6. If async preparation proceeds, make the timeline graph semantically worker-safe
+
+`RhythmLayoutSnapshot` is the conceptual value boundary, but today the graph carries model identity through:
 
 - `RhythmLayoutNote.sourceObjectID`;
 - `RenderedNoteHead.sourceObjectID`.
 
-The important rule is semantic, not merely compiler-driven. `ObjectIdentifier` itself is Sendable, so a generic `T: Sendable` assertion is **not sufficient** to prove the worker graph is free of model identity.
+`ObjectIdentifier` can itself satisfy `Sendable`, so compiler Sendable checks cannot prove semantic removal.
 
 For the timeline path:
 
-- use `RhythmEventID` as the stable source identity;
-- remove `sourceObjectID` from `RhythmLayoutNote` and `RenderedNoteHead`;
-- keep model lookup by `RhythmEventID` in `GameplayRhythmRuntime` on `@MainActor`;
-- update timeline dropped-note diagnostics to compare rendered `eventID`s with `GameplayRhythmRuntime.noteByEventID`/its keys;
-- keep legacy-only fallback diagnostics main-actor local rather than preserving object identity in rendered values.
+- remove those `sourceObjectID` fields;
+- use `RhythmEventID` as authoritative source identity;
+- keep `GameplayRhythmRuntime.noteByEventID` on `@MainActor` for model reattachment/diagnostics;
+- timeline dropped-note diagnostics compare rendered event IDs with the runtime event-ID map;
+- legacy dropped-note diagnostics explicitly degrade to count + representative metadata if exact object identity is unavailable.
 
-Add normal `Sendable` conformances to immutable enums/structs needed by the timeline request/result graph. Do **not** use `@unchecked Sendable` to silence compiler errors, and do not add Sendable conformance to SwiftData model classes.
+`RenderedNoteHead.id: UInt64` remains the rendered identity used by `Identifiable`/`Hashable` consumers. Removing `sourceObjectID` does not remove that stable rendered ID; the early golden/invariant run confirms geometry/digest behavior rather than serving as the only reason equality remains discriminating.
 
-The whole `NotationLayoutInput` remains non-Sendable because `.legacy(notes:...)` owns SwiftData references. The worker constructs a timeline-only `NotationLayoutInput` locally from its Sendable request.
+Add normal `Sendable` conformances only to immutable value types needed by the worker graph. In `ChartControlEvent.swift`, only `NotationControlEventKind` / `NotationControlEvent` may gain `Sendable`; the SwiftData `ChartControlEvent` model remains untouched.
 
-Verification must include both:
+Verification includes both:
 
-1. compile-time `Sendable` assertions for the request/result graph; and
-2. a structural regression assertion that timeline/render worker values no longer expose a `sourceObjectID` field. Reuse the repository's existing `Mirror`-based omitted-API test style rather than relying on the compiler to reject `ObjectIdentifier`.
+1. generic compile-time `Sendable` assertions; and
+2. the repository's existing Mirror/omitted-API style assertion that worker timeline/render values do not expose `sourceObjectID`.
 
-### 3. Add one pure timeline preparation boundary
+### 7. Reuse one pure preparer; do not test it tautologically
 
-Introduce one value request and one value result, conceptually:
+If the async phase proceeds, add one pure value helper:
 
 ```swift
 struct GameplayNotationPreparationRequest: Sendable {
@@ -109,198 +185,123 @@ struct GameplayNotationPreparationRequest: Sendable {
 struct GameplayNotationPreparedState: Sendable {
     let layout: NotationLayout
     let beatPositionsByID: [UInt64: CGPoint]
-    // Existing hot lookup maps may live here when coherent installation benefits.
+    // only existing hot/coherent lookup values when useful
 }
 
 struct GameplayNotationPreparer {
-    static func prepare(
-        _ request: GameplayNotationPreparationRequest
-    ) -> GameplayNotationPreparedState
+    static func prepare(_ request: GameplayNotationPreparationRequest) -> GameplayNotationPreparedState
 }
 ```
 
-The exact field spelling may change during implementation, but the boundary stays one request and one prepared value.
+It constructs timeline-only `NotationLayoutInput` internally, calls the existing `NotationLayoutEngine`, and reuses the existing timeline beat-position math. No engine fork.
 
-`GameplayNotationPreparer.prepare` is synchronous, pure value work. It:
+Do **not** add a test whose only assertion is that `prepare(request).layout` equals `NotationLayoutEngine().layout` for the same input; that only proves the wrapper calls its dependency.
 
-1. constructs `NotationLayoutInput(timing: .timeline(...))` locally;
-2. calls the existing `NotationLayoutEngine`;
-3. derives timeline beat positions using the same `TabGrid`/rendered-measure math as `cacheTimelineNotationBeatPositions()`;
-4. derives only the existing lookup caches that are genuinely hot or needed for coherent installation;
-5. returns one prepared value.
+New seam tests instead cover:
 
-No SwiftData object, model identity, SwiftUI `View`, `AnyView`, `ModelContext`, observable reference, or actor-isolated service appears in either boundary value.
+- request/result Sendability;
+- structural absence of object identity;
+- beat-position derivation against pinned expected coordinates;
+- empty/no-playable semantics;
+- view-model installed state after the new setup path matching the synchronous baseline/golden expectations already protected by existing suites.
 
-### 4. Dispatch only the measured timeline path
+Existing `DrumTabGoldenTests`, `DrumTabRegressionInvariantTests`, and `DrumTabPlayheadAlignmentTests` remain the authority for layout equivalence.
 
-`setupGameplay()` becomes async so the production call site can await preparation before exposing `isGameplayPrepared = true`.
+### 8. One async generation, with cleanup invalidation
 
-For a valid timeline runtime:
+If off-main setup proceeds:
 
 ```text
 @MainActor
   compute drum beats
-  resolve current floored row width
-  build Sendable request
-  increment generation
+  seed current row width
+  build timeline request
+  increment generation N
         |
         v
 Task.detached(.userInitiated)
   NotationLayoutEngine.layout
-  beat-position derivation
+  timeline beat-position derivation
         |
         v
 @MainActor
-  generation still current?
-  request row width still current?
-  yes + yes -> install prepared state
-  otherwise -> discard/re-dispatch latest request
+  generation N still current?
+    yes -> install through the single notation install/prepared-state funnel
+    no  -> discard
 ```
 
-The legacy path remains synchronous on `@MainActor` because its layout input contains SwiftData `Note`s. This avoids manufacturing a second model-copy system for an unmeasured compatibility path.
+One generation is the stale-result correctness mechanism. Cancellation is resource cleanup only.
 
-Audio/input/metronome configuration remains main-actor code. Preserve existing semantic ordering unless a test proves a reordering is safe.
+`cleanup()` must invalidate/bump the generation before/while tearing down gameplay. A completion arriving after cleanup therefore cannot reinstall notation or set `isGameplayPrepared = true`.
 
-### 5. One generation is the stale-result correctness mechanism
+Add a deterministic regression for “completion after cleanup cannot resurrect readiness.” Do not race real tasks or use sleeps; test the apply rule directly.
 
-`GameplayViewModel` owns one monotonically increasing notation-preparation generation. Starting an asynchronous preparation increments it; completion applies only when its captured generation equals the current generation.
+### 9. Do not add pre-readiness width retries
 
-Cancellation may be used to reduce wasted work when a view disappears or a newer request supersedes an older one, but cancellation is not a second correctness mechanism. The generation check remains authoritative.
+The previous design added a generation + width-freshness re-dispatch rule across the async gap. Drop it.
 
-Do not add request registries, actor mailboxes, UUID maps, or multiple tokens.
+Why:
 
-### 6. Treat row width as request input through first install
+- current setup seeds width synchronously immediately before layout;
+- `updateRowWidth` already uses a **0.5 pt** tolerance plus a 100 ms trailing-edge debounce;
+- a separate exact/request-width apply predicate creates mismatched semantics and can repeatedly re-dispatch while the user is resizing;
+- the rare cost of one first-frame repack is smaller than another loading-state lifecycle.
 
-The new async initial-preparation gap introduces a correctness case that does not exist in the current synchronous setup.
+If the async phase proceeds, install the current-generation initial result. Once the prepared sheet mounts, its existing `onAppear` / geometry-width update runs through the existing debounce and repacks if the window changed during the worker interval.
 
-Today `GameplayView.prepareGameplay(initialRowWidth:)` seeds width immediately before `setupGameplay()`. After HPA-581, the worker may spend material time preparing that layout while the outer `GeometryReader` changes size. The sheet-music subtree is not mounted until `isGameplayPrepared` becomes true, so its current `onAppear` / `onChange(of: geometry.size.width)` handlers cannot keep the in-flight request fresh.
+Post-prepared relayout remains evidence-gated exactly as HPA-579 required. If a real packing-changing resize later proves material, route it through the **same** preparer and generation; otherwise change nothing.
 
-Therefore initial preparation has this mandatory rule:
-
-1. the outer `GeometryReader` keeps `cachedLayoutRowWidth` updated even while gameplay is loading;
-2. every timeline preparation request owns its **floored row width** through `NotationLayoutStyle.rowWidth`;
-3. when a worker result returns, apply requires both:
-   - the captured generation is current; and
-   - `request.style.rowWidth == max(GameplayLayout.maxRowWidth, cachedLayoutRowWidth)` using the same width tolerance/normalization semantics as the existing cache;
-4. if the width no longer matches, invalidate/bump generation and dispatch a new request using the latest width **before** setting `isGameplayPrepared = true`;
-5. never mount a layout at a width already known to be stale and then immediately repack it on the first visible frame.
-
-Use the same generation counter. Width freshness is an apply predicate, not a second stale-token system.
-
-Add a deterministic regression: start from request generation N at 900 pt, update the cached loading width to a packing-changing width, prove N cannot become prepared, then prove generation N+1/latest width is the state that installs.
-
-This rule is distinct from live resize after gameplay is prepared.
-
-### 7. Post-prepared width relayout remains evidence-gated
-
-HPA-579 could not measure a real post-prepared width relayout because tested display widths stayed at the 900 pt floor. Therefore HPA-581 should **not** add a new asynchronous live-relayout lifecycle solely because one was proposed earlier.
-
-During HPA-581 verification:
-
-- keep the existing trailing-edge debounce;
-- attempt a natural width change that actually changes row packing;
-- if a real host change exists and profiling shows material layout work blocking the main actor, route that relayout through the **same** preparer and generation counter;
-- otherwise leave post-prepared relayout synchronous and record that it remained unproven/untriggerable under the baseline host.
-
-This does not weaken the first-install width rule above: known stale initial results are always rejected.
-
-### 8. Store/install prepared notation coherently
-
-The worker result should also be the unit installed by the view model, rather than copying one field at a time from unrelated temporary objects.
-
-Prefer one stored prepared-notation value with narrow computed accessors for existing consumers when that avoids half-built combinations of:
-
-- notation layout;
-- measure lookup maps;
-- note-head positions;
-- beat positions.
-
-Do not force cheap one-off render descriptors or row counts into the prepared value only for architectural symmetry.
-
-Fatal/empty layout behavior remains explicit and main-actor controlled.
-
-### 9. Isolate the static notation subtree as a real Equatable child
-
-Current static rendering lives in `GameplayView` methods such as `staticSheetMusicContent` and `drumNotationView`. Merely passing fewer values to another helper method does not create a SwiftUI invalidation boundary; parent body evaluation can still rebuild the static tree.
-
-Refactor the sheet into a small observable container plus file-local child views:
+## Data / phase flow
 
 ```text
-sheet container(viewModel)
-  |- GameplayStaticNotationView(layout/static values, generation)
-  |- GameplayPlayheadBarView(position: CGPoint?)
-  `- auto-scroll hooks(currentRow + isPlaying)
+Phase A — no concurrency
+@MainActor layout
+  -> one installNotationLayout funnel (generation++)
+  -> GameplayStaticNotationView(layout/static values, generation).equatable()
+       -> measure mapping / row count / top-spacing scan / row anchors / notation ForEach
+  -> GameplayPlayheadBarView(position only)
+  -> auto-scroll(currentRow, isPlaying)
+
+Phase B — Release re-profile
+  -> if preparation no longer justifies churn: close HPA-581 narrow
+  -> if still material: continue
+
+Phase C/D — conditional worker
+@MainActor SwiftData + resolver + snapshot
+  -> Sendable request (RhythmEventID identity only)
+  -> Task.detached pure layout + beat positions
+  -> generation check
+  -> one coherent install
+  -> existing width debounce handles any geometry drift
 ```
 
-`GameplayStaticNotationView` must:
+## Failure and lifecycle behavior
 
-- be a separate file-local `View` type;
-- conform to `Equatable` with `==` comparing the active prepared-layout generation, not deep-comparing `NotationLayout`;
-- be used through SwiftUI's equatable boundary (for example `.equatable()`), so unchanged generation skips static body re-evaluation;
-- receive immutable layout/static values and **not receive `GameplayViewModel`**;
-- rely on the invariant that every installed layout change advances the generation.
-
-Do **not** use `.id(generation)` as the optimization. `.id` changes identity and remounts the subtree when the layout changes; the goal is to skip reevaluation while identity remains stable.
-
-`GameplayPlayheadBarView` receives only `CGPoint?` (or the existing equivalent value tuple) rather than the full view model. Auto-scroll `onChange` hooks stay on the observable container and read only `currentRow` / `isPlaying` plus the minimal static predicate needed for scrolling.
-
-`StaffLinesBackgroundView` is built normally from immutable measure/layout values inside the static child. Remove `staticStaffLinesView` and `notationStaffLinesView` from `GameplayViewModel`; caching `AnyView` does not cache pixels and mixes presentation into orchestration.
-
-Do not precompute printed-rest filters, clef/time-signature labels, row count, or similar cheap SwiftUI values unless profiling or a natural API boundary justifies them.
-
-## Data and actor flow
-
-```text
-@MainActor
-SwiftData Chart/Note/Control
-      |
-      v
-RhythmTimelineResolver + GameplayRhythmRuntime
-      |
-      v
-RhythmLayoutSnapshot (Sendable, RhythmEventID identity only)
-      |
-      + note-position overrides
-      + beat rhythm positions
-      + current floored row width
-      |
-      v
-GameplayNotationPreparationRequest(generation N)
-      |
-      v
-Task.detached(.userInitiated)
-NotationLayoutEngine + timeline beat-position derivation
-      |
-      v
-GameplayNotationPreparedState
-      |
-      v
-@MainActor generation + row-width freshness check
-      | stale -> dispatch N+1 before ready
-      | current
-      v
-one coherent install -> isGameplayPrepared = true
-      |
-      +--> Equatable static notation child (immutable layout, equality = generation)
-      +--> playhead position-only child
-      `--> auto-scroll row/playing state
-```
-
-## Failure and cancellation behavior
-
-`NotationLayoutEngine.layout` is currently nonthrowing. Keep the worker nonthrowing unless implementation uncovers a real failure that must propagate.
-
-- Fatal rhythm timing continues to short-circuit on `@MainActor` before worker dispatch.
-- Empty layout remains a valid prepared result.
-- A cancelled or stale-generation result cannot install state.
-- A result whose request width is no longer current cannot install state; preparation repeats with the latest known width before readiness.
-- Do not add retries for computation failure; the one re-dispatch case above is input freshness, not retry policy.
+- Fatal rhythm timing stays main-actor controlled and resets notation through the one install funnel.
+- Empty layout is a valid installed state and advances generation.
+- No-track reset advances generation.
+- Normal synchronous/static-phase layout install advances generation.
+- A stale async generation cannot install.
+- `cleanup()` invalidates any in-flight async generation before a completion can make gameplay ready again.
+- There is no async width retry loop.
+- `NotationLayoutEngine.layout` remains nonthrowing unless implementation uncovers a real failure requiring propagation.
 
 ## Verification contract
 
-### Task-1 identity and layout gate
+### Static phase
 
-Before wiring the worker into `setupGameplay`, run the identity-sensitive rendering suites after removing `sourceObjectID`:
+Run focused mounting/layout/playback tests proving:
+
+- all notation layout install/reset paths advance generation;
+- playhead-only updates leave static generation/input unchanged;
+- a new layout generation compares unequal;
+- row anchors remain functional after moving under the static child;
+- raster/mounting behavior remains correct;
+- no O(note/measure) static derivation remains in the live container body.
+
+### Identity phase (only if worker proceeds)
+
+Immediately after removing `sourceObjectID`, before async setup wiring, run:
 
 - `RhythmLayoutSnapshotBuilderTests`;
 - `NotationLayoutEngineTests`;
@@ -309,112 +310,83 @@ Before wiring the worker into `setupGameplay`, run the identity-sensitive render
 - `DrumTabRegressionInvariantTests`;
 - `DrumTabPlayheadAlignmentTests`.
 
-This catches a silent Hashable/digest/geometry identity change before async setup is layered on top. If the digest never emitted object identity, the suites should remain green and prove that immediately.
+### Async phase (only if worker proceeds)
 
-### New focused seam tests
+Add deterministic tests for:
 
-Add focused tests for:
+- stale generation cannot replace newer state;
+- completion after `cleanup()` cannot set `isGameplayPrepared` or reinstall notation;
+- installed timeline setup state matches existing pinned layout/beat expectations;
+- no wall-clock sleeps.
 
-1. compile-time Sendable assertions for request/prepared boundary values;
-2. structural absence of `sourceObjectID` from timeline/render worker values;
-3. pure preparer equivalence with the current timeline layout/beat-position results;
-4. stale generation completion cannot replace newer prepared state;
-5. stale **initial row width** completion cannot become ready and re-dispatches the latest width before first install;
-6. static child equality remains true when only high-frequency playback state changes and false when layout generation changes;
-7. existing mounting/raster smoke still proves the production notation primitives are actually mounted.
+### Strict concurrency
 
-Do not use wall-clock sleeps to test concurrency. Drive request generation/application deterministically.
+If the worker phase proceeds, build with complete Swift concurrency checking. Fix violations by narrowing/copying immutable values, never `@unchecked Sendable`.
 
-### Swift concurrency compile check
+### Full-suite baseline
 
-Build with complete strict concurrency checking. Treat any attempted SwiftData/model-identity crossing as a design failure rather than adding `@unchecked Sendable`.
+The full `VirgoTests` run is diagnostic because clean `main` has the known nondeterministic detached-context SwiftData crash involving `\Chart.difficulty`.
 
-Compiler success alone does not prove the semantic identity rule; keep the explicit structural assertion.
+If the full suite hits that exact failure:
 
-### Focused end-to-end regression gate
+1. reproduce the identical command on clean `main` before classifying it as baseline;
+2. record the matching stack/signature;
+3. do not use that known failure to waive any different HPA-581 regression.
 
-The final focused gate includes at least:
+### Release profile
 
-- `GameplayNotationPreparationTests`;
-- `RhythmLayoutSnapshotBuilderTests`;
-- `NotationLayoutEngineTests`;
-- `GameplayViewModelLayoutComputationsTests`;
-- `GameplaySheetMusicMountingTests`;
-- `DrumTabGoldenTests`;
-- `DrumTabRegressionInvariantTests`;
-- `DrumTabPlayheadAlignmentTests`.
-
-Then run the full Virgo suite.
-
-### Performance re-profile
-
-Repeat HPA-579's Release macOS representative chart and record:
+Repeat HPA-579's representative chart and record:
 
 - chart selection → gameplay prepared;
-- whether the expensive notation layout/beat-position work is absent from main-thread samples;
-- whether first install required a width re-dispatch and whether any stale layout became visible (it must not);
-- initial production notation mount;
-- playback SwiftUI/main-thread activity with the Equatable static subtree isolated;
-- post-prepared width relayout only if a natural host width can actually change row packing.
+- main-thread preparation samples;
+- initial mount versus **4,890.729 ms**;
+- playback/static-body activity;
+- row auto-scroll correctness;
+- any real width-relayout evidence.
 
-Success is directional and evidence-based rather than a fabricated universal millisecond threshold:
-
-- measured timeline layout/beat-position CPU should no longer block the main actor during timeline-native initial preparation;
-- a known-stale first-width result never becomes visible;
-- static notation should not broadly re-evaluate because the playhead moves;
-- notation/timing behavior remains equivalent;
-- if eager initial mount remains dominant, record that result and let HPA-584 decide virtualization.
+If async preparation proceeds, success means the measured timeline layout/beat-position CPU no longer blocks `@MainActor`; it is **not** required to claim the loading wait itself becomes shorter.
 
 ## Alternatives considered
 
-### Move all rhythm resolution and model extraction off-main
+### Do async preparation first
 
-Rejected. HPA-579 did not identify resolution as the dominant cost, and doing this safely would require a much larger scalar-copy boundary for SwiftData relationships.
+Rejected as ordering. It introduces broad `setupGameplay()` async call-site/lifecycle churn before the independent recurring rendering win is measured. HPA-579 still authorizes it if the Phase-B re-profile says the main-actor preparation stall remains worth removing.
 
-### Create a dedicated notation actor/service
+### Defer HPA-581 immediately to HPA-584 because 4.89 s > 267.857 ms
 
-Rejected. The operation is deterministic request → result CPU work. A detached task plus one generation counter provides the needed concurrency and stale-result protection with less lifecycle/state.
+Rejected. HPA-579 explicitly marked both preparation and mount as HPA-581 Proceed inputs, and HPA-584 is defined as the post-HPA-581 virtualization decision. HPA-581 may narrow after its own re-profile, but HPA-584 does not preempt that evidence gate.
 
-### Make `NotationLayoutInput` Sendable
+### Precompute every static descriptor into prepared state
 
-Rejected. Its legacy case intentionally owns `[Note]`, so forcing Sendable would either be unsafe or require a second data model. The worker constructs a timeline-only input locally.
+Rejected as unnecessary duplication. Move O(n) derivations under the Equatable static child first; store a derived projection only if it naturally simplifies the install seam or profiling proves remaining work material.
 
-### Rely only on `Sendable` compilation to remove `ObjectIdentifier`
+### Keep the pre-readiness width freshness/re-dispatch loop
 
-Rejected. `ObjectIdentifier` itself can satisfy Sendable, so compilation is not the semantic boundary check. The source field must be removed explicitly and protected by structural tests.
+Rejected. Existing width normalization/debounce already repairs geometry drift after the prepared sheet mounts; the extra loading-state retry loop is not worth its edge cases.
 
-### Keep static rendering as methods on `GameplayView`
+### Keep `AnyView` caches
 
-Rejected. Passing values into helper methods does not form the intended Equatable child boundary. Use a separate file-local Equatable `View` keyed by prepared-layout generation.
+Rejected. Type erasure is not raster caching and keeps presentation in the view model.
 
-### Use `.id(generation)` for static isolation
+### Add virtualization now
 
-Rejected. That forces remounting on generation changes rather than skipping unchanged static reevaluation.
-
-### Cache more `AnyView`s or cache the complete sheet as `AnyView`
-
-Rejected. Type erasure does not create a rendered-output cache and keeps view concerns in the view model.
-
-### Add row virtualization now
-
-Rejected. The 4.89 s eager mount makes virtualization a plausible next step, but HPA-584 deliberately owns the post-change decision.
+Rejected. HPA-584 owns it from post-change evidence.
 
 ## Acceptance criteria
 
-- [ ] HPA-579's **Proceed** decision remains the scope authority.
-- [ ] Timeline-native notation layout and beat-position preparation run outside `@MainActor`.
-- [ ] Rhythm resolver, snapshot builder, SwiftData extraction, model lookup maps, and observable assignment remain `@MainActor`.
-- [ ] The off-main boundary is one Sendable request and one Sendable prepared value.
-- [ ] No SwiftData model, `ModelContext`, model `ObjectIdentifier`, or SwiftUI view crosses that boundary.
-- [ ] `sourceObjectID` is explicitly absent from timeline/render worker values; compiler Sendable checks are not the only guard.
-- [ ] No `@unchecked Sendable` is introduced to bypass the boundary.
-- [ ] One generation counter prevents stale preparation from becoming active.
-- [ ] Initial preparation also rejects a result whose request row width no longer matches the latest cached floored width, re-dispatching before readiness.
-- [ ] Post-prepared width relayout is moved off-main only if HPA-581 verification produces real evidence for it; otherwise the existing debounce/path remains.
-- [ ] Static notation is a separate Equatable child whose equality is prepared-layout generation and whose input contains no `GameplayViewModel`.
-- [ ] The static child is not keyed with `.id(generation)`.
-- [ ] Playhead observation is position-only and auto-scroll remains row/playing-only.
-- [ ] `staticStaffLinesView` and `notationStaffLinesView` are removed.
-- [ ] Task-1 golden/invariant/playhead suites pass immediately after identity removal.
-- [ ] Existing notation, timing, mounting, scroll, accessibility, and input behavior remains covered.
-- [ ] Release re-profiling records the post-change preparation/mount result for HPA-584.
+- [ ] HPA-579 remains the evidence authority; static isolation lands before async setup churn.
+- [ ] Every installed/reset notation layout goes through one enforced install funnel and advances one layout generation.
+- [ ] Static notation is a file-local Equatable child receiving immutable values and no `GameplayViewModel`.
+- [ ] O(note/measure) static derivations and row anchors live behind that Equatable boundary.
+- [ ] Playhead receives position only; auto-scroll remains narrowly driven by row/playing state.
+- [ ] `staticStaffLinesView` / `notationStaffLinesView` and staff-line `AnyView` caching are removed.
+- [ ] Release is re-profiled after static isolation before deciding whether async setup migration proceeds.
+- [ ] If preparation remains material, timeline-native layout + beat-position preparation move off-main through one Sendable request/result and one generation.
+- [ ] If worker phase proceeds, `cleanup()` invalidates the generation and stale completion cannot resurrect gameplay.
+- [ ] No pre-readiness width retry state machine is added; existing 0.5 pt tolerance + debounce remains the width policy.
+- [ ] No SwiftData model, `ModelContext`, `ObjectIdentifier`, or SwiftUI view crosses the worker boundary.
+- [ ] No `@unchecked Sendable` is introduced.
+- [ ] `sourceObjectID` removal is structurally tested; timeline diagnostics use `RhythmEventID`, while legacy diagnostic degradation is explicit.
+- [ ] Identity-sensitive drum-tab goldens/invariants/playhead tests run before async wiring if worker work proceeds.
+- [ ] Full-suite known `\Chart.difficulty` baseline failure is explicitly reproduced on clean `main` before classification.
+- [ ] HPA-584 remains the post-HPA-581 virtualization decision.
