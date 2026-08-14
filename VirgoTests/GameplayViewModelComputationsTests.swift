@@ -468,7 +468,7 @@ struct ComputationsVisualUpdatesTests {
         let vm = await CoverageHelpers.preparedLegacyVM(noteCount: 4)
         defer { vm.cleanup() }
 
-        vm.cachedNotationLayout = .empty
+        vm.installNotationLayout(.empty)
         try #require(vm.measurePositionMap[0] != nil, "Pre-condition: legacy positions present")
         vm.isPlaying = true
 
@@ -568,7 +568,7 @@ struct ComputationsVisualUpdatesTests {
         vm.setupGameplay(loadPersistedSpeed: false)
 
         // Force the legacy path by clearing the notation layout.
-        vm.cachedNotationLayout = .empty
+        vm.installNotationLayout(.empty)
         vm.measurePositionMap = [
             0: GameplayLayout.MeasurePosition(row: 0, xOffset: GameplayLayout.leftMargin, measureIndex: 0),
             1: GameplayLayout.MeasurePosition(row: 1, xOffset: GameplayLayout.leftMargin, measureIndex: 1),

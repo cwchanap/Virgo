@@ -14,6 +14,48 @@ import SwiftUI
 @MainActor
 struct GameplayViewModelLayoutComputationsTests {
 
+    @Test("normal notation layout installation advances the generation")
+    func normalNotationLayoutInstallationAdvancesGeneration() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 1)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+
+        let initialGeneration = viewModel.notationLayoutGeneration
+        viewModel.cacheNotationLayout()
+
+        #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
+        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+    }
+
+    @Test("notation layout generation is exposed as read-only state")
+    func notationLayoutGenerationIsReadOnly() {
+        let viewModel = GameplayViewModel(
+            chart: Chart(difficulty: .easy),
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        let readOnlyKeyPath: KeyPath<GameplayViewModel, UInt64> = \GameplayViewModel.notationLayoutGeneration
+
+        #expect(viewModel[keyPath: readOnlyKeyPath] == 0)
+    }
+
+    @Test("two notation layout installations receive different generations")
+    func notationLayoutInstallationsReceiveDifferentGenerations() {
+        let chart = Chart(difficulty: .easy)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+
+        viewModel.installNotationLayout(.empty)
+        let firstGeneration = viewModel.notationLayoutGeneration
+        viewModel.installNotationLayout(.empty)
+
+        #expect(viewModel.notationLayoutGeneration != firstGeneration)
+    }
+
     @Test func testComputeDrumBeats() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()

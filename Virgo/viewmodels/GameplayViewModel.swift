@@ -166,8 +166,11 @@ final class GameplayViewModel {
     var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:] // internal for cross-file extension access
     /// Pre-cached beat positions for performance
     var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:] // internal for cross-file extension access
-    /// Pre-computed notation layout that drives rendering when notes are present
-    var cachedNotationLayout = NotationLayout.empty // internal for cross-file extension access
+    /// Pre-computed notation layout that drives rendering when notes are present.
+    /// The private storage keeps every replacement behind `installNotationLayout(_:)`.
+    private var notationLayoutStorage = NotationLayout.empty
+    private(set) var notationLayoutGeneration: UInt64 = 0
+    var cachedNotationLayout: NotationLayout { notationLayoutStorage }
     /// Fast lookup from measure index to row for the notation layout path.
     var cachedMeasureRowMap: [Int: Int] = [:] // internal for cross-file extension access
     /// Fast lookup from measure index to rendered measure for the notation layout path.
@@ -330,6 +333,13 @@ final class GameplayViewModel {
     }
     #endif
 
+    /// Installs a notation layout and advances the single generation used to
+    /// identify the current static notation projection.
+    func installNotationLayout(_ layout: NotationLayout) {
+        notationLayoutGeneration &+= 1
+        notationLayoutStorage = layout
+    }
+
     /// Production default: a background-queue `DispatchSourceTimer` whose handler
     /// hops to the main actor to finalize playback. Scheduling the timer off the
     /// main actor keeps the late-tolerance grace-period firing on time even when
@@ -396,7 +406,7 @@ final class GameplayViewModel {
             return
         }
         guard !hasFatalRhythmTiming else {
-            cachedNotationLayout = .empty
+            installNotationLayout(.empty)
             cachedNotationNoteHeadPositions = [:]
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]

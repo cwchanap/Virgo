@@ -171,7 +171,7 @@ struct SwiftUIRenderingNotationTests {
             - style.articulationStrokeWidth / 2
         let sheetOriginY: CGFloat = 0
         let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: Chart(difficulty: .medium))
-        viewModel.cachedNotationLayout = layout
+        viewModel.installNotationLayout(layout)
         let gameplayView = GameplayView(chart: viewModel.chart, metronome: viewModel.metronome)
         let contentTopInset = gameplayView.sheetContentTopInset(viewModel: viewModel)
 
@@ -199,7 +199,7 @@ struct SwiftUIRenderingNotationTests {
         let stop = try #require(layout.stopNotes.first)
         let paintedTopEdge = stop.position.y - style.stopMarkSize / 2 - style.stopMarkStrokeWidth / 2
         let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: Chart(difficulty: .medium))
-        viewModel.cachedNotationLayout = layout
+        viewModel.installNotationLayout(layout)
         let gameplayView = GameplayView(chart: viewModel.chart, metronome: viewModel.metronome)
         let contentTopInset = gameplayView.sheetContentTopInset(viewModel: viewModel)
 

@@ -14,6 +14,42 @@ import SwiftUI
 @MainActor
 struct GameplayViewModelDataLoadingTests {
 
+    @Test("no-track notation reset advances the generation")
+    func noTrackNotationResetAdvancesGeneration() {
+        let chart = Chart(difficulty: .easy)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+
+        let initialGeneration = viewModel.notationLayoutGeneration
+        viewModel.computeCachedLayoutData()
+
+        #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
+        #expect(viewModel.cachedNotationLayout.measures.isEmpty)
+    }
+
+    @Test("fatal rhythm timing reset advances the generation")
+    func fatalRhythmTimingResetAdvancesGeneration() async throws {
+        let chart = Chart(difficulty: .medium)
+        chart.rhythmMetadataData = Data([0xFF, 0x00, 0xFE])
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        )
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+
+        let initialGeneration = viewModel.notationLayoutGeneration
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
+        #expect(viewModel.cachedNotationLayout.measures.isEmpty)
+        #expect(viewModel.hasFatalRhythmTiming)
+    }
+
     @Test func testLoadChartData() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
