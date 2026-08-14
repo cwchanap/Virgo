@@ -181,7 +181,7 @@ struct GameplayViewModelDataLoadingTests {
         #expect(!viewModel.cachedNotationLayout.rests.filter(\.isPrinted).isEmpty)
         #expect(!viewModel.cachedMeasureRowMap.isEmpty)
         #expect(!viewModel.cachedNotationMeasuresByIndex.isEmpty)
-        #expect(viewModel.notationStaffLinesView != nil)
+        #expect(viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedDrumBeats.isEmpty)
         #expect(viewModel.cachedBeatPositions.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
@@ -210,7 +210,7 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.cachedNotationLayout.stopNotes.count == 1)
         #expect(!viewModel.cachedMeasureRowMap.isEmpty)
         #expect(!viewModel.cachedNotationMeasuresByIndex.isEmpty)
-        #expect(viewModel.notationStaffLinesView != nil)
+        #expect(viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedDrumBeats.isEmpty)
         #expect(viewModel.cachedBeatPositions.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
@@ -225,7 +225,7 @@ struct GameplayViewModelDataLoadingTests {
 
         #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
         #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
-        #expect(viewModel.notationStaffLinesView == nil)
+        #expect(!viewModel.cachedNotationHasRenderableContent)
     }
 
     @Test func testNotesAtSameMusicalInstantEncodedDifferentlyShareBeatID() async throws {
@@ -255,7 +255,7 @@ struct GameplayViewModelDataLoadingTests {
                 "The merged DrumBeat should carry both notes' drum types")
     }
 
-    @Test func testNotationStaffLinesViewCachedWhenLayoutHasNotes() async throws {
+    @Test func testNotationStaticInputRetainsRenderableStateWhenLayoutHasNotes() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
@@ -266,11 +266,10 @@ struct GameplayViewModelDataLoadingTests {
         await viewModel.loadChartData()
         viewModel.setupGameplay(loadPersistedSpeed: false)
 
-        #expect(viewModel.notationStaffLinesView != nil,
-               "notationStaffLinesView should be cached when layout has noteHeads")
+        #expect(viewModel.cachedNotationHasRenderableContent)
     }
 
-    @Test func testNotationStaffLinesViewCachedForRenderableRests() async throws {
+    @Test func testNotationStaticInputRetainsRenderableStateForRenderableRests() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
@@ -280,8 +279,7 @@ struct GameplayViewModelDataLoadingTests {
 
         #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(viewModel.notationStaffLinesView != nil,
-               "notationStaffLinesView should be cached when layout has printed rests")
+        #expect(viewModel.cachedNotationHasRenderableContent)
     }
 
     @Test func testEmptyNotationLayoutHasNoRenderedContent() {
