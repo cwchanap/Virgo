@@ -305,7 +305,7 @@ extension GameplayViewModel {
 
     func cacheNotationLayout() {
         guard let track = track else {
-            cachedNotationLayout = .empty
+            installNotationLayout(.empty)
             cachedNotationNoteHeadPositions = [:]
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]
@@ -346,7 +346,7 @@ extension GameplayViewModel {
                 notePositionOverrides: notePositionOverrides
             )
         }
-        cachedNotationLayout = NotationLayoutEngine().layout(input: input)
+        installNotationLayout(NotationLayoutEngine().layout(input: input))
         if cachedNotationLayout.hasRenderableContent {
             cachedMeasureRowMap = Dictionary(
                 uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }

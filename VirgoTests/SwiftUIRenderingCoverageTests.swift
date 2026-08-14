@@ -161,7 +161,7 @@ struct SwiftUIRenderingCoverageTests {
                     == emptyViewModel.cachedNotationLayout.totalHeight
             )
 
-            emptyViewModel.cachedNotationLayout = .empty
+            emptyViewModel.installNotationLayout(.empty)
             #expect(!gameplayView.usesNotationLayout(viewModel: emptyViewModel))
             #expect(gameplayView.sheetContentWidth(viewModel: emptyViewModel) == GameplayLayout.maxRowWidth)
             #expect(
@@ -221,7 +221,7 @@ struct SwiftUIRenderingCoverageTests {
             let legacyEmptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 0)
             await legacyEmptyViewModel.loadChartData()
             legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)
-            legacyEmptyViewModel.cachedNotationLayout = .empty
+            legacyEmptyViewModel.installNotationLayout(.empty)
 
             let gameplayView = GameplayView(chart: playableViewModel.chart, metronome: playableViewModel.metronome)
             #expect(!gameplayView.shouldAutoScrollSheet(viewModel: restOnlyViewModel, isPlaying: true))

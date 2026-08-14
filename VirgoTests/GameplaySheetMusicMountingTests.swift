@@ -54,7 +54,9 @@ struct GameplaySheetMusicMountingTests {
                 in: gameplayView.drumNotationView(viewModel: viewModel),
                 size: size
             )
-            viewModel.cachedNotationLayout.noteHeads = []
+            var layoutWithoutHeads = viewModel.cachedNotationLayout
+            layoutWithoutHeads.noteHeads = []
+            viewModel.installNotationLayout(layoutWithoutHeads)
             let inkWithoutHeads = try countInkPixels(
                 in: gameplayView.drumNotationView(viewModel: viewModel),
                 size: size
