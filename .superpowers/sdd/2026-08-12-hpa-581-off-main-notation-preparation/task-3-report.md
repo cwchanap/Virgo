@@ -337,3 +337,209 @@ Release app, traces, XML export, screenshots, and both retry DerivedData
 directories under `/private/tmp` were removed. A final process check found no
 `VirgoHPA581`, `hpa581-task3`, or `xctrace record` process. No production,
 test, project, or instrumentation files were changed.
+
+## Headless retry after compositor root-cause analysis
+
+This retry was an evidence-gate recovery only. It did not begin HPA-581 Phase
+C/D or HPA-584 work. The source checkout was at base `6a56a075061afbf9815186b828fce955ffe2f75e`
+in the isolated worktree:
+
+```text
+/Users/chanwaichan/workspace/Virgo/.worktrees/hpa-581-off-main-notation
+```
+
+### Isolated Release run and commands
+
+The machine/configuration was macOS 26.5.2 (25F84), MacBookPro18,3 with an
+Apple M1 Pro and 32 GB RAM, Xcode 26.6 (17F113), and xctrace 16.0 (17F113).
+The optimized Release binary was built outside the worktree:
+
+```bash
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -configuration Release \
+  -destination 'platform=macOS' \
+  -derivedDataPath /private/tmp/hpa581-task3-headless-derived build
+```
+
+The resulting app was copied to a disposable bundle and given a unique
+identity before launch:
+
+```bash
+ditto /private/tmp/hpa581-task3-headless-derived/Build/Products/Release/Virgo.app \
+  /private/tmp/VirgoHPA581HeadlessRetry.app
+/usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier com.cwchanap.Virgo.HPA581HeadlessRetry' \
+  -c 'Set :CFBundleName VirgoHPA581HeadlessRetry' \
+  /private/tmp/VirgoHPA581HeadlessRetry.app/Contents/Info.plist
+codesign --force --deep --sign - --timestamp=none \
+  /private/tmp/VirgoHPA581HeadlessRetry.app
+/private/tmp/VirgoHPA581HeadlessRetry.app/Contents/MacOS/Virgo \
+  -ApplePersistenceIgnoreState YES -HPA581HeadlessProfile
+```
+
+The temporary launch-argument-only hook waited eight seconds before doing
+profile work, then used the normal `ContentView` fixture seeding/import path,
+the real bundled `soukyuu_e_no_shouka` MASTER/Expert chart, a fresh in-memory
+score persistence service, `rowWidth = 900`, `loadChartData()`, and
+`setupGameplay()`. The unique bundle identifier and
+`ApplePersistenceIgnoreState` kept the default Virgo store out of scope.
+
+Time Profiler was attached to the exact running Release PID before the delayed
+work began:
+
+```bash
+xcrun xctrace record --template 'Time Profiler' --time-limit 60s \
+  --no-prompt --output /private/tmp/hpa581-task3-headless.trace \
+  --attach 61764
+xcrun xctrace export --input /private/tmp/hpa581-task3-headless.trace \
+  --toc --output /private/tmp/hpa581-task3-headless-toc.xml
+xcrun xctrace export --input /private/tmp/hpa581-task3-headless.trace \
+  --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' \
+  --output /private/tmp/hpa581-task3-headless-time-profile.xml
+```
+
+The TOC identifies the attached process and binary unambiguously:
+
+```text
+process: Virgo, pid 61764, termination-reason exit(0)
+binary: /private/tmp/VirgoHPA581HeadlessRetry.app/Contents/MacOS/Virgo
+template: Time Profiler
+start: 2026-08-14T08:47:49.385-07:00
+end:   2026-08-14T08:48:50.318-07:00
+duration: 60.932883 s
+```
+
+### Production chart and timing markers
+
+The run emitted these production-path markers before the trace was cleaned:
+
+```text
+HPA581_HEADLESS chart_ready title=蒼穹への翔歌 difficulty=Expert notes=2870 measures=156
+HPA581_HEADLESS_PREP label=warmup elapsed_ms=341.586947 notes=2870 layout_measures=156 beats=1793 prepared=true
+HPA581_HEADLESS_PREP label=measure1 elapsed_ms=256.924987 notes=2870 layout_measures=156 beats=1793 prepared=true
+HPA581_HEADLESS_PREP label=measure2 elapsed_ms=257.725000 notes=2870 layout_measures=156 beats=1793 prepared=true
+HPA581_HEADLESS_PREP label=measure3 elapsed_ms=255.030990 notes=2870 layout_measures=156 beats=1793 prepared=true
+HPA581_HEADLESS_GAMEPLAY_SELECTION timestamp=808415275.257359 row_width=900
+HPA581_HEADLESS_GAMEPLAY_PREP_START timestamp=808415275.331224
+HPA581_HEADLESS_GAMEPLAY_PREP_READY timestamp=808415275.591222 notes=2870 layout_measures=156 rows=156 beats=1793 prepared=true
+HPA581_HEADLESS_PLAYBACK_STARTED timestamp=808415275.629507 playing=true
+```
+
+The three measured preparation entries were 256.924987 ms, 257.725000 ms,
+and 255.030990 ms: median **256.924987 ms**, range **255.030990–257.725000
+ms**. The actual `GameplayView` selection-to-prepared marker delta was
+**333.863 ms**; the prep-start-to-prepared portion was **259.998 ms**. These
+are headless lifecycle/prod-preparation measurements, not a claim of visible
+compositor mount latency.
+
+The source hook also emitted two static-body markers immediately after
+preparation (`808415275.692129` and `808415276.239355`) and auto-scroll
+callbacks for rows **1 through 48**. The first and last callback timestamps
+were `808415277.135993` and `808415345.286026`.
+
+### Targeted Time Profiler evidence
+
+The exported time-profile table identifies the main thread as thread ID
+`101`. The bounded XPath query used for the evidence was of this form (with
+one symbol at a time):
+
+```bash
+xmllint --xpath \
+  "count(//row[(thread/@id='101' or thread/@ref='101') and \
+  .//frame[contains(@name, 'SYMBOL')]])" \
+  /private/tmp/hpa581-task3-headless-time-profile.xml
+```
+
+Explicit named-frame matches on the main thread were: `NotationLayoutEngine.layout`
+2 rows, `GameplayViewModel.computeCachedLayoutData` 2, `setupGameplay` 3,
+`updateTimelineContinuousVisuals` 6, `updatePurpleBarPosition` 1,
+`GameplayView.body.getter` 23, and `GameplayView.sheetMusicView` 12. These
+are named-frame row matches, not CPU percentages; repeated frame references
+are not counted as additional definitions.
+
+Representative symbolicated stacks from the attached Release binary were:
+
+```text
+00:04.982.729  Main Thread
+  specialized NotationLayoutEngine.buildNoteHeads(...)
+  NotationLayoutEngine.layout(input:)                                  [NotationLayoutEngine.swift:25]
+  GameplayViewModel.computeCachedLayoutData()                          [GameplayViewModel.swift:250]
+  GameplayViewModel.setupGameplay(loadPersistedSpeed:)                 [GameplayViewModel.swift:448]
+  ContentView.runHPA581HeadlessProfile()                               [ContentView.swift:316]
+
+00:04.976.728  Main Thread
+  GameplayViewModel.computeDrumBeats()                                  [GameplayViewModel+Computations.swift:156]
+  GameplayViewModel.setupGameplay(loadPersistedSpeed:)                 [GameplayViewModel.swift:448]
+  ContentView.runHPA581HeadlessProfile()                               [ContentView.swift:318]
+
+00:07.826.729  Main Thread
+  ObservationRegistrar.withMutation(...)
+  GameplayViewModel.updateTimelineContinuousVisuals(elapsedTime:track:) [GameplayViewModel+VisualUpdates.swift:73]
+  GameplayViewModel.startVisualTickTimer()                              [GameplayViewModel+VisualUpdates.swift:22-23]
+
+00:18.365.728  Main Thread
+  GameplayViewModel.calculateTimelinePurpleBarPosition(elapsedTime:)    [GameplayViewModel+VisualUpdates.swift:254]
+  GameplayViewModel.calculatePurpleBarPosition(elapsedTime:)            [GameplayViewModel+VisualUpdates.swift:207]
+  GameplayViewModel.updatePurpleBarPosition(elapsedTime:)               [GameplayViewModel+VisualUpdates.swift:160]
+
+00:05.875.729  Main Thread
+  GameplayView.body.getter
+  SwiftUI AttributeGraph layout/update frames
+
+00:07.750.729  Main Thread
+  ScrollViewProxy.scrollTo(...)
+  GameplayView.sheetMusicView(geometry:)                                [GameplayView.swift:89-90]
+```
+
+The notation-layout stack is the real timeline preparation path after Phase A;
+the playback stacks show active visual ticks rather than an idle attach. The
+trace also sampled the production SwiftUI body and scroll callback path while
+playback was running.
+
+### Limitations and gate
+
+The compositor remained unavailable during this headless retry: the prior
+root-cause state was `CGSessionScreenIsLocked` with the Display 1 Shield, so
+there was no inspectable rendered chart surface. The following distinctions
+are intentional:
+
+- The `GameplayView` lifecycle hook proves the real selection/import/preparation
+  path ran, but the **initial visible production mount versus 4,890.729 ms is
+  unavailable**. The 333.863 ms marker is not a replacement for that
+  compositor-inclusive comparison.
+- The two static-body markers and absence of further markers during the
+  captured playback interval are source-hook evidence only. They do not prove
+  pixels were painted or that every SwiftUI static-body evaluation was
+  observed under the shield.
+- Rows 1–48 prove the production auto-scroll callback path advanced. The
+  actual on-screen `ScrollView` position and visual auto-scroll correctness
+  remain unavailable.
+- Playback is proven by `playing=true`, advancing row callbacks, and the
+  symbolicated visual-update/SwiftUI stacks. No claim is made about audible
+  output or compositor presentation.
+
+`GATE: PROCEED` — after static isolation, the current optimized Release trace
+still samples the real timeline notation layout and beat preparation on the
+main actor, and the measured preparation remains materially expensive at about
+**257 ms median** (with the actual headless gameplay preparation taking 333.863
+ms from selection). Freeing roughly the historical **268 ms** of main-actor
+CPU would improve loading/window/dismiss responsiveness; it does **not** promise
+a shorter selection-to-ready wall-clock time because readiness still requires
+the layout work. No Phase C/D implementation or HPA-584 work was started here.
+
+### Reversion, cleanup, and repository verification
+
+The saved temporary patch was first checked and applied in reverse:
+
+```bash
+git apply --reverse --check /private/tmp/hpa581-task3-headless-source.patch
+git apply --reverse /private/tmp/hpa581-task3-headless-source.patch
+```
+
+The four temporary source files were restored exactly. A marker search found no
+`HPA581_HEADLESS` or `HPA581HeadlessProfile` references. The isolated app,
+trace, XML exports, app log, DerivedData, GUI-check screenshot, source patch,
+and the generated `default.profraw` were removed from their explicit paths
+under `/private/tmp`/the worktree. A privileged process check returned no
+`VirgoHPA581HeadlessRetry`, `hpa581-task3-headless`, or `xctrace record`
+process. `git diff --check` passed; no post-revert build was run because this
+bounded handoff explicitly prohibited a new build and the source reversion plus
+marker/status checks proved instrumentation did not persist.
