@@ -218,3 +218,122 @@ Final cleanup verification (2026-08-13):
 - `git diff --check` passed. `git status --short --branch` showed no source,
   test, project, trace, DerivedData, or marker changes; only this report was
   pending before the documentation commit.
+
+## Retry after GUI restoration attempt
+
+### Environment and Release setup
+
+The retry ran on 2026-08-13 from the same isolated worktree:
+
+```text
+worktree: /Users/chanwaichan/workspace/Virgo/.worktrees/hpa-581-off-main-notation
+HEAD: a381df1c1fedc24e04b3891c59650c1e961b4459
+macOS: 26.5.2 (25F84)
+hardware: MacBook Pro18,3, Apple M1 Pro, 32 GB
+Xcode: 26.6 (17F113)
+xctrace: 16.0 (17F113)
+```
+
+The disposable Release build was run outside the worktree:
+
+```bash
+xcodebuild -project Virgo.xcodeproj -scheme Virgo -configuration Release \
+  -destination 'platform=macOS' \
+  -derivedDataPath /private/tmp/hpa581-task3-retry-derived-2 build
+```
+
+It completed with exit code 0 and produced the current Release binary and
+dSYM. A uniquely bundled, ad-hoc-signed copy was launched so the normal
+`cwchanap.Virgo` store was not touched:
+
+```text
+/private/tmp/VirgoHPA581Retry.app
+bundle identifier: com.cwchanap.Virgo.HPA581Retry
+launch arguments: -ApplePersistenceIgnoreState YES -UITesting
+```
+
+`-ResetState` was not used. The app process was PID 52020. CoreGraphics
+reported its Virgo window as window 121730 with 900 x 450 bounds, but the
+window was assigned to another Space and was not exposed on the active Space
+for interaction.
+
+### Release attach and symbolication
+
+A bounded attach-only Time Profiler capture was completed:
+
+```bash
+xcrun xctrace record --template 'Time Profiler' --time-limit 15s \
+  --no-prompt --output /private/tmp/hpa581-task3-retry-idle.trace \
+  --attach 52020
+xcrun xctrace export --input /private/tmp/hpa581-task3-retry-idle.trace --toc
+xcrun xctrace export --input /private/tmp/hpa581-task3-retry-idle.trace \
+  --xpath '/trace-toc/run[@number="1"]/data/table[@schema="time-profile"]' \
+  --output /private/tmp/hpa581-task3-retry-idle-time-profile.xml
+```
+
+The trace TOC identified the attached process as:
+
+```text
+process: Virgo, pid 52020
+path: /private/tmp/VirgoHPA581Retry.app/Contents/MacOS/Virgo
+template: Time Profiler
+duration: 15.919036 seconds
+trace interval: 2026-08-13T23:54:31.605-07:00 to 2026-08-13T23:54:47.524-07:00
+```
+
+The exported samples were symbolicated, including:
+
+```text
+static VirgoApp.$main()
+source: Virgo/VirgoApp.swift
+```
+
+The idle trace also contained SwiftUI/AttributeGraph and AppKit frames, but
+no `GameplayView`, `cacheNotationLayout`, or `cacheBeatPositions` frames. It
+therefore proves only that the current Release attach/symbolication path
+works; it is not representative chart-interaction evidence.
+
+### Interaction blocker and required observations
+
+The desktop initially rendered normally, but the bounded recovery attempt
+ended with this exact login-session state:
+
+```text
+CGSessionScreenIsLocked = 1
+```
+
+CoreGraphics then reported the active onscreen stack contained:
+
+```text
+Window Server — Display 1 Shield (layer 2147483646)
+```
+
+Accessibility could not enumerate a Virgo window while that shield was
+present. No authentication or broad Space-management workaround was
+attempted. Consequently, the representative `soukyuu_e_no_shouka` MASTER /
+Expert chart was not selected, and the following required observations remain
+unavailable for this retry:
+
+- selection -> `isGameplayPrepared == true`;
+- main-thread samples in timeline notation layout or beat-position preparation;
+- initial production `GameplayView` mount versus 4,890.729 ms;
+- playback/static-sheet body behavior after static isolation;
+- production auto-scroll correctness.
+
+No timing, sample count, mount, playback, or scroll metric is inferred from
+the idle attach trace. HPA-579's historical 267.857 ms preparation and
+4,890.729 ms mount values remain context only.
+
+### Gate and cleanup
+
+`GATE: BLOCKED` — the Release build, attach, and symbolication path succeeded,
+but the locked GUI/Display 1 Shield/AX failure prevented the real chart
+interaction and every required post-static-isolation observation. This retry,
+like the earlier setup trace, does not authorize HPA-581 Phase C/D or HPA-584.
+No `PROCEED`, `NARROW`, or `CLOSE` decision is made from unavailable evidence.
+
+The isolated app was quit after the bounded capture. The exact temporary
+Release app, traces, XML export, screenshots, and both retry DerivedData
+directories under `/private/tmp` were removed. A final process check found no
+`VirgoHPA581`, `hpa581-task3`, or `xctrace record` process. No production,
+test, project, or instrumentation files were changed.
