@@ -85,10 +85,7 @@ struct GameplayRenderCoverageTests {
                 !vm.cachedDrumBeats.isEmpty,
                 "makePreparedViewModel must populate cachedDrumBeats via setupGameplay()"
             )
-            #expect(
-                vm.staticStaffLinesView != nil,
-                "makePreparedViewModel must build staticStaffLinesView via setupGameplay()"
-            )
+            #expect(vm.cachedNotationHasRenderableContent)
 
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
                 .environmentObject(vm.practiceSettings)
@@ -170,26 +167,24 @@ struct GameplayRenderCoverageTests {
         }
     }
 
-    // MARK: - Dynamic staff lines fallback (staticStaffLinesPresent: false)
+    // MARK: - Direct static staff lines
 
-    /// Passes `staticStaffLinesPresent: false` so `viewModel.staticStaffLinesView` is nil,
-    /// exercising the else-branch in `sheetMusicView` that falls back to `staffLinesView(...)`.
-    @Test("GameplayView renders dynamic staff lines when staticStaffLinesView is nil")
-    func testGameplayView_dynamicStaffLinesFallback() async throws {
+    /// Staff lines are now built directly by the static notation child rather
+    /// than being cached as an `AnyView` on the view model.
+    @Test("GameplayView renders staff lines from the static notation input")
+    func testGameplayView_staticNotationChildRendersStaffLines() async throws {
         try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel(staticStaffLinesPresent: false)
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
             defer { vm.cleanup() }
-            #expect(vm.staticStaffLinesView == nil, "Fixture must clear staticStaffLinesView")
-
-            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
-                .environmentObject(vm.practiceSettings)
+            let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+            let input = gameplayView.staticNotationInput(viewModel: vm)
+            #expect(input.hasRenderableContent)
+            #expect(input.contentWidth >= GameplayLayout.maxRowWidth)
 
             SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
+                gameplayView.environmentObject(vm.practiceSettings),
                 size: CGSize(width: 1280, height: 900)
             )
-            #expect(vm.staticStaffLinesView == nil,
-                    "Injected view model must preserve a nil staticStaffLinesView during mount")
         }
     }
 

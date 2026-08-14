@@ -230,13 +230,12 @@ extension GameplayViewModel {
             totalMeasures: measuresCount,
             timeSignature: track.timeSignature
         )
+        cachedLegacyContentHeight = GameplayLayout.totalHeight(for: cachedMeasurePositions)
 
         measurePositionMap = [:]
         for position in cachedMeasurePositions {
             measurePositionMap[position.measureIndex] = position
         }
-
-        staticStaffLinesView = AnyView(StaffLinesBackgroundView(measurePositions: cachedMeasurePositions))
 
         if measurePositionMap[0] == nil {
             Logger.warning("Measure 0 missing from measurePositionMap! Creating fallback measure 0.")
@@ -309,7 +308,7 @@ extension GameplayViewModel {
             cachedNotationNoteHeadPositions = [:]
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]
-            notationStaffLinesView = nil
+            cachedLegacyContentHeight = 0
             return
         }
 
@@ -347,7 +346,7 @@ extension GameplayViewModel {
             )
         }
         installNotationLayout(NotationLayoutEngine().layout(input: input))
-        if cachedNotationLayout.hasRenderableContent {
+        if cachedNotationHasRenderableContent {
             cachedMeasureRowMap = Dictionary(
                 uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
             )
@@ -360,35 +359,12 @@ extension GameplayViewModel {
             cachedNotationMeasuresByIndex = [:]
         }
 
-        cacheNotationStaffLinesView()
         logDroppedNotesIfAny()
 
         cachedNotationNoteHeadPositions = Dictionary(
             uniqueKeysWithValues: cachedNotationLayout.noteHeadPositionsByID.map { noteHeadID, position in
                 (noteHeadID, (x: Double(position.x), y: Double(position.y)))
             }
-        )
-    }
-
-    /// Builds (or clears) the cached staff-lines background view. Only populated
-    /// when the layout produced renderable notation, since a malformed empty layout has nothing to
-    /// underlay. Extracted from `cacheNotationLayout()` to keep it under the
-    /// function-body-length limit.
-    private func cacheNotationStaffLinesView() {
-        guard cachedNotationLayout.hasRenderableContent else {
-            notationStaffLinesView = nil
-            return
-        }
-        let notationMeasurePositions = cachedNotationLayout.measures.map { measure in
-            GameplayLayout.MeasurePosition(
-                row: measure.row,
-                xOffset: measure.xOffset,
-                measureIndex: measure.measureIndex
-            )
-        }
-        let contentWidth = cachedNotationLayout.contentWidth
-        notationStaffLinesView = AnyView(
-            StaffLinesBackgroundView(measurePositions: notationMeasurePositions, width: contentWidth)
         )
     }
 
@@ -435,9 +411,9 @@ extension GameplayViewModel {
 
         cachedBeatPositions = [:]
 
-        if cachedNotationLayout.hasPlayableContent {
+        if cachedNotationHasPlayableContent {
             cacheNotationBeatPositions(track: track)
-        } else if !cachedNotationLayout.hasRenderableContent {
+        } else if !cachedNotationHasRenderableContent {
             cacheLegacyBeatPositions(track: track)
         }
 

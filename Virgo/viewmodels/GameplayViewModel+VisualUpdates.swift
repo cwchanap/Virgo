@@ -71,7 +71,7 @@ extension GameplayViewModel {
         guard let resolved = resolvedTimelinePlaybackPosition(elapsedTime: elapsedTime) else { return }
 
         updatePurpleBarPosition(elapsedTime: elapsedTime)
-        if cachedNotationLayout.hasPlayableContent || !cachedNotationLayout.hasRenderableContent {
+        if cachedNotationHasPlayableContent || !cachedNotationHasRenderableContent {
             let newRow = rowForMeasure(resolved.measure.measureIndex)
             if newRow != currentRow {
                 currentRow = newRow
@@ -113,7 +113,7 @@ extension GameplayViewModel {
 
         // Track which row the playhead is on so the view can auto-scroll. Only
         // assign on change to avoid spurious observer churn at 30 Hz.
-        if cachedNotationLayout.hasPlayableContent || !cachedNotationLayout.hasRenderableContent {
+        if cachedNotationHasPlayableContent || !cachedNotationHasRenderableContent {
             let newRow = rowForMeasure(continuousMeasureIdx)
             if newRow != currentRow {
                 currentRow = newRow
@@ -179,8 +179,8 @@ extension GameplayViewModel {
     /// indices clamp to the last valid measure so the cursor stays on the final row
     /// after the song ends instead of snapping back to row 0.
     func rowForMeasure(_ measureIndex: Int) -> Int {
-        if cachedNotationLayout.hasRenderableContent {
-            guard cachedNotationLayout.hasPlayableContent else { return currentRow }
+        if cachedNotationHasRenderableContent {
+            guard cachedNotationHasPlayableContent else { return currentRow }
             guard !cachedNotationLayout.measures.isEmpty else { return 0 }
             let clamped = min(max(measureIndex, 0), cachedNotationLayout.measures.count - 1)
             return cachedMeasureRowMap[clamped] ?? 0
@@ -214,8 +214,8 @@ extension GameplayViewModel {
         let measureIndex = Int(continuousMeasureFraction)
         let beatWithinMeasure = totalBeatsElapsed - Double(measureIndex * beatsPerMeasure)
 
-        let hasRenderableNotation = cachedNotationLayout.hasRenderableContent
-        let hasPlayableNotation = cachedNotationLayout.hasPlayableContent
+        let hasRenderableNotation = cachedNotationHasRenderableContent
+        let hasPlayableNotation = cachedNotationHasPlayableContent
         // Clamp measureIndex to valid range for notation layout lookup.
         // Also clamp beatWithinMeasure so the purple bar stays at the end
         // of the final measure instead of jumping back to beat 0.
@@ -250,7 +250,7 @@ extension GameplayViewModel {
     }
 
     private func calculateTimelinePurpleBarPosition(elapsedTime: Double) -> (x: Double, y: Double)? {
-        guard cachedNotationLayout.hasPlayableContent,
+        guard cachedNotationHasPlayableContent,
               let resolved = resolvedTimelinePlaybackPosition(elapsedTime: elapsedTime),
               let measure = cachedNotationMeasuresByIndex[resolved.measure.measureIndex] else {
             return nil
@@ -289,7 +289,7 @@ extension GameplayViewModel {
         measureIndex: Int,
         beatWithinMeasure: Double
     ) -> (x: Double, y: Double)? {
-        guard let track = track, cachedNotationLayout.hasPlayableContent else { return nil }
+        guard let track = track, cachedNotationHasPlayableContent else { return nil }
         guard let measure = cachedNotationMeasuresByIndex[measureIndex] else {
             return nil
         }

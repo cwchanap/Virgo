@@ -65,6 +65,33 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
     }
 
+    @Test("playback updates retain the static notation input until a layout install")
+    func playbackUpdatesRetainStaticNotationInputUntilLayoutInstall() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+
+        let gameplayView = GameplayView(chart: chart, metronome: viewModel.metronome)
+        let installedInput = gameplayView.staticNotationInput(viewModel: viewModel)
+
+        viewModel.isPlaying = true
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 0.25)
+        let playbackInput = gameplayView.staticNotationInput(viewModel: viewModel)
+
+        #expect(playbackInput == installedInput)
+        #expect(playbackInput.generation == installedInput.generation)
+        #expect(playbackInput.layout.noteHeads.map(\.id) == installedInput.layout.noteHeads.map(\.id))
+
+        viewModel.installNotationLayout(.empty)
+        let replacementInput = gameplayView.staticNotationInput(viewModel: viewModel)
+        #expect(replacementInput.generation != installedInput.generation)
+    }
+
     @Test func testComputeDrumBeats() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
@@ -308,7 +335,8 @@ struct GameplayViewModelLayoutComputationsTests {
 
         #expect(!viewModel.cachedMeasurePositions.isEmpty)
         #expect(!viewModel.measurePositionMap.isEmpty)
-        #expect(viewModel.staticStaffLinesView != nil)
+        #expect(viewModel.cachedLegacyContentHeight > 0)
+        #expect(viewModel.cachedNotationHasRenderableContent)
 
         // Verify measure 0 always exists
         #expect(viewModel.measurePositionMap[0] != nil)

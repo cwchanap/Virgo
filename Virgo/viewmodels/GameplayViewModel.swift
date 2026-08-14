@@ -171,6 +171,11 @@ final class GameplayViewModel {
     private var notationLayoutStorage = NotationLayout.empty
     private(set) var notationLayoutGeneration: UInt64 = 0
     var cachedNotationLayout: NotationLayout { notationLayoutStorage }
+    /// Note-head presence is already an O(1) layout query. Printed-rest and
+    /// control renderability is resolved once at layout installation so playback
+    /// updates do not scan those arrays.
+    var cachedNotationHasPlayableContent: Bool { !notationLayoutStorage.noteHeads.isEmpty }
+    private(set) var cachedNotationHasRenderableContent = false
     /// Fast lookup from measure index to row for the notation layout path.
     var cachedMeasureRowMap: [Int: Int] = [:] // internal for cross-file extension access
     /// Fast lookup from measure index to rendered measure for the notation layout path.
@@ -180,6 +185,10 @@ final class GameplayViewModel {
     var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:] // internal for cross-file extension access
     /// Duration-based measure count shared with legacy and notation layouts.
     var cachedLayoutMeasureCount = 1 // internal for cross-file extension access
+    /// O(1) legacy-sheet height used by the observable sheet container. The
+    /// measure-row scan that produces this value runs only when the layout is
+    /// installed, never while playback updates the playhead.
+    var cachedLegacyContentHeight: CGFloat = 0 // internal for cross-file extension access
     /// Available row width, fed from the sheet music view's GeometryProxy. Falls back
     /// to the legacy 900pt cap so layouts built before any geometry is observed behave
     /// the way they always have. Use `updateRowWidth(_:)` to set this from the view.
@@ -191,10 +200,6 @@ final class GameplayViewModel {
     /// Row index of the staff currently containing the playhead. Drives auto-scroll
     /// of the sheet music ScrollView so the active row stays visible during playback.
     var currentRow: Int = 0
-    /// Cached static staff lines view (uses AnyView for type erasure)
-    var staticStaffLinesView: AnyView?
-    /// Cached notation-path staff lines view (width matches notation content width)
-    var notationStaffLinesView: AnyView?
 
     // MARK: - BGM State
     /// Audio player for background music
@@ -338,6 +343,7 @@ final class GameplayViewModel {
     func installNotationLayout(_ layout: NotationLayout) {
         notationLayoutGeneration &+= 1
         notationLayoutStorage = layout
+        cachedNotationHasRenderableContent = layout.hasRenderableContent
     }
 
     /// Production default: a background-queue `DispatchSourceTimer` whose handler
@@ -410,6 +416,7 @@ final class GameplayViewModel {
             cachedNotationNoteHeadPositions = [:]
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]
+            cachedLegacyContentHeight = 0
             cachedTrackDuration = 0
             bgmOffsetSeconds = 0
             metronome.stop()
