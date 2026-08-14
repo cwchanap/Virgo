@@ -64,6 +64,42 @@ tests cover the compile-time Sendable gate, pinned coordinates across wrapped
 rows, printable renderable content without playable notes, and the absence of
 model-identity fields. The existing Notation Layout Engine suite also passed.
 
+## Review round 1 correction
+
+The original model-identity assertion only inspected the top-level property
+labels. It now recursively walks reflected child values and types, rejecting
+`ObjectIdentifier` values and any class/reference value regardless of its
+property name or nesting depth. The test includes renamed nested probes for
+both cases, proving that the scanner itself detects the identities it is meant
+to reject; no source-text inspection is used.
+
+Review RED was captured after adding the strengthened assertion calls and
+probes, before adding the test-only scanner:
+
+```text
+xcodebuild test -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' -configuration Debug \
+  -only-testing:VirgoTests/GameplayNotationPreparationTests \
+  -parallel-testing-enabled NO ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300 -derivedDataPath ./DerivedData
+```
+
+The run exited 65 with the expected missing test-helper symbols:
+
+```text
+error: cannot find 'reflectedIdentityFindings' in scope
+error: cannot find 'ReferenceIdentityProbe' in scope
+** TEST FAILED **
+```
+
+After the test-only recursive scanner was added and its helper-name typo was
+corrected, the exact focused serial Task 5 command above was rerun. It passed
+with **TEST SUCCEEDED**, 88 tests in 2 suites.
+
+The review-round test correction is isolated in commit
+`899ac07` (`test(HPA-581): strengthen notation identity coverage`). No
+production seam or Task 6 scope changed.
+
 ## Implementation and invariant evidence
 
 - `GameplayNotationPreparer.prepare` constructs `.timeline(request.snapshot)`
@@ -91,10 +127,13 @@ focused build is the membership verification.
 
 ## Diff and commits
 
-- `git diff --check`: passed before the source commit.
+- `git diff --check`: passed before the source commit and after the review-round
+  test correction.
 - Source implementation commit: `c8139b2c3b222a2ecdd165af62efc47057e26c8a`
   (`feat(HPA-581): add pure notation preparation boundary`).
-- Report commit: recorded separately after this report is committed.
+- Review-round test correction commit: `899ac07`
+  (`test(HPA-581): strengthen notation identity coverage`).
+- Updated report commit: recorded separately after this report is committed.
 - After the report commit, `git status --short --branch` is expected to show a
   clean worktree.
 
