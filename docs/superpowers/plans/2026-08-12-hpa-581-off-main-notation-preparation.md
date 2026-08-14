@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans`. Steps use checkbox syntax for tracking.
 
-**Goal:** First isolate static gameplay notation from 30 Hz playback observation with one enforced layout-install generation, then re-profile. Only if the measured ~268 ms timeline layout/beat preparation remains worth the lifecycle/call-site churn, move that pure work off `@MainActor` through one Sendable request/result and one stale-generation guard.
+**Goal:** First isolate static gameplay notation from 30 Hz playback observation with one enforced layout-install generation, then re-profile. Only if the measured ~268 ms timeline layout/beat preparation remains worth the lifecycle/call-site churn, move that pure work off `@MainActor` through one Sendable request/result and the same generation counter as the sole stale-result mechanism.
 
-**Architecture:** Keep `GameplayViewModel` as the screen facade. Phase A is concurrency-free: one notation install funnel advances one layout generation, a file-local Equatable static child owns every O(note/measure) static derivation and row anchor, and the playhead gets position only. Phase B re-profiles. Conditional phases then remove worker-facing model identity, introduce one pure preparer around the existing `NotationLayoutEngine`, and make setup async with generation invalidation in `cleanup()`. No pre-readiness width retry loop; the existing 0.5 pt tolerance + 100 ms debounce remains the width policy.
+**Architecture:** Keep `GameplayViewModel` as the screen facade. Phase A is concurrency-free: one notation install funnel advances one layout generation, a file-local Equatable static child owns every O(note/measure) static derivation and row anchor, and the playhead gets position only. Phase B re-profiles. Conditional phases then remove worker-facing model identity, introduce one pure preparer around the existing `NotationLayoutEngine`, and make setup async. The same notation generation is allocated before a worker request and becomes the installed layout generation only when that request applies; `cleanup()` advances it to invalidate in-flight work. No second request token/counter. No pre-readiness width retry loop; the existing 0.5 pt tolerance + 100 ms debounce remains the width policy.
 
 **Tech Stack:** Swift 6, SwiftUI Observation, SwiftData, Swift Concurrency (conditional phase), Swift Testing/XCTest, Xcode/macOS `xcodebuild`, Instruments.
 
@@ -20,6 +20,7 @@
 - Do not add a notation actor/service/scheduler/registry/worker pool/repository-use-case layer.
 - Do not add a benchmark harness or CI performance gate.
 - Do not add row virtualization.
+- Use **one notation generation counter total**. It serves both static-view equality and, if the worker phase proceeds, stale-request validation. Do not add a second preparation token/counter.
 - Do not add pre-readiness width re-dispatch/retry logic. Seed the initial width exactly as today; if geometry changes while a later worker runs, the existing prepared-sheet width handler/debounce performs one normal repack.
 - Post-prepared width relayout remains synchronous unless a real Release packing-changing resize proves material main-thread cost.
 - Run tests with parallel testing disabled because existing suites share SwiftData/audio/global-state seams.
@@ -63,8 +64,8 @@ Implement one view-model seam, exact spelling flexible:
 
 ```swift
 func installNotationLayout(_ layout: NotationLayout) {
-    notationLayoutStorage = layout
     notationLayoutGeneration &+= 1
+    notationLayoutStorage = layout
 }
 ```
 
@@ -74,9 +75,10 @@ Requirements:
 - [ ] `notationLayoutGeneration` is read-only outside the view model;
 - [ ] keep a read-only `cachedNotationLayout` compatibility accessor if it reduces consumer churn;
 - [ ] route normal install, no-track reset, and fatal reset through the same seam;
-- [ ] later async worker install must reuse this same funnel (or a widened coherent-state version of it), not create a second generation path.
+- [ ] later async worker requests allocate from this **same counter** and successful worker install stores the prepared layout with the request's already-allocated generation; do not increment a second time at apply;
+- [ ] stale/cleanup invalidation also advances this same counter.
 
-Do **not** create a new observable manager/service just to hold the generation.
+Do **not** create a new observable manager/service or separate preparation-generation variable.
 
 ### Step 1.4 — Verify
 
@@ -420,8 +422,8 @@ git commit -m "feat(HPA-581): add pure notation preparation boundary"
 
 Add tests for the apply seam:
 
-1. [ ] generation N result cannot install after generation N+1 exists;
-2. [ ] generation N+1 result installs through the same notation install/coherent-state funnel;
+1. [ ] allocate generation N for a worker request, then advance to N+1; N result cannot install;
+2. [ ] a current generation result installs through the same notation funnel without creating/incrementing a separate generation at apply;
 3. [ ] call `cleanup()` after allocating/in-flight generation N, then attempt N completion; it cannot reinstall notation or set `isGameplayPrepared = true`;
 4. [ ] representative timeline setup produces the same pinned layout row maps/note-head positions/beat positions as the established synchronous/golden baseline.
 
@@ -436,20 +438,20 @@ Drive the apply rule directly. Do not race real detached tasks or sleep.
 
 This migration is intentionally delayed until profiling confirms the value because the call surface is widespread.
 
-### Step 6.3 — Add one generation counter for worker freshness
+### Step 6.3 — Reuse the one notation generation for worker freshness
 
-- [ ] Reuse the notation/layout generation when it cleanly represents the worker request lifecycle, or add one clearly named notation-preparation generation if the install-generation semantics differ. Do **not** add multiple tokens/registries.
-- [ ] Starting async preparation advances the authoritative stale-request generation.
-- [ ] Completion applies only when captured generation is current.
+- [ ] Before dispatch, advance/allocate the **same `notationLayoutGeneration`** used by the Equatable static child and capture N in the request/apply context.
+- [ ] Worker completion applies only if N still equals the current notation generation.
+- [ ] Successful apply installs the layout tagged with N; it does not advance another counter at apply.
+- [ ] Any newer layout/reset/request or cleanup advances the same counter, making N stale.
 - [ ] Optional task cancellation is cleanup/resource control only.
-
-Keep the design to one stale-result mechanism.
+- [ ] Do not add UUID registries, request IDs, or a separate `notationPreparationGeneration`.
 
 ### Step 6.4 — Invalidate on cleanup
 
 In `GameplayViewModel+Playback.swift`:
 
-- [ ] `cleanup()` invalidates/advances the preparation generation before/while tearing down gameplay;
+- [ ] `cleanup()` advances the same notation generation before/while tearing down gameplay;
 - [ ] cancel a retained in-flight task if one exists, only to save work;
 - [ ] `isGameplayPrepared = false` remains part of cleanup;
 - [ ] a detached completion after cleanup fails the generation check and cannot resurrect readiness.
@@ -474,11 +476,11 @@ let prepared = await Task.detached(priority: .userInitiated) {
 Back on `@MainActor`:
 
 - [ ] generation check;
-- [ ] install through the single coherent notation install funnel;
+- [ ] install through the single coherent notation install funnel using the already-allocated generation;
 - [ ] set readiness only for a current result;
 - [ ] preserve BGM/metronome/input ordering unless tests justify a change.
 
-Legacy `NotationLayoutInput` stays synchronous on-main.
+Legacy `NotationLayoutInput` stays synchronous on-main. Its synchronous install still advances/uses the same notation generation convention.
 
 ### Step 6.6 — Do **not** add pre-readiness width freshness retries
 
@@ -536,8 +538,7 @@ git commit -m "feat(HPA-581): prepare timeline notation off main actor"
 If and only if profiling shows material main-thread cost:
 
 - [ ] route timeline relayout through the existing `GameplayNotationPreparer`;
-- [ ] reuse the same stale-request generation;
-- [ ] latest width wins;
+- [ ] allocate/reuse the same notation generation; latest width wins;
 - [ ] cancellation is cleanup only;
 - [ ] add deterministic out-of-order width-result coverage.
 
@@ -627,7 +628,7 @@ If worker shipped, do **not** claim that moving CPU off-main necessarily reduced
 Add an HPA-581 comment containing:
 
 - [ ] static isolation summary;
-- [ ] install-generation invariant;
+- [ ] single-generation install invariant;
 - [ ] Phase-B Proceed/Narrow decision;
 - [ ] whether async preparation shipped;
 - [ ] before/after preparation + mount numbers;
@@ -640,6 +641,7 @@ Add an HPA-581 comment containing:
 ## Completion checklist
 
 - [ ] One enforced notation install funnel advances every layout/reset generation.
+- [ ] The same single notation generation is the only stale-worker mechanism if async work proceeds.
 - [ ] Static notation is a file-local Equatable child keyed by that generation.
 - [ ] Row anchors and every O(note/measure) static derivation are behind the Equatable boundary.
 - [ ] Playhead receives position only; auto-scroll observation stays narrow.
@@ -649,7 +651,7 @@ Add an HPA-581 comment containing:
 - [ ] If it is worth the churn, timeline-native layout + beat positions move off-main through one Sendable request/result.
 - [ ] Worker graph contains no SwiftData, `ModelContext`, `ObjectIdentifier`, or SwiftUI views; no `@unchecked Sendable`.
 - [ ] `sourceObjectID` removal is structurally tested and legacy diagnostic degradation is explicit.
-- [ ] If async setup ships, one generation rejects stale completion and `cleanup()` invalidates it.
+- [ ] If async setup ships, `cleanup()` advances the same generation and stale completion cannot resurrect gameplay.
 - [ ] No pre-readiness width retry state machine is introduced.
 - [ ] Post-prepared relayout only changes with real evidence.
 - [ ] Identity-sensitive drum-tab goldens/invariants/playhead suites pass before async wiring when applicable.
