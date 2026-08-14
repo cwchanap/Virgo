@@ -2,9 +2,50 @@ import Testing
 import Foundation
 @testable import Virgo
 
+private func requireSendable<T: Sendable>(_: T.Type) {}
+
 @Suite("Rhythm layout snapshot builder", .serialized)
 @MainActor
 struct RhythmLayoutSnapshotBuilderTests {
+    @Test("timeline and rendered layout values satisfy the Sendable worker boundary")
+    func timelineAndRenderedLayoutValuesAreSendable() {
+        requireSendable(RhythmLayoutSnapshot.self)
+        requireSendable(NotationLayout.self)
+        requireSendable(NotationLayoutStyle.self)
+    }
+
+    @Test("timeline values omit SwiftData object identity from the worker boundary")
+    func timelineValuesDoNotExposeSwiftDataObjectIdentity() throws {
+        let source = Note(
+            interval: .quarter,
+            noteType: .snare,
+            measureNumber: 1,
+            measureOffset: 0
+        )
+        let position = RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0)
+        let layoutNote = RhythmLayoutNote(
+            eventID: RhythmEventID(rawValue: 1),
+            sourceLaneID: "1A",
+            sourceChipID: "chip-1",
+            noteType: .snare,
+            position: position,
+            durationTicks: 240,
+            rhythm: NotationRhythm(baseInterval: .quarter),
+            tupletID: nil
+        )
+        let renderedHead = try #require(
+            NotationLayoutEngine().layout(
+                input: NotationLayoutInput(notes: [source], timeSignature: .fourFour)
+            ).noteHeads.first
+        )
+
+        let layoutLabels = Set(Mirror(reflecting: layoutNote).children.compactMap(\.label))
+        let renderedLabels = Set(Mirror(reflecting: renderedHead).children.compactMap(\.label))
+
+        #expect(!layoutLabels.contains("sourceObjectID"))
+        #expect(!renderedLabels.contains("sourceObjectID"))
+    }
+
     @Test("builder produces a snapshot from a resolved chart rhythm")
     func buildsSnapshotFromResolvedRhythm() throws {
         let dtx = """

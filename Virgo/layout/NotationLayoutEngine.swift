@@ -339,7 +339,6 @@ struct NotationLayoutEngine {
             )
             return RenderedNoteHead(
                 id: id,
-                sourceObjectID: note.sourceObjectID,
                 sourceLaneID: note.sourceLaneID,
                 sourceChipID: note.sourceChipID,
                 noteType: note.noteType,
@@ -401,7 +400,6 @@ struct NotationLayoutEngine {
 
         let head = RenderedNoteHead(
             id: UInt64(index),
-            sourceObjectID: ObjectIdentifier(note),
             sourceLaneID: note.sourceLaneID,
             sourceChipID: note.sourceNoteID,
             noteType: note.noteType,

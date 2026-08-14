@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-struct TabGrid: Equatable {
+struct TabGrid: Equatable, Sendable {
     static let fallbackTicksPerMeasure = 960
 
     let ticksPerWholeNote: Int
@@ -143,7 +143,7 @@ struct NotationLayoutInput {
     }
 }
 
-struct NotationLayoutStyle: Equatable {
+struct NotationLayoutStyle: Equatable, Sendable {
     let minimumNoteColumnGap: CGFloat
     let minimumQuarterBeatGap: CGFloat
     let rowWidth: CGFloat
@@ -263,7 +263,7 @@ struct NotationLayoutStyle: Equatable {
     }
 }
 
-struct NotationLayout {
+struct NotationLayout: Sendable {
     var tabGrid: TabGrid
     var measures: [RenderedMeasure]
     var noteHeadSize: CGSize
@@ -331,7 +331,7 @@ struct NotationLayout {
     )
 }
 
-struct RenderedMeasure: Identifiable, Hashable {
+struct RenderedMeasure: Identifiable, Hashable, Sendable {
     let id: Int
     let measureIndex: Int
     let row: Int
@@ -361,13 +361,13 @@ struct RenderedMeasure: Identifiable, Hashable {
     }
 }
 
-struct NotationTimeColumn: Hashable {
+struct NotationTimeColumn: Hashable, Sendable {
     let measureIndex: Int
     let tickWithinMeasure: Int
     let absoluteLayoutTick: Int
 }
 
-struct RenderedRest: Identifiable, Hashable {
+struct RenderedRest: Identifiable, Hashable, Sendable {
     let id: String
     let timeColumn: NotationTimeColumn
     let measureIndex: Int
@@ -420,7 +420,7 @@ struct RenderedRest: Identifiable, Hashable {
     }
 }
 
-struct RenderedStopNote: Identifiable, Hashable {
+struct RenderedStopNote: Identifiable, Hashable, Sendable {
     let id: String
     let kind: NotationControlEventKind
     let sourceLaneID: String?
@@ -468,11 +468,11 @@ struct RenderedStopNote: Identifiable, Hashable {
     }
 }
 
-enum RenderedArticulationKind: String, Hashable {
+enum RenderedArticulationKind: String, Hashable, Sendable {
     case openHiHat
 }
 
-struct RenderedArticulation: Identifiable, Hashable {
+struct RenderedArticulation: Identifiable, Hashable, Sendable {
     let id: String
     let kind: RenderedArticulationKind
     let sourceNoteHeadID: UInt64
@@ -480,9 +480,8 @@ struct RenderedArticulation: Identifiable, Hashable {
     let position: CGPoint
 }
 
-struct RenderedNoteHead: Identifiable, Hashable {
+struct RenderedNoteHead: Identifiable, Hashable, Sendable {
     let id: UInt64
-    let sourceObjectID: ObjectIdentifier
     let sourceLaneID: String?
     let sourceChipID: String?
     let noteType: NoteType
@@ -521,7 +520,6 @@ struct RenderedNoteHead: Identifiable, Hashable {
 
     init(
         id: UInt64,
-        sourceObjectID: ObjectIdentifier,
         sourceLaneID: String?,
         sourceChipID: String?,
         noteType: NoteType,
@@ -544,7 +542,6 @@ struct RenderedNoteHead: Identifiable, Hashable {
         tupletID: RhythmTupletID? = nil
     ) {
         self.id = id
-        self.sourceObjectID = sourceObjectID
         self.sourceLaneID = sourceLaneID
         self.sourceChipID = sourceChipID
         self.noteType = noteType
@@ -613,7 +610,7 @@ private extension NotationRestDuration {
     }
 }
 
-struct RenderedStem: Identifiable, Hashable {
+struct RenderedStem: Identifiable, Hashable, Sendable {
     let id: String
     let noteHeadIDs: [UInt64]
     let direction: StemDirection
@@ -621,7 +618,7 @@ struct RenderedStem: Identifiable, Hashable {
     let end: CGPoint
 }
 
-struct RenderedBeam: Identifiable, Hashable {
+struct RenderedBeam: Identifiable, Hashable, Sendable {
     let id: String
     let noteHeadIDs: [UInt64]
     let direction: StemDirection
@@ -632,14 +629,14 @@ struct RenderedBeam: Identifiable, Hashable {
     let thickness: CGFloat
 }
 
-struct RenderedLedgerLine: Identifiable, Hashable {
+struct RenderedLedgerLine: Identifiable, Hashable, Sendable {
     let id: String
     let row: Int
     let start: CGPoint
     let end: CGPoint
 }
 
-struct RenderedFlag: Identifiable, Hashable {
+struct RenderedFlag: Identifiable, Hashable, Sendable {
     let id: String
     let noteHeadID: UInt64
     let stemDirection: StemDirection
@@ -647,7 +644,7 @@ struct RenderedFlag: Identifiable, Hashable {
     let origin: CGPoint
 }
 
-struct RenderedMeasureBar: Identifiable, Hashable {
+struct RenderedMeasureBar: Identifiable, Hashable, Sendable {
     let id: String
     let row: Int
     let x: CGFloat

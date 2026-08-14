@@ -44,12 +44,6 @@ struct NotationLayoutRhythmTests {
 
     @Test("timeline positions notes controls and rests without consulting legacy fractions")
     func timelineUsesExactSnapshotPositions() throws {
-        let sourceNote = Note(
-            interval: .full,
-            noteType: .snare,
-            measureNumber: 99,
-            measureOffset: 0.99
-        )
         let control = NotationControlEvent(ChartControlEvent(
             kind: .stop,
             measureNumber: 88,
@@ -70,7 +64,6 @@ struct NotationLayoutRhythmTests {
             )],
             notes: [RhythmLayoutNote(
                 eventID: RhythmEventID(rawValue: 41),
-                sourceObjectID: ObjectIdentifier(sourceNote),
                 sourceLaneID: "1A",
                 sourceChipID: "chip-note",
                 noteType: .snare,
@@ -337,15 +330,8 @@ struct NotationLayoutRhythmTests {
         interval: NoteInterval,
         durationTicks: Int
     ) -> RhythmLayoutNote {
-        let source = Note(
-            interval: .full,
-            noteType: .snare,
-            measureNumber: 99,
-            measureOffset: 0.99
-        )
         return RhythmLayoutNote(
             eventID: RhythmEventID(rawValue: id),
-            sourceObjectID: ObjectIdentifier(source),
             sourceLaneID: "1A",
             sourceChipID: "chip-\(id)",
             noteType: .snare,

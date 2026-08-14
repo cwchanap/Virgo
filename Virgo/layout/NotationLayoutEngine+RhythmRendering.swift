@@ -1,6 +1,6 @@
 import CoreGraphics
 
-struct NotationLayoutFinalizationInput {
+struct NotationLayoutFinalizationInput: Sendable {
     let tabGrid: TabGrid
     let measures: [RenderedMeasure]
     let noteHeads: [RenderedNoteHead]
@@ -15,7 +15,7 @@ struct NotationLayoutFinalizationInput {
     let style: NotationLayoutStyle
 }
 
-struct TupletRenderingContext {
+struct TupletRenderingContext: Sendable {
     let beams: [RenderedBeam]
     let feel: RhythmicFeel
     let rhythmMeasures: [RhythmMeasure]

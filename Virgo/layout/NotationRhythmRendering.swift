@@ -1,12 +1,12 @@
 import CoreGraphics
 import Foundation
 
-enum RenderedRhythmDotSource: Hashable {
+enum RenderedRhythmDotSource: Hashable, Sendable {
     case event(RhythmEventID)
     case rest(String)
 }
 
-struct RenderedRhythmDot: Identifiable, Hashable {
+struct RenderedRhythmDot: Identifiable, Hashable, Sendable {
     let id: String
     let source: RenderedRhythmDotSource
     let position: CGPoint
@@ -25,7 +25,7 @@ struct RenderedRhythmDot: Identifiable, Hashable {
     var accessibilityLabel: String { String(localized: "Rhythm dot") }
 }
 
-struct RenderedTuplet: Identifiable, Hashable {
+struct RenderedTuplet: Identifiable, Hashable, Sendable {
     let id: RhythmTupletID
     let voice: NotationVoice
     let ratio: TupletRatio
@@ -41,7 +41,7 @@ struct RenderedTuplet: Identifiable, Hashable {
     }
 }
 
-struct RenderedFeelMark: Identifiable, Hashable {
+struct RenderedFeelMark: Identifiable, Hashable, Sendable {
     let id: String
     let feel: RhythmicFeel
     let position: CGPoint
@@ -61,7 +61,7 @@ struct RenderedFeelMark: Identifiable, Hashable {
     }
 }
 
-enum RhythmWarningScope: Hashable {
+enum RhythmWarningScope: Hashable, Sendable {
     case measure(Int)
     case chartFatal
 }
@@ -80,7 +80,7 @@ enum RhythmWarningKind: Hashable, Sendable {
     case chartFatal
 }
 
-struct RenderedRhythmWarning: Identifiable, Hashable {
+struct RenderedRhythmWarning: Identifiable, Hashable, Sendable {
     let id: String
     let scope: RhythmWarningScope
     let kind: RhythmWarningKind
@@ -150,7 +150,7 @@ struct RenderedRhythmWarning: Identifiable, Hashable {
     }
 }
 
-struct RhythmDiagnosticPresentation: Hashable {
+struct RhythmDiagnosticPresentation: Hashable, Sendable {
     let code: RhythmDiagnosticCode
 
     var title: String {

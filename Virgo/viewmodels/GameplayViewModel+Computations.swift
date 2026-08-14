@@ -389,21 +389,53 @@ extension GameplayViewModel {
     /// rendered note-head count is lower than the cached note count). Extracted
     /// from `cacheNotationLayout()` to keep it under the function-body-length limit.
     private func logDroppedNotesIfAny() {
-        guard cachedNotes.count != cachedNotationLayout.noteHeads.count, !cachedNotes.isEmpty else { return }
-        let renderedSourceIDs = Set(cachedNotationLayout.noteHeads.map(\.sourceObjectID))
-        let droppedNotes = cachedNotes.filter { !renderedSourceIDs.contains(ObjectIdentifier($0)) }
-        let droppedReasons = droppedNotes.prefix(5).map { note in
-            let drumType = DrumType.from(noteType: note.noteType)
-            let measureIdx = MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
-                measureNumber: note.measureNumber, measureOffset: note.measureOffset
-            ))
-            return "noteType=\(note.noteType)(\(drumType?.description ?? "unknown")), " +
-                    "measure=\(note.measureNumber)(idx=\(measureIdx))"
+        if cachedRhythmRuntime.availability == .valid {
+            logDroppedTimelineNotesIfAny()
+        } else {
+            logDroppedLegacyNotesIfAny()
+        }
+    }
+
+    private func logDroppedTimelineNotesIfAny() {
+        let renderedEventIDs = Set(cachedNotationLayout.noteHeads.compactMap(\.eventID))
+        let droppedEventIDs = cachedRhythmRuntime.noteByEventID.keys
+            .filter { !renderedEventIDs.contains($0) }
+            .sorted { $0.rawValue < $1.rawValue }
+        guard !droppedEventIDs.isEmpty else { return }
+
+        let droppedReasons = droppedEventIDs.prefix(5).map { eventID in
+            guard let note = cachedRhythmRuntime.noteByEventID[eventID] else {
+                return "eventID=\(eventID.rawValue)"
+            }
+            return droppedNoteMetadata(note, eventID: eventID)
         }
         Logger.warning(
-            "Layout engine dropped \(droppedNotes.count) note(s): \(droppedReasons.joined(separator: "; "))"
-                + (droppedNotes.count > 5 ? " … and \(droppedNotes.count - 5) more" : "")
+            "Layout engine dropped \(droppedEventIDs.count) timeline note(s): "
+                + droppedReasons.joined(separator: "; ")
+                + (droppedEventIDs.count > 5 ? " … and \(droppedEventIDs.count - 5) more" : "")
         )
+    }
+
+    private func logDroppedLegacyNotesIfAny() {
+        let droppedCount = cachedNotes.count - cachedNotationLayout.noteHeads.count
+        guard droppedCount > 0 else { return }
+        let representativeNotes = cachedNotes.prefix(min(5, droppedCount))
+        let droppedReasons = representativeNotes.map { droppedNoteMetadata($0) }
+        Logger.warning(
+            "Layout engine dropped \(droppedCount) legacy note(s); exact model identity unavailable: "
+                + droppedReasons.joined(separator: "; ")
+                + (droppedCount > 5 ? " … and \(droppedCount - 5) more" : "")
+        )
+    }
+
+    private func droppedNoteMetadata(_ note: Note, eventID: RhythmEventID? = nil) -> String {
+        let eventPrefix = eventID.map { "eventID=\($0.rawValue), " } ?? ""
+        let drumType = DrumType.from(noteType: note.noteType)
+        let measureIdx = MeasureUtils.measureIndex(from: MeasureUtils.timePosition(
+            measureNumber: note.measureNumber, measureOffset: note.measureOffset
+        ))
+        return eventPrefix + "noteType=\(note.noteType)(\(drumType?.description ?? "unknown")), " +
+            "measure=\(note.measureNumber)(idx=\(measureIdx))"
     }
 
     func cacheBeatPositions() {

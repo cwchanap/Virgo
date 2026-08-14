@@ -144,15 +144,8 @@ struct NotationLayoutDefensiveGuardTests {
             direction: .up,
             in: NotationLayoutStyle.gameplayDefault.noteHeadSize
         )
-        let note = Note(
-            interval: .sixteenth,
-            noteType: .snare,
-            measureNumber: 1,
-            measureOffset: 0
-        )
         return RenderedNoteHead(
             id: id,
-            sourceObjectID: ObjectIdentifier(note),
             sourceLaneID: nil,
             sourceChipID: nil,
             noteType: .snare,

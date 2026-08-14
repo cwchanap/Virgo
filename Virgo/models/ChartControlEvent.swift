@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-enum NotationControlEventKind: String, Codable, CaseIterable, Hashable {
+enum NotationControlEventKind: String, Codable, CaseIterable, Hashable, Sendable {
     case stop
     case choke
     case damp
@@ -57,7 +57,7 @@ final class ChartControlEvent {
     }
 }
 
-struct NotationControlEvent: Hashable {
+struct NotationControlEvent: Hashable, Sendable {
     let kind: NotationControlEventKind
     let measureNumber: Int
     let measureOffset: Double

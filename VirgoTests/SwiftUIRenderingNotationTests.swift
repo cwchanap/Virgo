@@ -490,19 +490,8 @@ private extension SwiftUIRenderingNotationTests {
         id: UInt64 = 42,
         glyph: DrumNoteheadGlyph = .filledDiamond
     ) -> RenderedNoteHead {
-        // `note` is intentionally unretained: it exists only to produce a
-        // unique ObjectIdentifier placeholder for sourceObjectID. The rendering
-        // tests never dereference it or compare it against a live Note, so the
-        // dangling identity is safe for current use.
-        let note = Note(
-            interval: .quarter,
-            noteType: .snare,
-            measureNumber: 1,
-            measureOffset: 0
-        )
         return RenderedNoteHead(
             id: id,
-            sourceObjectID: ObjectIdentifier(note),
             sourceLaneID: nil,
             sourceChipID: nil,
             noteType: .snare,

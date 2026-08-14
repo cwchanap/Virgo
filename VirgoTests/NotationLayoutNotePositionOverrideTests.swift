@@ -71,7 +71,6 @@ struct NotationLayoutNotePositionOverrideTests {
 
         #expect(head.position.y != defaultHead.position.y)
         #expect(head.position.x == defaultHead.position.x)
-        #expect(head.sourceObjectID == defaultHead.sourceObjectID)
         #expect(head.sourceLaneID == defaultHead.sourceLaneID)
         #expect(head.sourceChipID == defaultHead.sourceChipID)
         #expect(head.noteType == defaultHead.noteType)

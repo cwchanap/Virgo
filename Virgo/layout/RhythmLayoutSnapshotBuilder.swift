@@ -75,7 +75,6 @@ struct RhythmLayoutSnapshotBuilder {
             guard let note = resolvedRhythm.noteByEventID[analyzed.eventID] else { return nil }
             return RhythmLayoutNote(
                 eventID: analyzed.eventID,
-                sourceObjectID: ObjectIdentifier(note),
                 sourceLaneID: note.sourceLaneID,
                 sourceChipID: note.sourceNoteID,
                 noteType: note.noteType,
