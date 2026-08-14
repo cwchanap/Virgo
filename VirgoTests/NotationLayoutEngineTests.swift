@@ -782,8 +782,8 @@ struct NotationLayoutEngineTests {
         #expect(layout.ledgerLines.allSatisfy { $0.end.x > $0.start.x })
     }
 
-    @Test("rendered head preserves source and notation identity")
-    func renderedHeadPreservesSourceAndNotationIdentity() throws {
+    @Test("rendered head preserves stable rendered and notation identity")
+    func renderedHeadPreservesStableRenderedAndNotationIdentity() throws {
         let note = Note(
             interval: .quarter,
             noteType: .openHiHat,
@@ -798,7 +798,7 @@ struct NotationLayoutEngineTests {
         )
         let head = try #require(layout.noteHeads.first)
 
-        #expect(head.sourceObjectID == ObjectIdentifier(note))
+        #expect(head.id == 0)
         #expect(head.sourceLaneID == "18")
         #expect(head.sourceChipID == "A1")
         #expect(head.noteType == .openHiHat)
@@ -825,7 +825,6 @@ struct NotationLayoutEngineTests {
         )
         let head = try #require(layout.noteHeads.first)
 
-        #expect(head.sourceObjectID == ObjectIdentifier(note))
         #expect(head.sourceLaneID == "AA")
         #expect(head.sourceChipID == "7F")
         #expect(head.noteType == .ride)
@@ -848,7 +847,7 @@ struct NotationLayoutEngineTests {
 
         #expect(heads.count == 2)
         #expect(renderedIDs.count == 2)
-        #expect(Set(heads.map(\.sourceObjectID)).count == 2)
+        #expect(Set(heads.map(\.id)).count == 2)
         #expect(layout.noteHeadPositionsByID.count == 2)
         #expect(layout.noteHeadIDsByLayoutTick[tickKey] == renderedIDs)
     }

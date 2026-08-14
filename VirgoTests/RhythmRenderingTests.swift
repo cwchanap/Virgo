@@ -533,15 +533,8 @@ private extension RhythmRenderingTests {
         tupletID: RhythmTupletID? = nil,
         durationTicks: Int = 120
     ) -> RhythmLayoutNote {
-        let note = Note(
-            interval: rhythm.baseInterval,
-            noteType: noteType,
-            measureNumber: 1,
-            measureOffset: Double(tick) / 960
-        )
         return RhythmLayoutNote(
             eventID: RhythmEventID(rawValue: id),
-            sourceObjectID: ObjectIdentifier(note),
             sourceLaneID: noteType == .bass ? "13" : "1A",
             sourceChipID: "chip-\(id)",
             noteType: noteType,

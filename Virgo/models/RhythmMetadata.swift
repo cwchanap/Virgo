@@ -28,9 +28,8 @@ enum RhythmMetadataValidationError: Error, Equatable {
 
 /// Immutable note payload crossing from resolved/analyzed rhythm into layout.
 /// The SwiftData model itself deliberately stays outside this boundary.
-struct RhythmLayoutNote: Hashable {
+struct RhythmLayoutNote: Hashable, Sendable {
     let eventID: RhythmEventID
-    let sourceObjectID: ObjectIdentifier
     let sourceLaneID: String?
     let sourceChipID: String?
     let noteType: NoteType
@@ -41,14 +40,14 @@ struct RhythmLayoutNote: Hashable {
 }
 
 /// Immutable control payload crossing from resolved rhythm into layout.
-struct RhythmLayoutControl: Hashable {
+struct RhythmLayoutControl: Hashable, Sendable {
     let eventID: RhythmEventID
     let event: NotationControlEvent
     let position: RhythmEventPosition
 }
 
 /// Immutable rest payload crossing from semantic rhythm analysis into layout.
-struct RhythmLayoutRest: Hashable {
+struct RhythmLayoutRest: Hashable, Sendable {
     let position: RhythmEventPosition
     let durationTicks: Int
     let voice: NotationVoice
@@ -58,7 +57,7 @@ struct RhythmLayoutRest: Hashable {
 }
 
 /// Self-contained timing boundary consumed by timeline-native layout.
-struct RhythmLayoutSnapshot: Hashable {
+struct RhythmLayoutSnapshot: Hashable, Sendable {
     let ticksPerWholeNote: Int
     let measures: [RhythmMeasure]
     let notes: [RhythmLayoutNote]
