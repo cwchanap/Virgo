@@ -4,7 +4,7 @@
 
 **Goal:** Re-profile Virgo's representative notation path after HPA-581 and make a bounded, evidence-backed row-laziness decision without implementing virtualization in HPA-584.
 
-**Architecture:** Reuse HPA-579's Soukyuu MASTER baseline, first calibrate the real window until the installed layout reproduces 900 pt / 156 rows, then run separate Time Profiler, SwiftUI, and memory sessions. Treat geometry as exposure context rather than fabricated CPU attribution, classify resize layout CPU separately from eager-tree cost, and default to no speculative optimization if two HPA-584 GUI attempts are environment-blocked.
+**Architecture:** Reuse HPA-579's Soukyuu MASTER baseline, first calibrate the real window until the installed layout reproduces 900 pt / 156 rows, then run separate Time Profiler, SwiftUI, and memory sessions. Treat geometry as exposure context rather than fabricated CPU attribution, classify resize layout CPU separately from eager-tree cost, and default to no speculative optimization only when two HPA-584 GUI attempts are environment-blocked.
 
 **Tech Stack:** Swift 6, SwiftUI, SwiftData, Xcode Product > Profile, Instruments Time Profiler / SwiftUI / Allocations, Xcode memory gauge, unified logging, `ContinuousClock`, Linear.
 
@@ -60,7 +60,7 @@
 **Result sink:**
 
 - Linear HPA-584 — authoritative result/decision.
-- Linear HPA-583 — unblocked after HPA-584 closes unless a trace-backed rendering follow-up blocks it.
+- Linear HPA-583 — unblocked after HPA-584 closes unless a trace-backed rendering follow-up or unresolved tooling blocker still applies.
 
 ---
 
@@ -153,7 +153,7 @@ Do not replace the attempt with a headless hook.
 
 If attempt 2 is also environment-blocked, skip Tasks 2-5 and go to Task 6 **Blocked fallback**. The fallback closes without optimization and without claiming performance/memory/scrolling are acceptable.
 
-**Checkpoint:** HPA-584 cannot stall indefinitely on the host session. There are at most two HPA-584 interactive attempts.
+**Checkpoint:** HPA-584 cannot stall indefinitely on GUI session state. There are at most two HPA-584 interactive attempts.
 
 ---
 
@@ -365,11 +365,17 @@ Repeat the same Release sequence and record:
 
 Label it exactly as an observed gauge reading, not an Instruments peak.
 
-- [ ] **Step 5: Enforce the evidence-backed memory gate**
+- [ ] **Step 5: Enforce the memory gate separately from the GUI fallback**
 
-If neither Allocations nor the memory gauge yields a credible named macOS live-memory observation, do not choose evidence-backed Keep eager. If this inability is part of the same environment/tooling failure that survives the bounded retry, Task 6 uses the no-optimization fallback instead.
+If neither Allocations nor the memory gauge yields a credible named macOS live-memory observation **while the GUI itself is usable**, report HPA-584 as:
 
-**Checkpoint:** Task 4 finishes only with a named metric/value or an explicit blocked limitation.
+```text
+Tooling-blocked — credible live-memory evidence unavailable
+```
+
+Do not use the two-attempt GUI fallback. HPA-583 remains blocked until a later memory measurement succeeds or Linear explicitly narrows the scope.
+
+**Checkpoint:** Task 4 finishes only with a named metric/value or an explicit tooling blocker.
 
 ---
 
@@ -430,14 +436,7 @@ If the packing change's visible/material cost is primarily SwiftUI rebuilding th
 
 - [ ] **Step 6: Run a physical iPad slice only when readily available**
 
-If a usable physical iPad is available, repeat:
-
-- initial mount;
-- 30 seconds playback;
-- real scrolling;
-- live memory.
-
-Record device/OS. Any material device-specific problem counts toward the decision.
+If a usable physical iPad is available, repeat initial mount, 30 seconds playback, real scrolling, and live memory. Record device/OS. Any material device-specific problem counts toward the decision.
 
 If no physical iPad is available, record:
 
@@ -543,7 +542,7 @@ Make this issue block HPA-583. Do not design/implement it in HPA-584.
 
 Use the existing `GameplayNotationPreparer` / notation-generation design from HPA-581 Task 7. Do not call it virtualization. Make it block HPA-583 until that rendering path settles.
 
-- [ ] **Step 3D: Bounded environment fallback**
+- [ ] **Step 3D: Bounded GUI-environment fallback**
 
 If both HPA-584 GUI attempts in Task 1 failed for environment/session reasons, close HPA-584 as:
 
@@ -554,11 +553,21 @@ Close without optimization — interactive evidence unavailable
 The result must say:
 
 - HPA-581 headless worker evidence exists;
-- deterministic chart/geometry facts remain context only;
-- manual scrolling and live memory were not verified;
+- deterministic chart facts remain context only;
+- current HPA-584 mount, manual scrolling, and live memory were not verified;
 - no claim is made that eager rendering is performant/memory-safe;
 - no speculative row-laziness/resize issue is created;
 - HPA-583 is unblocked by YAGNI because no evidence justifies rendering architecture work.
+
+- [ ] **Step 3E: Tooling-blocked memory path**
+
+If the GUI is usable but Task 4 cannot obtain credible live-memory evidence from Allocations or the Xcode memory gauge, post the partial evidence and keep HPA-584/HPA-583 blocked as:
+
+```text
+Tooling-blocked — credible live-memory evidence unavailable
+```
+
+Do not convert this into the GUI fallback. A later successful memory measurement or explicit Linear scope change is required.
 
 - [ ] **Step 4: Post the authoritative HPA-584 result**
 
@@ -566,12 +575,13 @@ Use the design spec's result template. Fill every applicable field with actual e
 
 - [ ] **Step 5: Final evidence review**
 
-Confirm one of these paths is complete:
+Confirm exactly one current state:
 
 ```text
 A. evidence-backed Keep eager
 B. trace-backed row-laziness follow-up
-C. bounded environment-blocked close without optimization
+C. bounded GUI-environment close without optimization
+D. tooling-blocked pending credible memory evidence
 ```
 
 Also confirm:
@@ -581,14 +591,14 @@ source/toolchain identity recorded
 fixed chart recorded
 900 pt / 156-row calibration used for direct comparison
 viewport/content geometry recorded
-separate Time Profiler / SwiftUI / memory sessions completed unless path C
-manual scroll recorded unless path C
-macOS live memory recorded unless path C
-natural wider resize sweep recorded unless path C
+separate Time Profiler / SwiftUI / memory sessions completed for A/B
+manual scroll recorded for A/B
+macOS live memory recorded for A/B
+natural wider resize sweep recorded for A/B
 iPad result or explicit unverified limitation recorded
 no fabricated off-screen CPU calculation
 temporary instrumentation removed
 no production virtualization implemented
 ```
 
-**Checkpoint:** HPA-584 ends with an explicit decision/limitation and no production source diff. The next work is HPA-583 or a separately designed trace-backed follow-up.
+**Checkpoint:** HPA-584 ends with an explicit decision/limitation and no production source diff. The next work is HPA-583, a separately designed trace-backed follow-up, or a later memory evidence retry if state D applies.
