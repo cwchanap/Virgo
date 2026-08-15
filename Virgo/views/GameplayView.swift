@@ -121,7 +121,9 @@ struct GameplayView: View {
         vm.updateRowWidth(initialRowWidth)
         // setupGameplay loads the persisted speed for this chart (SC-06)
         await vm.setupGameplay()
-        guard vm.isGameplayPrepared else { return }
+        // Cancellation across the final async boundary means onDisappear already
+        // ran cleanup; do not wire delegates or metronome subscriptions after that.
+        guard !Task.isCancelled, vm.isGameplayPrepared else { return }
         // Setup InputManager delegate and metronome subscription after viewModel is ready
         vm.inputManager.delegate = vm.inputHandler
         vm.wireInputHandler()

@@ -60,7 +60,9 @@ enum GameplayViewModelCoverageTestSupport {
     /// pre-computed layout caches are populated.
     static func makePreparedViewModel() async -> GameplayViewModel {
         let chart = makeChart(noteCount: 4, interval: .eighth, measureOffset: 0.125)
-        let vm = makeViewModel(chart: chart)
+        // Fresh in-memory persistence per invocation instead of the shared test
+        // container context, so prepared view models never share score state.
+        let vm = makeViewModel(chart: chart, scorePersistence: .makeInMemory())
         await vm.loadChartData()
         await vm.setupGameplay()
         return vm

@@ -171,6 +171,12 @@ struct GameplayRenderCoverageTests {
 
     /// Staff lines are now built directly by the static notation child rather
     /// than being cached as an `AnyView` on the view model.
+    ///
+    /// The ink probe varies only `contentWidth`, which `GameplayStaticNotationLayers`
+    /// feeds exclusively into `StaffLinesBackgroundView` — every other layer
+    /// consumes the layout or measure positions, held constant. So wider staff
+    /// lines painting more ink proves the staff-line layer is actually mounted;
+    /// deleting it from the layers fails this test.
     @Test("GameplayView renders staff lines from the static notation input")
     func testGameplayView_staticNotationChildRendersStaffLines() async throws {
         try await TestSetup.withTestSetup {
@@ -180,6 +186,30 @@ struct GameplayRenderCoverageTests {
             let input = gameplayView.staticNotationInput(viewModel: vm)
             #expect(input.hasRenderableContent)
             #expect(input.contentWidth >= GameplayLayout.maxRowWidth)
+
+            #if os(macOS)
+            let size = CGSize(width: 1_280, height: 900)
+            let positions = gameplayView.sheetMeasurePositions(viewModel: vm)
+            try #require(!positions.isEmpty, "fixture must produce measure positions for the probe")
+            @MainActor func staticLayerInk(contentWidth: CGFloat) throws -> Int {
+                try rasterizeView(
+                    gameplayView.staticSheetMusicContent(
+                        measurePositions: positions,
+                        contentWidth: contentWidth,
+                        contentTopInset: gameplayView.sheetContentTopInset(viewModel: vm),
+                        rowCount: gameplayView.sheetRowCount(measurePositions: positions),
+                        viewModel: vm
+                    ),
+                    size: size
+                ).count { $0.alpha > 20 }
+            }
+            let inkAtContentWidth = try staticLayerInk(contentWidth: input.contentWidth)
+            let inkAtWiderWidth = try staticLayerInk(contentWidth: input.contentWidth + 200)
+            #expect(
+                inkAtWiderWidth > inkAtContentWidth,
+                "Widening the staff-line width painted no extra ink — the staff-line layer is not mounted"
+            )
+            #endif
 
             SwiftUITestUtilities.assertViewWithEnvironment(
                 gameplayView.environmentObject(vm.practiceSettings),
