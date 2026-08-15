@@ -43,15 +43,15 @@ visibleRowCapacity ~= min(renderedRows, ceil(viewportHeight / 320) + 1)
 offscreenRowFraction ~= 1 - visibleRowCapacity / renderedRows
 ```
 
-Do not convert this fraction into CPU cost.
+Do not convert the fraction into CPU cost.
 
 ## Measurement sessions
 
 ### A. Time Profiler
 
-At pinned 900/156 geometry: one warm-up/calibration + **two measured entries**; third only on material disagreement.
+At pinned 900/156 geometry: one warm-up/calibration + **two measured entries**; third only on material disagreement in attribution/visible behavior.
 
-Confirm initial `NotationLayoutEngine.layout` remains off-main. Time Profiler owns mount attribution through real eager static bodies/primitive collections. A disposable `onAppear` marker is **subtree insertion/appearance only** and cannot bracket descendant construction or compositor completion.
+Confirm initial timeline `NotationLayoutEngine.layout` remains off-main. Attribute mount through actual eager static bodies/primitive collections. Any disposable `onAppear` marker is **subtree insertion/appearance only**; it does not bracket descendant construction or compositor completion.
 
 Continue 30+ seconds playback. Compare HPA-579's mount only when geometry and measurement boundary are materially comparable.
 
@@ -67,27 +67,27 @@ Credible macOS live-memory evidence is required for evidence-backed Keep eager.
 
 ## Natural resize
 
-Start at **900 pt / 156 rows** and widen through practical host widths. Stop at the first real row-count change. Only after reaching the widest practical host width may the result say no packing-changing width was available. Never use synthetic 3,000 pt evidence.
+Start at **900 pt / 156 rows**, then widen through practical widths. Stop at the first real row-count change. Only after reaching the widest practical host width may the result say no packing-changing width was available. Never use synthetic 3,000 pt evidence.
 
-Classify a packing change:
+For a packing change:
 
-1. **Layout CPU dominates** — existing main-actor layout; any follow-up reuses `GameplayNotationPreparer` + current generation and is not virtualization.
+1. **Layout CPU dominates** — existing main-actor layout path; any follow-up reuses `GameplayNotationPreparer` + current generation and is not virtualization.
 2. **Full SwiftUI primitive-tree rebuild dominates** — contributes to row-laziness evidence.
 3. **Neither material** — no follow-up.
 
 ## Physical iPad policy
 
-Physical iPad evidence is advisory, not blocking for this hobby project. If available, repeat mount/playback/scroll/memory. If absent, record `iPad performance: unverified`; no Simulator performance claim. A Keep eager result without device profiling is scoped to measured macOS hardware.
+Physical iPad evidence is advisory, not blocking for this hobby project. If available, repeat mount/playback/scroll/memory. If absent, record `iPad performance: unverified`; do not claim device performance from Simulator data. Keep eager without an iPad run is scoped to measured macOS hardware.
 
 ## Outcomes
 
 ### Keep eager
 
-Requires complete macOS Time Profiler, SwiftUI/manual-scroll, and credible live-memory evidence showing no material eager-tree problem. Off-screen geometry alone does not justify laziness.
+Requires complete macOS CPU/SwiftUI/manual-scroll/live-memory evidence showing no material eager-tree problem. Off-screen geometry alone does not justify laziness.
 
 ### Row-laziness follow-up
 
-Only from positive evidence that full-chart primitive construction dominates mount/scroll/frame/memory. Scope: row-group immutable primitives, lazy vertical row container, unchanged horizontal geometry/stable IDs, preserve playhead/auto-scroll/goldens/accessibility. Wrapping the current full-chart view unchanged is insufficient.
+Only from positive evidence that full-chart primitive construction dominates mount/scroll/frame/memory. Scope: row-group immutable primitives, lazy vertical row container, unchanged horizontal geometry/stable IDs, preserve playhead/auto-scroll/goldens/accessibility. Wrapping the existing full-chart view unchanged is insufficient.
 
 ### GUI environment fallback
 
@@ -97,7 +97,7 @@ If HPA-584 GUI attempt 1 fails because of lock/shield/input/session state, verif
 Close without optimization — interactive evidence unavailable
 ```
 
-This is **not** Keep eager. State mount/scroll/memory remain unverified, create no speculative optimization, and unblock HPA-583 by YAGNI because there is no evidence justifying rendering architecture work.
+This is **not** Keep eager. State mount/scroll/memory remain unverified, create no speculative optimization, and unblock HPA-583 by YAGNI because no evidence justifies rendering architecture work.
 
 ### Memory tooling blocker
 
