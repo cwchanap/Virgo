@@ -27,14 +27,14 @@ No production virtualization, benchmark/metrics infrastructure, custom renderer,
 
 Before comparable timing:
 
-1. run one untimed calibration entry;
+1. one untimed calibration entry;
 2. record gameplay geometry width, `cachedLayoutRowWidth`, rendered rows;
-3. narrow the real window until `cachedLayoutRowWidth = 900 pt` and `renderedRows = 156`;
-4. keep that size for baseline measurements.
+3. narrow real window until `cachedLayoutRowWidth = 900 pt` and `renderedRows = 156`;
+4. keep that size for measured baseline runs.
 
-If current source cannot reproduce 900/156, do not claim a direct 4,890.729 ms comparison.
+If current source cannot reproduce 900/156, do not claim direct comparison to 4,890.729 ms.
 
-Record viewport width/height, resolved row width, rendered rows, static content height/layout total height, and row pitch **320 pt**.
+Record viewport width/height, resolved row width, rendered rows, static content height/layout total height, row pitch **320 pt**.
 
 For context only:
 
@@ -49,35 +49,35 @@ Do not convert the fraction into CPU cost.
 
 ### A. Time Profiler
 
-At pinned 900/156 geometry: one warm-up/calibration + **two measured entries**; third only on material disagreement in attribution/visible behavior.
+Pinned 900/156 geometry; one warm-up/calibration + **two measured entries**; third only on material disagreement.
 
-Confirm initial timeline `NotationLayoutEngine.layout` remains off-main. Attribute mount through actual eager static bodies/primitive collections. Any disposable `onAppear` marker is **subtree insertion/appearance only**; it does not bracket descendant construction or compositor completion.
+Confirm initial `NotationLayoutEngine.layout` remains off-main. Time Profiler owns mount attribution through actual eager static bodies/primitive collections. Any disposable `onAppear` marker is **subtree insertion/appearance only**, not descendant-construction/compositor timing.
 
-Continue 30+ seconds playback. Compare HPA-579's mount only when geometry and measurement boundary are materially comparable.
+Continue 30+ seconds playback. Compare HPA-579's mount only when geometry and boundary are materially comparable.
 
 ### B. SwiftUI/manual scroll
 
-Separate SwiftUI session at pinned geometry. Play 30+ seconds, let auto-scroll cross rows, manually scroll distant content, classify smooth / occasional minor hitch / repeated hitch, and record exact invalidation/update evidence. Missing detailed invalidation data is a limitation, not success evidence.
+Separate SwiftUI session at pinned geometry. Play 30+ seconds, auto-scroll, manually scroll distant content, classify smooth / occasional minor hitch / repeated hitch, record exact invalidation/update evidence. Missing detail is a limitation, not success evidence.
 
 ### C. Live memory
 
-Separate Allocations session starting before gameplay. Record exact pre-gameplay, post-mount, and playback/scroll metrics; call a value peak only if the tool does. If needed, use Xcode memory gauge and label the highest observed reading accurately.
+Separate Allocations session starting before gameplay. Record exact pre-gameplay/post-mount/playback-scroll metrics; use "peak" only if the tool does. Xcode memory-gauge fallback is allowed but must label highest observed reading accurately.
 
-Credible macOS live-memory evidence is required for evidence-backed Keep eager.
+Credible macOS live memory is required for evidence-backed Keep eager.
 
 ## Natural resize
 
-Start at **900 pt / 156 rows**, then widen through practical widths. Stop at the first real row-count change. Only after reaching the widest practical host width may the result say no packing-changing width was available. Never use synthetic 3,000 pt evidence.
+Start **900 pt / 156 rows**, widen through practical host widths, stop at first real row-count change. Only after widest practical host width may the result say no packing-changing width was available. Never use synthetic 3,000 pt evidence.
 
-For a packing change:
+Packing-change classifications:
 
-1. **Layout CPU dominates** — existing main-actor layout path; any follow-up reuses `GameplayNotationPreparer` + current generation and is not virtualization.
-2. **Full SwiftUI primitive-tree rebuild dominates** — contributes to row-laziness evidence.
+1. **Layout CPU dominates** — existing main-actor layout; follow-up, if material, reuses `GameplayNotationPreparer` + current generation and is not virtualization.
+2. **Full SwiftUI primitive-tree rebuild dominates** — row-laziness evidence.
 3. **Neither material** — no follow-up.
 
 ## Physical iPad policy
 
-Physical iPad evidence is advisory, not blocking for this hobby project. If available, repeat mount/playback/scroll/memory. If absent, record `iPad performance: unverified`; do not claim device performance from Simulator data. Keep eager without an iPad run is scoped to measured macOS hardware.
+Advisory, not blocking. If available, repeat mount/playback/scroll/memory. If absent, record `iPad performance: unverified`; no Simulator device-performance claim. Keep eager without device profiling is scoped to macOS hardware measured.
 
 ## Outcomes
 
@@ -87,35 +87,35 @@ Requires complete macOS CPU/SwiftUI/manual-scroll/live-memory evidence showing n
 
 ### Row-laziness follow-up
 
-Only from positive evidence that full-chart primitive construction dominates mount/scroll/frame/memory. Scope: row-group immutable primitives, lazy vertical row container, unchanged horizontal geometry/stable IDs, preserve playhead/auto-scroll/goldens/accessibility. Wrapping the existing full-chart view unchanged is insufficient.
+Only positive evidence that full-chart primitive construction dominates mount/scroll/frame/memory. Scope: row-group immutable primitives, lazy vertical row container, unchanged horizontal geometry/stable IDs, preserve playhead/auto-scroll/goldens/accessibility. Wrapping current full-chart view unchanged is insufficient.
 
 ### GUI environment fallback
 
-If HPA-584 GUI attempt 1 fails because of lock/shield/input/session state, verify the environment and retry once. If attempt 2 also fails, close:
+GUI attempt 1 blocked by lock/shield/input/session => verify environment and retry once. Attempt 2 also environment-blocked => close:
 
 ```text
 Close without optimization — interactive evidence unavailable
 ```
 
-This is **not** Keep eager. State mount/scroll/memory remain unverified, create no speculative optimization, and unblock HPA-583 by YAGNI because no evidence justifies rendering architecture work.
+Not Keep eager. State mount/scroll/memory unverified, create no speculative optimization, unblock HPA-583 by YAGNI.
 
 ### Memory tooling blocker
 
-If GUI is usable but neither Allocations nor Xcode memory gauge yields credible named memory evidence:
+GUI usable but Allocations + Xcode gauge both fail to produce credible named macOS memory evidence =>
 
 ```text
 Tooling-blocked — credible live-memory evidence unavailable
 ```
 
-Do not use the GUI fallback. HPA-584/HPA-583 remain blocked pending later memory evidence or explicit Linear scope change.
+No GUI fallback; HPA-584/HPA-583 stay blocked pending later evidence or explicit scope change.
 
 ### Resize-only follow-up
 
-Orthogonal to row laziness; reuse existing preparer/generation design and block HPA-583 while outstanding.
+Orthogonal; reuse existing preparer/generation design and block HPA-583 while outstanding.
 
 ## Temporary instrumentation
 
-Prefer Instruments. Reuse `Logger.info` / `ContinuousClock`; no permanent timing layer. `onAppear` is insertion-only evidence. Keep scoped `/tmp/hpa584-instrumentation.patch` before reverting rather than broad stash so unrelated worktree state is not hidden. Commit no profiler artifacts or temporary source instrumentation.
+Prefer Instruments. Reuse `Logger.info` / `ContinuousClock`; no permanent timing layer. `onAppear` insertion-only. Keep scoped `/tmp/hpa584-instrumentation.patch` rather than broad stash so unrelated worktree state is not hidden. Commit no profiler artifacts or temporary source instrumentation.
 
 ## Acceptance criteria
 
