@@ -12,7 +12,7 @@
 - `GameplayViewModel.setupGameplay(loadPersistedSpeed:)` is now the single async setup API. The production lifecycle caller and every compiler-found test caller await it; no synchronous wrapper was added.
 - Valid timeline snapshots build `GameplayNotationPreparationRequest` on the main actor, then run only `GameplayNotationPreparer.prepare(request)` inside `Task.detached(priority: .userInitiated)`. SwiftData/model references, resolver maps, diagnostics, UserDefaults lookup, BGM, metronome, and input setup remain on the main actor. The legacy `[Note]` `NotationLayoutInput` path remains synchronous/on-main.
 - The existing `notationLayoutGeneration` is the only freshness identity. Setup allocates the generation before dispatch, current results install through the existing funnel without a second increment, and stale results update no layout/cache/readiness state. Cleanup advances the same generation and cancels the retained task only as resource control.
-- Prepared timeline state installs its layout, row/measure maps, note-head coordinates, and beat coordinates coherently before `isGameplayPrepared` becomes true.
+- Prepared timeline state installs its layout, row/measure maps, and note-head coordinates coherently before `isGameplayPrepared` becomes true.
 - Existing row-width flooring, `> 0.5` tolerance, and prepared-sheet 100 ms trailing-edge debounce remain unchanged. Width changes during initial preparation are handled by the existing post-mount width path; no width retry loop or second width generation was added.
 - Freshness tests are direct deterministic apply/lifecycle tests; they do not sleep or race real detached tasks.
 
