@@ -78,7 +78,9 @@ Re-run the HPA-579 notation scenarios against current `main`, using the same res
 - **Keep eager rendering** — no row-laziness implementation; or
 - **Create one focused row-laziness follow-up** — only when real evidence shows the eager full-chart primitive tree is a dominant mount, scroll/frame, or memory problem.
 
-A separate YAGNI fallback exists only for repeated environment failure: if HPA-584 cannot obtain a usable GUI after two HPA-584 attempts, close without optimization and without claiming performance is acceptable.
+A separate YAGNI fallback exists only for repeated **GUI environment/session** failure: if HPA-584 cannot obtain a usable GUI after two HPA-584 attempts, close without optimization and without claiming performance is acceptable.
+
+A usable GUI with missing memory evidence is different: that is a tooling blocker, not permission to use the GUI fallback.
 
 Natural resize is classified independently so post-ready main-actor layout CPU cannot be mistaken for row-laziness evidence.
 
@@ -192,9 +194,9 @@ Record source/toolchain identity, compile-check Release, and use Xcode Product >
 
 A usable unlocked GUI is required for an **evidence-backed** keep-eager or row-laziness decision.
 
-### Bounded environment-block fallback
+### Bounded GUI-environment fallback
 
-HPA-581 already demonstrated that a locked/shielded session can defeat the interactive handoff. HPA-584 must not stall the roadmap forever on host state.
+HPA-581 already demonstrated that a locked/shielded session can defeat the interactive handoff. HPA-584 must not stall the roadmap forever on host session state.
 
 - If the first HPA-584 interactive attempt is blocked by environment/session state, explicitly verify the session is unlocked and input is available, then make **one** more HPA-584 attempt.
 - If the second HPA-584 attempt is also environment-blocked, close HPA-584 as:
@@ -211,7 +213,19 @@ That fallback:
 - creates no speculative row-laziness/resize optimization issue;
 - unblocks HPA-583 by YAGNI: there is still no evidence justifying rendering architecture work.
 
-This fallback is an execution escape hatch, not a substitute for successful profiling.
+This fallback is an execution escape hatch for **GUI environment/session failure only**.
+
+### Tooling blocker after a usable GUI
+
+If the GUI is usable but both Allocations and the Xcode memory-gauge fallback fail to produce credible named live-memory evidence, do **not** use the GUI fallback.
+
+Record:
+
+```text
+Tooling-blocked — credible live-memory evidence unavailable
+```
+
+HPA-584 and HPA-583 remain blocked until a later memory measurement succeeds or Linear explicitly narrows the scope.
 
 ## Measurement contract
 
@@ -255,7 +269,7 @@ Record exact metric names/values for pre-gameplay, post-mount, and playback/manu
 
 If Allocations cannot expose a credible live metric, use the Xcode memory gauge in a separate Release interaction and label the highest observed gauge value exactly as that.
 
-For an evidence-backed macOS keep-eager close, credible macOS live-memory evidence is required. If the GUI works but both Allocations and the memory-gauge fallback fail to yield a credible live value, record HPA-584 as **tooling-blocked** and do not claim Keep eager. This is not the two-attempt GUI fallback; it requires a later usable memory measurement or an explicit scope change in Linear.
+For an evidence-backed macOS keep-eager close, credible macOS live-memory evidence is required. A usable GUI with missing memory evidence is **tooling-blocked**, not a no-optimization close.
 
 ### Natural resize / row repacking
 
@@ -321,11 +335,17 @@ Wrapping the current chart-wide `GameplayDrumNotationView` unchanged in a lazy c
 
 Use only after the two bounded HPA-584 GUI attempts both fail for environment/session reasons.
 
-This is **not** an evidence-backed keep-eager claim. It records that interactive/memory evidence remained unavailable and defaults to no speculative optimization. HPA-583 becomes unblocked.
+This is **not** an evidence-backed keep-eager claim. It records that current interactive/memory evidence remained unavailable and defaults to no speculative optimization. HPA-583 becomes unblocked.
+
+### 4. Tooling-blocked — credible live-memory evidence unavailable
+
+Use when the GUI works but the required macOS live-memory metric cannot be obtained from Allocations or the memory-gauge fallback.
+
+This is not a decision on row laziness. HPA-583 remains blocked pending later memory evidence or an explicit Linear scope change.
 
 ### Resize-only layout CPU follow-up
 
-A material packing-changing resize dominated by main-actor layout CPU is orthogonal to the three outcomes above. If needed, create one narrow follow-up reusing `GameplayNotationPreparer` and the existing notation generation. It blocks HPA-583 until that rendering path settles.
+A material packing-changing resize dominated by main-actor layout CPU is orthogonal to the outcomes above. If needed, create one narrow follow-up reusing `GameplayNotationPreparer` and the existing notation generation. It blocks HPA-583 until that rendering path settles.
 
 ## Result template
 
