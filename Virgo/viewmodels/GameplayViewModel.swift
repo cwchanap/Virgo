@@ -194,13 +194,10 @@ final class GameplayViewModel {
     /// the way they always have. Use `updateRowWidth(_:)` to set this from the view.
     var cachedLayoutRowWidth: CGFloat = GameplayLayout.maxRowWidth
 
-    /// Retained handle for the optional off-main timeline notation preparation.
-    /// Cancellation only saves work; generation checks remain the correctness rule.
-    var notationPreparationTask: Task<Void, Never>?
-
-    /// Retained handle to the in-flight detached preparation worker so cancelling
-    /// the enclosing preparation task also stops the off-main work. Same contract:
-    /// cancellation saves work, generation checks remain the correctness rule.
+    /// Retained handle to the in-flight detached preparation worker so
+    /// `beginNotationPreparation()` and caller-task cancellation can stop the
+    /// off-main work. Same contract: cancellation saves work, generation checks
+    /// remain the correctness rule.
     var notationPreparationWorkerTask: Task<GameplayNotationPreparedState, Never>?
 
     // MARK: - Visual State
@@ -369,8 +366,8 @@ final class GameplayViewModel {
     /// identity on the same counter used by the static notation child.
     @discardableResult
     func beginNotationPreparation() -> UInt64 {
-        notationPreparationTask?.cancel()
-        notationPreparationTask = nil
+        notationPreparationWorkerTask?.cancel()
+        notationPreparationWorkerTask = nil
         notationLayoutGeneration &+= 1
         return notationLayoutGeneration
     }
