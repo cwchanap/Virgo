@@ -85,7 +85,6 @@ struct GameplayNotationInstallationTests {
         #expect(viewModel.notationLayoutGeneration == newerGeneration)
         #expect(viewModel.cachedNotationLayout.measures.isEmpty == initialLayout.measures.isEmpty)
         #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty == initialLayout.noteHeads.isEmpty)
-        #expect(viewModel.cachedBeatPositions.isEmpty)
         #expect(!viewModel.isGameplayPrepared)
     }
 
@@ -112,20 +111,14 @@ struct GameplayNotationInstallationTests {
             #expect(installed.0 == expected.0)
             #expect(installed.1 == expected.1)
         }
-        #expect(viewModel.cachedBeatPositions.count == prepared.beatPositionsByID.count)
-        for (beatID, position) in prepared.beatPositionsByID {
-            let cached = try #require(viewModel.cachedBeatPositions[beatID])
-            #expect(cached.x == Double(position.x))
-            #expect(cached.y == Double(position.y))
-        }
 
         let staticInput = GameplayView(chart: chart, metronome: viewModel.metronome)
             .staticNotationInput(viewModel: viewModel)
         #expect(staticInput.generation == generation)
     }
 
-    @Test("timeline setup preserves pinned row and coordinate maps")
-    func timelineSetupPreservesPinnedRowAndCoordinateMaps() async throws {
+    @Test("timeline setup preserves pinned measure row map")
+    func timelineSetupPreservesPinnedMeasureRowMap() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8, measuresCount: 2)
         let viewModel = GameplayViewModel(
             chart: chart,
@@ -136,16 +129,6 @@ struct GameplayNotationInstallationTests {
         defer { viewModel.cleanup() }
 
         #expect(viewModel.cachedMeasureRowMap == [0: 0, 1: 0])
-        #expect(viewModel.cachedNotationNoteHeadPositions.count == viewModel.cachedNotationLayout.noteHeads.count)
-        #expect(viewModel.cachedBeatPositions.count == viewModel.cachedDrumBeats.count)
-        for noteHead in viewModel.cachedNotationLayout.noteHeads {
-            let cached = try #require(viewModel.cachedNotationNoteHeadPositions[noteHead.id])
-            #expect(cached.x == Double(noteHead.position.x))
-            #expect(cached.y == Double(noteHead.position.y))
-        }
-        for beat in viewModel.cachedDrumBeats {
-            #expect(viewModel.cachedBeatPositions[beat.id] != nil)
-        }
     }
 
     @Test("playback updates retain the static notation input until a layout install")
@@ -181,20 +164,13 @@ private func makePreparedTimelineState(
     for viewModel: GameplayViewModel
 ) throws -> GameplayNotationPreparedState {
     let snapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
-    let beatPositionsByID: [UInt64: RhythmEventPosition] = Dictionary(
-        uniqueKeysWithValues: viewModel.cachedDrumBeats.compactMap { beat in
-            guard let position = beat.rhythmPosition else { return nil }
-            return (beat.id, position)
-        }
-    )
     let request = GameplayNotationPreparationRequest(
         snapshot: snapshot,
         minimumMeasureCount: viewModel.cachedLayoutMeasureCount,
         style: .gameplayDefault.with(rowWidth: max(GameplayLayout.maxRowWidth, viewModel.cachedLayoutRowWidth)),
         notePositionOverrides: Dictionary(
             uniqueKeysWithValues: DrumType.allCases.map { ($0, $0.notePosition) }
-        ),
-        beatPositionsByID: beatPositionsByID
+        )
     )
     return GameplayNotationPreparer.prepare(request)
 }

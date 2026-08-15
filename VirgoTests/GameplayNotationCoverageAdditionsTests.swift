@@ -53,11 +53,6 @@ struct GameplayNotationCoverageAdditionsTests {
         #expect(viewModel.cachedRhythmRuntime.availability == .valid)
         let request = try #require(viewModel.makeTimelineNotationPreparationRequest())
         #expect(request.minimumMeasureCount == viewModel.cachedLayoutMeasureCount)
-        #expect(request.beatPositionsByID.count == viewModel.cachedDrumBeats.count)
-        for beat in viewModel.cachedDrumBeats {
-            let position = try #require(beat.rhythmPosition)
-            #expect(request.beatPositionsByID[beat.id] == position)
-        }
     }
 
     // MARK: - prepareTimelineNotation cancellation
@@ -136,44 +131,6 @@ struct GameplayNotationCoverageAdditionsTests {
         #expect(viewModel.cachedLayoutRowWidth == initialWidth, "Infinite width should be ignored")
     }
 
-    // MARK: - cacheLegacyBeatPositions
-
-    @Test("cacheBeatPositions falls back to legacy positions when layout is empty")
-    func cacheBeatPositionsFallsBackToLegacyWhenLayoutEmpty() async throws {
-        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8, measuresCount: 2)
-        let viewModel = GameplayViewModel(
-            chart: chart,
-            metronome: GameplayViewModelTestHarness.createTestMetronome()
-        )
-        await viewModel.loadChartData()
-        await viewModel.setupGameplay(loadPersistedSpeed: false)
-        defer { viewModel.cleanup() }
-
-        // After setup, beats and measure positions are populated.
-        #expect(!viewModel.cachedDrumBeats.isEmpty)
-        #expect(!viewModel.measurePositionMap.isEmpty)
-        let originalBeatPositionCount = viewModel.cachedBeatPositions.count
-        #expect(originalBeatPositionCount > 0)
-
-        // Install an empty layout so neither playable nor renderable content is present.
-        viewModel.installNotationLayout(.empty)
-        #expect(!viewModel.cachedNotationHasPlayableContent)
-        #expect(!viewModel.cachedNotationHasRenderableContent)
-
-        // cacheBeatPositions should fall through to cacheLegacyBeatPositions,
-        // which uses measurePositionMap to compute x/y for each beat.
-        viewModel.cacheBeatPositions()
-
-        #expect(!viewModel.cachedBeatPositions.isEmpty,
-                "Legacy beat positions should be populated from measurePositionMap")
-        for beat in viewModel.cachedDrumBeats {
-            let position = try #require(viewModel.cachedBeatPositions[beat.id],
-                                         "Beat \(beat.id) should have a legacy position")
-            #expect(position.x > 0)
-            #expect(position.y > 0)
-        }
-    }
-
     // MARK: - cacheNotationLayout no-track reset
 
     @Test("cacheNotationLayout resets all caches when track is nil")
@@ -187,13 +144,12 @@ struct GameplayNotationCoverageAdditionsTests {
         await viewModel.setupGameplay(loadPersistedSpeed: false)
         defer { viewModel.cleanup() }
 
-        #expect(!viewModel.cachedNotationNoteHeadPositions.isEmpty)
+        #expect(viewModel.cachedNotationHasRenderableContent)
 
         viewModel.track = nil
         viewModel.cacheNotationLayout()
 
         #expect(!viewModel.cachedNotationHasRenderableContent)
-        #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
         #expect(viewModel.cachedMeasureRowMap.isEmpty)
         #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
         #expect(viewModel.cachedLegacyContentHeight == 0)
@@ -212,8 +168,7 @@ struct GameplayNotationCoverageAdditionsTests {
         defer { viewModel.cleanup() }
 
         let emptyPrepared = GameplayNotationPreparedState(
-            layout: .empty,
-            beatPositionsByID: [:]
+            layout: .empty
         )
         let generation = viewModel.beginNotationPreparation()
         #expect(viewModel.applyPreparedNotation(emptyPrepared, generation: generation))
@@ -222,7 +177,6 @@ struct GameplayNotationCoverageAdditionsTests {
         #expect(!viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedMeasureRowMap.isEmpty)
         #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
-        #expect(viewModel.cachedBeatPositions.isEmpty)
     }
 
     // MARK: - setupGameplay timeline fallback when request is nil

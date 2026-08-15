@@ -160,8 +160,6 @@ struct GameplayViewModelDataLoadingTests {
         // Both manual sixteenth notes retain distinct exact onsets, but their
         // near-overlap makes the measure conservatively unsupported.
         #expect(viewModel.cachedNotationLayout.stems.isEmpty)
-        #expect(!viewModel.cachedBeatPositions.isEmpty)
-        #expect(viewModel.cachedNotationNoteHeadPositions.count == viewModel.cachedNotationLayout.noteHeads.count)
     }
 
     @Test("empty chart prepares renderable rests without playable caches")
@@ -183,8 +181,6 @@ struct GameplayViewModelDataLoadingTests {
         #expect(!viewModel.cachedNotationMeasuresByIndex.isEmpty)
         #expect(viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedDrumBeats.isEmpty)
-        #expect(viewModel.cachedBeatPositions.isEmpty)
-        #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
     }
 
     @Test("control-only chart prepares renderable controls without playable caches")
@@ -212,8 +208,6 @@ struct GameplayViewModelDataLoadingTests {
         #expect(!viewModel.cachedNotationMeasuresByIndex.isEmpty)
         #expect(viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedDrumBeats.isEmpty)
-        #expect(viewModel.cachedBeatPositions.isEmpty)
-        #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
     }
 
     @Test func testNotationLayoutCachesClearWithoutTrack() async throws {
@@ -224,7 +218,6 @@ struct GameplayViewModelDataLoadingTests {
         viewModel.computeCachedLayoutData()
 
         #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
-        #expect(viewModel.cachedNotationNoteHeadPositions.isEmpty)
         #expect(!viewModel.cachedNotationHasRenderableContent)
     }
 

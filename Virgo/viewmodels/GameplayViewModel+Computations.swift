@@ -259,7 +259,6 @@ extension GameplayViewModel {
 
         if prepareNotation {
             cacheNotationLayout()
-            cacheBeatPositions()
         }
     }
 

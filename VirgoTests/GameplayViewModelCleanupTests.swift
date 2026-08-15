@@ -59,10 +59,7 @@ struct GameplayViewModelCleanupTests {
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         let prepared = GameplayNotationPreparedState(
-            layout: viewModel.cachedNotationLayout,
-            beatPositionsByID: viewModel.cachedBeatPositions.reduce(into: [UInt64: CGPoint]()) { result, entry in
-                result[entry.key] = CGPoint(x: entry.value.x, y: entry.value.y)
-            }
+            layout: viewModel.cachedNotationLayout
         )
         let inFlightGeneration = viewModel.beginNotationPreparation()
         let layoutBeforeCleanup = viewModel.cachedNotationLayout
