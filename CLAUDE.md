@@ -177,7 +177,7 @@ actually paints, and deliberately does not gate production's mounting of it), an
 across `GameplayViewModel.swift` plus `+BGM`, `+Computations`, `+Playback`, `+SpeedControl`, and
 `+VisualUpdates` extension files (SwiftLint type-body limits). The view model:
 - Caches SwiftData relationships (`cachedNotes`, `cachedSong`) to avoid main-thread blocking
-- Pre-computes layout data (`cachedDrumBeats`, `cachedMeasurePositions`, `cachedBeamGroups`, `cachedBeatPositions`) to avoid per-frame recalculation
+- Pre-computes layout data (`cachedDrumBeats`, `cachedMeasurePositions`, `cachedBeamGroups`) to avoid per-frame recalculation
 - Manages BGM (`AVAudioPlayer`) synchronized with metronome via `CFAbsoluteTime`
 - Handles speed changes with trailing-edge debounce (100ms) to avoid slider jitter
 

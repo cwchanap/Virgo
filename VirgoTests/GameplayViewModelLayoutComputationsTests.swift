@@ -71,7 +71,6 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(viewModel.cachedDrumBeats.count == 1)
         #expect(beat.rhythmEventID == expectedTarget.eventID)
         #expect(beat.rhythmPosition == expectedTarget.position)
-        #expect(viewModel.cachedBeatPositions[beat.id] != nil)
     }
 
     @Test("metadata-free DTX stays on the fixed legacy gameplay path")
@@ -262,28 +261,6 @@ struct GameplayViewModelLayoutComputationsTests {
 
         // Verify measure 0 always exists
         #expect(viewModel.measurePositionMap[0] != nil)
-    }
-
-    @Test func testCacheBeatPositions() async throws {
-        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
-
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
-        await viewModel.loadChartData()
-        await viewModel.setupGameplay()
-
-        // Verify beat positions are cached
-        #expect(!viewModel.cachedBeatPositions.isEmpty)
-
-        // Each beat should have a cached position
-        for beat in viewModel.cachedDrumBeats {
-            let position = viewModel.cachedBeatPositions[beat.id]
-            #expect(position != nil, "Beat \(beat.id) should have cached position")
-            if let pos = position {
-                #expect(pos.x > 0, "X position should be positive")
-                #expect(pos.y > 0, "Y position should be positive")
-            }
-        }
     }
 
     @Test func testFindClosestBeatIndex() async throws {

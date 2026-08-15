@@ -191,7 +191,6 @@ struct RhythmTimelineIntegrationTests {
         let timeline = try #require(viewModel.cachedRhythmRuntime.timeline)
         #expect(viewModel.cachedLayoutMeasureCount == timeline.measures.count)
         #expect(viewModel.cachedDrumBeats.count == 2)
-        #expect(viewModel.cachedBeatPositions.count == 2)
         #expect(viewModel.cachedNotationLayout.measures.map(\.durationTicks) == timeline.measures.map(\.durationTicks))
         #expect(abs(viewModel.cachedTrackDuration - 3.5) < 0.0001)
         #expect(abs(viewModel.bgmOffsetSeconds - 2.5) < 0.0001)

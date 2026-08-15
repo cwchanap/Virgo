@@ -164,8 +164,6 @@ final class GameplayViewModel {
     var cachedBeatIndices: [Int] = [] // internal for cross-file extension access
     /// Fast lookup map from measure index to position
     var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:] // internal for cross-file extension access
-    /// Pre-cached beat positions for performance
-    var cachedBeatPositions: [UInt64: (x: Double, y: Double)] = [:] // internal for cross-file extension access
     /// Pre-computed notation layout that drives rendering when notes are present.
     /// The private storage keeps every replacement behind `installNotationLayout(_:)`.
     private var notationLayoutStorage = NotationLayout.empty
@@ -181,8 +179,6 @@ final class GameplayViewModel {
     /// Fast lookup from measure index to rendered measure for the notation layout path.
     /// Replaces per-frame linear `first(where:)` scans in the playhead with O(1) access.
     var cachedNotationMeasuresByIndex: [Int: RenderedMeasure] = [:] // internal for cross-file extension access
-    /// Fast lookup map from rendered note-head ID to rendered position
-    var cachedNotationNoteHeadPositions: [UInt64: (x: Double, y: Double)] = [:] // internal for cross-file extension access
     /// Duration-based measure count shared with legacy and notation layouts.
     var cachedLayoutMeasureCount = 1 // internal for cross-file extension access
     /// O(1) legacy-sheet height used by the observable sheet container. The
@@ -494,7 +490,6 @@ final class GameplayViewModel {
     /// reuses it so the reset remains a single notation installation.
     private func resetForFatalRhythmTiming(generation: UInt64) {
         _ = installNotationLayout(.empty, generation: generation)
-        cachedNotationNoteHeadPositions = [:]
         cachedMeasureRowMap = [:]
         cachedNotationMeasuresByIndex = [:]
         cachedLegacyContentHeight = 0

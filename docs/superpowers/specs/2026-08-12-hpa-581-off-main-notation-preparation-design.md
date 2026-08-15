@@ -182,13 +182,10 @@ struct GameplayNotationPreparationRequest: Sendable {
     let minimumMeasureCount: Int
     let style: NotationLayoutStyle
     let notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
-    let beatPositionsByID: [UInt64: RhythmEventPosition]
 }
 
 struct GameplayNotationPreparedState: Sendable {
     let layout: NotationLayout
-    let beatPositionsByID: [UInt64: CGPoint]
-    // only existing hot/coherent lookup values when useful
 }
 
 struct GameplayNotationPreparer {
@@ -196,7 +193,13 @@ struct GameplayNotationPreparer {
 }
 ```
 
-It constructs timeline-only `NotationLayoutInput` internally, calls the existing `NotationLayoutEngine`, and reuses the existing timeline beat-position math. No engine fork.
+The earlier `beatPositionsByID` field was dropped during implementation: the
+`cachedBeatPositions` / `cachedNotationNoteHeadPositions` caches it fed had no
+production reader (only tests), so carrying beat positions across the worker
+boundary was unused optimization state. Section 2's "do not duplicate
+derivations into a second cache for architecture symmetry" governs here.
+
+It constructs timeline-only `NotationLayoutInput` internally and calls the existing `NotationLayoutEngine`. No engine fork.
 
 Do **not** add a test whose only assertion is that `prepare(request).layout` equals `NotationLayoutEngine().layout` for the same input; that only proves the wrapper calls its dependency.
 

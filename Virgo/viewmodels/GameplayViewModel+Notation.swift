@@ -3,7 +3,7 @@
 //  Virgo
 //
 //  Notation layout installation, off-main timeline preparation, and the
-//  beat/measure coordinate caches derived from the installed layout.
+//  measure coordinate caches derived from the installed layout.
 //  Split from GameplayViewModel+Computations.swift for SwiftLint file limits.
 //
 
@@ -44,7 +44,6 @@ extension GameplayViewModel {
         if TestEnvironment.isRunningTests {
             cachedLayoutRowWidth = width
             cacheNotationLayout()
-            cacheBeatPositions()
             return
         }
 
@@ -56,7 +55,6 @@ extension GameplayViewModel {
                 guard let self else { return }
                 self.cachedLayoutRowWidth = width
                 self.cacheNotationLayout()
-                self.cacheBeatPositions()
             }
         }
     }
@@ -64,7 +62,6 @@ extension GameplayViewModel {
     func cacheNotationLayout() {
         guard let track = track else {
             installNotationLayout(.empty)
-            cachedNotationNoteHeadPositions = [:]
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]
             cachedLegacyContentHeight = 0
@@ -107,40 +104,31 @@ extension GameplayViewModel {
         }
 
         logDroppedNotesIfAny()
-
-        cachedNotationNoteHeadPositions = Dictionary(
-            uniqueKeysWithValues: cachedNotationLayout.noteHeadPositionsByID.map { noteHeadID, position in
-                (noteHeadID, (x: Double(position.x), y: Double(position.y)))
-            }
-        )
     }
 
     /// Builds the immutable timeline-only request while all chart/runtime state
     /// remains on the main actor. The detached worker receives no model values.
     func makeTimelineNotationPreparationRequest() -> GameplayNotationPreparationRequest? {
         guard let snapshot = cachedRhythmRuntime.layoutSnapshot else { return nil }
-        let beatPositionsByID: [UInt64: RhythmEventPosition] = Dictionary(
-            uniqueKeysWithValues: cachedDrumBeats.compactMap { beat in
-                guard let position = beat.rhythmPosition else { return nil }
-                return (beat.id, position)
-            }
-        )
         return GameplayNotationPreparationRequest(
             snapshot: snapshot,
             minimumMeasureCount: cachedLayoutMeasureCount,
             style: .gameplayDefault.with(
                 rowWidth: max(GameplayLayout.maxRowWidth, cachedLayoutRowWidth)
             ),
-            notePositionOverrides: notationNotePositionOverrides(),
-            beatPositionsByID: beatPositionsByID
+            notePositionOverrides: notationNotePositionOverrides()
         )
     }
 
     /// Runs only the pure timeline request off-main and returns to this main
     /// actor for one generation-checked coherent install. The cancellation
     /// handler captures the worker directly so caller-task cancellation (e.g.
-    /// the view disappearing) propagates to the detached worker — abandoned
-    /// preparations stop cooperatively instead of burning CPU to completion.
+    /// the view disappearing) propagates to the detached worker. Cancellation
+    /// is best-effort resource cleanup only: the dominant work is
+    /// `NotationLayoutEngine.layout`, which has no cooperative cancellation
+    /// points, so an abandoned worker may still run to completion. Correctness
+    /// rests on the generation checks below — a stale result is discarded
+    /// regardless of whether the worker finished or was cancelled.
     /// The worker handle is only cleared when this worker is still current
     /// (generation matches), so a newer preparation's worker is never clobbered
     /// by a stale completion.
@@ -193,16 +181,6 @@ extension GameplayViewModel {
         }
 
         logDroppedNotesIfAny()
-        cachedNotationNoteHeadPositions = Dictionary(
-            uniqueKeysWithValues: cachedNotationLayout.noteHeadPositionsByID.map { noteHeadID, position in
-                (noteHeadID, (x: Double(position.x), y: Double(position.y)))
-            }
-        )
-        cachedBeatPositions = Dictionary(
-            uniqueKeysWithValues: prepared.beatPositionsByID.map { beatID, position in
-                (beatID, (x: Double(position.x), y: Double(position.y)))
-            }
-        )
         isGameplayPrepared = true
         return true
     }
@@ -284,69 +262,5 @@ extension GameplayViewModel {
         ))
         return eventPrefix + "noteType=\(note.noteType)(\(drumType?.description ?? "unknown")), " +
             "measure=\(note.measureNumber)(idx=\(measureIdx))"
-    }
-
-    func cacheBeatPositions() {
-        guard let track = track else { return }
-
-        cachedBeatPositions = [:]
-
-        if cachedNotationHasPlayableContent {
-            cacheNotationBeatPositions(track: track)
-        } else if !cachedNotationHasRenderableContent {
-            cacheLegacyBeatPositions(track: track)
-        }
-
-        Logger.debug("Cached \(cachedBeatPositions.count) beat positions for performance optimization")
-    }
-
-    private func cacheNotationBeatPositions(track: DrumTrack) {
-        if cachedRhythmRuntime.availability == .valid {
-            cacheTimelineNotationBeatPositions()
-            return
-        }
-        for beat in cachedDrumBeats {
-            let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
-            guard let measure = cachedNotationMeasuresByIndex[measureIndex] else { continue }
-            let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
-            let beatWithinMeasure = beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure)
-            let tick = cachedNotationLayout.tabGrid.tickIndex(
-                forBeatWithinMeasure: beatWithinMeasure,
-                beatsPerMeasure: track.timeSignature.beatsPerMeasure
-            )
-            let beatX = cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: tick)
-            let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
-            cachedBeatPositions[beat.id] = (x: Double(beatX), y: Double(staffCenterY))
-        }
-    }
-
-    private func cacheTimelineNotationBeatPositions() {
-        for beat in cachedDrumBeats {
-            guard let position = beat.rhythmPosition,
-                  let measure = cachedNotationMeasuresByIndex[position.measureIndex] else {
-                continue
-            }
-            let beatX = cachedNotationLayout.tabGrid.xPosition(in: measure, localTick: position.localTick)
-            let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
-            cachedBeatPositions[beat.id] = (x: Double(beatX), y: Double(staffCenterY))
-        }
-    }
-
-    private func cacheLegacyBeatPositions(track: DrumTrack) {
-        for beat in cachedDrumBeats {
-            let measureIndex = MeasureUtils.measureIndex(from: beat.timePosition)
-
-            if let measurePos = measurePositionMap[measureIndex] {
-                let beatOffsetInMeasure = beat.timePosition - Double(measureIndex)
-                let beatPosition = beatOffsetInMeasure * Double(track.timeSignature.beatsPerMeasure)
-                let beatX = GameplayLayout.preciseNoteXPosition(
-                    measurePosition: measurePos,
-                    beatPosition: beatPosition,
-                    timeSignature: track.timeSignature
-                )
-                let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
-                cachedBeatPositions[beat.id] = (x: Double(beatX), y: Double(staffCenterY))
-            }
-        }
     }
 }
