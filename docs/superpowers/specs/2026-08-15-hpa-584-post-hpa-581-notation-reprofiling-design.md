@@ -9,371 +9,169 @@ HPA-584 is the Phase D evidence closeout for Virgo's notation-rendering performa
 
 The answer may be **no**. HPA-584 is a measurement/decision ticket and normally ships no production code.
 
-HPA-579 established the Release macOS comparison baseline on Soukyuu MASTER (`Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx`):
+HPA-579 established the Release macOS comparison baseline on Soukyuu MASTER (`Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx`): 2,870 notes, 0 controls, 156 measures, resolved row width **900 pt**, 156 rendered rows, preparation median **267.857 ms** (264.074-269.534 ms), and initial mount **4,890.729 ms**. Manual scrolling and reliable peak-live-memory evidence were unavailable.
 
-- 2,870 notes;
-- 0 controls;
-- 156 measures;
-- resolved row width **900 pt**;
-- 156 rendered rows;
-- chart selection -> gameplay prepared: median **267.857 ms**, range **264.074-269.534 ms**;
-- production `GameplayView` initial mount: **4,890.729 ms**;
-- production playback advanced through row 34 during a 49.717 s in-trace opportunity;
-- manual scrolling was unavailable;
-- a reliable peak-live-memory value was not captured.
+HPA-581 moved initial timeline notation layout through `GameplayNotationPreparer` on a detached worker and isolated static notation behind `GameplayStaticNotationView(input:).equatable()`.
 
-HPA-581 then changed the two measured areas HPA-584 must re-check:
-
-1. initial timeline notation layout now runs through `GameplayNotationPreparer` on a detached worker and installs through the existing notation generation;
-2. static notation is isolated behind `GameplayStaticNotationView(input:).equatable()`, while playhead and auto-scroll remain live.
-
-The tracked HPA-581 final profiling report records the worker-path handoff and the locked-GUI limitation:
+The tracked HPA-581 final profiling report records the worker-path handoff and locked-GUI limitation:
 
 - `.superpowers/sdd/2026-08-12-hpa-581-off-main-notation-preparation/task-8-profile-report.md`
 
-`.superpowers/` is ignored for newly-created local files, but this specific report is already tracked and is available in a normal checkout. It is supporting evidence only. The committed HPA-581 design and plan remain the architectural sources of truth:
-
-- `docs/superpowers/specs/2026-08-12-hpa-581-off-main-notation-preparation-design.md`
-- `docs/superpowers/plans/2026-08-12-hpa-581-off-main-notation-preparation.md`
-
-HPA-584 blocks HPA-583, the final test/documentation cleanup. The intended closeout remains:
-
-```text
-HPA-581 implementation -> HPA-584 evidence decision -> HPA-583 cleanup
-```
+The broader `.superpowers/` pattern is ignored for new local files, but this report itself is already tracked. It is supporting evidence only; the committed HPA-581 design/plan remain the architectural sources of truth.
 
 ## Current eager-rendering mechanism
 
-The production renderer is **not** a list of 156 mounted row views.
-
-`GameplayStaticNotationLayers` mounts one chart-wide `ZStack`. `GameplayDrumNotationView` then builds full-chart `ForEach` collections for ledger lines, printed rests, beams, flags, stems, note heads, rhythm dots, articulations, stop notes, tuplets, feel marks, and rhythm warnings.
-
-`StaffLinesBackgroundView` loops over unique row numbers and `GameplayRowAnchorColumn` creates invisible row anchors, but there is no row-grouped primitive model and no lazy gameplay container today.
-
-Therefore the trace cannot expose a useful hypothetical `row 140` stack. HPA-584 instead combines:
-
-1. **total eager-tree CPU/call-path evidence** from the real chart-wide primitive tree;
-2. **deterministic geometry exposure** showing how much row extent lies outside the viewport;
-3. visible scroll behavior and live-memory evidence.
-
-Geometry is context, not a CPU partition. Rows have different primitive density and cost, so HPA-584 must **not** multiply an off-screen row fraction by total static-tree CPU time and call the product "off-screen cost."
+Production gameplay mounts one chart-wide static `ZStack`. `GameplayDrumNotationView` builds full-chart primitive `ForEach` collections; row numbers are layout/anchor data, not existing row views. Therefore HPA-584 combines total eager-tree CPU/call paths, deterministic viewport/content geometry, real scrolling behavior, and live memory. Geometry is context, not CPU attribution: rows have different primitive density, so **do not multiply off-screen row fraction by total CPU time**.
 
 ## Goal
 
-Re-run the HPA-579 notation scenarios against current `main`, using the same resolved **900 pt / 156-row** baseline geometry for any direct mount comparison, then make one evidence-backed eager-tree decision:
+Use the same **900 pt / 156-row** geometry for direct HPA-579 comparison and decide:
 
-- **Keep eager rendering** — no row-laziness implementation; or
-- **Create one focused row-laziness follow-up** — only when real evidence shows the eager full-chart primitive tree is a dominant mount, scroll/frame, or memory problem.
+- **Keep eager rendering**; or
+- **Create one focused row-laziness follow-up** only from positive trace/interaction/memory evidence.
 
-A separate YAGNI fallback exists only for repeated **GUI environment/session** failure: if HPA-584 cannot obtain a usable GUI after two HPA-584 attempts, close without optimization and without claiming performance is acceptable.
+A bounded YAGNI fallback applies only to repeated GUI environment/session failure. A usable GUI with missing memory evidence is a separate tooling blocker.
 
-A usable GUI with missing memory evidence is different: that is a tooling blocker, not permission to use the GUI fallback.
-
-Natural resize is classified independently so post-ready main-actor layout CPU cannot be mistaken for row-laziness evidence.
+Natural resize is classified independently so post-ready main-actor layout CPU is not mislabeled as row laziness.
 
 ## Non-goals
 
-- Implementing row virtualization inside HPA-584.
-- Designing a virtualization framework in advance.
-- Canvas tiling, custom drawing engines, pagination, viewport caches, display lists, or retained-mode renderers.
-- A benchmark target, metrics service, dashboard, or CI performance gate.
-- Universal timing or memory thresholds from one machine.
-- Re-opening HPA-581 actor boundaries or moving more SwiftData/rhythm work across actors.
-- Import work from HPA-580.
-- Broad test/document cleanup from HPA-583.
-- Synthetic resize widths used to manufacture a row-count change.
-- Simulator performance numbers presented as physical iPad performance.
-- Unit tests or coverage work as a substitute for interactive profiling.
+No virtualization implementation, benchmark/metrics infrastructure, custom renderer, pagination, viewport cache, actor rewrite, SwiftData ownership change, synthetic resize width, or unrelated HPA-583 cleanup.
 
 ## Selected measurement shape
 
-Use the fixed Soukyuu MASTER chart and run distinct sessions:
-
-1. **Time Profiler** — initial preparation, first mount, and 30+ seconds of playback CPU/call-tree evidence;
-2. **SwiftUI** — playback plus real manual scrolling and update/invalidation evidence;
-3. **Allocations**, or a separately named Xcode memory-gauge fallback — start before gameplay so mount delta/live memory are observable;
-4. **Time Profiler resize capture** — only after a natural width increase actually changes row packing.
-
-Do not build a benchmark harness or prototype row virtualization first.
+1. **Time Profiler** — preparation, first mount, and 30+ seconds playback CPU/call paths.
+2. **SwiftUI** — playback, invalidation/update evidence, and real manual scrolling.
+3. **Allocations** or a separately named Xcode memory-gauge fallback — begin before gameplay.
+4. **Time Profiler resize capture** — only after natural widening changes row packing.
 
 ## Representative comparison contract
 
-### Fixed chart
+Use Soukyuu MASTER / Expert (`mas.dtx`), 2,870 notes, 0 controls, 156 measures.
 
-```text
-song: soukyuu_e_no_shouka
-chart: MASTER / Expert
-file: Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx
-notes: 2,870
-controls: 0
-measures: 156
-HPA-579 resolved row width: 900 pt
-HPA-579 rendered rows: 156
-```
+`updateRowWidth(_:)` resolves `max(900, width)`, so HPA-579's **900 pt / 156 rows** is comparable only when the current installed layout matches those values.
 
-Do not re-rank the catalog. This is a before/after comparison.
-
-### Baseline window geometry is controlled
-
-`GameplayViewModel.updateRowWidth(_:)` resolves width as:
-
-```swift
-max(GameplayLayout.maxRowWidth, width)
-```
-
-with `GameplayLayout.maxRowWidth == 900`.
-
-Therefore HPA-579's **900 pt / 156-row** baseline is comparable only when the current run also resolves to 900 pt and renders 156 rows.
-
-Before any HPA-579-comparable preparation/mount timing:
+Before comparable timing:
 
 1. run one untimed calibration entry;
-2. record the real gameplay `geometry.size.width`, `cachedLayoutRowWidth`, and rendered row count;
-3. manually narrow the real window until the installed layout reports `cachedLayoutRowWidth = 900 pt` and `renderedRows = 156`;
-4. leave the window at that size for the comparable measured entries.
+2. record gameplay geometry width, `cachedLayoutRowWidth`, and rendered row count;
+3. narrow the real window until `cachedLayoutRowWidth = 900 pt` and `renderedRows = 156`;
+4. keep that window size for measured baseline runs.
 
-Do not infer the baseline from the outer window's nominal size. The logged gameplay geometry/resolved width is authoritative.
-
-If current source can no longer reproduce 900 pt / 156 rows for the same chart, record that behavior change and do not claim a direct 4,890.729 ms mount comparison.
+If current source cannot reproduce 900/156, do not claim a direct mount-time comparison.
 
 ### Geometry exposure
 
-For the calibrated run, record:
+Record viewport width/height, resolved row width, rendered row count, static content height/layout total height, and row pitch **320 pt**.
 
-- gameplay viewport width/height;
-- resolved row width;
-- rendered row count;
-- `staticInput.contentHeight` and/or `layout.totalHeight`;
-- row pitch: `GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing == 320 pt`.
-
-Derive a conservative visible-row-capacity estimate only for context:
+For context only:
 
 ```text
 visibleRowCapacity ~= min(renderedRows, ceil(viewportHeight / 320) + 1)
 offscreenRowFraction ~= 1 - visibleRowCapacity / renderedRows
 ```
 
-The extra row allows for partial-row exposure/top spacing. Label both values as geometry estimates. Do **not** multiply `offscreenRowFraction` by measured CPU time.
+Do not turn the fraction into a CPU estimate.
 
-## Environment and interactive gate
+## Environment and blockers
 
-Record source/toolchain identity, compile-check Release, and use Xcode Product > Profile for authoritative profiling.
+### GUI gate
 
-A usable unlocked GUI is required for an **evidence-backed** keep-eager or row-laziness decision.
+A usable unlocked GUI is required for an evidence-backed decision.
 
-### Bounded GUI-environment fallback
-
-If the first HPA-584 interactive attempt is blocked by lock/shield/input/session state, verify the session is unlocked and input is available, then make one more HPA-584 attempt.
-
-If the second HPA-584 attempt is also environment-blocked, close as:
+If HPA-584 attempt 1 fails because of lock/shield/input/session state, verify the session and retry once. If attempt 2 is also environment-blocked, close as:
 
 ```text
 Close without optimization — interactive evidence unavailable
 ```
 
-This fallback:
+This is not Keep eager. It must state mount/scroll/memory remain unverified, create no speculative optimization issue, and unblock HPA-583 by YAGNI because there is no evidence justifying rendering architecture work.
 
-- may cite the tracked HPA-581 worker-path report and deterministic chart facts as context;
-- must state that current HPA-584 mount, manual scrolling, and live memory remain unverified;
-- must not claim eager rendering is performant or memory-safe;
-- creates no speculative rendering follow-up;
-- unblocks HPA-583 by YAGNI because no evidence justifies rendering architecture work.
+### Memory tooling blocker
 
-### Tooling blocker after a usable GUI
-
-If the GUI is usable but both Allocations and the Xcode memory-gauge fallback fail to produce credible named live-memory evidence, do **not** use the GUI fallback.
-
-Record:
+If the GUI is usable but neither Allocations nor the memory-gauge fallback yields a credible named macOS live-memory metric, record:
 
 ```text
 Tooling-blocked — credible live-memory evidence unavailable
 ```
 
-HPA-584 and HPA-583 remain blocked until a later memory measurement succeeds or Linear explicitly narrows the scope.
+Do not use the GUI fallback. HPA-584/HPA-583 remain blocked pending later memory evidence or explicit Linear scope change.
 
 ## Measurement contract
 
-### Session A — Time Profiler at the pinned 900 pt / 156-row baseline
+### Session A — Time Profiler
 
-Preparation is context rather than the main HPA-584 decision. Use one warm-up/calibration entry, then **two measured entries** at the pinned baseline. Add a third only if the two disagree materially in attribution or visible behavior.
+Use one calibration/warm-up plus **two measured entries** at 900 pt / 156 rows. Add a third only if attribution or visible behavior differs materially.
 
-Record the durations/range, prominent main-thread stacks, and confirmation that initial timeline `NotationLayoutEngine.layout` remains on the detached worker path.
+Confirm initial timeline `NotationLayoutEngine.layout` remains on the worker path. Attribute first mount via the actual eager static bodies/primitive `ForEach`s. Any disposable `onAppear` marker is **subtree insertion/appearance only**; it does not bracket descendant construction or compositor completion. Continue 30+ seconds playback.
 
-Capture first mount separately. If a disposable `onAppear` marker is needed, it marks **static-subtree insertion/appearance only**. It does not bracket descendant construction and is not compositor-complete timing.
+Compare HPA-579's 4,890.729 ms mount only when chart, 900/156 geometry, and measurement boundary are materially comparable.
 
-First-mount attribution comes from Time Profiler call paths through the actual eager units: `GameplayStaticNotationView`, `GameplayStaticNotationLayers`, `GameplayDrumNotationView`, primitive `ForEach`s, and sibling static layers.
+### Session B — SwiftUI/manual scrolling
 
-Continue at least 30 seconds of playback and note whether live updates repeatedly enter expensive full-static-tree construction.
-
-Compare the old **4,890.729 ms** mount value only when chart, resolved 900 pt width, 156 rows, and measurement boundary are materially comparable.
-
-### Session B — SwiftUI + real manual scrolling
-
-Run a separate SwiftUI session at the pinned baseline. After mount, run 30+ seconds playback/auto-scroll and manually scroll through distant content.
-
-Record smooth / occasional minor hitch / repeated hitch plus the exact update/invalidation evidence available. Missing invalidation rows are a limitation, not proof of success.
+Run a separate SwiftUI session at the pinned geometry. Play 30+ seconds, let auto-scroll cross rows, manually scroll distant content, and classify smooth / occasional minor hitch / repeated hitch. Missing detailed invalidation rows are a stated limitation, not evidence of success.
 
 ### Session C — live memory
 
-Run a distinct Allocations session before entering gameplay at the pinned baseline.
+Run Allocations before gameplay at the pinned geometry. Record exact pre-gameplay, post-mount, and playback/scroll metric names/values. Use "peak" only if the tool reports peak. If needed, use the Xcode memory gauge and label its highest observed reading accurately.
 
-Record exact metric names/values for pre-gameplay, post-mount, and playback/manual-scroll states. Use "peak" only when the tool explicitly reports a peak.
+Credible macOS live memory is required for evidence-backed Keep eager.
 
-If Allocations cannot expose a credible live metric, use the Xcode memory gauge in a separate Release interaction and label the highest observed gauge value exactly as that.
+### Natural resize
 
-For an evidence-backed macOS keep-eager close, credible macOS live-memory evidence is required.
+Start at **900 pt / 156 rows**, then widen through practical widths. Record width/row count and stop at the first real packing change. Only if the widest practical host window still remains 156 rows may the result say no packing-changing width was available. Never use the synthetic 3,000 pt probe.
 
-### Natural resize / row repacking
+Classify a real packing change:
 
-Start from the calibrated **900 pt / 156-row** baseline, then widen the real macOS window through practical widths.
-
-Because 900 pt is a floor, the packing-changing direction is **wider**, not narrower.
-
-1. record resolved row width and rendered row count at each practical width;
-2. stop at the first real row-count change and profile that resize;
-3. if the widest practical host window still produces 156 rows, record the limitation only then;
-4. never use the synthetic 3,000 pt probe as user-resize evidence.
-
-For a real packing change, classify the dominant post-debounce cost:
-
-1. **Layout CPU dominates** — current `cacheNotationLayout()` / `NotationLayoutEngine.layout` on `@MainActor`; not row-laziness evidence. A narrow follow-up reuses `GameplayNotationPreparer` plus the existing notation generation exactly as HPA-581 Task 7 already scoped.
-2. **Full SwiftUI primitive-tree rebuild dominates** — contributes to the eager-tree evidence.
-3. **Neither is material** — no follow-up.
+1. **Layout CPU dominates** — existing main-actor `cacheNotationLayout()` / `NotationLayoutEngine.layout`; create only a narrow follow-up reusing `GameplayNotationPreparer` + current generation if material.
+2. **Full SwiftUI primitive-tree rebuild dominates** — contributes to row-laziness evidence.
+3. **Neither material** — no follow-up.
 
 ### Physical iPad policy
 
-A physical iPad run remains **advisory, not blocking** for this hobby-project decision.
-
-If a usable physical iPad is readily available, repeat mount, 30 seconds playback, manual scrolling, and live memory. Any material device-specific evidence counts toward the decision.
-
-If no physical iPad is available, record `iPad performance: unverified`. Do not block solely on hardware availability and do not claim iPad performance is verified. Simulator numbers remain functional/build evidence only.
-
-This scopes an evidence-backed keep-eager result to the measured macOS hardware unless a physical iPad run is present.
+Physical iPad evidence is advisory, not blocking for this hobby project. If available, repeat mount/playback/scroll/memory. If unavailable, record `iPad performance: unverified`; do not claim iPad performance from Simulator data. Any Keep eager conclusion without a device run is scoped to measured macOS hardware.
 
 ## Decision rubric
 
-### 1. Evidence-backed Keep eager
+### Evidence-backed Keep eager
 
-Choose **Keep eager** when the completed macOS sessions show:
+Requires the completed macOS sessions to show no material user-visible eager-tree mount issue, no repeated expensive static rebuild during playback, responsive/manual scrolling or unrelated hitches, and reasonable credible macOS live memory. Geometry may show most row extent is off-screen, but that fact alone does not justify laziness.
 
-- the calibrated 900 pt / 156-row first mount is not a material eager-tree problem with visible impact;
-- 30+ seconds playback does not repeatedly rebuild expensive full-static content with visible impact;
-- real manual scrolling is responsive or hitches are not attributable to eager full-chart construction;
-- credible macOS live memory is reasonable for the measured chart;
-- geometry confirms the eager tree extends beyond the viewport, but the measured total eager-tree cost/interaction/memory does not justify new row grouping/laziness.
+### Create one row-laziness follow-up
 
-If no physical iPad was measured, explicitly avoid any iPad performance claim.
+Only from positive evidence that full-chart primitive construction is a dominant mount, scroll/frame, or memory problem. Scope remains: pre-group immutable primitives by staff row, lazy vertical row container, unchanged horizontal geometry/stable IDs, preserve playhead/auto-scroll/goldens/accessibility. Wrapping the current full-chart view unchanged is insufficient.
 
-### 2. Create one row-laziness follow-up
+### Close without optimization — interactive evidence unavailable
 
-Create one focused follow-up only when real evidence shows the eager full-chart primitive tree is a dominant mount, scrolling/frame, or memory problem.
+Only after two HPA-584 GUI attempts fail for environment/session reasons. Not an evidence-backed Keep eager result; HPA-583 becomes unblocked.
 
-The follow-up is constrained to:
+### Tooling-blocked — credible live-memory evidence unavailable
 
-- pre-group immutable notation primitives by staff row;
-- render row-grouped primitives in a lazy vertical container;
-- keep horizontal geometry and stable notation IDs unchanged;
-- preserve playhead alignment, auto-scroll, goldens/invariants, and accessibility.
-
-Wrapping the current chart-wide `GameplayDrumNotationView` unchanged in a lazy container is not sufficient.
-
-### 3. Close without optimization — interactive evidence unavailable
-
-Use only after two HPA-584 GUI attempts fail for environment/session reasons. This is **not** an evidence-backed keep-eager claim. HPA-583 becomes unblocked.
-
-### 4. Tooling-blocked — credible live-memory evidence unavailable
-
-Use when the GUI works but the required macOS live-memory metric cannot be obtained from Allocations or the memory-gauge fallback. This is not a decision on row laziness. HPA-583 remains blocked pending later memory evidence or an explicit Linear scope change.
+Use when GUI works but required memory evidence cannot be obtained. HPA-583 remains blocked.
 
 ### Resize-only layout CPU follow-up
 
-A material packing-changing resize dominated by main-actor layout CPU is orthogonal to the outcomes above. If needed, create one narrow follow-up reusing `GameplayNotationPreparer` and the existing notation generation. It blocks HPA-583 until that rendering path settles.
-
-## Result template
-
-```markdown
-## Post-HPA-581 notation profile
-
-### Environment
-- Commit / machine / OS / Xcode / Instruments / Release macOS
-- HPA-584 GUI attempts: 1 | 2
-- GUI session usable: yes/no
-- Physical iPad: device + OS | unavailable
-
-### Representative chart / pinned geometry
-- soukyuu_e_no_shouka / MASTER / Expert
-- Notes / controls / measures
-- Gameplay geometry width / resolved row width
-- Rendered rows
-- Viewport height / static content height / layout total height
-- Row pitch: 320 pt
-- Visible-row-capacity estimate / off-screen-row-fraction estimate
-
-### HPA-579 baseline
-- Resolved row width / rows: 900 pt / 156
-- Gameplay prepared: 267.857 ms median (264.074-269.534 ms)
-- Initial mount: 4,890.729 ms
-- Manual scroll: unavailable
-- Peak live memory: unavailable
-
-### Session A — Time Profiler
-- Preparation runs + range; dominant main/background stacks
-- Initial timeline layout worker check
-- Ready -> static-subtree appearance marker: value or not used; insertion-only caveat
-- First mount: full-chart primitive-tree attribution and visible observation
-- 30+ s playback: static-tree call-path behavior
-
-### Session B — SwiftUI
-- Playback invalidation/update evidence
-- Manual scrolling: smooth | occasional minor hitch | repeated hitch
-- Attribution or instrumentation limitation
-
-### Session C — memory
-- Tool: Allocations | Xcode memory gauge
-- Pre-gameplay / post-mount / playback+scroll values
-- Peak: exact tool-reported value | unavailable
-
-### Natural resize/repacking
-- Width sweep / first row-count change, or widest-practical-width limitation
-- If packing changed: layout CPU | SwiftUI full-tree rebuild | neither material
-- Resize follow-up: issue identifier | none
-
-### Decision
-- HPA-584: Keep eager | Create row-laziness follow-up | Close without optimization — interactive evidence unavailable | Tooling-blocked
-- Scope: macOS measured; iPad verified/unverified
-- Evidence/limitation: concise reason
-- Row-laziness follow-up: issue identifier | none
-- HPA-583: unblocked now | blocked by follow-up/tooling
-```
+Orthogonal to row laziness; reuse existing preparer/generation design and block HPA-583 until settled if created.
 
 ## Temporary instrumentation policy
 
-- Prefer Instruments first.
-- Reuse `Logger.info`; do not add a timing helper/permanent signpost layer.
-- Use `ContinuousClock` only around a boundary the trace cannot isolate.
-- Keep markers local to `GameplayView` / `GameplaySheetMusicView` where possible.
-- A temporary `onAppear` marker is insertion/appearance evidence only, not a descendant-construction bracket.
-- Keep the scoped `/tmp/hpa584-instrumentation.patch` backup pattern before reverting. It avoids hiding unrelated worktree changes in a broad stash and matches HPA-579's disposable-instrumentation workflow.
-- Do not commit traces, screenshots, DerivedData, profiler exports, or ad-hoc metrics files.
-- Restore all temporary instrumentation before the ticket closes.
+Prefer Instruments. Reuse `Logger.info` / `ContinuousClock`; no permanent timing layer. `onAppear` is insertion-only evidence. Keep the scoped `/tmp/hpa584-instrumentation.patch` backup before reverting rather than a broad stash, so unrelated worktree state is not hidden. Commit no profiler artifacts or temporary source instrumentation.
 
 ## Acceptance criteria
 
-- [ ] Current source/toolchain identity is recorded.
-- [ ] The fixed Soukyuu MASTER chart is used.
-- [ ] Before direct HPA-579 comparison, the real window is calibrated until resolved row width / rendered rows are **900 pt / 156**.
-- [ ] Gameplay geometry width, resolved row width, rendered row count, viewport height, static content height, and 320 pt row pitch are recorded.
-- [ ] Visible-row/off-screen-row geometry estimates are recorded as context and are **not** converted into a fabricated CPU share.
-- [ ] Time Profiler, SwiftUI, and memory evidence use separate sessions.
-- [ ] Preparation uses one warm-up plus two measured runs; a third is added only when attribution/visible behavior disagrees materially.
-- [ ] First-mount evidence uses Time Profiler; any `onAppear` marker is explicitly insertion-only.
-- [ ] At least 30 seconds of playback and real manual scrolling are observed for an evidence-backed decision.
-- [ ] Credible macOS live-memory evidence is present for an evidence-backed keep-eager close.
-- [ ] Natural resize begins from 900 pt / 156 rows and widens until the first real packing change or the widest practical host width.
-- [ ] Resize layout CPU is kept separate from row-laziness evidence.
-- [ ] Physical iPad evidence is included when available; absence is explicit and does not become an iPad performance claim.
-- [ ] If two HPA-584 GUI attempts both fail for environment/session reasons, the ticket closes without speculative optimization and without claiming performance is acceptable.
-- [ ] A usable GUI with missing memory evidence is reported as tooling-blocked rather than incorrectly using the GUI fallback.
-- [ ] HPA-584 implements no virtualization, benchmark framework, CI performance gate, custom renderer, or unrelated optimization.
-- [ ] The tracked HPA-581 profile report may be read as supporting evidence, but architectural requirements come from committed specs/plans.
-- [ ] Temporary instrumentation/profiler artifacts are removed before close.
+- [ ] Fixed Soukyuu MASTER chart and exact source/toolchain identity recorded.
+- [ ] Direct HPA-579 comparison uses real installed **900 pt / 156 rows**.
+- [ ] Viewport/content geometry and 320 pt row pitch recorded; off-screen geometry is not converted into CPU share.
+- [ ] Separate Time Profiler, SwiftUI, and memory sessions.
+- [ ] Preparation uses one warm-up + two measured runs; third only on material disagreement.
+- [ ] First-mount evidence uses Time Profiler; `onAppear` is insertion-only.
+- [ ] 30+ seconds playback + real manual scrolling for evidence-backed decisions.
+- [ ] Credible macOS live-memory evidence for Keep eager.
+- [ ] Resize widens from 900/156 to first real packing change or widest practical host width.
+- [ ] Resize layout CPU kept separate from row-laziness evidence.
+- [ ] iPad evidence when available; otherwise explicit unverified limitation.
+- [ ] Two GUI environment failures close without speculative optimization or performance claim.
+- [ ] Usable GUI + missing memory reports Tooling-blocked, not GUI fallback.
+- [ ] No production virtualization/benchmark/custom-renderer work in HPA-584.
+- [ ] Tracked HPA-581 profile report is supporting evidence; committed specs/plans own architecture.
+- [ ] Temporary instrumentation/profiler artifacts removed before close.
