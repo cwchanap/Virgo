@@ -21,14 +21,7 @@ The broader `.superpowers/` pattern is ignored for new local files, but this rep
 
 Production mounts one chart-wide static `ZStack`; `GameplayDrumNotationView` builds full-chart primitive `ForEach` collections. Rows are layout/anchor data, not existing mounted row views.
 
-HPA-584 therefore combines:
-
-1. total eager-tree CPU/call paths;
-2. deterministic viewport/content geometry;
-3. real scrolling behavior;
-4. live memory.
-
-Geometry is context, not CPU attribution. Primitive density differs by row, so **do not multiply off-screen row fraction by total static-tree CPU time**.
+HPA-584 therefore combines total eager-tree CPU/call paths, deterministic viewport/content geometry, real scrolling behavior, and live memory. Geometry is context, not CPU attribution. Primitive density differs by row, so **do not multiply off-screen row fraction by total static-tree CPU time**.
 
 ## Goal
 
@@ -37,9 +30,7 @@ Use the same **900 pt / 156-row** geometry for direct HPA-579 comparison, then d
 - **Keep eager**; or
 - **Create one row-laziness follow-up** only from positive evidence.
 
-A bounded no-optimization fallback exists only for repeated GUI environment/session failure. Usable GUI + missing memory evidence is a separate tooling blocker.
-
-Resize layout CPU is classified separately from row-laziness evidence.
+A bounded no-optimization fallback exists only for repeated GUI environment/session failure. Usable GUI + missing memory evidence is a separate tooling blocker. Resize layout CPU is classified separately from row-laziness evidence.
 
 ## Non-goals
 
@@ -84,9 +75,7 @@ Do not convert the fraction into CPU cost.
 
 A usable unlocked GUI is required for Keep eager / row-laziness decisions.
 
-If HPA-584 GUI attempt 1 fails because of lock/shield/input/session state, verify the environment and retry once.
-
-If attempt 2 also fails for environment/session reasons, close:
+If HPA-584 GUI attempt 1 fails because of lock/shield/input/session state, verify the environment and retry once. If attempt 2 also fails for environment/session reasons, close:
 
 ```text
 Close without optimization — interactive evidence unavailable
