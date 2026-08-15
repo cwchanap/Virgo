@@ -30,7 +30,7 @@ HPA-581 itself allows narrowing to the smallest maintainability subset when broa
 3. Remove `staticStaffLinesView` / `notationStaffLinesView` and their `AnyView` caching.
 4. Keep O(note/measure) static derivations behind the Equatable static-child boundary rather than recomputing them on every playhead update.
 5. Re-profile before introducing async setup churn.
-6. If the measured preparation work remains material, move only timeline-native notation layout + beat-position derivation off `@MainActor` through one immutable value boundary.
+6. If the measured preparation work remains material, move only timeline-native notation layout off `@MainActor` through one immutable value boundary.
 7. Keep SwiftData extraction, rhythm resolution, model lookup maps, observable assignment, legacy layout, audio, and input on `@MainActor`.
 8. Reuse the **same notation generation** for static-view equality, async request freshness, resets, and cleanup invalidation; do not add a second preparation token/counter.
 9. Preserve notation geometry, timing/input mappings, resize behavior, accessibility, fatal timing, and session controls.
@@ -141,7 +141,7 @@ Record separately:
 
 The decision is:
 
-- **Proceed with off-main preparation** if timeline notation layout + beat-position work is still a material main-actor stall. The expected user benefit is a responsive loading/window/dismiss surface while CPU work runs, not necessarily shorter readiness wall-clock.
+- **Proceed with off-main preparation** if timeline notation layout work is still a material main-actor stall. The expected user benefit is a responsive loading/window/dismiss surface while CPU work runs, not necessarily shorter readiness wall-clock.
 - **Narrow/close HPA-581 after static isolation** only if the new evidence shows that preparation work is no longer material enough to justify the widespread async call-site/lifecycle change. This is allowed by HPA-581's own implementation gate.
 
 HPA-584 does **not** jump ahead merely because its 4.89 s baseline is larger. It remains the follow-up once HPA-581 reaches its evidence-based close point.
@@ -207,7 +207,6 @@ New seam tests instead cover:
 
 - request/result Sendability;
 - structural absence of object identity;
-- beat-position derivation against pinned expected coordinates;
 - empty/no-playable semantics;
 - view-model installed state after the new setup path matching the synchronous baseline/golden expectations already protected by existing suites.
 
@@ -227,7 +226,6 @@ If off-main setup proceeds:
         v
 Task.detached(.userInitiated)
   NotationLayoutEngine.layout
-  timeline beat-position derivation
         |
         v
 @MainActor
@@ -276,7 +274,7 @@ Phase C/D — conditional worker
 @MainActor SwiftData + resolver + snapshot
   -> allocate same notation generation N
   -> Sendable request (RhythmEventID identity only)
-  -> Task.detached pure layout + beat positions
+  -> Task.detached pure layout
   -> same-generation check
   -> one coherent install tagged N
   -> cleanup/newer work advances same generation
@@ -353,7 +351,7 @@ Repeat HPA-579's representative chart and record:
 - row auto-scroll correctness;
 - any real width-relayout evidence.
 
-If async preparation proceeds, success means the measured timeline layout/beat-position CPU no longer blocks `@MainActor`; it is **not** required to claim the loading wait itself becomes shorter.
+If async preparation proceeds, success means the measured timeline layout CPU no longer blocks `@MainActor`; it is **not** required to claim the loading wait itself becomes shorter.
 
 ## Alternatives considered
 
@@ -395,7 +393,7 @@ Rejected. HPA-584 owns it from post-change evidence.
 - [ ] Playhead receives position only; auto-scroll remains narrowly driven by row/playing state.
 - [ ] `staticStaffLinesView` / `notationStaffLinesView` and staff-line `AnyView` caching are removed.
 - [ ] Release is re-profiled after static isolation before deciding whether async setup migration proceeds.
-- [ ] If preparation remains material, timeline-native layout + beat-position preparation move off-main through one Sendable request/result and the same notation generation.
+- [ ] If preparation remains material, timeline-native notation layout moves off-main through one Sendable request/result and the same notation generation.
 - [ ] If worker phase proceeds, `cleanup()` advances the same generation and stale completion cannot resurrect gameplay.
 - [ ] No pre-readiness width retry state machine is added; existing 0.5 pt tolerance + debounce remains the width policy.
 - [ ] No SwiftData model, `ModelContext`, `ObjectIdentifier`, or SwiftUI view crosses the worker boundary.

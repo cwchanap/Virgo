@@ -99,8 +99,13 @@ struct GameplayNotationCoverageAdditionsTests {
         await preparationTask.value
 
         // After cancellation, the layout should not have been installed from this
-        // generation (the worker was cancelled before it could apply).
+        // generation (the worker was cancelled before it could apply). The
+        // generation check alone is insufficient: a broken implementation could
+        // still install the prepared layout tagged with this same generation and
+        // pass it. Assert readiness and installed content are unchanged too.
         #expect(viewModel.notationLayoutGeneration == generation)
+        #expect(!viewModel.isGameplayPrepared)
+        #expect(viewModel.cachedNotationLayout.measures.isEmpty)
     }
 
     // MARK: - updateRowWidth invalid values
