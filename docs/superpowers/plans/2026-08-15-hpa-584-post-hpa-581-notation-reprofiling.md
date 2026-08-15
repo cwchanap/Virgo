@@ -4,20 +4,18 @@
 
 **Goal:** Re-profile Virgo's representative notation path after HPA-581 and make a bounded row-laziness decision without implementing virtualization in HPA-584.
 
-**Architecture:** Calibrate Soukyuu MASTER to HPA-579's installed 900 pt / 156-row baseline, then run separate Time Profiler, SwiftUI/manual-scroll, and memory sessions. Geometry is exposure context, not CPU attribution. Resize layout CPU is separate from row laziness. Two GUI environment failures close without speculative optimization; usable GUI + missing memory is a tooling blocker instead.
+**Architecture:** Calibrate Soukyuu MASTER to HPA-579's installed 900 pt / 156-row baseline, then run separate Time Profiler, SwiftUI/manual-scroll, and memory sessions. Geometry is exposure context, not CPU attribution. Resize layout CPU is separate from row laziness. Two GUI environment failures close without speculative optimization; usable GUI + missing memory is a tooling blocker.
 
-**Tech Stack:** Swift 6, SwiftUI, SwiftData, Xcode Product > Profile, Instruments Time Profiler / SwiftUI / Allocations, Xcode memory gauge, unified logging, `ContinuousClock`, Linear.
-
-## Global Constraints
+## Constraints
 
 - Fixed chart: Soukyuu MASTER / Expert (`Virgo/Fixtures/soukyuu_e_no_shouka/mas.dtx`), 2,870 notes, 0 controls, 156 measures.
 - Direct HPA-579 comparison requires installed **900 pt resolved width / 156 rows**.
 - Baseline: preparation median 267.857 ms; initial mount 4,890.729 ms.
-- Eager unit is chart-wide static primitive tree, not mounted row views.
-- Row pitch 320 pt; geometry estimates never become CPU-share estimates.
+- Eager unit: chart-wide static primitive tree, not mounted row views.
+- Row pitch: 320 pt. Geometry estimates are never CPU-share estimates.
 - Separate Time Profiler, SwiftUI, memory sessions.
 - No benchmark/metrics/signpost framework, virtualization prototype, custom renderer, actor rewrite, or SwiftData ownership change.
-- Physical iPad advisory; absent device => `iPad performance: unverified`.
+- Physical iPad advisory; if absent, `iPad performance: unverified`.
 
 ### Task 1: Source + bounded GUI gate
 
@@ -42,7 +40,7 @@ offscreenRowFraction ~= 1 - visibleRowCapacity / renderedRows
 
 Never multiply by CPU time.
 
-- [ ] **Two measured Time Profiler entries**; third only on material disagreement. Record worker-path check, preparation, mount eager-tree call paths, loading responsiveness, baseline comparability.
+- [ ] **Two measured Time Profiler entries**; third only on material disagreement. Record worker-path check, preparation, eager-tree mount call paths, loading responsiveness, baseline comparability.
 - [ ] Continue 30+ seconds playback; record repeated expensive static-tree work if any.
 
 ### Task 3: Separate SwiftUI/manual-scroll session
