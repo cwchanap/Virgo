@@ -102,10 +102,18 @@ struct GameplayNotationCoverageAdditionsTests {
         // generation (the worker was cancelled before it could apply). The
         // generation check alone is insufficient: a broken implementation could
         // still install the prepared layout tagged with this same generation and
-        // pass it. Assert readiness and installed content are unchanged too.
+        // pass it. Assert the viewModel state that installNotationLayout and
+        // applyPreparedNotation would have mutated is unchanged — readiness,
+        // the installed layout storage, the renderable flag set only by
+        // installNotationLayout, and the derived measure maps populated only by
+        // applyPreparedNotation.
         #expect(viewModel.notationLayoutGeneration == generation)
         #expect(!viewModel.isGameplayPrepared)
         #expect(viewModel.cachedNotationLayout.measures.isEmpty)
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(!viewModel.cachedNotationHasRenderableContent)
+        #expect(viewModel.cachedMeasureRowMap.isEmpty)
+        #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
     }
 
     // MARK: - updateRowWidth invalid values
