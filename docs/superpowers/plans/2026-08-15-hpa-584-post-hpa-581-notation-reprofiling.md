@@ -179,15 +179,7 @@ GameplayStaticNotationView(input: staticInput)
 
 - [ ] **Step 3: Run one untimed calibration entry**
 
-Record:
-
-```text
-gameplay geometry width
-cachedLayoutRowWidth
-rendered row count
-viewport height
-static content height / layout total height
-```
+Record gameplay geometry width, `cachedLayoutRowWidth`, rendered row count, viewport height, and static content height/layout total height.
 
 Narrow the real window until:
 
@@ -222,31 +214,31 @@ Let auto-scroll cross rows and record whether expensive full-static-tree work re
 
 ### Task 3: Separate SwiftUI session + real manual scrolling
 
-- [ ] **Step 1:** Start Product > Profile with the SwiftUI template at the pinned window size.
-- [ ] **Step 2:** Run 30+ seconds playback/auto-scroll and record update/invalidation evidence.
-- [ ] **Step 3:** Manually scroll distant vertical content (and horizontal content when real geometry permits), then classify: `smooth`, `occasional minor hitch`, or `repeated hitch`.
-- [ ] **Step 4:** For repeated hitching, correlate with Task 2 call paths before blaming the eager tree. Missing detailed SwiftUI invalidation data remains an explicit limitation.
+- [ ] Start Product > Profile with SwiftUI at the pinned geometry.
+- [ ] Run 30+ seconds playback/auto-scroll and record update/invalidation evidence.
+- [ ] Manually scroll distant content and classify `smooth`, `occasional minor hitch`, or `repeated hitch`.
+- [ ] Correlate repeated hitching with Task 2 call paths before blaming the eager tree. Missing detailed invalidation data remains an explicit limitation.
 
 ---
 
 ### Task 4: Separate memory session
 
-- [ ] **Step 1:** Start Allocations before gameplay at the pinned window size; record exact pre-gameplay metric names/values.
-- [ ] **Step 2:** Record the same metrics after full mount.
-- [ ] **Step 3:** Run 30+ seconds playback/manual scroll and record the live value/range; call a value peak only if the tool does.
-- [ ] **Step 4:** If Allocations is unusable, repeat with the Xcode memory gauge and record pre-gameplay, post-mount, and highest **observed gauge reading**.
-- [ ] **Step 5:** If the GUI is usable but neither tool yields credible named macOS live-memory evidence, report `Tooling-blocked — credible live-memory evidence unavailable`; HPA-584/HPA-583 remain blocked pending later evidence or explicit Linear scope change.
+- [ ] Start Allocations before gameplay; record exact pre-gameplay metric names/values.
+- [ ] Record the same metrics after mount.
+- [ ] Run 30+ seconds playback/manual scroll and record live value/range; call a value peak only if the tool does.
+- [ ] If Allocations is unusable, repeat with Xcode memory gauge and record pre-gameplay, post-mount, and highest **observed gauge reading**.
+- [ ] Usable GUI + no credible metric from either tool => `Tooling-blocked — credible live-memory evidence unavailable`; keep HPA-584/HPA-583 blocked pending later evidence or explicit Linear scope change.
 
 ---
 
 ### Task 5: Natural wider resize + optional physical iPad
 
-- [ ] **Step 1:** Begin at the calibrated 900 pt / 156-row state.
-- [ ] **Step 2:** Widen through practical host widths, recording gameplay/resolved width and rendered row count. Stop at the first row-count change; only call it unavailable after reaching the widest practical host width. Never use the synthetic 3,000 pt probe.
-- [ ] **Step 3:** For a packing change, run a dedicated Time Profiler capture and classify `layout CPU dominates`, `SwiftUI full-tree rebuild dominates`, or `neither material`.
-- [ ] **Step 4:** If layout CPU dominates materially, any follow-up reuses `GameplayNotationPreparer`, current notation generation, and latest-width-wins semantics. Do not treat it as virtualization.
-- [ ] **Step 5:** If full-tree rebuild dominates materially, carry that into the row-laziness decision.
-- [ ] **Step 6:** If a physical iPad is readily available, repeat mount/playback/scroll/memory and record device/OS. Otherwise record `iPad performance: unverified`; do not block solely on hardware availability or use Simulator numbers as device performance.
+- [ ] Begin at calibrated 900 pt / 156 rows.
+- [ ] Widen through practical host widths, recording gameplay/resolved width and rendered row count. Stop at the first row-count change; only call it unavailable after the widest practical host width. Never use synthetic 3,000 pt.
+- [ ] For a packing change, run Time Profiler and classify `layout CPU dominates`, `SwiftUI full-tree rebuild dominates`, or `neither material`.
+- [ ] Material layout CPU => any follow-up reuses `GameplayNotationPreparer`, current generation, and latest-width-wins semantics; not virtualization.
+- [ ] Material full-tree rebuild => carry into row-laziness decision.
+- [ ] If physical iPad is readily available, repeat mount/playback/scroll/memory and record device/OS. Otherwise record `iPad performance: unverified`; do not block solely on hardware availability or use Simulator performance.
 
 ---
 
@@ -265,7 +257,7 @@ git restore -- \
   Virgo/views/subviews/GameplaySheetMusicView.swift
 ```
 
-Use the scoped patch rather than broad `git stash` so unrelated worktree changes are not hidden.
+Use the scoped patch rather than broad stash so unrelated worktree changes are not hidden.
 
 - [ ] **Step 2: Verify cleanup**
 
@@ -278,29 +270,14 @@ git diff -- \
 rm -rf ./DerivedData-HPA584
 ```
 
-Expected: no HPA-584 measurement source changes remain and `git diff --check` exits 0.
+Expected: no measurement source changes remain and `git diff --check` exits 0.
 
-- [ ] **Step 3A: Evidence-backed Keep eager**
-
-Requires completed Time Profiler, SwiftUI/manual-scroll, and credible macOS memory evidence showing no material eager-tree problem. If no physical iPad was tested, scope the result to macOS and say iPad performance is unverified.
-
-- [ ] **Step 3B: Row-laziness follow-up only from positive evidence**
-
-Create exactly one issue if full-chart primitive construction is a dominant mount/scroll/frame/memory problem. Required shape: row-group immutable primitives, lazy vertical row container, unchanged horizontal geometry/stable IDs, preserve playhead/auto-scroll/goldens/accessibility. Wrapping the existing full-chart view unchanged is insufficient. Make it block HPA-583.
-
-- [ ] **Step 3C: Resize-only follow-up only from material layout CPU evidence**
-
-Reuse the existing preparer/generation design; do not call it virtualization. Make it block HPA-583 while outstanding.
-
-- [ ] **Step 3D: Bounded GUI fallback**
-
-After two HPA-584 GUI attempts fail for environment/session reasons, close as `Close without optimization — interactive evidence unavailable`; state mount/scroll/memory are unverified, make no performance claim, create no speculative optimization issue, and unblock HPA-583 by YAGNI.
-
-- [ ] **Step 3E: Memory tooling blocker**
-
-Usable GUI + missing credible memory => `Tooling-blocked — credible live-memory evidence unavailable`; do not use the GUI fallback and keep HPA-583 blocked.
-
-- [ ] **Step 4:** Post the design spec's result template to HPA-584 with actual evidence/limitations.
-- [ ] **Step 5:** Confirm final state is exactly one of: evidence-backed Keep eager; trace-backed row-laziness follow-up; bounded GUI-environment close; or tooling-blocked pending memory evidence.
+- [ ] **Step 3A: Evidence-backed Keep eager** — requires completed Time Profiler, SwiftUI/manual-scroll, and credible macOS memory evidence showing no material eager-tree problem. Without physical iPad evidence, scope the result to macOS and mark iPad unverified.
+- [ ] **Step 3B: Row-laziness follow-up** — only from positive evidence that full-chart primitive construction dominates mount/scroll/frame/memory. Scope: row-group immutable primitives, lazy vertical row container, unchanged horizontal geometry/stable IDs, preserve playhead/auto-scroll/goldens/accessibility; wrapping current full-chart view unchanged is insufficient. Block HPA-583.
+- [ ] **Step 3C: Resize-only follow-up** — only from material layout CPU evidence; reuse preparer/generation design, not virtualization, and block HPA-583 while outstanding.
+- [ ] **Step 3D: Bounded GUI fallback** — after two HPA-584 GUI attempts fail for environment/session reasons, close `Close without optimization — interactive evidence unavailable`; state mount/scroll/memory unverified, make no performance claim, create no speculative issue, unblock HPA-583 by YAGNI.
+- [ ] **Step 3E: Memory tooling blocker** — usable GUI + missing credible memory => `Tooling-blocked — credible live-memory evidence unavailable`; do not use GUI fallback; HPA-583 stays blocked.
+- [ ] Post the design result template to HPA-584 with actual evidence/limitations.
+- [ ] Confirm final state is exactly one of: Keep eager; row-laziness follow-up; GUI-environment no-optimization close; tooling-blocked pending memory.
 
 **Checkpoint:** HPA-584 ends with an explicit decision/limitation and no production source diff.
