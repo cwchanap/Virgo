@@ -18,7 +18,6 @@
 - Physical iPad advisory; if absent, `iPad performance: unverified`.
 
 ### Task 1: Source + bounded GUI gate
-
 - [ ] Record source/toolchain identity; compile-check Release.
 - [ ] Read HPA-579 spec, HPA-581 committed spec/plan, tracked HPA-581 task-8 report as supporting evidence.
 - [ ] Confirm detached initial notation prep, Equatable static notation, on-main post-ready width relayout.
@@ -26,37 +25,24 @@
 - [ ] One retry for environment/session block; two failures => Task 6 GUI fallback, no headless substitute.
 
 ### Task 2: Pin 900/156 + Time Profiler
-
 - [ ] Disposable markers only if needed: preparation elapsed/geometry/resolved width/rows/notes/controls/measures; static viewport/content geometry.
 - [ ] Static `onAppear` is insertion/appearance only; not descendant construction/compositor timing.
 - [ ] One untimed calibration. Narrow real window until installed `cachedLayoutRowWidth = 900 pt` and `renderedRows = 156`.
-- [ ] Record geometry-only context:
-
-```text
-rowPitch = 320 pt
-visibleRowCapacity ~= min(renderedRows, ceil(viewportHeight / 320) + 1)
-offscreenRowFraction ~= 1 - visibleRowCapacity / renderedRows
-```
-
-Never multiply by CPU time.
-
+- [ ] Record geometry-only context: rowPitch 320 pt; visibleRowCapacity ≈ min(renderedRows, ceil(viewportHeight / 320) + 1); offscreenRowFraction ≈ 1 - visibleRowCapacity/renderedRows. Never multiply by CPU time.
 - [ ] **Two measured Time Profiler entries**; third only on material disagreement. Record worker-path check, preparation, eager-tree mount call paths, loading responsiveness, baseline comparability.
 - [ ] Continue 30+ seconds playback; record repeated expensive static-tree work if any.
 
 ### Task 3: Separate SwiftUI/manual-scroll session
-
 - [ ] 30+ seconds playback/auto-scroll at pinned geometry; record update/invalidation evidence.
 - [ ] Manual distant scrolling; classify smooth / occasional minor hitch / repeated hitch.
 - [ ] Correlate hitches with Time Profiler; missing invalidation detail remains limitation.
 
 ### Task 4: Separate memory session
-
 - [ ] Allocations before gameplay; exact pre-gameplay/post-mount/playback-scroll metrics; peak only if tool reports it.
 - [ ] Xcode memory gauge fallback if needed; highest **observed gauge reading**, not peak.
 - [ ] Usable GUI + no credible memory metric => `Tooling-blocked — credible live-memory evidence unavailable`; keep HPA-584/HPA-583 blocked pending later evidence or explicit scope change.
 
 ### Task 5: Natural wider resize + optional physical iPad
-
 - [ ] Begin 900/156; widen through practical widths, stop at first row-count change; only call unavailable after widest practical width. No synthetic 3,000 pt.
 - [ ] Classify packing change: layout CPU / SwiftUI full-tree rebuild / neither material.
 - [ ] Material layout CPU => existing `GameplayNotationPreparer` + current generation follow-up; not virtualization.
@@ -64,7 +50,6 @@ Never multiply by CPU time.
 - [ ] Physical iPad if readily available; otherwise unverified, no Simulator device-performance claim.
 
 ### Task 6: Decision + cleanup
-
 - [ ] Save/revert scoped instrumentation to `/tmp/hpa584-instrumentation.patch`; avoid broad stash so unrelated worktree state is not hidden.
 - [ ] Verify no measurement source changes; `git diff --check`; remove local DerivedData.
 - [ ] **Keep eager:** only with complete macOS CPU/SwiftUI/manual-scroll/credible memory evidence. No iPad => macOS-scoped result, iPad unverified.
