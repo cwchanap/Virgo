@@ -43,7 +43,7 @@
 - `docs/superpowers/plans/2026-08-12-hpa-581-off-main-notation-preparation.md`
 - `.superpowers/sdd/2026-08-12-hpa-581-off-main-notation-preparation/task-8-profile-report.md` — tracked supporting evidence for the worker-path/locked-GUI handoff; it does not own requirements.
 
-**Temporary source instrumentation only if needed:**
+**Temporary source instrumentation, only if needed:**
 
 - `Virgo/views/GameplayView.swift` — preparation duration/identity marker.
 - `Virgo/views/subviews/GameplaySheetMusicView.swift` — resolved geometry/static appearance marker.
@@ -222,7 +222,6 @@ GameplayStaticNotationView(input: staticInput)
             "generation=\(staticInput.generation) " +
             "geometryWidth=\(geometry.size.width) " +
             "viewportHeight=\(geometry.size.height) " +
-            "resolvedRowWidth=\(staticInput.layout.styleRowWidthForHPA584) " +
             "rows=\(staticInput.rowCount) " +
             "contentHeight=\(staticInput.contentHeight) " +
             "layoutHeight=\(staticInput.layout.totalHeight) " +
@@ -232,21 +231,7 @@ GameplayStaticNotationView(input: staticInput)
     }
 ```
 
-**Do not add `styleRowWidthForHPA584` to production.** That name above is intentionally not an API proposal. Use the already-logged `vm.cachedLayoutRowWidth` from the preparation marker for resolved width. The static marker should log only values already available from `geometry` / `staticInput`:
-
-```swift
-Logger.info(
-    "HPA-584 static appeared " +
-    "generation=\(staticInput.generation) " +
-    "geometryWidth=\(geometry.size.width) " +
-    "viewportHeight=\(geometry.size.height) " +
-    "rows=\(staticInput.rowCount) " +
-    "contentHeight=\(staticInput.contentHeight) " +
-    "layoutHeight=\(staticInput.layout.totalHeight) " +
-    "visibleRowCapacity=\(visibleRowCapacity) " +
-    "offscreenRowFraction=\(offscreenFraction)"
-)
-```
+Resolved row width comes from the preparation marker's existing `vm.cachedLayoutRowWidth`; do not add another API solely for profiling.
 
 The `onAppear` timestamp marks **subtree insertion/appearance only**. It does not bracket descendant construction and cannot stand alone as mount-cost evidence.
 
@@ -287,10 +272,7 @@ These are geometry estimates only. Do **not** multiply the fraction by measured 
 
 - [ ] **Step 6: Run Time Profiler at the pinned baseline**
 
-Run:
-
-1. one warm-up/calibration trace if needed after changing markers;
-2. **two measured gameplay entries** at the pinned 900 pt / 156-row window.
+Run one warm-up/calibration trace if source markers changed, then **two measured gameplay entries** at the pinned 900 pt / 156-row window.
 
 For each measured entry record:
 
