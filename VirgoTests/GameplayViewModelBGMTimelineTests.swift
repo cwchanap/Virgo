@@ -587,9 +587,6 @@ struct GameplayViewModelBGMTimelineTests {
         viewModel.bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer(durationSeconds: 10.0)
         await viewModel.setupGameplay()
 
-        // Wait for async setup
-        try await Task.sleep(nanoseconds: 50_000_000)
-
         // BGM is present, so persisted 0.25 speed must have been clamped to >= 0.5.
         #expect(
             practiceSettings.speedMultiplier >= 0.5,

@@ -42,10 +42,22 @@ struct GameplayNotationPreparationTests {
 
         let first = try #require(prepared.beatPositionsByID[101])
         let wrapped = try #require(prepared.beatPositionsByID[404])
-        #expect(prepared.layout.measures.first { $0.measureIndex == 0 }?.row == 0)
-        #expect(prepared.layout.measures.first { $0.measureIndex == 3 }?.row == 1)
-        #expect(first == CGPoint(x: 252, y: 150))
-        #expect(wrapped == CGPoint(x: 202, y: 470))
+        let firstMeasure = try #require(prepared.layout.measures.first { $0.measureIndex == 0 })
+        let wrappedMeasure = try #require(prepared.layout.measures.first { $0.measureIndex == 3 })
+        #expect(firstMeasure.row == 0)
+        #expect(wrappedMeasure.row == 1)
+        // Expected coordinates derive from the same public layout APIs the preparer
+        // pins through, so the assertions survive layout-constant changes while the
+        // hardcoded local ticks and rows still pin the inputs that matter.
+        #expect(first == CGPoint(
+            x: prepared.layout.tabGrid.xPosition(in: firstMeasure, localTick: 480),
+            y: GameplayLayout.StaffLinePosition.line3.absoluteY(for: firstMeasure.row)
+        ))
+        #expect(wrapped == CGPoint(
+            x: prepared.layout.tabGrid.xPosition(in: wrappedMeasure, localTick: 240),
+            y: GameplayLayout.StaffLinePosition.line3.absoluteY(for: wrappedMeasure.row)
+        ))
+        #expect(wrapped.y > first.y, "beat 404 must land on the wrapped row below beat 101")
     }
 
     @Test("timeline with no notes preserves printable renderable content")

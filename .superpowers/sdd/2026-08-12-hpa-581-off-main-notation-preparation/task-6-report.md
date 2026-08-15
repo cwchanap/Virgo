@@ -2,7 +2,7 @@
 
 ## Scope and baseline
 
-- Worktree: `/Users/chanwaichan/workspace/Virgo/.worktrees/hpa-581-off-main-notation`
+- Worktree: `.worktrees/hpa-581-off-main-notation` (relative to the repository root)
 - Accepted baseline: `b8ed0a4`
 - Task 3's headless Release profiling gate was already `GATE: PROCEED`; this task report records no new profile claim.
 - CodeGraph was used before source exploration.

@@ -71,8 +71,8 @@ struct GameplayViewModelCleanupTests {
         #expect(!viewModel.isGameplayPrepared)
         #expect(viewModel.notationLayoutGeneration != inFlightGeneration)
         #expect(!viewModel.applyPreparedNotation(prepared, generation: inFlightGeneration))
-        #expect(viewModel.cachedNotationLayout.measures.isEmpty == layoutBeforeCleanup.measures.isEmpty)
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty == layoutBeforeCleanup.noteHeads.isEmpty)
+        #expect(viewModel.cachedNotationLayout.measures.count == layoutBeforeCleanup.measures.count)
+        #expect(viewModel.cachedNotationLayout.noteHeads.count == layoutBeforeCleanup.noteHeads.count)
         #expect(!viewModel.isGameplayPrepared)
     }
 

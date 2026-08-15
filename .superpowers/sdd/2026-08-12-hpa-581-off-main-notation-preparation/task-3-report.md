@@ -17,7 +17,7 @@ re-run on a usable GUI session with the real chart before Phase C/D is started.
 
 ## Scope and representative chart
 
-- Worktree: `/Users/chanwaichan/workspace/Virgo/.worktrees/hpa-581-off-main-notation`
+- Worktree: `.worktrees/hpa-581-off-main-notation` (relative to the repository root)
 - HEAD: `b96addd4fbf5337f6bf834fdb706e90cb94798c3`
 - Target: macOS Release, same host/configuration as HPA-579 when practical
 - Chart contract: shipped `soukyuu_e_no_shouka` MASTER / Expert,
@@ -90,7 +90,7 @@ xcrun xctrace record --template 'Time Profiler' --time-limit 45s \
 
 The trace completed, but its table of contents identified the profiled process
 as the pre-existing Debug app at
-`/Users/chanwaichan/Library/Developer/Xcode/DerivedData/Virgo-accemltpktxznudndledbprhevra/Build/Products/Debug/Virgo.app`.
+`<DerivedData>/Virgo-<id>/Build/Products/Debug/Virgo.app`.
 It was rejected and contributes no Task 3 evidence.
 
 ### Valid Release attach-only capture
@@ -226,7 +226,7 @@ Final cleanup verification (2026-08-13):
 The retry ran on 2026-08-13 from the same isolated worktree:
 
 ```text
-worktree: /Users/chanwaichan/workspace/Virgo/.worktrees/hpa-581-off-main-notation
+worktree: .worktrees/hpa-581-off-main-notation
 HEAD: a381df1c1fedc24e04b3891c59650c1e961b4459
 macOS: 26.5.2 (25F84)
 hardware: MacBook Pro18,3, Apple M1 Pro, 32 GB
@@ -345,7 +345,7 @@ C/D or HPA-584 work. The source checkout was at base `6a56a075061afbf9815186b828
 in the isolated worktree:
 
 ```text
-/Users/chanwaichan/workspace/Virgo/.worktrees/hpa-581-off-main-notation
+.worktrees/hpa-581-off-main-notation
 ```
 
 ### Isolated Release run and commands

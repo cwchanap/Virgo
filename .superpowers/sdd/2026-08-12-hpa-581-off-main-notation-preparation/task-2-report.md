@@ -3,7 +3,7 @@
 ## Outcome
 
 Task 2 is complete on the isolated worktree at
-`/Users/chanwaichan/workspace/Virgo/.worktrees/hpa-581-off-main-notation`.
+`.worktrees/hpa-581-off-main-notation` (relative to the repository root).
 The live gameplay sheet now observes only O(1) frame/playback values and an
 immutable static notation projection. The static projection is an Equatable
 child whose identity is the existing authoritative `notationLayoutGeneration`.

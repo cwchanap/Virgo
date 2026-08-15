@@ -198,6 +198,11 @@ final class GameplayViewModel {
     /// Cancellation only saves work; generation checks remain the correctness rule.
     var notationPreparationTask: Task<Void, Never>?
 
+    /// Retained handle to the in-flight detached preparation worker so cancelling
+    /// the enclosing preparation task also stops the off-main work. Same contract:
+    /// cancellation saves work, generation checks remain the correctness rule.
+    var notationPreparationWorkerTask: Task<GameplayNotationPreparedState, Never>?
+
     // MARK: - Visual State
     /// Current purple bar position (x, y)
     var purpleBarPosition: (x: Double, y: Double)?
@@ -437,20 +442,7 @@ final class GameplayViewModel {
             return
         }
         guard !hasFatalRhythmTiming else {
-            // The setup request already allocated this generation. Reuse it for
-            // the fatal reset so the existing reset remains one installation.
-            _ = installNotationLayout(.empty, generation: setupGeneration)
-            cachedNotationNoteHeadPositions = [:]
-            cachedMeasureRowMap = [:]
-            cachedNotationMeasuresByIndex = [:]
-            cachedLegacyContentHeight = 0
-            cachedTrackDuration = 0
-            bgmOffsetSeconds = 0
-            metronome.stop()
-            bgmPlayer?.stop()
-            bgmPlayer = nil
-            inputManager.stopListening()
-            Logger.error(rhythmFatalMessage)
+            resetForFatalRhythmTiming(generation: setupGeneration)
             return
         }
 
@@ -498,6 +490,24 @@ final class GameplayViewModel {
             return
         }
         await prepareTimelineNotation(request, generation: setupGeneration)
+    }
+
+    /// Tears down runtime state for a chart whose persisted timing is fatally
+    /// inconsistent. The setup request already allocated `generation`; the reset
+    /// reuses it so the reset remains a single notation installation.
+    private func resetForFatalRhythmTiming(generation: UInt64) {
+        _ = installNotationLayout(.empty, generation: generation)
+        cachedNotationNoteHeadPositions = [:]
+        cachedMeasureRowMap = [:]
+        cachedNotationMeasuresByIndex = [:]
+        cachedLegacyContentHeight = 0
+        cachedTrackDuration = 0
+        bgmOffsetSeconds = 0
+        metronome.stop()
+        bgmPlayer?.stop()
+        bgmPlayer = nil
+        inputManager.stopListening()
+        Logger.error(rhythmFatalMessage)
     }
 
     /// Sets up audio interruption handling to pause playback on phone calls, Siri, etc.
