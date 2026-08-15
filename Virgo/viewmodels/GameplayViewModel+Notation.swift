@@ -137,34 +137,35 @@ extension GameplayViewModel {
     }
 
     /// Runs only the pure timeline request off-main and returns to this main
-    /// actor for one generation-checked coherent install. Cancelling the
-    /// enclosing task also cancels the retained detached worker so abandoned
+    /// actor for one generation-checked coherent install. The cancellation
+    /// handler captures the worker directly so caller-task cancellation (e.g.
+    /// the view disappearing) propagates to the detached worker — abandoned
     /// preparations stop cooperatively instead of burning CPU to completion.
+    /// The worker handle is only cleared when this worker is still current
+    /// (generation matches), so a newer preparation's worker is never clobbered
+    /// by a stale completion.
     func prepareTimelineNotation(
         _ request: GameplayNotationPreparationRequest,
         generation: UInt64
     ) async {
-        let task = Task { @MainActor [weak self] in
-            await withTaskCancellationHandler {
-                guard let self else { return }
-                let worker = Task.detached(priority: .userInitiated) {
-                    GameplayNotationPreparer.prepare(request)
-                }
-                self.notationPreparationWorkerTask = worker
-                let prepared = await worker.value
-                self.notationPreparationWorkerTask = nil
-                guard !Task.isCancelled else { return }
-                _ = self.applyPreparedNotation(prepared, generation: generation)
-            } onCancel: {
-                Task { @MainActor [weak self] in
-                    self?.notationPreparationWorkerTask?.cancel()
-                }
-            }
+        let worker = Task.detached(priority: .userInitiated) {
+            GameplayNotationPreparer.prepare(request)
         }
-        notationPreparationTask = task
-        await task.value
-        if notationLayoutGeneration == generation {
-            notationPreparationTask = nil
+        notationPreparationWorkerTask = worker
+        await withTaskCancellationHandler {
+            let prepared = await worker.value
+            // Only clear the handle if this worker is still current — a newer
+            // preparation may have supplanted it while we were suspended.
+            if notationLayoutGeneration == generation {
+                notationPreparationWorkerTask = nil
+            }
+            guard !Task.isCancelled, !worker.isCancelled else { return }
+            _ = applyPreparedNotation(prepared, generation: generation)
+        } onCancel: {
+            // Capture the worker directly so cancellation always targets this
+            // worker, never a newer one that may have replaced it on the main
+            // actor while the handler fires.
+            worker.cancel()
         }
     }
 
