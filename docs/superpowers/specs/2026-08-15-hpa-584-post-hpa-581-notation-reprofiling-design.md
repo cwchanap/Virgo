@@ -165,7 +165,7 @@ renderedRows = 156
 
 Do not infer the baseline from the outer window's nominal size. The logged gameplay geometry/resolved width is authoritative.
 
-If current source can no longer reproduce 900 pt / 156 rows for the same chart, record that repository behavior change and do not claim a direct 4,890.729 ms mount comparison.
+If current source can no longer reproduce 900 pt / 156 rows for the same chart, record that behavior change and do not claim a direct 4,890.729 ms mount comparison.
 
 ### Geometry exposure
 
@@ -188,19 +188,7 @@ The extra row allows for partial-row exposure/top spacing. Label both values as 
 
 ## Environment and interactive gate
 
-Record:
-
-```bash
-git status -sb
-git rev-parse HEAD
-git log -1 --oneline
-sw_vers
-system_profiler SPHardwareDataType | egrep 'Model Name|Model Identifier|Chip|Memory'
-xcodebuild -version
-xcrun xctrace version
-```
-
-Compile-check Release with `xcodebuild`; the authoritative measurement launch is Xcode Product > Profile.
+Record source/toolchain identity, compile-check Release, and use Xcode Product > Profile for authoritative profiling.
 
 A usable unlocked GUI is required for an **evidence-backed** keep-eager or row-laziness decision.
 
@@ -217,8 +205,8 @@ Close without optimization — interactive evidence unavailable
 
 That fallback:
 
-- may cite the tracked HPA-581 worker-path report and deterministic geometry as context;
-- must state that manual scrolling and live memory remain unverified;
+- may cite the tracked HPA-581 worker-path report and deterministic chart facts as context;
+- must state that current HPA-584 mount, manual scrolling, and live memory remain unverified;
 - must not claim eager rendering is performant or memory-safe;
 - creates no speculative row-laziness/resize optimization issue;
 - unblocks HPA-583 by YAGNI: there is still no evidence justifying rendering architecture work.
@@ -257,36 +245,17 @@ Compare the old **4,890.729 ms** mount value only when the current chart, resolv
 
 Start a separate SwiftUI profiling session before entering gameplay at the pinned baseline window.
 
-After mount:
-
-1. play for at least 30 seconds;
-2. let auto-scroll cross rows;
-3. manually scroll vertically through distant content;
-4. scroll horizontally when real content/window permits it;
-5. let normal auto-scroll resume.
-
-Classify interaction as:
-
-- smooth;
-- occasional minor hitch;
-- repeated hitch.
-
-Record the exact SwiftUI update/invalidation evidence available. Outer `sheetMusicView` activity alone is not proof that all primitive `ForEach`s rebuilt. If the SwiftUI instrument cannot expose useful invalidation detail, state that limitation instead of inferring success.
+After mount, run 30+ seconds playback/auto-scroll and manually scroll through distant content. Record the interaction classification and the exact update/invalidation evidence available. Missing invalidation rows are a limitation, not proof of success.
 
 ### Session C — live memory
 
 Run a distinct Allocations session before entering gameplay at the pinned baseline window.
 
-Record exact metric names/values for:
-
-- pre-gameplay;
-- post-mount;
-- after 30+ seconds playback/manual scrolling;
-- peak only when the tool explicitly reports a peak.
+Record exact metric names/values for pre-gameplay, post-mount, and playback/manual-scroll states. Use "peak" only when the tool explicitly reports a peak.
 
 If Allocations cannot expose a credible live metric, use the Xcode memory gauge in a separate Release interaction and label the highest observed gauge value exactly as that.
 
-For an evidence-backed macOS keep-eager close, credible macOS live-memory evidence is required. Missing macOS live-memory evidence blocks the evidence-backed decision and may only exit through the bounded environment/tooling fallback above.
+For an evidence-backed macOS keep-eager close, credible macOS live-memory evidence is required. If the GUI works but both Allocations and the memory-gauge fallback fail to yield a credible live value, record HPA-584 as **tooling-blocked** and do not claim Keep eager. This is not the two-attempt GUI fallback; it requires a later usable memory measurement or an explicit scope change in Linear.
 
 ### Natural resize / row repacking
 
@@ -327,7 +296,7 @@ This explicitly scopes an evidence-backed keep-eager result to the measured macO
 
 Choose **Keep eager** when the completed macOS sessions show:
 
-- the calibrated 900 pt / 156-row first mount is not materially dominated by the eager primitive tree with visible impact;
+- the calibrated 900 pt / 156-row first mount is not a material eager-tree problem with visible impact;
 - 30+ seconds playback does not repeatedly rebuild expensive full-static content with visible impact;
 - real manual scrolling is responsive or hitches are not attributable to eager full-chart construction;
 - credible macOS live memory is reasonable for the measured chart;
@@ -408,11 +377,11 @@ A material packing-changing resize dominated by main-actor layout CPU is orthogo
 - Resize follow-up: issue identifier | none
 
 ### Decision
-- HPA-584: Keep eager | Create row-laziness follow-up | Close without optimization — interactive evidence unavailable
+- HPA-584: Keep eager | Create row-laziness follow-up | Close without optimization — interactive evidence unavailable | Tooling-blocked
 - Scope: macOS measured; iPad verified/unverified
 - Evidence/limitation: concise reason
 - Row-laziness follow-up: issue identifier | none
-- HPA-583: unblocked now | blocked by follow-up issue(s)
+- HPA-583: unblocked now | blocked by follow-up/tooling
 ```
 
 ## Temporary instrumentation policy
@@ -436,12 +405,13 @@ A material packing-changing resize dominated by main-actor layout CPU is orthogo
 - [ ] Time Profiler, SwiftUI, and memory evidence use separate sessions.
 - [ ] Preparation uses one warm-up plus two measured runs; a third is added only when attribution/visible behavior disagrees materially.
 - [ ] First-mount evidence uses Time Profiler; any `onAppear` marker is explicitly insertion-only.
-- [ ] At least 30 seconds of playback and real manual scrolling are observed.
+- [ ] At least 30 seconds of playback and real manual scrolling are observed for an evidence-backed decision.
 - [ ] Credible macOS live-memory evidence is present for an evidence-backed keep-eager close.
 - [ ] Natural resize begins from 900 pt / 156 rows and widens until the first real packing change or the widest practical host width.
 - [ ] Resize layout CPU is kept separate from row-laziness evidence.
 - [ ] Physical iPad evidence is included when available; absence is explicit and does not become an iPad performance claim.
 - [ ] If two HPA-584 GUI attempts both fail for environment/session reasons, the ticket closes without speculative optimization and without claiming performance is acceptable.
+- [ ] A usable GUI with missing memory evidence is reported as tooling-blocked rather than incorrectly using the GUI fallback.
 - [ ] HPA-584 implements no virtualization, benchmark framework, CI performance gate, custom renderer, or unrelated optimization.
 - [ ] The tracked HPA-581 profile report may be read as supporting evidence, but architectural requirements come from committed specs/plans.
 - [ ] Temporary instrumentation/profiler artifacts are removed before close.
