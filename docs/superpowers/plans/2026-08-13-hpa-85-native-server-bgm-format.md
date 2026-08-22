@@ -1,159 +1,167 @@
 # HPA-85 Native Server BGM Format Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans. This ticket is one implementation PR. Task checkpoints may be separate commits, but Tasks 1 and 2 are one atomic shipping boundary and must never land independently.
 
-**Goal:** Cut Virgo's server-song BGM contract from OGG to natively playable M4A/AAC without adding client transcoding, codec dependencies, or compatibility migration.
+**Goal:** Cut Virgo's server-song BGM contract from OGG to playable AAC-in-M4A without adding client transcoding, codec dependencies, compatibility migration, or dual-format fallback.
 
-**Architecture:** The external GraphQL/R2 backend publishes one current BGM object, `bgm.m4a`. Virgo's existing mapper recognizes and assembles that filename, `ServerSongFileManager` persists the downloaded bytes as `{songId}.m4a`, and the existing `ServerSongDownloader` -> `Song.bgmFilePath` -> `AVAudioPlayer` flow remains intact. Old `.ogg` development data is intentionally reset/re-downloaded rather than migrated.
+**Architecture:** The external GraphQL/R2 backend publishes one current BGM object, `bgm.m4a`. `SimfileMapper` recognizes and assembles that filename, `ServerSongFileManager` persists the downloaded bytes as `{songId}.m4a`, and the existing `ServerSongDownloader` -> `Song.bgmFilePath` -> `AVAudioPlayer` flow remains unchanged. Old `.ogg` development data is reset/re-downloaded rather than migrated.
 
-**Tech Stack:** Current Xcode project in Swift 5 language mode, SwiftUI/SwiftData, Foundation `URLSession` download seam, AVFoundation `AVAudioPlayer`, Swift Testing, GraphQL catalog DTOs backed by Cloudflare R2.
+**Tech stack:** Current Xcode project in Swift 5 language mode, SwiftUI/SwiftData, Foundation `URLSession`, AVFoundation `AVAudioPlayer`, Swift Testing, GraphQL catalog DTOs backed by Cloudflare R2.
 
-## Global Constraints
+## Global constraints
 
-- Supported Apple targets remain macOS 14.0+ and iPadOS 17.5+; the project is iPad-only (`TARGETED_DEVICE_FAMILY = 2`), so do not add iPhone targeting.
-- The external backend/R2 must publish `bgm.m4a` before the Virgo client cutover lands.
+- Supported Apple targets remain macOS 14.0+ and iPadOS 17.5+; the project is iPad-only (`TARGETED_DEVICE_FAMILY = 2`).
+- Backend/R2 must publish verified playable AAC-in-M4A bytes as `bgm.m4a` before client implementation starts.
 - The current server BGM filename is exactly `bgm.m4a`; do not support `bgm.ogg` as a fallback.
-- Do not add FFmpeg, libvorbis, VLCKit, or any new client-side codec/transcode dependency.
+- Tasks 1 and 2 may be separate commits for review/TDD, but they are not independently shippable. Do not merge, cherry-pick, or release the mapper-only state.
+- Do not add FFmpeg, libvorbis, VLCKit, client transcode, runtime codec probing, or another audio abstraction.
 - Do not add startup migration, path backfill, dual-file lookup, or legacy `.ogg` cleanup.
 - Do not change preview `.mp3`, metronome/SFX audio, GraphQL schema/codegen, or gameplay BGM synchronization.
-- Keep `ServerSongDownloader.swift` production logic unchanged unless a focused regression test proves a real dependency on the old extension.
+- Keep `ServerSongDownloader.swift` and gameplay production logic unchanged unless a focused regression test proves a real dependency.
 - Use Swift Testing (`import Testing`, `#expect`) and run tests with parallel testing disabled.
 
 ## Latest-main revalidation
 
-Revalidated on 2026-08-22 against `main` `5d62cc62d50d4bc9f0d483e057e7151571c9c4db` after HPA-581 merged. Latest `main` still has the same HPA-85 seams: `SimfileMapper` recognizes/assembles `bgm.ogg`, `ServerSongFileManager` persists/deletes `{songId}.ogg`, `ServerSongDownloader` remains format-agnostic orchestration, and gameplay still hands `Song.bgmFilePath` directly to `AVAudioPlayer`. The intervening notation/performance work does not change this plan's production scope.
+Revalidated on 2026-08-22 against `main` `5d62cc62d50d4bc9f0d483e057e7151571c9c4db` after HPA-581 merged. Latest `main` still has the same HPA-85 seams:
+
+- `SimfileMapper` recognizes/assembles `bgm.ogg`;
+- `ServerSongFileManager` persists/deletes `{songId}.ogg`;
+- `ServerSongDownloader` remains format-agnostic orchestration;
+- `ServerSongCache.refreshCatalog` maps fetched DTOs through `SimfileMapper.makeServerSong`;
+- gameplay still passes `Song.bgmFilePath` directly to `AVAudioPlayer`;
+- local fixture import already resolves `bgm.m4a`.
+
+The intervening notation/performance work does not expand HPA-85's production scope.
 
 ---
 
-## Pre-implementation gate: backend/R2 is ready
+## Pre-implementation gate: prove the backend bytes, not the filename
 
-This repository does not own the active backend ingestion/storage code. Before Task 1 is merged, verify outside Virgo that at least one representative published simfile satisfies both conditions:
+The original failure is an audio-playability failure. A `200` response or an object named `bgm.m4a` is not sufficient evidence because mislabeled or wrongly encoded bytes can still recreate the bug.
 
-```text
-Simfile.files contains: <simfile-id>/bgm.m4a
-GET {R2_BASE_URL}/<simfile-id>/bgm.m4a -> successful M4A/AAC audio response
+Before Task 1 starts, choose one representative published simfile and verify all of the following outside Virgo:
+
+1. `Simfile.files` contains `<simfile-id>/bgm.m4a`.
+2. Download that exact public R2 object to a local file.
+3. `afinfo` identifies the downloaded object as an MPEG-4/M4A container carrying AAC audio.
+4. The local file can be opened by the same API gameplay uses: `AVAudioPlayer(contentsOf:)`; `prepareToPlay()` must succeed.
+5. Record the representative simfile id/title plus the `afinfo` summary and AVAudioPlayer probe result in the implementation PR.
+
+Example verification flow on macOS:
+
+```bash
+curl --fail --location \
+  "$R2_BASE_URL/$SIMFILE_ID/bgm.m4a" \
+  --output /tmp/virgo-hpa85-bgm.m4a
+
+afinfo /tmp/virgo-hpa85-bgm.m4a
 ```
 
-Do not work around a missing backend cutover by adding an OGG fallback in Virgo. If this gate is not satisfied, stop the implementation after the documentation/planning PR and complete the backend media conversion first.
+Then run a tiny local AVFoundation probe using the downloaded file:
+
+```swift
+import AVFoundation
+import Foundation
+
+let url = URL(fileURLWithPath: "/tmp/virgo-hpa85-bgm.m4a")
+let player = try AVAudioPlayer(contentsOf: url)
+precondition(player.prepareToPlay())
+```
+
+HTTP status/MIME alone is not the gate. If container/codec inspection or AVAudioPlayer initialization fails, stop and fix backend media ingestion. Do not compensate in Virgo with fallback, transcoding, or an OGG decoder.
+
+---
 
 ## File map
 
 ### Production files
 
 - `Virgo/utilities/SimfileMapper.swift`
-  - Owns server BGM availability detection and R2 URL assembly.
+  - Remote BGM availability detection and R2 URL assembly.
 - `Virgo/utilities/ServerSongFileManager.swift`
-  - Owns local downloaded BGM filename and song-id cleanup path.
+  - Local downloaded BGM filename and song-id cleanup path.
 
-### Regression tests
+### Core regression tests
 
 - `VirgoTests/SimfileMapperTests.swift`
-  - Pins exact `bgm.m4a` catalog-key and URL semantics and rejects legacy OGG.
-- `VirgoTests/ServerSongFileManagerTests.swift`
-  - Pins `.m4a` persistence/deletion while preserving byte identity and bundle guards.
+  - Exact `bgm.m4a` catalog-key/URL semantics and explicit legacy OGG rejection.
+- `VirgoTests/ServerSongCatalogRefreshTests.swift`
+  - Pins the real catalog consumer so a current `bgm.m4a` DTO survives `ServerSongCache -> SimfileMapper` with `hasBGM == true`.
 - `VirgoTests/ServerSongDownloaderTests.swift`
-  - Pins the composed download URL and persisted path used by imported server songs.
+  - Pins mapper URL -> optional download -> persisted path composition.
+- `VirgoTests/ServerSongFileManagerTests.swift`
+  - Pins `.m4a` persistence/deletion and byte identity.
 
-### Current-contract fixture consistency
+### Later fixture hygiene
 
 - `VirgoTests/ApolloSimfileClientTests.swift`
-  - Representative current R2 BGM keys should use `bgm.m4a`; the tests remain schema/mapping tests.
+  - Representative current R2 BGM keys should use `bgm.m4a`; tests remain GraphQL mapping tests.
 - `VirgoTests/GraphQLQuerySchemaTests.swift`
-  - Representative current R2 BGM keys should use `bgm.m4a`; no GraphQL type/codegen change is required.
-- `VirgoTests/ServerSongCatalogRefreshTests.swift`
-  - Current server DTO `fileKeys` should use `bgm.m4a`; intentional stale/local `.ogg` path fixtures may remain when they are testing current-format-only persistence or extension-agnostic path behavior.
+  - Representative current R2 BGM keys should use `bgm.m4a`; no GraphQL type/codegen change.
 
 ### Documentation
 
 - `docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md`
-  - Active GraphQL/R2 client integration contract; replace old `.ogg` wording with `.m4a`.
+  - Active GraphQL/R2 client integration contract; replace server-BGM `.ogg` wording and correct the old suffix-match description to exact `lastPathComponent` matching.
 
 No new production file or type is planned.
 
 ---
 
-### Task 1: Cut the remote server-BGM contract to `bgm.m4a`
+## Task 1: Cut the remote contract and pin the catalog consumer
 
 **Files:**
+
 - Modify: `VirgoTests/SimfileMapperTests.swift`
+- Modify: `VirgoTests/ServerSongCatalogRefreshTests.swift`
 - Modify: `VirgoTests/ServerSongDownloaderTests.swift`
 - Modify: `Virgo/utilities/SimfileMapper.swift`
 
-**Interfaces:**
-- Consumes: `SimfileDTO.fileKeys: [String]`, `SimfileMapper.makeServerSong(from:)`, `SimfileMapper.bgmURL(base:songId:)`.
-- Produces: exact remote contract `bgm.m4a`; `ServerSong.hasBGM == true` only for that filename; R2 BGM URL ending in `/bgm.m4a`.
+### Step 1: Update mapper contract tests first
 
-- [ ] **Step 1: Update `SimfileMapperTests` to describe the hard cutover**
+In `SimfileMapperTests`:
 
-Replace the current OGG positive fixture with M4A and add an explicit OGG negative assertion:
+- current positive key: `song-1/bgm.m4a`;
+- explicit negative key: `song-1/bgm.ogg`;
+- similar-name negative: `song-1/intro-bgm.m4a`;
+- BGM URL: `.../song-1/bgm.m4a`;
+- preview stays `preview.mp3`.
 
-```swift
-@Test("Audio availability comes from current file keys (exact lastPathComponent match)")
-func testAudioAvailability() {
-    let withBoth = SimfileMapper.makeServerSong(
-        from: sampleDTO(fileKeys: ["song-1/bgm.m4a", "song-1/preview.mp3"]))
-    #expect(withBoth.hasBGM == true)
-    #expect(withBoth.hasPreview == true)
+The explicit OGG negative proves this is a hard cutover rather than dual-format support.
 
-    let legacyOGG = SimfileMapper.makeServerSong(
-        from: sampleDTO(fileKeys: ["song-1/bgm.ogg", "song-1/preview.mp3"]))
-    #expect(legacyOGG.hasBGM == false)
-    #expect(legacyOGG.hasPreview == true)
+### Step 2: Pin the real catalog consumer in the same task
 
-    let withNone = SimfileMapper.makeServerSong(
-        from: sampleDTO(fileKeys: ["song-1/ext.dtx"]))
-    #expect(withNone.hasBGM == false)
-    #expect(withNone.hasPreview == false)
-
-    let withSimilar = SimfileMapper.makeServerSong(
-        from: sampleDTO(fileKeys: ["song-1/intro-bgm.m4a", "song-1/demo-preview.mp3"]))
-    #expect(withSimilar.hasBGM == false)
-    #expect(withSimilar.hasPreview == false)
-}
-```
-
-Update the BGM URL assertion:
+In `ServerSongCatalogRefreshTests.makeChangedAWithNewBPM()` change only the current server DTO key:
 
 ```swift
-#expect(
-    SimfileMapper.bgmURL(base: base, songId: "song-1")
-        == URL(string: "https://r2.example/bucket/song-1/bgm.m4a")
-)
+fileKeys: ["bgm.m4a", "preview.mp3"]
 ```
 
-Keep the preview assertion at `preview.mp3`.
-
-- [ ] **Step 2: Update the downloader integration test to expect M4A from the mapper**
-
-In `MockServerSongFileManager`, change only the mock BGM path:
+In `testCompleteReplacementOverwritesMetadataAndPreservesLocalSong`, add:
 
 ```swift
-var bgmPathToReturn = "/tmp/mock-bgm.m4a"
+#expect(byID["a"]?.hasBGM == true)
 ```
 
-In `testDownloadAndImportSongMapsDifficultiesAndDownloadsOptionalFiles`, seed the response at:
+Keep the local persisted path assertion as stale development data:
 
 ```swift
-mock.responses["\(r2Base)/multi-diff/bgm.m4a"] = Data([0x10, 0x11, 0x12])
+#expect(local.bgmFilePath == "/tmp/a.ogg")
 ```
 
-and change the persisted-path assertion to:
+That distinction is intentional: current **server keys** follow the new contract, while old local rows are not migrated.
 
-```swift
-#expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.m4a")
-```
+### Step 3: Update the downloader composition test
 
-and the requested URL sequence to contain:
+In `ServerSongDownloaderTests`:
 
-```swift
-"\(r2Base)/multi-diff/bgm.m4a"
-```
+- mock BGM path becomes `/tmp/mock-bgm.m4a`;
+- response is seeded at `.../multi-diff/bgm.m4a`;
+- imported `Song.bgmFilePath` expects `/tmp/mock-bgm.m4a`;
+- requested URL order expects `/bgm.m4a`;
+- chart and preview URLs stay unchanged.
 
-Do not change chart or preview URLs.
-
-- [ ] **Step 3: Run the focused tests and verify they fail against the old mapper**
-
-Run:
+### Step 4: Run the red tests
 
 ```bash
 xcodebuild test \
@@ -163,28 +171,20 @@ xcodebuild test \
   -configuration Debug \
   -parallel-testing-enabled NO \
   -only-testing:VirgoTests/SimfileMapperTests \
+  -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
   -only-testing:VirgoTests/ServerSongDownloaderTests \
   ONLY_ACTIVE_ARCH=NO \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-Expected failures before the production edit:
+Before the production edit, the M4A mapper expectations and catalog `hasBGM` assertion must fail; the downloader should request the old OGG URL.
 
-- the M4A catalog key does not set `hasBGM`;
-- the OGG key still sets `hasBGM`;
-- `bgmURL` still ends in `/bgm.ogg`;
-- the downloader test requests `/bgm.ogg` instead of the seeded `/bgm.m4a` response.
-
-- [ ] **Step 4: Make the minimal `SimfileMapper` production change**
-
-Change the BGM availability literal in `makeServerSong(from:)`:
+### Step 5: Make the minimal mapper production change
 
 ```swift
-hasBGM: hasFile(named: "bgm.m4a", in: dto.fileKeys),
+hasBGM: hasFile(named: "bgm.m4a", in: dto.fileKeys)
 ```
-
-Change `bgmURL(base:songId:)`:
 
 ```swift
 static func bgmURL(base: URL, songId: String) -> URL {
@@ -192,81 +192,55 @@ static func bgmURL(base: URL, songId: String) -> URL {
 }
 ```
 
-Do not add an audio-format enum, alternate extension array, or fallback request.
+Do not add an audio-format enum, alternate extension array, suffix matching, or fallback request.
 
-- [ ] **Step 5: Re-run the focused tests**
+### Step 6: Re-run Task 1 tests
 
-Run the same `xcodebuild test` command from Step 3.
+Run the command from Step 4. Expected: all selected suites pass.
 
-Expected: `SimfileMapperTests` and `ServerSongDownloaderTests` pass. The downloader's production source should have no diff; the new behavior comes through the mapper seam.
-
-- [ ] **Step 6: Confirm `ServerSongDownloader.swift` stayed unchanged**
-
-Run:
+### Step 7: Confirm downloader production code stayed unchanged
 
 ```bash
 git diff --exit-code main...HEAD -- Virgo/utilities/ServerSongDownloader.swift
 ```
 
-Expected: exit 0 and no diff.
+Expected: exit 0.
 
-If this file changed only to mention `.m4a`, revert that change. The codec/filename contract belongs in the mapper and file manager.
+### Step 8: Optional Task 1 checkpoint commit
 
-- [ ] **Step 7: Commit Task 1**
+A separate commit is fine for review/TDD:
 
 ```bash
 git add \
   Virgo/utilities/SimfileMapper.swift \
   VirgoTests/SimfileMapperTests.swift \
+  VirgoTests/ServerSongCatalogRefreshTests.swift \
   VirgoTests/ServerSongDownloaderTests.swift
 git commit -m "fix: request native server BGM"
 ```
 
+**Do not merge or release this commit by itself.** The branch is intentionally non-shippable until Task 2 changes local persistence to `.m4a`.
+
 ---
 
-### Task 2: Persist server BGM as `{songId}.m4a`
+## Task 2: Persist server BGM as `{songId}.m4a`
 
 **Files:**
+
 - Modify: `VirgoTests/ServerSongFileManagerTests.swift`
 - Modify: `Virgo/utilities/ServerSongFileManager.swift`
 
-**Interfaces:**
-- Consumes: `ServerSongFileManager.saveBGMFile(_:for:)`, `deleteFiles(forSongId:)`.
-- Produces: local BGM path `Documents/BGM/{songId}.m4a`; deletion targets the same current filename.
+### Step 1: Update file-manager tests first
 
-- [ ] **Step 1: Update the file-manager tests to require `.m4a`**
-
-In `testSaveAndDeleteBGMFile`, change the path expectation to:
+Require:
 
 ```swift
 #expect(savedPath.hasSuffix("/BGM/\(songId).m4a"))
 ```
 
-Leave the payload round-trip assertion unchanged:
+Keep the payload round-trip assertion unchanged. Update format-shaped test-only paths such as missing/outside-bundle examples to `.m4a` where they represent current storage. Do not add legacy `.ogg` cleanup tests.
 
-```swift
-let loadedData = try Data(contentsOf: URL(fileURLWithPath: savedPath))
-#expect(loadedData == payload)
-```
-
-In `testDeleteOnNonExistentPaths`, use an M4A-shaped missing BGM path:
-
-```swift
-fileManager.deleteBGMFile(at: missingBase.appendingPathComponent("bgm.m4a").path)
-```
-
-The existing `testDeleteBySongId` should continue to save through `saveBGMFile`, then prove `deleteFiles(forSongId:)` removes the returned path. Do not add a test that deletes a legacy `.ogg` sibling.
-
-In `testIsPathInsideBundle`, update the outside-bundle example to the current local contract:
-
-```swift
-#expect(!ServerSongFileManager.isPath(
-    "/Users/u/Documents/BGM/song.m4a", inside: bundleRoot))
-```
-
-- [ ] **Step 2: Run the focused file-manager suite and verify the old extension fails**
-
-Run:
+### Step 2: Run the red file-manager suite
 
 ```bash
 xcodebuild test \
@@ -281,27 +255,17 @@ xcodebuild test \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-Expected before the production edit: `testSaveAndDeleteBGMFile` fails because the returned path ends in `.ogg`; `testDeleteBySongId` may also expose that cleanup still targets the old extension depending on execution order.
+Expected before the production edit: the returned path still ends in `.ogg`.
 
-- [ ] **Step 3: Change the local BGM filename in `saveBGMFile`**
+### Step 3: Change local persistence and song-id cleanup together
 
-Replace:
-
-```swift
-let bgmFilePath = bgmDirectory.appendingPathComponent("\(songId).ogg")
-```
-
-with:
+In `saveBGMFile`:
 
 ```swift
 let bgmFilePath = bgmDirectory.appendingPathComponent("\(songId).m4a")
 ```
 
-Do not transform the bytes. The backend has already produced the correct media container/codec.
-
-- [ ] **Step 4: Change song-id cleanup to the same current extension**
-
-In `deleteFiles(forSongId:)`, replace the BGM path with:
+In `deleteFiles(forSongId:)`:
 
 ```swift
 let bgm = documents
@@ -309,19 +273,33 @@ let bgm = documents
     .appendingPathComponent("\(songId).m4a")
 ```
 
-Keep preview cleanup at `.mp3`.
+Keep preview `.mp3`. Do not transform bytes and do not probe/delete an OGG sibling.
 
-Do not probe for or delete `\(songId).ogg` as a fallback.
+### Step 4: Re-run file-manager tests
 
-- [ ] **Step 5: Re-run the focused file-manager suite**
+Expected: `ServerSongFileManagerTests` passes.
 
-Run the command from Step 2.
+### Step 5: Atomic cutover checkpoint
 
-Expected: all `ServerSongFileManagerTests` pass.
+Tasks 1 and 2 are now jointly shippable. Run all four core suites together:
 
-- [ ] **Step 6: Audit production code for legacy server-BGM literals**
+```bash
+xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  -parallel-testing-enabled NO \
+  -only-testing:VirgoTests/SimfileMapperTests \
+  -only-testing:VirgoTests/ServerSongCatalogRefreshTests \
+  -only-testing:VirgoTests/ServerSongDownloaderTests \
+  -only-testing:VirgoTests/ServerSongFileManagerTests \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO
+```
 
-Run:
+Then audit the production pipeline:
 
 ```bash
 git grep -n 'bgm\.ogg' -- \
@@ -332,9 +310,7 @@ git grep -n 'bgm\.ogg' -- \
 
 Expected: no matches.
 
-This audit is deliberately scoped to the server-song pipeline. Do not convert unrelated fixture/SFX references merely because they contain `.ogg`.
-
-- [ ] **Step 7: Commit Task 2**
+### Step 6: Optional Task 2 checkpoint commit
 
 ```bash
 git add \
@@ -343,20 +319,21 @@ git add \
 git commit -m "fix: persist server BGM as m4a"
 ```
 
+The implementation PR must contain both Task 1 and Task 2 before it is mergeable.
+
 ---
 
-### Task 3: Update the active GraphQL/R2 integration contract
+## Task 3: Update the active contract and representative GraphQL fixtures
 
 **Files:**
+
 - Modify: `docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md`
+- Modify: `VirgoTests/ApolloSimfileClientTests.swift`
+- Modify: `VirgoTests/GraphQLQuerySchemaTests.swift`
 
-**Interfaces:**
-- Consumes: the code contract completed by Tasks 1-2.
-- Produces: one documented server BGM contract: `bgm.m4a` / M4A-AAC.
+### Step 1: Update the active GraphQL/R2 integration spec
 
-- [ ] **Step 1: Replace the obsolete `.ogg` contract statements**
-
-Update the integration spec so all active server-BGM references say:
+Use one server BGM contract throughout:
 
 ```text
 BGM object: {R2_base}/{id}/bgm.m4a
@@ -364,88 +341,51 @@ Availability: Simfile.files contains lastPathComponent == "bgm.m4a"
 Local use: downloaded bytes are persisted as a native-playable `.m4a` path for AVAudioPlayer
 ```
 
-At minimum update:
+Update at minimum:
 
-- Goals/non-goals where full BGM download is described;
-- File delivery contract;
-- Audio URL assembly and availability;
-- Caching/refresh binary examples;
-- Architecture/implementation approach;
-- field-consumption map rows that currently name `bgm.ogg`.
+- full BGM format descriptions;
+- file-delivery contract;
+- audio URL assembly;
+- availability semantics;
+- binary download/caching examples;
+- architecture text;
+- field-consumption map.
 
-Do not change `DtxFile.fileUrl`, `preview.mp3`, GraphQL types, pagination, or cache-refresh semantics.
+Correct the existing integration-spec wording that describes availability as a suffix match. Production uses exact `lastPathComponent` equality and the documentation must say so.
 
-- [ ] **Step 2: State the backend responsibility directly**
+Add one concise backend-responsibility statement:
 
-Add one concise sentence in the audio-delivery section:
+> The backend/media-ingestion path publishes Virgo BGM as AAC-in-M4A (`bgm.m4a`); the client does not transcode or decode OGG.
 
-```markdown
-The backend/media-ingestion path publishes Virgo BGM as M4A/AAC (`bgm.m4a`); the client does not transcode or decode OGG.
-```
+Do not change GraphQL types, codegen, pagination, chart URLs, or preview `.mp3`.
 
-Do not document dual-format fallback.
+### Step 2: Normalize representative current GraphQL keys
 
-- [ ] **Step 3: Check the active integration spec for contradictory server-BGM references**
+In `ApolloSimfileClientTests.swift` and `GraphQLQuerySchemaTests.swift`, change representative **current server/R2 BGM keys** from `bgm.ogg` to `bgm.m4a`.
 
-Run:
+These are hygiene edits only; do not add codec logic or schema assertions.
 
-```bash
-git grep -n 'bgm\.ogg' -- docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md
-```
-
-Expected: no active-contract matches. Historical prose should also be updated when it would mislead a future implementer; this document identifies itself as the current client integration spec, not an immutable historical record.
-
-Then run:
+### Step 3: Audit the active spec
 
 ```bash
-git grep -n 'bgm\.m4a' -- docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md
+git grep -n 'bgm\.ogg' -- \
+  docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md
 ```
 
-Expected: the file-delivery, URL-assembly, availability, and field-map sections contain M4A references.
-
-- [ ] **Step 4: Commit Task 3**
+Expected: no active-contract matches.
 
 ```bash
-git add docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md
-git commit -m "docs: update server BGM contract to m4a"
+git grep -n 'bgm\.m4a' -- \
+  docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md
 ```
+
+Expected: file-delivery, URL, availability, and field-map sections all carry the M4A contract.
 
 ---
 
-### Task 4: Verify the complete fresh-download path and breaking-data policy
+## Task 4: Full verification and fresh-download smoke
 
-**Files:**
-- Verify only: `Virgo/utilities/SimfileMapper.swift`
-- Verify only: `Virgo/utilities/ServerSongFileManager.swift`
-- Verify only: `Virgo/utilities/ServerSongDownloader.swift`
-- Verify only: `Virgo/viewmodels/GameplayViewModel+BGM.swift`
-- Verify/update current-contract test fixtures named in the file map when the grep audit finds stale representative server keys
-- Verify only: focused/full test targets and documentation changed above
-
-**Interfaces:**
-- Consumes: backend/R2 `bgm.m4a`, completed Virgo client cutover.
-- Produces: evidence that fresh server downloads persist a native BGM path and gameplay consumes it without codec-specific changes.
-
-- [ ] **Step 1: Run the three focused regression suites together**
-
-```bash
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -configuration Debug \
-  -parallel-testing-enabled NO \
-  -only-testing:VirgoTests/SimfileMapperTests \
-  -only-testing:VirgoTests/ServerSongFileManagerTests \
-  -only-testing:VirgoTests/ServerSongDownloaderTests \
-  ONLY_ACTIVE_ARCH=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGNING_ALLOWED=NO
-```
-
-Expected: all selected tests pass.
-
-- [ ] **Step 2: Run the complete macOS unit suite**
+### Step 1: Run the complete macOS unit suite
 
 ```bash
 xcodebuild test \
@@ -463,11 +403,9 @@ xcodebuild test \
   -derivedDataPath ./DerivedData
 ```
 
-Expected: unit suite passes with only already-documented expected/known issues, if any.
+### Step 2: Build the iPad target
 
-- [ ] **Step 3: Build the iPad target**
-
-Use an available iPad simulator destination, never iPhone. Example when present:
+Use an installed iPad simulator, never iPhone:
 
 ```bash
 xcodebuild \
@@ -477,65 +415,63 @@ xcodebuild \
   build
 ```
 
-Expected: build succeeds. If that exact simulator is unavailable, select another installed iPad simulator and record the actual destination in the PR.
+If that simulator is unavailable, use another installed iPad destination and record it in the PR.
 
-- [ ] **Step 4: Run SwiftLint and whitespace checks**
+### Step 3: Run lint and diff checks
 
 ```bash
 swiftlint lint
 git diff --check main...HEAD
 ```
 
-Expected: no SwiftLint errors and no whitespace errors. Existing warning-level size debt is not a reason to refactor unrelated files.
+Do not refactor unrelated warning-level size debt.
 
-- [ ] **Step 5: Prove there is no compatibility implementation and classify remaining `.ogg` fixtures**
-
-Run:
+### Step 4: Classify every remaining `bgm.ogg`
 
 ```bash
 git grep -n 'bgm\.ogg' -- Virgo VirgoTests
 ```
 
-Classify every remaining match. Expected server-song result:
+Expected classification:
 
-- no `.ogg` match in `SimfileMapper.swift`;
-- no `.ogg` match in `ServerSongFileManager.swift`;
-- no `.ogg` mock/expectation in `ServerSongDownloaderTests.swift` except the intentional `SimfileMapperTests` negative assertion proving legacy OGG is rejected;
-- representative current published/R2 keys in `ApolloSimfileClientTests.swift` and `GraphQLQuerySchemaTests.swift` use `bgm.m4a`;
-- current server DTO `fileKeys` in `ServerSongCatalogRefreshTests.swift` use `bgm.m4a`;
-- local `Song.bgmFilePath` values ending in `.ogg` may remain only when the fixture intentionally models stale development data or tests extension-agnostic path/status behavior;
-- format-irrelevant arbitrary URL tests may retain `.ogg` when they are not modeling the current server BGM contract;
-- unrelated metronome/SFX/fixture references remain out of scope.
+- `SimfileMapper.swift`: zero `bgm.ogg` matches.
+- `ServerSongFileManager.swift`: zero `bgm.ogg` matches.
+- `ServerSongDownloaderTests.swift`: zero `bgm.ogg` matches.
+- `SimfileMapperTests.swift`: the intentional `bgm.ogg` **negative** fixture may remain to prove legacy OGG is rejected.
+- `ServerSongCatalogRefreshTests.swift`: current DTO `fileKeys` use `bgm.m4a`; local `Song.bgmFilePath` values such as `/tmp/a.ogg` may remain only when intentionally modeling stale development data/extension-agnostic status behavior.
+- `ApolloSimfileClientTests.swift` and `GraphQLQuerySchemaTests.swift`: representative current server keys use `bgm.m4a`.
+- Format-irrelevant arbitrary URL/network tests may retain `.ogg` if they are not modeling the current server BGM contract.
+- Unrelated metronome/SFX/fixture references remain out of scope.
 
-If a current published-server fixture still uses `bgm.ogg`, update only that fixture to `bgm.m4a`; do not perform a repository-wide extension replacement.
+Also confirm no production code contains compatibility concepts such as `legacyBGM`, `migrateBGM`, `oggFallback`, alternate-extension loops, or client transcode logic.
 
-Also confirm no new code contains terms such as `legacyBGM`, `migrateBGM`, `transcode`, `oggFallback`, or alternate-extension loops.
+### Step 5: Reset stale development data
 
-- [ ] **Step 6: Reset stale development data before the real smoke**
+Use the normal development reset/reseed flow or delete the previously downloaded server song. Do not hand-edit an old `.ogg` path into `.m4a`; the smoke must exercise a fresh download.
 
-Use Virgo's normal development reset/reseed flow or delete the previously downloaded server song so the smoke starts from a fresh `Song` row. Do not hand-edit an old `.ogg` `bgmFilePath` into `.m4a`; that would not prove the new download path.
+Deletion is already path-based for persisted audio, so stale development rows can be deleted and then downloaded again without a dedicated `.ogg` cleanup implementation.
 
-- [ ] **Step 7: Smoke-test a fresh published server song on macOS**
+### Step 6: Fresh-download smoke on macOS
 
-With the backend prerequisite satisfied:
+Using the same representative backend object from the pre-implementation gate:
 
 1. refresh the server catalog;
-2. choose a published song whose `Simfile.files` contains `bgm.m4a`;
+2. confirm the row reports BGM available;
 3. download/import it;
 4. confirm the persisted BGM path ends in `.m4a`;
 5. open gameplay;
-6. confirm no BGM loading error is shown/logged;
-7. start playback and confirm BGM is audible and remains synchronized through the existing gameplay controls.
+6. confirm `AVAudioPlayer` initializes without `bgmLoadingError`;
+7. start playback and confirm BGM is audible and remains synchronized through existing controls.
 
-Record the representative simfile id/title in the implementation PR verification notes.
+Record the simfile id/title in the implementation PR.
 
-- [ ] **Step 8: Smoke-test the same fresh-download contract on iPadOS**
+### Step 7: Fresh-download smoke on iPadOS
 
-Repeat the fresh-download -> gameplay path on an iPad simulator/device environment with working audio output. Confirm the same `.m4a` path is used and `AVAudioPlayer` initializes successfully.
+Repeat fresh download -> gameplay on an iPad simulator/device environment with working audio output. Confirm `.m4a` persistence and successful player initialization.
 
-If the simulator environment cannot validate audible output, record that limitation and verify player initialization plus an actual-device smoke before marking HPA-85 done. Do not replace this with a network-dependent CI test.
+If simulator audio cannot prove audibility, record that limitation and perform an actual-device smoke before closing HPA-85. Do not replace this with a network-dependent CI test.
 
-- [ ] **Step 9: Review the final diff for scope**
+### Step 8: Review final scope
 
 Expected production diff:
 
@@ -548,41 +484,31 @@ Expected supporting diff:
 
 ```text
 VirgoTests/SimfileMapperTests.swift
-VirgoTests/ServerSongFileManagerTests.swift
+VirgoTests/ServerSongCatalogRefreshTests.swift
 VirgoTests/ServerSongDownloaderTests.swift
+VirgoTests/ServerSongFileManagerTests.swift
 VirgoTests/ApolloSimfileClientTests.swift
 VirgoTests/GraphQLQuerySchemaTests.swift
-VirgoTests/ServerSongCatalogRefreshTests.swift
 docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md
 ```
 
-For the three fixture-consistency test files, limit edits to representative current server BGM keys; intentional stale/local `.ogg` path fixtures do not need normalization.
-
-No GraphQL generated files, SwiftData models, gameplay implementation, audio engine, dependency manifest, or migration helper should be necessary.
-
-- [ ] **Step 10: Commit any final verification-only documentation correction**
-
-Only if Task 4 uncovered an inaccurate documentation statement:
-
-```bash
-git add docs/superpowers/specs/2026-05-16-simfile-graphql-backend-requirements.md
-git commit -m "docs: clarify native server BGM verification"
-```
-
-If no correction is needed, do not create an empty verification commit.
+No GraphQL generated files, SwiftData models, downloader production changes, gameplay implementation changes, audio engine, dependency manifest, migration helper, or codec library should be necessary.
 
 ---
 
 ## Completion checklist
 
-- [ ] Backend/R2 exposes a real playable `bgm.m4a` before client rollout.
+- [ ] A representative published `bgm.m4a` is downloaded and proven AAC-in-M4A by `afinfo` before client work starts.
+- [ ] The same downloaded file opens through `AVAudioPlayer(contentsOf:)` and prepares successfully before client work starts.
+- [ ] Mapper and file-manager cutovers are in the same implementation PR and are never shipped independently.
 - [ ] Mapper recognizes only `bgm.m4a` and assembles the M4A URL.
+- [ ] Catalog-refresh coverage proves a current `bgm.m4a` DTO maps to `hasBGM == true`.
 - [ ] File manager persists/deletes `{songId}.m4a`.
 - [ ] Downloader production logic remains orchestration-only.
 - [ ] Gameplay production logic remains format-agnostic and unchanged.
-- [ ] Unit tests explicitly reject legacy server `bgm.ogg` availability.
+- [ ] Mapper tests explicitly reject legacy server `bgm.ogg` availability.
+- [ ] Active GraphQL integration documentation uses exact `lastPathComponent` matching and `.m4a` everywhere relevant.
 - [ ] Representative current GraphQL/catalog server fixtures use `bgm.m4a`; intentional stale/local `.ogg` fixtures remain only where their semantics require them.
-- [ ] Active GraphQL integration documentation says `.m4a` everywhere relevant.
-- [ ] No migration, fallback, codec dependency, or client transcode was added.
+- [ ] No migration, fallback, runtime codec probing, codec dependency, or client transcode is added.
 - [ ] Focused tests, full macOS tests, iPad build, SwiftLint, and diff checks pass.
 - [ ] Fresh server download reaches audible/initialized gameplay BGM on macOS and iPadOS.
