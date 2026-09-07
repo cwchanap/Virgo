@@ -1,8 +1,8 @@
 # HPA-85: Native Server BGM Format Design
 
-**Date:** 2026-08-13  
-**Status:** Proposed  
-**Linear:** HPA-85  
+**Date:** 2026-08-13
+**Status:** Proposed
+**Linear:** HPA-85
 **Revalidated:** 2026-08-22 against `main` `5d62cc62d50d4bc9f0d483e057e7151571c9c4db`
 
 ## Context
