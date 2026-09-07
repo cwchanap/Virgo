@@ -23,8 +23,11 @@ class ServerSongFileManager: @unchecked Sendable {
             try FileManager.default.createDirectory(at: bgmDirectory, withIntermediateDirectories: true)
         }
 
-        // Save BGM file with song ID as filename
-        let bgmFilePath = bgmDirectory.appendingPathComponent("\(songId).ogg")
+        // Save BGM file with song ID as filename (extension from the shared
+        // server contract; bytes are written unmodified).
+        let bgmFilePath = bgmDirectory
+            .appendingPathComponent(songId)
+            .appendingPathExtension(SimfileMapper.bgmPathExtension)
         try data.write(to: bgmFilePath)
 
         return bgmFilePath.path
@@ -90,15 +93,5 @@ class ServerSongFileManager: @unchecked Sendable {
     /// Delete preview file for a song
     func deletePreviewFile(at path: String) {
         deleteFile(at: path, label: "preview")
-    }
-
-    /// Delete BGM and preview files saved under this songId, if present.
-    func deleteFiles(forSongId songId: String) {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let bgm = documents.appendingPathComponent("BGM").appendingPathComponent("\(songId).ogg")
-        let preview = documents.appendingPathComponent("Preview").appendingPathComponent("\(songId).mp3")
-
-        deleteFile(at: bgm.path, label: "BGM for songId \(songId)")
-        deleteFile(at: preview.path, label: "preview for songId \(songId)")
     }
 }
