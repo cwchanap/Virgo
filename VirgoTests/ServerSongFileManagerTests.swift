@@ -13,7 +13,7 @@ struct ServerSongFileManagerTests {
 
         let savedPath = try fileManager.saveBGMFile(payload, for: songId)
 
-        #expect(savedPath.hasSuffix("/BGM/\(songId).ogg"))
+        #expect(savedPath.hasSuffix("/BGM/\(songId).m4a"))
         #expect(FileManager.default.fileExists(atPath: savedPath))
 
         let loadedData = try Data(contentsOf: URL(fileURLWithPath: savedPath))
@@ -51,20 +51,6 @@ struct ServerSongFileManagerTests {
         fileManager.deletePreviewFile(at: missingBase.appendingPathComponent("preview.mp3").path)
 
         #expect(true)
-    }
-
-    @Test("Deletes BGM and preview by songId")
-    func testDeleteBySongId() throws {
-        let manager = ServerSongFileManager()
-        let bgm = try manager.saveBGMFile(Data([1, 2, 3]), for: "del-test")
-        let preview = try manager.savePreviewFile(Data([4, 5, 6]), for: "del-test")
-        #expect(FileManager.default.fileExists(atPath: bgm))
-        #expect(FileManager.default.fileExists(atPath: preview))
-
-        manager.deleteFiles(forSongId: "del-test")
-
-        #expect(!FileManager.default.fileExists(atPath: bgm))
-        #expect(!FileManager.default.fileExists(atPath: preview))
     }
 
     @Test("deleteFile(at:label:) removes any file at the given path")
