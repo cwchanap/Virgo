@@ -93,9 +93,9 @@ HTTP status or MIME alone is not the gate. If catalog completeness or byte valid
 
 ## Runtime diagnostic for backend drift
 
-After cutover, a missing `bgm.m4a` is valid for songs that genuinely have no BGM, but a server row that advertises another `bgm.*` filename is a contract mismatch and should not disappear silently.
+After cutover, a missing `bgm.m4a` is valid for songs that genuinely have no BGM. The contract mismatch to surface is a row that advertises a `bgm.*` filename but does not expose `bgm.m4a` — i.e. a BGM-bearing simfile the backend has not converted. A legacy `bgm.*` object that coexists with `bgm.m4a` is permitted by the catalog gate and must not warn on every refresh, or it drowns out genuine drift.
 
-In `SimfileMapper.makeServerSong(from:)`, log a warning when a file key has a `lastPathComponent` beginning with `bgm.` but does not equal `bgmFilename`:
+In `SimfileMapper.makeServerSong(from:)`, log a warning when a file key has a `lastPathComponent` beginning with `bgm.` and no key equals `bgmFilename`:
 
 ```text
 Simfile <id> publishes <filename>; expected bgm.m4a
@@ -110,7 +110,7 @@ The warning is diagnostic only. It does not set `hasBGM`, request a fallback, pr
 - expose `bgmFilename` and derived `bgmPathExtension`;
 - recognize only exact `bgmFilename` via existing `lastPathComponent` matching;
 - assemble R2 URL using the shared filename;
-- warn on an unexpected `bgm.*` filename;
+- warn when a `bgm.*` filename exists but `bgm.m4a` does not (coexistence with `bgm.m4a` is silent);
 - keep preview `.mp3` unchanged.
 
 The active integration spec currently describes BGM availability as suffix matching; update it to the real exact `lastPathComponent` behavior.
@@ -198,7 +198,7 @@ No actual-device audibility gate and no network-dependent CI test are required f
 
 - [ ] One shared `bgm.m4a` filename contract drives both remote URL/availability and local extension.
 - [ ] Backend rollout is blocked unless the complete published catalog is M4A-ready and representative bytes pass `afinfo` + `AVAudioPlayer`.
-- [ ] Non-current `bgm.*` server keys produce a warning but never a fallback.
+- [ ] A `bgm.*` server key without `bgm.m4a` produces a warning; coexistence with `bgm.m4a` is silent. Never a fallback.
 - [ ] Old local `.ogg` data is disposable; no compatibility implementation is added.
 
 The implementation plan owns the executable test/build/smoke checklist.
