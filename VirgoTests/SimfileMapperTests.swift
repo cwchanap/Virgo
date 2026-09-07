@@ -36,7 +36,7 @@ struct SimfileMapperTests {
     @Test("Audio availability comes from file keys (exact lastPathComponent match)")
     func testAudioAvailability() {
         let withBoth = SimfileMapper.makeServerSong(
-            from: sampleDTO(fileKeys: ["song-1/bgm.ogg", "song-1/preview.mp3"]))
+            from: sampleDTO(fileKeys: ["song-1/bgm.m4a", "song-1/preview.mp3"]))
         #expect(withBoth.hasBGM == true)
         #expect(withBoth.hasPreview == true)
 
@@ -44,9 +44,14 @@ struct SimfileMapperTests {
         #expect(withNone.hasBGM == false)
         #expect(withNone.hasPreview == false)
 
-        // Suffix over-match must NOT trigger: "intro-bgm.ogg" ≠ "bgm.ogg".
+        // Hard cutover: the legacy "bgm.ogg" key must NOT satisfy the BGM contract.
+        let withLegacyOGG = SimfileMapper.makeServerSong(
+            from: sampleDTO(fileKeys: ["song-1/bgm.ogg"]))
+        #expect(withLegacyOGG.hasBGM == false)
+
+        // Suffix over-match must NOT trigger: "intro-bgm.m4a" ≠ "bgm.m4a".
         let withSimilar = SimfileMapper.makeServerSong(
-            from: sampleDTO(fileKeys: ["song-1/intro-bgm.ogg", "song-1/demo-preview.mp3"]))
+            from: sampleDTO(fileKeys: ["song-1/intro-bgm.m4a", "song-1/demo-preview.mp3"]))
         #expect(withSimilar.hasBGM == false)
         #expect(withSimilar.hasPreview == false)
     }
@@ -55,7 +60,7 @@ struct SimfileMapperTests {
     func testAudioURLAssembly() {
         let base = URL(string: "https://r2.example/bucket")!
         #expect(SimfileMapper.bgmURL(base: base, songId: "song-1")
-                == URL(string: "https://r2.example/bucket/song-1/bgm.ogg"))
+                == URL(string: "https://r2.example/bucket/song-1/bgm.m4a"))
         #expect(SimfileMapper.previewURL(base: base, songId: "song-1")
                 == URL(string: "https://r2.example/bucket/song-1/preview.mp3"))
     }

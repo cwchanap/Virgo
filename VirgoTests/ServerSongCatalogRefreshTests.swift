@@ -27,7 +27,7 @@ private func makeChangedAWithNewBPM() -> SimfileDTO {
                 encoding: .shiftJIS
             )
         ],
-        fileKeys: ["bgm.ogg", "preview.mp3"]
+        fileKeys: ["bgm.m4a", "preview.mp3"]
     )
 }
 
@@ -181,6 +181,7 @@ struct ServerSongCatalogRefreshTests {
             #expect(byID["a"]?.isDownloaded == true)
             #expect(byID["a"]?.bgmDownloaded == true)
             #expect(byID["a"]?.previewDownloaded == true)
+            #expect(byID["a"]?.hasBGM == true)
 
             let local = try #require(
                 context.fetch(FetchDescriptor<Song>())
