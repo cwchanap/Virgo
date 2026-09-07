@@ -73,7 +73,7 @@ If either gate fails, stop and fix backend/media ingestion. Do not compensate in
 - `Virgo/utilities/SimfileMapper.swift`
   - add the shared `bgmFilename` / derived extension contract;
   - recognize/request current M4A;
-  - warn on non-current `bgm.*` server keys.
+  - warn when a `bgm.*` key exists but `bgm.m4a` is absent (coexistence with `bgm.m4a` is allowed).
 - `Virgo/utilities/ServerSongFileManager.swift`
   - save BGM with the shared extension;
   - delete dead `deleteFiles(forSongId:)`.
@@ -191,12 +191,12 @@ static func bgmURL(base: URL, songId: String) -> URL {
 }
 ```
 
-Before constructing the `ServerSong`, detect the first unexpected BGM-shaped key:
+Before constructing the `ServerSong`, detect the real contract mismatch: a BGM-shaped key exists but the current `bgm.m4a` key is absent. The catalog gate allows a legacy `bgm.*` object to remain when `bgm.m4a` is also published, so a coexisting legacy key must not warn on every refresh and drown out genuine drift.
 
 ```swift
-if let unexpectedBGM = dto.fileKeys
-    .map({ ($0 as NSString).lastPathComponent })
-    .first(where: { $0.hasPrefix("bgm.") && $0 != Self.bgmFilename }) {
+let lastComponents = dto.fileKeys.map { ($0 as NSString).lastPathComponent }
+if !lastComponents.contains(Self.bgmFilename),
+   let unexpectedBGM = lastComponents.first(where: { $0.hasPrefix("bgm.") }) {
     Logger.warning("Simfile \(dto.id) publishes \(unexpectedBGM); expected \(Self.bgmFilename)")
 }
 ```
@@ -450,7 +450,7 @@ No generated GraphQL code, SwiftData model, downloader production code, gameplay
 - [ ] Complete published catalog has zero BGM-bearing rows missing `bgm.m4a` before client work starts.
 - [ ] Representative real `bgm.m4a` bytes pass `afinfo` and `AVAudioPlayer` before client work starts.
 - [ ] One shared `SimfileMapper.bgmFilename` contract drives remote naming and local extension.
-- [ ] Mapper warns on non-current `bgm.*` keys without fallback.
+- [ ] Mapper warns when a `bgm.*` key exists but `bgm.m4a` is absent; coexistence with `bgm.m4a` is allowed and silent.
 - [ ] Catalog refresh coverage proves a current M4A DTO maps to `hasBGM == true`.
 - [ ] File manager saves BGM as `.m4a`; unused `deleteFiles(forSongId:)` is removed.
 - [ ] Downloader and gameplay production logic remain unchanged.

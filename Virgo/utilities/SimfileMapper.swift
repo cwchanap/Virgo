@@ -10,9 +10,9 @@ enum SimfileMapper {
     }
 
     static func makeServerSong(from dto: SimfileDTO) -> ServerSong {
-        if let unexpectedBGM = dto.fileKeys
-            .map({ ($0 as NSString).lastPathComponent })
-            .first(where: { $0.hasPrefix("bgm.") && $0 != Self.bgmFilename }) {
+        let lastComponents = dto.fileKeys.map { ($0 as NSString).lastPathComponent }
+        if !lastComponents.contains(Self.bgmFilename),
+           let unexpectedBGM = lastComponents.first(where: { $0.hasPrefix("bgm.") }) {
             Logger.warning("Simfile \(dto.id) publishes \(unexpectedBGM); expected \(Self.bgmFilename)")
         }
         let charts = dto.dtxFiles.map { makeServerChart(from: $0) }
