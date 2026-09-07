@@ -102,7 +102,7 @@ struct ApolloSimfileClientTests {
         )
     }
 
-    private func makeFileDict(key: String = "song/bgm.ogg", size: Int = 500) -> DataDict {
+    private func makeFileDict(key: String = "song/bgm.m4a", size: Int = 500) -> DataDict {
         DataDict(
             data: [
                 "__typename": "R2File",
@@ -207,7 +207,7 @@ struct ApolloSimfileClientTests {
             makeDtxFileDict(label: "ADVANCED", level: 55, fileEncoding: "UTF_8")
         ]
         let files: [AnyHashable] = [
-            makeFileDict(key: "song/bgm.ogg", size: 2000),
+            makeFileDict(key: "song/bgm.m4a", size: 2000),
             makeFileDict(key: "song/preview.mp3", size: 500)
         ]
         let dict = makeSimfileDict(dtxFiles: dtxFiles, files: files)
@@ -217,7 +217,7 @@ struct ApolloSimfileClientTests {
         #expect(fields.dtxFiles[0].label == "BASIC")
         #expect(fields.dtxFiles[1].label == "ADVANCED")
         #expect(fields.files.count == 2)
-        #expect(fields.files[0].key == "song/bgm.ogg")
+        #expect(fields.files[0].key == "song/bgm.m4a")
         #expect(fields.files[1].key == "song/preview.mp3")
     }
 
@@ -238,7 +238,7 @@ struct ApolloSimfileClientTests {
             label: "EXTREME", level: 74, fileUrl: "https://r2/s/ext.dtx",
             fileSizeBytes: 4096, fileEncoding: "SHIFT_JIS"
         )
-        let fileDict = makeFileDict(key: "song/bgm.ogg", size: 500)
+        let fileDict = makeFileDict(key: "song/bgm.m4a", size: 500)
         let simfileDict = makeSimfileDict(
             id: "s1", title: "Song", artist: "Art", bpm: 165.5,
             genre: "Metal", tags: ["rock", "heavy"],
@@ -262,7 +262,7 @@ struct ApolloSimfileClientTests {
         #expect(dto.dtxFiles[0].fileURL == "https://r2/s/ext.dtx")
         #expect(dto.dtxFiles[0].fileSizeBytes == 4096)
         #expect(dto.dtxFiles[0].encoding == .shiftJIS)
-        #expect(dto.fileKeys == ["song/bgm.ogg"])
+        #expect(dto.fileKeys == ["song/bgm.m4a"])
     }
 
     @Test("Mapping with UTF-8 encoding preserves encoding")
@@ -298,14 +298,14 @@ struct ApolloSimfileClientTests {
     @Test("Mapping extracts file keys from files array")
     func testMappingFileKeys() {
         let files: [AnyHashable] = [
-            makeFileDict(key: "song/bgm.ogg"),
+            makeFileDict(key: "song/bgm.m4a"),
             makeFileDict(key: "song/preview.mp3")
         ]
         let simfileDict = makeSimfileDict(files: files)
         let fields = VirgoGraphQL.SimfileFields(_dataDict: simfileDict)
         let dto = Self.mapSimfileFields(fields)
 
-        #expect(dto.fileKeys == ["song/bgm.ogg", "song/preview.mp3"])
+        #expect(dto.fileKeys == ["song/bgm.m4a", "song/preview.mp3"])
     }
 
     /// Mirrors the private `ApolloSimfileClient.map(_:)` logic for test coverage.

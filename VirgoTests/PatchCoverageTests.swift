@@ -37,7 +37,7 @@ struct PatchCoverageTests {
             var savedPreview = false
             override func saveBGMFile(_ data: Data, for songId: String) throws -> String {
                 savedBGM = true
-                return "/tmp/mock.ogg"
+                return "/tmp/mock.m4a"
             }
             override func savePreviewFile(_ data: Data, for songId: String) throws -> String {
                 savedPreview = true
@@ -143,7 +143,7 @@ private final class MockTrackingFileManager: ServerSongFileManager {
     var savedPreview = false
     override func saveBGMFile(_ data: Data, for songId: String) throws -> String {
         savedBGM = true
-        return "/tmp/mock.ogg"
+        return "/tmp/mock.m4a"
     }
     override func savePreviewFile(_ data: Data, for songId: String) throws -> String {
         savedPreview = true

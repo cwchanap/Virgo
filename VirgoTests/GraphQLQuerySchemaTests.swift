@@ -27,7 +27,7 @@ struct GraphQLQuerySchemaTests {
         )
     }
 
-    private func makeFileDict(key: String = "song/bgm.ogg", size: Int = 500) -> DataDict {
+    private func makeFileDict(key: String = "song/bgm.m4a", size: Int = 500) -> DataDict {
         DataDict(
             data: [
                 "__typename": "R2File",

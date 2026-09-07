@@ -29,7 +29,7 @@ API. It does not describe server-side ingestion, parsing, or storage.
 
 ### Goals
 - Browse a catalog of **published** drum simfiles and their DTX charts.
-- Download the chart file (`.dtx`), full BGM audio (`.ogg`), and short preview clip
+- Download the chart file (`.dtx`), full BGM audio (`.m4a`), and short preview clip
   (`.mp3`) for any simfile.
 - Support paginated listing and substring search as the catalog grows.
 - Consume richer metadata than the raw DTX files provide (genre, tags, duration,
@@ -70,7 +70,7 @@ binary data; the client downloads files directly with `URLSession`.
   Download it directly. If a chart's file is unavailable, the field surfaces as a
   GraphQL field error on that path (Section 8) and the client skips that chart while
   still rendering the rest of the simfile.
-- **BGM `.ogg` / preview `.mp3`:** the schema has **no** dedicated BGM/preview URL
+- **BGM `.m4a` / preview `.mp3`:** the schema has **no** dedicated BGM/preview URL
   fields the client uses. The client **assembles** these URLs from the configured R2
   base and the simfile id (Section 5). Because URLs are public and stable, no TTL or
   cache-control coordination is required.
@@ -80,7 +80,7 @@ binary data; the client downloads files directly with `URLSession`.
 The schema's `downloadUrl`, `previewUrl`, and `videoPreviewUrl` fields are **not used**
 in v1. Instead:
 
-- **BGM:** `{R2_base}/{id}/bgm.ogg`
+- **BGM:** `{R2_base}/{id}/bgm.m4a`
 - **Preview:** `{R2_base}/{id}/preview.mp3`
 
 where `id` is `Simfile.id` and `R2_base` is the configured R2 bucket base URL.
@@ -88,10 +88,14 @@ where `id` is `Simfile.id` and `R2_base` is the configured R2 bucket base URL.
 **Availability detection.** Rather than blindly requesting (and 404-ing on) missing
 files, the client inspects `Simfile.files: [R2File!]!`:
 
-- `hasBGM` ← `files` contains a key matching `bgm.ogg` (suffix match, tolerant of an
-  `{id}/` prefix).
+- `hasBGM` ← `files` contains a key whose `lastPathComponent` equals `bgm.m4a`
+  (exact equality; a leading `{id}/` prefix in the key is allowed).
 - `hasPreview` ← `files` contains a key matching `preview.mp3`.
 - `R2File.size` provides the download size for progress UX when present.
+
+**Format contract.** Backend media ingestion publishes BGM as AAC-in-M4A. Virgo does
+not transcode audio and does not decode OGG; downloaded BGM bytes persist to a
+native-playable `.m4a` path.
 
 This maps onto the existing `ServerSong.hasBGM` / `hasPreview` flags, which previously
 were optimistically assumed `true`.
@@ -197,7 +201,7 @@ automatic refresh.** The catalog only changes via:
 2. **User-initiated deletion** of a downloaded song.
 
 The manual re-fetch refreshes **catalog metadata only** — it never downloads binary
-files. Binaries (`.dtx`/`.ogg`/`.mp3`) are still fetched per-song when the user taps
+files. Binaries (`.dtx`/`.m4a`/`.mp3`) are still fetched per-song when the user taps
 download, exactly as today, and a song's files are downloaded at most once.
 
 **Re-fetch algorithm.** Page-walk the full `PUBLISHED` list to obtain the complete
@@ -267,7 +271,7 @@ New/changed components:
 | `Simfile.durationSeconds` | `Song.duration` (`mm:ss`; estimate if null) | list, detail |
 | `Simfile.updatedAt` | `ServerSong.lastUpdated` (ISO parse) | stored for forward-compat; not acted on in v1 |
 | `Simfile.files[]` | `ServerSong.hasBGM` / `hasPreview` + sizes | download UX |
-| assembled `{R2}/{id}/bgm.ogg` | downloaded → `Song.bgmFilePath` | BGM in gameplay |
+| assembled `{R2}/{id}/bgm.m4a` | downloaded → `Song.bgmFilePath` (native-playable `.m4a` path) | BGM in gameplay |
 | assembled `{R2}/{id}/preview.mp3` | downloaded → `Song.previewFilePath` | preview clip |
 | `DtxFile.label` | `ServerChart.difficultyLabel` | display label |
 | derived | `ServerChart.difficulty` / `Chart.difficulty` | badge, chart selection |
@@ -291,6 +295,7 @@ New/changed components:
    level fallback.
 2. **Max `pageSize`.** What page size does the backend honor for `simfiles` (schema
    default is 20)? Affects refresh page-walk efficiency.
-3. **`R2File.key` shape.** Does `key` include an `{id}/` prefix (e.g. `{id}/bgm.ogg`) or
-   bare filenames? Affects the suffix-match logic for availability detection.
+3. **`R2File.key` shape.** Does `key` include an `{id}/` prefix (e.g. `{id}/bgm.m4a`) or
+   bare filenames? Affects the `lastPathComponent` equality check for availability
+   detection.
 4. **R2 bucket base URL & GraphQL endpoint** for dev / staging / prod.
