@@ -2,7 +2,19 @@ import Foundation
 
 /// Pure conversion from catalog DTOs to SwiftData models, plus audio URL helpers.
 enum SimfileMapper {
+    /// The only BGM filename the server contract guarantees (AAC-in-M4A).
+    static let bgmFilename = "bgm.m4a"
+
+    static var bgmPathExtension: String {
+        (bgmFilename as NSString).pathExtension
+    }
+
     static func makeServerSong(from dto: SimfileDTO) -> ServerSong {
+        if let unexpectedBGM = dto.fileKeys
+            .map({ ($0 as NSString).lastPathComponent })
+            .first(where: { $0.hasPrefix("bgm.") && $0 != Self.bgmFilename }) {
+            Logger.warning("Simfile \(dto.id) publishes \(unexpectedBGM); expected \(Self.bgmFilename)")
+        }
         let charts = dto.dtxFiles.map { makeServerChart(from: $0) }
         let song = ServerSong(
             songId: dto.id,
@@ -13,7 +25,7 @@ enum SimfileMapper {
             durationSeconds: dto.durationSeconds,
             charts: charts,
             isDownloaded: false,
-            hasBGM: hasFile(named: "bgm.ogg", in: dto.fileKeys),
+            hasBGM: hasFile(named: Self.bgmFilename, in: dto.fileKeys),
             hasPreview: hasFile(named: "preview.mp3", in: dto.fileKeys)
         )
         song.lastUpdated = parseDate(dto.updatedAt)
@@ -36,7 +48,7 @@ enum SimfileMapper {
     }
 
     static func bgmURL(base: URL, songId: String) -> URL {
-        base.appendingPathComponent(songId).appendingPathComponent("bgm.ogg")
+        base.appendingPathComponent(songId).appendingPathComponent(Self.bgmFilename)
     }
 
     static func previewURL(base: URL, songId: String) -> URL {

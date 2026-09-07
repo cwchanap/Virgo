@@ -23,7 +23,7 @@ struct ServerSongDownloaderTests {
     private final class MockServerSongFileManager: ServerSongFileManager {
         var savedBGMData: [Data] = []
         var savedPreviewData: [Data] = []
-        var bgmPathToReturn = "/tmp/mock-bgm.ogg"
+        var bgmPathToReturn = "/tmp/mock-bgm.m4a"
         var previewPathToReturn = "/tmp/mock-preview.mp3"
 
         override func saveBGMFile(_ data: Data, for songId: String) throws -> String {
@@ -86,7 +86,7 @@ struct ServerSongDownloaderTests {
         for file in ["medium.dtx", "hard.dtx", "expert.dtx"] {
             mock.responses["\(r2Base)/multi-diff/\(file)"] = dtxWithBGM
         }
-        mock.responses["\(r2Base)/multi-diff/bgm.ogg"] = Data([0x10, 0x11, 0x12])
+        mock.responses["\(r2Base)/multi-diff/bgm.m4a"] = Data([0x10, 0x11, 0x12])
         mock.responses["\(r2Base)/multi-diff/preview.mp3"] = Data([0x20, 0x21, 0x22])
 
         let config = makeConfig("ServerSongDownloaderTests.multi.\(UUID().uuidString)", withR2: true)
@@ -112,7 +112,7 @@ struct ServerSongDownloaderTests {
             }
             #expect(importedSong?.isServerImported == true, "Downloaded song must be marked as server-imported")
             #expect(importedSong?.serverSongId == "multi-diff", "Downloaded song must persist the server songId")
-            #expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.ogg")
+            #expect(importedSong?.bgmFilePath == "/tmp/mock-bgm.m4a")
             #expect(importedSong?.previewFilePath == "/tmp/mock-preview.mp3")
             #expect(importedSong?.bgmStartOffsetSeconds == nil)
 
@@ -130,7 +130,7 @@ struct ServerSongDownloaderTests {
                     "\(r2Base)/multi-diff/medium.dtx",
                     "\(r2Base)/multi-diff/hard.dtx",
                     "\(r2Base)/multi-diff/expert.dtx",
-                    "\(r2Base)/multi-diff/bgm.ogg",
+                    "\(r2Base)/multi-diff/bgm.m4a",
                     "\(r2Base)/multi-diff/preview.mp3"
                 ]
             )
