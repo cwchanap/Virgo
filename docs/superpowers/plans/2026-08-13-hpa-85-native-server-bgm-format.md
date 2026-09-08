@@ -447,15 +447,22 @@ No generated GraphQL code, SwiftData model, downloader production code, gameplay
 
 ## Completion checklist
 
-- [ ] Complete published catalog has zero BGM-bearing rows missing `bgm.m4a` before client work starts.
-- [ ] Representative real `bgm.m4a` bytes pass `afinfo` and `AVAudioPlayer` before client work starts.
-- [ ] One shared `SimfileMapper.bgmFilename` contract drives remote naming and local extension.
-- [ ] Mapper warns when a `bgm.*` key exists but `bgm.m4a` is absent; coexistence with `bgm.m4a` is allowed and silent.
-- [ ] Catalog refresh coverage proves a current M4A DTO maps to `hasBGM == true`.
-- [ ] File manager saves BGM as `.m4a`; unused `deleteFiles(forSongId:)` is removed.
-- [ ] Downloader and gameplay production logic remain unchanged.
-- [ ] Active integration spec uses `.m4a` and exact `lastPathComponent` matching.
-- [ ] Current server/GraphQL fixtures use `.m4a`; broad `.ogg` audit classifies all intentional leftovers.
-- [ ] No migration, fallback, decoder, transcode, runtime codec probing, or schema/codegen change is added.
-- [ ] Focused tests, full macOS tests, iPad build, SwiftLint, and diff checks pass.
-- [ ] Fresh server BGM is audible on macOS; iPad simulator initializes the `.m4a` path without `bgmLoadingError`.
+Verified 2026-09-07 (verification record: PR #62 comment 5578859690).
+
+- [x] Complete published catalog has zero BGM-bearing rows missing `bgm.m4a` before client work starts. (319 published / 314 BGM-bearing / 314 with `bgm.m4a` / 0 missing.)
+- [x] Representative real `bgm.m4a` bytes pass `afinfo` and `AVAudioPlayer` before client work starts. (Ids 392, 391, 369, 368 — all AAC-in-M4A, `prepareToPlay()` true.)
+- [x] One shared `SimfileMapper.bgmFilename` contract drives remote naming and local extension.
+- [x] Mapper warns when a `bgm.*` key exists but `bgm.m4a` is absent; coexistence with `bgm.m4a` is allowed and silent.
+- [x] Catalog refresh coverage proves a current M4A DTO maps to `hasBGM == true`.
+- [x] File manager saves BGM as `.m4a`; unused `deleteFiles(forSongId:)` is removed.
+- [x] Downloader and gameplay production logic remain unchanged.
+- [x] Active integration spec uses `.m4a` and exact `lastPathComponent` matching.
+- [x] Current server/GraphQL fixtures use `.m4a`; broad `.ogg` audit classifies all intentional leftovers.
+- [x] No migration, fallback, decoder, transcode, runtime codec probing, or schema/codegen change is added.
+- [x] Focused tests, full macOS tests, iPad build, SwiftLint, and diff checks pass. (1866/1866 macOS tests; iPad Pro 11-inch (M5) build; 0 serious lint findings; `git diff --check` clean.)
+- [x] iPad simulator initializes the `.m4a` path without `bgmLoadingError` (simfile 67 "Nosferatu" — persisted `BGM/67.m4a`, gameplay mounted with no BGM failure alert). macOS audible smoke waived by maintainer: the byte-level `AVAudioPlayer` gates plus the simulator initialization check cover this pre-release filename-contract change.
+
+## Verification outcome notes (2026-09-07)
+
+- Backend follow-up (outside Virgo): 7 published simfiles (ids 79, 71, 126, 154, 235, 238, 259) advertise chart entries whose `.dtx` objects are missing from R2. Their non-null `fileSizeBytes` resolver throws "DTX chart file not found in R2", null-propagating the whole GraphQL response — catalog refresh fails against the real endpoint on any Virgo build, including `main`. The catalog leg of the iPad smoke ran through a local forwarder that skipped those 7 rows; R2 audio downloads hit the real bucket. Fix on the DTXWeb side by re-uploading the chart files or unpublishing those chart rows.
+- iPad smoke downloads across iterations (263, 316, 48, 67) all persisted `.m4a`.
