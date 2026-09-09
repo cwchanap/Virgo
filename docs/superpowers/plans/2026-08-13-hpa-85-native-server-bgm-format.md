@@ -405,9 +405,9 @@ Using a representative server object already validated by the preflight:
 3. download/import;
 4. confirm persisted path ends in `.m4a`;
 5. open gameplay and confirm no `bgmLoadingError`;
-6. start playback and confirm BGM is audible and synchronized through existing controls.
+6. ~~start playback and confirm BGM is audible and synchronized through existing controls.~~ — waived by maintainer for this pre-release filename-contract change; byte-level `afinfo` + `AVAudioPlayer` gates plus the iPad simulator initialization check (Step 6) cover a filename-only cutover on a natively supported codec.
 
-Record the simfile id/title in the implementation PR.
+Record the simfile id/title in the implementation PR. (Recorded: simfile 67 "Nosferatu" — persisted `BGM/67.m4a`, gameplay mounted with no BGM failure alert, per the iPad simulator check.)
 
 ### Step 6: iPad simulator check
 
@@ -417,7 +417,7 @@ On an iPad simulator:
 2. exercise the fresh/current BGM path far enough to confirm the persisted BGM path ends in `.m4a`;
 3. confirm gameplay initializes without `bgmLoadingError`.
 
-Do not gate HPA-85 on actual-device audibility. The iPad build + simulator initialization check is sufficient for this pre-release filename-contract change; macOS remains the audible smoke.
+Do not gate HPA-85 on actual-device audibility or audible-playback smoke. The iPad build + simulator initialization check plus the byte-level `afinfo` + `AVAudioPlayer` preflight are sufficient for this pre-release filename-contract change; the maintainer waives the macOS audible smoke (Step 5 item 6).
 
 ### Step 7: Review final scope
 

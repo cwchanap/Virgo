@@ -172,10 +172,10 @@ Use unit tests for the filename contract and one real smoke for playback:
 - file manager: saves current bytes to `.m4a`; dead song-id deletion API removed;
 - GraphQL fixtures: representative current keys use `.m4a`;
 - broad `.ogg` audit classifies every remaining source/test occurrence;
-- macOS: one fresh server download is audible in gameplay;
+- macOS: a fresh server download initializes through `AVAudioPlayer` (`prepareToPlay()`) and gameplay mounts it without `bgmLoadingError`. The audible-playback smoke (start playback and confirm BGM is audible/synchronized through the gameplay controls) is waived by the maintainer for this pre-release filename-contract change — byte-level `afinfo` + `AVAudioPlayer` gates plus the iPad simulator initialization check cover a filename-only cutover on a natively supported codec (AAC-in-M4A).
 - iPadOS: build succeeds and an iPad simulator launch confirms the fresh path ends in `.m4a` and no `bgmLoadingError` is produced.
 
-No actual-device audibility gate and no network-dependent CI test are required for this pre-release filename cutover.
+No actual-device audibility gate, no audible-playback smoke, and no network-dependent CI test are required for this pre-release filename cutover.
 
 ## Risks
 
