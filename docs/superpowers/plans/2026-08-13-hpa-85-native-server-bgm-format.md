@@ -398,16 +398,18 @@ Also confirm no production code introduces migration/fallback/transcode concepts
 
 ### Step 5: Fresh-download smoke on macOS
 
-Using a representative server object already validated by the preflight:
+Waived in full by the maintainer for this pre-release filename-contract change. The end-to-end fresh-download + gameplay-mount path is exercised on the iPad simulator instead (Step 6), and byte-level playability is verified on macOS through the `afinfo` + `AVAudioPlayer.prepareToPlay()` preflight (representative `bgm.m4a` objects fetched from R2). A filename-only cutover on a natively supported codec (AAC-in-M4A) does not require a separate macOS gameplay-mount pass beyond those two gates.
 
-1. refresh catalog;
-2. confirm the row reports BGM available;
-3. download/import;
-4. confirm persisted path ends in `.m4a`;
-5. open gameplay and confirm no `bgmLoadingError`;
-6. ~~start playback and confirm BGM is audible and synchronized through existing controls.~~ — waived by maintainer for this pre-release filename-contract change; byte-level `afinfo` + `AVAudioPlayer` gates plus the iPad simulator initialization check (Step 6) cover a filename-only cutover on a natively supported codec.
+The original items, now all waived/replaced:
 
-Record the simfile id/title in the implementation PR. (Recorded: simfile 67 "Nosferatu" — persisted `BGM/67.m4a`, gameplay mounted with no BGM failure alert, per the iPad simulator check.)
+1. refresh catalog — covered by Step 6 on iPad;
+2. confirm the row reports BGM available — covered by Step 6 on iPad;
+3. download/import — covered by Step 6 on iPad;
+4. confirm persisted path ends in `.m4a` — covered by Step 6 on iPad;
+5. open gameplay and confirm no `bgmLoadingError` — covered by Step 6 on iPad;
+6. start playback and confirm BGM is audible and synchronized through existing controls — not exercised on any platform (no actual-device audibility gate).
+
+Record the substituting evidence in the implementation PR. (Recorded: simfile 67 "Nosferatu" — iPad simulator, persisted `BGM/67.m4a`, gameplay mounted with no BGM failure alert; macOS byte-level preflight on ids 392, 391, 369, 368 — all AAC-in-M4A, `prepareToPlay()` true.)
 
 ### Step 6: iPad simulator check
 
@@ -417,7 +419,7 @@ On an iPad simulator:
 2. exercise the fresh/current BGM path far enough to confirm the persisted BGM path ends in `.m4a`;
 3. confirm gameplay initializes without `bgmLoadingError`.
 
-Do not gate HPA-85 on actual-device audibility or audible-playback smoke. The iPad build + simulator initialization check plus the byte-level `afinfo` + `AVAudioPlayer` preflight are sufficient for this pre-release filename-contract change; the maintainer waives the macOS audible smoke (Step 5 item 6).
+Do not gate HPA-85 on actual-device audibility or audible-playback smoke. The iPad build + simulator initialization check plus the byte-level `afinfo` + `AVAudioPlayer` preflight are sufficient for this pre-release filename-contract change; the maintainer waives the full macOS fresh-download smoke (Step 5), not just its audibility item.
 
 ### Step 7: Review final scope
 
@@ -460,7 +462,7 @@ Verified 2026-09-07 (verification record: PR #62 comment 5578859690).
 - [x] Current server/GraphQL fixtures use `.m4a`; broad `.ogg` audit classifies all intentional leftovers.
 - [x] No migration, fallback, decoder, transcode, runtime codec probing, or schema/codegen change is added.
 - [x] Focused tests, full macOS tests, iPad build, SwiftLint, and diff checks pass. (1866/1866 macOS tests; iPad Pro 11-inch (M5) build; 0 serious lint findings; `git diff --check` clean.)
-- [x] iPad simulator initializes the `.m4a` path without `bgmLoadingError` (simfile 67 "Nosferatu" — persisted `BGM/67.m4a`, gameplay mounted with no BGM failure alert). macOS audible smoke waived by maintainer: the byte-level `AVAudioPlayer` gates plus the simulator initialization check cover this pre-release filename-contract change.
+- [x] iPad simulator initializes the `.m4a` path without `bgmLoadingError` (simfile 67 "Nosferatu" — persisted `BGM/67.m4a`, gameplay mounted with no BGM failure alert). The full macOS fresh-download smoke (Step 5) is waived by the maintainer: the byte-level `afinfo` + `AVAudioPlayer` preflight (macOS) plus the iPad simulator initialization check cover this pre-release filename-contract change.
 
 ## Verification outcome notes (2026-09-07)
 
