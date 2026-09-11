@@ -415,7 +415,7 @@ Add a small macOS-only `RenderRasterProbe` helper that writes a rendered SwiftUI
 - one partially beamed hook;
 - open hi-hat articulation.
 
-Write it under `FileManager.default.temporaryDirectory` (for example `hpa-163-bravura-preview.png`), inspect it, and record the preview path/result in the PR verification notes. Do not commit image goldens.
+Write it below `FileManager.default.temporaryDirectory` as `hpa-163-bravura-preview.png`, log the exact absolute path from the test, inspect that logged file, and record the visual result in the PR verification notes. Do not commit image goldens.
 
 Only after this visual gate passes may text goldens be regenerated.
 
@@ -555,7 +555,8 @@ HPA-163 is complete only when the same PR proves:
 10. `DrumNoteheadGlyph` and handwritten primitive geometry are removed; settings symbols remain app-owned and normalized.
 11. Absolute ticks, measure/row, note X, beam topology membership/level/kind, hook segment count and playhead routing remain unchanged.
 12. `.swiftlint.yml` includes `Packages`; package tests, full serial macOS tests, iPad build, SwiftLint and `git diff --check` pass locally.
-13. The PR is marked ready and the existing GitHub Actions checks pass before completion.
+13. The representative temp PNG is inspected before golden regeneration, with its logged path/result recorded in PR verification notes.
+14. The PR is marked ready and the existing GitHub Actions checks pass before completion.
 
 ## Follow-up boundary
 
