@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		2459AB302FE387E8000C5CDF /* Apollo in Frameworks */ = {isa = PBXBuildFile; productRef = A90110000000000000000002 /* Apollo */; };
 		2459AB312FE387E8000C5CDF /* ApolloAPI in Frameworks */ = {isa = PBXBuildFile; productRef = A90110000000000000000003 /* ApolloAPI */; };
+		2459AB322FE387E8000C5CDF /* DrumNotation in Frameworks */ = {isa = PBXBuildFile; productRef = A90110000000000000000005 /* DrumNotation */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -72,6 +73,7 @@
 			files = (
 				2459AB312FE387E8000C5CDF /* ApolloAPI in Frameworks */,
 				2459AB302FE387E8000C5CDF /* Apollo in Frameworks */,
+				2459AB322FE387E8000C5CDF /* DrumNotation in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -142,6 +144,7 @@
 			packageProductDependencies = (
 				A90110000000000000000002 /* Apollo */,
 				A90110000000000000000003 /* ApolloAPI */,
+				A90110000000000000000005 /* DrumNotation */,
 			);
 			productName = Virgo;
 			productReference = 24829CE72E1217CA00F99FD7 /* Virgo.app */;
@@ -226,6 +229,7 @@
 			mainGroup = 24829CDE2E1217CA00F99FD7;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				A90110000000000000000004 /* XCLocalSwiftPackageReference "DrumNotation" */,
 				A90110000000000000000001 /* XCRemoteSwiftPackageReference "apollo-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -613,6 +617,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		A90110000000000000000004 /* XCLocalSwiftPackageReference "DrumNotation" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/DrumNotation;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A90110000000000000000001 /* XCRemoteSwiftPackageReference "apollo-ios" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -634,6 +645,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A90110000000000000000001 /* XCRemoteSwiftPackageReference "apollo-ios" */;
 			productName = ApolloAPI;
+		};
+		A90110000000000000000005 /* DrumNotation */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DrumNotation;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

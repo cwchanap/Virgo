@@ -71,6 +71,9 @@ jobs:
           R2_BASE_URL: ${{ vars.R2_BASE_URL }}
         run: bash .github/scripts/generate-endpoints-env.sh
 
+      - name: Run DrumNotation package tests
+        run: swift test --package-path Packages/DrumNotation
+
       - name: Run unit tests
         run: |
           set -o pipefail
