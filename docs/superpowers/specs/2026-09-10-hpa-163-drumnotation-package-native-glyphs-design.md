@@ -2,23 +2,23 @@
 
 **Issue:** HPA-163 — `[Notation] Create reusable DrumNotation package with VexFlow references and native glyphs`
 
-**Scope:** First PR in the HPA-163 → HPA-164 → HPA-166 migration. Establish a reusable primitive-rendering package and correct primitive geometry without changing horizontal formatting or beam topology.
+**Scope:** First PR in the HPA-163 → HPA-164 → HPA-166 migration. Establish the local package, correct Bravura primitive geometry, and cut Virgo over to it without changing horizontal formatting or beam topology.
 
 **Baseline reviewed:** `main` at `3f0a665a02f37256c17f1d2779bb0db630c9c907`.
 
 ## Current state
 
-Virgo's normalized rhythm/layout pipeline is already reusable enough for this stage, but primitive engraving remains app-owned:
+Virgo already has a usable rhythm/layout separation, but visible percussion engraving is still app-owned:
 
-- `DrumNoteheadGlyph` defines handwritten notehead paths and approximate anchors.
-- `RenderedNoteHead` carries that glyph enum through layout.
+- `DrumNoteheadGlyph` carries nine handwritten notehead shapes plus custom bounds/anchor math.
+- `RenderedNoteHead` carries that app glyph enum through layout.
 - `NotationPrimitiveViews.swift` hand-draws noteheads, rests, flags and the open-hi-hat circle.
-- `NotationLayoutEngine+Beams.swift` uses app glyph geometry for stems and ledger lines.
-- `NotationRhythmRendering.swift` still computes painted bounds from those handwritten frames, including an 8×8 flag rectangle.
-- `DrumTabRenderProbeTests.notationOverlay` reconstructs the primitive stack separately from production.
-- `AppFonts` is process-global app font registration and must not own package resources.
+- `NotationLayoutEngine+Beams.swift` consumes the handwritten head bounds/anchors for stems, beams and ledger lines.
+- `NotationRhythmRendering.swift` computes painted bounds from the same handwritten frames, including an 8×8 flag rectangle.
+- `DrumTabRenderProbeTests.notationOverlay` reconstructs a subset of production layers separately.
+- `AppFonts` scans app `.ttf` resources and is not an appropriate owner for package-local Bravura `.otf` resources.
 
-HPA-163 replaces those primitive-specific responsibilities only. DTX identity, rhythm inference, fixed X positions, rows, beam grouping/topology and playhead routing stay unchanged.
+HPA-163 replaces those primitive-specific responsibilities only. DTX identity, rhythm inference, fixed X positions, rows, beam grouping/topology and playhead routing stay in Virgo.
 
 ## Decision
 
@@ -26,8 +26,8 @@ Create one local Swift package at `Packages/DrumNotation/` with one library targ
 
 `DrumNotation` owns:
 
-- the closed percussion SMuFL vocabulary needed by Virgo;
-- Bravura resources/metadata;
+- the closed percussion SMuFL vocabulary Virgo needs;
+- Bravura font/metadata/license resources;
 - font-derived primitive paths, painted bounds and attachment geometry;
 - native SwiftUI primitive views.
 
@@ -56,14 +56,14 @@ No WebView, shipping JavaScript, renderer protocol, fallback renderer, publicati
 
 ## Reference version policy
 
-Pin the semantic reference without building unused tooling:
+Pin the semantic reference without carrying unused tooling:
 
 - **VexFlow 5.0.0** is the documented migration reference.
 - **`@vexflow-fonts/bravura` 1.0.2 / Bravura 1.392** is the matching font lineage.
 - Vendor `bravura.otf`, `metadata.json` and `LICENSE.txt` from `vexflow/vexflow-fonts` commit `b2bc3a6070225e4d395966b36de76c36a9429b1c`.
 - Record those versions/source identifiers and the closed glyph table in `Packages/DrumNotation/README.md`.
 
-Do **not** create `Tools/vexflow`, jsdom, a lockfile or generated reference JSON in HPA-163. The previous plan generated data no Swift test consumed. If executable VexFlow comparison is needed for mixed beams/modifiers, HPA-166 owns the minimal harness because that is where parity becomes an acceptance criterion.
+Do **not** create `Tools/vexflow`, jsdom, a lockfile or generated reference JSON in HPA-163. The previous plan generated data no Swift test consumed. If executable VexFlow comparison becomes useful for mixed beams/modifiers, HPA-166 owns the smallest harness whose output its parity tests actually consume.
 
 ## Package shape
 
@@ -83,15 +83,40 @@ Packages/DrumNotation/
 └── Tests/DrumNotationTests/
     ├── PackageBoundaryTests.swift
     ├── GlyphCatalogTests.swift
-    ├── BravuraGeometryTests.swift
-    └── PrimitiveViewTests.swift
+    └── BravuraGeometryTests.swift
 ```
 
-Models/Glyphs/Rendering are folders, not separate modules.
+Models/Glyphs/Rendering are folders, not separate modules. HPA-163 does not add another product or target.
+
+## Staff-space scaling is the only primitive sizing model
+
+Do not fit SMuFL glyphs into Virgo's legacy hand-drawn frames. Those frames were authored for custom paths and distort duration-specific Bravura glyphs — especially whole noteheads and rests.
+
+Every package geometry/rendering entry point takes one engraving scale:
+
+```swift
+staffSpace: CGFloat
+```
+
+For Virgo HPA-163 callers:
+
+```swift
+staffSpace = style.staffLineSpacing
+```
+
+The legacy `NotationLayoutStyle.noteHeadSize`, `restSymbolWidth/Height`, `fullMeasureRestWidth/Height`, `articulationDiameter`, `GameplayLayout.flagWidth/Height` remain only where still required by the pre-HPA-164 app layout contract. They are **not** glyph sizing inputs.
+
+For a Bravura font whose `unitsPerEm` is `U`, one SMuFL staff space is `U / 4` font units, so every glyph uses the same scale:
+
+```swift
+let scale = staffSpace / (CGFloat(unitsPerEm) / 4)
+```
+
+No per-glyph `min(box.width / width, box.height / height)` fit exists.
 
 ## Public primitive API
 
-Expose only semantic values and fitted metrics:
+Expose semantic values and natural staff-scaled metrics only:
 
 ```swift
 public enum NotationDuration: String, CaseIterable, Sendable {
@@ -129,40 +154,34 @@ public enum PercussionGlyphMetrics {
         style: PercussionNoteheadStyle,
         duration: NotationDuration,
         stemDirection: NotationStemDirection,
-        size: CGSize
+        staffSpace: CGFloat
     ) -> NoteheadMetrics
 
     public static func rest(
         duration: NotationDuration,
-        size: CGSize
+        staffSpace: CGFloat
     ) -> PrimitiveGlyphMetrics
 
     public static func flag(
         duration: NotationDuration,
         direction: NotationStemDirection,
-        size: CGSize
+        staffSpace: CGFloat
     ) -> FlagGlyphMetrics
 
     public static func articulation(
         _ articulation: PercussionArticulation,
-        size: CGSize
-    ) -> PrimitiveGlyphMetrics
-
-    public static func naturalFlagSize(
-        duration: NotationDuration,
-        direction: NotationStemDirection,
         staffSpace: CGFloat
-    ) -> CGSize
+    ) -> PrimitiveGlyphMetrics
 }
 ```
 
-Public SwiftUI primitives mirror those semantic inputs and explicit sizes:
+Public SwiftUI primitives use the same scale, so paint and metrics cannot diverge through a second sizing path:
 
 ```swift
-PercussionNoteheadView(style:duration:size:color:)
-NotationRestGlyphView(duration:size:color:)
-NotationFlagGlyphView(duration:direction:size:color:)
-PercussionArticulationView(articulation:size:color:)
+PercussionNoteheadView(style:duration:staffSpace:color:)
+NotationRestGlyphView(duration:staffSpace:color:)
+NotationFlagGlyphView(duration:direction:staffSpace:color:)
+PercussionArticulationView(articulation:staffSpace:color:)
 ```
 
 Raw SMuFL scalars, font handles, decoded metadata and arbitrary glyph lookup stay internal.
@@ -177,18 +196,20 @@ Raw SMuFL scalars, font handles, decoded metadata and arbitrary glyph lookup sta
 
 Open hi-hat uses the X-family head plus `pictOpen` (`U+E7F8`) at Virgo's existing articulation position. Pedal hi-hat remains distinct through semantic identity, lower voice and staff position.
 
+The old half-circle/bullseye/open-circle shapes do not encode unique musical identities that would be lost: crash/china/splash already share the same app glyph and position today, while kick/snare/toms/hats/ride retain their instrument identity and staff positions after the visual family is normalized. Do not restore the legacy shapes later as a compatibility requirement.
+
 The internal catalog contains only those heads, rests through 64th, flags through 64th in both directions and `pictOpen`.
 
 ## Bravura geometry transform
 
 `BravuraFont.swift` loads package resources only through `Bundle.module` and keeps font/path state private.
 
-For every glyph:
+For every accepted glyph:
 
 1. resolve the SMuFL scalar to a Bravura glyph;
 2. obtain the raw font-authored path and raw bounds;
-3. fit uniformly to the requested local box;
-4. translate the raw bounds center to local `(0, 0)` and flip Y for SwiftUI;
+3. scale by the single staff-space factor above;
+4. translate the scaled raw bounds center to local `(0, 0)` and flip Y for SwiftUI;
 5. apply the **same full affine transform** to every semantic attachment point.
 
 For raw bounds `B` and scale `s`:
@@ -204,29 +225,29 @@ CGAffineTransform(
 )
 ```
 
+The resulting `paintedBounds` is the transformed path's natural bounds; no caller-supplied frame truncates it.
+
 ### Notehead anchors
 
-SMuFL `stemUpSE` / `stemDownNW` coordinates are relative to the glyph origin in staff spaces. Convert them into the same font-coordinate system (`unitsPerEm / 4` per staff space), then apply the exact path transform above, including the centering translation.
+SMuFL `stemUpSE` / `stemDownNW` coordinates are relative to the glyph origin in staff spaces. Convert them into font units (`unitsPerEm / 4` per staff space), then apply the exact path transform above, including centering translation.
 
-A scale/Y-flip-only anchor transform is incorrect because it ignores the raw path's position relative to the glyph origin.
+`BravuraGeometryTests` independently recompute the transformed anchor and assert equality within 0.001. They also assert the anchor lies in a narrow stroked edge band around the transformed outline; widen the band only for a documented Bravura anchor offset smaller than the stem thickness.
 
-`BravuraGeometryTests` must independently recompute the expected transformed anchor and compare with `NoteheadMetrics.stemAnchorOffset`. It must also assert the transformed anchor lies in a narrow stroked edge band around the transformed outline, with a fixture-specific epsilon only if Bravura intentionally offsets the anchor by stem thickness.
+Missing package resources, accepted glyphs or required notehead anchors are programmer/package errors. Fail loudly with a precondition; do not draw blank fallback glyphs.
 
 ### Flag attachment
 
-Current `RenderedFlag.origin` is a stem attachment point, not a SwiftUI view center. `FlagGlyphMetrics.attachmentOffset` is the transformed Bravura glyph origin relative to the centered package view. Virgo therefore places the view center at:
+Current `RenderedFlag.origin` is a stem attachment point, not a view center. `FlagGlyphMetrics.attachmentOffset` is the transformed Bravura attachment/origin relative to the centered package view. Virgo places one flag view at:
 
 ```text
-RenderedFlag.origin - attachmentOffset
+center = RenderedFlag.origin - attachmentOffset
 ```
 
-and translates the same local `paintedBounds` by that center. This keeps flag paint and layout bounds on one geometry contract.
+and translates the same local `paintedBounds` by that center. Paint and layout bounds therefore use one geometry contract.
 
-Missing package resources, accepted glyphs or required notehead anchors are programmer/package errors. Fail loudly with a precondition; do not render blank fallback glyphs.
+## Virgo adapter
 
-## Virgo adapter and size policy
-
-Place the single app projection seam at `Virgo/layout/VirgoNotationAdapter.swift`, beside `RhythmLayoutSnapshotBuilder` and the other layout contracts.
+Place the single app projection seam at `Virgo/layout/VirgoNotationAdapter.swift`, beside `RhythmLayoutSnapshotBuilder` and other layout contracts.
 
 It owns exhaustive pure mapping:
 
@@ -238,13 +259,13 @@ It owns exhaustive pure mapping:
 - `.indeterminate` → `nil` / no paint;
 - `RenderedArticulationKind.openHiHat` → `.open`.
 
-It also owns Virgo's size policy:
+For every primitive call it passes only:
 
-- notehead box = existing `style.noteHeadSize`;
-- full-measure/half rest box = existing `fullMeasureRestWidth × fullMeasureRestHeight`;
-- other rest box = existing `restSymbolWidth × restSymbolHeight`;
-- open articulation box = existing `articulationDiameter × articulationDiameter`;
-- flag box = `naturalFlagSize(..., staffSpace: style.staffLineSpacing)`, preserving the Bravura flag aspect instead of the old 8×8 frame.
+```swift
+staffSpace: style.staffLineSpacing
+```
+
+There is no separate notehead/rest/flag/articulation size policy in HPA-163.
 
 The package never accepts Virgo types or theme values.
 
@@ -260,7 +281,7 @@ struct FlagPaintCommand: Identifiable, Equatable {
     let center: CGPoint
     let duration: NotationDuration
     let direction: NotationStemDirection
-    let size: CGSize
+    let staffSpace: CGFloat
     let paintedBounds: CGRect
 }
 ```
@@ -278,21 +299,62 @@ static func flagPaintCommands(
 Policy per head:
 
 - expected uncovered levels = `0..<head.interval.flagCount`;
-- when actual uncovered levels exactly equal the expected set, emit one command from level 0 using the head's canonical duration-specific Bravura flag and suppress sibling level commands;
+- when actual uncovered levels exactly equal that expected set, emit one command from level 0 using the head's canonical duration-specific Bravura flag and suppress sibling level commands;
 - otherwise emit one `.eighth` command per existing uncovered `RenderedFlag`, preserving each origin;
 - preserve deterministic original `layout.flags` ordering.
 
-Each command obtains package `FlagGlyphMetrics`, computes `center = origin - attachmentOffset`, and stores the translated package `paintedBounds`.
+Each command obtains package `FlagGlyphMetrics(staffSpace:)`, computes `center = origin - attachmentOffset`, and stores the translated package `paintedBounds`.
 
 Both `GameplayDrumNotationView` and `DrumTabRenderProbeTests.notationOverlay` consume this same command list. `NotationFlagView` paints one command and never searches sibling flags itself.
 
+## Natural flags require a bounded stem-length adaptation
+
+HPA-163 adopts natural Bravura flag size, so isolated 32nd/64th flags can no longer rely on the old 8×8 handwritten hook. Do not knowingly ship flag/head overlap as an intermediate state.
+
+Only **unbeamed flagged stems** receive a minimum length adaptation. Beam topology, beam-attached stem selection and `buildFlags` remain unchanged.
+
+For a canonical flag's local `FlagGlyphMetrics`, convert its painted bounds into coordinates relative to the attachment point:
+
+```swift
+let relativeBounds = metrics.paintedBounds.offsetBy(
+    dx: -metrics.attachmentOffset.x,
+    dy: -metrics.attachmentOffset.y
+)
+```
+
+The flag extent back toward the notehead is:
+
+```swift
+switch direction {
+case .up:
+    inwardExtent = max(0, relativeBounds.maxY)
+case .down:
+    inwardExtent = max(0, -relativeBounds.minY)
+}
+```
+
+Virgo's effective stem length for an unbeamed flagged head is:
+
+```swift
+max(
+    style.stemLength,
+    inwardExtent + style.minimumStemExtensionPastChord
+)
+```
+
+For a stem group, use the maximum required length among its flagged members. `unbeamedStemEndY` uses this effective length in place of the fixed 75pt minimum while retaining the existing chord-clearance calculation.
+
+Partially beamed uncovered levels still paint one natural eighth-hook component from the beam-attached stem. The visual/raster gate below must cover at least one partially beamed example.
+
+This is a geometry adaptation caused directly by the primitive cutover, not a beam-topology rewrite. HPA-166 still owns final stem/beam/modifier parity.
+
 ## Painted-bounds cutover
 
-Paint and layout bounds must use the same package metrics:
+Paint and layout bounds must use the same staff-scaled package metrics:
 
 - `RenderedNoteHead.paintedBounds` translates the same `NoteheadMetrics.paintedBounds` used by stem/ledger geometry;
-- `RenderedRest.paintedBounds` uses `restDuration(for:)`, Virgo's explicit rest box and package rest metrics;
-- `RenderedArticulation.paintedBounds` uses Virgo's articulation box and package metrics;
+- `RenderedRest.paintedBounds` uses `restDuration(for:)` and package rest metrics;
+- `RenderedArticulation.paintedBounds` uses package articulation metrics;
 - `NotationLayout.calculatePaintedBounds` unions `FlagPaintCommand.paintedBounds` instead of the old per-`RenderedFlag` 8×8 rectangle.
 
 Delete `RenderedFlag.paintedBounds` if no caller remains.
@@ -328,26 +390,55 @@ This text icon is not part of score engraving.
 
 Stems, beams, ledger lines, bars, dots, tuplets, feel marks, warnings and stop marks remain Virgo-owned in HPA-163.
 
-## Regression coverage
+## Visual and raster verification
+
+Text goldens alone are not sufficient because this PR intentionally changes the geometry they serialize.
+
+### Automated paint/bounds contract
+
+Extend the existing macOS raster-test support so each migrated primitive is rendered in isolation at a known position. For representative cases including a whole notehead, whole rest, quarter rest, 64th flag and open articulation:
+
+- assert at least one non-transparent pixel occurs inside the reported translated `paintedBounds`;
+- assert no non-transparent pixel occurs outside `paintedBounds` expanded by a 1pt antialiasing tolerance;
+- use the production wrapper/package view, not an alternate test renderer.
+
+This replaces a tautological `@testable` assertion that merely asks the view and metrics function for the same geometry.
+
+### Human visual gate before golden regeneration
+
+Add a small macOS-only `RenderRasterProbe` helper that writes a rendered SwiftUI fixture row as PNG. Before updating goldens, render a representative row containing:
+
+- whole/quarter normal heads;
+- X and diamond heads;
+- whole/quarter/16th rests;
+- isolated 8th and 64th flags;
+- one partially beamed hook;
+- open hi-hat articulation.
+
+Write it under `FileManager.default.temporaryDirectory` (for example `hpa-163-bravura-preview.png`), inspect it, and record the preview path/result in the PR verification notes. Do not commit image goldens.
+
+Only after this visual gate passes may text goldens be regenerated.
+
+## Regression coverage and topology gate
 
 Package tests own:
 
 - exact semantic → SMuFL scalar mapping;
 - bundled Bravura resolution;
-- raw path → fitted path transform;
+- staff-space scaling of raw paths;
 - notehead anchor transform and path-edge relationship;
-- flag attachment-offset transform;
-- rest/flag/articulation fitted bounds;
-- package primitive construction.
+- flag attachment transform;
+- rest/flag/articulation natural painted bounds.
 
 Virgo tests own:
 
 - DTX/catalog semantics and variants;
 - exhaustive adapter mapping, including `NotationRestDuration`;
 - flag collapse/partial coverage as pure `FlagPaintCommand` data;
+- effective isolated-flag stem length;
 - stem/ledger use of package notehead metrics;
 - package-derived painted bounds;
-- production and probe consumption of the same flag commands;
+- production/probe consumption of the same flag commands;
 - fixed-grid, beam-membership and playhead invariants.
 
 Explicit compile/behavior edits:
@@ -358,11 +449,29 @@ Explicit compile/behavior edits:
 - `NotationRhythmRendering.swift`: replace old head/rest/flag/articulation bounds;
 - all `RenderedNoteHead` builders/tests: remove `glyph` arguments.
 
-Golden drift may include style identity, corrected stem/beam/flag-origin metrics and painted/content bounds. Reject changes to absolute tick, measure/row, note X, beam membership/topology or playhead routing.
+### Hook segments must not disappear silently
 
-## CI and verification
+Anchor X changes affect rendered hook length even though topology membership is built separately. Add a focused test around `BeamBuildResult` for fixtures containing forward/backward hooks:
 
-Add one existing-workflow step:
+- count hook `BeamTopologySegment`s by primary group/level/kind;
+- count rendered hook `RenderedBeam`s by the same group/level/kind contract;
+- assert every topology hook produces one non-zero rendered hook.
+
+If this assertion fails after the anchor cutover, stop before regenerating goldens. Do not bless the disappearance as generic metric drift and do not change topology in HPA-163. Resolve the rendering geometry while preserving the existing topology segment.
+
+Golden drift may include derived style identity, corrected stem/beam/flag coordinates and painted/content bounds. Reject changes to absolute tick, measure/row, note X, topology membership, beam level/kind, hook segment count or playhead routing.
+
+## SwiftLint and CI
+
+Update `.swiftlint.yml` so `included:` also contains:
+
+```yaml
+  - Packages
+```
+
+The package follows the same line/function/type/file-size rules as app code.
+
+Add one package-test step to the existing CI test job:
 
 ```bash
 swift test --package-path Packages/DrumNotation
@@ -370,7 +479,53 @@ swift test --package-path Packages/DrumNotation
 
 Keep existing serial Virgo tests and iPad simulator build. Do not add another workflow.
 
-Multiple `-only-testing:` arguments are valid xcodebuild constraints and may be used together; do not replace them because of a false last-selector-only assumption.
+The current CI job skips draft PRs. Therefore:
+
+1. while PR #65 remains draft, all implementation verification is local;
+2. after local package/full-macOS/iPad/lint/golden verification passes, mark the same PR ready for review;
+3. require the existing GitHub Actions checks, including the new package-test step, to pass before HPA-163 is considered complete.
+
+## Golden regeneration contract
+
+When intentional Bravura geometry changes require golden updates, use the repository's actual environment-forwarding contract:
+
+```bash
+TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1 xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  -only-testing:VirgoTests/DrumTabGoldenTests \
+  -parallel-testing-enabled NO \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300
+```
+
+That regeneration run is expected to **fail after writing** so CI cannot self-approve changed goldens. Review every `VirgoTests/Goldens/*.txt` diff, then rerun the same suite without `TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1` and require it to pass.
+
+Do not use bare `VIRGO_UPDATE_GOLDENS=1` with `xcodebuild`; that variable is only suitable for an Xcode scheme test-action environment.
+
+## Risks and explicit decisions
+
+### Staff-space scale replaces legacy frame scale
+
+Risk: natural Bravura bounds are wider/taller than old hand-drawn frames, so painted/content bounds and stem/ledger attachment coordinates will move.
+
+Decision: this is intentional. Preserve musical positions/ticks and fixed note X, not the old glyph dimensions. The visual/raster gate must pass before updating text goldens.
+
+### Natural flags can require longer isolated stems
+
+Risk: natural 32nd/64th flags are much taller than the old 8×8 hook.
+
+Decision: extend only unbeamed flagged stems enough to keep the natural flag clear of the head/chord using the formula above. Do not shrink flags back into the legacy frame and do not rewrite beam topology.
+
+### Anchor X changes can affect hook rendering
+
+Risk: a correct new stem anchor can make the old hook endpoint computation degenerate even though topology still requests a hook.
+
+Decision: topology hook count is invariant in HPA-163. A missing rendered hook is a blocking geometry bug, not an acceptable golden drift.
 
 ## Non-goals
 
@@ -392,19 +547,19 @@ HPA-163 is complete only when the same PR proves:
 2. Virgo links the package on macOS/iPadOS with `TARGETED_DEVICE_FAMILY = 2` unchanged.
 3. Bravura 1.392 OTF/metadata/license are package-owned from the pinned VexFlow font source.
 4. Package public APIs contain only package/Apple-framework types.
-5. README pins VexFlow 5.0.0, Bravura lineage and the closed glyph table; no Node/jsdom toolchain exists in this PR.
-6. Notehead tests prove the complete translate + scale + Y-flip anchor transform and outline-edge relationship.
-7. Flag metrics preserve the stem attachment origin and natural Bravura aspect.
-8. Noteheads, rests, open articulation and flags paint from Bravura/SMuFL.
-9. Stems, ledger lines and painted bounds use the same package metrics as paint.
-10. `FlagPaintCommand` is the only collapse/partial-flag policy consumed by production and the raster probe.
-11. `DrumNoteheadGlyph` and its render plumbing/tests are removed; settings symbols remain app-owned.
-12. DTX identity, voice/staff placement, normalized timing, note X, beam membership/topology and playhead routing remain unchanged.
-13. Package tests, affected notation tests, full serial macOS Virgo tests, SwiftLint and the iPad simulator build pass.
+5. All primitive geometry is scaled by one `staffSpace`, not fitted to legacy boxes.
+6. Notehead anchors use the same transform as the painted path and satisfy edge tests.
+7. Natural isolated flags remain clear of noteheads through the bounded unbeamed-stem adaptation.
+8. Noteheads/rests/flags/open articulation paint from Bravura and their raster ink stays within reported package-derived bounds.
+9. Production and `DrumTabRenderProbeTests.notationOverlay` consume the same pure flag paint commands.
+10. `DrumNoteheadGlyph` and handwritten primitive geometry are removed; settings symbols remain app-owned and normalized.
+11. Absolute ticks, measure/row, note X, beam topology membership/level/kind, hook segment count and playhead routing remain unchanged.
+12. `.swiftlint.yml` includes `Packages`; package tests, full serial macOS tests, iPad build, SwiftLint and `git diff --check` pass locally.
+13. The PR is marked ready and the existing GitHub Actions checks pass before completion.
 
 ## Follow-up boundary
 
-- **HPA-164:** measured horizontal formatting and authoritative tick geometry.
-- **HPA-166:** final stem/beam/hook/modifier/static-sheet parity and, only if consumed by those checks, a minimal executable VexFlow comparison harness.
+- **HPA-164:** move measured horizontal formatting/shared tick geometry into `DrumNotation`; extend the adapter created here.
+- **HPA-166:** complete reusable static-sheet rendering and VexFlow-style stem/beam/modifier behavior; add executable VexFlow tooling only if parity checks consume it.
 
 Do not pull either follow-up into HPA-163.
