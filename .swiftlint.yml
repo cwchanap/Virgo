@@ -5,6 +5,7 @@ included:
   - Virgo
   - VirgoTests
   - VirgoUITests
+  - Packages
 
 # Paths to exclude during linting
 excluded:
@@ -13,6 +14,7 @@ excluded:
   - .build
   - .git
   - Virgo/GraphQL/Generated # Apollo-generated code, not hand-maintained
+  - Packages/DrumNotation/.build # SPM build directory, generated code
 
 # Disabled rules
 disabled_rules:
