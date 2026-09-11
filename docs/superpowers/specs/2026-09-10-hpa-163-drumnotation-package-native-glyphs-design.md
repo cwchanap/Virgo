@@ -402,7 +402,7 @@ Extend the existing macOS raster-test support so each migrated primitive is rend
 - assert no non-transparent pixel occurs outside `paintedBounds` expanded by a 1pt antialiasing tolerance;
 - use the production wrapper/package view, not an alternate test renderer.
 
-This replaces a tautological `@testable` assertion that merely asks the view and metrics function for the same geometry.
+This is the real paint/bounds contract. Package tests remain responsible for deterministic glyph selection and font geometry; app raster tests prove the actual SwiftUI mount paints inside the same bounds.
 
 ### Human visual gate before golden regeneration
 
@@ -428,7 +428,8 @@ Package tests own:
 - staff-space scaling of raw paths;
 - notehead anchor transform and path-edge relationship;
 - flag attachment transform;
-- rest/flag/articulation natural painted bounds.
+- rest/flag/articulation natural painted bounds;
+- public package API compilation for the four primitive SwiftUI views.
 
 Virgo tests own:
 
@@ -439,6 +440,7 @@ Virgo tests own:
 - stem/ledger use of package notehead metrics;
 - package-derived painted bounds;
 - production/probe consumption of the same flag commands;
+- real raster ink within package-derived bounds;
 - fixed-grid, beam-membership and playhead invariants.
 
 Explicit compile/behavior edits:
