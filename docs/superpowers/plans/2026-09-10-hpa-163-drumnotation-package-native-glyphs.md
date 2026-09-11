@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an independently testable local `DrumNotation` Swift package, replace Virgo's handwritten notehead/rest/flag/open-hi-hat primitives with Bravura/SMuFL rendering, and keep fixed horizontal geometry, beam topology and playhead behavior unchanged.
+**Goal:** Add one independently testable local `DrumNotation` package, replace Virgo's handwritten notehead/rest/flag/open-hi-hat primitives with staff-space-scaled Bravura/SMuFL rendering, and preserve existing fixed horizontal timing/beam topology while keeping paint and reported geometry in one contract.
 
-**Architecture:** Virgo keeps DTX/domain semantics, normalized rhythm, staff positions, fixed-grid placement, beam topology, playback and theme. `Virgo/layout/VirgoNotationAdapter.swift` is the single pure app-to-package conversion and paint-policy seam. `DrumNotation` owns the closed SMuFL catalog, pinned Bravura 1.392 resources, fitted primitive geometry, notehead anchors and native SwiftUI views. VexFlow 5.0.0 is documented as the reference; executable Node/VexFlow comparison tooling is deferred to HPA-166 unless a parity test there actually consumes it.
+**Architecture:** Virgo keeps DTX/domain semantics, normalized rhythm, staff positions, fixed-grid placement, beam topology, playback and theme. `Virgo/layout/VirgoNotationAdapter.swift` is the single pure app-to-package mapping/policy seam. `DrumNotation` owns the closed SMuFL catalog, Bravura 1.392 resources, staff-scaled primitive geometry, notehead anchors and native SwiftUI views. VexFlow 5.0.0 is documented as the semantic reference; executable Node/VexFlow tooling is deferred to HPA-166 unless a parity test there consumes it.
 
 **Tech Stack:** Swift 5, SwiftUI, CoreText/CoreGraphics, Swift Package Manager, Swift Testing, `@vexflow-fonts/bravura` 1.0.2 / Bravura 1.392, existing Xcode 26.1.1 CI.
 
@@ -17,11 +17,14 @@
 - No Node/jsdom/VexFlow tool directory in HPA-163.
 - Package code must not import or accept Virgo `NoteType`, `DrumType`, `RenderedNoteHead`, `GameplayLayout`, `Palette`, `AppFonts` or raw DTX values.
 - Keep macOS 14.0+, iOS/iPadOS 17.5+, Swift 5 and `TARGETED_DEVICE_FAMILY = 2`.
+- Scale every Bravura primitive from one `staffSpace`; never squeeze glyphs into legacy hand-drawn frames.
 - Do not change `TabGrid`, note X mapping, row packing, DTX parsing, rhythm inference, beam grouping/topology or playhead routing.
+- A bounded length increase for **unbeamed flagged stems only** is allowed so natural 32nd/64th flags do not collide with their head/chord.
 - Keep all `xcodebuild` test runs non-parallel.
 - Delete `DrumNoteheadGlyph` and handwritten notehead/rest/flag/open-articulation geometry; do not preserve source compatibility.
 - Paint and `paintedBounds` must consume the same package metrics.
 - Missing bundled font/metadata, accepted glyphs or required notehead anchors are programmer errors; fail loudly instead of drawing a fallback.
+- `.swiftlint.yml` must include `Packages` so the new module follows existing size/style rules.
 
 ---
 
@@ -41,14 +44,14 @@
 - `Packages/DrumNotation/Tests/DrumNotationTests/PackageBoundaryTests.swift`
 - `Packages/DrumNotation/Tests/DrumNotationTests/GlyphCatalogTests.swift`
 - `Packages/DrumNotation/Tests/DrumNotationTests/BravuraGeometryTests.swift`
-- `Packages/DrumNotation/Tests/DrumNotationTests/PrimitiveViewTests.swift`
 - `Virgo/layout/VirgoNotationAdapter.swift`
 - `VirgoTests/VirgoNotationAdapterTests.swift`
 
 **Modify**
 
-- `Virgo.xcodeproj/project.pbxproj`
+- `.swiftlint.yml`
 - `.github/workflows/ci.yml`
+- `Virgo.xcodeproj/project.pbxproj`
 - `Virgo/constants/Drum.swift`
 - `Virgo/constants/DrumNotation.swift`
 - `Virgo/layout/NotationLayout.swift`
@@ -57,24 +60,26 @@
 - `Virgo/layout/NotationRhythmRendering.swift`
 - `Virgo/views/NotationPrimitiveViews.swift`
 - `Virgo/views/subviews/GameplaySheetMusicView.swift`
+- `VirgoTests/RenderRasterProbe.swift`
 - `VirgoTests/DrumNotationCatalogTests.swift`
 - `VirgoTests/DrumTypeExtensionsAndConstantsTests.swift`
 - `VirgoTests/NotationLayoutDigest.swift`
 - `VirgoTests/DrumTabGoldenTests.swift`
 - `VirgoTests/DrumTabRenderProbeTests.swift`
 - `VirgoTests/SwiftUIRenderingNotationTests.swift`
-- layout tests/helpers that currently construct or inspect `DrumNoteheadGlyph` / `RenderedNoteHead.glyph`.
+- affected layout tests/helpers that construct or inspect `DrumNoteheadGlyph` / `RenderedNoteHead.glyph`.
 
 ---
 
-### Task 1: Establish the local package boundary and CI gate
+### Task 1: Establish the local package boundary, lint scope and CI gate
 
 **Files:**
 - Create: `Packages/DrumNotation/Package.swift`
 - Create: `Packages/DrumNotation/README.md`
-- Create: `Packages/DrumNotation/Sources/DrumNotation/DrumNotation.swift`
+- Create: `Packages/DrumNotation/Sources/DrumNotation/Model/PrimitiveTypes.swift`
 - Create: `Packages/DrumNotation/Tests/DrumNotationTests/PackageBoundaryTests.swift`
 - Modify: `Virgo.xcodeproj/project.pbxproj`
+- Modify: `.swiftlint.yml`
 - Modify: `.github/workflows/ci.yml`
 
 **Interfaces:**
@@ -82,9 +87,9 @@
 - Produces: independent `swift test --package-path Packages/DrumNotation` gate.
 - Consumes: no Virgo source.
 
-- [ ] **Step 1: Write the failing independent package smoke**
+- [ ] **Step 1: Write a red public-package smoke test**
 
-Create `PackageBoundaryTests.swift` before the manifest exists:
+Create `PackageBoundaryTests.swift`:
 
 ```swift
 import Testing
@@ -102,9 +107,9 @@ Run:
 swift test --package-path Packages/DrumNotation
 ```
 
-Expected: FAIL because the package/module/public type does not exist yet.
+Expected: FAIL because no package/module/public type exists yet.
 
-- [ ] **Step 2: Create the minimal package and public duration type**
+- [ ] **Step 2: Add the smallest package manifest and public duration type**
 
 Create `Package.swift`:
 
@@ -124,7 +129,7 @@ let package = Package(
 )
 ```
 
-Create `PrimitiveTypes.swift` with only:
+Create `PrimitiveTypes.swift` with:
 
 ```swift
 public enum NotationDuration: String, CaseIterable, Sendable {
@@ -142,7 +147,7 @@ In `Virgo.xcodeproj/project.pbxproj` add:
 - one `XCSwiftPackageProductDependency` for `DrumNotation`;
 - the product in the Virgo app target Frameworks build phase.
 
-Do not alter Apollo package references, deployment floors or device-family settings.
+Leave Apollo, deployment floors and device-family settings unchanged.
 
 Verify:
 
@@ -152,9 +157,38 @@ xcodebuild -project Virgo.xcodeproj -scheme Virgo \
   CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 ```
 
-Expected: build succeeds with the empty package linked.
+Expected: build succeeds with the package linked.
 
-- [ ] **Step 4: Add the package test to the existing CI job**
+- [ ] **Step 4: Put package Swift under existing SwiftLint rules**
+
+Change `.swiftlint.yml` from:
+
+```yaml
+included:
+  - Virgo
+  - VirgoTests
+  - VirgoUITests
+```
+
+to:
+
+```yaml
+included:
+  - Virgo
+  - VirgoTests
+  - VirgoUITests
+  - Packages
+```
+
+Run:
+
+```bash
+swiftlint lint
+```
+
+Expected: no new errors.
+
+- [ ] **Step 5: Add package tests to the existing CI job**
 
 Immediately before `Run unit tests` in `.github/workflows/ci.yml` add:
 
@@ -163,12 +197,13 @@ Immediately before `Run unit tests` in `.github/workflows/ci.yml` add:
         run: swift test --package-path Packages/DrumNotation
 ```
 
-Do not create a new workflow.
+Do not create a second workflow or alter the serial app-test command.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add Packages/DrumNotation Virgo.xcodeproj/project.pbxproj .github/workflows/ci.yml
+git add Packages/DrumNotation Virgo.xcodeproj/project.pbxproj \
+  .swiftlint.yml .github/workflows/ci.yml
 git commit -m "build: add local DrumNotation package"
 ```
 
@@ -188,7 +223,7 @@ git commit -m "build: add local DrumNotation package"
 - Produces: package semantic types and internal exact SMuFL selectors.
 - Produces: package-owned Bravura 1.392 resources through `Bundle.module`.
 
-- [ ] **Step 1: Vendor the VexFlow-matching Bravura assets**
+- [ ] **Step 1: Vendor the exact VexFlow-matching Bravura assets**
 
 Use `vexflow/vexflow-fonts` commit `b2bc3a6070225e4d395966b36de76c36a9429b1c`:
 
@@ -207,14 +242,15 @@ Update the package target:
 
 In `README.md`, record:
 
-- VexFlow reference: 5.0.0;
+- semantic reference: VexFlow 5.0.0;
 - font reference: `@vexflow-fonts/bravura` 1.0.2 / Bravura 1.392;
 - exact source commit above;
-- no Node/VexFlow runtime or HPA-163 generator.
+- no Node/VexFlow runtime or HPA-163 generator;
+- the normal/X/diamond percussion legend and the fact that old half-circle/bullseye/open-circle shapes are intentionally retired.
 
 - [ ] **Step 2: Write red table-driven glyph selection tests**
 
-`GlyphCatalogTests.swift` must assert these exact internal names/scalars via `@testable import DrumNotation`:
+`GlyphCatalogTests.swift` must assert these internal names/scalars via `@testable import DrumNotation`:
 
 ```text
 normal whole -> noteheadWhole E0A2
@@ -237,13 +273,15 @@ Run:
 swift test --package-path Packages/DrumNotation --filter GlyphCatalogTests
 ```
 
-Expected: FAIL until the semantic types/catalog exist.
+Expected: FAIL until semantic types/catalog exist.
 
-- [ ] **Step 3: Implement only the required public semantic types**
+- [ ] **Step 3: Implement only required public semantic/metric types**
 
 Add:
 
 ```swift
+import CoreGraphics
+
 public enum PercussionNoteheadStyle: String, CaseIterable, Sendable {
     case normal, x, diamond
 }
@@ -271,11 +309,11 @@ public struct FlagGlyphMetrics: Equatable, Sendable {
 }
 ```
 
-Import `CoreGraphics` in this file. Do not add app-domain enums.
+Do not add app-domain enums or arbitrary public SMuFL lookup.
 
 - [ ] **Step 4: Implement the private closed SMuFL catalog**
 
-`SMuFLGlyphCatalog.swift` uses exhaustive switches over package semantic enums. Keep raw glyph names/scalars internal. Do not expose arbitrary lookup by string.
+`SMuFLGlyphCatalog.swift` uses exhaustive switches over package semantic enums. Raw glyph names/scalars stay internal.
 
 Run `GlyphCatalogTests` again. Expected: PASS.
 
@@ -288,15 +326,16 @@ git commit -m "feat: add Bravura percussion glyph catalog"
 
 ---
 
-### Task 3: Implement one correct font-to-local geometry transform
+### Task 3: Implement staff-space-scaled Bravura geometry
 
 **Files:**
 - Create: `Packages/DrumNotation/Sources/DrumNotation/Glyphs/BravuraFont.swift`
 - Create: `Packages/DrumNotation/Tests/DrumNotationTests/BravuraGeometryTests.swift`
 
 **Interfaces:**
-- Produces: `PercussionGlyphMetrics.notehead/rest/flag/articulation` and `naturalFlagSize`.
-- Produces: one internal fitted-glyph transform reused by paint and metrics.
+- Produces: `PercussionGlyphMetrics.notehead/rest/flag/articulation`.
+- Produces: one internal path transform reused by paint and metrics.
+- Input scale: `staffSpace: CGFloat` only.
 
 - [ ] **Step 1: Write red resource/path tests**
 
@@ -314,7 +353,7 @@ swift test --package-path Packages/DrumNotation --filter BravuraGeometryTests
 
 Expected: FAIL until `BravuraFont` exists.
 
-- [ ] **Step 2: Implement package-local resource loading with no app font registration**
+- [ ] **Step 2: Implement package-local resource loading**
 
 `BravuraFont` must:
 
@@ -324,26 +363,35 @@ Expected: FAIL until `BravuraFont` exists.
 - call `preconditionFailure` for a missing required file, accepted glyph or required notehead anchor;
 - never call `AppFonts`, `Bundle.main` or bundle scanning.
 
-- [ ] **Step 3: Write red notehead transform tests that catch missing translation**
+- [ ] **Step 3: Write red staff-space scale tests**
 
-For every notehead family × whole/half/black duration × both stem directions:
-
-1. get the raw Bravura path bounds at the test font size;
-2. read the source metadata anchor (`stemUpSE` or `stemDownNW`);
-3. convert the anchor from staff spaces to the same font coordinate system using `unitsPerEm / 4`;
-4. independently compute the expected local transform for `CGSize(width: 30, height: 20)`:
+For each accepted notehead/rest/flag/articulation at `staffSpace = 20`, independently calculate:
 
 ```swift
-let scale = min(box.width / rawBounds.width, box.height / rawBounds.height)
+let scale = staffSpace / (CGFloat(cgFont.unitsPerEm) / 4)
+```
+
+Assert the package path/bounds use that exact scale. In particular, test `noteheadWhole`, `noteheadBlack`, `restWhole` and `restQuarter` so a future implementation cannot reintroduce width/height fitting into the old 30×20, 18×5 or 18×28 frames.
+
+- [ ] **Step 4: Write red notehead-anchor transform tests that catch missing translation**
+
+For every normal/X/diamond duration family × both stem directions:
+
+1. obtain the raw Bravura path bounds;
+2. read source metadata `stemUpSE` or `stemDownNW`;
+3. convert the anchor from staff spaces into font units (`unitsPerEm / 4`);
+4. independently compute the transformed local anchor:
+
+```swift
 let expectedAnchor = CGPoint(
     x: (rawAnchor.x - rawBounds.midX) * scale,
     y: -(rawAnchor.y - rawBounds.midY) * scale
 )
 ```
 
-Assert package `stemAnchorOffset` equals this point within 0.001.
+Assert `metrics.stemAnchorOffset` equals this point within 0.001.
 
-Also obtain the transformed outline and assert the anchor lies in a narrow stroked edge band around the glyph outline:
+Also assert the transformed anchor lies in a narrow stroked edge band around the transformed outline:
 
 ```swift
 let edgeBand = transformedPath.copy(
@@ -355,11 +403,21 @@ let edgeBand = transformedPath.copy(
 #expect(edgeBand.contains(metrics.stemAnchorOffset))
 ```
 
-If Bravura intentionally places a specific anchor just outside the outline by less than the stem thickness, widen only that fixture's epsilon and document the measured value; do not replace the test with a generic `isFinite` assertion.
+If one documented Bravura anchor sits just outside the outline by less than the stem thickness, widen only that fixture's band by the measured amount.
 
-- [ ] **Step 4: Implement the exact shared affine transform**
+- [ ] **Step 5: Write red flag attachment tests**
 
-For raw path bounds `B` and scale `s`, use the same transform for path and anchors:
+Treat the Bravura flag glyph origin as the stem attachment reference. For 8th/16th/32nd/64th in both directions, assert `FlagGlyphMetrics.attachmentOffset` is the transformed font origin relative to the centered local path and that translating by:
+
+```text
+center = stemAttachmentOrigin - attachmentOffset
+```
+
+puts the flag attachment back exactly on the requested stem origin.
+
+- [ ] **Step 6: Implement the single transform and public metrics API**
+
+For raw path bounds `B` and staff scale `s`, use:
 
 ```swift
 CGAffineTransform(
@@ -372,130 +430,152 @@ CGAffineTransform(
 )
 ```
 
-This maps the raw path-bounds center to local `(0, 0)` and flips Y. Apply this complete transform to the metadata anchor after converting it to font coordinates.
-
 Implement:
 
 ```swift
 public enum PercussionGlyphMetrics {
-    public static func notehead(...) -> NoteheadMetrics
-    public static func rest(...) -> PrimitiveGlyphMetrics
-    public static func flag(...) -> FlagGlyphMetrics
-    public static func articulation(...) -> PrimitiveGlyphMetrics
-    public static func naturalFlagSize(...) -> CGSize
+    public static func notehead(
+        style: PercussionNoteheadStyle,
+        duration: NotationDuration,
+        stemDirection: NotationStemDirection,
+        staffSpace: CGFloat
+    ) -> NoteheadMetrics
+
+    public static func rest(
+        duration: NotationDuration,
+        staffSpace: CGFloat
+    ) -> PrimitiveGlyphMetrics
+
+    public static func flag(
+        duration: NotationDuration,
+        direction: NotationStemDirection,
+        staffSpace: CGFloat
+    ) -> FlagGlyphMetrics
+
+    public static func articulation(
+        _ articulation: PercussionArticulation,
+        staffSpace: CGFloat
+    ) -> PrimitiveGlyphMetrics
 }
 ```
 
-For flags, `attachmentOffset` is the transformed Bravura glyph origin relative to the centered local view. `naturalFlagSize` multiplies the font glyph's native staff-space width/height by caller-supplied `staffSpace`, preserving aspect ratio instead of using Virgo's old 8×8 frame.
+No `CGSize` primitive sizing API and no `naturalFlagSize` helper.
 
-- [ ] **Step 5: Add flag/rest/articulation bounds tests**
-
-Assert each metric's `paintedBounds` equals the actual transformed path bounding box and fits its requested box. For flags, assert `attachmentOffset` transforms raw glyph origin `(0, 0)` through the same affine transform and remains on the expected stem-side portion of the glyph.
-
-Run:
-
-```bash
-swift test --package-path Packages/DrumNotation --filter BravuraGeometryTests
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add Packages/DrumNotation/Sources/DrumNotation/Glyphs \
-        Packages/DrumNotation/Tests/DrumNotationTests/BravuraGeometryTests.swift
-git commit -m "feat: derive percussion geometry from Bravura"
-```
-
----
-
-### Task 4: Add package-native SwiftUI primitive views
-
-**Files:**
-- Create: `Packages/DrumNotation/Sources/DrumNotation/Rendering/PrimitiveViews.swift`
-- Create: `Packages/DrumNotation/Tests/DrumNotationTests/PrimitiveViewTests.swift`
-
-**Interfaces:**
-- Consumes: exact fitted geometry from Task 3.
-- Produces: four public primitive views; no second geometry path.
-
-- [ ] **Step 1: Write red view-construction tests**
-
-For every supported semantic combination, construct:
-
-```swift
-PercussionNoteheadView(style:duration:size:color:)
-NotationRestGlyphView(duration:size:color:)
-NotationFlagGlyphView(duration:direction:size:color:)
-PercussionArticulationView(articulation:size:color:)
-```
-
-Through `@testable` internal test access, assert each view resolves the same fitted geometry/glyph selector used by `PercussionGlyphMetrics`.
-
-Run:
-
-```bash
-swift test --package-path Packages/DrumNotation --filter PrimitiveViewTests
-```
-
-Expected: FAIL until the views exist.
-
-- [ ] **Step 2: Implement the views from the fitted package path**
-
-Use SwiftUI `Canvas`/`Path` to fill the font-derived path from Task 3. Do not rebuild glyph geometry in the view. `Color` and `CGSize` stay explicit caller inputs.
-
-For flags, the package view is centered in its explicit box; placement relative to the stem attachment is handled by Virgo using `FlagGlyphMetrics.attachmentOffset`.
-
-Run all package tests:
+- [ ] **Step 7: Run all package tests**
 
 ```bash
 swift test --package-path Packages/DrumNotation
 ```
 
-Expected: PASS without Virgo or Node.
+Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add Packages/DrumNotation/Sources/DrumNotation/Rendering \
-        Packages/DrumNotation/Tests/DrumNotationTests/PrimitiveViewTests.swift
-git commit -m "feat: render DrumNotation Bravura primitives"
+git add Packages/DrumNotation/Sources/DrumNotation/Glyphs \
+  Packages/DrumNotation/Tests/DrumNotationTests/BravuraGeometryTests.swift
+git commit -m "feat: add staff-scaled Bravura geometry"
 ```
 
 ---
 
-### Task 5: Add the single Virgo adapter, size policy and pure flag commands
+### Task 4: Add package-native SwiftUI primitives from the same geometry
+
+**Files:**
+- Create: `Packages/DrumNotation/Sources/DrumNotation/Rendering/PrimitiveViews.swift`
+- Modify: `Packages/DrumNotation/Tests/DrumNotationTests/PackageBoundaryTests.swift`
+
+**Interfaces:**
+- Consumes: internal fitted paths + public semantic values from Tasks 2–3.
+- Produces: four public SwiftUI primitive views.
+
+- [ ] **Step 1: Extend the public API smoke test**
+
+Construct, but do not introspect private geometry from, each public view:
+
+```swift
+let _ = PercussionNoteheadView(
+    style: .normal,
+    duration: .quarter,
+    staffSpace: 20
+)
+let _ = NotationRestGlyphView(duration: .quarter, staffSpace: 20)
+let _ = NotationFlagGlyphView(
+    duration: .sixteenth,
+    direction: .up,
+    staffSpace: 20
+)
+let _ = PercussionArticulationView(articulation: .open, staffSpace: 20)
+```
+
+Run package tests. Expected: compile failure until the views exist.
+
+- [ ] **Step 2: Implement views as thin path painters**
+
+Each view:
+
+- selects the internal SMuFL glyph through the same catalog used by metrics;
+- asks `BravuraFont` for the same staff-space-scaled transformed path;
+- fills the path with caller-supplied `Color` (default `.primary`);
+- does not introduce another size/transform path, renderer protocol or AppKit/UIKit branch.
+
+Public initializers are:
+
+```text
+PercussionNoteheadView(style:duration:staffSpace:color:)
+NotationRestGlyphView(duration:staffSpace:color:)
+NotationFlagGlyphView(duration:direction:staffSpace:color:)
+PercussionArticulationView(articulation:staffSpace:color:)
+```
+
+- [ ] **Step 3: Run package tests + lint**
+
+```bash
+swift test --package-path Packages/DrumNotation
+swiftlint lint
+```
+
+Expected: PASS / no new lint errors.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add Packages/DrumNotation
+git commit -m "feat: render native DrumNotation primitives"
+```
+
+---
+
+### Task 5: Add the Virgo adapter, flag commands and isolated-flag stem policy
 
 **Files:**
 - Create: `Virgo/layout/VirgoNotationAdapter.swift`
 - Create: `VirgoTests/VirgoNotationAdapterTests.swift`
+- Modify later in this task only if needed for test visibility: no production renderer yet.
 
 **Interfaces:**
-- Produces: exhaustive app→package semantic mappings.
-- Produces: one size/bounds policy for heads/rests/flags/articulation.
-- Produces: `FlagPaintCommand` consumed by both production and the render probe.
+- Produces: exhaustive app-to-package mapping.
+- Produces: `FlagPaintCommand` data shared by production and raster probe.
+- Produces: effective minimum stem length for natural isolated flags.
 
 - [ ] **Step 1: Write red exhaustive semantic mapping tests**
 
-Cover every `NoteType`, all seven `NoteInterval` values, both `StemDirection` values and every `NotationRestDuration`:
+Cover every `NoteType`, all seven `NoteInterval`s, both `StemDirection`s, and every `NotationRestDuration`.
 
-```swift
-static func restDuration(for duration: NotationRestDuration) -> NotationDuration? {
-    switch duration {
-    case .fullMeasure: return .whole
-    case .half: return .half
-    case .quarter: return .quarter
-    case .eighth: return .eighth
-    case .sixteenth: return .sixteenth
-    case .thirtySecond: return .thirtySecond
-    case .sixtyFourth: return .sixtyFourth
-    case .indeterminate: return nil
-    }
-}
+Required rest mapping:
+
+```text
+fullMeasure -> whole
+half -> half
+quarter -> quarter
+eighth -> eighth
+sixteenth -> sixteenth
+thirtySecond -> thirtySecond
+sixtyFourth -> sixtyFourth
+indeterminate -> nil
 ```
 
-The notehead family expectations are:
+Required notehead mapping:
 
 ```text
 bass/snare/highTom/midTom/lowTom -> normal
@@ -503,48 +583,21 @@ hiHat/hiHatPedal/openHiHat/crash/ride/china/splash -> x
 cowbell -> diamond
 ```
 
-Run:
+- [ ] **Step 2: Implement exhaustive pure conversions**
 
-```bash
-xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
-  -destination 'platform=macOS' \
-  -only-testing:VirgoTests/VirgoNotationAdapterTests \
-  -parallel-testing-enabled NO \
-  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-```
-
-Expected: FAIL until the adapter exists.
-
-- [ ] **Step 2: Implement exhaustive conversion functions with no default branches**
-
-`VirgoNotationAdapter` implements:
+`VirgoNotationAdapter` must expose package mappings without default branches and use:
 
 ```swift
-static func noteheadStyle(for: NoteType) -> PercussionNoteheadStyle
-static func duration(for: NoteInterval) -> NotationDuration
-static func stemDirection(for: StemDirection) -> NotationStemDirection
-static func restDuration(for: NotationRestDuration) -> NotationDuration?
+static func staffSpace(for style: NotationLayoutStyle) -> CGFloat {
+    style.staffLineSpacing
+}
 ```
 
-Map `.openHiHat` articulation directly to package `.open` at the only current call site; do not add an abstraction for unknown future articulations.
+Do not recreate the former per-primitive size policy.
 
-- [ ] **Step 3: Write red size-policy tests**
+- [ ] **Step 3: Write red flag-command tests**
 
-Assert:
-
-```text
-notehead size = style.noteHeadSize
-fullMeasure/half rest size = fullMeasureRestWidth × fullMeasureRestHeight
-quarter/eighth/16/32/64 rest size = restSymbolWidth × restSymbolHeight
-open articulation size = articulationDiameter × articulationDiameter
-flag size = package naturalFlagSize(... staffSpace: style.staffLineSpacing)
-```
-
-Explicitly assert canonical 16th/32nd/64th flag sizes are not the old `GameplayLayout.flagWidth × flagHeight` 8×8 box.
-
-- [ ] **Step 4: Define and test pure flag paint commands**
-
-Add:
+Define:
 
 ```swift
 struct FlagPaintCommand: Identifiable, Equatable {
@@ -552,12 +605,22 @@ struct FlagPaintCommand: Identifiable, Equatable {
     let center: CGPoint
     let duration: NotationDuration
     let direction: NotationStemDirection
-    let size: CGSize
+    let staffSpace: CGFloat
     let paintedBounds: CGRect
 }
 ```
 
-Implement:
+Test:
+
+1. isolated eighth emits one `.eighth` command;
+2. isolated sixteenth/32nd/64th each emit exactly one canonical duration command from flag level 0 and suppress sibling levels;
+3. a partially beamed note emits one `.eighth` command for every uncovered existing `RenderedFlag` and preserves each origin;
+4. order matches original `layout.flags` order;
+5. each command's `center` + package attachment offset recovers the original `RenderedFlag.origin`.
+
+- [ ] **Step 4: Implement `flagPaintCommands`**
+
+Signature:
 
 ```swift
 static func flagPaintCommands(
@@ -567,37 +630,66 @@ static func flagPaintCommands(
 ) -> [FlagPaintCommand]
 ```
 
-For each head:
+Use package `FlagGlyphMetrics` at `style.staffLineSpacing`. `NotationFlagView` must not own sibling/grouping logic later.
 
-- expected levels = `Set(0..<head.interval.flagCount)`;
-- actual levels = that head's `RenderedFlag.flagIndex` set;
-- if equal, emit one command from level 0 using the head's canonical duration;
-- otherwise emit one `.eighth` command per existing uncovered flag at its existing origin;
-- preserve original `layout.flags` ordering.
+- [ ] **Step 5: Write red isolated-flag stem-clearance tests**
 
-For each emitted command:
+For isolated 8th/16th/32nd/64th heads in both stem directions, compute package flag metrics relative to attachment:
 
-1. choose size through the adapter flag policy;
-2. get package `FlagGlyphMetrics`;
-3. compute `center = origin - metrics.attachmentOffset`;
-4. translate `metrics.paintedBounds` by `center` and store that exact absolute rect in the command.
+```swift
+let relativeBounds = metrics.paintedBounds.offsetBy(
+    dx: -metrics.attachmentOffset.x,
+    dy: -metrics.attachmentOffset.y
+)
+```
 
-Tests must cover fully isolated eighth/sixteenth/thirty-second/sixty-fourth notes and partially uncovered beam levels.
+Then:
 
-- [ ] **Step 5: Run adapter tests**
+```swift
+let inwardExtent: CGFloat
+switch direction {
+case .up:
+    inwardExtent = max(0, relativeBounds.maxY)
+case .down:
+    inwardExtent = max(0, -relativeBounds.minY)
+}
 
-Run the same focused command. Expected: PASS.
+let expected = max(
+    style.stemLength,
+    inwardExtent + style.minimumStemExtensionPastChord
+)
+```
 
-- [ ] **Step 6: Commit**
+Assert the adapter returns that minimum. Also assert quarter/half/full notes do not lengthen the default stem policy.
+
+- [ ] **Step 6: Implement the minimum-stem helper**
+
+Add a pure helper that returns the maximum required canonical-flag stem length across the members of one unbeamed stem group. It may inspect `NoteInterval.flagCount`; it must not change beam grouping or `buildFlags`.
+
+- [ ] **Step 7: Run the adapter suite**
 
 ```bash
-git add Virgo/layout/VirgoNotationAdapter.swift VirgoTests/VirgoNotationAdapterTests.swift
-git commit -m "feat: add Virgo notation package adapter"
+xcodebuild test \
+  -project Virgo.xcodeproj -scheme Virgo \
+  -destination 'platform=macOS' \
+  -only-testing:VirgoTests/VirgoNotationAdapterTests \
+  -parallel-testing-enabled NO \
+  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+```
+
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add Virgo/layout/VirgoNotationAdapter.swift \
+  VirgoTests/VirgoNotationAdapterTests.swift
+git commit -m "feat: add DrumNotation adapter policies"
 ```
 
 ---
 
-### Task 6: Remove `DrumNoteheadGlyph` and cut layout geometry over to package metrics
+### Task 6: Remove the old glyph vocabulary and cut layout geometry over
 
 **Files:**
 - Modify: `Virgo/constants/Drum.swift`
@@ -609,25 +701,24 @@ git commit -m "feat: add Virgo notation package adapter"
 - Modify: affected layout/catalog test helpers.
 
 **Interfaces:**
-- Removes: app engraving glyph enum/plumbing.
-- Makes: package metrics authoritative for stem anchors, ledger extents and painted bounds.
+- Consumes: `VirgoNotationAdapter`, package metrics.
+- Preserves: ticks, X/row placement, beam topology.
 
-- [ ] **Step 1: Remove the obsolete app glyph vocabulary**
+- [ ] **Step 1: Remove `DrumNoteheadGlyph` structurally**
 
 Delete:
 
-- `DrumNoteheadGlyph` and all custom path/bounds/anchor helpers;
-- `DrumNotationDefinition.glyph` and all initializer arguments;
-- `RenderedNoteHead.glyph` and constructor arguments;
-- `glyph: definition.glyph` in both `NotationLayoutEngine` construction paths.
+- the `DrumNoteheadGlyph` enum and all path/bounds/anchor helpers;
+- `DrumNotationDefinition.glyph` and initializer arguments;
+- `RenderedNoteHead.glyph`;
+- `glyph: definition.glyph` from both `RenderedNoteHead` construction paths;
+- test fixture/builder arguments that exist only for the removed enum.
 
-Update test fixtures/builders that construct `RenderedNoteHead`.
-
-Do not replace this with another app engraving enum.
+Do not add another app engraving enum.
 
 - [ ] **Step 2: Normalize app-only settings symbols**
 
-Change `DrumType.symbol` to:
+Keep `DrumType.symbol`, but make it independent from score glyphs:
 
 ```swift
 var symbol: String {
@@ -644,54 +735,55 @@ var symbol: String {
 
 Update `DrumTypeExtensionsAndConstantsTests` accordingly.
 
-- [ ] **Step 3: Switch stem anchors and ledger bounds to the same notehead metrics**
+- [ ] **Step 3: Switch head bounds and stem anchors to package metrics**
 
-In `NotationLayoutEngine+Beams.swift`, obtain once per head:
+In `NotationLayoutEngine+Beams.swift`, replace old glyph helpers with `VirgoNotationAdapter` → `PercussionGlyphMetrics.notehead(... staffSpace: style.staffLineSpacing)`.
 
-```swift
-let metrics = VirgoNotationAdapter.noteheadMetrics(for: noteHead, style: style)
+Use one returned `NoteheadMetrics` object for:
+
+- `stemAnchor(for:style:)`;
+- `glyphBounds(for:style:)` / ledger extents;
+- `RenderedNoteHead.paintedBounds(style:)`.
+
+Translate local metrics by `noteHead.position`. Do not compute a second bounds approximation.
+
+- [ ] **Step 4: Extend only unbeamed flagged stems enough for natural flags**
+
+In `unbeamedStemEndY`, replace the fixed `style.stemLength` minimum with the adapter's maximum required stem length for the stem group. Keep the existing chord-clearance branch:
+
+```text
+up:   min(start.y - effectiveStemLength,
+          highestVisibleY - minimumStemExtensionPastChord)
+down: max(start.y + effectiveStemLength,
+          lowestVisibleY + minimumStemExtensionPastChord)
 ```
 
-Use `metrics.stemAnchorOffset` translated by `noteHead.position` for `stemAnchor(for:style:)`.
+Do not change `sharedBeamBaseY`, beam grouping or stem representative selection in this task.
 
-Use `metrics.paintedBounds` translated by `noteHead.position` for ledger-line X extents.
-
-Do not change beam grouping, event coverage or note X positions.
-
-- [ ] **Step 4: Replace primitive painted-bounds guesses**
+- [ ] **Step 5: Cut rest/articulation/flag painted bounds over**
 
 In `NotationRhythmRendering.swift`:
 
-- `RenderedNoteHead.paintedBounds` → translated package `NoteheadMetrics.paintedBounds`;
-- `RenderedRest.paintedBounds` → `restDuration(for:)`; return `.null` for hidden/indeterminate; otherwise use adapter size + package rest metrics;
-- `RenderedArticulation.paintedBounds` → adapter size + package articulation metrics;
-- delete old `RenderedFlag.paintedBounds` 8×8 logic.
+- `RenderedRest.paintedBounds` uses `VirgoNotationAdapter.restDuration(for:)`; `.indeterminate` returns `.null`; otherwise translate package rest metrics at `style.staffLineSpacing` around `rest.position`;
+- `RenderedArticulation.paintedBounds` translates package `.open` metrics around its app-owned position;
+- `NotationLayout.calculatePaintedBounds` obtains `FlagPaintCommand`s from the adapter and unions their `paintedBounds` instead of `RenderedFlag.paintedBounds`;
+- delete `RenderedFlag.paintedBounds` once unused.
 
-In `NotationLayout.calculatePaintedBounds`, replace `flags.map { $0.paintedBounds(...) }` with:
+- [ ] **Step 6: Update explicit compile/golden serializers**
 
-```swift
-VirgoNotationAdapter
-    .flagPaintCommands(flags: flags, heads: noteHeads, style: style)
-    .map(\.paintedBounds)
-```
+`NotationLayoutDigest.swift` must remove `head.glyph`. Serialize the derived package notehead style plus existing app `variant` instead, so goldens preserve semantic visual identity without the deleted enum.
 
-This is the only flag bounds source.
+`DrumTabGoldenTests.hiHatOpenClosedPedal` must assert the three variants directly rather than `(glyph, variant)` pairs.
 
-- [ ] **Step 5: Update layout tests to assert package-derived geometry**
+Remove pure tests that only validated the handwritten path enum; package geometry tests replace them.
 
-Update `NotationLayoutEngineTests`, `NotationLayoutEngineChordAndBeamTests`, `NotationLayoutDefensiveGuardTests` and painted-bounds tests so they compare against adapter/package metrics, not deleted path helpers.
-
-Add one integration assertion that the same `NoteheadMetrics` values determine:
-
-- head `paintedBounds`;
-- stem start;
-- ledger-line horizontal extent.
-
-- [ ] **Step 6: Run focused layout/model tests**
+- [ ] **Step 7: Run focused layout/catalog suites**
 
 ```bash
-xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
+xcodebuild test \
+  -project Virgo.xcodeproj -scheme Virgo \
   -destination 'platform=macOS' \
+  -configuration Debug \
   -only-testing:VirgoTests/DrumNotationCatalogTests \
   -only-testing:VirgoTests/DrumTypeExtensionsAndConstantsTests \
   -only-testing:VirgoTests/VirgoNotationAdapterTests \
@@ -699,48 +791,55 @@ xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
   -only-testing:VirgoTests/NotationLayoutEngineChordAndBeamTests \
   -only-testing:VirgoTests/NotationLayoutDefensiveGuardTests \
   -parallel-testing-enabled NO \
-  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+  ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300
 ```
 
-Expected: all selected suites PASS. Multiple `-only-testing:` constraints are intentionally cumulative in xcodebuild.
+Expected: PASS. Repeated `-only-testing:` constraints are intentional and cumulative.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add Virgo/constants Virgo/layout VirgoTests
-git commit -m "refactor: replace app glyph geometry with DrumNotation metrics"
+git add Virgo VirgoTests
+git commit -m "feat: use DrumNotation geometry in layout"
 ```
 
 ---
 
-### Task 7: Cut production SwiftUI and the render probe over together
+### Task 7: Cut production painting over and add a real raster/visual gate
 
 **Files:**
 - Modify: `Virgo/views/NotationPrimitiveViews.swift`
 - Modify: `Virgo/views/subviews/GameplaySheetMusicView.swift`
+- Modify: `VirgoTests/RenderRasterProbe.swift`
 - Modify: `VirgoTests/SwiftUIRenderingNotationTests.swift`
 - Modify: `VirgoTests/DrumTabRenderProbeTests.swift`
 
 **Interfaces:**
-- Production and probe consume the same `FlagPaintCommand` list.
-- Package primitive views are the only notehead/rest/flag/open-articulation painters.
+- Production and probe share `FlagPaintCommand` data.
+- Raster assertions verify actual ink against package-derived bounds.
 
-- [ ] **Step 1: Replace app primitive drawing**
+- [ ] **Step 1: Replace handwritten production primitives**
 
 In `NotationPrimitiveViews.swift`:
 
-- delete `DrumNoteheadShape` and handwritten notehead paths;
-- `NotationNoteHeadView` delegates to `PercussionNoteheadView` using adapter style/duration and existing head center;
-- `NotationRestView` maps `RenderedRest.duration` through `restDuration(for:)`, skips `nil`, and delegates to `NotationRestGlyphView` using adapter rest size;
-- `NotationArticulationView` delegates `.openHiHat` to `PercussionArticulationView(.open, ...)`;
-- delete `FlagView` and its Bézier path;
-- change `NotationFlagView` to accept one `FlagPaintCommand`, render `NotationFlagGlyphView` using command duration/direction/size, and `.position(command.center)`.
+- notehead wrapper → `PercussionNoteheadView(... staffSpace: style.staffLineSpacing or supplied staffSpace, color: Palette.chalk)`;
+- rest wrapper → `NotationRestGlyphView` from `restDuration(for:)`;
+- open-hi-hat wrapper → `PercussionArticulationView(.open, staffSpace: ...)`;
+- flag wrapper becomes `NotationFlagView(command:)` and delegates one command to `NotationFlagGlyphView`.
 
-Keep stems, beams, ledger lines, bars, dots, tuplets, feel marks, warnings and stop marks unchanged.
+Delete:
 
-- [ ] **Step 2: Make production consume the pure flag command list**
+- `DrumNoteheadShape`;
+- quarter/hooked rest path builders and full/half rest rectangles;
+- open articulation `Circle`;
+- handwritten `FlagView` Bézier path and flag-center correction.
 
-In `GameplayDrumNotationView`, compute once:
+Keep stems, beams, ledger lines, bars, dots, tuplets, feel marks, warnings and stop marks app-owned.
+
+- [ ] **Step 2: Make production and probe consume identical flag commands**
+
+`GameplayDrumNotationView` computes once:
 
 ```swift
 let flagCommands = VirgoNotationAdapter.flagPaintCommands(
@@ -750,161 +849,255 @@ let flagCommands = VirgoNotationAdapter.flagPaintCommands(
 )
 ```
 
-Render `ForEach(flagCommands) { NotationFlagView(command: $0) }` in the same z-order slot previously occupied by `layout.flags`.
+and renders those commands.
 
-Do not teach `NotationFlagView` to search siblings.
+Change `DrumTabRenderProbeTests.notationOverlay` to call the exact same helper and render the same commands. Do not copy collapse/group logic into the test.
 
-- [ ] **Step 3: Make the raster probe consume the exact same flag commands**
+- [ ] **Step 3: Extend raster helper with PNG output**
 
-Update `DrumTabRenderProbeTests.notationOverlay` to compute `flagPaintCommands` from its `NotationLayout` and render those commands in the same z-order as production.
+In the existing macOS-only `RenderRasterProbe.swift`, add a small helper alongside `rasterizeView`:
 
-Do not copy the collapse algorithm into the probe.
+```swift
+@MainActor
+func writeRasterPNG<V: View>(
+    _ view: V,
+    size: CGSize,
+    url: URL
+) throws {
+    let renderer = ImageRenderer(
+        content: view.frame(width: size.width, height: size.height)
+    )
+    renderer.scale = 1
+    guard let cgImage = renderer.cgImage else {
+        throw RenderRasterProbeError.missingCGImage
+    }
+    let rep = NSBitmapImageRep(cgImage: cgImage)
+    guard let data = rep.representation(using: .png, properties: [:]) else {
+        throw RenderRasterProbeError.missingPNGData
+    }
+    try data.write(to: url)
+}
+```
 
-- [ ] **Step 4: Update wrapper/mount tests**
+Add `missingPNGData` to the test error enum and `import AppKit` inside the macOS conditional.
 
-`SwiftUIRenderingNotationTests` should still prove:
+- [ ] **Step 4: Add non-tautological ink-inside-bounds tests**
 
-- every app semantic notehead mounts;
-- every printed supported rest mounts and preserves its accessibility label;
-- hidden/indeterminate rest behavior stays non-painting;
-- open-hi-hat articulation mounts with existing accessibility ownership;
-- both flag directions and at least one canonical multi-hook flag mount;
-- no yellow highlighting returns.
+In `SwiftUIRenderingNotationTests`, render representative **production wrappers** in isolation at known positions using `rasterizeView`:
 
-Do not inspect private raw font code points from Virgo tests.
+- whole normal notehead;
+- quarter normal/X/diamond heads;
+- whole rest;
+- quarter rest;
+- isolated 64th flag command;
+- open-hi-hat articulation.
 
-- [ ] **Step 5: Run render-focused tests**
+For each case:
+
+1. obtain the same translated `paintedBounds` production layout uses;
+2. assert at least one pixel with `alpha > 20` is inside the bounds;
+3. expand the bounds by 1pt for antialias tolerance;
+4. assert no `alpha > 20` pixel exists outside the expanded bounds.
+
+Use the existing scale-1 raster convention so SwiftUI point coordinates correspond to sampled pixels.
+
+Do **not** replace this with `@testable` checks that the view and metrics function selected the same path; that would only prove both called the same helper.
+
+- [ ] **Step 5: Add one representative visual-preview test**
+
+Construct one fixture row containing:
+
+- whole + quarter normal heads;
+- X + diamond heads;
+- whole + quarter + 16th rests;
+- isolated 8th + 64th flags;
+- one partially beamed uncovered hook;
+- open hi-hat articulation.
+
+Write the mounted row to:
+
+```swift
+FileManager.default.temporaryDirectory
+    .appendingPathComponent("hpa-163-bravura-preview.png")
+```
+
+using `writeRasterPNG` and assert the file is non-empty.
+
+- [ ] **Step 6: Run raster suites, then inspect the PNG before any golden rewrite**
 
 ```bash
-xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
+xcodebuild test \
+  -project Virgo.xcodeproj -scheme Virgo \
   -destination 'platform=macOS' \
+  -configuration Debug \
   -only-testing:VirgoTests/SwiftUIRenderingNotationTests \
   -only-testing:VirgoTests/DrumTabRenderProbeTests \
   -parallel-testing-enabled NO \
-  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+  ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300
 ```
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+Open `hpa-163-bravura-preview.png` from the temporary directory and visually verify:
+
+- whole/black noteheads have consistent staff-relative scale;
+- rests are not vertically/horizontally squashed;
+- 64th flag clears its notehead;
+- partially beamed hook remains attached;
+- open-hi-hat mark is visible and unclipped.
+
+Record the inspection result in PR verification notes. Do not commit PNG goldens.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add Virgo/views VirgoTests/SwiftUIRenderingNotationTests.swift \
-        VirgoTests/DrumTabRenderProbeTests.swift
-git commit -m "feat: paint Virgo notation with Bravura primitives"
+git add Virgo/views VirgoTests
+git commit -m "feat: render Bravura percussion primitives"
 ```
 
 ---
 
-### Task 8: Reconcile digest/goldens and verify the HPA-163 boundary
+### Task 8: Lock topology/goldens, run full verification, then leave draft
 
 **Files:**
-- Modify: `VirgoTests/NotationLayoutDigest.swift`
-- Modify: `VirgoTests/DrumTabGoldenTests.swift`
-- Modify goldens only after reviewing expected metric changes.
-- Modify: `Packages/DrumNotation/README.md` only for implemented factual corrections.
+- Modify only justified `VirgoTests/Goldens/*.txt` after visual/raster gates pass.
+- Modify tests if a missing topology assertion is needed.
+- No feature expansion.
 
-**Interfaces:**
-- Goldens no longer serialize deleted `DrumNoteheadGlyph` identity.
-- Geometry drift is accepted only where Bravura metrics intentionally replace handwritten metrics.
+- [ ] **Step 1: Add the rendered-hook preservation test before updating goldens**
 
-- [ ] **Step 1: Remove glyph identity from the layout digest**
+For existing hook fixtures, use `BeamBuildResult` to compare:
 
-Change the head digest from `glyph=... variant=...` to package-independent app semantics, for example:
+- topology `BeamTopologySegment`s whose kind is `.forwardHook` / `.backwardHook`, grouped by primary group + level + kind;
+- rendered `RenderedBeam`s with the same level/kind.
 
-```text
-style=normal|x|diamond variant=<DrumNotationVariant>
-```
+Assert every topology hook produces exactly one non-zero rendered hook.
 
-Use `VirgoNotationAdapter.noteheadStyle(for: head.noteType).rawValue`; do not add a new field to `RenderedNoteHead` only for the digest.
+This protects the case where new notehead anchor X values make the current `beamEndpoint` distance collapse to zero and silently drop a topology-requested hook.
 
-- [ ] **Step 2: Keep hi-hat semantic coverage meaningful after glyph deletion**
+If this test fails, stop. HPA-163 must preserve topology; do not regenerate goldens around a missing hook. Correct rendering geometry while keeping the topology segment intact.
 
-Change `DrumTabGoldenTests.hiHatOpenClosedPedal` to assert all three expected variants directly:
-
-```swift
-let variants = Set(result.layout.noteHeads.map(\.variant))
-#expect(variants == [.closedHiHat, .openHiHat, .pedalHiHat])
-```
-
-Do not recreate a `(glyph, variant)` pair after the glyph enum is removed.
-
-- [ ] **Step 3: Run notation regression suites before regenerating any golden**
+- [ ] **Step 2: Run notation regression suites before changing goldens**
 
 ```bash
-xcodebuild test -project Virgo.xcodeproj -scheme Virgo \
+xcodebuild test \
+  -project Virgo.xcodeproj -scheme Virgo \
   -destination 'platform=macOS' \
+  -configuration Debug \
   -only-testing:VirgoTests/DrumTabGoldenTests \
   -only-testing:VirgoTests/DrumTabRegressionInvariantTests \
   -only-testing:VirgoTests/DrumTabRenderProbeTests \
   -only-testing:VirgoTests/DrumTabPlayheadAlignmentTests \
   -parallel-testing-enabled NO \
-  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+  ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300
 ```
 
-Review every failure before changing a golden.
+Expected: non-golden invariants pass. Golden mismatches are expected where Bravura geometry/style identity changed.
 
-Allowed HPA-163 drift:
+- [ ] **Step 3: Classify every golden difference before regeneration**
 
-- serialized notehead style replacing old glyph identity;
-- stem/beam/flag-origin values that move only because corrected Bravura anchors replace handwritten anchor guesses;
-- painted-bounds/content-size values that move because bounds now match actual Bravura paint.
+Allowed drift:
 
-Reject/regress instead of accepting changes to:
+- derived package style identity replacing `DrumNoteheadGlyph`;
+- stem/beam/flag coordinates caused by corrected anchors and isolated-stem extension;
+- painted/content bounds caused by natural staff-space glyph size.
 
-- absolute tick/local tick;
-- measure index or row;
-- note-head X position;
-- beam membership, level or kind;
-- playhead routing/alignment.
+Must remain unchanged:
 
-- [ ] **Step 4: Regenerate only reviewed goldens when required**
+- absolute tick and local tick;
+- measure index and row;
+- note onset X;
+- beam topology membership;
+- beam level and kind;
+- hook segment count per topology group;
+- playhead routing.
 
-Use the repository's existing golden-update mechanism. After generation, inspect `git diff VirgoTests/Goldens` and confirm every changed field fits the allowed list above before committing.
+Any change in the forbidden set is a blocker, not a golden-update candidate.
 
-- [ ] **Step 5: Run fresh full verification**
+- [ ] **Step 4: Regenerate intentional goldens using the exact repository contract**
+
+Only after Task 7 visual/raster checks pass and Step 3 classifies the diff, run:
+
+```bash
+TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1 xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  -only-testing:VirgoTests/DrumTabGoldenTests \
+  -parallel-testing-enabled NO \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300
+```
+
+Expected: goldens are rewritten **and the command exits failing by design**. That failure is not a regression; the golden helper intentionally prevents self-approving updates.
+
+Review:
+
+```bash
+git diff -- VirgoTests/Goldens
+```
+
+Do not use bare `VIRGO_UPDATE_GOLDENS=1` with `xcodebuild`.
+
+Then rerun without the update variable:
+
+```bash
+xcodebuild test \
+  -project Virgo.xcodeproj -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  -only-testing:VirgoTests/DrumTabGoldenTests \
+  -parallel-testing-enabled NO \
+  ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Run fresh full local verification while the PR is still draft**
+
+CI intentionally skips draft PRs, so these local commands are required before changing draft state:
 
 ```bash
 rm -rf Packages/DrumNotation/.build
 swift test --package-path Packages/DrumNotation
 
 xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
+  -project Virgo.xcodeproj -scheme Virgo \
   -destination 'platform=macOS' \
   -configuration Debug \
   -only-testing:VirgoTests \
   -parallel-testing-enabled NO \
-  ONLY_ACTIVE_ARCH=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGNING_ALLOWED=NO \
-  -enableCodeCoverage YES \
-  -destination-timeout 300 \
+  ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  -enableCodeCoverage YES -destination-timeout 300 \
   -derivedDataPath ./DerivedData
 
 xcodebuild build \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
+  -project Virgo.xcodeproj -scheme Virgo \
   -destination 'generic/platform=iOS Simulator' \
   -configuration Debug \
-  ONLY_ACTIVE_ARCH=NO \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGNING_ALLOWED=NO
+  ONLY_ACTIVE_ARCH=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
 swiftlint lint
 git diff --check main...HEAD
 ```
 
-Expected: all commands pass and iOS-family targeting remains iPad-only.
+Expected: all commands pass; iOS-family target remains iPad-only.
 
-- [ ] **Step 6: Run mechanical boundary checks**
+- [ ] **Step 6: Run package-boundary audits**
 
 ```bash
 grep -R -nE 'import Virgo|NoteType|DrumType|RenderedNoteHead|GameplayLayout|Palette|AppFonts|Bundle\.main' \
   Packages/DrumNotation/Sources Packages/DrumNotation/Tests || true
 
-grep -R -nE 'vexflow|jsdom|node_modules' \
-  Packages/DrumNotation/Package.swift Packages/DrumNotation/Sources Virgo Virgo.xcodeproj/project.pbxproj || true
+grep -R -nE 'vexflow|jsdom' \
+  Packages/DrumNotation/Package.swift Packages/DrumNotation/Sources \
+  Virgo Virgo.xcodeproj/project.pbxproj || true
 
 find Packages/DrumNotation -type l -print
 git grep -n 'DrumNoteheadGlyph' -- Virgo VirgoTests || true
@@ -912,45 +1105,79 @@ git grep -n 'DrumNoteheadGlyph' -- Virgo VirgoTests || true
 
 Expected:
 
-- no package dependency on Virgo/app theme/font bootstrap;
-- no shipping/runtime Node/VexFlow dependency;
-- no package symlink escaping the package;
-- no remaining `DrumNoteheadGlyph` reference.
+- no app-domain/theme dependency in package Swift source;
+- no shipping VexFlow/jsdom dependency;
+- no package symlinks escaping into Virgo;
+- no remaining `DrumNoteheadGlyph` production/test reference.
 
-- [ ] **Step 7: Review final diff for scope**
+- [ ] **Step 7: Review scope and commit final test/golden/doc adjustments**
 
 ```bash
 git diff main...HEAD --stat
-git diff main...HEAD -- Packages/DrumNotation Virgo/layout Virgo/views Virgo/constants .github/workflows/ci.yml
+git diff main...HEAD -- \
+  Packages/DrumNotation Virgo/layout Virgo/views Virgo/constants \
+  VirgoTests .swiftlint.yml .github/workflows/ci.yml
 ```
 
-Reject any accidental change to formatting algorithms, beam topology, DTX/rhythm inference, package publication or a new renderer backend.
+Reject any accidental:
 
-- [ ] **Step 8: Commit final reviewed test/doc changes on this PR**
+- measured horizontal formatter work;
+- beam-topology rewrite;
+- DTX/rhythm-inference change;
+- runtime JS/WebView;
+- second package product/target;
+- publication/release infrastructure.
+
+Commit only justified final changes:
 
 ```bash
-git add Packages/DrumNotation VirgoTests
-git commit -m "test: verify DrumNotation native glyph cutover"
+git add Packages/DrumNotation Virgo VirgoTests .swiftlint.yml .github/workflows/ci.yml
+git commit -m "test: verify DrumNotation primitive migration"
 ```
+
+- [ ] **Step 8: Mark this same PR ready and require CI**
+
+After all local verification above is fresh and green, mark PR #65 ready for review. This triggers the existing `ready_for_review` workflow event and removes the draft-job guard.
+
+Require the GitHub Actions checks to run successfully, including the new `Run DrumNotation package tests` step, before considering HPA-163 complete.
+
+Do not open another implementation PR.
+
+---
+
+## Risks / decisions to preserve during implementation
+
+### Natural staff-space glyphs are intentionally not legacy-size-compatible
+
+Natural Bravura whole heads/rests may be wider/taller than the removed custom shapes. Preserve ticks and fixed note X, not old glyph dimensions. Raster/visual review happens before golden regeneration.
+
+### Natural isolated flags may lengthen stems
+
+Do not shrink flags into 8×8. Extend only unbeamed flagged stems to satisfy the package-computed inward flag extent plus existing chord clearance. HPA-166 still owns final beam/modifier engraving behavior.
+
+### Anchor X may expose a degenerate existing hook renderer
+
+Topology is invariant here. Every topology-requested hook must still produce one rendered non-zero hook. If corrected anchors expose a zero-length endpoint, fix rendering geometry rather than deleting/changing topology or blessing the missing segment in goldens.
 
 ---
 
 ## Completion Checklist
 
-Before HPA-163 leaves draft:
+Before HPA-163 is ready to merge:
 
-- [ ] clean package tests pass independently;
-- [ ] Bravura 1.392 OTF/metadata/license are package-owned and documented against VexFlow 5.0.0;
-- [ ] no Node/jsdom/VexFlow toolchain exists in this PR;
-- [ ] anchor tests exercise the full translate + scale + Y-flip transform and path-edge relationship;
-- [ ] package metrics and primitive views share one geometry implementation;
-- [ ] adapter maps `NotationRestDuration` explicitly and skips `.indeterminate`;
-- [ ] flag sizes derive from Bravura natural staff-space geometry, not 8×8;
-- [ ] `FlagPaintCommand` is the single flag-collapse policy for production and the render probe;
-- [ ] notehead/rest/flag/articulation painted bounds come from the same package geometry that paints them;
-- [ ] `DrumNoteheadGlyph` and its constructor/test plumbing are gone;
-- [ ] digest/golden semantics no longer depend on that deleted glyph enum;
-- [ ] note X, rows, tick identity, beam membership/topology and playhead alignment remain unchanged;
-- [ ] full serial macOS tests, iPad simulator build, SwiftLint and `git diff --check` pass;
-- [ ] HPA-164 still owns measured horizontal formatting;
-- [ ] HPA-166 still owns final VexFlow beam/modifier/static-sheet parity and any executable VexFlow harness needed for it.
+- [ ] `swift test --package-path Packages/DrumNotation` passes from a clean package build.
+- [ ] `.swiftlint.yml` includes `Packages`; SwiftLint has no new errors.
+- [ ] Bravura 1.392 OTF/metadata/license are package-owned from the pinned VexFlow font source.
+- [ ] Every primitive uses `staffSpace`, not a legacy `CGSize` fit.
+- [ ] Whole/black noteheads and whole/quarter rests have natural staff-relative scale.
+- [ ] Notehead anchors use the same full transform as paint and pass edge tests.
+- [ ] Isolated 32nd/64th flags remain clear of heads through bounded unbeamed-stem extension.
+- [ ] Notehead/rest/flag/open-articulation raster ink is inside the reported package-derived bounds.
+- [ ] A representative PNG row has been visually inspected before golden regeneration.
+- [ ] Production and `DrumTabRenderProbeTests.notationOverlay` consume identical `FlagPaintCommand`s.
+- [ ] `DrumNoteheadGlyph` and handwritten primitive geometry are gone.
+- [ ] DTX identity, voice/staff placement, absolute ticks, note X, beam topology membership/level/kind, hook count and playhead routing are unchanged.
+- [ ] Full serial macOS tests and generic iOS Simulator build pass locally.
+- [ ] Intentional goldens were regenerated with `TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1`, reviewed, then pass without the update variable.
+- [ ] PR #65 is marked ready only after local verification and its GitHub Actions checks pass.
+- [ ] HPA-164 still owns measured horizontal formatting; HPA-166 still owns complete stem/beam/modifier/static-sheet parity.
