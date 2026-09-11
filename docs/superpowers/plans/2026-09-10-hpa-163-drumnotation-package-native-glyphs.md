@@ -823,9 +823,9 @@ git commit -m "feat: use DrumNotation geometry in layout"
 
 In `NotationPrimitiveViews.swift`:
 
-- notehead wrapper → `PercussionNoteheadView(... staffSpace: style.staffLineSpacing or supplied staffSpace, color: Palette.chalk)`;
-- rest wrapper → `NotationRestGlyphView` from `restDuration(for:)`;
-- open-hi-hat wrapper → `PercussionArticulationView(.open, staffSpace: ...)`;
+- notehead wrapper → `PercussionNoteheadView(... staffSpace: style.staffLineSpacing, color: Palette.chalk)`;
+- rest wrapper → `NotationRestGlyphView` from `restDuration(for:)` with the same `staffSpace`;
+- open-hi-hat wrapper → `PercussionArticulationView(.open, staffSpace: style.staffLineSpacing, ...)`;
 - flag wrapper becomes `NotationFlagView(command:)` and delegates one command to `NotationFlagGlyphView`.
 
 Delete:
@@ -921,9 +921,9 @@ FileManager.default.temporaryDirectory
     .appendingPathComponent("hpa-163-bravura-preview.png")
 ```
 
-using `writeRasterPNG` and assert the file is non-empty.
+using `writeRasterPNG` and assert the file is non-empty. Log the absolute temp path from the test so the executor can open the exact generated file rather than guessing the test-host temporary directory.
 
-- [ ] **Step 6: Run raster suites, then inspect the PNG before any golden rewrite**
+- [ ] **Step 6: Run raster suites, then inspect the logged PNG before any golden rewrite**
 
 ```bash
 xcodebuild test \
@@ -939,7 +939,7 @@ xcodebuild test \
 
 Expected: PASS.
 
-Open `hpa-163-bravura-preview.png` from the temporary directory and visually verify:
+Open the exact `hpa-163-bravura-preview.png` path printed by the test and visually verify:
 
 - whole/black noteheads have consistent staff-relative scale;
 - rests are not vertically/horizontally squashed;
