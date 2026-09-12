@@ -155,14 +155,15 @@ struct GameplayViewTests {
     }
 
     @Test func testDrumTypeSymbols() async throws {
+        // HPA-163: symbols denote notehead style, not per-drum identity.
         #expect(DrumType.kick.symbol == "●")
-        #expect(DrumType.snare.symbol == "◆")
+        #expect(DrumType.snare.symbol == "●")
         #expect(DrumType.hiHat.symbol == "×")
-        #expect(DrumType.crash.symbol == "◉")
-        #expect(DrumType.ride.symbol == "○")
-        #expect(DrumType.tom1.symbol == "◐")
-        #expect(DrumType.tom2.symbol == "◑")
-        #expect(DrumType.tom3.symbol == "◒")
+        #expect(DrumType.crash.symbol == "×")
+        #expect(DrumType.ride.symbol == "×")
+        #expect(DrumType.tom1.symbol == "●")
+        #expect(DrumType.tom2.symbol == "●")
+        #expect(DrumType.tom3.symbol == "●")
         #expect(DrumType.cowbell.symbol == "◇")
     }
 
@@ -198,8 +199,9 @@ struct GameplayViewTests {
         let symbols = allDrumTypes.map { $0.symbol }
         let positions = allDrumTypes.map { $0.yPosition(for: row) }
 
-        // All symbols should be unique
-        #expect(Set(symbols).count == symbols.count)
+        // HPA-163: symbols denote notehead style (filled/x/diamond), so they
+        // intentionally collide across drum types; pin the three style groups.
+        #expect(Set(symbols) == ["●", "×", "◇"])
 
         // All positions should be unique
         #expect(Set(positions).count == positions.count)
@@ -302,9 +304,9 @@ struct GameplayViewTests {
         // Ensure we have exactly 9 drum types
         #expect(allDrumTypes.count == 9)
 
-        // Ensure each type appears only once
+        // Ensure the three notehead-style symbol groups are covered (HPA-163)
         let uniqueTypes = Set(allDrumTypes.map { $0.symbol })
-        #expect(uniqueTypes.count == 9)
+        #expect(uniqueTypes == ["●", "×", "◇"])
     }
 
     @Test func testCowbellDrumType() async throws {
