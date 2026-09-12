@@ -9,9 +9,7 @@ import Testing
 /// metadata.json — production metrics are never fed into the expectations.
 @Suite("Bravura geometry")
 struct BravuraGeometryTests {
-    private static let flagDurations: [NotationDuration] = [
-        .eighth, .sixteenth, .thirtySecond, .sixtyFourth
-    ]
+    private static let flagDurations: [NotationFlagDuration] = NotationFlagDuration.allCases
     /// Only stem-carrying notehead durations; whole noteheads document no stem
     /// anchors in Bravura because whole notes take no stems.
     private static let anchoredNoteheadDurations: [NotationDuration] = [.half, .quarter]

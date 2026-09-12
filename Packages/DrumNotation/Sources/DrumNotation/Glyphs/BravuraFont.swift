@@ -171,7 +171,7 @@ public enum PercussionGlyphMetrics {
     }
 
     public static func flag(
-        duration: NotationDuration,
+        duration: NotationFlagDuration,
         direction: NotationStemDirection,
         staffSpace: CGFloat
     ) -> FlagGlyphMetrics {

@@ -70,16 +70,18 @@ struct DrumTabRenderProbeTests {
     /// why). `drumNotationView` takes a `GameplayViewModel`, and this suite does not drive one
     /// (see the type doc); this rebuilds the same primitive z-order from a `NotationLayout`
     /// instead, on a transparent background so no staff/sheet chrome can mask a missing head.
+    ///
+    /// `flagCommands` is resolved by the caller, once, from the unmodified
+    /// layout: `flagPaintCommands` derives canonical durations and sibling
+    /// suppression from the head set, so recomputing it against a head-stripped
+    /// or single-head layout would emit per-flag `.eighth` fallbacks instead and
+    /// let the flag layer vary between the compared renders.
     private func notationOverlay(
         _ layout: NotationLayout,
+        flagCommands: [FlagPaintCommand],
         style: NotationLayoutStyle
     ) -> some View {
-        let flagCommands = VirgoNotationAdapter.flagPaintCommands(
-            flags: layout.flags,
-            heads: layout.noteHeads,
-            style: style
-        )
-        return ZStack {
+        ZStack {
             ForEach(layout.ledgerLines) { NotationLedgerLineView(ledgerLine: $0) }
             ForEach(layout.rests.filter(\.isPrinted)) { NotationRestView(rest: $0, style: style) }
             ForEach(layout.beams) { NotationBeamView(beam: $0) }
@@ -152,7 +154,8 @@ struct DrumTabRenderProbeTests {
         DrumTabFixtureCatalog.sixteenthRun,
         DrumTabFixtureCatalog.multiRowStableWidths,
         DrumTabFixtureCatalog.sameTimeTrio,
-        DrumTabFixtureCatalog.stopChokeDamp
+        DrumTabFixtureCatalog.stopChokeDamp,
+        DrumTabFixtureCatalog.isolatedFlaggedNotes
     ])
     func noteHeadsArePainted(_ fixture: DrumTabFixture) throws {
         let result = try DrumTabFixtureHarness.render(fixture)
@@ -188,11 +191,26 @@ struct DrumTabRenderProbeTests {
         // cannot get clipped out of this canvas.
         let size = CGSize(width: layout.contentWidth, height: max(layout.totalHeight + yOffset, 1))
 
+        // Resolved once from the unmodified layout so the flag layer is
+        // identical in every render below; the stripped and single-head copies
+        // mutate only `noteHeads`.
+        let flagCommands = VirgoNotationAdapter.flagPaintCommands(
+            flags: layout.flags,
+            heads: layout.noteHeads,
+            style: viewStyle
+        )
+
         var stripped = layout
         stripped.noteHeads = []
 
-        let withHeads = try inkMap(of: notationOverlay(layout, style: viewStyle).offset(y: yOffset), size: size)
-        let withoutHeads = try inkMap(of: notationOverlay(stripped, style: viewStyle).offset(y: yOffset), size: size)
+        let withHeads = try inkMap(
+            of: notationOverlay(layout, flagCommands: flagCommands, style: viewStyle).offset(y: yOffset),
+            size: size
+        )
+        let withoutHeads = try inkMap(
+            of: notationOverlay(stripped, flagCommands: flagCommands, style: viewStyle).offset(y: yOffset),
+            size: size
+        )
 
         let totalWith = totalInk(withHeads)
         let totalWithout = totalInk(withoutHeads)
@@ -227,7 +245,7 @@ struct DrumTabRenderProbeTests {
             var singleHead = layout
             singleHead.noteHeads = [head]
             let withOnlyHead = try inkMap(
-                of: notationOverlay(singleHead, style: viewStyle).offset(y: yOffset),
+                of: notationOverlay(singleHead, flagCommands: flagCommands, style: viewStyle).offset(y: yOffset),
                 size: size
             )
             let delta = inkCount(in: withOnlyHead, rect: rect) - inkCount(in: withoutHeads, rect: rect)

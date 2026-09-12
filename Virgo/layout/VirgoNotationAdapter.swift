@@ -6,7 +6,7 @@ import DrumNotation
 struct FlagPaintCommand: Identifiable, Equatable {
     let id: String
     let center: CGPoint
-    let duration: NotationDuration
+    let duration: NotationFlagDuration
     let direction: NotationStemDirection
     let staffSpace: CGFloat
     let paintedBounds: CGRect
@@ -43,6 +43,23 @@ enum VirgoNotationAdapter {
             return .thirtySecond
         case .sixtyfourth:
             return .sixtyFourth
+        }
+    }
+
+    /// The flag duration for `interval`, or nil for intervals that never carry
+    /// a flag (full/half/quarter).
+    static func flagDuration(for interval: NoteInterval) -> NotationFlagDuration? {
+        switch interval {
+        case .eighth:
+            return .eighth
+        case .sixteenth:
+            return .sixteenth
+        case .thirtysecond:
+            return .thirtySecond
+        case .sixtyfourth:
+            return .sixtyFourth
+        case .full, .half, .quarter:
+            return nil
         }
     }
 
@@ -121,6 +138,7 @@ enum VirgoNotationAdapter {
         for (headID, headFlags) in Dictionary(grouping: flags, by: \.noteHeadID) {
             guard let head = headsByID[headID],
                 let levelZero = headFlags.first(where: { $0.flagIndex == 0 }),
+                let canonicalDuration = flagDuration(for: head.interval),
                 Set(headFlags.map(\.flagIndex)) == Set(0..<head.interval.flagCount)
             else { continue }
 
@@ -130,7 +148,7 @@ enum VirgoNotationAdapter {
             canonicalByFlagID[levelZero.id] = makeCommand(
                 id: levelZero.id,
                 origin: levelZero.origin,
-                duration: duration(for: head.interval),
+                duration: canonicalDuration,
                 direction: stemDirection(levelZero.stemDirection),
                 style: style
             )
@@ -162,10 +180,11 @@ enum VirgoNotationAdapter {
         style: NotationLayoutStyle
     ) -> CGFloat {
         var required = style.stemLength
-        for head in heads where head.interval.flagCount > 0 {
+        for head in heads {
+            guard let flagDuration = flagDuration(for: head.interval) else { continue }
             let direction = stemDirection(head.stemDirection)
             let metrics = PercussionGlyphMetrics.flag(
-                duration: duration(for: head.interval),
+                duration: flagDuration,
                 direction: direction,
                 staffSpace: staffSpace(for: style)
             )
@@ -188,7 +207,7 @@ enum VirgoNotationAdapter {
     private static func makeCommand(
         id: String,
         origin: CGPoint,
-        duration: NotationDuration,
+        duration: NotationFlagDuration,
         direction: NotationStemDirection,
         style: NotationLayoutStyle
     ) -> FlagPaintCommand {

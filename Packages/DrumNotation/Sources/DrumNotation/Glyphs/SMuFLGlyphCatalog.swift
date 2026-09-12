@@ -49,7 +49,7 @@ enum SMuFLGlyphCatalog {
         }
     }
 
-    static func flag(duration: NotationDuration, direction: NotationStemDirection) -> SMuFLGlyph {
+    static func flag(duration: NotationFlagDuration, direction: NotationStemDirection) -> SMuFLGlyph {
         switch (duration, direction) {
         case (.eighth, .up): return SMuFLGlyph(name: "flag8thUp", scalar: 0xE240)
         case (.eighth, .down): return SMuFLGlyph(name: "flag8thDown", scalar: 0xE241)
@@ -59,8 +59,6 @@ enum SMuFLGlyphCatalog {
         case (.thirtySecond, .down): return SMuFLGlyph(name: "flag32ndDown", scalar: 0xE245)
         case (.sixtyFourth, .up): return SMuFLGlyph(name: "flag64thUp", scalar: 0xE246)
         case (.sixtyFourth, .down): return SMuFLGlyph(name: "flag64thDown", scalar: 0xE247)
-        case (.whole, _), (.half, _), (.quarter, _):
-            preconditionFailure("flags apply only to eighth notes and shorter; got \(duration)")
         }
     }
 

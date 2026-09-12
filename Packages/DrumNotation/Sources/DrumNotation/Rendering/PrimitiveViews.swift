@@ -82,13 +82,13 @@ public struct NotationRestGlyphView: View {
 /// flag's glyph-origin attachment point (see `FlagGlyphMetrics.attachmentOffset`)
 /// is where a stem would join it.
 public struct NotationFlagGlyphView: View {
-    private let duration: NotationDuration
+    private let duration: NotationFlagDuration
     private let direction: NotationStemDirection
     private let staffSpace: CGFloat
     private let color: Color
 
     public init(
-        duration: NotationDuration,
+        duration: NotationFlagDuration,
         direction: NotationStemDirection,
         staffSpace: CGFloat,
         color: Color = .primary
