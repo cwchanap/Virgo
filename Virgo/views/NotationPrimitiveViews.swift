@@ -71,7 +71,7 @@ struct NotationArticulationView: View, Equatable {
 
     var body: some View {
         PercussionArticulationView(
-            articulation: .open,
+            articulation: VirgoNotationAdapter.articulation(for: articulation.kind),
             staffSpace: style.staffLineSpacing,
             color: Palette.chalk
         )

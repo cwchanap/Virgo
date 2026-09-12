@@ -227,7 +227,10 @@ extension RenderedStopNote {
 
 extension RenderedArticulation {
     func paintedBounds(style: NotationLayoutStyle) -> CGRect {
-        PercussionGlyphMetrics.articulation(.open, staffSpace: style.staffLineSpacing)
+        PercussionGlyphMetrics.articulation(
+            VirgoNotationAdapter.articulation(for: kind),
+            staffSpace: style.staffLineSpacing
+        )
             .paintedBounds
             .offsetBy(dx: position.x, dy: position.y)
     }
