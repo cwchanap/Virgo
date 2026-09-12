@@ -398,6 +398,11 @@ private struct GameplayDrumNotationView: View {
     var body: some View {
         let printedRests = layout.rests.filter(\.isPrinted)
         let style = NotationLayoutStyle.gameplayDefault
+        let flagCommands = VirgoNotationAdapter.flagPaintCommands(
+            flags: layout.flags,
+            heads: layout.noteHeads,
+            style: style
+        )
 
         return ZStack {
             ForEach(layout.ledgerLines) { ledgerLine in
@@ -415,8 +420,8 @@ private struct GameplayDrumNotationView: View {
                     .equatable()
             }
 
-            ForEach(layout.flags) { flag in
-                NotationFlagView(flag: flag)
+            ForEach(flagCommands) { command in
+                NotationFlagView(command: command)
                     .equatable()
             }
 
@@ -426,7 +431,7 @@ private struct GameplayDrumNotationView: View {
             }
 
             ForEach(layout.noteHeads) { noteHead in
-                NotationNoteHeadView(noteHead: noteHead, size: layout.noteHeadSize)
+                NotationNoteHeadView(noteHead: noteHead, style: style)
                     .equatable()
             }
 

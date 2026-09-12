@@ -554,7 +554,6 @@ struct NotationLayoutEngineChordAndBeamTests {
         let lowerHead = try #require(layout.noteHeads.first { $0.voice == .lower })
         let upperStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(upperHead.id) })
         let lowerStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(lowerHead.id) })
-        let size = style.noteHeadSize
         let upperOffset = VirgoNotationAdapter.noteheadMetrics(for: upperHead, style: style).stemAnchorOffset
         let lowerOffset = VirgoNotationAdapter.noteheadMetrics(for: lowerHead, style: style).stemAnchorOffset
         let expectedUpperStart = CGPoint(
@@ -880,8 +879,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         for beam in layout.beams where beam.noteHeadIDs.contains(where: { headIDs.contains($0) }) {
             ys.append(max(beam.start.y, beam.end.y) + beam.thickness / 2)
         }
-        for flag in layout.flags where headIDs.contains(flag.noteHeadID) {
-            ys.append(flag.origin.y + GameplayLayout.flagHeight)
+        for bounds in flagPaintedBounds(layout: layout, headIDs: headIDs) {
+            ys.append(bounds.maxY)
         }
         for ledger in layout.ledgerLines where ledger.row == row {
             ys.append(max(ledger.start.y, ledger.end.y))
@@ -902,13 +901,25 @@ struct NotationLayoutEngineChordAndBeamTests {
         for beam in layout.beams where beam.noteHeadIDs.contains(where: { headIDs.contains($0) }) {
             ys.append(min(beam.start.y, beam.end.y) - beam.thickness / 2)
         }
-        for flag in layout.flags where headIDs.contains(flag.noteHeadID) {
-            ys.append(flag.origin.y - GameplayLayout.flagHeight)
+        for bounds in flagPaintedBounds(layout: layout, headIDs: headIDs) {
+            ys.append(bounds.minY)
         }
         for ledger in layout.ledgerLines where ledger.row == row {
             ys.append(min(ledger.start.y, ledger.end.y))
         }
         return ys.min() ?? .infinity
+    }
+
+    /// Package-derived painted bounds for the row's flags. Replaces the deleted
+    /// fixed-size `GameplayLayout.flagWidth`/`flagHeight` constants: Bravura flag
+    /// ink extents are much larger and duration-dependent, and production paints
+    /// exactly these bounds (via `VirgoNotationAdapter.flagPaintCommands`).
+    private func flagPaintedBounds(layout: NotationLayout, headIDs: Set<UInt64>) -> [CGRect] {
+        VirgoNotationAdapter.flagPaintCommands(
+            flags: layout.flags.filter { headIDs.contains($0.noteHeadID) },
+            heads: layout.noteHeads,
+            style: .gameplayDefault
+        ).map(\.paintedBounds)
     }
 }
 
