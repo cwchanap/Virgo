@@ -115,19 +115,20 @@ struct NotationLayoutDefensiveGuardTests {
             ))],
             timeSignature: .fourFour
         ))
-        let bounds = layout.noteHeads.map { $0.paintedBounds(style: style) }
-            + layout.rests.filter(\.isPrinted).map { $0.paintedBounds(style: style) }
-            + layout.stopNotes.map { $0.paintedBounds(style: style) }
-            + layout.articulations.map { $0.paintedBounds(style: style) }
-            + layout.stems.map { $0.paintedBounds(style: style) }
-            + layout.beams.map { $0.paintedBounds(style: style) }
-            + VirgoNotationAdapter.flagPaintCommands(
-                flags: layout.flags,
-                heads: layout.noteHeads,
-                style: style
-            ).map(\.paintedBounds)
-            + layout.ledgerLines.map { $0.paintedBounds(style: style) }
-            + layout.measureBars.map { $0.paintedBounds(style: style) }
+        var bounds: [CGRect] = []
+        bounds.append(contentsOf: layout.noteHeads.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.rests.filter(\.isPrinted).map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.stopNotes.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.articulations.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.stems.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.beams.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: VirgoNotationAdapter.flagPaintCommands(
+            flags: layout.flags,
+            heads: layout.noteHeads,
+            style: style
+        ).map(\.paintedBounds))
+        bounds.append(contentsOf: layout.ledgerLines.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.measureBars.map { $0.paintedBounds(style: style) })
 
         #expect(!bounds.isEmpty)
         #expect(bounds.allSatisfy { !$0.isNull && !$0.isEmpty })
