@@ -49,6 +49,19 @@ struct VirgoNotationAdapterTests {
         }
     }
 
+    @Test("Every RenderedArticulationKind maps to a package articulation")
+    func articulationMappingIsExhaustive() {
+        let expected: [RenderedArticulationKind: PercussionArticulation] = [
+            .openHiHat: .open
+        ]
+
+        // The adapter's switch is exhaustive, so any future enum case fails
+        // to compile there; this pins the mapping values themselves.
+        for (kind, articulation) in expected {
+            #expect(VirgoNotationAdapter.articulation(for: kind) == articulation)
+        }
+    }
+
     @Test("Both StemDirections map to package stem directions")
     func stemDirectionMappingIsExhaustive() {
         let expected: [StemDirection: NotationStemDirection] = [

@@ -46,6 +46,13 @@ enum VirgoNotationAdapter {
         }
     }
 
+    static func articulation(for kind: RenderedArticulationKind) -> PercussionArticulation {
+        switch kind {
+        case .openHiHat:
+            return .open
+        }
+    }
+
     static func stemDirection(_ direction: StemDirection) -> NotationStemDirection {
         switch direction {
         case .up:
