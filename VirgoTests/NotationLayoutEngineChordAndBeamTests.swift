@@ -612,6 +612,44 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(stem.start.y - stem.end.y >= style.stemLength)
     }
 
+    @Test("Unbeamed flagged stem keeps flag ink clear of a tall chord")
+    func unbeamedFlaggedStemClearsFlagInkPastTallChord() throws {
+        let style = NotationLayoutStyle.gameplayDefault
+        let notes = [
+            Note(interval: .sixtyfourth, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .sixtyfourth, noteType: .lowTom, measureNumber: 1, measureOffset: 0)
+        ]
+        let layout = NotationLayoutEngine().layout(
+            input: NotationLayoutInput(
+                notes: notes,
+                timeSignature: .fourFour,
+                notePositionOverrides: [.crash: .aboveLine9, .tom3: .belowLine6]
+            )
+        )
+        let stem = try #require(layout.stems.first)
+        let highestVisibleY = try #require(
+            layout.noteHeads.map {
+                VirgoNotationAdapter.noteheadMetrics(for: $0, style: style).paintedBounds
+                    .offsetBy(dx: $0.position.x, dy: $0.position.y)
+                    .minY
+            }.min()
+        )
+        let flagInkBottom = try #require(
+            VirgoNotationAdapter.flagPaintCommands(
+                flags: layout.flags,
+                heads: layout.noteHeads,
+                style: style
+            ).map(\.paintedBounds.maxY).max()
+        )
+
+        #expect(stem.direction == .up)
+        #expect(layout.beams.isEmpty)
+        #expect(
+            flagInkBottom <= highestVisibleY - style.minimumStemExtensionPastChord + 0.001,
+            "Flag ink bottom \(flagInkBottom) must clear chord top \(highestVisibleY)"
+        )
+    }
+
     @Test("Unbeamed lower-voice stem covers a tall chord from the left")
     func unbeamedLowerVoiceStemCoversTallChordFromLeft() throws {
         let style = NotationLayoutStyle.gameplayDefault
@@ -667,7 +705,10 @@ struct NotationLayoutEngineChordAndBeamTests {
         #expect(layout.stems.count == 1)
         #expect(layout.beams.isEmpty)
         #expect(layout.flags.count == 2)
-        #expect(firstFlag.origin.x == stem.start.x + GameplayLayout.flagXOffset)
+        #expect(
+            firstFlag.origin.x
+                == stem.start.x - NotationLayoutStyle.gameplayDefault.stemWidth / 2
+        )
         #expect(firstFlag.origin.y == stem.end.y)
         #expect(secondFlag.origin.x == firstFlag.origin.x)
         #expect(secondFlag.origin.y == stem.end.y + GameplayLayout.flagVerticalSpacing)

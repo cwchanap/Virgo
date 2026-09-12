@@ -209,10 +209,7 @@ extension NotationLayoutEngine {
             let stem = stemsByNoteHeadID[representative.id] else { return [] }
 
             let covered = beamBuild.topology.coveredLevelsByEventIndex[index] ?? []
-            let flagOrigin = CGPoint(
-                x: stem.start.x + GameplayLayout.flagXOffset,
-                y: stem.end.y
-            )
+            let flagOrigin = flagStemOrigin(for: stem, style: style)
             return (0..<requiredLevels).compactMap { level in
                 guard !covered.contains(level) else { return nil }
                 let yOffset = stem.direction == .up
@@ -227,6 +224,12 @@ extension NotationLayoutEngine {
                 )
             }
         }
+    }
+
+    /// The SMuFL flag attachment point for `stem`: flag glyph origins land on
+    /// the stem's left edge, level 0 vertically at the stem tip.
+    func flagStemOrigin(for stem: RenderedStem, style: NotationLayoutStyle) -> CGPoint {
+        CGPoint(x: stem.start.x - style.stemWidth / 2, y: stem.end.y)
     }
 
     func buildLedgerLines(
@@ -594,8 +597,15 @@ extension NotationLayoutEngine {
             return start.y
         }
         // Flagged unbeamed stems must clear the tallest natural flag in the
-        // group; unflagged groups keep the plain default stem length.
+        // group; unflagged groups keep the plain default stem length. The
+        // flag hangs inward from the stem tip, so the chord-bound term also
+        // reserves that reach: flag ink, not just the tip, stays
+        // minimumStemExtensionPastChord clear of the far chord edge.
         let effectiveStemLength = VirgoNotationAdapter.minimumUnbeamedStemLength(
+            heads: noteHeads,
+            style: style
+        )
+        let flagInwardExtent = VirgoNotationAdapter.maximumFlagInwardExtent(
             heads: noteHeads,
             style: style
         )
@@ -606,7 +616,7 @@ extension NotationLayoutEngine {
             }.min() ?? start.y
             return min(
                 start.y - effectiveStemLength,
-                highestVisibleY - style.minimumStemExtensionPastChord
+                highestVisibleY - style.minimumStemExtensionPastChord - flagInwardExtent
             )
         case .down:
             let lowestVisibleY = noteHeads.map {
@@ -614,7 +624,7 @@ extension NotationLayoutEngine {
             }.max() ?? start.y
             return max(
                 start.y + effectiveStemLength,
-                lowestVisibleY + style.minimumStemExtensionPastChord
+                lowestVisibleY + style.minimumStemExtensionPastChord + flagInwardExtent
             )
         }
     }
