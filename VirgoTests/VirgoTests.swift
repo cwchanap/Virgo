@@ -184,7 +184,9 @@ struct VirgoTests {
     @Test func testModelIntegration() async throws {
         // Test that all drum types map to the notehead-style symbol groups (HPA-163)
         let row = 0 // Use row 0 for testing
-        let allDrumTypes: [DrumType] = [.kick, .snare, .hiHat, .crash, .ride, .tom1, .tom2, .tom3, .cowbell]
+        let allDrumTypes: [DrumType] = [
+            .kick, .snare, .hiHat, .hiHatPedal, .crash, .ride, .tom1, .tom2, .tom3, .cowbell
+        ]
         let symbols = allDrumTypes.map { $0.symbol }
         let positions = allDrumTypes.map { $0.yPosition(for: row) }
 

@@ -54,10 +54,10 @@ func rests() {
 
 @Test("flags: 8th..64th up E240/E242/E244/E246, down E241/E243/E245/E247")
 func flags() {
-    let expectedUp: [NotationDuration: UInt32] = [
+    let expectedUp: [NotationFlagDuration: UInt32] = [
         .eighth: 0xE240, .sixteenth: 0xE242, .thirtySecond: 0xE244, .sixtyFourth: 0xE246
     ]
-    let expectedDown: [NotationDuration: UInt32] = [
+    let expectedDown: [NotationFlagDuration: UInt32] = [
         .eighth: 0xE241, .sixteenth: 0xE243, .thirtySecond: 0xE245, .sixtyFourth: 0xE247
     ]
     for (duration, scalar) in expectedUp {
