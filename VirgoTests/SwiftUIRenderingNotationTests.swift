@@ -166,18 +166,22 @@ struct SwiftUIRenderingNotationTests {
         ))
         let head = try #require(layout.noteHeads.first)
         let articulation = try #require(layout.articulations.first)
-        let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: head.row)
-        let existingTopMargin = (line5Y - head.position.y) + GameplayLayout.staffLineSpacing
-        let topEdge = articulation.position.y
-            - style.articulationDiameter / 2
-            - style.articulationStrokeWidth / 2
+        // Bravura pictOpen needs articulationVerticalOffset 24 > one staff space,
+        // so the old "center within head elevation + staff space" margin no longer
+        // holds by design; pin the clearance the offset exists for instead (>= 2pt
+        // between pictOpen ink and the X-head ink) and keep sheet containment via
+        // the real painted bounds.
+        #expect(
+            head.paintedBounds(style: style).minY
+                - articulation.paintedBounds(style: style).maxY >= 2
+        )
+        let topEdge = articulation.paintedBounds(style: style).minY
         let sheetOriginY: CGFloat = 0
         let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: Chart(difficulty: .medium))
         viewModel.installNotationLayout(layout)
         let gameplayView = GameplayView(chart: viewModel.chart, metronome: viewModel.metronome)
         let contentTopInset = gameplayView.sheetContentTopInset(viewModel: viewModel)
 
-        #expect(line5Y - articulation.position.y <= existingTopMargin)
         #expect(topEdge + contentTopInset >= sheetOriginY)
         #expect(gameplayView.sheetContentHeight(viewModel: viewModel) == layout.totalHeight + contentTopInset)
     }

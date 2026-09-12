@@ -209,7 +209,8 @@ struct NotationLayoutStyle: Equatable, Sendable {
         stopMarkVerticalOffset: 18,
         articulationDiameter: 10,
         articulationStrokeWidth: 1.5,
-        articulationVerticalOffset: 18,
+        // pictOpen half (11.44) + noteheadXBlack half (10) + 2pt gap at staffSpace 20.
+        articulationVerticalOffset: 24,
         rhythmDotRadius: 2.5,
         rhythmDotSpacing: 4,
         tupletLineWidth: 1.5,
