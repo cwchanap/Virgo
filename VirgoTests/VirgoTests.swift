@@ -83,7 +83,7 @@ struct VirgoTests {
 
         // Test DrumType properties
         #expect(DrumType.kick.symbol == "●")
-        #expect(DrumType.snare.symbol == "◆")
+        #expect(DrumType.snare.symbol == "●")
         
         // Test that y positions are calculated correctly based on layout system
         let kickY = DrumType.kick.yPosition(for: 0)
@@ -182,13 +182,13 @@ struct VirgoTests {
     }
 
     @Test func testModelIntegration() async throws {
-        // Test that all drum types have unique symbols and positions
+        // Test that all drum types map to the notehead-style symbol groups (HPA-163)
         let row = 0 // Use row 0 for testing
         let allDrumTypes: [DrumType] = [.kick, .snare, .hiHat, .crash, .ride, .tom1, .tom2, .tom3, .cowbell]
         let symbols = allDrumTypes.map { $0.symbol }
         let positions = allDrumTypes.map { $0.yPosition(for: row) }
 
-        #expect(Set(symbols).count == symbols.count) // All unique
+        #expect(Set(symbols) == ["●", "×", "◇"]) // Three notehead-style groups
         #expect(Set(positions).count == positions.count) // All unique
 
         // Test that positions are ordered correctly (top to bottom based on drum kit layout)
