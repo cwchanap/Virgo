@@ -110,13 +110,14 @@ enum DrumTabFixtureCatalog {
 
     /// Fixture 6: open (18), closed (11), and pedal (1B) hi-hat must stay three
     /// distinct mappings rather than collapsing to one rendering. Note this is
-    /// not distinguishable via (drumType, glyph) alone: open and closed hi-hat
-    /// share `gameplayInstrument == .hiHat` (`DrumNotationCatalogTests` locks
-    /// this equivalence directly), and all three share `glyph == .cross` in
-    /// `DrumNotationCatalog.definitions` -- the articulation is carried purely
-    /// by `variant` (`.openHiHat` / `.closedHiHat` / `.pedalHiHat`). The gate
-    /// below checks (glyph, variant) pairs, not (drumType, glyph), so it
-    /// actually fails if open/closed/pedal collapse to the same variant.
+    /// not distinguishable via (drumType, notehead style) alone: open and
+    /// closed hi-hat share `gameplayInstrument == .hiHat`
+    /// (`DrumNotationCatalogTests` locks this equivalence directly), and all
+    /// three map to the same package `PercussionNoteheadStyle.x` via
+    /// `VirgoNotationAdapter.noteheadStyle` -- the articulation is carried
+    /// purely by `variant` (`.openHiHat` / `.closedHiHat` / `.pedalHiHat`).
+    /// The gate below asserts the three variants directly, so it actually
+    /// fails if open/closed/pedal collapse to the same variant.
     /// No trailing sentinel measure: this fixture directly exercises
     /// chart-terminal duration inference as well as glyph/variant mapping.
     static let hiHatOpenClosedPedal = DrumTabFixture(

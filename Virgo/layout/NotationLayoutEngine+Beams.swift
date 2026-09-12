@@ -237,20 +237,17 @@ extension NotationLayoutEngine {
             ledgerSteps(for: noteHead.staffStep).map { step in
                 let y = GameplayLayout.StaffLinePosition.line1.absoluteY(for: noteHead.row)
                     + CGFloat(step) * (style.staffLineSpacing / 2)
-                let glyphBounds = noteHead.glyph.bounds(
-                    centeredAt: noteHead.position,
-                    size: style.noteHeadSize
-                )
+                let headBounds = headPaintedBounds(for: noteHead, style: style)
 
                 return RenderedLedgerLine(
                     id: "ledger_\(noteHead.id)_\(step)",
                     row: noteHead.row,
                     start: CGPoint(
-                        x: glyphBounds.minX - style.ledgerLineOverhang,
+                        x: headBounds.minX - style.ledgerLineOverhang,
                         y: y
                     ),
                     end: CGPoint(
-                        x: glyphBounds.maxX + style.ledgerLineOverhang,
+                        x: headBounds.maxX + style.ledgerLineOverhang,
                         y: y
                     )
                 )
@@ -546,24 +543,22 @@ extension NotationLayoutEngine {
         for noteHead: RenderedNoteHead,
         style: NotationLayoutStyle
     ) -> CGPoint {
-        let offset = noteHead.glyph.stemAnchorOffset(
-            direction: noteHead.stemDirection,
-            in: style.noteHeadSize
-        )
+        let offset = VirgoNotationAdapter.noteheadMetrics(
+            for: noteHead,
+            style: style
+        ).stemAnchorOffset
         return CGPoint(
             x: noteHead.position.x + offset.x,
             y: noteHead.position.y + offset.y
         )
     }
 
-    func glyphBounds(
+    func headPaintedBounds(
         for noteHead: RenderedNoteHead,
         style: NotationLayoutStyle
     ) -> CGRect {
-        noteHead.glyph.bounds(
-            centeredAt: noteHead.position,
-            size: style.noteHeadSize
-        )
+        VirgoNotationAdapter.noteheadMetrics(for: noteHead, style: style).paintedBounds
+            .offsetBy(dx: noteHead.position.x, dy: noteHead.position.y)
     }
 
     func stemRepresentative(
@@ -598,21 +593,27 @@ extension NotationLayoutEngine {
         guard let direction = noteHeads.first?.stemDirection else {
             return start.y
         }
+        // Flagged unbeamed stems must clear the tallest natural flag in the
+        // group; unflagged groups keep the plain default stem length.
+        let effectiveStemLength = VirgoNotationAdapter.minimumUnbeamedStemLength(
+            heads: noteHeads,
+            style: style
+        )
         switch direction {
         case .up:
             let highestVisibleY = noteHeads.map {
-                glyphBounds(for: $0, style: style).minY
+                headPaintedBounds(for: $0, style: style).minY
             }.min() ?? start.y
             return min(
-                start.y - style.stemLength,
+                start.y - effectiveStemLength,
                 highestVisibleY - style.minimumStemExtensionPastChord
             )
         case .down:
             let lowestVisibleY = noteHeads.map {
-                glyphBounds(for: $0, style: style).maxY
+                headPaintedBounds(for: $0, style: style).maxY
             }.max() ?? start.y
             return max(
-                start.y + style.stemLength,
+                start.y + effectiveStemLength,
                 lowestVisibleY + style.minimumStemExtensionPastChord
             )
         }

@@ -1,4 +1,5 @@
 import CoreGraphics
+import DrumNotation
 import Foundation
 
 enum RenderedRhythmDotSource: Hashable, Sendable {
@@ -199,17 +200,19 @@ struct RhythmDiagnosticPresentation: Hashable, Sendable {
 
 extension RenderedNoteHead {
     func paintedBounds(style: NotationLayoutStyle) -> CGRect {
-        glyph.bounds(centeredAt: position, size: style.noteHeadSize)
+        VirgoNotationAdapter.noteheadMetrics(for: self, style: style).paintedBounds
+            .offsetBy(dx: position.x, dy: position.y)
     }
 }
 
 extension RenderedRest {
     func paintedBounds(style: NotationLayoutStyle) -> CGRect {
-        guard isPrinted, duration != .indeterminate else { return .null }
-        let size = duration == .fullMeasure || duration == .half
-            ? CGSize(width: style.fullMeasureRestWidth, height: style.fullMeasureRestHeight)
-            : CGSize(width: style.restSymbolWidth + 3, height: style.restSymbolHeight + 3)
-        return CGRect(center: position, size: size)
+        guard isPrinted, let duration = VirgoNotationAdapter.restDuration(self.duration) else {
+            return .null
+        }
+        return PercussionGlyphMetrics.rest(duration: duration, staffSpace: style.staffLineSpacing)
+            .paintedBounds
+            .offsetBy(dx: position.x, dy: position.y)
     }
 }
 
@@ -224,8 +227,9 @@ extension RenderedStopNote {
 
 extension RenderedArticulation {
     func paintedBounds(style: NotationLayoutStyle) -> CGRect {
-        let diameter = style.articulationDiameter + style.articulationStrokeWidth
-        return CGRect(center: position, size: CGSize(width: diameter, height: diameter))
+        PercussionGlyphMetrics.articulation(.open, staffSpace: style.staffLineSpacing)
+            .paintedBounds
+            .offsetBy(dx: position.x, dy: position.y)
     }
 }
 
@@ -241,25 +245,33 @@ extension RenderedBeam {
     }
 }
 
-extension RenderedFlag {
-    func paintedBounds(style: NotationLayoutStyle) -> CGRect {
-        switch stemDirection {
-        case .up:
-            return CGRect(x: origin.x, y: origin.y, width: GameplayLayout.flagWidth, height: GameplayLayout.flagHeight)
-        case .down:
-            return CGRect(
-                x: origin.x - GameplayLayout.flagWidth,
-                y: origin.y - GameplayLayout.flagHeight,
-                width: GameplayLayout.flagWidth,
-                height: GameplayLayout.flagHeight
-            )
-        }
-    }
-}
-
 extension RenderedLedgerLine {
     func paintedBounds(style: NotationLayoutStyle) -> CGRect {
         lineBounds(start: start, end: end, lineWidth: GameplayLayout.barLineWidth)
+    }
+}
+
+extension NotationLayout {
+    func calculatePaintedBounds(style: NotationLayoutStyle) -> CGRect {
+        let flagCommands = VirgoNotationAdapter.flagPaintCommands(
+            flags: flags,
+            heads: noteHeads,
+            style: style
+        )
+        let rectangles = noteHeads.map { $0.paintedBounds(style: style) }
+            + rests.map { $0.paintedBounds(style: style) }
+            + stopNotes.map { $0.paintedBounds(style: style) }
+            + articulations.map { $0.paintedBounds(style: style) }
+            + stems.map { $0.paintedBounds(style: style) }
+            + beams.map { $0.paintedBounds(style: style) }
+            + flagCommands.map(\.paintedBounds)
+            + ledgerLines.map { $0.paintedBounds(style: style) }
+            + measureBars.map { $0.paintedBounds(style: style) }
+            + rhythmDots.map { $0.paintedBounds(style: style) }
+            + tuplets.map { $0.paintedBounds(style: style) }
+            + feelMarks.map { $0.paintedBounds(style: style) }
+            + rhythmWarnings.map { $0.paintedBounds(style: style) }
+        return rectangles.filter { !$0.isNull }.reduce(.null) { $0.union($1) }
     }
 }
 
@@ -311,25 +323,6 @@ extension RenderedFeelMark {
 
 extension RenderedRhythmWarning {
     func paintedBounds(style: NotationLayoutStyle) -> CGRect { CGRect(center: position, size: size) }
-}
-
-extension NotationLayout {
-    func calculatePaintedBounds(style: NotationLayoutStyle) -> CGRect {
-        let rectangles = noteHeads.map { $0.paintedBounds(style: style) }
-            + rests.map { $0.paintedBounds(style: style) }
-            + stopNotes.map { $0.paintedBounds(style: style) }
-            + articulations.map { $0.paintedBounds(style: style) }
-            + stems.map { $0.paintedBounds(style: style) }
-            + beams.map { $0.paintedBounds(style: style) }
-            + flags.map { $0.paintedBounds(style: style) }
-            + ledgerLines.map { $0.paintedBounds(style: style) }
-            + measureBars.map { $0.paintedBounds(style: style) }
-            + rhythmDots.map { $0.paintedBounds(style: style) }
-            + tuplets.map { $0.paintedBounds(style: style) }
-            + feelMarks.map { $0.paintedBounds(style: style) }
-            + rhythmWarnings.map { $0.paintedBounds(style: style) }
-        return rectangles.filter { !$0.isNull }.reduce(.null) { $0.union($1) }
-    }
 }
 
 private extension Array where Element == RhythmDiagnosticCode {

@@ -379,8 +379,8 @@ struct NotationLayoutEngineChordAndBeamTests {
     @Test("stemless note sharing a beam run time column does not hijack beam endpoint X")
     func stemlessNoteInBeamRunDoesNotHijackEndpointX() throws {
         // Two snare eighths form a beam run. A hiHat half sits at the same
-        // time column as the first eighth. hiHat uses a .cross glyph (different
-        // stem anchor X than snare's .filledDiamond), and its position is
+        // time column as the first eighth. hiHat's X-style package notehead
+        // (different stem anchor X than snare's normal head), and its position is
         // overridden to line1 (below snare's line3) so that without the
         // needsStem filter, stemRepresentative would pick the half note as the
         // beam owner (largest y for up-stems), misaligning beam start.x from
@@ -418,7 +418,7 @@ struct NotationLayoutEngineChordAndBeamTests {
 
         // The beam start.x must match the stem start.x — not the half note's
         // stem anchor x. Without the needsStem filter this would fail because
-        // the half note (lower position, largest y for up-stem, .cross glyph)
+        // the half note (lower position, largest y for up-stem)
         // would be picked as the beam owner.
         let style = NotationLayoutStyle.gameplayDefault
         let halfAnchorX = NotationLayoutEngine().stemAnchor(for: halfHead, style: style).x
@@ -540,7 +540,7 @@ struct NotationLayoutEngineChordAndBeamTests {
         )
     }
 
-    @Test("Same-time mixed voices use disjoint stems on opposite glyph sides")
+    @Test("Same-time mixed voices use disjoint stems on opposite head sides")
     func sameTimeMixedVoicesUseDisjointOppositeStems() throws {
         let style = NotationLayoutStyle.gameplayDefault
         let notes = [
@@ -555,8 +555,8 @@ struct NotationLayoutEngineChordAndBeamTests {
         let upperStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(upperHead.id) })
         let lowerStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(lowerHead.id) })
         let size = style.noteHeadSize
-        let upperOffset = upperHead.glyph.stemAnchorOffset(direction: .up, in: size)
-        let lowerOffset = lowerHead.glyph.stemAnchorOffset(direction: .down, in: size)
+        let upperOffset = VirgoNotationAdapter.noteheadMetrics(for: upperHead, style: style).stemAnchorOffset
+        let lowerOffset = VirgoNotationAdapter.noteheadMetrics(for: lowerHead, style: style).stemAnchorOffset
         let expectedUpperStart = CGPoint(
             x: upperHead.position.x + upperOffset.x,
             y: upperHead.position.y + upperOffset.y
@@ -591,16 +591,16 @@ struct NotationLayoutEngineChordAndBeamTests {
         let stem = try #require(layout.stems.first)
         let highestVisibleY = try #require(
             layout.noteHeads.map {
-                $0.glyph.bounds(centeredAt: $0.position, size: layout.noteHeadSize).minY
+                VirgoNotationAdapter.noteheadMetrics(for: $0, style: style).paintedBounds
+                    .offsetBy(dx: $0.position.x, dy: $0.position.y)
+                    .minY
             }.min()
         )
         let lowestHead = try #require(
             layout.noteHeads.max(by: { $0.position.y < $1.position.y })
         )
-        let lowestOffset = lowestHead.glyph.stemAnchorOffset(
-            direction: .up,
-            in: layout.noteHeadSize
-        )
+        let lowestOffset = VirgoNotationAdapter.noteheadMetrics(for: lowestHead, style: style)
+            .stemAnchorOffset
         let expectedStart = CGPoint(
             x: lowestHead.position.x + lowestOffset.x,
             y: lowestHead.position.y + lowestOffset.y
@@ -630,16 +630,16 @@ struct NotationLayoutEngineChordAndBeamTests {
         let stem = try #require(layout.stems.first)
         let lowestVisibleY = try #require(
             layout.noteHeads.map {
-                $0.glyph.bounds(centeredAt: $0.position, size: layout.noteHeadSize).maxY
+                VirgoNotationAdapter.noteheadMetrics(for: $0, style: style).paintedBounds
+                    .offsetBy(dx: $0.position.x, dy: $0.position.y)
+                    .maxY
             }.max()
         )
         let highestHead = try #require(
             layout.noteHeads.min(by: { $0.position.y < $1.position.y })
         )
-        let highestOffset = highestHead.glyph.stemAnchorOffset(
-            direction: .down,
-            in: layout.noteHeadSize
-        )
+        let highestOffset = VirgoNotationAdapter.noteheadMetrics(for: highestHead, style: style)
+            .stemAnchorOffset
         let expectedStart = CGPoint(
             x: highestHead.position.x + highestOffset.x,
             y: highestHead.position.y + highestOffset.y
@@ -704,11 +704,11 @@ struct NotationLayoutEngineChordAndBeamTests {
 
     @Test("Mixed quarter/eighth chord beam anchor matches stem anchor")
     func mixedQuarterEighthChordBeamAnchorMatchesStemAnchor() throws {
-        // Quarter snare (.filledDiamond, line3) + eighth hi-hat (.cross, line5)
+        // Quarter snare (line3) + eighth hi-hat (line5)
         // share a stem at column 0.  The eighth hi-hat beams to an eighth snare
         // at column 1.  Before the fix, buildStems picked the representative from
         // the full chord (snare, highest Y for .up) while beams(for:) picked it
-        // from only the flagged subset (hi-hat), producing different glyph anchor
+        // from only the flagged subset (hi-hat), producing different stem anchor
         // X values and a visible stem/beam misalignment.
         let notes = [
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
@@ -739,22 +739,20 @@ struct NotationLayoutEngineChordAndBeamTests {
         let beamDelta = abs(beam.start.x - firstStem.start.x)
         #expect(
             beamDelta < 0.001,
-            "Beam start X must match stem start X (delta=\(beamDelta)) — same chord representative glyph"
+            "Beam start X must match stem start X (delta=\(beamDelta)) — same chord representative anchor"
         )
 
         // The representative should be the snare (highest Y for up-stems),
         // not the hi-hat.  Verify by computing the expected anchor from the
-        // snare's glyph and confirming it matches.
+        // snare's anchor and confirming it matches.
         let style = NotationLayoutStyle.gameplayDefault
-        let snareAnchor = snareQuarter.glyph.stemAnchorOffset(
-            direction: StemDirection.up,
-            in: style.noteHeadSize
-        )
+        let snareAnchor = VirgoNotationAdapter.noteheadMetrics(for: snareQuarter, style: style)
+            .stemAnchorOffset
         let expectedX = snareQuarter.position.x + snareAnchor.x
         let stemDelta = abs(firstStem.start.x - expectedX)
         #expect(
             stemDelta < 0.001,
-            "Stem should be anchored on the snare (.filledDiamond) representative (delta=\(stemDelta))"
+            "Stem should be anchored on the snare representative (delta=\(stemDelta))"
         )
         let beamRepDelta = abs(beam.start.x - expectedX)
         #expect(

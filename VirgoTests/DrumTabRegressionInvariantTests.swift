@@ -411,7 +411,11 @@ struct DrumTabRegressionInvariantTests {
             + layout.articulations.map { $0.paintedBounds(style: style) }
             + layout.stems.map { $0.paintedBounds(style: style) }
             + layout.beams.map { $0.paintedBounds(style: style) }
-            + layout.flags.map { $0.paintedBounds(style: style) }
+            + VirgoNotationAdapter.flagPaintCommands(
+                flags: layout.flags,
+                heads: layout.noteHeads,
+                style: style
+            ).map(\.paintedBounds)
             + layout.ledgerLines.map { $0.paintedBounds(style: style) }
             + layout.measureBars.map { $0.paintedBounds(style: style) }
             + layout.rhythmDots.map { $0.paintedBounds(style: style) }

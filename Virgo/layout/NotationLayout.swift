@@ -486,7 +486,6 @@ struct RenderedNoteHead: Identifiable, Hashable, Sendable {
     let sourceChipID: String?
     let noteType: NoteType
     let drumType: DrumType
-    let glyph: DrumNoteheadGlyph
     let variant: DrumNotationVariant
     let voice: NotationVoice
     let stemDirection: StemDirection
@@ -524,7 +523,6 @@ struct RenderedNoteHead: Identifiable, Hashable, Sendable {
         sourceChipID: String?,
         noteType: NoteType,
         drumType: DrumType,
-        glyph: DrumNoteheadGlyph,
         variant: DrumNotationVariant,
         voice: NotationVoice,
         stemDirection: StemDirection,
@@ -546,7 +544,6 @@ struct RenderedNoteHead: Identifiable, Hashable, Sendable {
         self.sourceChipID = sourceChipID
         self.noteType = noteType
         self.drumType = drumType
-        self.glyph = glyph
         self.variant = variant
         self.voice = voice
         self.stemDirection = stemDirection
