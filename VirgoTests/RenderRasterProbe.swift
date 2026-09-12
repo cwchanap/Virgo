@@ -8,10 +8,13 @@ import Foundation
 import CoreGraphics
 
 #if os(macOS)
+import AppKit
+
 enum RenderRasterProbeError: Error {
     case missingCGImage
     case missingPixelBuffer
     case missingBitmapContext
+    case missingPNGData
 }
 
 /// One pixel's channels, as a struct rather than a 4-tuple so SwiftLint's
@@ -95,5 +98,27 @@ func rasterizeView<V: View>(_ view: V, size: CGSize) throws -> RasterBitmap {
     }
 
     return RasterBitmap(bytes: bytes, width: width, height: height)
+}
+
+/// Rasterizes `view` at exactly `size` (scale 1) and writes it as a PNG to `url`
+/// so a generated visual preview can be opened by its absolute path.
+@MainActor
+func writeRasterPNG<V: View>(
+    _ view: V,
+    size: CGSize,
+    url: URL
+) throws {
+    let renderer = ImageRenderer(
+        content: view.frame(width: size.width, height: size.height)
+    )
+    renderer.scale = 1
+    guard let cgImage = renderer.cgImage else {
+        throw RenderRasterProbeError.missingCGImage
+    }
+    let rep = NSBitmapImageRep(cgImage: cgImage)
+    guard let data = rep.representation(using: .png, properties: [:]) else {
+        throw RenderRasterProbeError.missingPNGData
+    }
+    try data.write(to: url)
 }
 #endif

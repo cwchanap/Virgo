@@ -145,20 +145,6 @@ struct GameplayLayout {
     static let activeOpacity: CGFloat = 0.3
     static let beamLevelSpacing: CGFloat = 6
 
-    // MARK: - Flag Drawing Constants
-    static let flagWidth: CGFloat = 8
-    static let flagHeight: CGFloat = 8
-    static let flagCurveControl1X: CGFloat = 4
-    static let flagCurveControl1Y: CGFloat = -2
-    static let flagCurveControl2X: CGFloat = 6
-    static let flagCurveControl2Y: CGFloat = 2
-    static let flagCurveMidPointX: CGFloat = 8
-    static let flagCurveMidPointY: CGFloat = 4
-    static let flagCurveEndControl1X: CGFloat = 6
-    static let flagCurveEndControl1Y: CGFloat = 6
-    static let flagCurveEndControl2X: CGFloat = 4
-    static let flagCurveEndControl2Y: CGFloat = 10
-
     // MARK: - Component Positions
     static let clefX: CGFloat = 20
     static let timeSignatureX: CGFloat = 55

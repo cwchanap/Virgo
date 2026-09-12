@@ -33,7 +33,7 @@ import CoreGraphics
 /// z-orders stay in step going forward.
 ///
 /// What `notationOverlay` gates is `NotationNoteHeadView` *itself* -- an empty body, a zero
-/// frame, a transparent fill, a broken `DrumNoteheadShape` path, a dropped `.position` --
+/// frame, a transparent fill, a broken glyph path, a dropped `.position` --
 /// against real pixels. Head *placement* is a separate claim this probe does not make: the
 /// sample rect is computed from `noteHead.position` via `RenderedNoteHead.paintedBounds`
 /// (`NotationRhythmRendering.swift:178-180`), and the glyph is drawn at that same position, so
@@ -74,14 +74,19 @@ struct DrumTabRenderProbeTests {
         _ layout: NotationLayout,
         style: NotationLayoutStyle
     ) -> some View {
-        ZStack {
+        let flagCommands = VirgoNotationAdapter.flagPaintCommands(
+            flags: layout.flags,
+            heads: layout.noteHeads,
+            style: style
+        )
+        return ZStack {
             ForEach(layout.ledgerLines) { NotationLedgerLineView(ledgerLine: $0) }
             ForEach(layout.rests.filter(\.isPrinted)) { NotationRestView(rest: $0, style: style) }
             ForEach(layout.beams) { NotationBeamView(beam: $0) }
-            ForEach(layout.flags) { NotationFlagView(flag: $0) }
+            ForEach(flagCommands) { NotationFlagView(command: $0) }
             ForEach(layout.stems) { NotationStemView(stem: $0) }
             ForEach(layout.noteHeads) {
-                NotationNoteHeadView(noteHead: $0, size: layout.noteHeadSize)
+                NotationNoteHeadView(noteHead: $0, style: style)
             }
         }
     }

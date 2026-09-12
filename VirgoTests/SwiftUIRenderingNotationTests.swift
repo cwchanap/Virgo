@@ -39,7 +39,7 @@ struct SwiftUIRenderingNotationTests {
                 SwiftUITestUtilities.assertViewWithEnvironment(
                     NotationNoteHeadView(
                         noteHead: noteHead,
-                        size: CGSize(width: 30, height: 20)
+                        style: .gameplayDefault
                     ),
                     size: CGSize(width: 120, height: 120)
                 )
@@ -123,7 +123,7 @@ struct SwiftUIRenderingNotationTests {
             }
             let noteHeadViews = ZStack {
                 ForEach(layout.noteHeads) { noteHead in
-                    NotationNoteHeadView(noteHead: noteHead, size: layout.noteHeadSize)
+                    NotationNoteHeadView(noteHead: noteHead, style: .gameplayDefault)
                 }
             }
 
@@ -134,7 +134,7 @@ struct SwiftUIRenderingNotationTests {
             let noteHeadLabels = layout.noteHeads.flatMap { noteHead in
                 SwiftUITestUtilities.renderedTexts(from: NotationNoteHeadView(
                     noteHead: noteHead,
-                    size: layout.noteHeadSize
+                    style: .gameplayDefault
                 ).body)
             }
             #expect(Set(noteHeadLabels).isSuperset(of: ["Closed hi-hat", "Open hi-hat", "Pedal hi-hat"]))
@@ -240,16 +240,18 @@ struct SwiftUIRenderingNotationTests {
                 flagIndex: 0,
                 origin: CGPoint(x: 66, y: 25)
             )
+            let flagCommands = VirgoNotationAdapter.flagPaintCommands(
+                flags: [flag],
+                heads: [],
+                style: .gameplayDefault
+            )
 
             let view = ZStack {
                 Color.black
                 NotationBeamView(beam: beam)
                 NotationStemView(stem: stem)
-                NotationFlagView(flag: flag)
-                NotationNoteHeadView(
-                    noteHead: noteHead,
-                    size: CGSize(width: 30, height: 20)
-                )
+                ForEach(flagCommands) { NotationFlagView(command: $0) }
+                NotationNoteHeadView(noteHead: noteHead, style: .gameplayDefault)
             }
 
             let yellowPixels = try countYellowPixels(in: view, size: CGSize(width: 140, height: 140))
@@ -259,68 +261,29 @@ struct SwiftUIRenderingNotationTests {
         #endif
     }
 
-    @Test("Notation flag view mounts and renders")
-    func testNotationFlagViewRenders() async throws {
+    @Test("Notation flag view mounts up and down flag commands")
+    func testNotationFlagViewMountsCommands() async throws {
         try await TestSetup.withTestSetup {
-            let flag = RenderedFlag(
-                id: "flag-1",
-                noteHeadID: 42,
-                stemDirection: .up,
-                flagIndex: 0,
-                origin: CGPoint(x: 50, y: 50)
-            )
+            for direction in [StemDirection.up, .down] {
+                let flag = RenderedFlag(
+                    id: "flag-\(direction == .up ? "up" : "down")",
+                    noteHeadID: 42,
+                    stemDirection: direction,
+                    flagIndex: 0,
+                    origin: CGPoint(x: 50, y: 50)
+                )
+                let command = try #require(
+                    VirgoNotationAdapter.flagPaintCommands(
+                        flags: [flag],
+                        heads: [],
+                        style: .gameplayDefault
+                    ).first
+                )
 
-            // Smoke test: the flag view should mount and render without errors.
-            let view = NotationFlagView(flag: flag)
-            SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
-        }
-    }
-
-    @Test("Notation flag view renders with stem-down direction")
-    func testNotationFlagViewRendersWithStemDown() async throws {
-        try await TestSetup.withTestSetup {
-            let flag = RenderedFlag(
-                id: "flag-2",
-                noteHeadID: 43,
-                stemDirection: .down,
-                flagIndex: 0,
-                origin: CGPoint(x: 50, y: 70)
-            )
-
-            // Smoke test: stem-down flag should mount and render without errors
-            let view = NotationFlagView(flag: flag)
-            SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
-        }
-    }
-
-    @Test("Notation flag position is adjusted for center-based placement")
-    func testNotationFlagPositionAdjustedForCenterPlacement() async throws {
-        try await TestSetup.withTestSetup {
-            // The adjustedCenter property should offset by half the flag frame size
-            // so the path origin (0,0) lands on flag.origin instead of the frame center.
-            let flagUp = RenderedFlag(
-                id: "flag-up",
-                noteHeadID: 42,
-                stemDirection: .up,
-                flagIndex: 0,
-                origin: CGPoint(x: 50, y: 50)
-            )
-            let flagDown = RenderedFlag(
-                id: "flag-down",
-                noteHeadID: 43,
-                stemDirection: .down,
-                flagIndex: 0,
-                origin: CGPoint(x: 50, y: 70)
-            )
-
-            // Both directions should render without error (smoke test for the
-            // corrected positioning logic — the actual position correction is
-            // exercised visually; this ensures no crash/miscompile).
-            let upView = NotationFlagView(flag: flagUp)
-            SwiftUITestUtilities.assertViewWithEnvironment(upView, size: CGSize(width: 120, height: 120))
-
-            let downView = NotationFlagView(flag: flagDown)
-            SwiftUITestUtilities.assertViewWithEnvironment(downView, size: CGSize(width: 120, height: 120))
+                // Smoke test: the flag view should mount and render without errors.
+                let view = NotationFlagView(command: command)
+                SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
+            }
         }
     }
 
@@ -358,6 +321,137 @@ struct SwiftUIRenderingNotationTests {
             SwiftUITestUtilities.assertViewWithEnvironment(view, size: CGSize(width: 120, height: 120))
         }
     }
+
+    #if os(macOS)
+    // MARK: - Bravura ink gates
+
+    // Real-pixel gates: each production wrapper is rasterized in isolation and
+    // its actual ink is checked against the same translated `paintedBounds`
+    // production layout computes -- at least one alpha > 20 pixel inside, none
+    // outside the bounds expanded by 1pt for antialias tolerance. This is not
+    // a same-helper check: a wrapper that paints nothing, paints offset, or
+    // paints oversized fails here even though view and metrics agree on data.
+
+    @Test("whole normal notehead paints ink inside its painted bounds")
+    func wholeNoteheadInkInsideBounds() async throws {
+        try await TestSetup.withTestSetup {
+            let style = NotationLayoutStyle.gameplayDefault
+            let head = makeRenderedHead(id: 1, noteType: .snare, interval: .full)
+            try assertWrapperInk(
+                view: NotationNoteHeadView(noteHead: head, style: style),
+                bounds: head.paintedBounds(style: style),
+                label: "whole normal notehead"
+            )
+        }
+    }
+
+    @Test("quarter normal X and diamond noteheads paint ink inside painted bounds", arguments: [
+        NoteType.snare, .hiHat, .cowbell
+    ])
+    func quarterNoteheadInkInsideBounds(_ noteType: NoteType) async throws {
+        try await TestSetup.withTestSetup {
+            let style = NotationLayoutStyle.gameplayDefault
+            let head = makeRenderedHead(id: 2, noteType: noteType, interval: .quarter)
+            try assertWrapperInk(
+                view: NotationNoteHeadView(noteHead: head, style: style),
+                bounds: head.paintedBounds(style: style),
+                label: "quarter \(noteType.rawValue) notehead"
+            )
+        }
+    }
+
+    @Test("whole and quarter rests paint ink inside painted bounds", arguments: [
+        NotationRestDuration.fullMeasure, .quarter
+    ])
+    func restInkInsideBounds(_ duration: NotationRestDuration) async throws {
+        try await TestSetup.withTestSetup {
+            let style = NotationLayoutStyle.gameplayDefault
+            let rest = makeRenderedRest(
+                id: "ink-rest-\(duration)",
+                duration: duration,
+                visibility: .printed
+            )
+            try assertWrapperInk(
+                view: NotationRestView(rest: rest, style: style),
+                bounds: rest.paintedBounds(style: style),
+                label: "\(duration) rest"
+            )
+        }
+    }
+
+    @Test("isolated sixty-fourth flag command paints ink inside painted bounds")
+    func sixtyFourthFlagCommandInkInsideBounds() async throws {
+        try await TestSetup.withTestSetup {
+            let style = NotationLayoutStyle.gameplayDefault
+            let head = makeRenderedHead(id: 3, noteType: .snare, interval: .sixtyfourth)
+            let origin = CGPoint(x: 100, y: 60)
+            let flags = (0..<head.interval.flagCount).map { index in
+                RenderedFlag(
+                    id: "flag-64-\(index)",
+                    noteHeadID: head.id,
+                    stemDirection: .up,
+                    flagIndex: index,
+                    origin: origin
+                )
+            }
+            let commands = VirgoNotationAdapter.flagPaintCommands(
+                flags: flags,
+                heads: [head],
+                style: style
+            )
+            #expect(commands.count == 1, "a full uncovered set collapses to one canonical command")
+            let command = try #require(commands.first)
+            #expect(command.duration == .sixtyFourth)
+            try assertWrapperInk(
+                view: NotationFlagView(command: command),
+                bounds: command.paintedBounds,
+                label: "isolated 64th flag command"
+            )
+        }
+    }
+
+    @Test("open hi-hat articulation paints ink inside painted bounds")
+    func openHiHatArticulationInkInsideBounds() async throws {
+        try await TestSetup.withTestSetup {
+            let style = NotationLayoutStyle.gameplayDefault
+            let articulation = RenderedArticulation(
+                id: "art-open",
+                kind: .openHiHat,
+                sourceNoteHeadID: 42,
+                row: 0,
+                position: CGPoint(x: 100, y: 100)
+            )
+            try assertWrapperInk(
+                view: NotationArticulationView(articulation: articulation, style: style),
+                bounds: articulation.paintedBounds(style: style),
+                label: "open hi-hat articulation"
+            )
+        }
+    }
+
+    /// One representative visual preview for human inspection (see PR notes):
+    /// whole + quarter normal heads, X + diamond heads, whole + quarter + 16th
+    /// rests, isolated 8th + 64th flags, one partially beamed uncovered hook,
+    /// and an open hi-hat articulation, mounted in production z-order. The
+    /// absolute PNG path is printed so the exact generated file can be opened.
+    @Test("Bravura preview row rasterizes to a non-empty PNG")
+    func bravuraPreviewRowWritesPNG() async throws {
+        try await TestSetup.withTestSetup {
+            let style = NotationLayoutStyle.gameplayDefault
+            let layout = makeBravuraPreviewRow(style: style)
+            let yOffset = layout.topContentInset(style: style)
+            let size = CGSize(width: layout.contentWidth, height: layout.totalHeight + yOffset)
+            let view = makePreviewOverlay(layout: layout, style: style)
+
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("hpa-163-bravura-preview.png")
+            try writeRasterPNG(view, size: size, url: url)
+            let data = try Data(contentsOf: url)
+            #expect(!data.isEmpty, "preview PNG at \(url.path) is empty")
+            print("[hpa-163] Bravura preview PNG written to: \(url.path)")
+        }
+    }
+    #endif
 
     @Test("rhythm dot tuplet feel and warning views mount with semantic labels")
     func testRhythmPrimitiveViewsRender() async throws {
@@ -423,6 +517,235 @@ struct SwiftUIRenderingNotationTests {
 }
 
 private extension SwiftUIRenderingNotationTests {
+    #if os(macOS)
+    // MARK: - Bravura ink gate helpers
+
+    /// Renders the production wrapper on a clear canvas (scale 1: 1pt = 1px)
+    /// and asserts real ink against `bounds`: at least one alpha > 20 pixel
+    /// inside, none outside the bounds expanded by 1pt for antialias tolerance.
+    @MainActor
+    private func assertWrapperInk<V: View>(
+        view: V,
+        bounds: CGRect,
+        label: String,
+        canvas: CGSize = CGSize(width: 200, height: 200)
+    ) throws {
+        guard !bounds.isNull else {
+            Issue.record("\(label): painted bounds are null")
+            return
+        }
+        let raster = try rasterizeView(ZStack { Color.clear; view }, size: canvas)
+        #expect(
+            inkCount(in: raster, rect: bounds) > 0,
+            "\(label): no ink (alpha > 20) inside painted bounds \(bounds)"
+        )
+        let expanded = bounds.insetBy(dx: -1, dy: -1)
+        let outside = totalInk(in: raster) - inkCount(in: raster, rect: expanded)
+        #expect(
+            outside == 0,
+            "\(label): \(outside) ink pixels outside expanded painted bounds \(expanded)"
+        )
+    }
+
+    private func inkCount(in raster: RasterBitmap, rect: CGRect) -> Int {
+        let minX = max(0, Int(rect.minX.rounded(.down)))
+        let maxX = min(raster.width - 1, Int(rect.maxX.rounded(.up)))
+        let minY = max(0, Int(rect.minY.rounded(.down)))
+        let maxY = min(raster.height - 1, Int(rect.maxY.rounded(.up)))
+        guard minX <= maxX, minY <= maxY else { return 0 }
+        var count = 0
+        for y in minY...maxY {
+            for x in minX...maxX where raster.pixel(at: y * raster.width + x).alpha > 20 {
+                count += 1
+            }
+        }
+        return count
+    }
+
+    private func totalInk(in raster: RasterBitmap) -> Int {
+        raster.count { $0.alpha > 20 }
+    }
+
+    // MARK: - Bravura preview row fixture
+
+    /// The preview row mounted in production z-order (same layers, same order,
+    /// as `GameplaySheetMusicView.GameplayDrumNotationView`), shifted by the
+    /// sheet's content inset.
+    @MainActor
+    private func makePreviewOverlay(
+        layout: NotationLayout,
+        style: NotationLayoutStyle
+    ) -> some View {
+        let flagCommands = VirgoNotationAdapter.flagPaintCommands(
+            flags: layout.flags,
+            heads: layout.noteHeads,
+            style: style
+        )
+        let yOffset = layout.topContentInset(style: style)
+        return ZStack {
+            Color.clear
+            ForEach(layout.rests) { NotationRestView(rest: $0, style: style) }
+            ForEach(layout.beams) { NotationBeamView(beam: $0) }
+            ForEach(flagCommands) { NotationFlagView(command: $0) }
+            ForEach(layout.stems) { NotationStemView(stem: $0) }
+            ForEach(layout.noteHeads) { NotationNoteHeadView(noteHead: $0, style: style) }
+            ForEach(layout.articulations) { NotationArticulationView(articulation: $0, style: style) }
+        }
+        .offset(y: yOffset)
+    }
+
+    /// Hand-assembled single-row fixture spanning every representative Bravura
+    /// primitive. Geometry comes from the same package metrics production uses
+    /// (via the adapter); mounting follows production z-order.
+    private func makeBravuraPreviewRow(style: NotationLayoutStyle) -> NotationLayout {
+        var layout = makePreviewRowBase(style: style)
+        let xHead = layout.noteHeads.first { $0.noteType == .hiHat }
+        if let xHead {
+            layout.articulations = [
+                RenderedArticulation(
+                    id: "preview-open",
+                    kind: .openHiHat,
+                    sourceNoteHeadID: xHead.id,
+                    row: 0,
+                    position: CGPoint(
+                        x: xHead.position.x,
+                        y: xHead.position.y - style.articulationVerticalOffset
+                    )
+                )
+            ]
+        }
+        layout.paintedBounds = layout.calculatePaintedBounds(style: style)
+        layout.totalHeight = max(GameplayLayout.rowHeight, layout.paintedBounds.maxY)
+        return layout
+    }
+
+    /// Heads, stems, rests, the beamed pair, and the flags of the preview row.
+    private func makePreviewRowBase(style: NotationLayoutStyle) -> NotationLayout {
+        var layout = NotationLayout.empty
+        let whole = makePreviewHead(1, .snare, .full, x: 90, y: 40)
+        let quarter = makePreviewHead(2, .snare, .quarter, x: 170, y: 40)
+        let xHead = makePreviewHead(3, .hiHat, .quarter, x: 250, y: 12)
+        let diamond = makePreviewHead(4, .cowbell, .quarter, x: 330, y: 12)
+        let eighth = makePreviewHead(5, .snare, .eighth, x: 610, y: 40)
+        let sixtyFourth = makePreviewHead(6, .snare, .sixtyfourth, x: 690, y: 40)
+        let beamedA = makePreviewHead(7, .snare, .sixteenth, x: 770, y: 40)
+        let beamedB = makePreviewHead(8, .snare, .sixteenth, x: 830, y: 40)
+
+        let eighthStem = makePreviewStem(
+            "preview-stem-8", for: eighth,
+            length: VirgoNotationAdapter.minimumUnbeamedStemLength(heads: [eighth], style: style),
+            style: style
+        )
+        let sixtyFourthStem = makePreviewStem(
+            "preview-stem-64", for: sixtyFourth,
+            length: VirgoNotationAdapter.minimumUnbeamedStemLength(heads: [sixtyFourth], style: style),
+            style: style
+        )
+        let beamedAStem = makePreviewStem("preview-stem-a", for: beamedA, length: style.stemLength, style: style)
+        let beamedBStem = makePreviewStem("preview-stem-b", for: beamedB, length: style.stemLength, style: style)
+
+        layout.noteHeads = [whole, quarter, xHead, diamond, eighth, sixtyFourth, beamedA, beamedB]
+        layout.rests = [
+            makePreviewRest("preview-rest-whole", .fullMeasure, x: 410, y: 20),
+            makePreviewRest("preview-rest-quarter", .quarter, x: 470, y: 40),
+            makePreviewRest("preview-rest-16th", .sixteenth, x: 530, y: 40)
+        ]
+        layout.stems = [eighthStem.stem, sixtyFourthStem.stem, beamedAStem.stem, beamedBStem.stem]
+        layout.beams = [RenderedBeam(
+            id: "preview-beam",
+            noteHeadIDs: [beamedA.id, beamedB.id],
+            direction: .up,
+            level: 0,
+            kind: .full,
+            start: beamedAStem.tip,
+            end: beamedBStem.tip,
+            thickness: style.beamThickness
+        )]
+        layout.flags = makePreviewFlags(for: eighth, tip: eighthStem.tip)
+            + makePreviewFlags(for: sixtyFourth, tip: sixtyFourthStem.tip)
+            + [
+                // Partially beamed pair: the primary beam covers level 0 of the
+                // second head; its uncovered secondary level stays a flag.
+                RenderedFlag(
+                    id: "preview-flag-hook", noteHeadID: beamedB.id,
+                    stemDirection: .up, flagIndex: 1, origin: beamedBStem.tip
+                )
+            ]
+        return layout
+    }
+
+    /// Full uncovered flag set for one unbeamed head (the canonical-collapse case).
+    private func makePreviewFlags(for head: RenderedNoteHead, tip: CGPoint) -> [RenderedFlag] {
+        (0..<head.interval.flagCount).map { index in
+            RenderedFlag(
+                id: "preview-flag-\(head.id)-\(index)",
+                noteHeadID: head.id,
+                stemDirection: .up,
+                flagIndex: index,
+                origin: tip
+            )
+        }
+    }
+
+    private func makePreviewHead(
+        _ id: UInt64,
+        _ noteType: NoteType,
+        _ interval: NoteInterval,
+        x: CGFloat,
+        y: CGFloat
+    ) -> RenderedNoteHead {
+        RenderedNoteHead(
+            id: id,
+            sourceLaneID: nil,
+            sourceChipID: nil,
+            noteType: noteType,
+            drumType: DrumType.from(noteType: noteType) ?? .snare,
+            variant: .standard,
+            voice: .upper,
+            stemDirection: .up,
+            timeColumn: NotationTimeColumn(measureIndex: 0, tickWithinMeasure: 0, absoluteLayoutTick: 0),
+            timePosition: 0,
+            row: 0,
+            position: CGPoint(x: x, y: y),
+            staffStep: 0,
+            interval: interval,
+            catalogOrder: Int(id)
+        )
+    }
+
+    private func makePreviewStem(
+        _ id: String,
+        for head: RenderedNoteHead,
+        length: CGFloat,
+        style: NotationLayoutStyle
+    ) -> (stem: RenderedStem, tip: CGPoint) {
+        let anchor = VirgoNotationAdapter.noteheadMetrics(for: head, style: style).stemAnchorOffset
+        let start = CGPoint(x: head.position.x + anchor.x, y: head.position.y + anchor.y)
+        let tip = CGPoint(x: start.x, y: start.y - length)
+        let stem = RenderedStem(id: id, noteHeadIDs: [head.id], direction: .up, start: start, end: tip)
+        return (stem, tip)
+    }
+
+    private func makePreviewRest(
+        _ id: String,
+        _ duration: NotationRestDuration,
+        x: CGFloat,
+        y: CGFloat
+    ) -> RenderedRest {
+        RenderedRest(
+            id: id,
+            timeColumn: NotationTimeColumn(measureIndex: 0, tickWithinMeasure: 0, absoluteLayoutTick: 0),
+            measureIndex: 0,
+            row: 0,
+            voice: .upper,
+            durationTicks: 960,
+            duration: duration,
+            visibility: .printed,
+            position: CGPoint(x: x, y: y)
+        )
+    }
+    #endif
+
     func makeRenderedRest(
         id: String,
         duration: NotationRestDuration,
@@ -490,7 +813,8 @@ private extension SwiftUIRenderingNotationTests {
 
     func makeRenderedHead(
         id: UInt64 = 42,
-        noteType: NoteType = .snare
+        noteType: NoteType = .snare,
+        interval: NoteInterval = .quarter
     ) -> RenderedNoteHead {
         return RenderedNoteHead(
             id: id,
@@ -510,7 +834,7 @@ private extension SwiftUIRenderingNotationTests {
             row: 0,
             position: CGPoint(x: 60, y: 60),
             staffStep: -4,
-            interval: .quarter,
+            interval: interval,
             catalogOrder: 1
         )
     }
