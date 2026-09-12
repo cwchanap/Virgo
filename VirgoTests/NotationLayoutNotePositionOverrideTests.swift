@@ -75,7 +75,10 @@ struct NotationLayoutNotePositionOverrideTests {
         #expect(head.sourceChipID == defaultHead.sourceChipID)
         #expect(head.noteType == defaultHead.noteType)
         #expect(head.drumType == defaultHead.drumType)
-        #expect(head.glyph == defaultHead.glyph)
+        #expect(
+            VirgoNotationAdapter.noteheadStyle(for: head.noteType)
+                == VirgoNotationAdapter.noteheadStyle(for: defaultHead.noteType)
+        )
         #expect(head.variant == defaultHead.variant)
         #expect(head.voice == .upper)
         #expect(head.voice == defaultHead.voice)

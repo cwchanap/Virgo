@@ -172,14 +172,14 @@ struct DrumTypeExtensionsAndConstantsTests {
     func testDrumTypeSymbol() {
         let expected: [(DrumType, String)] = [
             (.kick, "●"),
-            (.snare, "◆"),
+            (.snare, "●"),
             (.hiHat, "×"),
             (.hiHatPedal, "×"),
-            (.crash, "◉"),
-            (.ride, "○"),
-            (.tom1, "◐"),
-            (.tom2, "◑"),
-            (.tom3, "◒"),
+            (.crash, "×"),
+            (.ride, "×"),
+            (.tom1, "●"),
+            (.tom2, "●"),
+            (.tom3, "●"),
             (.cowbell, "◇")
         ]
         #expect(expected.count == DrumType.allCases.count)

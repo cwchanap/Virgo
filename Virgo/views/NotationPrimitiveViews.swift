@@ -35,28 +35,16 @@ struct FlagView: View {
 // without churning the layout tree. The parameter has been deleted so the
 // rendering contract (always chalk) is explicit.
 
-private struct DrumNoteheadShape: Shape {
-    let glyph: DrumNoteheadGlyph
-
-    func path(in rect: CGRect) -> Path {
-        Path(glyph.makePath(in: rect))
-    }
-}
-
 struct NotationNoteHeadView: View, Equatable {
     let noteHead: RenderedNoteHead
     let size: CGSize
 
     var body: some View {
-        DrumNoteheadShape(glyph: noteHead.glyph)
-            .fill(
-                Palette.chalk,
-                style: FillStyle(eoFill: noteHead.glyph.usesEvenOddFill)
-            )
-            .frame(
-                width: size.width,
-                height: size.height
-            )
+        // ponytail: interim placeholder so layout cutover (Task 6) compiles;
+        // Task 7 swaps this body for PercussionNoteheadView with Bravura ink.
+        Circle()
+            .fill(Palette.chalk)
+            .frame(width: size.width, height: size.height)
             .position(noteHead.position)
             .accessibilityLabel(noteHead.accessibilityLabel)
     }

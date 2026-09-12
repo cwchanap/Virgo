@@ -155,7 +155,14 @@ enum DrumType: Hashable, CaseIterable, Sendable {
     }
 
     var symbol: String {
-        DrumNotationCatalog.defaultDefinition(for: self)?.glyph.legacySymbol ?? "?"
+        switch self {
+        case .kick, .snare, .tom1, .tom2, .tom3:
+            return "●"
+        case .hiHat, .hiHatPedal, .crash, .ride:
+            return "×"
+        case .cowbell:
+            return "◇"
+        }
     }
 
     static func from(noteType: NoteType) -> DrumType? {

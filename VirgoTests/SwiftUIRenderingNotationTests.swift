@@ -29,11 +29,13 @@ private func countYellowPixels<V: View>(in view: V, size: CGSize) throws -> Int 
 @Suite("SwiftUI Rendering Notation Tests", .serialized)
 @MainActor
 struct SwiftUIRenderingNotationTests {
-    @Test("Notation primitive mounts every vector notehead")
+    @Test("Notation primitive mounts every package notehead style carrier")
     func testNotationPrimitiveMountsEveryVectorNotehead() async throws {
         try await TestSetup.withTestSetup {
-            for (index, glyph) in DrumNoteheadGlyph.allCases.enumerated() {
-                let noteHead = makeRenderedHead(id: UInt64(index), glyph: glyph)
+            // One representative per package PercussionNoteheadStyle:
+            // snare (.normal), hiHat (.x), cowbell (.diamond).
+            for (index, noteType) in [NoteType.snare, .hiHat, .cowbell].enumerated() {
+                let noteHead = makeRenderedHead(id: UInt64(index), noteType: noteType)
                 SwiftUITestUtilities.assertViewWithEnvironment(
                     NotationNoteHeadView(
                         noteHead: noteHead,
@@ -488,15 +490,14 @@ private extension SwiftUIRenderingNotationTests {
 
     func makeRenderedHead(
         id: UInt64 = 42,
-        glyph: DrumNoteheadGlyph = .filledDiamond
+        noteType: NoteType = .snare
     ) -> RenderedNoteHead {
         return RenderedNoteHead(
             id: id,
             sourceLaneID: nil,
             sourceChipID: nil,
-            noteType: .snare,
-            drumType: .snare,
-            glyph: glyph,
+            noteType: noteType,
+            drumType: DrumType.from(noteType: noteType) ?? .snare,
             variant: .standard,
             voice: .upper,
             stemDirection: .up,

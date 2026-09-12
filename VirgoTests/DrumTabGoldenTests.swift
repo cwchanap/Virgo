@@ -112,14 +112,16 @@ struct DrumTabGoldenTests {
 
         #expect(result.layout.noteHeads.count == 3)
 
-        // (drumType, glyph) is not enough: open and closed hi-hat share both
-        // `gameplayInstrument == .hiHat` and `glyph == .cross` in
-        // `DrumNotationCatalog.definitions` -- only `variant` carries the
+        // (drumType, notehead style) is not enough: open and closed hi-hat
+        // share `gameplayInstrument == .hiHat` and map to the same package
+        // `PercussionNoteheadStyle.x` -- only `variant` carries the
         // open/closed/pedal distinction. A regression that collapses two of
         // the three articulations to the same variant (e.g. open reporting
-        // as closed) must fail this count, so the pair is (glyph, variant).
-        let pairs = Set(result.layout.noteHeads.map { "\($0.glyph)|\($0.variant)" })
-        #expect(pairs.count == 3, "expected three distinct (glyph, variant) pairs, got \(pairs)")
+        // as closed) must fail this set comparison, so the variants are
+        // asserted directly.
+        let variants = Set(result.layout.noteHeads.map(\.variant))
+        #expect(variants == [.openHiHat, .closedHiHat, .pedalHiHat],
+                "expected the three hi-hat variants, got \(variants)")
 
         try GoldenFile.assertMatches(
             NotationLayoutDigest.make(result),

@@ -803,7 +803,7 @@ struct NotationLayoutEngineTests {
         #expect(head.sourceChipID == "A1")
         #expect(head.noteType == .openHiHat)
         #expect(head.drumType == .hiHat)
-        #expect(head.glyph == .cross)
+        #expect(VirgoNotationAdapter.noteheadStyle(for: head.noteType) == .x)
         #expect(head.variant == .openHiHat)
         #expect(head.voice == .upper)
         #expect(head.stemDirection == .up)
@@ -861,13 +861,11 @@ struct NotationLayoutEngineTests {
         )
         let head = try #require(layout.noteHeads.first)
         let ledger = try #require(layout.ledgerLines.first)
-        let glyphBounds = head.glyph.bounds(
-            centeredAt: head.position,
-            size: layout.noteHeadSize
-        )
+        let headBounds = VirgoNotationAdapter.noteheadMetrics(for: head, style: style).paintedBounds
+            .offsetBy(dx: head.position.x, dy: head.position.y)
 
-        #expect(ledger.start.x == glyphBounds.minX - style.ledgerLineOverhang)
-        #expect(ledger.end.x == glyphBounds.maxX + style.ledgerLineOverhang)
+        #expect(ledger.start.x == headBounds.minX - style.ledgerLineOverhang)
+        #expect(ledger.end.x == headBounds.maxX + style.ledgerLineOverhang)
     }
 
     @Test("same voice simultaneous notes do not split")
@@ -944,10 +942,7 @@ extension NotationLayoutEngineTests {
         )
         let crash = try #require(layout.noteHeads.first { $0.drumType == .crash })
         let stem = try #require(layout.stems.first)
-        let anchorOffset = crash.glyph.stemAnchorOffset(
-            direction: crash.stemDirection,
-            in: style.noteHeadSize
-        )
+        let anchorOffset = VirgoNotationAdapter.noteheadMetrics(for: crash, style: style).stemAnchorOffset
         let expectedAnchor = CGPoint(
             x: crash.position.x + anchorOffset.x,
             y: crash.position.y + anchorOffset.y
@@ -968,10 +963,7 @@ extension NotationLayoutEngineTests {
         )
         let snare = try #require(layout.noteHeads.first { $0.drumType == .snare })
         let stem = try #require(layout.stems.first)
-        let anchorOffset = snare.glyph.stemAnchorOffset(
-            direction: snare.stemDirection,
-            in: style.noteHeadSize
-        )
+        let anchorOffset = VirgoNotationAdapter.noteheadMetrics(for: snare, style: style).stemAnchorOffset
         let expectedAnchor = CGPoint(
             x: snare.position.x + anchorOffset.x,
             y: snare.position.y + anchorOffset.y
@@ -1032,14 +1024,8 @@ extension NotationLayoutEngineTests {
         let sortedHeads = layout.noteHeads.sorted { $0.timePosition < $1.timePosition }
         let firstHead = try #require(sortedHeads.first)
         let lastHead = try #require(sortedHeads.last)
-        let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
-            direction: firstHead.stemDirection,
-            in: style.noteHeadSize
-        )
-        let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
-            direction: lastHead.stemDirection,
-            in: style.noteHeadSize
-        )
+        let firstAnchorOffset = VirgoNotationAdapter.noteheadMetrics(for: firstHead, style: style).stemAnchorOffset
+        let lastAnchorOffset = VirgoNotationAdapter.noteheadMetrics(for: lastHead, style: style).stemAnchorOffset
         let expectedFirstAnchor = CGPoint(
             x: firstHead.position.x + firstAnchorOffset.x,
             y: firstHead.position.y + firstAnchorOffset.y
@@ -1075,14 +1061,8 @@ extension NotationLayoutEngineTests {
         let sortedHeads = layout.noteHeads.sorted { $0.timePosition < $1.timePosition }
         let firstHead = try #require(sortedHeads.first)
         let lastHead = try #require(sortedHeads.last)
-        let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
-            direction: firstHead.stemDirection,
-            in: style.noteHeadSize
-        )
-        let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
-            direction: lastHead.stemDirection,
-            in: style.noteHeadSize
-        )
+        let firstAnchorOffset = VirgoNotationAdapter.noteheadMetrics(for: firstHead, style: style).stemAnchorOffset
+        let lastAnchorOffset = VirgoNotationAdapter.noteheadMetrics(for: lastHead, style: style).stemAnchorOffset
 
         #expect(layout.beams.count == 1)
         #expect(beam.level == 0)
@@ -1280,14 +1260,8 @@ extension NotationLayoutEngineTests {
         let firstHead = try #require(sortedHeads.first)
         let lastHead = try #require(sortedHeads.last)
         let beam = try #require(layout.beams.first)
-        let firstAnchorOffset = firstHead.glyph.stemAnchorOffset(
-            direction: firstHead.stemDirection,
-            in: style.noteHeadSize
-        )
-        let lastAnchorOffset = lastHead.glyph.stemAnchorOffset(
-            direction: lastHead.stemDirection,
-            in: style.noteHeadSize
-        )
+        let firstAnchorOffset = VirgoNotationAdapter.noteheadMetrics(for: firstHead, style: style).stemAnchorOffset
+        let lastAnchorOffset = VirgoNotationAdapter.noteheadMetrics(for: lastHead, style: style).stemAnchorOffset
 
         #expect(layout.beams.count == 1)
         #expect(beam.direction == .down)
@@ -1318,10 +1292,7 @@ extension NotationLayoutEngineTests {
         for noteHeadID in beam.noteHeadIDs {
             let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
-            let anchorOffset = noteHead.glyph.stemAnchorOffset(
-                direction: noteHead.stemDirection,
-                in: style.noteHeadSize
-            )
+            let anchorOffset = VirgoNotationAdapter.noteheadMetrics(for: noteHead, style: style).stemAnchorOffset
             let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - beam.start.x) / (beam.end.x - beam.start.x)
             let expectedY = beam.start.y + t * (beam.end.y - beam.start.y)
@@ -1352,10 +1323,7 @@ extension NotationLayoutEngineTests {
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
             #expect(noteHead.stemDirection == .down)
             #expect(stem.direction == .down)
-            let anchorOffset = noteHead.glyph.stemAnchorOffset(
-                direction: noteHead.stemDirection,
-                in: style.noteHeadSize
-            )
+            let anchorOffset = VirgoNotationAdapter.noteheadMetrics(for: noteHead, style: style).stemAnchorOffset
             let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - beam.start.x) / (beam.end.x - beam.start.x)
             let expectedY = beam.start.y + t * (beam.end.y - beam.start.y)
@@ -1386,10 +1354,7 @@ extension NotationLayoutEngineTests {
         for noteHeadID in outermostBeam.noteHeadIDs {
             let noteHead = try #require(layout.noteHeads.first { $0.id == noteHeadID })
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
-            let anchorOffset = noteHead.glyph.stemAnchorOffset(
-                direction: noteHead.stemDirection,
-                in: style.noteHeadSize
-            )
+            let anchorOffset = VirgoNotationAdapter.noteheadMetrics(for: noteHead, style: style).stemAnchorOffset
             let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)
             let expectedY = outermostBeam.start.y + t * (outermostBeam.end.y - outermostBeam.start.y)
@@ -1428,10 +1393,7 @@ extension NotationLayoutEngineTests {
             let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(noteHeadID) })
             #expect(noteHead.stemDirection == .down)
             #expect(stem.direction == .down)
-            let anchorOffset = noteHead.glyph.stemAnchorOffset(
-                direction: noteHead.stemDirection,
-                in: style.noteHeadSize
-            )
+            let anchorOffset = VirgoNotationAdapter.noteheadMetrics(for: noteHead, style: style).stemAnchorOffset
             let stemX = noteHead.position.x + anchorOffset.x
             let t = (stemX - outermostBeam.start.x) / (outermostBeam.end.x - outermostBeam.start.x)
             let expectedY = outermostBeam.start.y + t * (outermostBeam.end.y - outermostBeam.start.y)

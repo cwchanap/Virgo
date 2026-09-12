@@ -1,4 +1,5 @@
 import Testing
+import DrumNotation
 @testable import Virgo
 
 @Suite("Notation Layout Defensive Guard Tests")
@@ -120,7 +121,11 @@ struct NotationLayoutDefensiveGuardTests {
             + layout.articulations.map { $0.paintedBounds(style: style) }
             + layout.stems.map { $0.paintedBounds(style: style) }
             + layout.beams.map { $0.paintedBounds(style: style) }
-            + layout.flags.map { $0.paintedBounds(style: style) }
+            + VirgoNotationAdapter.flagPaintCommands(
+                flags: layout.flags,
+                heads: layout.noteHeads,
+                style: style
+            ).map(\.paintedBounds)
             + layout.ledgerLines.map { $0.paintedBounds(style: style) }
             + layout.measureBars.map { $0.paintedBounds(style: style) }
 
@@ -139,18 +144,19 @@ struct NotationLayoutDefensiveGuardTests {
         // notehead center. Subtracting the stem offset here means the `x`
         // parameter represents the stem anchor X, so test beam start/end
         // coordinates align with what beamEndY actually compares against.
-        let glyph = DrumNoteheadGlyph.filledDiamond
-        let stemOffset = glyph.stemAnchorOffset(
-            direction: .up,
-            in: NotationLayoutStyle.gameplayDefault.noteHeadSize
-        )
+        let style = NotationLayoutStyle.gameplayDefault
+        let stemOffset = PercussionGlyphMetrics.notehead(
+            style: .normal,
+            duration: .sixteenth,
+            stemDirection: .up,
+            staffSpace: style.staffLineSpacing
+        ).stemAnchorOffset
         return RenderedNoteHead(
             id: id,
             sourceLaneID: nil,
             sourceChipID: nil,
             noteType: .snare,
             drumType: .snare,
-            glyph: glyph,
             variant: .standard,
             voice: .upper,
             stemDirection: .up,

@@ -335,7 +335,6 @@ private extension VirgoNotationAdapterTests {
             sourceChipID: nil,
             noteType: .snare,
             drumType: .snare,
-            glyph: .filledCircle,
             variant: .standard,
             voice: .upper,
             stemDirection: stemDirection,

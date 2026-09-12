@@ -80,6 +80,21 @@ enum VirgoNotationAdapter {
         style.staffLineSpacing
     }
 
+    /// The single package-metrics lookup for one rendered head: painted bounds
+    /// and stem anchor offset in head-local coordinates (Y-down, centered on
+    /// ``RenderedNoteHead.position``). Callers translate by `head.position`.
+    static func noteheadMetrics(
+        for head: RenderedNoteHead,
+        style: NotationLayoutStyle
+    ) -> NoteheadMetrics {
+        PercussionGlyphMetrics.notehead(
+            style: noteheadStyle(for: head.noteType),
+            duration: duration(for: head.interval),
+            stemDirection: stemDirection(head.stemDirection),
+            staffSpace: staffSpace(for: style)
+        )
+    }
+
     /// Resolves `RenderedFlag`s into package-backed paint commands.
     ///
     /// Policy per head: expected uncovered levels are `0..<head.interval.flagCount`.
