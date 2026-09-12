@@ -405,23 +405,24 @@ struct DrumTabRegressionInvariantTests {
         let result = try DrumTabFixtureHarness.render(fixture)
         let layout = result.layout
         let style = result.style
-        let bounds = layout.noteHeads.map { $0.paintedBounds(style: style) }
-            + layout.rests.filter(\.isPrinted).map { $0.paintedBounds(style: style) }
-            + layout.stopNotes.map { $0.paintedBounds(style: style) }
-            + layout.articulations.map { $0.paintedBounds(style: style) }
-            + layout.stems.map { $0.paintedBounds(style: style) }
-            + layout.beams.map { $0.paintedBounds(style: style) }
-            + VirgoNotationAdapter.flagPaintCommands(
-                flags: layout.flags,
-                heads: layout.noteHeads,
-                style: style
-            ).map(\.paintedBounds)
-            + layout.ledgerLines.map { $0.paintedBounds(style: style) }
-            + layout.measureBars.map { $0.paintedBounds(style: style) }
-            + layout.rhythmDots.map { $0.paintedBounds(style: style) }
-            + layout.tuplets.map { $0.paintedBounds(style: style) }
-            + layout.feelMarks.map { $0.paintedBounds(style: style) }
-            + layout.rhythmWarnings.map { $0.paintedBounds(style: style) }
+        var bounds: [CGRect] = []
+        bounds.append(contentsOf: layout.noteHeads.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.rests.filter(\.isPrinted).map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.stopNotes.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.articulations.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.stems.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.beams.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: VirgoNotationAdapter.flagPaintCommands(
+            flags: layout.flags,
+            heads: layout.noteHeads,
+            style: style
+        ).map(\.paintedBounds))
+        bounds.append(contentsOf: layout.ledgerLines.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.measureBars.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.rhythmDots.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.tuplets.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.feelMarks.map { $0.paintedBounds(style: style) })
+        bounds.append(contentsOf: layout.rhythmWarnings.map { $0.paintedBounds(style: style) })
 
         var checked = 0
         for rect in bounds where !rect.isNull {
