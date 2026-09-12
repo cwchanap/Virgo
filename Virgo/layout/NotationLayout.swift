@@ -639,6 +639,9 @@ struct RenderedFlag: Identifiable, Hashable, Sendable {
     let noteHeadID: UInt64
     let stemDirection: StemDirection
     let flagIndex: Int
+    /// The flag glyph's SMuFL attachment point, not a view center: the stem's
+    /// left edge at the level-0 stem tip (see
+    /// `NotationLayoutEngine.flagStemOrigin`).
     let origin: CGPoint
 }
 

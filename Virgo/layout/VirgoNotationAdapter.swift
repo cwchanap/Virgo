@@ -169,17 +169,15 @@ enum VirgoNotationAdapter {
         }
     }
 
-    /// Effective minimum stem length for one unbeamed stem group: the maximum
-    /// canonical-flag clearance required by any flagged member, or the default
-    /// `style.stemLength` when no member carries a flag (full/half/quarter).
-    /// Task 6's `unbeamedStemEndY` passes the heads sharing that stem; the
-    /// result replaces the bare `style.stemLength` in its extent arithmetic.
-    /// Pure data only: never changes beam grouping or `buildFlags` output.
-    static func minimumUnbeamedStemLength(
+    /// The maximum distance any flagged member's canonical Bravura flag
+    /// reaches back from the stem attachment point toward the noteheads,
+    /// measured along the stem. Zero when no member carries a flag
+    /// (full/half/quarter). Pure package metrics; no layout policy.
+    static func maximumFlagInwardExtent(
         heads: [RenderedNoteHead],
         style: NotationLayoutStyle
     ) -> CGFloat {
-        var required = style.stemLength
+        var extent: CGFloat = 0
         for head in heads {
             guard let flagDuration = flagDuration(for: head.interval) else { continue }
             let direction = stemDirection(head.stemDirection)
@@ -199,9 +197,26 @@ enum VirgoNotationAdapter {
             case .down:
                 inwardExtent = max(0, -relativeBounds.minY)
             }
-            required = max(required, inwardExtent + style.minimumStemExtensionPastChord)
+            extent = max(extent, inwardExtent)
         }
-        return required
+        return extent
+    }
+
+    /// Effective minimum stem length for one unbeamed stem group: the maximum
+    /// canonical-flag clearance required by any flagged member, or the default
+    /// `style.stemLength` when no member carries a flag (full/half/quarter).
+    /// Task 6's `unbeamedStemEndY` passes the heads sharing that stem; the
+    /// result replaces the bare `style.stemLength` in its extent arithmetic.
+    /// Pure data only: never changes beam grouping or `buildFlags` output.
+    static func minimumUnbeamedStemLength(
+        heads: [RenderedNoteHead],
+        style: NotationLayoutStyle
+    ) -> CGFloat {
+        max(
+            style.stemLength,
+            maximumFlagInwardExtent(heads: heads, style: style)
+                + style.minimumStemExtensionPastChord
+        )
     }
 
     private static func makeCommand(

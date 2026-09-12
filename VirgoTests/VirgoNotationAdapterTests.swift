@@ -318,8 +318,11 @@ struct VirgoNotationAdapterTests {
                     direction: direction,
                     style: style
                 )
-                #expect(actual >= style.stemLength)
-                #expect(actual - inwardExtent >= style.minimumStemExtensionPastChord)
+                let expected = max(
+                    style.stemLength,
+                    inwardExtent + style.minimumStemExtensionPastChord
+                )
+                #expect(abs(actual - expected) < 0.0001)
             }
         }
     }

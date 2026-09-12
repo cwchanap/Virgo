@@ -665,28 +665,47 @@ private extension SwiftUIRenderingNotationTests {
             end: beamedBStem.tip,
             thickness: style.beamThickness
         )]
-        layout.flags = makePreviewFlags(for: eighth, tip: eighthStem.tip)
-            + makePreviewFlags(for: sixtyFourth, tip: sixtyFourthStem.tip)
+        layout.flags = makePreviewFlags(for: eighth, stem: eighthStem.stem, style: style)
+            + makePreviewFlags(for: sixtyFourth, stem: sixtyFourthStem.stem, style: style)
             + [
                 // Partially beamed pair: the primary beam covers level 0 of the
                 // second head; its uncovered secondary level stays a flag.
                 RenderedFlag(
                     id: "preview-flag-hook", noteHeadID: beamedB.id,
-                    stemDirection: .up, flagIndex: 1, origin: beamedBStem.tip
+                    stemDirection: .up, flagIndex: 1,
+                    origin: previewFlagOrigin(for: beamedBStem.stem, level: 1, style: style)
                 )
             ]
         return layout
     }
 
+    /// The production flag attachment for `stem` at `level` (SMuFL: stem's
+    /// left edge at the tip, each further level one spacing inward).
+    private func previewFlagOrigin(
+        for stem: RenderedStem,
+        level: Int,
+        style: NotationLayoutStyle
+    ) -> CGPoint {
+        let origin = NotationLayoutEngine().flagStemOrigin(for: stem, style: style)
+        return CGPoint(
+            x: origin.x,
+            y: origin.y + CGFloat(level) * GameplayLayout.flagVerticalSpacing
+        )
+    }
+
     /// Full uncovered flag set for one unbeamed head (the canonical-collapse case).
-    private func makePreviewFlags(for head: RenderedNoteHead, tip: CGPoint) -> [RenderedFlag] {
+    private func makePreviewFlags(
+        for head: RenderedNoteHead,
+        stem: RenderedStem,
+        style: NotationLayoutStyle
+    ) -> [RenderedFlag] {
         (0..<head.interval.flagCount).map { index in
             RenderedFlag(
                 id: "preview-flag-\(head.id)-\(index)",
                 noteHeadID: head.id,
                 stemDirection: .up,
                 flagIndex: index,
-                origin: tip
+                origin: previewFlagOrigin(for: stem, level: index, style: style)
             )
         }
     }

@@ -137,7 +137,6 @@ struct GameplayLayout {
     static let connectorWidth: CGFloat = 5
     static let connectorHeight: CGFloat = 2
     static let connectorXOffset: CGFloat = 4.5
-    static let flagXOffset: CGFloat = 2
     static let flagVerticalSpacing: CGFloat = 8
     static let individualFlagXOffset: CGFloat = 9
     static let individualFlagYOffset: CGFloat = 67.5

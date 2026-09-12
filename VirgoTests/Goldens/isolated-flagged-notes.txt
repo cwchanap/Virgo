@@ -4,7 +4,7 @@ tl-meas m1 startTick=16 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=sup
 
 grid  ticksPerWholeNote=16 tickWidth=28.00 leftPadding=52.00
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
-dims  noteHeadSize=30.00x20.00 totalHeight=970.00 paintedBounds=(99.00,25.08,502.00,554.92)
+dims  noteHeadSize=30.00x20.00 totalHeight=970.00 paintedBounds=(99.00,23.96,502.00,556.04)
 row   0 measures=[m0] contentWidth=900.00
 row   1 measures=[m1] contentWidth=900.00
 meas  m0 row=0 xOffset=100.00 width=500.00 startTick=0 durationTicks=16 contentStartX=152.00
@@ -19,17 +19,17 @@ head  m0 t0012 abs0012 pos=(488.00,110.00) hiHat notehead=x variant=closedHiHat 
 head  m0 t0012 abs0012 pos=(488.00,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
 head  m1 t0000 abs0016 pos=(152.00,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Full rhythm=Full durTicks=16
 head  m1 t0000 abs0016 pos=(152.00,570.00) kick notehead=normal variant=standard voice=lower stem=down row=1 lane=13 interval=Full rhythm=Full durTicks=16
-stem  ids=[0] dir=down start=(196.20,233.36) end=(196.20,308.36)
-stem  ids=[1] dir=up start=(247.60,101.12) end=(247.60,26.08)
+stem  ids=[0] dir=down start=(196.20,233.36) end=(196.20,314.64)
+stem  ids=[1] dir=up start=(247.60,101.12) end=(247.60,24.96)
 stem  ids=[3] dir=down start=(252.20,233.36) end=(252.20,308.36)
 stem  ids=[2] dir=up start=(275.60,101.12) end=(275.60,26.12)
 stem  ids=[5] dir=down start=(364.20,233.36) end=(364.20,308.36)
 stem  ids=[4] dir=up start=(387.60,101.12) end=(387.60,26.12)
 stem  ids=[7] dir=down start=(476.20,233.36) end=(476.20,308.36)
 stem  ids=[6] dir=up start=(499.60,101.12) end=(499.60,26.12)
-flag  head=0 dir=down index=0 origin=(198.20,308.36)
-flag  head=1 dir=up index=0 origin=(249.60,26.08)
-flag  head=1 dir=up index=1 origin=(249.60,34.08)
+flag  head=0 dir=down index=0 origin=(195.20,314.64)
+flag  head=1 dir=up index=0 origin=(246.60,24.96)
+flag  head=1 dir=up index=1 origin=(246.60,32.96)
 rest  m0 t0000 voice=upper dur=eighth ticks=3 vis=printed pos=(152.00,130.00) tuplet=-
 rest  m0 t0000 voice=lower dur=eighth ticks=2 vis=printed pos=(152.00,170.00) tuplet=-
 dot   source=rest:rest-m0-vupper-t0-n3-deighth-xprinted-duplicate-0 pos=(168.38,130.00) row=0
