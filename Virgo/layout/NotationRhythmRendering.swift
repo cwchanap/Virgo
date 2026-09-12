@@ -261,20 +261,22 @@ extension NotationLayout {
             heads: noteHeads,
             style: style
         )
-        let rectangles = noteHeads.map { $0.paintedBounds(style: style) }
-            + rests.map { $0.paintedBounds(style: style) }
-            + stopNotes.map { $0.paintedBounds(style: style) }
-            + articulations.map { $0.paintedBounds(style: style) }
-            + stems.map { $0.paintedBounds(style: style) }
-            + beams.map { $0.paintedBounds(style: style) }
-            + flagCommands.map(\.paintedBounds)
-            + ledgerLines.map { $0.paintedBounds(style: style) }
-            + measureBars.map { $0.paintedBounds(style: style) }
-            + rhythmDots.map { $0.paintedBounds(style: style) }
-            + tuplets.map { $0.paintedBounds(style: style) }
-            + feelMarks.map { $0.paintedBounds(style: style) }
-            + rhythmWarnings.map { $0.paintedBounds(style: style) }
-        return rectangles.filter { !$0.isNull }.reduce(.null) { $0.union($1) }
+        var rectangles: [CGRect] = []
+        rectangles.append(contentsOf: noteHeads.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: rests.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: stopNotes.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: articulations.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: stems.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: beams.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: flagCommands.map(\.paintedBounds))
+        rectangles.append(contentsOf: ledgerLines.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: measureBars.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: rhythmDots.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: tuplets.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: feelMarks.map { $0.paintedBounds(style: style) })
+        rectangles.append(contentsOf: rhythmWarnings.map { $0.paintedBounds(style: style) })
+        let nonNull = rectangles.filter { !$0.isNull }
+        return nonNull.reduce(CGRect.null) { $0.union($1) }
     }
 }
 
