@@ -333,8 +333,15 @@ struct GameplayViewModelVisualUpdatesTests {
         let position = try #require(
             viewModel.calculatePurpleBarPosition(elapsedTime: 0.125)
         )
-        let measure = try #require(viewModel.cachedNotationLayout.measures.first)
-        let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: 1)
+        // HPA-164: the snapshot playhead resolves against the installed
+        // formatter output, whose per-column spacing replaced the uniform
+        // legacy grid. On the fallback 16-tick grid the sixteenth sits at
+        // localTick 1.
+        let expectedX = try #require(
+            viewModel.cachedNotationLayout.formattedNotation
+                .position(measureIndex: 0, localTick: 1)?
+                .x
+        )
 
         #expect(abs(position.x - Double(expectedX)) < 0.5)
     }

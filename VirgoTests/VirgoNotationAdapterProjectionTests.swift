@@ -78,9 +78,10 @@ struct VirgoNotationAdapterProjectionTests {
         )
 
         let staffStepsByID = Dictionary(uniqueKeysWithValues: input.notes.map { ($0.id, $0.staffStep) })
-        // staffStep = round(yOffset / half staff space); line1 = 0, belowLine2 = +40/10.
+        // Package convention is pitch-ascending: the adapter negates Virgo's
+        // Y-down step, so line1 = 0 and belowLine2 (yOffset +40) = −4.
         #expect(staffStepsByID[1] == 0)
-        #expect(staffStepsByID[2] == 4)
+        #expect(staffStepsByID[2] == -4)
     }
 
     @Test("Notehead style, stem direction, duration and dots survive")
