@@ -1,8 +1,8 @@
 # HPA-164 Measured Formatting and Shared Tick Geometry Implementation Plan
 
-**Goal:** Replace Virgo's chart-wide fixed `TabGrid` with one package-owned content-aware formatter, make package tick geometry authoritative for notation and playhead positioning, and remove the fixed-grid notation compatibility path without pulling HPA-166's final beam/modifier/static-view migration into this PR.
+**Goal:** Replace Virgo's chart-wide fixed `TabGrid` with one package-owned measured formatter, make package tick geometry authoritative for notation/playhead X, and remove the fixed-grid notation compatibility path without pulling HPA-166's final beam/modifier/static-view work into this PR.
 
-**Architecture:** `RhythmLayoutSnapshot` remains Virgo's analyzed timing boundary. `VirgoNotationAdapter` converts that snapshot and numeric app layout settings into package-owned resolved notation values. `DrumNotation.NotationFormatter` formats exact time columns, local chord displacement, measure widths, rows and tick lookup off-main. Virgo composes the returned geometry with its existing stem/beam/mark renderer until HPA-166. There is exactly one formatter and one tick map.
+**Architecture:** `RhythmLayoutSnapshot` remains Virgo's analyzed timing boundary. `VirgoNotationAdapter` expands trailing measures, applies staff overrides, and maps only HPA-164 formatter inputs into `DrumNotation`. `NotationFormatter` owns logical columns, same-stem second displacement, note/dot/rest collision measurement, per-measure width, row packing and tick lookup. `GameplayNotationPreparer` then composes that geometry with the existing Virgo Y/stem/beam/mark renderer and returns one `NotationLayout`.
 
 **Baseline:** `main` at `8a29b68f7afeb29c162e2587fad26c192d71beda` after HPA-163 / PR #65.
 
@@ -10,40 +10,40 @@
 
 ## Global constraints
 
-- Exactly one PR for HPA-164. Planning and implementation continue on this same draft PR.
-- Keep the existing single `DrumNotation` library target and single package test target.
-- No second formatter, fallback grid, renderer protocol, feature flag, or old/new layout toggle.
-- Do not infer rhythm, quantize ticks, convert BPM/seconds, or parse DTX in the package.
-- Keep `RhythmLayoutSnapshot`, `NotationRhythmAnalyzer`, SwiftData and staff override persistence in Virgo.
-- Keep `GameplayNotationPreparer` as the existing off-main pure-value worker and preserve generation rejection/cancellation behavior.
-- Keep current beam grouping/topology in Virgo. Adapt coordinates only enough for beams/stems/flags to remain attached to package-positioned heads.
-- Do not move the complete static notation view, staff/clef/bar presentation, or final beam/modifier parity from HPA-166.
-- Delete the fixed-grid notation path instead of maintaining compatibility.
-- Do not reintroduce HPA-581's removed `cachedBeatPositions` cache.
-- Keep the current resolved row-width floor behavior; changing narrow-window product policy is out of scope.
-- Keep all app `xcodebuild` test runs serial / non-parallel.
+- Exactly one PR for HPA-164; implementation continues on this draft PR.
+- Keep the existing single `DrumNotation` library target and package test target.
+- No second formatter, fallback grid, feature flag, old/new toggle, or generalized solver.
+- Package code receives already-resolved exact ticks; no DTX parsing, rhythm inference, BPM/seconds conversion or re-quantization.
+- Keep `RhythmLayoutSnapshot`, source voice/tuplet/control semantics, SwiftData and staff-override persistence in Virgo.
+- Do not publish a package `NotationVoice`; HPA-164 displacement uses package `NotationStemDirection` + `staffStep` only.
+- Keep `GameplayNotationPreparer` as the off-main pure-value worker and preserve generation rejection/cancellation.
+- Keep beam grouping/topology in Virgo. HPA-164 changes only coordinate assumptions needed to follow package-positioned heads.
+- HPA-164 collision measurement covers noteheads, dots and printed rests only. Flags, tuplets, stop/control marks and articulation footprint stay HPA-166 scope.
+- Every package X is sheet-local and already includes `rowLeadingInset`; Virgo must not apply an X transform after formatting.
+- Delete fixed-grid notation rather than preserving compatibility.
+- Do not reintroduce `cachedBeatPositions`.
+- Preserve the app's current 900pt row-width floor before package formatting.
+- All app `xcodebuild` tests remain serial/non-parallel.
 
 ---
 
 ## File map
 
-The exact split may be adjusted to stay under repository file/function length rules, but keep one package module and avoid tiny abstraction files.
-
 **Create in `Packages/DrumNotation/Sources/DrumNotation/`**
 
-- `Model/ResolvedNotation.swift` — package input values needed by formatting.
-- `Layout/FormattedNotation.swift` — immutable rows/measures/columns/head geometry and tick lookup.
-- `Layout/NotationFormatter.swift` — validation, column measurement, local displacement, measure sizing and row packing.
+- `Model/ResolvedNotation.swift` — compact formatter-only input values.
+- `Layout/FormattedNotation.swift` — immutable measure/column/head/event geometry and tick lookup.
+- `Layout/NotationFormatter.swift` — validation, measurement, displacement, spacing and row packing.
 
-**Create in `Packages/DrumNotation/Tests/DrumNotationTests/`**
+**Create/modify package tests**
 
-- `NotationFormatterTests.swift` — package-only formatting/row/tick tests.
-- Add a separate formatter fixture helper only if the test file becomes unwieldy; do not create a general fixture framework.
+- `Tests/DrumNotationTests/NotationFormatterTests.swift`.
+- Add one small fixture helper only if the test file becomes unwieldy.
 
 **Modify in package**
 
-- `Model/PrimitiveTypes.swift` only for small reusable package semantics such as voice if they belong beside existing primitive enums.
-- `README.md` to document the HPA-164 formatter/tick lookup boundary.
+- `README.md` for HPA-164 public/layout contract.
+- Existing primitive metric types only when the formatter needs an already-approved reusable scalar type.
 
 **Modify in Virgo**
 
@@ -53,64 +53,45 @@ The exact split may be adjusted to stay under repository file/function length ru
 - `Virgo/layout/NotationLayoutEngine.swift`
 - `Virgo/layout/NotationLayoutEngine+Rests.swift`
 - `Virgo/layout/NotationLayoutEngine+Controls.swift`
-- `Virgo/layout/NotationLayoutEngine+Beams.swift` only where displaced-head/package anchors require coordinate adaptation.
-- `Virgo/layout/NotationLayoutEngine+RhythmRendering.swift` only for package-positioned dots/tuplets/marks.
+- `Virgo/layout/NotationLayoutEngine+Beams.swift` only for displaced-head coordinate assumptions
+- `Virgo/layout/NotationLayoutEngine+RhythmRendering.swift` only where existing marks consume newly positioned primitives
 - `Virgo/viewmodels/GameplayViewModel+Notation.swift`
 - `Virgo/viewmodels/GameplayViewModel+VisualUpdates.swift`
-- `VirgoTests/VirgoNotationAdapterTests.swift`
-- `VirgoTests/GameplayNotationPreparationTests.swift`
-- `VirgoTests/NotationLayoutRhythmTests.swift`
-- `VirgoTests/DrumTabRegressionInvariantTests.swift`
-- `VirgoTests/DrumTabPlayheadAlignmentTests.swift`
-- `VirgoTests/GameplayViewModelVisualUpdatesTests.swift`
-- relevant golden/raster tests and fixtures.
+- affected Virgo tests/goldens/raster fixtures
 
-**Delete or substantially retire**
+**Delete or retire**
 
-- `Virgo/layout/NotationLayoutEngine+TabGrid.swift` after any timing helpers that still have a real owner are moved or deleted.
-- `.legacy` members in `NotationLayoutTimingInput` / `NotationLayoutEngine`.
-- fixed-grid-only tests such as overflow/LCM/layout assertions when they no longer describe supported notation behavior.
-
-Do not mechanically keep a file just because old tests import its helpers.
+- `Virgo/layout/NotationLayoutEngine+TabGrid.swift` once useful helpers are relocated.
+- `.legacy` notation members in `NotationLayout` / `NotationLayoutEngine`.
+- fixed-grid-only tests and compatibility overloads.
 
 ---
 
-## Task 1: Add the package resolved-input and formatted-output contract
+## Task 1: Freeze the package contract and coordinate space
 
 **Files:**
-- Create: `Packages/DrumNotation/Sources/DrumNotation/Model/ResolvedNotation.swift`
-- Create: `Packages/DrumNotation/Sources/DrumNotation/Layout/FormattedNotation.swift`
-- Modify: `Packages/DrumNotation/Sources/DrumNotation/Model/PrimitiveTypes.swift` if needed
-- Modify: `Packages/DrumNotation/README.md`
-- Create/Modify: package formatter tests
+- Create `Model/ResolvedNotation.swift`
+- Create `Layout/FormattedNotation.swift`
+- Modify package README/tests
 
-**Interfaces:**
-- Consumes only package-owned values.
-- Produces immutable `Sendable` geometry values and an in-measure tick lookup.
-- Carries opaque caller IDs; no Virgo types.
+**Interfaces:** package values only; immutable `Sendable`; no Virgo types.
 
-- [ ] **Step 1: Write red package-boundary tests**
+- [ ] **Step 1: Add red public-boundary tests**
 
-Cover construction of a minimal document with:
+Construct one package-only document with:
 
 - positive `ticksPerWholeNote`;
-- one measure with exact start/duration/meter/beat groups;
-- one note with string/scalar ID, exact position, voice, staff step, package notehead/duration/stem values;
-- one rest and one control with package-only values.
+- exact measure start/duration;
+- one note with opaque ID, tick, stem direction, staff step, notehead style, duration and dot count;
+- one printed rest;
+- one control onset;
+- a minimal supported/warning/unsupported measure state if retained.
 
-Also add compile-time `Sendable` coverage for the new input and output types.
+Add compile-time `Sendable` coverage.
 
-Run:
+- [ ] **Step 2: Add only formatter-needed input types**
 
-```bash
-swift test --package-path Packages/DrumNotation --filter NotationFormatterTests
-```
-
-Expected initially: FAIL because the types do not exist.
-
-- [ ] **Step 2: Implement only the required package semantics**
-
-Add a compact model equivalent to:
+Use a compact model equivalent to:
 
 ```swift
 public struct NotationTickPosition: Hashable, Sendable {
@@ -119,228 +100,187 @@ public struct NotationTickPosition: Hashable, Sendable {
     public let absoluteTick: Int
 }
 
-public enum NotationVoice: String, Sendable { case upper, lower }
+public struct ResolvedMeasure: Hashable, Sendable {
+    public let index: Int
+    public let startTick: Int
+    public let durationTicks: Int
+    public let engravingSupport: NotationEngravingSupport
+}
 
-public struct ResolvedNotationInput: Hashable, Sendable {
-    public let ticksPerWholeNote: Int
-    public let measures: [ResolvedMeasure]
-    public let notes: [ResolvedNote]
-    public let rests: [ResolvedRest]
-    public let controls: [ResolvedControl]
+public struct ResolvedNote: Hashable, Sendable {
+    public let id: String
+    public let position: NotationTickPosition
+    public let stemDirection: NotationStemDirection
+    public let staffStep: Int
+    public let noteheadStyle: PercussionNoteheadStyle
+    public let duration: NotationDuration
+    public let dotCount: Int
 }
 ```
 
-Use a minimal package-owned engraving-support value rather than copying Virgo's diagnostic taxonomy.
+`ResolvedRest` needs only opaque ID, exact position, glyph duration, dot count, printed/full-measure state. `ResolvedControl` needs only opaque ID + exact position for HPA-164.
 
-Do not add BPM, seconds, DTX lanes, source model objects, SwiftData IDs, colors or views.
+Do **not** add package `NotationVoice`, beat-group arrays, tuplet membership, articulation/stop footprint, Virgo diagnostic arrays, BPM, seconds, DTX lanes or model IDs.
 
-- [ ] **Step 3: Define the numeric formatting style and immutable result**
-
-Add only scalar formatting inputs used by the algorithm, for example:
+- [ ] **Step 3: Define the numeric style with one coordinate origin**
 
 ```swift
 public struct NotationFormattingStyle: Hashable, Sendable {
     public let availableRowWidth: CGFloat
+    public let rowLeadingInset: CGFloat
     public let staffSpace: CGFloat
     public let minimumInterColumnGap: CGFloat
     public let minimumQuarterNoteSpacing: CGFloat
     public let measureSpacing: CGFloat
     public let leadingMeasureInset: CGFloat
     public let trailingMeasureInset: CGFloat
+    public let rhythmDotRadius: CGFloat
+    public let rhythmDotSpacing: CGFloat
 }
 ```
 
-The formatted result must expose:
+Contract tests must prove first-measure X, logical-column X, displaced-head X and `position(...)` X are all in the same sheet-local space and already include `rowLeadingInset`.
 
-- ordered rows;
-- ordered measures with row/x/width and exact timing;
-- logical columns with exact ticks and X;
-- per-note visual head center X distinct from logical X;
-- per-event geometry needed by Virgo's transitional renderer;
-- a single `position(measureIndex:localTick:)` lookup returning row/X.
+- [ ] **Step 4: Define immutable formatted output**
 
-Avoid a public class hierarchy or mutable caches.
+Expose:
 
-- [ ] **Step 4: Add validation tests**
+- ordered formatted rows/measures;
+- measure row/x/width/timing;
+- exact logical columns;
+- per-note `headCenterX` distinct from `logicalColumnX`;
+- any package-owned special visual X needed for full-measure rests;
+- `position(measureIndex:localTick:) -> row/X`.
 
-Reject or explicitly fail for:
+Do not expose mutable caches or a second anchor API.
 
-- nonpositive tick resolution;
-- duplicate/unsorted measure identity that cannot be normalized deterministically;
-- event tick outside its measure;
-- mismatched `absoluteTick != measure.startTick + localTick`;
-- invalid meter/duration values.
+- [ ] **Step 5: Add validation**
 
-Sort valid caller arrays deterministically inside the formatter rather than depending on incidental input order.
+Reject invalid tick resolution, measure duration/identity, out-of-measure event ticks, and inconsistent `absoluteTick`. Normalize valid caller array ordering deterministically.
 
-- [ ] **Step 5: Document the public boundary**
-
-Update `Packages/DrumNotation/README.md` with:
-
-- resolved input → format → immutable geometry;
-- exact tick lookup semantics;
-- explicit statement that Virgo/rhythm inference/seconds are outside the package;
-- HPA-166 still owns the complete static sheet and final beam/modifier migration.
-
-- [ ] **Step 6: Commit this slice**
+- [ ] **Step 6: Document the boundary and commit**
 
 Suggested commit:
 
 ```text
-feat: add resolved DrumNotation layout model
+feat: add compact DrumNotation formatter model
 ```
 
 ---
 
-## Task 2: Implement logical columns and local notehead displacement
+## Task 2: Build logical columns and pin second-note displacement
 
-**Files:**
-- Create/Modify: `Layout/NotationFormatter.swift`
-- Modify: `Layout/FormattedNotation.swift`
-- Modify: `Tests/DrumNotationTests/NotationFormatterTests.swift`
+**Files:** `NotationFormatter.swift`, `FormattedNotation.swift`, package tests.
 
-**Interfaces:**
-- Consumes HPA-163 `PercussionGlyphMetrics` for natural notehead bounds.
-- Produces one logical column per exact onset and optional per-head displacement.
+- [ ] **Step 1: Add exact-column tests**
 
-- [ ] **Step 1: Add red exact-column tests**
+Prove:
 
-Build package-only cases proving:
+- kick/snare/hi-hat at the same tick share one logical column;
+- mixed stems/voices do not receive a timing/visual X offset merely because they are different voices;
+- IDs/ticks are unchanged;
+- input order does not affect output.
 
-- kick/snare/hi-hat at the same tick share one `logicalColumnX`;
-- different voices at the same tick still share the same logical column;
-- event IDs/ticks are unchanged by formatting;
-- deterministic output is independent of input array ordering.
+- [ ] **Step 2: Add VexFlow-reference tests for the only displacement HPA-164 owns**
 
-- [ ] **Step 2: Add red displacement reference cases before implementing the rule**
+Cover:
 
-Use the pinned HPA-163 VexFlow 5.0.0 semantics as the reference and record only the percussion cases needed here:
+- same-stem adjacent `staffStep` heads with up stems;
+- same-stem adjacent `staffStep` heads with down stems;
+- non-adjacent same-stem heads staying centered;
+- same-tick mixed-stem percussion chord staying on the shared center.
 
-- adjacent staff-step heads with up stems;
-- adjacent staff-step heads with down stems;
-- non-adjacent heads that require no displacement;
-- a same-onset three-head percussion chord.
+Record the small expected relationship/offset with the fixture. Do not import general chord-layout behavior.
 
-Tests should assert direction/amount relationships and collision clearance, not a large copied VexFlow implementation.
-
-If exact expected offsets are derived during implementation, keep the fixture explanation next to the test so HPA-166 can distinguish intentional formatter behavior from later beam parity work.
-
-- [ ] **Step 3: Implement the smallest closed displacement rule**
+- [ ] **Step 3: Implement the closed second rule**
 
 Algorithm:
 
-1. group same-onset heads by the stem/voice relationship required by the approved reference case;
-2. start every head at logical X;
-3. use the HPA-163 natural glyph bounds to detect adjacent-head collision;
-4. shift only the head(s) required by the reference rule by the minimum deterministic amount plus the package's small head-clearance gap;
-5. retain logical X separately.
+1. group same-onset notes by `stemDirection`;
+2. sort by `staffStep`;
+3. only adjacent staff steps (`abs(delta) == 1`) are displacement candidates;
+4. use HPA-163 natural notehead bounds to compute the minimum deterministic shift matching the pinned reference;
+5. store the shifted value as `headCenterX`; leave `logicalColumnX` untouched.
 
-Do not move stems/beams or introduce generic chord-layout protocols.
+There is no package voice enum and no upper-left/lower-right voice offset.
 
-- [ ] **Step 4: Compute column extents from actual geometry**
+- [ ] **Step 4: Measure only owned collision geometry**
 
-For each column, union horizontal requirements relative to logical X from:
+Union horizontal extents from:
 
-- displaced notehead natural painted bounds;
-- dots already declared by the resolved rhythm input;
-- only the flag/control footprint needed to prevent adjacent-column collision in the current renderer.
+- displaced notehead natural bounds;
+- dot footprint from `rhythmDotRadius`/`rhythmDotSpacing`;
+- printed rest glyph bounds.
 
-Keep full-measure rest visual centering out of this pre-width column extent.
+Controls create timing anchors but add zero collision width in HPA-164.
 
-Add assertions that the stored extents contain every geometry item they claim to measure.
+Explicitly do **not** measure flags, beams, tuplets, stop/choke/damp marks, articulations, warnings or feel marks.
 
-- [ ] **Step 5: Commit this slice**
+- [ ] **Step 5: Commit**
 
 Suggested commit:
 
 ```text
-feat: format percussion time columns
+feat: format percussion onset columns
 ```
 
 ---
 
-## Task 3: Add per-measure spacing, row packing and authoritative tick lookup
+## Task 3: Add per-measure spacing, row packing and tick lookup
 
-**Files:**
-- Modify: `Layout/NotationFormatter.swift`
-- Modify: `Layout/FormattedNotation.swift`
-- Modify: package formatter tests
+- [ ] **Step 1: Add sparse-vs-dense tests**
 
-**Interfaces:**
-- Input: exact measure ticks + measured columns + available width.
-- Output: independently sized measures, rows and the only tick→row/X mapping.
+Assert a dense measure can expand without changing the width scale of a sparse neighbor.
 
-- [ ] **Step 1: Add red sparse-vs-dense width tests**
+- [ ] **Step 2: Implement the one-pass gap rule**
 
-Construct adjacent measures where one has dense sixteenth-note content and the other has sparse quarter-note content.
-
-Assert:
-
-- the dense measure may grow locally;
-- the sparse measure does not inherit the dense measure's spacing scale;
-- both preserve exact logical time order;
-- repeated formatting produces identical widths/positions.
-
-This replaces the old chart-wide `tickWidth` invariant.
-
-- [ ] **Step 2: Implement one-pass local spacing**
-
-For each adjacent start/event/end anchor pair, use:
+For adjacent anchors:
 
 ```text
-rhythmicGap = minimumQuarterNoteSpacing * deltaTicks / quarter-note ticks
+rhythmicGap = minimumQuarterNoteSpacing * deltaTicks * 4 / ticksPerWholeNote
 collisionGap = previous.rightExtent + minimumInterColumnGap + next.leftExtent
 requiredGap = max(rhythmicGap, collisionGap)
 ```
 
-Avoid assuming `ticksPerWholeNote % 4 == 0`; compute the ratio safely before converting to `CGFloat`.
+Keep integer/rational safety until final `CGFloat` conversion. No global density scan or iterative relaxation.
 
-Accumulate X left-to-right once. No global density scan and no iterative solver.
+- [ ] **Step 3: Finalize measure width and full-measure-rest visual X**
 
-- [ ] **Step 3: Finalize measure-local special geometry**
+After internal columns are placed:
 
-After a measure width is known:
+- include leading/trailing measure insets;
+- center printed full-measure rests in the final measure body;
+- keep their logical timing anchor unchanged;
+- preserve explicit start/end anchors for empty/trailing/control-only measures.
 
-- center printed full-measure rests in the usable measure body;
-- keep their logical tick anchor unchanged;
-- finalize control/rest/note event X values that depend on the measure body;
-- expose start/end anchors even for empty or control-only measures.
+- [ ] **Step 4: Greedily pack rows in the final coordinate space**
 
-- [ ] **Step 4: Add greedy row packing**
+- first measure X on every row = `rowLeadingInset`;
+- compare measure right edge against `availableRowWidth`;
+- preserve measure order;
+- include `measureSpacing`;
+- never split a measure;
+- an over-wide first measure stays natural width on its own row.
 
-Pack complete formatted measures using the caller-supplied resolved available width:
-
-- preserve source order;
-- include inter-measure spacing;
-- never split measures;
-- allow one over-wide measure to occupy a row alone at natural width.
-
-Add controlled-width tests for one-row, wrap, alternating dense/sparse and over-wide cases.
+Package output X values already contain this origin.
 
 - [ ] **Step 5: Implement the only tick lookup**
 
-`FormattedNotation.position(measureIndex:localTick:)` must:
+`FormattedNotation.position(measureIndex:localTick:)`:
 
-- return exact logical column X on exact anchors;
-- linearly interpolate between nearest anchors inside the owning measure;
-- resolve start/end of empty/control-only/trailing measures;
-- never interpolate into another measure/row;
-- reject non-finite input and define clamping behavior for tiny boundary drift explicitly.
+- exact anchor → exact logical X;
+- between anchors → linear interpolation inside that measure only;
+- empty/trailing/control-only measures resolve through start/end anchors;
+- no cross-measure or cross-row interpolation;
+- reject non-finite input and document any tiny-boundary clamping.
 
-Use `Double` local ticks for the live playhead while stored event anchors remain exact integer ticks.
-
-Add tests for exact onset, between-onset, final-measure end and a row boundary.
+Use `Double` for live local ticks; stored anchors remain exact integers.
 
 - [ ] **Step 6: Add reflow identity tests**
 
-Format the same resolved document at two widths and assert:
+Format the same input at two widths. IDs/ticks stay fixed; rows may change; lookup follows the new row. Do not assert one X-per-tick rate across the whole measure because collision-expanded intervals intentionally vary.
 
-- event/column IDs and exact ticks are unchanged;
-- row assignments may change;
-- per-measure internal geometry remains deterministic for the same formatting style except row origin;
-- tick lookup follows the new row after reflow.
-
-- [ ] **Step 7: Commit this slice**
+- [ ] **Step 7: Commit**
 
 Suggested commit:
 
@@ -350,197 +290,168 @@ feat: add measured notation rows and tick lookup
 
 ---
 
-## Task 4: Extend VirgoNotationAdapter and route the off-main preparer through DrumNotation
+## Task 4: Extend VirgoNotationAdapter and make the composition seam explicit
 
-**Files:**
-- Modify: `Virgo/layout/VirgoNotationAdapter.swift`
-- Modify: `Virgo/layout/GameplayNotationPreparation.swift`
-- Modify: `Virgo/layout/NotationLayout.swift`
-- Modify: `Virgo/layout/NotationLayoutEngine.swift`
-- Modify/Create: `VirgoTests/VirgoNotationAdapterTests.swift`
-- Modify: `VirgoTests/GameplayNotationPreparationTests.swift`
+**Files:** adapter, preparer, `NotationLayout`, `NotationLayoutEngine`, focused tests.
 
-**Interfaces:**
-- App snapshot/overrides/style → package resolved input/style.
-- Package formatted result → existing app render primitives.
-- No spacing policy in Virgo.
+- [ ] **Step 1: Add adapter tests for formatter-needed values**
 
-- [ ] **Step 1: Add red adapter preservation tests**
+Assert:
 
-For representative snapshot values assert mapping preserves:
+- `RhythmEventID.rawValue` maps to a deterministic reversible opaque note ID;
+- exact measure/local/absolute ticks survive;
+- staff override → `staffStep` survives;
+- notehead style, stem direction, duration/dots survive;
+- printed/full-measure rest state survives;
+- control onset identity survives;
+- package input contains no copied voice/tuplet/beat-group model.
 
-- `RhythmEventID` through a stable opaque scalar/string package ID;
-- measure index, local tick and absolute tick;
-- measure duration, meter and beat groups;
-- upper/lower voice;
-- staff step after applying app override;
-- notehead family, duration, stem direction;
-- dots and supported tuplet ratio/membership;
-- rest visibility;
-- stop/choke/damp/control identity needed by the transitional renderer;
-- supported/unsupported engraving state.
+App source voice, tuplets, warning/control semantics remain available in the original snapshot for post-format composition.
 
-Assert no test calls package rhythm inference because none should exist.
+- [ ] **Step 2: Move trailing-measure expansion before package formatting**
 
-- [ ] **Step 2: Add adapter methods for resolved input and formatting style**
+Reuse/move the current `expandedRhythmMeasures` behavior into the adapter/preparer side so the package receives the complete requested measure list, including empty trailing measures.
 
-Keep the current primitive helpers; extend the same enum rather than creating a second adapter.
+Do not make the package synthesize app timing policy.
 
-Suggested flow:
+- [ ] **Step 3: Map formatting style once**
+
+`VirgoNotationAdapter` maps:
+
+- resolved row width;
+- `GameplayLayout.leftMargin` → `rowLeadingInset`;
+- staff space;
+- measure/content gaps/insets;
+- rhythm-dot metrics.
+
+The adapter contains no spacing algorithm.
+
+- [ ] **Step 4: Route the preparer through package formatting**
 
 ```swift
-let packageInput = VirgoNotationAdapter.resolvedNotation(
-    from: request.snapshot,
-    notePositionOverrides: request.notePositionOverrides
-)
-let packageStyle = VirgoNotationAdapter.formattingStyle(from: request.style)
+let packageInput = VirgoNotationAdapter.resolvedNotation(...)
+let packageStyle = VirgoNotationAdapter.formattingStyle(...)
 let formatted = try NotationFormatter.format(packageInput, style: packageStyle)
 ```
 
-If the formatter uses a throwing validation API, treat invalid data as an explicit unsupported/fatal preparation result. Do not silently call old geometry.
+Invalid package input becomes an explicit unsupported/fatal preparation result. Never call old geometry.
 
-- [ ] **Step 3: Embed/reference `FormattedNotation` in app `NotationLayout`**
+- [ ] **Step 5: Compose the exact output table**
 
-The installed app layout needs direct access to the immutable package result for live tick lookup. Store that result (or a narrow immutable wrapper referencing the same anchor data) instead of reconstructing a second app tick table.
+Implement and test:
 
-Keep existing app-rendered arrays for the transitional HPA-164 renderer.
+| Value | Source |
+| --- | --- |
+| `RenderedMeasure.row/xOffset/width` | copy package formatted measure |
+| `RenderedNoteHead.position.x` | package `headCenterX` by opaque event ID |
+| `RenderedNoteHead.position.y` | Virgo row + staff position |
+| rests/controls X | package logical/special geometry |
+| stems/beams/flags | current Virgo builders after heads are positioned |
+| measure bars | package measure bounds |
+| installed live tick lookup | embedded same `FormattedNotation` |
 
-- [ ] **Step 4: Compose package geometry into rendered app values**
+No `contentStartX`, `tickWidth`, `leftMargin` or other post-format X transform is allowed.
 
-Update timeline layout composition so:
+- [ ] **Step 6: Verify displaced-head beam attachment**
 
-- `RenderedMeasure` row/X/width comes from package formatted measures;
-- `RenderedNoteHead.position.x` comes from package head geometry;
-- app Y still derives from row + staff position;
-- rests/controls use package event/logical geometry as appropriate;
-- existing stems/beams/flags/ledger lines are built from the newly positioned heads;
-- measure bars use formatted measure bounds, not a grid formula.
+Current `stemAnchor` already derives X from `RenderedNoteHead.position.x`. Add a regression proving `stemRepresentative`/beam attachment continues using displaced head-center geometry and never logical-column X.
 
-Do not copy the package spacing algorithm into `NotationLayoutEngine`.
+If a fix changes grouping/topology or hook policy, defer it to HPA-166.
 
-- [ ] **Step 5: Keep the detached worker boundary intact**
+- [ ] **Step 7: Keep the detached worker boundary unchanged**
 
-`GameplayNotationPreparer.prepare` continues receiving only immutable request values and runs package formatting plus transitional app composition off-main.
+The request/result remain immutable and `Sendable`; generation rejection/cancellation/install behavior stays HPA-581's design.
 
-Update comments/tests to assert the new package types and resulting app layout remain `Sendable` across this path.
-
-- [ ] **Step 6: Run focused tests**
-
-```bash
-swift test --package-path Packages/DrumNotation
-
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -parallel-testing-enabled NO \
-  -only-testing:VirgoTests/VirgoNotationAdapterTests \
-  -only-testing:VirgoTests/GameplayNotationPreparationTests \
-  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-```
-
-Expected: PASS before deleting old geometry.
-
-- [ ] **Step 7: Commit this slice**
+- [ ] **Step 8: Run focused tests and commit**
 
 Suggested commit:
 
 ```text
-feat: use DrumNotation formatter in gameplay preparation
+feat: compose DrumNotation measured geometry in gameplay
 ```
 
 ---
 
-## Task 5: Cut all live X consumers over and delete fixed-grid notation
+## Task 5: Cut live X consumers over and delete the fixed-grid notation path
 
-**Files:**
-- Modify: `Virgo/viewmodels/GameplayViewModel+VisualUpdates.swift`
-- Modify: `Virgo/viewmodels/GameplayViewModel+Notation.swift`
-- Modify: layout rests/controls/rhythm rendering files as needed
-- Delete/retire: `NotationLayoutEngine+TabGrid.swift`
-- Modify: `NotationLayout.swift` / `NotationLayoutEngine.swift`
-- Modify affected app tests
+- [ ] **Step 1: Route timeline playhead directly through `FormattedNotation.position(...)`**
 
-**Interfaces:**
-- Live playback seconds → existing timeline continuous tick → package `FormattedNotation.position(...)`.
-- No `TabGrid.xPosition` or chart-wide `tickWidth` remains in supported notation.
+`calculateTimelinePurpleBarPosition` already has continuous `localTick: Double`; pass that directly to package lookup. Use returned X/row with no app-side offset.
 
-- [ ] **Step 1: Route timeline purple playhead through the package mapping**
+Do not recreate a beat-position cache.
 
-Replace:
+- [ ] **Step 2: Remove the legacy beat-fraction notation lookup**
 
-```swift
-cachedNotationLayout.tabGrid.xPosition(...)
-```
+Delete `TabGrid.tickIndex(forBeatWithinMeasure:)` and `calculateNotationPurpleBarPosition`'s beat-fraction/grid path when no supported notation caller remains.
 
-with the installed formatted-notation lookup using the resolved timeline measure index/local continuous tick.
+The non-notation legacy beat UI may keep its own existing position logic.
 
-Use the returned row for the notation position where appropriate; do not calculate X independently.
-
-- [ ] **Step 2: Update resize/reflow tests before broader deletion**
-
-Add/adjust tests that:
-
-1. prepare a timeline layout;
-2. resolve an exact and an interpolated playhead X;
-3. change row width through the existing deterministic test path;
-4. verify layout reflows;
-5. verify the playhead still resolves to the same musical tick/column in the newly installed layout.
-
-Do not add a second playhead geometry cache.
-
-- [ ] **Step 3: Remove production notation fallback to `.legacy`**
+- [ ] **Step 3: Remove the no-snapshot notation branch**
 
 In `cacheNotationLayout()`:
 
 - valid snapshot → package formatter path;
-- no valid snapshot → keep the existing separate non-notation legacy beat presentation/runtime fallback, but do not invoke a second fixed-grid notation engine.
+- no snapshot → clear/install `.empty` notation and leave existing non-notation beat fallback active.
 
-Preserve fatal/unsupported timing behavior already owned by the rhythm runtime; do not broaden this task into playback policy changes.
+Do not build `NotationLayoutInput(notes:cachedNotes...)`.
 
-- [ ] **Step 4: Delete fixed-grid notation API and implementation**
+- [ ] **Step 4: Delete old notation geometry**
 
-Delete when callers are gone:
+Remove when callers are gone:
 
-- `NotationLayoutTimingInput.legacy` and the enum itself if timeline is now the only notation input;
-- `NotationLayoutInput(notes:...)` convenience initializer;
+- `NotationLayoutTimingInput.legacy` / timing enum if obsolete;
+- `NotationLayoutInput(notes:...)`;
 - `layoutLegacy`;
-- `TabGrid`;
-- global `tickWidth`, `ticksPerMeasure` compatibility wrappers and beat-fraction conversions;
-- `buildTabGrid(notes:)`, `buildTabGrid(snapshot:)` and their fixed-grid width helpers;
-- `buildMeasures` overloads whose only input is `TabGrid`.
+- `TabGrid` / `TabGrid.fallback`;
+- chart-wide `tickWidth` and compatibility `ticksPerMeasure`;
+- `RenderedMeasure.contentStartX`;
+- `NotationLayout.empty`'s `tabGrid` field;
+- `buildTabGrid(notes:)` / `buildTabGrid(snapshot:)`;
+- fixed-grid measure builders;
+- rest/control overloads that take `TabGrid`;
+- `cacheNotationLayout()`'s old else branch.
 
-If one math helper still has a legitimate caller after the cutover, move that helper to the true owner instead of leaving `NotationLayoutEngine+TabGrid.swift` as a compatibility shell.
+Move any surviving pure timing helper to its true owner instead of preserving a compatibility file.
 
-- [ ] **Step 5: Migrate or delete legacy-constructor tests**
+- [ ] **Step 5: Migrate/delete old tests**
 
-For every `NotationLayoutInput(notes:...)` test found on current main:
+For every `NotationLayoutInput(notes:...)` test:
 
-- geometry-only behavior → package formatter test;
-- app integration behavior → build a minimal `RhythmLayoutSnapshot`/adapter request;
-- fixed-grid overflow/LCM/tick-width compatibility behavior → delete unless the underlying timing validation is still owned elsewhere.
+- pure horizontal geometry → package test;
+- app integration → snapshot + adapter/preparer test;
+- fixed-grid LCM/tickWidth compatibility → delete unless its underlying timing validation has another real owner.
 
-Do not preserve `legacyTicksPerMeasure` or `TabGrid.fallback` only to keep old unit tests green.
+- [ ] **Step 6: Replace regression invariants**
 
-- [ ] **Step 6: Replace old regression invariant**
+Assert:
 
-`DrumTabRegressionInvariantTests` should no longer assert one chart-wide tick scale.
+- logical X monotonic inside each measure;
+- same tick → same logical column;
+- mixed voices are not shifted apart;
+- approved same-stem seconds may have displaced `headCenterX`;
+- measured note/dot/rest extents do not overlap adjacent columns;
+- sparse measure width is independent of unrelated dense measure;
+- playhead at an event tick equals that event's logical X;
+- row wrap/reflow preserves musical identity.
 
-Assert instead:
+Do not assert uniform X-per-tick across collision-expanded intervals.
 
-- logical X is monotonic inside each measure;
-- same tick means same logical column;
-- displaced head center may differ without changing logical X;
-- neighboring formatted extents do not overlap;
-- sparse measure width is independent from an unrelated dense measure;
-- playhead lookup at an event tick equals that event's logical X;
-- row wrapping does not change exact musical identity.
+- [ ] **Step 7: Deletion search audit**
 
-- [ ] **Step 7: Confirm no deleted cache is recreated**
+Production should no longer depend on:
 
-Search for `cachedBeatPositions`; production should remain free of it. Tests should validate live lookup directly.
+```text
+TabGrid
+tickWidth
+RenderedMeasure.contentStartX
+NotationLayoutTimingInput.legacy
+layoutLegacy
+cachedBeatPositions
+```
 
-- [ ] **Step 8: Commit this slice**
+Also search for old `buildStopNotes` / rest overloads taking `TabGrid`, `TabGrid.tickIndex`, and `NotationLayout.empty` fallback grid state.
+
+- [ ] **Step 8: Commit**
 
 Suggested commit:
 
@@ -550,72 +461,39 @@ refactor: remove fixed-grid notation layout
 
 ---
 
-## Task 6: Verify transitional beams, visual output and real-chart integration
+## Task 6: Verify real-chart and visual behavior without stealing HPA-166
 
-**Files:**
-- Modify only affected beam/rhythm-rendering code and tests
-- Modify golden/raster fixtures as justified by intentional formatting changes
+- [ ] **Step 1: Focused composition regressions**
 
-**Interfaces:**
-- Existing beam topology consumes package-positioned heads.
-- No HPA-166 topology rewrite.
+Cover:
 
-- [ ] **Step 1: Add a displaced-head stem/beam attachment regression**
+- same-tick kick/snare/hi-hat logical alignment;
+- same-stem second displacement + stem/beam attachment;
+- sparse next to dense measure;
+- controlled multi-row wrap;
+- exact/interpolated playhead alignment before and after resize.
 
-Use a same-onset chord that triggers package displacement and assert:
+- [ ] **Step 2: Keep expected modifier limitations explicit**
 
-- stem starts from the package-derived displaced head anchor;
-- existing beam/stem output remains finite and attached;
-- the logical playhead column stays at the shared onset rather than following a displaced head.
+If flags, tuplets, stop marks or articulations expose a horizontal collision because their footprint is not part of HPA-164 measurement, record/defer that parity issue to HPA-166. Fix only wrong coordinate transforms/anchors in HPA-164.
 
-If fixing the attachment requires changing beam grouping or secondary-hook policy, stop: that behavior belongs to HPA-166. Only correct coordinate assumptions in this PR.
+- [ ] **Step 3: Run real-DTX and HPA-581 integration suites**
 
-- [ ] **Step 2: Run real-DTX and row/playhead integration tests**
+At minimum include the existing rhythm timeline, `NotationLayoutRhythmTests`, playhead alignment, visual update, generation/isolation and real-chart/golden suites.
 
-At minimum run the suites covering:
+Use one serial `xcodebuild` invocation with multiple `-only-testing:` selectors where practical.
 
-- rhythm timeline → notation conversion;
-- `NotationLayoutRhythmTests`;
-- `DrumTabPlayheadAlignmentTests`;
-- `GameplayViewModelVisualUpdatesTests`;
-- real chart/golden fixture harness;
-- generation/isolation tests from HPA-581.
+- [ ] **Step 4: Run raster/render probes before golden regeneration**
 
-Use multiple `-only-testing:` selectors in one serial invocation rather than separate parallel runs.
+Inspect the existing macOS preview path. Check spacing, bars, head/stem attachment, row origin and row transitions.
 
-- [ ] **Step 3: Run raster/render probes before changing goldens**
+No new screenshot framework.
 
-Cover at least:
+- [ ] **Step 5: Regenerate text goldens only after visual acceptance**
 
-- sparse measure next to dense measure;
-- same-onset chord with local displacement;
-- multi-row wrap.
+Use the existing `TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1` path, review the diff, then rerun without update mode.
 
-Inspect one generated macOS preview image from the existing rendering test/helper path. Verify spacing, bar boundaries, head/stem attachment and row transitions visually.
-
-Do not introduce a new screenshot framework.
-
-- [ ] **Step 4: Regenerate text goldens only after geometry is accepted**
-
-Use the repository's existing golden update path, scoped to the golden suite, e.g.:
-
-```bash
-TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1 xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -parallel-testing-enabled NO \
-  -only-testing:VirgoTests/DrumTabGoldenTests \
-  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-```
-
-Review the diff; do not accept broad output churn unrelated to measured spacing/chord placement.
-
-- [ ] **Step 5: Re-run focused render tests without update mode**
-
-Expected: PASS with no golden mutation.
-
-- [ ] **Step 6: Commit this slice**
+- [ ] **Step 6: Commit**
 
 Suggested commit:
 
@@ -627,27 +505,21 @@ test: verify measured notation integration
 
 ## Task 7: Full verification and PR readiness
 
-The draft PR does not run the normal CI jobs until it is marked ready, so local verification is the gate before that transition.
+The PR remains draft while implementation is in progress, so local verification is the gate before marking it ready.
 
-- [ ] **Step 1: Package tests**
+- [ ] **Package tests**
 
 ```bash
 swift test --package-path Packages/DrumNotation
 ```
 
-Expected: PASS.
-
-- [ ] **Step 2: SwiftLint**
+- [ ] **SwiftLint**
 
 ```bash
 swiftlint lint
 ```
 
-Expected: no errors introduced by HPA-164.
-
-- [ ] **Step 3: Full serial macOS unit/render suite**
-
-Match CI:
+- [ ] **Full serial macOS suite**
 
 ```bash
 xcodebuild test \
@@ -663,9 +535,7 @@ xcodebuild test \
   -destination-timeout 300
 ```
 
-Expected: PASS.
-
-- [ ] **Step 4: iPad Simulator build**
+- [ ] **iPad Simulator build**
 
 ```bash
 xcodebuild build \
@@ -678,65 +548,32 @@ xcodebuild build \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-Expected: PASS without changing deployment floors or device-family policy.
+- [ ] **Scope audit against HPA-166**
 
-- [ ] **Step 5: Deletion/search audit**
+Remove/defer changes whose main purpose is final beam grouping/parity, flag collision layout, tuplet/stop/articulation footprint, complete staff/clef/meter/static-view extraction, or general renderer cleanup.
 
-Confirm production no longer contains supported notation dependencies on:
+- [ ] **Update PR body with implementation/verification evidence, then mark ready**
 
-```text
-TabGrid
-tickWidth
-NotationLayoutTimingInput.legacy
-layoutLegacy
-cachedBeatPositions
-```
-
-Historical docs may still mention them; do not rewrite old design history merely to make grep globally empty.
-
-Also confirm package source does not import Virgo or app-specific modules/types.
-
-- [ ] **Step 6: Scope audit against HPA-166**
-
-Review the diff and remove/defer any change whose main purpose is:
-
-- final beam grouping/parity;
-- complete modifier migration;
-- staff/clef/bar static drawing extraction;
-- executable VexFlow tooling not consumed by HPA-164 tests;
-- general renderer cleanup.
-
-HPA-164 should end with one usable intermediate renderer, not the final HPA-166 architecture prematurely.
-
-- [ ] **Step 7: Update PR body with verification evidence, then mark ready**
-
-Keep this same PR for implementation. Once local verification passes, update the PR description with:
-
-- final architecture decisions;
-- intentional golden/visual changes;
-- exact verification commands/results;
-- anything explicitly deferred to HPA-166.
-
-Then mark the PR ready and require GitHub Actions package tests, full macOS tests/archive and iPad build to pass.
+Require GitHub Actions package tests, macOS tests/archive and iPad build to pass after the draft transition.
 
 ---
 
 ## Acceptance checklist
 
-- [ ] One `DrumNotation` package/module; no new target split.
-- [ ] Package accepts resolved exact-tick percussion notation only.
-- [ ] Same-tick events share one logical column.
-- [ ] Required local head displacement is deterministic and does not change timing identity.
-- [ ] Per-measure width comes from local rhythmic distance + measured collision needs.
+- [ ] One existing `DrumNotation` module; no target split.
+- [ ] Package input contains only formatter-needed exact-tick values; no package voice/tuplet/beat-group copy.
+- [ ] `rowLeadingInset` makes every package X directly sheet-local; Virgo adds no X offset.
+- [ ] Same-tick events share one logical column; mixed voices are not displaced apart.
+- [ ] Only approved same-stem adjacent staff-step heads receive local displacement.
+- [ ] Formatter collision extents include noteheads, dots and printed rests only.
 - [ ] Dense measures do not globally widen sparse measures.
-- [ ] Complete measures greedily wrap at available width; over-wide measures remain natural size.
-- [ ] Exact/between-anchor tick lookup is package-owned and measure-local.
-- [ ] Purple playhead and rendered event onsets use the same package geometry.
-- [ ] Resize/reflow preserves event/tick identity and playhead alignment.
-- [ ] Existing off-main preparation/generation rejection remains intact.
-- [ ] Existing stems/beams remain attached to package-positioned heads without pulling final topology into this ticket.
-- [ ] Fixed-grid `.legacy` notation renderer and `TabGrid` are deleted.
-- [ ] No `cachedBeatPositions` cache is reintroduced.
-- [ ] Pure formatter tests live in the package; DTX/playhead/mounted-sheet tests stay in Virgo.
-- [ ] Package tests, focused visual/golden checks, full serial macOS tests, SwiftLint and iPad build pass.
-- [ ] HPA-166 remains the clear owner of final reusable static rendering and beam/modifier parity.
+- [ ] Complete measures wrap greedily; over-wide measures retain natural width.
+- [ ] `FormattedNotation.position(...)` is the sole supported notation tick→row/X lookup.
+- [ ] `RenderedMeasure` geometry is copied from package output.
+- [ ] Stems/beams attach through displaced `RenderedNoteHead.position.x` without topology changes.
+- [ ] No valid snapshot invokes no notation formatter; non-notation legacy beat fallback remains.
+- [ ] `.legacy`, `TabGrid`, `contentStartX`, old beat-fraction notation conversion and compatibility-only overloads/tests are removed.
+- [ ] `cachedBeatPositions` is not reintroduced.
+- [ ] Pure formatter tests live in package; DTX/playhead/mounted-sheet tests stay in Virgo.
+- [ ] Package tests, visual/golden checks, full serial macOS tests, SwiftLint and iPad build pass.
+- [ ] HPA-166 remains owner of final reusable static rendering and beam/modifier/tuplet/mark parity.
