@@ -155,7 +155,11 @@ enum VirgoNotationAdapter {
                     localTick: entry.note.position.localTick
                 ),
                 stemDirection: stemDirection(entry.definition.defaultStemDirection),
-                staffStep: NotationLayoutEngine.staffStep(for: position),
+                // The package orders staff steps pitch-ascending (its pinned
+                // VexFlow displacement walks away from the stem side through
+                // ascending steps); Virgo's layout staffStep is Y-down, so
+                // negate at this seam. Keeps the stem-side head undisplaced.
+                staffStep: -NotationLayoutEngine.staffStep(for: position),
                 noteheadStyle: noteheadStyle(for: entry.note.noteType),
                 duration: duration(for: entry.note.rhythm.baseInterval),
                 dotCount: entry.note.rhythm.dotCount,

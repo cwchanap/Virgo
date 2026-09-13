@@ -121,7 +121,6 @@ struct DTXControlImportIntegrationTests {
             .sorted { $0.rhythmPosition.localTick < $1.rhythmPosition.localTick }
         let pulses = try #require(viewModel.cachedRhythmRuntime.metronomeSchedule).pulses
             .filter { $0.position.measureIndex == 0 }
-        let renderedMeasure = try #require(viewModel.cachedNotationMeasuresByIndex[0])
         let headIDs = Set(heads.map(\.id))
         let eventIDs = Set(heads.map(\.eventID))
 
@@ -131,10 +130,11 @@ struct DTXControlImportIntegrationTests {
         #expect(pulses.count == 7)
         for (index, target) in targets.enumerated() {
             let expectedSeconds = Double(index) * 0.25
-            let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(
-                in: renderedMeasure,
-                localTick: target.position.localTick
-            )
+            // HPA-164: head X resolves from the installed formatter output
+            // (undisplaced single notes sit on their logical column).
+            let expectedX = viewModel.cachedNotationLayout.formattedNotation
+                .position(measureIndex: 0, localTick: Double(target.position.localTick))?
+                .x
             #expect(target.targetSecondsAtOneX == expectedSeconds)
             #expect(heads[index].eventID == target.eventID)
             #expect(heads[index].rhythmPosition == target.position)

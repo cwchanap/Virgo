@@ -255,6 +255,17 @@ extension GameplayViewModel {
               let measure = cachedNotationMeasuresByIndex[resolved.measure.measureIndex] else {
             return nil
         }
+        // HPA-164: live tick→X comes from the installed formatter output;
+        // clamp sub-tick overshoot past the measure end onto the end anchor.
+        let localTick = min(resolved.localTick, Double(measure.durationTicks))
+        if let position = cachedNotationLayout.formattedNotation.position(
+            measureIndex: resolved.measure.measureIndex,
+            localTick: localTick
+        ) {
+            let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.rowIndex)
+            return (x: Double(position.x), y: Double(staffCenterY))
+        }
+        // Grid fallback until Task 6 deletes the legacy conversion.
         let indicatorX = cachedNotationLayout.tabGrid.xPosition(
             in: measure,
             localTick: resolved.localTick

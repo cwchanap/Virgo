@@ -1,4 +1,5 @@
 import CoreGraphics
+import DrumNotation
 import Foundation
 
 struct TabGrid: Equatable, Sendable {
@@ -283,6 +284,10 @@ struct NotationLayout: Sendable {
     var rhythmWarnings: [RenderedRhythmWarning] = []
     var noteHeadPositionsByID: [UInt64: CGPoint]
     var noteHeadIDsByLayoutTick: [Int: Set<UInt64>]
+    /// The measured formatter output this layout was composed from (HPA-164),
+    /// installed for the live tick→X playhead lookup. Legacy compositions
+    /// leave it empty.
+    var formattedNotation: FormattedNotation = FormattedNotation(measures: [])
     var paintedBounds: CGRect = .null
     var totalHeight: CGFloat
 
