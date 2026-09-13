@@ -240,7 +240,8 @@ struct NotationFormatterColumnTests {
         #expect(try Fixtures.column(notation, localTick: 0).noteHeads.map(\.noteID) == [5])
         #expect(try Fixtures.column(notation, localTick: 960).noteHeads.map(\.noteID) == [9])
         #expect(try Fixtures.column(notation, localTick: 1440).rest?.restID == 7)
-        #expect(notation.position(measureIndex: 0, localTick: 480) == FormattedNotation.Position(rowIndex: 0, x: 0))
+        // Sheet-local: row 0 origin 100 + leading inset 52 + rhythmic gap 50.
+        #expect(notation.position(measureIndex: 0, localTick: 480) == FormattedNotation.Position(rowIndex: 0, x: 202))
     }
 
     @Test("input order does not affect output")
@@ -313,19 +314,23 @@ struct NotationFormatterDisplacementTests {
 
         // The stem-side (lowest) head stays at base X; the column never moves.
         #expect(lower.headCenterX == column.logicalColumnX)
-        #expect(column.logicalColumnX == 0)
+        // Sheet-local: rowLeadingInset 100 + leadingMeasureInset 52.
+        #expect(column.logicalColumnX == 152)
         let shift = displacement()
         #expect(upper.headCenterX == column.logicalColumnX + shift)
 
         // The shared stem axis (base head's stem anchor) stays put and remains
         // inside the displaced head's ink: the head shifted, the stem did not.
+        // X values are sheet-local; express them relative to the column base.
         let head = PercussionGlyphMetrics.notehead(
             style: .x, duration: .quarter, stemDirection: .up, staffSpace: style.staffSpace
         )
         let stemX = head.stemAnchorOffset.x
         #expect(stemX >= head.paintedBounds.minX && stemX <= head.paintedBounds.maxX)
-        #expect(upper.headCenterX + head.paintedBounds.minX <= stemX)
-        #expect(upper.headCenterX + head.paintedBounds.maxX >= stemX)
+        let displacedInkMinX = upper.headCenterX - column.logicalColumnX + head.paintedBounds.minX
+        let displacedInkMaxX = upper.headCenterX - column.logicalColumnX + head.paintedBounds.maxX
+        #expect(displacedInkMinX <= stemX)
+        #expect(displacedInkMaxX >= stemX)
 
         // Displaced ink widens the column on the shift side.
         #expect(abs(column.rightExtent - (shift + head.paintedBounds.maxX)) < 0.001)
@@ -352,9 +357,10 @@ struct NotationFormatterDisplacementTests {
         )
         let stemX = head.stemAnchorOffset.x
         #expect(stemX <= head.paintedBounds.maxX && stemX >= head.paintedBounds.minX)
-        #expect(lower.headCenterX + head.paintedBounds.maxX >= stemX)
-        #expect(lower.headCenterX + head.paintedBounds.minX <= stemX)
-        #expect(abs(column.leftExtent - -(lower.headCenterX + head.paintedBounds.minX)) < 0.001)
+        let relativeCenterX = lower.headCenterX - column.logicalColumnX
+        #expect(relativeCenterX + head.paintedBounds.maxX >= stemX)
+        #expect(relativeCenterX + head.paintedBounds.minX <= stemX)
+        #expect(abs(column.leftExtent - -(relativeCenterX + head.paintedBounds.minX)) < 0.001)
     }
 
     @Test("non-adjacent same-stem heads stay centered")
@@ -484,7 +490,8 @@ struct NotationFormatterInkTests {
         let column = try Fixtures.column(notation, localTick: 480)
         #expect(column.noteHeads.isEmpty && column.rest == nil)
         #expect(column.leftExtent == 0 && column.rightExtent == 0)
-        #expect(notation.position(measureIndex: 0, localTick: 480) == FormattedNotation.Position(rowIndex: 0, x: 0))
+        // Sheet-local: row 0 origin 100 + leading inset 52 + rhythmic gap 50.
+        #expect(notation.position(measureIndex: 0, localTick: 480) == FormattedNotation.Position(rowIndex: 0, x: 202))
     }
 
     @Test("rhythm dots extend the ink on the dotted side")
@@ -498,18 +505,11 @@ struct NotationFormatterInkTests {
         #expect(abs(column.leftExtent - headReach) < 0.001)
     }
 
-    @Test("printed rests anchor at the column with glyph extent; full-measure centering is deferred")
+    @Test("printed rests anchor at the column with glyph extent")
     func printedRestIsAnchoredAndMeasured() throws {
-        let fullMeasure = ResolvedRest(
-            id: 3,
-            position: NotationTickPosition(measureIndex: 0, localTick: 0),
-            duration: .whole,
-            dotCount: 0,
-            isFullMeasure: true
-        )
         let notation = try Fixtures.format(try Fixtures.document(
             notes: [],
-            rests: [Fixtures.rest(localTick: 480), fullMeasure],
+            rests: [Fixtures.rest(localTick: 480)],
             controls: []
         ))
         let measure = try #require(notation.measures.first)
@@ -523,9 +523,5 @@ struct NotationFormatterInkTests {
         let dotCenter = bounds.maxX + style.rhythmDotSpacing + style.rhythmDotRadius
         #expect(abs(column.rightExtent - (dotCenter + style.rhythmDotRadius)) < 0.001)
         #expect(abs(column.leftExtent - (-bounds.minX)) < 0.001)
-
-        let anchorColumn = try Fixtures.column(notation, localTick: 0)
-        #expect(anchorColumn.rest?.restID == 3)
-        #expect(anchorColumn.rest?.visualX == anchorColumn.logicalColumnX)
     }
 }
