@@ -2,22 +2,22 @@
 
 **Issue:** HPA-164 — `[Notation] Add measured formatting and shared tick geometry to DrumNotation`
 
-**Scope:** Second PR in the HPA-163 → HPA-164 → HPA-166 migration. Move horizontal notation formatting and musical-position lookup into the existing `DrumNotation` package, cut Virgo over to that geometry, and delete the superseded fixed-grid notation renderer. Final beam/modifier parity and the complete package-owned static sheet remain HPA-166.
+**Scope:** Second PR in the HPA-163 → HPA-164 → HPA-166 migration. Move horizontal notation formatting and musical-position lookup into the existing `DrumNotation` package, cut Virgo over to that geometry, and delete the superseded fixed-grid notation renderer. Final beam-topology migration, tuplet/control/articulation parity, and the complete package-owned static sheet remain HPA-166.
 
 **Baseline reviewed:** `main` at `8a29b68f7afeb29c162e2587fad26c192d71beda` after HPA-163 / PR #65 merged.
 
-## Current state after HPA-163
+## Current state
 
-HPA-163 established the package and primitive geometry but intentionally left horizontal layout in Virgo:
+HPA-163 established the package and Bravura primitive geometry but intentionally left horizontal layout in Virgo:
 
 - `DrumNotation` owns Bravura resources, percussion glyph semantics, staff-space-scaled glyph metrics, and primitive SwiftUI views.
-- `VirgoNotationAdapter` is the single app-to-package seam, but today it maps primitive types and flag paint policy only.
+- `VirgoNotationAdapter` is the single app-to-package seam, but today it maps primitive types and flag-paint policy only.
 - Virgo still owns `TabGrid`, one chart-wide `tickWidth`, measure sizing, row packing, note/rest/control X placement, and playhead X lookup.
 - `NotationLayoutEngine` still contains both `.timeline(RhythmLayoutSnapshot)` and `.legacy(notes:controls:timeSignature:)` notation paths.
-- Existing stems/beams/flags are built after notehead placement, so HPA-164 can keep their topology app-owned while feeding them package-positioned heads.
+- Existing beam topology is timing/voice based and does not need formatted X coordinates, while stem/beam rendering does consume final X coordinates.
 - HPA-581 already removed the old production `cachedBeatPositions` cache. HPA-164 must not recreate it.
 
-The task is therefore horizontal layout ownership, not a renderer rewrite.
+The task is therefore horizontal engraving ownership and one geometry map, not a renderer rewrite.
 
 ## Decision
 
@@ -29,11 +29,15 @@ Virgo DTX / SwiftData / rhythm analysis
                 v
        RhythmLayoutSnapshot
                 |
+                +--> Virgo beam-topology prepass (X-independent)
+                |
                 v
        VirgoNotationAdapter
   - expands trailing measures
   - applies staff overrides
-  - maps only formatter-needed values
+  - filters unsupported/unprinted formatter inputs
+  - resolves visible flag footprint
+  - maps one numeric formatting style
                 |
                 v
  DrumNotation.ResolvedNotationInput
@@ -49,7 +53,7 @@ Virgo DTX / SwiftData / rhythm analysis
        |                                  +--> live playhead / row lookup
        v
 Virgo transitional composition
-(existing Y placement, stems, beams, flags, marks)
+(Y, stems, beams, tuplets, controls, marks)
                 |
                 v
          one NotationLayout
@@ -64,82 +68,85 @@ The cutover is defined field-by-field so Virgo cannot accidentally retain a seco
 | App/output value | Owner after HPA-164 | Composition rule |
 | --- | --- | --- |
 | `RenderedMeasure.row/xOffset/width` | package formatted measures | copy directly; do not recompute from app spacing formulas |
-| `RenderedNoteHead.position.x` | package `headCenterX` | match by the note's opaque event ID |
-| `RenderedNoteHead.position.y` | Virgo | derive from formatted row + existing staff position/override |
 | logical onset X | package `logicalColumnX` | shared by every event at the same exact tick |
-| rest/control onset X | package position geometry | Virgo keeps semantic/Y presentation; no second tick map |
-| full-measure-rest visual X | package | center in final measure body; keep logical timing anchor separate |
+| visual notehead X | package `headCenterX` | copy by opaque integer note ID |
+| stem/beam X | Virgo existing stem representative + package glyph anchor | keep one undisplaced stem axis; do **not** move the stem to a displaced head |
+| note-attached dots/ledger/articulation X | Virgo from positioned head | follow `headCenterX`; they do not redefine timing X |
+| `RenderedNoteHead.position.y` | Virgo | derive from formatted row + existing staff position/override |
+| printed rest X | package | normal rests use logical column; full-measure rest is centered after width is known |
+| control onset X | package logical position | Virgo keeps semantic/Y drawing; controls add no HPA-164 collision extent |
 | live playhead X + row | package `position(measureIndex:localTick:)` | view model uses result directly; adds no X offset |
-| trailing empty measures | Virgo before formatting | move/reuse current `expandedRhythmMeasures` behavior in adapter/preparer, then convert those measures to package values |
-| stems/beams/flags | Virgo after formatted heads exist | current topology consumes displaced `RenderedNoteHead.position.x`; HPA-166 owns topology migration |
+| trailing empty measures | Virgo before formatting | reuse current `expandedRhythmMeasures` policy, then convert them to package values |
+| flag collision footprint | package, from Virgo-resolved visible flag duration | formatter measures the actual visible uncovered flag glyph horizontally |
+| actual beam/stem/flag topology and drawing | Virgo | existing builders consume formatted heads; HPA-166 owns topology migration |
 | measure bars | package measure bounds consumed by Virgo | no `TabGrid` end-X formula |
 | no valid snapshot | no notation formatter | clear/install empty notation and use existing non-notation beat UI/runtime fallback |
 
-`RhythmEventPosition` remains Virgo's musical identity. `NotationTickPosition` is only its package-side scalar copy.
+`RhythmEventPosition` remains Virgo's musical identity. Package positions copy only measure/local ticks; absolute tick remains derivable from the owning measure.
 
-For notes, use a deterministic reversible opaque ID derived from `RhythmEventID.rawValue` rather than installing a second persistent ID→geometry table. The package echoes the caller ID unchanged. Rest/control IDs may be deterministic app-generated strings; the package treats them as opaque.
+## Stem axis and displaced heads
 
-## Coordinate-space contract
+HPA-141 correctly removed voice-based timing offsets. HPA-164 introduces only the conventional same-stem staff-second displacement needed to avoid overlapping adjacent noteheads.
 
-All package X values are returned in the same sheet-local X coordinate space that Virgo paints today:
+The critical distinction is:
 
-- sheet/canvas left edge is X = 0;
-- the first measure on every row starts at `rowLeadingInset`;
-- `rowLeadingInset` is mapped from current `GameplayLayout.leftMargin`;
-- formatted measure origins, logical columns, displaced head centers, rest/control X, and `position(...)` results all use that same coordinate space;
-- Virgo must not add `leftMargin`, `contentStartX`, or any other X transform after formatting.
+- `logicalColumnX` is the musical onset/playhead coordinate;
+- `headCenterX` is the visual center of an individual notehead and may be displaced;
+- the shared stem remains on the **undisplaced stem-side axis**.
 
-Y remains app-owned in HPA-164. The package returns row identity; Virgo derives concrete staff Y from row + staff step.
+This matches the VexFlow reference: displaced noteheads move by roughly one head width minus half the stem width so they still overlap/touch the stem, while `getStemX()` remains based on the note's undisplaced/base X.
 
-This prevents the playhead and noteheads from drifting because of two different origin transforms.
+For HPA-164:
+
+- up-stem seconds follow VexFlow's bottom-to-top displacement ordering;
+- down-stem seconds follow VexFlow's top-to-bottom displacement ordering;
+- mixed stem directions are never shifted apart merely because they represent different voices;
+- non-adjacent same-stem heads remain centered unless a longer adjacent chain requires the reference alternation;
+- current Virgo `stemRepresentative` stays the stem-axis owner: bottom stem-side head for up stems and top stem-side head for down stems. With the pinned displacement ordering, that representative remains undisplaced.
+
+Do **not** add a public `stemColumnX` merely to duplicate this invariant. Add it only if implementation proves a supported chord cannot be expressed through the existing representative + package head geometry. Tests must prove both heads still touch the shared stem after displacement.
 
 ## Small public package model
 
-HPA-164 exposes only values the formatter uses. Do not publish a second `NotationVoice`: Virgo already owns that concept, and the formatter can resolve the approved displacement rule from `NotationStemDirection` + `staffStep`.
+Expose only values the HPA-164 formatter actually uses. Do not publish a package `NotationVoice`, engraving-support mirror, beat groups, tuplets, app diagnostics, or redundant absolute ticks.
 
-A representative boundary is:
+Representative boundary:
 
 ```swift
 public struct NotationTickPosition: Hashable, Sendable {
     public let measureIndex: Int
     public let localTick: Int
-    public let absoluteTick: Int
-}
-
-public enum NotationEngravingSupport: String, Sendable {
-    case supported
-    case warning
-    case unsupported
 }
 
 public struct ResolvedMeasure: Hashable, Sendable {
     public let index: Int
     public let startTick: Int
     public let durationTicks: Int
-    public let engravingSupport: NotationEngravingSupport
 }
 
 public struct ResolvedNote: Hashable, Sendable {
-    public let id: String
+    public let id: Int
     public let position: NotationTickPosition
     public let stemDirection: NotationStemDirection
     public let staffStep: Int
     public let noteheadStyle: PercussionNoteheadStyle
     public let duration: NotationDuration
     public let dotCount: Int
+    /// Nil when unflagged or fully covered by beams. When non-nil, this is the
+    /// canonical visible flag glyph whose horizontal footprint must be reserved.
+    public let visibleFlagDuration: NotationFlagDuration?
 }
 
 public struct ResolvedRest: Hashable, Sendable {
-    public let id: String
+    public let id: Int
     public let position: NotationTickPosition
     public let duration: NotationDuration
     public let dotCount: Int
-    public let isPrinted: Bool
     public let isFullMeasure: Bool
 }
 
 public struct ResolvedControl: Hashable, Sendable {
-    public let id: String
+    public let id: Int
     public let position: NotationTickPosition
 }
 
@@ -152,22 +159,46 @@ public struct ResolvedNotationInput: Hashable, Sendable {
 }
 ```
 
-Do not carry package `NotationVoice`, beat-group arrays, tuplet membership, app diagnostic arrays, BPM/seconds, DTX lanes, source models, or SwiftData identifiers in HPA-164. HPA-166 may add beat/tuplet data when the package actually owns those rendering decisions.
+Rules:
 
-Virgo still retains its full source snapshot while composing the transitional renderer, so tuplets, voices, warnings, control semantics and other app-owned rendering data are not lost merely because the HPA-164 formatter does not duplicate them.
+- `ResolvedNote.id` maps directly from `RhythmEventID.rawValue`; no stringification or parallel ID table.
+- Controls use their `RhythmEventID.rawValue` as their opaque integer ID.
+- Printed rests only enter package input; unprinted rests are filtered in Virgo rather than becoming invisible spacing anchors.
+- Rest IDs may use a deterministic adapter-local integer namespace/index because note/rest/control IDs live in separate collections.
+- `absoluteTick` is validated/derived as `measure.startTick + localTick`; it is not public input state.
+- Unsupported-measure suppression stays in Virgo. The package formats only the visible/allowed formatter input it is given.
 
-The package may receive a minimal supported/warning/unsupported measure state, but never Virgo's diagnostic taxonomy.
+Virgo retains the full source `RhythmLayoutSnapshot` for voice, tuplets, warnings and control semantics used during transitional post-format composition.
+
+## Visible flag footprint before formatting
+
+Flags are the one modifier footprint HPA-164 must include because measured per-measure spacing removes the accidental slack provided by chart-wide `tickWidth`.
+
+Do not move beam topology into `DrumNotation`. Instead, before package formatting, Virgo uses its existing X-independent `NotationBeamTopologyBuilder` inputs from the full snapshot to determine whether each stem group has visible uncovered flag levels.
+
+The adapter then supplies only the horizontal paint intent needed by the formatter:
+
+- unflagged or fully beam-covered stem → `visibleFlagDuration = nil`;
+- all required levels uncovered → canonical duration-specific flag (`.eighth`, `.sixteenth`, `.thirtySecond`, `.sixtyFourth`);
+- partially uncovered levels → `.eighth` component footprint, matching current `flagPaintCommands` component policy.
+
+The topology prepass may use provisional row identity because beam groups are already measure-local; row wrapping cannot change whether a flag is covered.
+
+The formatter uses `PercussionGlyphMetrics.flag(...)` plus the stem axis/attachment geometry to union the flag's horizontal painted bounds into its column extent. Actual flag objects and beam topology remain Virgo-owned after formatting.
+
+Add a consistency test proving the pre-format visible flag classification agrees with the post-format `FlagPaintCommand` policy for isolated and partially-beamed examples.
 
 ## Numeric formatting style
 
-Use one plain `Sendable` scalar style containing only inputs that affect HPA-164 formatting:
+Use one plain `Sendable` scalar style. The field `minimumInterColumnClearance` is intentionally **edge-to-edge clearance**, not a rename of the old center-to-center `minimumNoteColumnGap`.
 
 ```swift
 public struct NotationFormattingStyle: Hashable, Sendable {
     public let availableRowWidth: CGFloat
     public let rowLeadingInset: CGFloat
     public let staffSpace: CGFloat
-    public let minimumInterColumnGap: CGFloat
+    public let stemWidth: CGFloat
+    public let minimumInterColumnClearance: CGFloat
     public let minimumQuarterNoteSpacing: CGFloat
     public let measureSpacing: CGFloat
     public let leadingMeasureInset: CGFloat
@@ -177,69 +208,66 @@ public struct NotationFormattingStyle: Hashable, Sendable {
 }
 ```
 
-`availableRowWidth` is the sheet-local row boundary used for wrapping, while `rowLeadingInset` places the first measure in that same coordinate space. Virgo resolves the historical 900pt row-width floor before creating this style.
+Virgo's default mapping is explicit:
 
-No `GameplayLayout`, screen globals, colors, SwiftUI views, or logger enter the package.
+- `availableRowWidth` = resolved app row width, with the existing 900pt floor;
+- `rowLeadingInset` = `GameplayLayout.leftMargin` = 100;
+- `staffSpace` = current staff-line spacing = 20;
+- `stemWidth` = 2;
+- `minimumInterColumnClearance` = **8pt** at the default scale;
+- `minimumQuarterNoteSpacing` = current `GameplayLayout.uniformSpacing` = 50;
+- `measureSpacing` = 12;
+- `leadingMeasureInset` = current bar + content lead = 52;
+- `trailingMeasureInset` = 0;
+- dot radius/spacing map from existing `NotationLayoutStyle`.
+
+The 8pt clearance preserves the intent of the old 28pt center pitch for the common Bravura X-black head at staff-space 20: approximately 28pt legacy pitch − 20pt head width = 8pt edge clearance. Wider/narrower glyphs then expand/contract content-aware spacing rather than inheriting a fake fixed pitch.
+
+This is a semantic conversion. Never map old `minimumNoteColumnGap = 28` directly into edge-to-edge clearance.
+
+Only `VirgoNotationAdapter.formattingStyle(...)` may construct this package style. Both synchronous relayout (`cacheNotationLayout`) and detached initial preparation must route through the same adapter/preparer path; there is no second hand-written style mapping.
 
 ## Measured formatting algorithm
 
 Use one deterministic left-to-right pass. No iterative constraint solver is needed.
 
-### 1. Build exact logical time columns
+### 1. Build exact logical columns
 
 For each measure:
 
-1. collect notes, printed rests and controls by exact `localTick`;
+1. collect resolved notes, printed rests and controls by exact `localTick`;
 2. create one logical time column per exact tick;
-3. add explicit start (`0`) and end (`durationTicks`) anchors even for empty/trailing measures;
-4. keep caller event IDs unchanged.
+3. add explicit start (`0`) and end (`durationTicks`) anchors for empty/trailing measures;
+4. keep caller IDs unchanged.
 
-Controls participate in the exact tick map but contribute no HPA-164 collision width.
+Controls participate in the tick map but contribute zero collision width in HPA-164.
 
-All events at the same exact tick share one `logicalColumnX`.
+### 2. Apply the closed staff-second displacement rule
 
-### 2. Apply only approved second-note displacement
+Within each exact onset and stem direction, apply only the pinned VexFlow staff-second behavior described above. Store `headCenterX` separately from `logicalColumnX`. No voice-based X offsets exist.
 
-HPA-141 intentionally removed voice-based X offsets. HPA-164 must not reintroduce that bug under a generic "VexFlow displacement" label.
+### 3. Measure column geometry
 
-Rules:
+Column extents union only horizontally material geometry needed before HPA-166:
 
-- mixed-voice / mixed-stem events at the same tick keep the same logical X and head-center X unless a head also participates in the same-stem rule below;
-- only heads on the **same stem direction** whose `staffStep` values are adjacent (a staff second) are candidates for local displacement;
-- non-adjacent same-stem heads stay centered on the logical column;
-- the exact shifted head/direction and minimum offset are pinned by the package's small VexFlow-reference fixtures for up- and down-stem seconds;
-- displacement changes only `headCenterX`; event ID, tick and `logicalColumnX` never change.
+- natural HPA-163 notehead bounds after displacement;
+- rhythm dots;
+- natural printed-rest bounds;
+- visible uncovered flag bounds from `visibleFlagDuration`.
 
-The output preserves both:
+Keep these deferred:
 
-- `logicalColumnX` — timing/playhead coordinate;
-- `headCenterX` — visual notehead coordinate.
-
-Virgo's existing stem/beam builders must consume displaced `RenderedNoteHead.position.x` and package glyph stem anchors. They must never substitute `logicalColumnX` when attaching a stem or beam.
-
-### 3. Measure only HPA-164-owned collision geometry
-
-Column horizontal extents include:
-
-- natural HPA-163 notehead painted bounds after local displacement;
-- rhythm-dot footprint using `rhythmDotRadius` / `rhythmDotSpacing`;
-- natural printed-rest bounds.
-
-They deliberately exclude:
-
-- flags and beam geometry;
+- beams themselves;
 - tuplet brackets/labels;
-- stop/choke/damp mark footprints;
-- articulation footprints;
-- warning/feel-mark footprints.
+- stop/choke/damp marks;
+- articulations (their app footprint is not a horizontal spacing driver here);
+- warning/feel marks.
 
-Determining whether a flag is actually unbeamed requires beam topology, and stop marks still use app-owned sizing. Pulling those into the formatter would prematurely absorb HPA-166. If one of those modifiers exposes a visual collision after the measured-X cutover, HPA-166 owns that parity fix unless the problem is simply an incorrect anchor transform.
-
-A full-measure rest keeps a logical timing anchor but is visually centered only after final measure width is known.
+A full-measure rest retains its timing anchor but is visually centered only after final measure width is known.
 
 ### 4. Place columns by rhythm plus collision clearance
 
-For adjacent anchors at ticks `a` and `b`:
+For adjacent anchors `a` and `b`:
 
 ```text
 rhythmicGap = minimumQuarterNoteSpacing
@@ -248,152 +276,195 @@ rhythmicGap = minimumQuarterNoteSpacing
               / ticksPerWholeNote
 
 collisionGap = left.rightExtent
-               + minimumInterColumnGap
+               + minimumInterColumnClearance
                + right.leftExtent
 
 requiredGap = max(rhythmicGap, collisionGap)
 ```
 
-Use integer/rational-safe arithmetic until the final `CGFloat` conversion; do not require `ticksPerWholeNote % 4 == 0`.
-
-Accumulate one pass from left to right. Collision expansion is local to the affected interval; there is no chart-wide density-derived scale.
+Use integer/rational-safe arithmetic until final `CGFloat` conversion. Collision expansion stays local to the affected interval.
 
 ### 5. Derive independent measure widths
 
-Each measure width is its formatted anchor span plus leading/trailing measure insets. Never compress below that collision-free minimum.
+Each measure starts at `rowLeadingInset`. Tick 0 is placed at:
 
-An over-wide measure stays at natural width and occupies one row alone. Existing horizontal scrolling handles overflow.
+```text
+measure.x + leadingMeasureInset
+```
+
+The measure width is:
+
+```text
+leadingMeasureInset
++ formatted tick-0 → end-anchor span
++ trailingMeasureInset
+```
+
+Never compress below that collision-free width. An over-wide measure remains natural width and occupies a row alone.
+
+### Locked default-density regression
+
+At the default style, the existing `sixteenth-run-4-4` first measure must remain comfortably inside a 900pt row and has a hand-computable target width of **490pt**:
+
+- 52pt leading inset;
+- 15 adjacent X-black sixteenth columns at 28pt pitch (`10 + 8 + 10`); 
+- final note → measure-end anchor = 18pt (`10 + 8`), larger than the 12.5pt sixteenth rhythmic baseline;
+- total = `52 + 15*28 + 18 = 490`.
+
+This replaces accidental preservation of the old 500pt `TabGrid` width with a stable behavioral contract. Use a small floating-point tolerance; do not regenerate goldens until this numeric invariant is green.
 
 ## Greedy row packing
 
-Start every row at `rowLeadingInset`, then pack complete measures in source order:
+Reuse the existing greedy policy, changing only width authority:
 
-- include inter-measure spacing;
-- start a new row when the next whole measure would exceed `availableRowWidth`;
+- start each row at `rowLeadingInset`;
+- include `measureSpacing`;
+- wrap before a complete measure would cross `availableRowWidth`;
 - never split a measure;
-- allow an over-wide first measure to exceed the row boundary;
+- keep an over-wide first measure at natural width;
 - row wrapping never changes exact tick identity or per-measure internal spacing.
 
-All returned measure/column/head X values already include row origin. Virgo adds nothing afterward.
+All package X values already use final sheet-local coordinates. Virgo adds nothing afterward.
 
-## Authoritative tick-position lookup
+## Authoritative tick lookup
 
-`FormattedNotation.position(measureIndex:localTick:)` is the only notation musical-position→row/X lookup.
+`FormattedNotation.position(measureIndex:localTick:)` is the only notation musical-position → row/X lookup.
 
 Rules:
 
-1. reject non-finite input; explicitly clamp only tiny boundary drift if needed;
+1. reject non-finite input; clamp only explicitly documented tiny boundary drift;
 2. exact anchors return exact `logicalColumnX`;
-3. between anchors, interpolate only between nearest anchors inside that measure;
-4. start/end anchors make empty, control-only and trailing measures resolvable;
+3. between anchors, interpolate only inside the owning measure;
+4. start/end anchors make empty/control-only/trailing measures resolvable;
 5. never interpolate across measure or row boundaries;
-6. displaced heads and centered full-measure rests never replace the logical timing coordinate.
+6. displaced heads and centered full-measure rests never replace timing X.
 
-Collision-expanded intervals mean there is intentionally **no single X-per-tick scale**. Tests must assert event-tick→logical-X identity and measure-local interpolation, not uniform visual speed across the whole measure.
+There is intentionally no chart-wide X-per-tick scale after HPA-164.
 
-Virgo continues converting playback seconds to continuous musical ticks; the package never sees seconds/BPM.
+## Virgo integration
 
-## Virgo adapter and preparer responsibilities
+### One preparation/composition route
 
-### Before formatting
+Both initial detached preparation and synchronous relayout must call the same pure preparation operation:
 
-`VirgoNotationAdapter` / `GameplayNotationPreparer`:
+```text
+GameplayNotationPreparationRequest
+  -> VirgoNotationAdapter.resolvedNotation(...)
+  -> VirgoNotationAdapter.formattingStyle(...)
+  -> NotationFormatter.format(...)
+  -> Virgo transitional composition
+  -> GameplayNotationPreparedState
+```
 
-- start from immutable `RhythmLayoutSnapshot`;
-- expand requested trailing measures using the current timeline-aware behavior before package conversion;
-- apply user/default staff-position overrides;
-- map only fields used by HPA-164 formatting;
-- map app style to `NotationFormattingStyle`, including `rowLeadingInset` and dot metrics.
+`cacheNotationLayout()` may invoke that operation synchronously when required by the current test/resize flow, but it must not rebuild package style or call a parallel formatter/engine route.
 
-The adapter performs representation conversion, not spacing or rhythm inference.
+### Transitional composition
 
-### After formatting
-
-The preparer composes one `NotationLayout`:
+After formatting:
 
 - copy formatted measures directly;
 - build noteheads with package `headCenterX` and app-owned Y;
-- place rests/controls from package logical/special visual geometry and app-owned semantic/Y data;
-- run existing app stem/beam/flag/ledger/tuplet/mark builders using those positioned primitives;
+- keep current `stemRepresentative` selection and derive shared stem/beam X from the **undisplaced representative** + package glyph stem anchor;
+- place rests/controls from package timing/special visual geometry and app-owned semantic/Y data;
+- run existing app beam/stem/flag/ledger/tuplet/mark builders without changing their topology;
 - use formatted measure bounds for bars;
-- embed/retain the immutable `FormattedNotation` so live playhead lookup reads the same anchor data.
+- retain immutable `FormattedNotation` for live playhead lookup.
 
-No app formatter facade or copied tick table is added.
+The displaced-head regression must assert:
 
-`GameplayNotationPreparer` remains the detached pure-value worker from HPA-581, and the existing generation rejection/cancellation/install funnel remains unchanged.
+- the shifted head's center differs from `logicalColumnX`;
+- the stem axis remains the undisplaced/base axis;
+- both adjacent heads touch/overlap that stem according to the pinned reference;
+- beam endpoints use the same stem axis;
+- playhead X remains `logicalColumnX`.
 
 ## No-snapshot behavior
 
-Delete the notation fallback in `cacheNotationLayout()` as part of the `.legacy` cutover, not merely `layoutLegacy` itself.
+Delete the notation fallback in `cacheNotationLayout()` as part of the `.legacy` cutover:
 
-- valid `RhythmLayoutSnapshot` → package formatter path;
-- no valid snapshot → clear/install empty notation and leave rendering/playback to the existing non-notation legacy beat UI/runtime path;
-- fatal rhythm behavior remains governed by the existing rhythm runtime.
+- valid snapshot → package formatter path;
+- no valid snapshot → empty notation + existing non-notation beat UI/runtime fallback;
+- fatal rhythm behavior remains owned by the current rhythm runtime.
 
-HPA-164 does not synthesize a second notation input from `cachedNotes` when the snapshot is absent.
+Do not synthesize a second notation input from `cachedNotes`.
 
 ## Fixed-grid deletion checklist
 
 Delete or relocate every production dependency whose only owner is the old notation grid:
 
-- `NotationLayoutTimingInput.legacy` and the timing enum if no longer needed;
+- `NotationLayoutTimingInput.legacy` / obsolete timing enum;
 - `NotationLayoutInput(notes:controlEvents:timeSignature:...)`;
 - `NotationLayoutEngine.layoutLegacy`;
-- `TabGrid` and `TabGrid.fallback`;
-- chart-wide `tickWidth` and compatibility `ticksPerMeasure` wrappers;
+- `TabGrid` / `TabGrid.fallback`;
+- chart-wide `tickWidth` / compatibility `ticksPerMeasure`;
 - `TabGrid.tickIndex(forBeatWithinMeasure:)`;
 - `RenderedMeasure.contentStartX`;
-- `NotationLayout.empty`'s `tabGrid: .fallback` state;
+- `NotationLayout.empty` fallback grid state;
 - `buildTabGrid(...)` and fixed-grid measure builders;
-- rest/control overloads that accept `TabGrid`;
-- `cacheNotationLayout()`'s `NotationLayoutInput(notes:...)` branch;
-- `calculateNotationPurpleBarPosition`'s beat-fraction→grid path when no production notation caller remains;
+- rest/control overloads taking `TabGrid`;
+- `cacheNotationLayout()`'s old no-snapshot notation branch;
+- fixed-grid beat-fraction notation lookup;
 - fixed-grid-only tests/invariants.
 
-Move any still-useful pure timing helper to its real owner instead of leaving `NotationLayoutEngine+TabGrid.swift` as a compatibility shell.
+Move useful pure timing helpers to their real owner instead of preserving a compatibility shell.
 
-The separate non-notation beat fallback is not part of this deletion.
+## Regression strategy before golden regeneration
 
-## Tests
+Numeric/behavioral invariants land **before** text-golden updates:
 
-### Package tests
+- sparse measure width is strictly less than its intentionally dense neighbor for a named fixture;
+- adjacent measured painted extents, including visible flags, are disjoint by at least `minimumInterColumnClearance` when rhythmic spacing does not already exceed it;
+- `sixteenth-run-4-4` measure 0 is 490pt at the default style and its right edge remains inside the 900pt row;
+- same-tick logical X is stable even when a notehead displaces;
+- stem/beam X stays on the undisplaced stem axis;
+- playhead at an event tick equals that event's logical X.
 
-Cover:
+Only after these pass should raster/visual checks be accepted and all affected goldens regenerated.
 
-- validation/deterministic ordering;
-- sparse measure beside dense measure;
-- alternating dense/sparse measures across rows;
-- same-tick kick/snare/hi-hat sharing one logical column and no voice-based X shift;
-- up-stem and down-stem same-stem second displacement;
-- non-adjacent chord heads staying centered;
-- note/dot/rest extents and adjacent-column non-overlap;
-- independent measure widths;
-- controlled wrapping and one over-wide measure;
-- exact tick lookup and between-anchor interpolation;
-- empty/control-only/trailing measures;
-- reflow preserving IDs/ticks;
-- every returned X using `rowLeadingInset` in one coordinate space.
+## Legacy-test migration contract
 
-### Virgo integration tests
+HPA-164 remains exactly **one ticket → one PR**. The migration is large enough to deserve its own implementation task and commit, not a second PR.
 
-Prove:
+Before deleting `.legacy`, run a complete repository search for `NotationLayoutInput(notes:` and append any newly discovered files to this disposition table.
 
-- adapter preserves exact note IDs/ticks, stem direction, staff step, notehead family, duration/dots, rest/control identity needed by composition;
-- app-only voice/tuplet/control semantics still render from the original snapshot without being duplicated into package API;
-- formatted measures are copied, not recomputed;
-- stem/beam attachment uses displaced `headCenterX`;
-- playhead event tick resolves to the same `logicalColumnX` as notation;
-- resize/reflow keeps the same musical tick aligned;
-- no-snapshot flow does not invoke a notation formatter;
-- HPA-581 generation/stale-worker behavior is unchanged;
-- real DTX/golden/raster output remains usable.
+| Current test file | HPA-164 disposition |
+| --- | --- |
+| `NotationLayoutEngineTests.swift` | move pure horizontal/measure-spacing cases to package tests; convert retained renderer/bounds cases to snapshot + preparer; delete fallback/tickWidth compatibility assertions |
+| `NotationLayoutEngineChordAndBeamTests.swift` | keep as snapshot/preparer integration; migrate constructors; retain topology and new undisplaced-stem-axis regression |
+| `NotationLayoutRestTests.swift` | move pure horizontal rest geometry to package tests; keep voice/rest rendering integration through snapshot |
+| `NotationLayoutOffsetNormalizationTests.swift` | delete legacy-only normalization coverage when superseded by canonical timeline tests; relocate any still-valid timing assertion to its real owner |
+| `NotationLayoutNotePositionOverrideTests.swift` | keep integration via adapter/preparer to prove override → staff step/Y mapping |
+| `NotationLayoutEngineTabGridOverflowTests.swift` | delete fixed-grid overflow/LCM layout behavior; move any still-relevant timing-limit validation to rhythm-timeline tests |
+| `BeamHookPreservationTests.swift` | keep app integration and migrate setup to snapshot/preparer; no topology-policy change |
+| `RhythmLayoutSnapshotBuilderTests.swift` | remove legacy layout construction; keep snapshot/adapter semantic coverage |
+| `RhythmRenderingTests.swift` | keep timeline integration; replace `TabGrid` X assertions with formatted logical-position lookup; tuplets/feel remain app-owned |
 
-Run visual/raster checks before accepting regenerated goldens.
+Do this as one dedicated migration/deletion commit before broad golden regeneration. Do not add a compatibility constructor merely to reduce the diff.
+
+## Risks
+
+### Risk 1: flag-footprint/topology drift
+
+The formatter receives only a scalar visible-flag footprint classification, while actual topology/drawing remains in Virgo. If those policies diverge, spacing may reserve too much or too little width.
+
+Mitigation: derive both from the same topology inputs, preserve current `flagPaintCommands` policy, and add isolated + partially-beamed consistency tests before cutover.
+
+### Risk 2: legacy-test migration breadth
+
+Deleting `.legacy` touches many old layout tests and can hide behavior loss behind mechanical rewrites.
+
+Mitigation: use the explicit per-file disposition table, a dedicated commit, no compatibility shim, full serial suite before golden updates, and review deletions separately from expected geometry churn.
+
+### Risk 3: golden churn masking geometry regressions
+
+Every horizontal digest changes once `tickWidth` disappears.
+
+Mitigation: land the non-vacuous numeric invariants above first, run raster/visual checks, then regenerate goldens and review only expected spacing/row/attachment changes.
 
 ## Explicit non-goals
 
-- final beam grouping, secondary beams, hooks, flag collision/parity;
-- package-owned tuplet/stop/articulation/warning layout footprint;
+- migrating beam topology itself into the package;
+- package-owned tuplets, stop/choke/damp marks, articulations, warnings or feel-mark footprint;
 - complete static notation view / staff / clef / meter extraction;
 - DTX or rhythm-inference changes;
 - virtualization, Canvas/Metal, pagination or another rendering backend;
@@ -402,23 +473,23 @@ Run visual/raster checks before accepting regenerated goldens.
 
 ## Acceptance criteria
 
-- One existing `DrumNotation` target owns the measured formatter and tick lookup.
-- The HPA-164 package input contains only formatter-needed fields; no package `NotationVoice`, beat groups or tuplets.
-- All package X values share one sheet-local coordinate space with explicit `rowLeadingInset`; Virgo applies no post-format X transform.
+- One existing `DrumNotation` target owns measured X geometry and tick lookup.
+- Package input has no `NotationVoice`, engraving-support mirror, beat groups, tuplets, absolute tick, unprinted rests, or stringified note IDs.
+- `visibleFlagDuration` reserves actual visible flag footprint without moving beam topology into the package.
+- `minimumInterColumnClearance` is 8pt at the default scale and is not mapped from the old 28pt center pitch.
+- `sixteenth-run-4-4` measure 0 is 490pt at default style and remains inside the 900pt row.
 - Same-tick events share one logical column; mixed voices are not shifted apart.
-- Only same-stem adjacent staff-step heads receive the approved local second displacement.
-- HPA-164 collision extents cover noteheads, dots and printed rests only; flags/tuplets/stop marks remain HPA-166 scope.
+- Same-stem seconds may displace noteheads, but shared stem/beam X remains on the undisplaced stem-side axis.
+- All package X values share one sheet-local coordinate space with explicit `rowLeadingInset` and no post-format app offset.
 - Dense measures no longer globally widen unrelated sparse measures.
-- Measures wrap deterministically and over-wide measures remain natural width.
+- Adjacent note/dot/rest/visible-flag extents satisfy the formatter clearance invariant.
 - `FormattedNotation.position(...)` is the only notation tick→row/X map used by the live playhead.
-- `RenderedMeasure` geometry is copied from the package; notehead X uses package `headCenterX`; Y remains app-owned.
-- Current stems/beams remain attached to displaced head geometry without changing topology.
+- Both synchronous relayout and detached preparation use the same adapter style + preparation/composition route.
 - No valid snapshot means no notation formatter; existing non-notation beat fallback remains available.
-- `.legacy`, `TabGrid`, `RenderedMeasure.contentStartX`, fixed-grid playhead conversion, and compatibility-only overloads/tests are removed.
+- `.legacy`, `TabGrid`, `contentStartX`, old beat-fraction notation conversion, and compatibility-only overloads/tests are removed.
 - `cachedBeatPositions` is not reintroduced.
-- Existing off-main preparation/generation rejection remains intact.
-- Package tests, focused visual/golden checks, full serial macOS tests, SwiftLint and iPad build pass.
+- Numeric invariants pass before golden regeneration; package tests, visual/raster checks, full serial macOS tests, SwiftLint and iPad build pass.
 
 ## PR boundary
 
-Exactly one PR for HPA-164. It owns the compact package formatter contract, measured horizontal columns/rows, authoritative package tick geometry, explicit Virgo composition seam, and deletion of fixed-grid notation. HPA-166 owns final beam/modifier/tuplet/mark parity and the complete reusable static sheet.
+Exactly one PR for HPA-164. It owns the compact package formatter contract, measured columns/rows, visible flag footprint, authoritative tick geometry, explicit Virgo composition seam, and fixed-grid deletion. The legacy-test migration is a dedicated task/commit inside this PR. HPA-166 remains owner of beam-topology migration, tuplets/control/articulation parity, and the complete reusable static sheet.
