@@ -5,74 +5,6 @@ import DrumNotation
 /// Compile-time Sendable proof: the call only compiles when `T` is `Sendable`.
 private func requireSendable<T: Sendable>(_ value: T) -> T { value }
 
-/// Shared package-only fixture for the formatter input/output model boundary.
-private enum Fixtures {
-    static let ticksPerWholeNote = 1920
-
-    static func measure(
-        index: Int = 0,
-        startTick: Int = 0,
-        durationTicks: Int = ticksPerWholeNote
-    ) -> ResolvedMeasure {
-        ResolvedMeasure(index: index, startTick: startTick, durationTicks: durationTicks)
-    }
-
-    static func note(
-        id: Int = 42,
-        measureIndex: Int = 0,
-        localTick: Int = 0
-    ) -> ResolvedNote {
-        ResolvedNote(
-            id: id,
-            position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
-            stemDirection: .up,
-            staffStep: 3,
-            noteheadStyle: .x,
-            duration: .sixteenth,
-            dotCount: 0,
-            visibleFlagDuration: .sixteenth
-        )
-    }
-
-    static func rest(
-        id: Int = 7,
-        measureIndex: Int = 0,
-        localTick: Int = 1440
-    ) -> ResolvedRest {
-        ResolvedRest(
-            id: id,
-            position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
-            duration: .quarter,
-            dotCount: 1,
-            isFullMeasure: false
-        )
-    }
-
-    static func control(
-        id: Int = 9,
-        measureIndex: Int = 0,
-        localTick: Int = 480
-    ) -> ResolvedControl {
-        ResolvedControl(id: id, position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick))
-    }
-
-    static func document(
-        ticksPerWholeNote: Int = Fixtures.ticksPerWholeNote,
-        measures: [ResolvedMeasure] = [Fixtures.measure()],
-        notes: [ResolvedNote] = [Fixtures.note()],
-        rests: [ResolvedRest] = [Fixtures.rest()],
-        controls: [ResolvedControl] = [Fixtures.control()]
-    ) throws -> ResolvedNotationInput {
-        try ResolvedNotationInput(
-            ticksPerWholeNote: ticksPerWholeNote,
-            measures: measures,
-            notes: notes,
-            rests: rests,
-            controls: controls
-        )
-    }
-}
-
 @Suite("Notation formatter model")
 struct NotationFormatterTests {
     // MARK: Input document boundary
@@ -122,7 +54,7 @@ struct NotationFormatterTests {
         _ = requireSendable(NotationFormattingStyle.virgoDefault)
         _ = requireSendable(Fixtures.formattedNotation())
         _ = requireSendable(FormattedMeasure(index: 0, rowIndex: 0, xOffset: 100, width: 490, columns: []))
-        _ = requireSendable(FormattedColumn(localTick: 0, onsetX: 100, noteHeads: [], rest: nil))
+        _ = requireSendable(FormattedColumn(localTick: 0, logicalColumnX: 100, noteHeads: [], rest: nil))
         _ = requireSendable(FormattedNoteHead(noteID: 42, headCenterX: 110))
         _ = requireSendable(FormattedRest(restID: 7, visualX: 155))
         _ = requireSendable(FormattedNotation.Position(rowIndex: 0, x: 150))
@@ -255,47 +187,341 @@ struct NotationFormatterTests {
 
         let column = measure?.columns.last
         #expect(column?.localTick == 480)
-        #expect(column?.onsetX == 150)
+        #expect(column?.logicalColumnX == 150)
         #expect(column?.noteHeads == [FormattedNoteHead(noteID: 42, headCenterX: 114)])
         #expect(column?.rest == FormattedRest(restID: 7, visualX: 155))
     }
 }
 
-extension Fixtures {
-    /// Hand-built output exercising the declared `FormattedNotation` surface;
-    /// the real formatter populates it in later tasks.
-    static func formattedNotation() -> FormattedNotation {
-        let tick0 = FormattedColumn(
-            localTick: 0,
-            onsetX: 100,
-            noteHeads: [FormattedNoteHead(noteID: 42, headCenterX: 100)],
-            rest: nil
+@Suite("Notation formatter columns")
+struct NotationFormatterColumnTests {
+    @Test("same-tick kick/snare/hi-hat share one logical column")
+    func sameTickEventsShareOneLogicalColumn() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 480, staffStep: -2, headStyle: .normal),
+            Fixtures.makeNote(id: 2, localTick: 480, staffStep: 3),
+            Fixtures.makeNote(id: 3, localTick: 480, staffStep: 8)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+
+        let measure = try #require(notation.measures.first)
+        #expect(measure.columns.map(\.localTick) == [0, 480, 1920])
+        let column = try Fixtures.column(notation, localTick: 480)
+        #expect(column.noteHeads.map(\.noteID) == [1, 2, 3])
+        #expect(column.noteHeads.allSatisfy { $0.headCenterX == column.logicalColumnX })
+    }
+
+    @Test("mixed stem directions at one tick stay on one column with no voice offset")
+    func mixedStemDirectionsGetNoVoiceOffset() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, stem: .up),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 10, stem: .down)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+        #expect(column.noteHeads.count == 2)
+        #expect(column.noteHeads.allSatisfy { $0.headCenterX == column.logicalColumnX })
+    }
+
+    @Test("integer IDs and ticks survive formatting; one column per tick in tick order")
+    func idsAndTicksSurviveFormatting() throws {
+        let notes = [
+            Fixtures.makeNote(id: 9, localTick: 960, staffStep: 3),
+            Fixtures.makeNote(id: 5, localTick: 0, staffStep: -2, headStyle: .normal)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(
+            notes: notes,
+            rests: [Fixtures.rest(localTick: 1440)],
+            controls: [Fixtures.control(localTick: 480)]
+        ))
+
+        let measure = try #require(notation.measures.first)
+        #expect(measure.columns.map(\.localTick) == [0, 480, 960, 1440, 1920])
+        #expect(try Fixtures.column(notation, localTick: 0).noteHeads.map(\.noteID) == [5])
+        #expect(try Fixtures.column(notation, localTick: 960).noteHeads.map(\.noteID) == [9])
+        #expect(try Fixtures.column(notation, localTick: 1440).rest?.restID == 7)
+        #expect(notation.position(measureIndex: 0, localTick: 480) == FormattedNotation.Position(rowIndex: 0, x: 0))
+    }
+
+    @Test("input order does not affect output")
+    func inputOrderDoesNotAffectOutput() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4),
+            Fixtures.makeNote(id: 3, localTick: 960, staffStep: -2, stem: .down)
+        ]
+        let rests = [Fixtures.rest(id: 7, localTick: 480), Fixtures.rest(id: 8, localTick: 960)]
+        let controls = [Fixtures.control(id: 11, localTick: 240)]
+        let measures = [Fixtures.measure(), Fixtures.measure(index: 1, startTick: 1920)]
+
+        let forward = try ResolvedNotationInput(
+            ticksPerWholeNote: 1920, measures: measures, notes: notes, rests: rests, controls: controls
         )
-        let tick480 = FormattedColumn(
-            localTick: 480,
-            onsetX: 150,
-            noteHeads: [FormattedNoteHead(noteID: 42, headCenterX: 114)],
-            rest: FormattedRest(restID: 7, visualX: 155)
+        let backward = try ResolvedNotationInput(
+            ticksPerWholeNote: 1920,
+            measures: measures.reversed(),
+            notes: notes.reversed(),
+            rests: rests.reversed(),
+            controls: controls.reversed()
         )
-        return FormattedNotation(
-            measures: [
-                FormattedMeasure(
-                    index: 0,
-                    rowIndex: 0,
-                    xOffset: 100,
-                    width: 490,
-                    columns: [tick0, tick480]
-                ),
-                FormattedMeasure(
-                    index: 1,
-                    rowIndex: 1,
-                    xOffset: 602,
-                    width: 490,
-                    columns: [
-                        FormattedColumn(localTick: 0, onsetX: 100, noteHeads: [], rest: nil)
-                    ]
-                )
-            ]
+        let forwardOutput = try Fixtures.format(forward)
+        let backwardOutput = try Fixtures.format(backward)
+        #expect(forwardOutput == backwardOutput)
+    }
+
+    @Test("empty measures get explicit start and end anchor columns")
+    func emptyMeasureGetsStartAndEndAnchors() throws {
+        let notation = try Fixtures.format(try Fixtures.document(
+            measures: [Fixtures.measure(), Fixtures.measure(index: 1, startTick: 1920)],
+            notes: [Fixtures.makeNote(id: 1, localTick: 480, staffStep: 3)],
+            rests: [],
+            controls: []
+        ))
+        let empty = try #require(notation.measures.first { $0.index == 1 })
+        #expect(empty.columns.map(\.localTick) == [0, 1920])
+        #expect(empty.columns.allSatisfy {
+            $0.noteHeads.isEmpty && $0.rest == nil && $0.leftExtent == 0 && $0.rightExtent == 0
+        })
+    }
+}
+
+@Suite("Notation formatter staff-second displacement")
+struct NotationFormatterDisplacementTests {
+    private let style = NotationFormattingStyle.virgoDefault
+
+    /// VexFlow displacement magnitude: one head width minus half the stem width.
+    private func displacement(
+        headStyle: PercussionNoteheadStyle = .x,
+        duration: NotationDuration = .quarter
+    ) -> CGFloat {
+        let width = PercussionGlyphMetrics.notehead(
+            style: headStyle, duration: duration, stemDirection: .up, staffSpace: style.staffSpace
+        ).paintedBounds.width
+        return width - style.stemWidth / 2
+    }
+
+    @Test("up-stem second: stem-side head stays, adjacent upper head displaces onto the shared stem")
+    func upStemSecondDisplacesUpperHead() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+        let lower = try #require(column.noteHeads.first { $0.noteID == 1 })
+        let upper = try #require(column.noteHeads.first { $0.noteID == 2 })
+
+        // The stem-side (lowest) head stays at base X; the column never moves.
+        #expect(lower.headCenterX == column.logicalColumnX)
+        #expect(column.logicalColumnX == 0)
+        let shift = displacement()
+        #expect(upper.headCenterX == column.logicalColumnX + shift)
+
+        // The shared stem axis (base head's stem anchor) stays put and remains
+        // inside the displaced head's ink: the head shifted, the stem did not.
+        let head = PercussionGlyphMetrics.notehead(
+            style: .x, duration: .quarter, stemDirection: .up, staffSpace: style.staffSpace
         )
+        let stemX = head.stemAnchorOffset.x
+        #expect(stemX >= head.paintedBounds.minX && stemX <= head.paintedBounds.maxX)
+        #expect(upper.headCenterX + head.paintedBounds.minX <= stemX)
+        #expect(upper.headCenterX + head.paintedBounds.maxX >= stemX)
+
+        // Displaced ink widens the column on the shift side.
+        #expect(abs(column.rightExtent - (shift + head.paintedBounds.maxX)) < 0.001)
+    }
+
+    @Test("down-stem second: stem-side head stays, adjacent lower head displaces onto the shared stem")
+    func downStemSecondDisplacesLowerHead() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, stem: .down),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4, stem: .down)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+        let lower = try #require(column.noteHeads.first { $0.noteID == 1 })
+        let upper = try #require(column.noteHeads.first { $0.noteID == 2 })
+
+        // The stem-side (highest) head stays at base X; the lower head shifts left.
+        #expect(upper.headCenterX == column.logicalColumnX)
+        let shift = displacement()
+        #expect(lower.headCenterX == column.logicalColumnX - shift)
+
+        let head = PercussionGlyphMetrics.notehead(
+            style: .x, duration: .quarter, stemDirection: .down, staffSpace: style.staffSpace
+        )
+        let stemX = head.stemAnchorOffset.x
+        #expect(stemX <= head.paintedBounds.maxX && stemX >= head.paintedBounds.minX)
+        #expect(lower.headCenterX + head.paintedBounds.maxX >= stemX)
+        #expect(lower.headCenterX + head.paintedBounds.minX <= stemX)
+        #expect(abs(column.leftExtent - -(lower.headCenterX + head.paintedBounds.minX)) < 0.001)
+    }
+
+    @Test("non-adjacent same-stem heads stay centered")
+    func nonAdjacentHeadsStayCentered() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 5)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+        #expect(column.noteHeads.allSatisfy { $0.headCenterX == column.logicalColumnX })
+    }
+
+    @Test("adjacent chains alternate base and shifted walking away from the stem side")
+    func adjacentChainAlternates() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4),
+            Fixtures.makeNote(id: 3, localTick: 0, staffStep: 5),
+            Fixtures.makeNote(id: 4, localTick: 0, staffStep: 7),
+            Fixtures.makeNote(id: 5, localTick: 0, staffStep: 8)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+        let shift = displacement()
+        // 3-4-5 alternate; the 5→7 gap resets so 7 is base and 8 shifts again.
+        let expected = [1: 0, 2: shift, 3: 0, 4: 0, 5: shift]
+        for head in column.noteHeads {
+            let expectedX = try #require(expected[head.noteID])
+            #expect(head.headCenterX == column.logicalColumnX + expectedX)
+        }
+    }
+
+    @Test("mixed-stem same-tick chord stays on one column; seconds displace only within a direction")
+    func mixedStemSecondStaysOnOneColumn() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, stem: .up),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4, stem: .up),
+            Fixtures.makeNote(id: 3, localTick: 0, staffStep: 12, stem: .down)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+        #expect(column.noteHeads.count == 3)
+        let shift = displacement()
+        let expected = [1: 0, 2: shift, 3: 0]
+        for head in column.noteHeads {
+            let expectedX = try #require(expected[head.noteID])
+            #expect(head.headCenterX == column.logicalColumnX + expectedX)
+        }
+    }
+}
+
+@Suite("Notation formatter ink extents")
+struct NotationFormatterInkTests {
+    private let style = NotationFormattingStyle.virgoDefault
+
+    @Test("visible flags expand the glyph's side; fully beamed notes pay no flag width")
+    func flagFootprintFollowsVisibleDuration() throws {
+        let flags: [NotationFlagDuration?] = NotationFlagDuration.allCases + [nil]
+        for flagDuration in flags {
+            for stem in [NotationStemDirection.up, .down] {
+                let notes = [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, stem: stem, flag: flagDuration)]
+                let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+                let column = try Fixtures.column(notation, localTick: 0)
+                let headReach = Fixtures.headReach(stem: stem)
+                guard let flagDuration else {
+                    #expect(abs(column.rightExtent - headReach) < 0.001)
+                    #expect(abs(column.leftExtent - headReach) < 0.001)
+                    continue
+                }
+                // Bravura attaches every flag at its glyph origin on the stem
+                // axis with all ink to the right of that axis (left ink is
+                // exactly 0 for up and down alike). The left side therefore
+                // keeps the bare head reach; the right side pays the flag ink.
+                #expect(Fixtures.flagLeftInk(duration: flagDuration, stem: stem) == 0)
+                #expect(Fixtures.flagRightInk(duration: flagDuration, stem: stem) > headReach)
+                #expect(abs(column.leftExtent - headReach) < 0.001)
+                #expect(abs(column.rightExtent - Fixtures.flagRightInk(duration: flagDuration, stem: stem)) < 0.001)
+            }
+        }
+    }
+
+    @Test("partially uncovered flag reserves one eighth-component footprint")
+    func partialFlagReservesEighthFootprint() throws {
+        func rightExtent(duration: NotationDuration, flag: NotationFlagDuration?) throws -> CGFloat {
+            let notes = [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: duration, flag: flag)]
+            let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+            return try Fixtures.column(notation, localTick: 0).rightExtent
+        }
+
+        let partial = try rightExtent(duration: .sixteenth, flag: .eighth)
+        let eighthReference = try rightExtent(duration: .eighth, flag: .eighth)
+        let fullStack = try rightExtent(duration: .sixteenth, flag: .sixteenth)
+        #expect(abs(partial - eighthReference) < 0.001)
+        #expect(partial < fullStack)
+    }
+
+    @Test("adjacent column reserves clearance beyond the visible flag ink")
+    func adjacentColumnClearsFlagInk() throws {
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, flag: .eighth),
+            Fixtures.makeNote(id: 2, localTick: 960, staffStep: 3)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let flagged = try Fixtures.column(notation, localTick: 0)
+        let next = try Fixtures.column(notation, localTick: 960)
+
+        // Task 3 places the next column at rightExtent + clearance + leftExtent;
+        // reserving the full flag ink in rightExtent is what clears it.
+        let flagInk = Fixtures.flagRightInk(duration: .eighth, stem: .up)
+        #expect(abs(flagged.rightExtent - flagInk) < 0.001)
+        #expect(abs(next.leftExtent - Fixtures.headReach()) < 0.001)
+        #expect(flagged.rightExtent + style.minimumInterColumnClearance >= flagInk + style.minimumInterColumnClearance)
+    }
+
+    @Test("controls anchor timing with zero collision width")
+    func controlsAnchorWithoutCollisionWidth() throws {
+        let notation = try Fixtures.format(
+            try Fixtures.document(notes: [], rests: [], controls: [Fixtures.control(localTick: 480)])
+        )
+        let measure = try #require(notation.measures.first)
+        #expect(measure.columns.map(\.localTick) == [0, 480, 1920])
+        let column = try Fixtures.column(notation, localTick: 480)
+        #expect(column.noteHeads.isEmpty && column.rest == nil)
+        #expect(column.leftExtent == 0 && column.rightExtent == 0)
+        #expect(notation.position(measureIndex: 0, localTick: 480) == FormattedNotation.Position(rowIndex: 0, x: 0))
+    }
+
+    @Test("rhythm dots extend the ink on the dotted side")
+    func dottedNoteExtendsRightExtent() throws {
+        let notes = [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, dotCount: 1)]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+        let headReach = Fixtures.headReach()
+        let dotCenter = headReach + style.rhythmDotSpacing + style.rhythmDotRadius
+        #expect(abs(column.rightExtent - (dotCenter + style.rhythmDotRadius)) < 0.001)
+        #expect(abs(column.leftExtent - headReach) < 0.001)
+    }
+
+    @Test("printed rests anchor at the column with glyph extent; full-measure centering is deferred")
+    func printedRestIsAnchoredAndMeasured() throws {
+        let fullMeasure = ResolvedRest(
+            id: 3,
+            position: NotationTickPosition(measureIndex: 0, localTick: 0),
+            duration: .whole,
+            dotCount: 0,
+            isFullMeasure: true
+        )
+        let notation = try Fixtures.format(try Fixtures.document(
+            notes: [],
+            rests: [Fixtures.rest(localTick: 480), fullMeasure],
+            controls: []
+        ))
+        let measure = try #require(notation.measures.first)
+        #expect(measure.columns.map(\.localTick) == [0, 480, 1920])
+
+        let column = try Fixtures.column(notation, localTick: 480)
+        let rest = try #require(column.rest)
+        #expect(rest.restID == 7)
+        #expect(rest.visualX == column.logicalColumnX)
+        let bounds = PercussionGlyphMetrics.rest(duration: .quarter, staffSpace: style.staffSpace).paintedBounds
+        let dotCenter = bounds.maxX + style.rhythmDotSpacing + style.rhythmDotRadius
+        #expect(abs(column.rightExtent - (dotCenter + style.rhythmDotRadius)) < 0.001)
+        #expect(abs(column.leftExtent - (-bounds.minX)) < 0.001)
+
+        let anchorColumn = try Fixtures.column(notation, localTick: 0)
+        #expect(anchorColumn.rest?.restID == 3)
+        #expect(anchorColumn.rest?.visualX == anchorColumn.logicalColumnX)
     }
 }
