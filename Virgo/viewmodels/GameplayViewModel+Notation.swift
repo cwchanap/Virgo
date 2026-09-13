@@ -70,26 +70,24 @@ extension GameplayViewModel {
 
         let notePositionOverrides = notationNotePositionOverrides()
         let resolvedRowWidth = max(GameplayLayout.maxRowWidth, cachedLayoutRowWidth)
-        let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: resolvedRowWidth)
-        let input: NotationLayoutInput
-        if let snapshot = cachedRhythmRuntime.layoutSnapshot {
-            input = NotationLayoutInput(
-                timing: .timeline(snapshot),
-                minimumMeasureCount: cachedLayoutMeasureCount,
-                style: style,
-                notePositionOverrides: notePositionOverrides
-            )
+        if let request = makeTimelineNotationPreparationRequest() {
+            // HPA-164: the synchronous relayout shares the one preparation
+            // route with the detached initial worker — no second layout path.
+            installNotationLayout(GameplayNotationPreparer.prepare(request).layout)
         } else {
-            input = NotationLayoutInput(
+            // Legacy-timing fallback (no timeline snapshot): the measured
+            // route requires a snapshot, so this path keeps the engine's
+            // legacy input directly. It constructs no measured style.
+            let input = NotationLayoutInput(
                 notes: cachedNotes,
                 controlEvents: cachedControlEvents,
                 timeSignature: track.timeSignature,
                 minimumMeasureCount: cachedLayoutMeasureCount,
-                style: style,
+                style: NotationLayoutStyle.gameplayDefault.with(rowWidth: resolvedRowWidth),
                 notePositionOverrides: notePositionOverrides
             )
+            installNotationLayout(NotationLayoutEngine().layout(input: input))
         }
-        installNotationLayout(NotationLayoutEngine().layout(input: input))
         if cachedNotationHasRenderableContent {
             cachedMeasureRowMap = Dictionary(
                 uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }

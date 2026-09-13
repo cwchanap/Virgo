@@ -132,7 +132,7 @@ extension NotationLayoutEngine {
             }
             let targetPosition = input.notePositionOverrides[target.definition.gameplayInstrument]
                 ?? target.definition.defaultPosition
-            let targetStaffStep = staffStep(for: targetPosition)
+            let targetStaffStep = Self.staffStep(for: targetPosition)
             let timeColumn = NotationTimeColumn(
                 measureIndex: position.measureIndex,
                 tickWithinMeasure: position.localTick,
@@ -359,7 +359,7 @@ private extension NotationLayoutEngine {
     ) -> StopNoteCandidate {
         let instrument = target.definition.gameplayInstrument
         let targetPosition = context.input.notePositionOverrides[instrument] ?? target.definition.defaultPosition
-        let targetStaffStep = staffStep(for: targetPosition)
+        let targetStaffStep = Self.staffStep(for: targetPosition)
         let timeColumn = NotationTimeColumn(
             measureIndex: control.measureIndex,
             tickWithinMeasure: context.targetTick,

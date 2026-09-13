@@ -128,7 +128,9 @@ extension NotationLayoutEngine {
     }
 }
 
-private func legacyRestDuration(
+/// Duration mapping for timeline rests, shared with the HPA-164 adapter
+/// projection. A measure-filling rest renders as a full-measure rest.
+func legacyRestDuration(
     rhythm: NotationRhythm,
     fillsMeasure: Bool
 ) -> NotationRestDuration {
