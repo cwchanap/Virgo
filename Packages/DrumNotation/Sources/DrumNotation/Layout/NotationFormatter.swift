@@ -3,10 +3,11 @@ import CoreGraphics
 /// Deterministic measured formatter (HPA-164). Builds one logical column per
 /// exact local tick per measure — including explicit start (`0`) and end
 /// (`durationTicks`) anchors — applies the pinned VexFlow staff-second
-/// displacement, and measures each column's collision ink. Spacing, measure
-/// widths, row packing and tick-lookup interpolation land in a later task;
-/// until then every column keeps `logicalColumnX` = 0 relative to its measure
-/// and measures carry placeholder row/offset/width values.
+/// displacement, spaces columns one gap at a time (no global density scan or
+/// iterative relaxation), sizes each measure from its own content, packs
+/// whole measures onto rows greedily, and owns the tick → row/X lookup for
+/// the live playhead. Every output X is final sheet-local (row-leading inset
+/// included); the caller applies no post-format X transform.
 public enum NotationFormatter {
     /// Formats already-validated resolved input at `style`. The throwing
     /// signature is the pinned API the app and later tasks call through.
@@ -14,44 +15,89 @@ public enum NotationFormatter {
         _ input: ResolvedNotationInput,
         style: NotationFormattingStyle
     ) throws -> FormattedNotation {
-        let measures = input.measures
+        // Phase 1: per-measure column layout with local X and natural width.
+        let laidOut = input.measures
             .sorted { $0.index < $1.index }
-            .map { measure in
-                formatMeasure(
-                    measure,
-                    notes: input.notes,
-                    rests: input.rests,
-                    controls: input.controls,
-                    style: style
+            .map { layoutMeasure($0, input: input, style: style) }
+
+        // Phase 2: greedy whole-measure row packing, then sheet-local finalize.
+        var measures: [FormattedMeasure] = []
+        measures.reserveCapacity(laidOut.count)
+        var rowIndex = 0
+        var rowX = style.rowLeadingInset
+        for layout in laidOut {
+            if rowX > style.rowLeadingInset, rowX + layout.width > style.availableRowWidth {
+                rowIndex += 1
+                rowX = style.rowLeadingInset
+            }
+            let contentCenterX = rowX
+                + (style.leadingMeasureInset + layout.width - style.trailingMeasureInset) / 2
+            let columns = layout.columns.map { column in
+                finalizeColumn(
+                    column,
+                    rowX: rowX,
+                    contentCenterX: contentCenterX,
+                    isFullMeasureRest: layout.fullMeasureRestTicks.contains(column.tick)
                 )
             }
+            measures.append(FormattedMeasure(
+                index: layout.measure.index,
+                rowIndex: rowIndex,
+                xOffset: rowX,
+                width: layout.width,
+                columns: columns
+            ))
+            rowX += layout.width + style.measureSpacing
+        }
         return FormattedNotation(measures: measures)
     }
 
-    // MARK: Logical columns
+    // MARK: Per-measure spacing
 
-    private static func formatMeasure(
+    /// Intermediate column layout in measure-local coordinates (origin = the
+    /// measure's row origin).
+    private struct LaidOutColumn {
+        let tick: Int
+        var x: CGFloat = 0
+        /// Note IDs in stable ID order (every note at this tick).
+        let noteIDs: [Int]
+        /// Staff-second displacement per note ID (absent = undisplaced).
+        let shifts: [Int: CGFloat]
+        let restID: Int?
+        let leftExtent: CGFloat
+        let rightExtent: CGFloat
+    }
+
+    private struct LaidOutMeasure {
+        let measure: ResolvedMeasure
+        var columns: [LaidOutColumn]
+        let width: CGFloat
+        let fullMeasureRestTicks: Set<Int>
+    }
+
+    private static func layoutMeasure(
         _ measure: ResolvedMeasure,
-        notes: [ResolvedNote],
-        rests: [ResolvedRest],
-        controls: [ResolvedControl],
+        input: ResolvedNotationInput,
         style: NotationFormattingStyle
-    ) -> FormattedMeasure {
+    ) -> LaidOutMeasure {
         var notesByTick: [Int: [ResolvedNote]] = [:]
-        for note in notes where note.position.measureIndex == measure.index {
+        for note in input.notes where note.position.measureIndex == measure.index {
             notesByTick[note.position.localTick, default: []].append(note)
         }
         var restsByTick: [Int: [ResolvedRest]] = [:]
-        for rest in rests where rest.position.measureIndex == measure.index {
+        var fullMeasureRestTicks = Set<Int>()
+        for rest in input.rests where rest.position.measureIndex == measure.index {
             restsByTick[rest.position.localTick, default: []].append(rest)
+            if rest.isFullMeasure { fullMeasureRestTicks.insert(rest.position.localTick) }
         }
         var ticks = Set([0, measure.durationTicks])
         ticks.formUnion(notesByTick.keys)
         ticks.formUnion(restsByTick.keys)
-        for control in controls where control.position.measureIndex == measure.index {
+        for control in input.controls where control.position.measureIndex == measure.index {
             ticks.insert(control.position.localTick)
         }
-        let columns = ticks.sorted().map { tick in
+
+        var columns = ticks.sorted().map { tick -> LaidOutColumn in
             buildColumn(
                 tick: tick,
                 notes: (notesByTick[tick] ?? []).sorted { $0.id < $1.id },
@@ -59,8 +105,69 @@ public enum NotationFormatter {
                 style: style
             )
         }
-        // Spacing/rows are a later task; X placement stays logical for now.
-        return FormattedMeasure(index: measure.index, rowIndex: 0, xOffset: 0, width: 0, columns: columns)
+        // One-pass gap rule: tick 0 sits at the leading inset, each next column
+        // advances by max(rhythmic, collision). No chart-wide scale — a dense
+        // measure never rescales a sparse neighbor.
+        var x = style.leadingMeasureInset
+        for index in columns.indices {
+            if index > 0 {
+                x += requiredGap(
+                    from: columns[index - 1],
+                    to: columns[index],
+                    style: style,
+                    ticksPerWholeNote: input.ticksPerWholeNote
+                )
+            }
+            columns[index].x = x
+        }
+        // Natural width: the end anchor's position plus the trailing inset.
+        let width = (columns.last?.x ?? style.leadingMeasureInset) + style.trailingMeasureInset
+        return LaidOutMeasure(
+            measure: measure,
+            columns: columns,
+            width: width,
+            fullMeasureRestTicks: fullMeasureRestTicks
+        )
+    }
+
+    /// `rhythmicGap = minimumQuarterNoteSpacing * deltaTicks * 4 /
+    /// ticksPerWholeNote` against `collisionGap = previous.rightExtent +
+    /// minimumInterColumnClearance + next.leftExtent`, taking the larger. The
+    /// rhythmic term multiplies before it divides so the value stays exact up
+    /// to the final CGFloat conversion.
+    private static func requiredGap(
+        from previous: LaidOutColumn,
+        to next: LaidOutColumn,
+        style: NotationFormattingStyle,
+        ticksPerWholeNote: Int
+    ) -> CGFloat {
+        let rhythmicGap = (style.minimumQuarterNoteSpacing * CGFloat((next.tick - previous.tick) * 4))
+            / CGFloat(ticksPerWholeNote)
+        let collisionGap = previous.rightExtent + style.minimumInterColumnClearance + next.leftExtent
+        return max(rhythmicGap, collisionGap)
+    }
+
+    private static func finalizeColumn(
+        _ column: LaidOutColumn,
+        rowX: CGFloat,
+        contentCenterX: CGFloat,
+        isFullMeasureRest: Bool
+    ) -> FormattedColumn {
+        FormattedColumn(
+            localTick: column.tick,
+            logicalColumnX: rowX + column.x,
+            noteHeads: column.noteIDs.map { noteID in
+                FormattedNoteHead(noteID: noteID, headCenterX: rowX + column.x + (column.shifts[noteID] ?? 0))
+            },
+            rest: column.restID.map { restID in
+                // The full-measure rest's timing anchor stays on the column;
+                // its visual centers in the measure content span, finalized
+                // now that the width is known.
+                FormattedRest(restID: restID, visualX: isFullMeasureRest ? contentCenterX : rowX + column.x)
+            },
+            leftExtent: column.leftExtent,
+            rightExtent: column.rightExtent
+        )
     }
 
     private static func buildColumn(
@@ -68,11 +175,8 @@ public enum NotationFormatter {
         notes: [ResolvedNote],
         rests: [ResolvedRest],
         style: NotationFormattingStyle
-    ) -> FormattedColumn {
+    ) -> LaidOutColumn {
         let shifts = staffSecondShifts(for: notes, style: style)
-        let heads = notes
-            .map { FormattedNoteHead(noteID: $0.id, headCenterX: shifts[$0.id] ?? 0) }
-            .sorted { $0.noteID < $1.noteID }
 
         var ink = InkExtents()
         for note in notes {
@@ -102,7 +206,7 @@ public enum NotationFormatter {
                 ink.union(attachmentX + flag.paintedBounds.maxX)
             }
         }
-        var restVisual: FormattedRest?
+        var restID: Int?
         // Multiple same-tick rests: lowest ID wins (deterministic; validation
         // does not reject duplicates).
         if let rest = rests.first {
@@ -115,14 +219,13 @@ public enum NotationFormatter {
             if let dotRight = dotInkRight(after: bounds.maxX, dotCount: rest.dotCount, style: style) {
                 ink.union(dotRight)
             }
-            // Full-measure re-centering happens once measure width is known.
-            restVisual = FormattedRest(restID: rest.id, visualX: 0)
+            restID = rest.id
         }
-        return FormattedColumn(
-            localTick: tick,
-            logicalColumnX: 0,
-            noteHeads: heads,
-            rest: restVisual,
+        return LaidOutColumn(
+            tick: tick,
+            noteIDs: notes.map(\.id),
+            shifts: shifts,
+            restID: restID,
             leftExtent: max(0, -ink.minX),
             rightExtent: max(0, ink.maxX)
         )

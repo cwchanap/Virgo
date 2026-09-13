@@ -1,8 +1,9 @@
 import CoreGraphics
 
-/// One formatted notehead: the note's package-visual head-center X. Displaced
-/// staff seconds store their shifted center here; the logical timing column X
-/// is `FormattedColumn.logicalColumnX` and is never replaced.
+/// One formatted notehead: the note's sheet-local head-center X — its
+/// column's `logicalColumnX` plus the VexFlow staff-second displacement (zero
+/// for undisplaced heads). The logical timing column X itself is
+/// `FormattedColumn.logicalColumnX` and is never replaced.
 public struct FormattedNoteHead: Hashable, Sendable {
     public let noteID: Int
     public let headCenterX: CGFloat
@@ -107,15 +108,43 @@ public struct FormattedNotation: Hashable, Sendable {
         self.measures = measures
     }
 
-    /// Exact-anchor resolution: the logical onset X of the column at exactly
-    /// `localTick` in `measureIndex`, with that measure's row. Nil when the
-    /// measure or the exact anchor does not exist. (Between-anchor
-    /// interpolation is the formatter's tick-lookup contract, not input
-    /// re-quantization, and stays measure-local.)
-    public func position(measureIndex: Int, localTick: Int) -> Position? {
-        guard let measure = measures.first(where: { $0.index == measureIndex }),
-            let column = measure.columns.first(where: { $0.localTick == localTick })
+    /// Resolves the live playhead's row and sheet-local X for a continuous
+    /// tick inside `measureIndex`. Exact anchors return their
+    /// `logicalColumnX`; values between two anchors interpolate linearly
+    /// between the adjacent columns of that measure only — never across a
+    /// measure or row boundary. The start/end anchor columns make empty,
+    /// control-only and trailing measures resolvable across their full span.
+    /// Tiny floating-point drift at the measure edges (±1e-6 ticks) clamps to
+    /// the boundary anchor; anything further outside the measure, an unknown
+    /// measure index, or non-finite input returns nil.
+    public func position(measureIndex: Int, localTick: Double) -> Position? {
+        guard localTick.isFinite,
+            let measure = measures.first(where: { $0.index == measureIndex })
         else { return nil }
-        return Position(rowIndex: measure.rowIndex, x: column.logicalColumnX)
+        let duration = Double(measure.columns.last?.localTick ?? 0)
+        let edgeTolerance = 1e-6
+        guard localTick >= -edgeTolerance, localTick <= duration + edgeTolerance else { return nil }
+        let t = min(max(localTick, 0), duration)
+        var previous: FormattedColumn?
+        for column in measure.columns {
+            let tick = Double(column.localTick)
+            if tick == t {
+                return Position(rowIndex: measure.rowIndex, x: column.logicalColumnX)
+            }
+            if tick > t {
+                guard let previous else { return nil }
+                let span = tick - Double(previous.localTick)
+                let fraction = span > 0 ? (t - Double(previous.localTick)) / span : 0
+                return Position(
+                    rowIndex: measure.rowIndex,
+                    x: previous.logicalColumnX
+                        + (column.logicalColumnX - previous.logicalColumnX) * CGFloat(fraction)
+                )
+            }
+            previous = column
+        }
+        // Beyond the last column (output built without an end anchor) has no
+        // position.
+        return nil
     }
 }
