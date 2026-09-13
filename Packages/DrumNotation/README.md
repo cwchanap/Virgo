@@ -26,6 +26,32 @@ vendored verbatim.
 The old Virgo app's hand-drawn half-circle, bullseye, and open-circle notehead shapes are
 intentionally retired in favor of these SMuFL glyphs.
 
+## Measured formatter contract (HPA-164)
+
+The package owns measured formatting over an exact integer-tick coordinate space. Input is
+`ResolvedNotationInput` — `ticksPerWholeNote` plus `ResolvedMeasure`s (index/startTick/durationTicks),
+`ResolvedNote`s (integer ID, measure/local tick position, stem direction, staff step, notehead style,
+duration, dots, optional visible-flag duration), printed `ResolvedRest`s (ID, position, duration, dots,
+`isFullMeasure`) and `ResolvedControl`s (ID + position). Construction validates: positive
+`ticksPerWholeNote`, unique/valid/non-overlapping measures, and every event `localTick` inside its owning
+measure. Absolute tick is derived (`startTick + localTick`), never accepted as input. There is no
+package voice, tuplet, beat group, BPM/seconds or DTX lane — the caller filters and resolves first.
+
+Output is immutable `FormattedNotation`: measures ordered by index, each with row assignment,
+sheet-local `xOffset`/`width`, and tick-ordered `FormattedColumn`s carrying the logical onset X
+(`onsetX`), per-note `headCenterX` (displaced staff seconds included) and the package-owned rest
+`visualX`. `position(measureIndex:localTick:)` is the single notation tick → row/X lookup. Every
+package X is final sheet-local and includes `rowLeadingInset`; the caller adds no X transform.
+
+The default style `NotationFormattingStyle.virgoDefault` pins the Virgo mapping:
+`availableRowWidth` 900 (the app's row-width floor), `rowLeadingInset` 100, `staffSpace` 20,
+`stemWidth` 2, `minimumInterColumnClearance` 8, `minimumQuarterNoteSpacing` 50, `measureSpacing` 12,
+`leadingMeasureInset` 52, `trailingMeasureInset` 0, `rhythmDotRadius` 2.5, `rhythmDotSpacing` 4.
+
+`minimumInterColumnClearance` is **edge-to-edge** clearance between adjacent column ink — not a
+center-to-center pitch. The 8pt default derives from the old 28pt center pitch minus the common
+20pt X-black notehead width at staff-space 20; it is a semantic conversion, not a field rename.
+
 ## Closed SMuFL glyph table
 
 The runtime lookup is a closed internal catalog (`Sources/DrumNotation/Glyphs/SMuFLGlyphCatalog.swift`)
