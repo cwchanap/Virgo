@@ -39,9 +39,13 @@ package voice, tuplet, beat group, BPM/seconds or DTX lane — the caller filter
 
 Output is immutable `FormattedNotation`: measures ordered by index, each with row assignment,
 sheet-local `xOffset`/`width`, and tick-ordered `FormattedColumn`s carrying the logical onset X
-(`onsetX`), per-note `headCenterX` (displaced staff seconds included) and the package-owned rest
-`visualX`. `position(measureIndex:localTick:)` is the single notation tick → row/X lookup. Every
-package X is final sheet-local and includes `rowLeadingInset`; the caller adds no X transform.
+(`logicalColumnX`, never displaced), per-head visual `headCenterX` (VexFlow staff-second displacement),
+the printed rest's visual X, and `leftExtent`/`rightExtent` collision ink reaches measured relative to
+`logicalColumnX` (displaced heads + dots + printed rests + visible flag ink attached at the undisplaced
+column axis; controls are timing anchors with zero width). `NotationFormatter.format(_:style:)` currently
+builds columns/displacement/extents only — spacing, measure widths, row packing and tick interpolation
+land with the measured-spacing task, so columns stay at `logicalColumnX` = 0 relative to their measure
+until then.
 
 The default style `NotationFormattingStyle.virgoDefault` pins the Virgo mapping:
 `availableRowWidth` 900 (the app's row-width floor), `rowLeadingInset` 100, `staffSpace` 20,
