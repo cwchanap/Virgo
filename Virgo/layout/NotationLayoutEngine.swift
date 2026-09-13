@@ -354,7 +354,7 @@ struct NotationLayoutEngine {
                     y: GameplayLayout.StaffLinePosition.line1.absoluteY(for: measure.row)
                         + notePosition.yOffset
                 ),
-                staffStep: staffStep(for: notePosition),
+                staffStep: Self.staffStep(for: notePosition),
                 interval: note.rhythm.baseInterval,
                 catalogOrder: definition.catalogOrder,
                 eventID: note.eventID,
@@ -461,7 +461,7 @@ struct NotationLayoutEngine {
             timePosition: timePosition,
             row: measure.row,
             center: center,
-            staffStep: staffStep(for: position)
+            staffStep: Self.staffStep(for: position)
         )
     }
 
@@ -496,7 +496,7 @@ struct NotationLayoutEngine {
         return timePos - Double(MeasureUtils.measureIndex(from: timePos))
     }
 
-    func staffStep(for position: GameplayLayout.NotePosition) -> Int {
+    static func staffStep(for position: GameplayLayout.NotePosition) -> Int {
         Int((position.yOffset / (GameplayLayout.staffLineSpacing / 2)).rounded())
     }
 
