@@ -41,8 +41,9 @@ Output is immutable `FormattedNotation`: measures ordered by index, each with ro
 sheet-local `xOffset`/`width`, and tick-ordered `FormattedColumn`s carrying the logical onset X
 (`logicalColumnX`, never displaced), per-head visual `headCenterX` (VexFlow staff-second displacement),
 the printed rest's visual X, and `leftExtent`/`rightExtent` collision ink reaches measured relative to
-`logicalColumnX` (displaced heads + dots + printed rests + visible flag ink attached at the undisplaced
-column axis; controls are timing anchors with zero width). `NotationFormatter.format(_:style:)` currently
+`logicalColumnX` (displaced heads + dots + printed rests + visible flag ink attached at its stem
+direction's stem axis — the head glyph's `stemUpSE`/`stemDownNW` anchor at the undisplaced column;
+controls are timing anchors with zero width). `NotationFormatter.format(_:style:)` currently
 builds columns/displacement/extents only — spacing, measure widths, row packing and tick interpolation
 land with the measured-spacing task, so columns stay at `logicalColumnX` = 0 relative to their measure
 until then.

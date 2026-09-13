@@ -77,31 +77,34 @@ public enum NotationFormatter {
         var ink = InkExtents()
         for note in notes {
             let centerX = shifts[note.id] ?? 0
-            let head = PercussionGlyphMetrics.notehead(
-                style: note.noteheadStyle,
-                duration: note.duration,
-                stemDirection: note.stemDirection,
-                staffSpace: style.staffSpace
-            ).paintedBounds
+            let headMetrics = PercussionGlyphMetrics.notehead(
+                style: note.noteheadStyle, duration: note.duration,
+                stemDirection: note.stemDirection, staffSpace: style.staffSpace
+            )
+            let head = headMetrics.paintedBounds
             ink.union(centerX + head.minX)
             ink.union(centerX + head.maxX)
             if let dotRight = dotInkRight(after: centerX + head.maxX, dotCount: note.dotCount, style: style) {
                 ink.union(dotRight)
             }
-            // Flags hang on the shared stem axis (the undisplaced column X),
-            // never on the displaced head.
+            // Flags hang on the shared stem axis — the head glyph's
+            // stemUpSE/stemDownNW anchor at the undisplaced column X — never on
+            // the displaced head. A column with flagged notes in both
+            // directions unions each flag at its own direction's axis.
             if let flagDuration = note.visibleFlagDuration {
                 let flag = PercussionGlyphMetrics.flag(
                     duration: flagDuration,
                     direction: note.stemDirection,
                     staffSpace: style.staffSpace
                 )
-                let attachmentX = -flag.attachmentOffset.x
+                let attachmentX = headMetrics.stemAnchorOffset.x - flag.attachmentOffset.x
                 ink.union(attachmentX + flag.paintedBounds.minX)
                 ink.union(attachmentX + flag.paintedBounds.maxX)
             }
         }
         var restVisual: FormattedRest?
+        // Multiple same-tick rests: lowest ID wins (deterministic; validation
+        // does not reject duplicates).
         if let rest = rests.first {
             let bounds = PercussionGlyphMetrics.rest(
                 duration: rest.duration,

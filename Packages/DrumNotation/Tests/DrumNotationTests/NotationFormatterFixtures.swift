@@ -123,7 +123,17 @@ enum Fixtures {
         ).paintedBounds.maxX
     }
 
-    /// Flag ink right edge when the flag attaches at X = 0 (glyph-derived).
+    /// Shared stem axis X at the column base: the head glyph's
+    /// stemUpSE/stemDownNW anchor for `stem` (undisplaced head at X = 0).
+    static func stemAxisX(stem: NotationStemDirection) -> CGFloat {
+        PercussionGlyphMetrics.notehead(
+            style: .x, duration: .quarter, stemDirection: stem,
+            staffSpace: NotationFormattingStyle.virgoDefault.staffSpace
+        ).stemAnchorOffset.x
+    }
+
+    /// Flag ink right edge measured from the flag's attachment point (glyph
+    /// origin). Add `stemAxisX(stem:)` for column-base-relative ink.
     static func flagRightInk(duration: NotationFlagDuration, stem: NotationStemDirection) -> CGFloat {
         let metrics = PercussionGlyphMetrics.flag(
             duration: duration, direction: stem, staffSpace: NotationFormattingStyle.virgoDefault.staffSpace
@@ -131,7 +141,7 @@ enum Fixtures {
         return -metrics.attachmentOffset.x + metrics.paintedBounds.maxX
     }
 
-    /// Flag ink left reach (positive distance left of the attachment X = 0).
+    /// Flag ink left reach from the flag's attachment point (glyph property).
     static func flagLeftInk(duration: NotationFlagDuration, stem: NotationStemDirection) -> CGFloat {
         let metrics = PercussionGlyphMetrics.flag(
             duration: duration, direction: stem, staffSpace: NotationFormattingStyle.virgoDefault.staffSpace
