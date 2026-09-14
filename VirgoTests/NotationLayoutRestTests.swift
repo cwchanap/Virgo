@@ -66,6 +66,33 @@ struct NotationLayoutRestTests {
         #expect(upper.position.y != lower.position.y)
     }
 
+    @Test("same-tick full-measure and interval rests keep distinct package X")
+    func mixedFullMeasureAndIntervalRestsKeepDistinctX() throws {
+        let prepared = support.prepare(
+            rests: [
+                rest(tick: 0, durationTicks: 960, voice: .upper, interval: .full),
+                rest(tick: 0, durationTicks: 480, voice: .lower, interval: .half)
+            ]
+        )
+        let measure = try #require(prepared.layout.measures.first)
+        let full = try #require(prepared.layout.rests.first { $0.isPrinted && $0.duration == .fullMeasure })
+        let half = try #require(prepared.layout.rests.first { $0.isPrinted && $0.duration == .half })
+        let columnX = try #require(
+            prepared.formatted.measures
+                .first { $0.index == 0 }?
+                .columns
+                .first { $0.localTick == 0 }?
+                .logicalColumnX
+        )
+
+        // The full-measure rest centers in the content span while the
+        // interval rest keeps its rhythmic placement at the column anchor.
+        let inset = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
+        #expect(full.position.x == measure.xOffset + inset + (measure.width - inset) / 2)
+        #expect(half.position.x == columnX)
+        #expect(full.position.x != half.position.x)
+    }
+
     @Test("interval rests anchor to their formatted column")
     func intervalRestAnchorsToFormattedColumn() throws {
         let prepared = support.prepare(

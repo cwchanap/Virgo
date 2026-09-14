@@ -160,10 +160,10 @@ enum VirgoNotationProjection {
     // MARK: - Rests
 
     /// Deterministic adapter-local rest namespace: rests carry no event ID,
-    /// so printed rests are sorted in the engine's candidate order and
-    /// given descending negative IDs — the formatter's lowest-ID-wins rule
-    /// then prefers the earliest/upper/longest rest of a shared column,
-    /// matching current rest rendering.
+    /// so each printed rest's `ResolvedRest.id` is its ordinal in the printed
+    /// sort order below. `NotationLayoutEngine.buildRests` reconstructs the
+    /// same ordinal from its identically sorted candidates to join every
+    /// printed rest to its `FormattedRest` placement.
     private static func resolvedRests(
         printed: [RhythmLayoutRest],
         measuresByIndex: [Int: RhythmMeasure]
@@ -174,7 +174,7 @@ enum VirgoNotationProjection {
                 && rest.durationTicks == measure?.durationTicks
             let legacy = legacyRestDuration(rhythm: rest.rhythm, fillsMeasure: fillsMeasure)
             return ResolvedRest(
-                id: index - printed.count,
+                id: index,
                 position: NotationTickPosition(
                     measureIndex: rest.position.measureIndex,
                     localTick: rest.position.localTick

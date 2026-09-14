@@ -115,8 +115,54 @@ struct NotationFormatterSpacingTests {
         // The timing anchor stays the logical column X (sheet-local 152)…
         #expect(notation.position(measureIndex: 0, localTick: 0) == FormattedNotation.Position(rowIndex: 0, x: 152))
         // …while the visual centers in the content span [152, 352].
-        let rest = try #require(try Fixtures.column(notation, localTick: 0).rest)
+        let rest = try #require(try Fixtures.column(notation, localTick: 0).rests.first)
         #expect(abs(rest.visualX - 252) < 0.001)
+    }
+
+    @Test("same-tick full-measure and interval rests keep distinct X and union their ink")
+    func mixedFullMeasureAndIntervalRestsKeepDistinctPlacement() throws {
+        let style = NotationFormattingStyle.virgoDefault
+        let rests = [
+            ResolvedRest(
+                id: 3,
+                position: NotationTickPosition(measureIndex: 0, localTick: 0),
+                duration: .whole,
+                dotCount: 0,
+                isFullMeasure: true
+            ),
+            ResolvedRest(
+                id: 4,
+                position: NotationTickPosition(measureIndex: 0, localTick: 0),
+                duration: .quarter,
+                dotCount: 1,
+                isFullMeasure: false
+            )
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: [], rests: rests, controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+
+        // Both rests survive with their own placement: the full-measure rest
+        // centers at 252 while the dotted quarter keeps the column anchor.
+        #expect(column.rests.map(\.restID) == [3, 4])
+        let full = try #require(column.rests.first { $0.restID == 3 })
+        let interval = try #require(column.rests.first { $0.restID == 4 })
+        #expect(abs(full.visualX - 252) < 0.001)
+        #expect(interval.visualX == column.logicalColumnX)
+
+        // Both glyphs and the interval rest's dot contribute to the column's
+        // collision extents — not just the first rest's.
+        let wholeBounds = PercussionGlyphMetrics.rest(
+            duration: .whole,
+            staffSpace: style.staffSpace
+        ).paintedBounds
+        let quarterBounds = PercussionGlyphMetrics.rest(
+            duration: .quarter,
+            staffSpace: style.staffSpace
+        ).paintedBounds
+        let dottedQuarterRight = quarterBounds.maxX
+            + style.rhythmDotSpacing + style.rhythmDotRadius * 2
+        #expect(abs(column.rightExtent - max(wholeBounds.maxX, dottedQuarterRight)) < 0.001)
+        #expect(abs(column.leftExtent - max(0, -min(wholeBounds.minX, quarterBounds.minX))) < 0.001)
     }
 
     @Test("greedy packing fits measures per row with measure spacing and wraps cleanly")

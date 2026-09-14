@@ -38,7 +38,10 @@ public struct FormattedColumn: Hashable, Sendable {
     /// `FormattedNoteHead.headCenterX`.
     public let logicalColumnX: CGFloat
     public let noteHeads: [FormattedNoteHead]
-    public let rest: FormattedRest?
+    /// Every printed rest at this tick, in stable rest-ID order — each keeps
+    /// its own visual X (full-measure rests center in the measure's content
+    /// span; interval rests sit on `logicalColumnX`).
+    public let rests: [FormattedRest]
     /// Collision ink reach left of `logicalColumnX` (≥ 0): the union of
     /// displaced notehead bounds, dot footprints, printed-rest bounds and
     /// visible flag bounds attached at the undisplaced column axis.
@@ -50,14 +53,14 @@ public struct FormattedColumn: Hashable, Sendable {
         localTick: Int,
         logicalColumnX: CGFloat,
         noteHeads: [FormattedNoteHead],
-        rest: FormattedRest?,
+        rests: [FormattedRest],
         leftExtent: CGFloat = 0,
         rightExtent: CGFloat = 0
     ) {
         self.localTick = localTick
         self.logicalColumnX = logicalColumnX
         self.noteHeads = noteHeads
-        self.rest = rest
+        self.rests = rests
         self.leftExtent = leftExtent
         self.rightExtent = rightExtent
     }

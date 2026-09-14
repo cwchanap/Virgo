@@ -156,13 +156,13 @@ enum Fixtures {
             localTick: 0,
             logicalColumnX: 100,
             noteHeads: [FormattedNoteHead(noteID: 42, headCenterX: 100)],
-            rest: nil
+            rests: []
         )
         let tick480 = FormattedColumn(
             localTick: 480,
             logicalColumnX: 150,
             noteHeads: [FormattedNoteHead(noteID: 42, headCenterX: 114)],
-            rest: FormattedRest(restID: 7, visualX: 155)
+            rests: [FormattedRest(restID: 7, visualX: 155)]
         )
         return FormattedNotation(
             measures: [
@@ -179,7 +179,7 @@ enum Fixtures {
                     xOffset: 602,
                     width: 490,
                     columns: [
-                        FormattedColumn(localTick: 0, logicalColumnX: 100, noteHeads: [], rest: nil)
+                        FormattedColumn(localTick: 0, logicalColumnX: 100, noteHeads: [], rests: [])
                     ]
                 )
             ]

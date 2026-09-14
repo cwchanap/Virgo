@@ -174,7 +174,7 @@ struct GameplayNotationCompositionTests {
         var visualXByKey: [String: CGFloat] = [:]
         for measure in prepared.formatted.measures {
             for column in measure.columns {
-                if let rest = column.rest {
+                for rest in column.rests {
                     visualXByKey["\(measure.index)-\(column.localTick)"] = rest.visualX
                 }
             }

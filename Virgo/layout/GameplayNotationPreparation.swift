@@ -90,7 +90,7 @@ private struct ComposedNotation {
     let measures: [RenderedMeasure]
     let columnXByKey: [MeasureTickKey: CGFloat]
     let headCenterXByID: [UInt64: CGFloat]
-    let visualXByKey: [MeasureTickKey: CGFloat]
+    let visualXByRestID: [Int: CGFloat]
     let noteHeads: [RenderedNoteHead]
     let rests: [RenderedRest]
     let stopNotes: [RenderedStopNote]
@@ -143,7 +143,7 @@ private extension GameplayNotationPreparer {
         let measures = composedMeasures(expandedMeasures: expandedMeasures, formatted: formatted)
         let columnXByKey = columnLookup(formatted: formatted) { $0.logicalColumnX }
         let headCenterXByID = headCenterLookup(formatted: formatted)
-        let visualXByKey = restVisualLookup(formatted: formatted)
+        let visualXByRestID = restVisualLookup(formatted: formatted)
         // Unsupported measures suppress duration-bearing engraving; their
         // rests are dropped and the measure's warning is carried by
         // `buildRhythmWarnings`.
@@ -163,7 +163,7 @@ private extension GameplayNotationPreparer {
                 !unsupportedMeasureIndexes.contains($0.position.measureIndex)
             },
             measures: measures,
-            visualXByKey: visualXByKey,
+            visualXByRestID: visualXByRestID,
             columnXByKey: columnXByKey,
             style: request.style
         )
@@ -178,7 +178,7 @@ private extension GameplayNotationPreparer {
             measures: measures,
             columnXByKey: columnXByKey,
             headCenterXByID: headCenterXByID,
-            visualXByKey: visualXByKey,
+            visualXByRestID: visualXByRestID,
             noteHeads: noteHeads,
             rests: rests,
             stopNotes: stopNotes,
@@ -246,18 +246,19 @@ private extension GameplayNotationPreparer {
         return lookup
     }
 
-    /// Package visual X for printed rests (only rest-bearing columns map).
+    /// Package visual X per printed rest (keyed by `FormattedRest.restID` —
+    /// the rest's ordinal in the projection's printed order). Same-tick rests
+    /// keep distinct X: full-measure rests center in the content span while
+    /// interval rests sit on the column anchor.
     private static func restVisualLookup(
         formatted: FormattedNotation
-    ) -> [MeasureTickKey: CGFloat] {
-        var lookup: [MeasureTickKey: CGFloat] = [:]
+    ) -> [Int: CGFloat] {
+        var lookup: [Int: CGFloat] = [:]
         for measure in formatted.measures {
             for column in measure.columns {
-                guard let rest = column.rest else { continue }
-                lookup[MeasureTickKey(
-                    measureIndex: measure.index,
-                    tick: column.localTick
-                )] = rest.visualX
+                for rest in column.rests {
+                    lookup[rest.restID] = rest.visualX
+                }
             }
         }
         return lookup

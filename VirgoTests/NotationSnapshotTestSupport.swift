@@ -72,10 +72,12 @@ struct NotationSnapshotTestSupport {
         }
         let maxNoteMeasure = layoutNotes.map(\.position.measureIndex).max() ?? 0
         let maxControlMeasure = layoutControls.map(\.position.measureIndex).max() ?? 0
+        let maxRestMeasure = rests.map(\.position.measureIndex).max() ?? 0
         let measureCount = max(
             maximumMeasureCountCandidate(minimum: minimumMeasureCount),
             maxNoteMeasure + 1,
-            maxControlMeasure + 1
+            maxControlMeasure + 1,
+            maxRestMeasure + 1
         )
         let measures = (0..<measureCount).map { index -> RhythmMeasure in
             let durationTicks = measureDurationTicks
@@ -160,9 +162,12 @@ struct NotationSnapshotTestSupport {
         )
         let measureIndex = MeasureUtils.measureIndex(from: timePosition)
         let offset = timePosition - Double(measureIndex)
+        // The measure end is exclusive: an onset rounding up to
+        // measureDurationTicks would land on the end anchor and fail the
+        // downstream `localTick < durationTicks` guards, so clamp inside.
         let localTick = min(
             max(Int((offset * Double(measureDurationTicks)).rounded()), 0),
-            measureDurationTicks
+            measureDurationTicks - 1
         )
         return RhythmEventPosition(
             measureIndex: measureIndex,
