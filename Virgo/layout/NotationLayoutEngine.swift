@@ -193,14 +193,12 @@ struct NotationLayoutEngine {
                 ))
             }
 
-            let nextOnSameRow = measures.count > index + 1
-                && measures[index + 1].row == measure.row
-            let endX: CGFloat
-            if nextOnSameRow {
-                endX = measures[index + 1].xOffset
-            } else {
-                endX = measure.xOffset + measure.width
-            }
+            // Every end bar sits on its own package measure boundary
+            // (xOffset + width). For same-row neighbors the next measure
+            // starts after the measureSpacing gap, so anchoring on its
+            // xOffset would draw the bar one gap right of the measure it
+            // closes.
+            let endX = measure.xOffset + measure.width
 
             bars.append(RenderedMeasureBar(
                 id: "bar_\(measure.measureIndex)_end",
