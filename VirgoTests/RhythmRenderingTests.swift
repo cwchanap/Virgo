@@ -53,7 +53,7 @@ struct RhythmRenderingTests {
                 .columns
                 .first { $0.localTick == 360 }
         )
-        #expect(renderedRest.position.x == restColumn.rest?.visualX)
+        #expect(renderedRest.position.x == restColumn.rests.first?.visualX)
         #expect(noteDot.position.x > head.paintedBounds(style: .gameplayDefault).maxX)
         #expect(restDot.position.x > renderedRest.paintedBounds(style: .gameplayDefault).maxX)
         #expect(layout.paintedBounds.contains(noteDot.paintedBounds(style: .gameplayDefault)))

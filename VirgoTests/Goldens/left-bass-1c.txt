@@ -10,7 +10,7 @@ meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4
 head  m1 t0000 abs0004 pos=(416.00,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Half rhythm=Half durTicks=2
 head  m1 t0002 abs0006 pos=(516.00,230.00) kick notehead=normal variant=leftBass voice=lower stem=down row=0 lane=1C interval=Half rhythm=Half durTicks=2
 rest  m0 t0000 voice=upper dur=fullMeasure ticks=4 vis=printed pos=(252.00,130.00) tuplet=-
-rest  m0 t0000 voice=lower dur=fullMeasure ticks=4 vis=hiddenDuplicate pos=(252.00,170.00) tuplet=-
+rest  m0 t0000 voice=lower dur=fullMeasure ticks=4 vis=hiddenDuplicate pos=(152.00,170.00) tuplet=-
 rest  m1 t0000 voice=upper dur=fullMeasure ticks=4 vis=printed pos=(516.00,130.00) tuplet=-
 ledger row=0 start=(398.20,210.00) end=(433.80,210.00)
 ledger row=0 start=(398.20,230.00) end=(433.80,230.00)

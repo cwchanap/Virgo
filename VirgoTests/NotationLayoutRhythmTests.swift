@@ -129,7 +129,7 @@ struct NotationLayoutRhythmTests {
         #expect(
             prepared.formatted.position(measureIndex: 0, localTick: 120)?.x == noteColumn.logicalColumnX
         )
-        #expect(rest.position.x == restColumn.rest?.visualX)
+        #expect(rest.position.x == restColumn.rests.first?.visualX)
     }
 
     @Test("timeline minimum count extends from resolved cumulative measures")

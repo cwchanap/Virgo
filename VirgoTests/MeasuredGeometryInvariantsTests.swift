@@ -261,8 +261,10 @@ struct MeasuredGeometryInvariantsTests {
         #expect(!before.isEmpty)
         #expect(before == after)
         // Rows may change; the installed playhead lookup follows the packing.
+        // rowIndex is zero-based, so the maximum row is strictly below the
+        // measure count (equality would mean a row index out of bounds).
         let maxRow = wide.layout.formattedNotation.measures.map(\.rowIndex).max() ?? 0
-        #expect(maxRow <= wide.layout.formattedNotation.measures.count)
+        #expect(maxRow < wide.layout.formattedNotation.measures.count)
     }
 
     // MARK: - Displaced second

@@ -54,7 +54,7 @@ struct NotationFormatterTests {
         _ = requireSendable(NotationFormattingStyle.virgoDefault)
         _ = requireSendable(Fixtures.formattedNotation())
         _ = requireSendable(FormattedMeasure(index: 0, rowIndex: 0, xOffset: 100, width: 490, columns: []))
-        _ = requireSendable(FormattedColumn(localTick: 0, logicalColumnX: 100, noteHeads: [], rest: nil))
+        _ = requireSendable(FormattedColumn(localTick: 0, logicalColumnX: 100, noteHeads: [], rests: []))
         _ = requireSendable(FormattedNoteHead(noteID: 42, headCenterX: 110))
         _ = requireSendable(FormattedRest(restID: 7, visualX: 155))
         _ = requireSendable(FormattedNotation.Position(rowIndex: 0, x: 150))
@@ -223,7 +223,7 @@ struct NotationFormatterTests {
         #expect(column?.localTick == 480)
         #expect(column?.logicalColumnX == 150)
         #expect(column?.noteHeads == [FormattedNoteHead(noteID: 42, headCenterX: 114)])
-        #expect(column?.rest == FormattedRest(restID: 7, visualX: 155))
+        #expect(column?.rests == [FormattedRest(restID: 7, visualX: 155)])
     }
 }
 
@@ -273,7 +273,7 @@ struct NotationFormatterColumnTests {
         #expect(measure.columns.map(\.localTick) == [0, 480, 960, 1440, 1920])
         #expect(try Fixtures.column(notation, localTick: 0).noteHeads.map(\.noteID) == [5])
         #expect(try Fixtures.column(notation, localTick: 960).noteHeads.map(\.noteID) == [9])
-        #expect(try Fixtures.column(notation, localTick: 1440).rest?.restID == 7)
+        #expect(try Fixtures.column(notation, localTick: 1440).rests.map(\.restID) == [7])
         // Sheet-local: row 0 origin 100 + leading inset 52 + rhythmic gap 50.
         #expect(notation.position(measureIndex: 0, localTick: 480) == FormattedNotation.Position(rowIndex: 0, x: 202))
     }
@@ -315,7 +315,7 @@ struct NotationFormatterColumnTests {
         let empty = try #require(notation.measures.first { $0.index == 1 })
         #expect(empty.columns.map(\.localTick) == [0, 1920])
         #expect(empty.columns.allSatisfy {
-            $0.noteHeads.isEmpty && $0.rest == nil && $0.leftExtent == 0 && $0.rightExtent == 0
+            $0.noteHeads.isEmpty && $0.rests.isEmpty && $0.leftExtent == 0 && $0.rightExtent == 0
         })
     }
 }
@@ -527,7 +527,7 @@ struct NotationFormatterInkTests {
         let measure = try #require(notation.measures.first)
         #expect(measure.columns.map(\.localTick) == [0, 480, 1920])
         let column = try Fixtures.column(notation, localTick: 480)
-        #expect(column.noteHeads.isEmpty && column.rest == nil)
+        #expect(column.noteHeads.isEmpty && column.rests.isEmpty)
         #expect(column.leftExtent == 0 && column.rightExtent == 0)
         // Sheet-local: row 0 origin 100 + leading inset 52 + rhythmic gap 50.
         #expect(notation.position(measureIndex: 0, localTick: 480) == FormattedNotation.Position(rowIndex: 0, x: 202))
@@ -555,7 +555,7 @@ struct NotationFormatterInkTests {
         #expect(measure.columns.map(\.localTick) == [0, 480, 1920])
 
         let column = try Fixtures.column(notation, localTick: 480)
-        let rest = try #require(column.rest)
+        let rest = try #require(column.rests.first)
         #expect(rest.restID == 7)
         #expect(rest.visualX == column.logicalColumnX)
         let bounds = PercussionGlyphMetrics.rest(duration: .quarter, staffSpace: style.staffSpace).paintedBounds

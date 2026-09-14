@@ -7,23 +7,27 @@ struct NotationLayoutDefensiveGuardTests {
 
     @Test("beamEndY returns nil for zero-span beam (startX == endX)")
     func beamEndYReturnsNilForZeroSpanBeam() {
-        let layout = NotationSnapshotTestSupport().prepare(notes: [
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0001)
-        ]).layout
+        // The stem anchor sits exactly on the collapsed span so the range
+        // guard passes and the zero-span guard is what rejects the beam.
+        let noteHead = makeDefensiveNoteHead(id: 1, x: 10)
+        let beam = RenderedBeam(
+            id: "beam-zero-span-test",
+            noteHeadIDs: [1, 2],
+            direction: .up,
+            level: 0,
+            kind: .full,
+            start: CGPoint(x: 10, y: 50),
+            end: CGPoint(x: 10, y: 50),
+            thickness: 4
+        )
 
-        for beam in layout.beams {
-            #expect(!beam.start.x.isNaN)
-            #expect(!beam.start.y.isNaN)
-            #expect(!beam.end.x.isNaN)
-            #expect(!beam.end.y.isNaN)
-        }
-        for stem in layout.stems {
-            #expect(!stem.start.x.isNaN)
-            #expect(!stem.start.y.isNaN)
-            #expect(!stem.end.x.isNaN)
-            #expect(!stem.end.y.isNaN)
-        }
+        let result = NotationLayoutEngine().beamEndY(
+            for: noteHead,
+            beam: beam,
+            style: .gameplayDefault
+        )
+
+        #expect(result == nil, "beamEndY must return nil when the beam has zero horizontal span")
     }
 
     @Test("beamEndY returns nil when stem X is outside the beam's horizontal span")

@@ -36,8 +36,7 @@ public enum NotationFormatter {
                 finalizeColumn(
                     column,
                     rowX: rowX,
-                    contentCenterX: contentCenterX,
-                    isFullMeasureRest: layout.fullMeasureRestTicks.contains(column.tick)
+                    contentCenterX: contentCenterX
                 )
             }
             measures.append(FormattedMeasure(
@@ -63,7 +62,8 @@ public enum NotationFormatter {
         let noteIDs: [Int]
         /// Staff-second displacement per note ID (absent = undisplaced).
         let shifts: [Int: CGFloat]
-        let restID: Int?
+        /// Every rest at this tick, in stable ID order.
+        let rests: [ResolvedRest]
         let leftExtent: CGFloat
         let rightExtent: CGFloat
     }
@@ -72,7 +72,6 @@ public enum NotationFormatter {
         let measure: ResolvedMeasure
         var columns: [LaidOutColumn]
         let width: CGFloat
-        let fullMeasureRestTicks: Set<Int>
     }
 
     private static func layoutMeasure(
@@ -85,10 +84,8 @@ public enum NotationFormatter {
             notesByTick[note.position.localTick, default: []].append(note)
         }
         var restsByTick: [Int: [ResolvedRest]] = [:]
-        var fullMeasureRestTicks = Set<Int>()
         for rest in input.rests where rest.position.measureIndex == measure.index {
             restsByTick[rest.position.localTick, default: []].append(rest)
-            if rest.isFullMeasure { fullMeasureRestTicks.insert(rest.position.localTick) }
         }
         var ticks = Set([0, measure.durationTicks])
         ticks.formUnion(notesByTick.keys)
@@ -125,8 +122,7 @@ public enum NotationFormatter {
         return LaidOutMeasure(
             measure: measure,
             columns: columns,
-            width: width,
-            fullMeasureRestTicks: fullMeasureRestTicks
+            width: width
         )
     }
 
@@ -151,8 +147,7 @@ public enum NotationFormatter {
     private static func finalizeColumn(
         _ column: LaidOutColumn,
         rowX: CGFloat,
-        contentCenterX: CGFloat,
-        isFullMeasureRest: Bool
+        contentCenterX: CGFloat
     ) -> FormattedColumn {
         FormattedColumn(
             localTick: column.tick,
@@ -160,11 +155,12 @@ public enum NotationFormatter {
             noteHeads: column.noteIDs.map { noteID in
                 FormattedNoteHead(noteID: noteID, headCenterX: rowX + column.x + (column.shifts[noteID] ?? 0))
             },
-            rest: column.restID.map { restID in
-                // The full-measure rest's timing anchor stays on the column;
-                // its visual centers in the measure content span, finalized
-                // now that the width is known.
-                FormattedRest(restID: restID, visualX: isFullMeasureRest ? contentCenterX : rowX + column.x)
+            rests: column.rests.map { rest in
+                // Every rest keeps its own placement: a full-measure rest's
+                // timing anchor stays on the column while its visual centers
+                // in the measure content span (finalized now that the width
+                // is known); interval rests paint at the column itself.
+                FormattedRest(restID: rest.id, visualX: rest.isFullMeasure ? contentCenterX : rowX + column.x)
             },
             leftExtent: column.leftExtent,
             rightExtent: column.rightExtent
@@ -211,10 +207,11 @@ public enum NotationFormatter {
                 ink.union(attachmentX + flag.paintedBounds.maxX)
             }
         }
-        var restID: Int?
-        // Multiple same-tick rests: lowest ID wins (deterministic; validation
-        // does not reject duplicates).
-        if let rest = rests.first {
+        // Every rest at the tick keeps its own placement and contributes its
+        // glyph and dot bounds to the column's collision ink — same-tick
+        // rests (e.g. a full-measure rest beside an interval rest) never
+        // collapse into a single representative.
+        for rest in rests {
             let bounds = PercussionGlyphMetrics.rest(
                 duration: rest.duration,
                 staffSpace: style.staffSpace
@@ -224,13 +221,12 @@ public enum NotationFormatter {
             if let dotRight = dotInkRight(after: bounds.maxX, dotCount: rest.dotCount, style: style) {
                 ink.union(dotRight)
             }
-            restID = rest.id
         }
         return LaidOutColumn(
             tick: tick,
             noteIDs: notes.map(\.id),
             shifts: shifts,
-            restID: restID,
+            rests: rests,
             leftExtent: max(0, -ink.minX),
             rightExtent: max(0, ink.maxX)
         )
