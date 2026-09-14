@@ -2,48 +2,45 @@ tl-grid ticksPerWholeNote=16 feel=straight
 tl-meas m0 startTick=0 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
 tl-meas m1 startTick=16 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
 
-grid  ticksPerWholeNote=16 tickWidth=28.00 leftPadding=52.00
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
-dims  noteHeadSize=30.00x20.00 totalHeight=970.00 paintedBounds=(99.00,23.96,502.00,556.04)
-row   0 measures=[m0] contentWidth=900.00
-row   1 measures=[m1] contentWidth=900.00
-meas  m0 row=0 xOffset=100.00 width=500.00 startTick=0 durationTicks=16 contentStartX=152.00
-meas  m1 row=1 xOffset=100.00 width=500.00 startTick=16 durationTicks=16 contentStartX=152.00
-head  m0 t0002 abs0002 pos=(208.00,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Eighth rhythm=Eighth durTicks=2
-head  m0 t0003 abs0003 pos=(236.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m0 t0004 abs0004 pos=(264.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
-head  m0 t0004 abs0004 pos=(264.00,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
-head  m0 t0008 abs0008 pos=(376.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
-head  m0 t0008 abs0008 pos=(376.00,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
-head  m0 t0012 abs0012 pos=(488.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
-head  m0 t0012 abs0012 pos=(488.00,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
-head  m1 t0000 abs0016 pos=(152.00,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Full rhythm=Full durTicks=16
-head  m1 t0000 abs0016 pos=(152.00,570.00) kick notehead=normal variant=standard voice=lower stem=down row=1 lane=13 interval=Full rhythm=Full durTicks=16
-stem  ids=[0] dir=down start=(196.20,233.36) end=(196.20,314.64)
-stem  ids=[1] dir=up start=(247.60,101.12) end=(247.60,24.96)
-stem  ids=[3] dir=down start=(252.20,233.36) end=(252.20,308.36)
-stem  ids=[2] dir=up start=(275.60,101.12) end=(275.60,26.12)
-stem  ids=[5] dir=down start=(364.20,233.36) end=(364.20,308.36)
-stem  ids=[4] dir=up start=(387.60,101.12) end=(387.60,26.12)
-stem  ids=[7] dir=down start=(476.20,233.36) end=(476.20,308.36)
-stem  ids=[6] dir=up start=(499.60,101.12) end=(499.60,26.12)
-flag  head=0 dir=down index=0 origin=(195.20,314.64)
-flag  head=1 dir=up index=0 origin=(246.60,24.96)
-flag  head=1 dir=up index=1 origin=(246.60,32.96)
+dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,23.96,591.68,291.80)
+row   0 measures=[m0,m1] contentWidth=900.00
+meas  m0 row=0 xOffset=100.00 width=326.68 startTick=0 durationTicks=16
+meas  m1 row=0 xOffset=438.68 width=252.00 startTick=16 durationTicks=16
+head  m0 t0002 abs0002 pos=(190.68,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Eighth rhythm=Eighth durTicks=2
+head  m0 t0003 abs0003 pos=(222.96,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
+head  m0 t0004 abs0004 pos=(276.68,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0004 abs0004 pos=(276.68,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0008 abs0008 pos=(326.68,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0008 abs0008 pos=(326.68,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0012 abs0012 pos=(376.68,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=4
+head  m0 t0012 abs0012 pos=(376.68,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Quarter rhythm=Quarter durTicks=4
+head  m1 t0000 abs0016 pos=(490.68,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Full rhythm=Full durTicks=16
+head  m1 t0000 abs0016 pos=(490.68,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Full rhythm=Full durTicks=16
+stem  ids=[0] dir=down start=(178.88,233.36) end=(178.88,314.64)
+stem  ids=[1] dir=up start=(234.56,101.12) end=(234.56,24.96)
+stem  ids=[3] dir=down start=(264.88,233.36) end=(264.88,308.36)
+stem  ids=[2] dir=up start=(288.28,101.12) end=(288.28,26.12)
+stem  ids=[5] dir=down start=(314.88,233.36) end=(314.88,308.36)
+stem  ids=[4] dir=up start=(338.28,101.12) end=(338.28,26.12)
+stem  ids=[7] dir=down start=(364.88,233.36) end=(364.88,308.36)
+stem  ids=[6] dir=up start=(388.28,101.12) end=(388.28,26.12)
+flag  head=0 dir=down index=0 origin=(177.88,314.64)
+flag  head=1 dir=up index=0 origin=(233.56,24.96)
+flag  head=1 dir=up index=1 origin=(233.56,32.96)
 rest  m0 t0000 voice=upper dur=eighth ticks=3 vis=printed pos=(152.00,130.00) tuplet=-
 rest  m0 t0000 voice=lower dur=eighth ticks=2 vis=printed pos=(152.00,170.00) tuplet=-
 dot   source=rest:rest-m0-vupper-t0-n3-deighth-xprinted-duplicate-0 pos=(168.38,130.00) row=0
-ledger row=1 start=(129.12,550.00) end=(174.88,550.00)
-ledger row=1 start=(129.12,570.00) end=(174.88,570.00)
-ledger row=0 start=(190.20,210.00) end=(225.80,210.00)
-ledger row=0 start=(190.20,230.00) end=(225.80,230.00)
-ledger row=0 start=(246.20,210.00) end=(281.80,210.00)
-ledger row=0 start=(246.20,230.00) end=(281.80,230.00)
-ledger row=0 start=(358.20,210.00) end=(393.80,210.00)
-ledger row=0 start=(358.20,230.00) end=(393.80,230.00)
-ledger row=0 start=(470.20,210.00) end=(505.80,210.00)
-ledger row=0 start=(470.20,230.00) end=(505.80,230.00)
+ledger row=0 start=(172.88,210.00) end=(208.48,210.00)
+ledger row=0 start=(172.88,230.00) end=(208.48,230.00)
+ledger row=0 start=(258.88,210.00) end=(294.48,210.00)
+ledger row=0 start=(258.88,230.00) end=(294.48,230.00)
+ledger row=0 start=(308.88,210.00) end=(344.48,210.00)
+ledger row=0 start=(308.88,230.00) end=(344.48,230.00)
+ledger row=0 start=(358.88,210.00) end=(394.48,210.00)
+ledger row=0 start=(358.88,230.00) end=(394.48,230.00)
+ledger row=0 start=(467.80,210.00) end=(513.56,210.00)
+ledger row=0 start=(467.80,230.00) end=(513.56,230.00)
 bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=600.00 isFinal=false
-bar   row=1 x=100.00 isFinal=false
-bar   row=1 x=600.00 isFinal=true
+bar   row=0 x=438.68 isFinal=false
+bar   row=0 x=690.68 isFinal=true
