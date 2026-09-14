@@ -208,9 +208,9 @@ public struct NotationFormattingStyle: Hashable, Sendable {
     public let staffSpace: CGFloat
     public let stemWidth: CGFloat
     /// Edge-to-edge clearance between adjacent column ink, **not** a
-    /// center-to-center pitch. The 8pt default preserves the intent of the old
-    /// 28pt center pitch for the common Bravura X-black head at staff-space 20
-    /// (≈28pt pitch − 20pt head width); it is not a rename of that pitch.
+    /// center-to-center pitch. With the Bravura X-black head (23.2pt wide at
+    /// staff-space 20) the default 8pt clearance yields the 31.2pt adjacent
+    /// pitch Virgo's sixteenth runs actually render.
     public let minimumInterColumnClearance: CGFloat
     public let minimumQuarterNoteSpacing: CGFloat
     public let measureSpacing: CGFloat

@@ -19,7 +19,7 @@ private func expectPosition(
 struct NotationFormatterSpacingTests {
     /// X-black sixteenth run: `count` heads at `step * 120` ticks in
     /// `measureIndex`, one stem direction, no dots, fully beamed — adjacent
-    /// intervals are the pure collision gap 10 + 8 + 10 = 28.
+    /// intervals are the pure collision gap 11.6 + 8 + 11.6 = 31.2.
     private func runNotes(count: Int, measureIndex: Int, idBase: Int) -> [ResolvedNote] {
         (0..<count).map { step in
             Fixtures.makeNote(
@@ -35,15 +35,14 @@ struct NotationFormatterSpacingTests {
     /// Collision-gap constants for the sixteenth-run content at the default
     /// style. The vendored Bravura 1.392 X-black notehead paints 23.2pt wide
     /// at staff-space 20 (1.16 staff spaces), so the head half-width is 11.6
-    /// — the plan's original 28pt pitch/490pt width assumed a 20pt head and
-    /// is unreachable against the real font metrics; the decomposition below
+    /// and the adjacent-column pitch is 31.2; the decomposition below
     /// (leading inset + 15 collision intervals + last-head→end-anchor gap)
     /// is the regression that matters.
     static let headHalfWidth: CGFloat = 11.6
     static let collisionInterval: CGFloat = 2 * headHalfWidth + 8
 
     @Test("16-sixteenth 4/4 measure locks the collision-gap width; end anchor at 100 + width")
-    func sixteenthRunMeasureWidthIs490() throws {
+    func sixteenthRunMeasureWidthMatchesCollisionGapDecomposition() throws {
         let notes = runNotes(count: 16, measureIndex: 0, idBase: 0)
         let document = try Fixtures.document(notes: notes, rests: [], controls: [])
         let notation = try Fixtures.format(document)
