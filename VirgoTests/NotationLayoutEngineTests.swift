@@ -828,8 +828,8 @@ struct NotationLayoutEngineTests {
         #expect(finalBars.first?.isFinal == true)
     }
 
-    @Test("internal barline aligns with next same-row measure's xOffset")
-    func internalBarlineAlignsWithNextSameRowMeasureXOffset() throws {
+    @Test("internal barline sits at the package measure boundary")
+    func internalBarlineSitsAtPackageMeasureBoundary() throws {
         let notes = (0..<8).map { index in
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: Double(index % 4) / 4.0)
         }
@@ -847,26 +847,17 @@ struct NotationLayoutEngineTests {
             return
         }
 
-        // For each pair of consecutive same-row measures, the end barline of the
-        // earlier measure must sit exactly at the later measure's xOffset — not
-        // at the earlier measure's right edge, which would leave a measureSpacing
-        // gap between the drawn bar and the next measure.
-        for index in 0..<(sameRowMeasures.count - 1) {
-            let current = sameRowMeasures[index]
-            let next = sameRowMeasures[index + 1]
+        // Every measure's end barline sits on its own package measure
+        // boundary (xOffset + width) — including internal same-row measures.
+        // The row continues after the measureSpacing gap, so anchoring the
+        // bar on the next measure's xOffset would draw it one gap too far
+        // right, outside the measure it closes.
+        for current in sameRowMeasures {
             let endBar = try #require(
                 sameRowBars.first { $0.id == "bar_\(current.measureIndex)_end" }
             )
-
-            #expect(abs(endBar.x - next.xOffset) < 0.001)
+            #expect(abs(endBar.x - (current.xOffset + current.width)) < 0.001)
         }
-
-        // The last measure's end barline should remain at its right edge
-        let lastMeasure = sameRowMeasures[sameRowMeasures.count - 1]
-        let lastEndBar = try #require(
-            sameRowBars.first { $0.id == "bar_\(lastMeasure.measureIndex)_end" }
-        )
-        #expect(abs(lastEndBar.x - (lastMeasure.xOffset + lastMeasure.width)) < 0.001)
     }
 
     @Test("measure wrapping to new row gets separate start barline")
