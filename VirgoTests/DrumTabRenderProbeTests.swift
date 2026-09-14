@@ -219,29 +219,142 @@ struct DrumTabRenderProbeTests {
         // as N confusing per-head failures below.
         #expect(totalWith > totalWithout, "mounting note heads added no ink (\(totalWith) vs \(totalWithout))")
 
-        // Per-head delta inside the head's own 2-D bounds, with each head
-        // rendered in isolation against the same no-heads baseline. A
-        // full-height column band would also catch stems and beams sharing
-        // that x band -- that's why this is differential and rect-scoped
-        // rather than a coarse column check that would stay green after
-        // deleting every NotationNoteHeadView.
-        //
-        // Rendering only the current head (rather than all heads minus the
-        // current one) makes the delta attributable: a neighbouring head
-        // that also paints inside this rect is absent from both the
-        // single-head render and the no-heads baseline, so it cannot supply
-        // ink for this assertion. The previous baseline stripped ALL heads,
-        // so a missing or displaced head could stay green when a neighbour
-        // supplied ink inside its bounds -- confirmed by fault injection
-        // (see the type doc comment).
+        // Per-head differential inside each head's own 2-D bounds (see
+        // `assertEveryHeadPaints` for why it is rect-scoped and isolated).
+        try assertEveryHeadPaints(layout, flagCommands: flagCommands, viewStyle: viewStyle)
+    }
+
+    // MARK: - Rasterized checklist shapes (final-review follow-up)
+
+    /// The three measured-geometry checklist shapes the final review verified
+    /// only at the layout-data level, now driven through the same differential
+    /// ink probe as `noteHeadsArePainted`. Each case reuses the exact fixture
+    /// parameters of its data-level suite — no new fixture framework.
+    private enum ChecklistShape: String, CaseIterable, Sendable {
+        /// `MeasuredGeometryInvariantsTests`' sparse-next-to-dense measure pair.
+        case sparseNextToDense
+        /// `isolatedFlaggedNotes`' fully-uncovered flags: the lone sixteenth
+        /// and lone eighth keep canonical flags, and each flag's reserved
+        /// footprint must receive ink. (The three-arm rule's *partial*
+        /// `.eighth`-component arm is unreachable end-to-end — the beam
+        /// topology's hook segments cover their owner, so a beamed note never
+        /// shows a flag — and stays pinned at data level by the package
+        /// formatter tests.)
+        case uncoveredFlagFootprints
+        /// `DisplacedSecondStemAxisTests`' up-stem second (snare + highTom).
+        case upDisplacedSecond
+        /// `DisplacedSecondStemAxisTests`' down-stem second (hiHatPedal + bass).
+        case downDisplacedSecond
+    }
+
+    private let checklistSupport = NotationSnapshotTestSupport()
+
+    private func makeChecklistLayout(for shape: ChecklistShape) throws -> NotationLayout {
+        switch shape {
+        case .sparseNextToDense:
+            return checklistSupport.prepare(notes: [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
+                Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 0),
+                Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 1.0 / 16.0),
+                Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 2.0 / 16.0),
+                Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 3.0 / 16.0)
+            ]).layout
+        case .uncoveredFlagFootprints:
+            return try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.isolatedFlaggedNotes).layout
+        case .upDisplacedSecond:
+            return checklistSupport.prepare(notes: [
+                Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
+                Note(interval: .eighth, noteType: .highTom, measureNumber: 1, measureOffset: 0),
+                Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 8.0),
+                Note(interval: .eighth, noteType: .highTom, measureNumber: 1, measureOffset: 1.0 / 8.0)
+            ]).layout
+        case .downDisplacedSecond:
+            return checklistSupport.prepare(
+                notes: [
+                    Note(interval: .eighth, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0),
+                    Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0),
+                    Note(interval: .eighth, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 1.0 / 8.0),
+                    Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 1.0 / 8.0)
+                ],
+                notePositionOverrides: [.kick: .belowLine1, .hiHatPedal: .spaceBetweenLine1AndBelow]
+            ).layout
+        }
+    }
+
+    @Test("checklist shapes paint ink where the layout reserves it", arguments: ChecklistShape.allCases)
+    private func checklistShapePaintsInk(_ shape: ChecklistShape) throws {
+        let viewStyle = NotationLayoutStyle.gameplayDefault
+        let layout = try makeChecklistLayout(for: shape)
+        let flagCommands = VirgoNotationAdapter.flagPaintCommands(
+            flags: layout.flags,
+            heads: layout.noteHeads,
+            style: viewStyle
+        )
+
+        switch shape {
+        case .sparseNextToDense:
+            // Non-vacuous pair: both neighbors carry heads.
+            for measure in layout.measures {
+                #expect(
+                    layout.noteHeads.contains { $0.timeColumn.measureIndex == measure.measureIndex },
+                    "measure \(measure.measureIndex) must carry heads for the pair probe"
+                )
+            }
+        case .uncoveredFlagFootprints:
+            // The lone sixteenth and lone eighth keep fully-uncovered
+            // canonical flags: the flag-ink differential below must find ink
+            // in each reserved footprint (.sixteenth / .eighth).
+            #expect(!flagCommands.isEmpty, "fixture must produce visible flags")
+        case .upDisplacedSecond, .downDisplacedSecond:
+            // Displacement actually happened: one chord head sits off the
+            // shared column axis.
+            let column = try #require(layout.formattedNotation.measures.first?.columns.first)
+            #expect(
+                layout.noteHeads.contains { $0.position.x != column.logicalColumnX },
+                "chord must carry a displaced head off the column axis"
+            )
+        }
+
+        try assertEveryHeadPaints(layout, flagCommands: flagCommands, viewStyle: viewStyle)
+        try assertFlagInkInReservedFootprint(layout, commands: flagCommands, viewStyle: viewStyle)
+    }
+
+    /// The per-head differential gate shared by `noteHeadsArePainted` and the
+    /// checklist-shape probes: each head, rendered in isolation against the
+    /// no-heads baseline, must add ink inside its own painted bounds.
+    ///
+    /// A full-height column band would also catch stems and beams sharing
+    /// that x band — that's why this is differential and rect-scoped rather
+    /// than a coarse column check that would stay green after deleting every
+    /// `NotationNoteHeadView`. Rendering only the current head (rather than
+    /// all heads minus the current one) makes the delta attributable: a
+    /// neighbouring head that also paints inside this rect is absent from
+    /// both the single-head render and the no-heads baseline, so it cannot
+    /// supply ink for this assertion. (The earlier baseline stripped ALL
+    /// heads, so a missing or displaced head could stay green when a
+    /// neighbour supplied ink inside its bounds — confirmed by fault
+    /// injection; see the type doc comment.)
+    private func assertEveryHeadPaints(
+        _ layout: NotationLayout,
+        flagCommands: [FlagPaintCommand],
+        viewStyle: NotationLayoutStyle
+    ) throws {
+        let yOffset = layout.topContentInset(style: viewStyle)
+        let size = CGSize(width: layout.contentWidth, height: max(layout.totalHeight + yOffset, 1))
+        var stripped = layout
+        stripped.noteHeads = []
+        let withoutHeads = try inkMap(
+            of: notationOverlay(stripped, flagCommands: flagCommands, style: viewStyle).offset(y: yOffset),
+            size: size
+        )
         for head in layout.noteHeads {
             let rect = head.paintedBounds(style: viewStyle).offsetBy(dx: 0, dy: yOffset)
-            // RenderedNoteHead.paintedBounds has no `.null` return path (unlike RenderedRest's),
-            // so this should never fire; assert it instead of silently skipping so a future
-            // change that introduces one is caught rather than swallowed.
+            // RenderedNoteHead.paintedBounds has no `.null` return path (unlike
+            // RenderedRest's), so this should never fire; assert it instead of
+            // silently skipping so a future change that introduces one is
+            // caught rather than swallowed.
             #expect(!rect.isNull, "head \(head.id) has a null painted bounds rect")
             guard !rect.isNull else { continue }
-
             var singleHead = layout
             singleHead.noteHeads = [head]
             let withOnlyHead = try inkMap(
@@ -250,6 +363,34 @@ struct DrumTabRenderProbeTests {
             )
             let delta = inkCount(in: withOnlyHead, rect: rect) - inkCount(in: withoutHeads, rect: rect)
             #expect(delta > 0, "head \(head.id) contributed no ink in \(rect)")
+        }
+    }
+
+    /// Flag-level differential gate: each resolved flag command, rendered as
+    /// the only flag against the no-flags baseline, must add ink inside its
+    /// own reserved painted bounds — the footprint the formatter's collision
+    /// rule reserved for it (isolated per command so a beam or neighbour
+    /// flag cannot supply the ink).
+    private func assertFlagInkInReservedFootprint(
+        _ layout: NotationLayout,
+        commands: [FlagPaintCommand],
+        viewStyle: NotationLayoutStyle
+    ) throws {
+        guard !commands.isEmpty else { return }
+        let yOffset = layout.topContentInset(style: viewStyle)
+        let size = CGSize(width: layout.contentWidth, height: max(layout.totalHeight + yOffset, 1))
+        let withoutFlags = try inkMap(
+            of: notationOverlay(layout, flagCommands: [], style: viewStyle).offset(y: yOffset),
+            size: size
+        )
+        for command in commands {
+            let rect = command.paintedBounds.offsetBy(dx: 0, dy: yOffset)
+            let withOnlyFlag = try inkMap(
+                of: notationOverlay(layout, flagCommands: [command], style: viewStyle).offset(y: yOffset),
+                size: size
+            )
+            let delta = inkCount(in: withOnlyFlag, rect: rect) - inkCount(in: withoutFlags, rect: rect)
+            #expect(delta > 0, "flag \(command.id) contributed no ink in its reserved footprint \(rect)")
         }
     }
 }
