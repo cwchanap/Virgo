@@ -193,8 +193,10 @@ public enum NotationFormatter {
                 ink.union(dotRight)
             }
             // Flags hang on the shared stem axis — the head glyph's
-            // stemUpSE/stemDownNW anchor at the undisplaced column X — never on
-            // the displaced head. A column with flagged notes in both
+            // stemUpSE/stemDownNW anchor at the undisplaced column X — and
+            // attach where the flag paints from: the stem axis minus half
+            // the stem width (Virgo's painted stem origin convention), never
+            // on the displaced head. A column with flagged notes in both
             // directions unions each flag at its own direction's axis.
             if let flagDuration = note.visibleFlagDuration {
                 let flag = PercussionGlyphMetrics.flag(
@@ -202,7 +204,9 @@ public enum NotationFormatter {
                     direction: note.stemDirection,
                     staffSpace: style.staffSpace
                 )
-                let attachmentX = headMetrics.stemAnchorOffset.x - flag.attachmentOffset.x
+                let attachmentX = headMetrics.stemAnchorOffset.x
+                    - style.stemWidth / 2
+                    - flag.attachmentOffset.x
                 ink.union(attachmentX + flag.paintedBounds.minX)
                 ink.union(attachmentX + flag.paintedBounds.maxX)
             }

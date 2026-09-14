@@ -337,9 +337,11 @@ enum VirgoNotationAdapter {
                 canonical: canonical
             )
             guard let classification else { continue }
-            for entry in stemGroup.entries {
-                classifications[entry.note.eventID.rawValue] = classification
-            }
+            // ONE measured anchor per stem group: the classification rides on
+            // the stem representative — the same head buildFlags paints the
+            // flag on — so the formatter reserves a single flag footprint at
+            // the shared stem axis, never one per chord member.
+            classifications[representative.note.eventID.rawValue] = classification
         }
         return classifications
     }
