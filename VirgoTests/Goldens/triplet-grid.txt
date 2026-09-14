@@ -2,28 +2,27 @@ tl-grid ticksPerWholeNote=12 feel=straight
 tl-meas m0 startTick=0 durationTicks=12 sig=4/4 groups=[0,3,6,9] engraving=unsupported[incompleteTuplet,indeterminateTerminalDuration]
 tl-meas m1 startTick=12 durationTicks=12 sig=4/4 groups=[0,3,6,9] engraving=supported
 
-grid  ticksPerWholeNote=12 tickWidth=28.00 leftPadding=52.00
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
-dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,43.00,789.00,147.00)
-row   0 measures=[m0,m1] contentWidth=938.00
-meas  m0 row=0 xOffset=100.00 width=388.00 startTick=0 durationTicks=12 contentStartX=152.00
-meas  m1 row=0 xOffset=500.00 width=388.00 startTick=12 durationTicks=12 contentStartX=552.00
+dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,43.00,679.80,147.00)
+row   0 measures=[m0,m1] contentWidth=900.00
+meas  m0 row=0 xOffset=100.00 width=414.80 startTick=0 durationTicks=12
+meas  m1 row=0 xOffset=526.80 width=252.00 startTick=12 durationTicks=12
 head  m0 t0000 abs0000 pos=(152.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
-head  m0 t0001 abs0001 pos=(180.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
-head  m0 t0002 abs0002 pos=(208.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth[indeterminate:indeterminateTerminalDuration] durTicks=1
-head  m0 t0003 abs0003 pos=(236.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
-head  m0 t0004 abs0004 pos=(264.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
-head  m0 t0005 abs0005 pos=(292.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth[indeterminate:indeterminateTerminalDuration] durTicks=1
-head  m0 t0006 abs0006 pos=(320.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
-head  m0 t0007 abs0007 pos=(348.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
-head  m0 t0008 abs0008 pos=(376.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth[indeterminate:indeterminateTerminalDuration] durTicks=1
-head  m0 t0009 abs0009 pos=(404.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
-head  m0 t0010 abs0010 pos=(432.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
-head  m0 t0011 abs0011 pos=(460.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth[indeterminate:indeterminateTerminalDuration] durTicks=1
-head  m1 t0000 abs0012 pos=(552.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Full rhythm=Full durTicks=12
-rest  m1 t0000 voice=lower dur=fullMeasure ticks=12 vis=printed pos=(720.00,170.00) tuplet=-
+head  m0 t0001 abs0001 pos=(183.20,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
+head  m0 t0002 abs0002 pos=(214.40,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth[indeterminate:indeterminateTerminalDuration] durTicks=1
+head  m0 t0003 abs0003 pos=(245.60,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
+head  m0 t0004 abs0004 pos=(276.80,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
+head  m0 t0005 abs0005 pos=(308.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth[indeterminate:indeterminateTerminalDuration] durTicks=1
+head  m0 t0006 abs0006 pos=(339.20,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
+head  m0 t0007 abs0007 pos=(370.40,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
+head  m0 t0008 abs0008 pos=(401.60,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth[indeterminate:indeterminateTerminalDuration] durTicks=1
+head  m0 t0009 abs0009 pos=(432.80,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
+head  m0 t0010 abs0010 pos=(464.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter[unsupported:incompleteTuplet] durTicks=1
+head  m0 t0011 abs0011 pos=(495.20,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Sixteenth rhythm=Sixteenth[indeterminate:indeterminateTerminalDuration] durTicks=1
+head  m1 t0000 abs0012 pos=(578.80,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Full rhythm=Full durTicks=12
+rest  m1 t0000 voice=lower dur=fullMeasure ticks=12 vis=printed pos=(678.80,170.00) tuplet=-
 bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=488.00 isFinal=false
-bar   row=0 x=888.00 isFinal=true
+bar   row=0 x=526.80 isFinal=false
+bar   row=0 x=778.80 isFinal=true
 warn  scope=measure:0 kind=unsupported codes=[incompleteTuplet,indeterminateTerminalDuration] row=0 measure=1 pos=(242.00,54.00) size=180.00x22.00
 # SUSPECT: HPA-145 12-grid measure falls back to unsupported engraving; this golden pins the fallback, not engraved triplets.

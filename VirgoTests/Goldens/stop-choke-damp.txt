@@ -3,13 +3,12 @@ tl-meas m0 startTick=0 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=suppor
 tl-meas m1 startTick=4 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
 tl-meas m2 startTick=8 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
 
-grid  ticksPerWholeNote=4 tickWidth=50.00 leftPadding=52.00
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
 dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,5.12,781.00,184.88)
 row   0 measures=[m0,m1,m2] contentWidth=930.00
-meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4 contentStartX=152.00
-meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4 contentStartX=416.00
-meas  m2 row=0 xOffset=628.00 width=252.00 startTick=8 durationTicks=4 contentStartX=680.00
+meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4
+meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4
+meas  m2 row=0 xOffset=628.00 width=252.00 startTick=8 durationTicks=4
 head  m1 t0000 abs0004 pos=(416.00,90.00) crash notehead=x variant=crash voice=upper stem=up row=0 lane=16 interval=Quarter rhythm=Quarter durTicks=1
 head  m1 t0001 abs0005 pos=(466.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Quarter rhythm=Quarter durTicks=1
 head  m1 t0002 abs0006 pos=(516.00,90.00) crash notehead=x variant=crash voice=upper stem=up row=0 lane=16 interval=Quarter rhythm=Quarter durTicks=1
@@ -29,6 +28,6 @@ stop  m1 t0003 kind=damp target=11 pos=(566.00,92.00) lane=23
 ledger row=0 start=(398.40,90.00) end=(433.60,90.00)
 ledger row=0 start=(498.40,90.00) end=(533.60,90.00)
 bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=352.00 isFinal=false
-bar   row=0 x=616.00 isFinal=false
+bar   row=0 x=364.00 isFinal=false
+bar   row=0 x=628.00 isFinal=false
 bar   row=0 x=880.00 isFinal=true

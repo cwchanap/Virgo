@@ -2,12 +2,11 @@ tl-grid ticksPerWholeNote=4 feel=straight
 tl-meas m0 startTick=0 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
 tl-meas m1 startTick=4 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
 
-grid  ticksPerWholeNote=4 tickWidth=50.00 leftPadding=52.00
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
 dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,100.00,517.00,140.00)
 row   0 measures=[m0,m1] contentWidth=900.00
-meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4 contentStartX=152.00
-meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4 contentStartX=416.00
+meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4
+meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4
 head  m1 t0000 abs0004 pos=(416.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Half rhythm=Half durTicks=2
 head  m1 t0000 abs0004 pos=(416.00,150.00) snare notehead=normal variant=standard voice=upper stem=up row=0 lane=12 interval=Half rhythm=Half durTicks=2
 head  m1 t0000 abs0004 pos=(416.00,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Half rhythm=Half durTicks=2
@@ -21,5 +20,5 @@ ledger row=0 start=(398.20,230.00) end=(433.80,230.00)
 ledger row=0 start=(498.20,210.00) end=(533.80,210.00)
 ledger row=0 start=(498.20,230.00) end=(533.80,230.00)
 bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=352.00 isFinal=false
+bar   row=0 x=364.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
