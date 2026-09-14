@@ -15,7 +15,7 @@ import CoreGraphics
 @MainActor
 struct MeasuredGeometryInvariantsTests {
     private let support = NotationSnapshotTestSupport()
-    /// `VirgoNotationAdapter.formattingStyle`'s pinned clearance (spec F3).
+    /// `VirgoNotationProjection.formattingStyle`'s pinned clearance (spec F3).
     private let clearance: CGFloat = 8
     private let tolerance: CGFloat = 0.5
 

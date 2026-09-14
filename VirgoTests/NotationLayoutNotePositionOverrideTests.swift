@@ -4,7 +4,7 @@ import CoreGraphics
 
 /// Adapter/preparer integration for note-position overrides: an override
 /// must reach the staff step (Y placement, ledger lines) through
-/// `VirgoNotationAdapter.resolvedNotation`, not just the rendered head.
+/// `VirgoNotationProjection.resolvedNotation`, not just the rendered head.
 @Suite("Notation Layout Note Position Override Tests")
 struct NotationLayoutNotePositionOverrideTests {
     private let support = NotationSnapshotTestSupport()

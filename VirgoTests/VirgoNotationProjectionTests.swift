@@ -5,9 +5,11 @@ import Testing
 
 /// HPA-164 Task 4: the pre-format projection into `DrumNotation`, the single
 /// style mapper, the pre-format visible-flag classification, and the one
-/// preparation route shared by detached and synchronous invocation.
-@Suite("Virgo Notation Adapter Projection")
-struct VirgoNotationAdapterProjectionTests {
+/// preparation route shared by detached and synchronous invocation. The
+/// route-equivalence suite itself lives in
+/// `VirgoNotationPreparationRouteTests`.
+@Suite("Virgo Notation Projection")
+struct VirgoNotationProjectionTests {
     private let ticksPerWholeNote = 960
 
     // MARK: - Step 1: trimmed input projection
@@ -20,7 +22,7 @@ struct VirgoNotationAdapterProjectionTests {
             controls: [makeControl(eventID: 7, measureIndex: 0, localTick: 240)]
         )
 
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: [makeMeasure(index: 0)],
             notePositionOverrides: [:]
@@ -45,7 +47,7 @@ struct VirgoNotationAdapterProjectionTests {
             )]
         )
 
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: [makeMeasure(index: 0), measure],
             notePositionOverrides: [:]
@@ -71,7 +73,7 @@ struct VirgoNotationAdapterProjectionTests {
             ]
         )
 
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: [makeMeasure(index: 0)],
             notePositionOverrides: [.snare: .line1, .kick: .belowLine2]
@@ -108,7 +110,7 @@ struct VirgoNotationAdapterProjectionTests {
             ]
         )
 
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: [makeMeasure(index: 0)],
             notePositionOverrides: [:]
@@ -127,56 +129,6 @@ struct VirgoNotationAdapterProjectionTests {
         #expect(bass.dotCount == 0)
     }
 
-    @Test("Hidden rests are filtered; printed and full-measure rest geometry survives")
-    func hiddenRestsAreFilteredAndPrintedRestsSurvive() throws {
-        let measure = makeMeasure(index: 0)
-        let snapshot = try makeSnapshot(
-            measures: [measure],
-            rests: [
-                makeRest(
-                    id: "printed-full",
-                    measureIndex: 0,
-                    localTick: 0,
-                    durationTicks: 960,
-                    voice: .upper,
-                    interval: .full,
-                    visibility: .printed
-                ),
-                makeRest(
-                    id: "hidden-spacing",
-                    measureIndex: 0,
-                    localTick: 240,
-                    durationTicks: 240,
-                    voice: .lower,
-                    interval: .quarter,
-                    visibility: .hiddenSpacing
-                ),
-                makeRest(
-                    id: "hidden-duplicate",
-                    measureIndex: 0,
-                    localTick: 480,
-                    durationTicks: 240,
-                    voice: .upper,
-                    interval: .quarter,
-                    visibility: .hiddenDuplicate
-                )
-            ]
-        )
-
-        let input = try VirgoNotationAdapter.resolvedNotation(
-            snapshot: snapshot,
-            expandedMeasures: [measure],
-            notePositionOverrides: [:]
-        )
-
-        #expect(input.rests.count == 1)
-        let rest = try #require(input.rests.first)
-        #expect(rest.position.measureIndex == 0)
-        #expect(rest.position.localTick == 0)
-        #expect(rest.duration == .whole)
-        #expect(rest.isFullMeasure)
-    }
-
     @Test("Package model carries no voice/tuplet/beat-group/engraving-support copy")
     func packageModelCarriesNoAppSemanticsCopy() throws {
         let measure = makeMeasure(index: 0)
@@ -184,7 +136,6 @@ struct VirgoNotationAdapterProjectionTests {
             measures: [measure],
             notes: [makeNote(eventID: 1, noteType: .snare, measureIndex: 0, localTick: 0, interval: .quarter)],
             rests: [makeRest(
-                id: "r",
                 measureIndex: 0,
                 localTick: 240,
                 durationTicks: 240,
@@ -194,7 +145,7 @@ struct VirgoNotationAdapterProjectionTests {
             )],
             controls: [makeControl(eventID: 3, measureIndex: 0, localTick: 480)]
         )
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: [measure],
             notePositionOverrides: [:]
@@ -217,7 +168,7 @@ struct VirgoNotationAdapterProjectionTests {
         let measure = makeMeasure(index: 0)
         let snapshot = try makeSnapshot(measures: [measure])
 
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: NotationLayoutEngine().expandedRhythmMeasures(
                 snapshot,
@@ -236,17 +187,17 @@ struct VirgoNotationAdapterProjectionTests {
     @Test("Flag classification maps uncovered levels to nil/canonical/.eighth")
     func flagClassificationMapperCoversAllThreeArms() {
         let expected: Set<Int> = [0, 1, 2]
-        #expect(VirgoNotationAdapter.visibleFlagClassification(
+        #expect(VirgoNotationProjection.visibleFlagClassification(
             uncovered: [],
             expected: expected,
             canonical: .thirtySecond
         ) == nil)
-        #expect(VirgoNotationAdapter.visibleFlagClassification(
+        #expect(VirgoNotationProjection.visibleFlagClassification(
             uncovered: [0, 1, 2],
             expected: expected,
             canonical: .thirtySecond
         ) == .thirtySecond)
-        #expect(VirgoNotationAdapter.visibleFlagClassification(
+        #expect(VirgoNotationProjection.visibleFlagClassification(
             uncovered: [0, 2],
             expected: expected,
             canonical: .thirtySecond
@@ -284,7 +235,7 @@ struct VirgoNotationAdapterProjectionTests {
         let style = NotationLayoutStyle.gameplayDefault
 
         // Pre-format: the adapter projection.
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: expandedMeasures,
             notePositionOverrides: [:]
@@ -379,7 +330,7 @@ struct VirgoNotationAdapterProjectionTests {
             notes: [makeNote(eventID: 1, noteType: .snare, measureIndex: 0, localTick: 0, interval: .sixteenth)]
         )
 
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: [measure],
             notePositionOverrides: [:]
@@ -388,64 +339,11 @@ struct VirgoNotationAdapterProjectionTests {
         #expect(input.notes.first?.visibleFlagDuration == nil)
     }
 
-    @Test("Rests in engraving-unsupported measures never reach the package input")
-    func unsupportedMeasureRestsAreFilteredAtProjection() throws {
-        let supported = makeMeasure(index: 0)
-        let unsupported = RhythmMeasure(
-            measureIndex: 1,
-            startTick: 960,
-            durationTicks: 960,
-            timeSignature: .fourFour,
-            beatGroups: (0..<4).map {
-                RhythmBeatGroup(groupIndex: $0, startTick: $0 * 240, durationTicks: 240, isResidual: false)
-            },
-            engravingSupport: .unsupported([.malformedMeasureLength])
-        )
-        // The chart's only rest is printed but lives in the unsupported
-        // measure: Virgo suppresses its engraving, so the package must never
-        // see it (it would widen the measured column for ink never painted).
-        let rest = makeRest(
-            id: "r1",
-            measureIndex: 1,
-            localTick: 480,
-            durationTicks: 240,
-            voice: .upper,
-            interval: .quarter,
-            visibility: .printed
-        )
-        let measures = [supported, unsupported]
-        let snapshot = try makeSnapshot(measures: measures, rests: [rest])
-
-        let input = try VirgoNotationAdapter.resolvedNotation(
-            snapshot: snapshot,
-            expandedMeasures: measures,
-            notePositionOverrides: [:]
-        )
-        #expect(input.rests.isEmpty)
-
-        // Measure geometry is identical to the same chart with no rest.
-        let withoutRest = try VirgoNotationAdapter.resolvedNotation(
-            snapshot: try makeSnapshot(measures: measures),
-            expandedMeasures: measures,
-            notePositionOverrides: [:]
-        )
-        let withoutRestGeometry = try NotationFormatter.format(
-            withoutRest,
-            style: VirgoNotationAdapter.formattingStyle(rowWidth: 1_400, style: .gameplayDefault)
-        )
-        let withRestGeometry = try NotationFormatter.format(
-            input,
-            style: VirgoNotationAdapter.formattingStyle(rowWidth: 1_400, style: .gameplayDefault)
-        )
-        #expect(withRestGeometry.measures.map(\.width) == withoutRestGeometry.measures.map(\.width))
-        #expect(withRestGeometry.measures.map(\.xOffset) == withoutRestGeometry.measures.map(\.xOffset))
-    }
-
     // MARK: - Step 5: the single style mapper
 
     @Test("formattingStyle maps resolved row width and the pinned Virgo values")
     func formattingStyleMapsPinnedValues() {
-        let style = VirgoNotationAdapter.formattingStyle(
+        let style = VirgoNotationProjection.formattingStyle(
             rowWidth: 1200,
             style: .gameplayDefault
         )
@@ -470,7 +368,7 @@ struct VirgoNotationAdapterProjectionTests {
 
     @Test("formattingStyle applies the 900pt row-width floor")
     func formattingStyleAppliesRowWidthFloor() {
-        let style = VirgoNotationAdapter.formattingStyle(
+        let style = VirgoNotationProjection.formattingStyle(
             rowWidth: 500,
             style: .gameplayDefault
         )
@@ -478,59 +376,7 @@ struct VirgoNotationAdapterProjectionTests {
     }
 
     // MARK: - Step 6/7: one preparation route
-
-    @Test("Synchronous and detached preparation produce identical package geometry")
-    func synchronousAndDetachedPreparationAgree() async throws {
-        let request = try makeMultiMeasureRequest(measureCount: 4)
-
-        let synchronous = GameplayNotationPreparer.prepare(request)
-        let detached = try await Task.detached {
-            GameplayNotationPreparer.prepare(request)
-        }.value
-
-        // Identical package measure geometry.
-        #expect(synchronous.formatted == detached.formatted)
-        #expect(!synchronous.formatted.measures.isEmpty)
-
-        // Row-leading origin: the first measure of every row starts at the
-        // leading inset.
-        var firstMeasureXPerRow: [Int: CGFloat] = [:]
-        for measure in synchronous.formatted.measures
-        where firstMeasureXPerRow[measure.rowIndex] == nil {
-            firstMeasureXPerRow[measure.rowIndex] = measure.xOffset
-        }
-        #expect(!firstMeasureXPerRow.isEmpty)
-        for (_, x) in firstMeasureXPerRow {
-            #expect(x == GameplayLayout.leftMargin)
-        }
-
-        // Logical tick lookup identical between the two routes, including a
-        // between-anchor interpolation.
-        for measure in synchronous.formatted.measures {
-            for column in measure.columns {
-                #expect(
-                    synchronous.formatted.position(measureIndex: measure.index, localTick: Double(column.localTick))
-                        == detached.formatted.position(
-                            measureIndex: measure.index,
-                            localTick: Double(column.localTick)
-                        )
-                )
-            }
-            let midpoint = Double(measure.columns.first?.localTick ?? 0) + 60
-            #expect(
-                synchronous.formatted.position(measureIndex: measure.index, localTick: midpoint)
-                    == detached.formatted.position(measureIndex: measure.index, localTick: midpoint)
-            )
-        }
-    }
-
-    @Test("The one route installs the formatted output alongside the layout")
-    func preparedStateExposesFormattedOutput() throws {
-        let request = try makeMultiMeasureRequest(measureCount: 2)
-        let prepared = GameplayNotationPreparer.prepare(request)
-
-        #expect(prepared.layout.measures.map(\.measureIndex) == prepared.formatted.measures.map(\.index))
-    }
+    // The route-equivalence tests live in `VirgoNotationPreparationRouteTests`.
 
     // MARK: - Fixtures
 
@@ -595,15 +441,14 @@ struct VirgoNotationAdapterProjectionTests {
     }
 
     private func makeRest(
-        id: String,
         measureIndex: Int,
         localTick: Int,
-        durationTicks: Int,
         voice: NotationVoice,
         interval: NoteInterval,
         visibility: NotationRestVisibility
     ) -> RhythmLayoutRest {
-        RhythmLayoutRest(
+        let durationTicks = ticksPerWholeNote / Self.tickDivisor(of: interval)
+        return RhythmLayoutRest(
             position: RhythmEventPosition(
                 measureIndex: measureIndex,
                 localTick: localTick,
@@ -615,6 +460,18 @@ struct VirgoNotationAdapterProjectionTests {
             visibility: visibility,
             tupletID: nil
         )
+    }
+
+    private static func tickDivisor(of interval: NoteInterval) -> Int {
+        switch interval {
+        case .full: return 1
+        case .half: return 2
+        case .quarter: return 4
+        case .eighth: return 8
+        case .sixteenth: return 16
+        case .thirtysecond: return 32
+        case .sixtyfourth: return 64
+        }
     }
 
     private func makeControl(eventID: Int, measureIndex: Int, localTick: Int) -> RhythmLayoutControl {
@@ -642,39 +499,15 @@ struct VirgoNotationAdapterProjectionTests {
         }
     }
 
-    /// A multi-measure request whose measures wrap across several rows at the
-    /// 900pt floor, so row-leading origin checks are meaningful.
-    private func makeMultiMeasureRequest(measureCount: Int) throws -> GameplayNotationPreparationRequest {
-        let measures = (0..<measureCount).map { index in
-            makeMeasure(index: index, startTick: index * 960)
-        }
-        let notes = (0..<measureCount).flatMap { measureIndex -> [RhythmLayoutNote] in
-            [0, 240, 480, 720].map { tick in
-                makeNote(
-                    eventID: measureIndex * 4 + tick / 240 + 1,
-                    noteType: .snare,
-                    measureIndex: measureIndex,
-                    localTick: tick,
-                    absoluteTick: measureIndex * 960 + tick,
-                    interval: .quarter
-                )
-            }
-        }
-        let snapshot = try makeSnapshot(measures: measures, notes: notes)
-        return GameplayNotationPreparationRequest(
-            snapshot: snapshot,
-            minimumMeasureCount: measureCount,
-            style: .gameplayDefault,
-            notePositionOverrides: [:]
-        )
-    }
-
     private func reflectedFieldNames(in value: Any) -> [String] {
         var names: [String] = []
         collectFieldNames(in: value, names: &names)
         return names
     }
 
+    /// The `.class`/`.enum` case-skip bounds the reflection scan to the
+    /// package's all-value-type input; revisit if package types grow
+    /// reference or enum payloads.
     private func collectFieldNames(in value: Any, names: inout [String]) {
         let mirror = Mirror(reflecting: value)
         guard mirror.displayStyle == .struct || mirror.displayStyle == .collection
