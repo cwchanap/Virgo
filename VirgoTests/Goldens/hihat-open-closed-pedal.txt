@@ -19,5 +19,5 @@ artic kind=openHiHat head=0 row=0 pos=(416.00,86.00)
 dot   source=event:1 pos=(485.86,110.00) row=0
 ledger row=0 start=(496.64,210.00) end=(535.36,210.00)
 bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=364.00 isFinal=false
+bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
