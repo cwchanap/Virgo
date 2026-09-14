@@ -28,6 +28,6 @@ stop  m1 t0003 kind=damp target=11 pos=(566.00,92.00) lane=23
 ledger row=0 start=(398.40,90.00) end=(433.60,90.00)
 ledger row=0 start=(498.40,90.00) end=(533.60,90.00)
 bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=364.00 isFinal=false
-bar   row=0 x=628.00 isFinal=false
+bar   row=0 x=352.00 isFinal=false
+bar   row=0 x=616.00 isFinal=false
 bar   row=0 x=880.00 isFinal=true

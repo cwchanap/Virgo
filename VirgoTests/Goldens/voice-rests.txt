@@ -29,5 +29,5 @@ ledger row=0 start=(284.20,230.00) end=(319.80,230.00)
 ledger row=0 start=(393.12,210.00) end=(438.88,210.00)
 ledger row=0 start=(393.12,230.00) end=(438.88,230.00)
 bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=364.00 isFinal=false
+bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true

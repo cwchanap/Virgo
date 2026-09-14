@@ -15,6 +15,6 @@ rest  m0 t0032 voice=upper dur=quarter ticks=1 vis=hiddenSpacing pos=(152.00,130
 rest  m0 t0033 voice=upper dur=quarter ticks=31 vis=hiddenSpacing pos=(255.12,130.00) tuplet=-
 rest  m1 t0000 voice=lower dur=fullMeasure ticks=64 vis=printed pos=(516.00,170.00) tuplet=-
 bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=364.00 isFinal=false
+bar   row=0 x=352.00 isFinal=false
 bar   row=0 x=616.00 isFinal=true
 warn  scope=measure:0 kind=warning codes=[indeterminateTerminalDuration] row=0 measure=1 pos=(242.00,54.00) size=180.00x22.00
