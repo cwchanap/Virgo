@@ -2,148 +2,6 @@ import CoreGraphics
 import DrumNotation
 import Foundation
 
-struct TabGrid: Equatable, Sendable {
-    static let fallbackTicksPerMeasure = 960
-
-    let ticksPerWholeNote: Int
-    let tickWidth: CGFloat
-    let leftPadding: CGFloat
-    private let legacyTicksPerMeasure: Int?
-
-    /// Fixed-measure compatibility wrapper. Timeline layout uses each
-    /// `RenderedMeasure.durationTicks` instead.
-    var ticksPerMeasure: Int { legacyTicksPerMeasure ?? ticksPerWholeNote }
-
-    /// Fixed-measure compatibility wrapper. Timeline measures own their width.
-    var measureWidth: CGFloat {
-        Self.measureWidth(
-            ticksPerMeasure: ticksPerMeasure,
-            tickWidth: tickWidth,
-            leftPadding: leftPadding
-        )
-    }
-
-    init(
-        ticksPerWholeNote: Int,
-        tickWidth: CGFloat,
-        leftPadding: CGFloat
-    ) {
-        self.ticksPerWholeNote = ticksPerWholeNote
-        self.tickWidth = tickWidth
-        self.leftPadding = leftPadding
-        legacyTicksPerMeasure = nil
-    }
-
-    init(
-        legacyTicksPerMeasure: Int,
-        ticksPerWholeNote: Int? = nil,
-        tickWidth: CGFloat,
-        leftPadding: CGFloat
-    ) {
-        self.ticksPerWholeNote = ticksPerWholeNote ?? legacyTicksPerMeasure
-        self.tickWidth = tickWidth
-        self.leftPadding = leftPadding
-        self.legacyTicksPerMeasure = legacyTicksPerMeasure
-    }
-
-    static func measureWidth(
-        ticksPerMeasure: Int,
-        tickWidth: CGFloat,
-        leftPadding: CGFloat
-    ) -> CGFloat {
-        leftPadding + CGFloat(ticksPerMeasure) * tickWidth
-    }
-
-    static let fallback: TabGrid = {
-        let fallbackTickWidth = GameplayLayout.uniformSpacing / CGFloat(fallbackTicksPerMeasure / 4)
-        let fallbackLeftPadding = GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
-        return TabGrid(
-            legacyTicksPerMeasure: fallbackTicksPerMeasure,
-            tickWidth: fallbackTickWidth,
-            leftPadding: fallbackLeftPadding
-        )
-    }()
-
-    func xPosition(in measure: RenderedMeasure, localTick: Int) -> CGFloat {
-        let clampedTick = min(max(localTick, 0), measure.durationTicks)
-        return measure.contentStartX + CGFloat(clampedTick) * tickWidth
-    }
-
-    /// Fixed-measure compatibility wrapper. Timeline callers pass `localTick`.
-    func xPosition(in measure: RenderedMeasure, tickIndex: Int) -> CGFloat {
-        let clampedTick = min(max(tickIndex, 0), ticksPerMeasure)
-        return measure.contentStartX + CGFloat(clampedTick) * tickWidth
-    }
-
-    /// Fixed-measure compatibility wrapper for legacy beat fractions.
-    func tickIndex(forBeatWithinMeasure beatWithinMeasure: Double, beatsPerMeasure: Int) -> Int {
-        guard beatWithinMeasure.isFinite, beatsPerMeasure > 0 else { return 0 }
-        let clampedBeat = min(max(beatWithinMeasure, 0), Double(beatsPerMeasure))
-        return Int((clampedBeat / Double(beatsPerMeasure) * Double(ticksPerMeasure)).rounded())
-    }
-}
-
-enum NotationLayoutTimingInput {
-    case timeline(RhythmLayoutSnapshot)
-    case legacy(notes: [Note], controls: [NotationControlEvent], timeSignature: TimeSignature)
-}
-
-struct NotationLayoutInput {
-    let timing: NotationLayoutTimingInput
-    let minimumMeasureCount: Int
-    let style: NotationLayoutStyle
-    /// Per-drum overrides for the staff position used to render note heads, ledger lines, and stems.
-    /// Drums omitted here fall back to `DrumType.notePosition`.
-    let notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
-
-    var notes: [Note] {
-        guard case let .legacy(notes, _, _) = timing else { return [] }
-        return notes
-    }
-
-    var controlEvents: [NotationControlEvent] {
-        guard case let .legacy(_, controls, _) = timing else { return [] }
-        return controls
-    }
-
-    var timeSignature: TimeSignature {
-        switch timing {
-        case let .timeline(snapshot):
-            return snapshot.measures.first?.timeSignature ?? .fourFour
-        case let .legacy(_, _, timeSignature):
-            return timeSignature
-        }
-    }
-
-    init(
-        timing: NotationLayoutTimingInput,
-        minimumMeasureCount: Int = 1,
-        style: NotationLayoutStyle = .gameplayDefault,
-        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
-    ) {
-        self.timing = timing
-        self.minimumMeasureCount = minimumMeasureCount
-        self.style = style
-        self.notePositionOverrides = notePositionOverrides
-    }
-
-    init(
-        notes: [Note],
-        controlEvents: [NotationControlEvent] = [],
-        timeSignature: TimeSignature,
-        minimumMeasureCount: Int = 1,
-        style: NotationLayoutStyle = .gameplayDefault,
-        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
-    ) {
-        self.init(
-            timing: .legacy(notes: notes, controls: controlEvents, timeSignature: timeSignature),
-            minimumMeasureCount: minimumMeasureCount,
-            style: style,
-            notePositionOverrides: notePositionOverrides
-        )
-    }
-}
-
 struct NotationLayoutStyle: Equatable, Sendable {
     let minimumNoteColumnGap: CGFloat
     let minimumQuarterBeatGap: CGFloat
@@ -266,7 +124,6 @@ struct NotationLayoutStyle: Equatable, Sendable {
 }
 
 struct NotationLayout: Sendable {
-    var tabGrid: TabGrid
     var measures: [RenderedMeasure]
     var noteHeadSize: CGSize
     var noteHeads: [RenderedNoteHead]
@@ -316,7 +173,6 @@ struct NotationLayout: Sendable {
     }
 
     static let empty = NotationLayout(
-        tabGrid: .fallback,
         measures: [],
         noteHeadSize: CGSize(
             width: NotationLayoutStyle.gameplayDefault.noteHeadWidth,
@@ -346,8 +202,6 @@ struct RenderedMeasure: Identifiable, Hashable, Sendable {
     let startTick: Int
     let durationTicks: Int
 
-    var contentStartX: CGFloat { xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing }
-
     init(
         id: Int,
         measureIndex: Int,
@@ -371,6 +225,13 @@ struct NotationTimeColumn: Hashable, Sendable {
     let measureIndex: Int
     let tickWithinMeasure: Int
     let absoluteLayoutTick: Int
+}
+
+/// Lookup key pairing a measure with an exact local tick; used to resolve
+/// formatted column X for primitives (HPA-164).
+struct MeasureTickKey: Hashable, Sendable {
+    let measureIndex: Int
+    let tick: Int
 }
 
 struct RenderedRest: Identifiable, Hashable, Sendable {

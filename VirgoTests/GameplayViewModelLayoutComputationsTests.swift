@@ -73,7 +73,7 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(beat.rhythmPosition == expectedTarget.position)
     }
 
-    @Test("metadata-free DTX stays on the fixed legacy gameplay path")
+    @Test("metadata-free DTX keeps the legacy gameplay path with empty notation")
     func metadataFreeDTXUsesFixedLegacyPath() async throws {
         let song = Song(
             title: "Legacy DTX",
@@ -102,20 +102,18 @@ struct GameplayViewModelLayoutComputationsTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
-        let noteHead = try #require(viewModel.cachedNotationLayout.noteHeads.first)
-        let renderedMeasure = try #require(viewModel.cachedNotationMeasuresByIndex[0])
-        let tabGrid = viewModel.cachedNotationLayout.tabGrid
-        let expectedTick = tabGrid.tickIndex(forBeatWithinMeasure: 1, beatsPerMeasure: 4)
-        let expectedX = tabGrid.xPosition(in: renderedMeasure, tickIndex: expectedTick)
-
         #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
         #expect(viewModel.cachedRhythmRuntime.diagnostics.isEmpty)
         #expect(viewModel.cachedRhythmTimeline == nil)
         #expect(viewModel.cachedRhythmNoteTargets.isEmpty)
         #expect(viewModel.cachedDrumBeats.first?.rhythmEventID == nil)
         #expect(viewModel.cachedDrumBeats.first?.rhythmPosition == nil)
-        #expect(noteHead.eventID == nil)
-        #expect(noteHead.position.x == expectedX)
+        // HPA-164 no-snapshot policy: no timeline snapshot means empty
+        // notation (cachedNotes are never formatted) and the legacy
+        // non-notation beat fallback drives playback visuals.
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(!viewModel.cachedNotationHasPlayableContent)
+        #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
         #expect(viewModel.bgmOffsetSeconds == 0.5)
         if case .legacy = try #require(viewModel.inputTimingConfiguration(speed: 1)) {
             // Expected fixed-grid input configuration.
@@ -231,7 +229,9 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(viewModel.cachedRhythmRuntime.diagnostics.allSatisfy { $0.severity == .engravingOnly })
         #expect(viewModel.cachedRhythmTimeline == nil)
         #expect(viewModel.cachedRhythmNoteTargets.isEmpty)
-        #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)
+        // HPA-164 no-snapshot policy: inadmissible manual timing means empty
+        // notation; playback runs on the non-notation beat fallback.
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
         #expect(viewModel.isGameplayPrepared)
         if case .legacy = try #require(viewModel.inputTimingConfiguration(speed: 1)) {
             // Expected all-or-nothing legacy fallback.

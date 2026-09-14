@@ -46,7 +46,22 @@ struct GameplayViewModelDataLoadingTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.cacheNotationLayout()
+        // Seed a renderable layout directly: legacy availability no longer
+        // formats notes (HPA-164 no-snapshot policy), so install one to
+        // prove the fatal reset clears it.
+        var seeded = NotationLayout.empty
+        seeded.rests = [RenderedRest(
+            id: "rest-seed-0-upper-fullMeasure",
+            timeColumn: NotationTimeColumn(measureIndex: 0, tickWithinMeasure: 0, absoluteLayoutTick: 0),
+            measureIndex: 0,
+            row: 0,
+            voice: .upper,
+            durationTicks: 960,
+            duration: .fullMeasure,
+            visibility: .printed,
+            position: .zero
+        )]
+        viewModel.installNotationLayout(seeded)
         #expect(viewModel.cachedNotationLayout.hasRenderableContent)
 
         let initialGeneration = viewModel.notationLayoutGeneration

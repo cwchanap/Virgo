@@ -2,27 +2,26 @@ import Testing
 import CoreGraphics
 @testable import Virgo
 
+/// Adapter/preparer integration for note-position overrides: an override
+/// must reach the staff step (Y placement, ledger lines) through
+/// `VirgoNotationAdapter.resolvedNotation`, not just the rendered head.
 @Suite("Notation Layout Note Position Override Tests")
 struct NotationLayoutNotePositionOverrideTests {
+    private let support = NotationSnapshotTestSupport()
 
     @Test("Override changes the note head Y to match the custom position")
     func overrideChangesNoteHeadY() {
         let snareNote = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
         let baseY = GameplayLayout.StaffLinePosition.line1.absoluteY(for: 0)
 
-        let defaultLayout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [snareNote], timeSignature: .fourFour)
-        )
+        let defaultLayout = support.prepare(notes: [snareNote]).layout
         #expect(defaultLayout.noteHeads.count == 1)
         #expect(defaultLayout.noteHeads[0].position.y == baseY + DrumType.snare.notePosition.yOffset)
 
-        let overriddenLayout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: [snareNote],
-                timeSignature: .fourFour,
-                notePositionOverrides: [.snare: .aboveLine6]
-            )
-        )
+        let overriddenLayout = support.prepare(
+            notes: [snareNote],
+            notePositionOverrides: [.snare: .aboveLine6]
+        ).layout
         #expect(overriddenLayout.noteHeads.count == 1)
         #expect(overriddenLayout.noteHeads[0].position.y == baseY + GameplayLayout.NotePosition.aboveLine6.yOffset)
     }
@@ -32,40 +31,25 @@ struct NotationLayoutNotePositionOverrideTests {
         let snareNote = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
 
         // Default snare sits on line 3 — no ledger lines.
-        let defaultLayout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [snareNote], timeSignature: .fourFour)
-        )
+        let defaultLayout = support.prepare(notes: [snareNote]).layout
         #expect(defaultLayout.ledgerLines.isEmpty)
 
         // Forcing the snare far above the staff must produce ledger lines.
-        let overriddenLayout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: [snareNote],
-                timeSignature: .fourFour,
-                notePositionOverrides: [.snare: .aboveLine9]
-            )
-        )
+        let overriddenLayout = support.prepare(
+            notes: [snareNote],
+            notePositionOverrides: [.snare: .aboveLine9]
+        ).layout
         #expect(!overriddenLayout.ledgerLines.isEmpty)
     }
 
     @Test("Position override preserves canonical upper-voice stem direction")
     func positionOverridePreservesCanonicalStemDirection() throws {
-        let snare = Note(
-            interval: .quarter,
-            noteType: .snare,
-            measureNumber: 1,
-            measureOffset: 0
-        )
-        let defaultLayout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [snare], timeSignature: .fourFour)
-        )
-        let overriddenLayout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: [snare],
-                timeSignature: .fourFour,
-                notePositionOverrides: [.snare: .aboveLine9]
-            )
-        )
+        let snare = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        let defaultLayout = support.prepare(notes: [snare]).layout
+        let overriddenLayout = support.prepare(
+            notes: [snare],
+            notePositionOverrides: [.snare: .aboveLine9]
+        ).layout
         let defaultHead = try #require(defaultLayout.noteHeads.first)
         let head = try #require(overriddenLayout.noteHeads.first)
 
@@ -94,13 +78,10 @@ struct NotationLayoutNotePositionOverrideTests {
         let kickNote = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
         let baseY = GameplayLayout.StaffLinePosition.line1.absoluteY(for: 0)
 
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: [kickNote],
-                timeSignature: .fourFour,
-                notePositionOverrides: [.snare: .aboveLine9] // unrelated drum
-            )
-        )
+        let layout = support.prepare(
+            notes: [kickNote],
+            notePositionOverrides: [.snare: .aboveLine9] // unrelated drum
+        ).layout
 
         #expect(layout.noteHeads.count == 1)
         #expect(layout.noteHeads[0].position.y == baseY + DrumType.kick.notePosition.yOffset)

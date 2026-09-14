@@ -68,25 +68,15 @@ extension GameplayViewModel {
             return
         }
 
-        let notePositionOverrides = notationNotePositionOverrides()
-        let resolvedRowWidth = max(GameplayLayout.maxRowWidth, cachedLayoutRowWidth)
         if let request = makeTimelineNotationPreparationRequest() {
             // HPA-164: the synchronous relayout shares the one preparation
             // route with the detached initial worker — no second layout path.
             installNotationLayout(GameplayNotationPreparer.prepare(request).layout)
         } else {
-            // Legacy-timing fallback (no timeline snapshot): the measured
-            // route requires a snapshot, so this path keeps the engine's
-            // legacy input directly. It constructs no measured style.
-            let input = NotationLayoutInput(
-                notes: cachedNotes,
-                controlEvents: cachedControlEvents,
-                timeSignature: track.timeSignature,
-                minimumMeasureCount: cachedLayoutMeasureCount,
-                style: NotationLayoutStyle.gameplayDefault.with(rowWidth: resolvedRowWidth),
-                notePositionOverrides: notePositionOverrides
-            )
-            installNotationLayout(NotationLayoutEngine().layout(input: input))
+            // No timeline snapshot: the measured route requires one, so the
+            // notation stays empty and playback falls back to the existing
+            // non-notation beat UI. `cachedNotes` is never formatted.
+            installNotationLayout(.empty)
         }
         if cachedNotationHasRenderableContent {
             cachedMeasureRowMap = Dictionary(
@@ -210,14 +200,13 @@ extension GameplayViewModel {
     }
 
     /// Logs a diagnostic when the notation layout engine drops notes (i.e. the
-    /// rendered note-head count is lower than the cached note count). Extracted
-    /// from `cacheNotationLayout()` to keep it under the function-body-length limit.
+    /// rendered note-head count is lower than the timeline's event count).
+    /// With no timeline snapshot the layout is intentionally empty (HPA-164),
+    /// so no drop diagnostics apply. Extracted from `cacheNotationLayout()`
+    /// to keep it under the function-body-length limit.
     private func logDroppedNotesIfAny() {
-        if cachedRhythmRuntime.availability == .valid {
-            logDroppedTimelineNotesIfAny()
-        } else {
-            logDroppedLegacyNotesIfAny()
-        }
+        guard cachedRhythmRuntime.availability == .valid else { return }
+        logDroppedTimelineNotesIfAny()
     }
 
     private func logDroppedTimelineNotesIfAny() {
@@ -237,18 +226,6 @@ extension GameplayViewModel {
             "Layout engine dropped \(droppedEventIDs.count) timeline note(s): "
                 + droppedReasons.joined(separator: "; ")
                 + (droppedEventIDs.count > 5 ? " … and \(droppedEventIDs.count - 5) more" : "")
-        )
-    }
-
-    private func logDroppedLegacyNotesIfAny() {
-        let droppedCount = cachedNotes.count - cachedNotationLayout.noteHeads.count
-        guard droppedCount > 0 else { return }
-        let representativeNotes = cachedNotes.prefix(min(5, droppedCount))
-        let droppedReasons = representativeNotes.map { droppedNoteMetadata($0) }
-        Logger.warning(
-            "Layout engine dropped \(droppedCount) legacy note(s); exact model identity unavailable: "
-                + droppedReasons.joined(separator: "; ")
-                + (droppedCount > 5 ? " … and \(droppedCount - 5) more" : "")
         )
     }
 

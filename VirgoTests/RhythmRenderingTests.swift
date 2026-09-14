@@ -4,6 +4,20 @@ import Testing
 
 @Suite("Rhythm Rendering Tests")
 struct RhythmRenderingTests {
+    /// The one preparation route (HPA-164): every layout in this suite is
+    /// composed from the measured formatter output.
+    private func preparedLayout(
+        _ snapshot: RhythmLayoutSnapshot,
+        minimumMeasureCount: Int = 1
+    ) -> GameplayNotationPreparedState {
+        GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: minimumMeasureCount,
+            style: .gameplayDefault,
+            notePositionOverrides: [:]
+        ))
+    }
+
     @Test("dotted notes and rests retain exact timeline x positions")
     func dottedPrimitivesRetainTimelinePositions() throws {
         let measure = rhythmMeasure()
@@ -22,17 +36,24 @@ struct RhythmRenderingTests {
             tupletID: nil
         )
 
-        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(measures: [measure], notes: [note], rests: [rest]))
-        ))
-        let renderedMeasure = try #require(layout.measures.first)
+        let prepared = preparedLayout(try snapshot(measures: [measure], notes: [note], rests: [rest]))
+        let layout = prepared.layout
         let head = try #require(layout.noteHeads.first)
         let renderedRest = try #require(layout.rests.first)
         let noteDot = try #require(layout.rhythmDots.first { $0.source == .event(note.eventID) })
         let restDot = try #require(layout.rhythmDots.first { $0.source == .rest(renderedRest.id) })
 
-        #expect(head.position.x == layout.tabGrid.xPosition(in: renderedMeasure, localTick: 120))
-        #expect(renderedRest.position.x == layout.tabGrid.xPosition(in: renderedMeasure, localTick: 360))
+        // The live playhead lookup shares the logical column X with the
+        // undisplaced head.
+        let onset = try #require(prepared.formatted.position(measureIndex: 0, localTick: 120))
+        #expect(head.position.x == onset.x)
+        let restColumn = try #require(
+            prepared.formatted.measures
+                .first { $0.index == 0 }?
+                .columns
+                .first { $0.localTick == 360 }
+        )
+        #expect(renderedRest.position.x == restColumn.rest?.visualX)
         #expect(noteDot.position.x > head.paintedBounds(style: .gameplayDefault).maxX)
         #expect(restDot.position.x > renderedRest.paintedBounds(style: .gameplayDefault).maxX)
         #expect(layout.paintedBounds.contains(noteDot.paintedBounds(style: .gameplayDefault)))
@@ -52,9 +73,7 @@ struct RhythmRenderingTests {
                 durationTicks: 80
             )
         }
-        let beamed = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(measures: [rhythmMeasure()], notes: beamedNotes))
-        ))
+        let beamed = preparedLayout(try snapshot(measures: [rhythmMeasure()], notes: beamedNotes)).layout
         let beamedTuplet = try #require(beamed.tuplets.first)
 
         #expect(beamedTuplet.id == beamedID)
@@ -75,12 +94,10 @@ struct RhythmRenderingTests {
                 durationTicks: 160
             )
         }
-        let bracketed = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let bracketed = preparedLayout(try snapshot(
                 measures: [rhythmMeasure(groupDurationTicks: 480)],
                 notes: bracketedNotes
-            ))
-        ))
+            )).layout
         let bracketedTuplet = try #require(bracketed.tuplets.first)
 
         #expect(bracketedTuplet.voice == .lower)
@@ -111,13 +128,11 @@ struct RhythmRenderingTests {
             visibility: .printed,
             tupletID: upperID
         )
-        let upper = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let upper = preparedLayout(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: upperNotes,
                 rests: [upperRest]
-            ))
-        ))
+            )).layout
         let upperTuplet = try #require(upper.tuplets.first)
 
         #expect(!upper.beams.isEmpty)
@@ -143,13 +158,11 @@ struct RhythmRenderingTests {
                 durationTicks: 80
             )
         }
-        let lower = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let lower = preparedLayout(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: lowerNotes,
                 rests: [lowerRest]
-            ))
-        ))
+            )).layout
         let lowerTuplet = try #require(lower.tuplets.first)
 
         #expect(!lower.beams.isEmpty)
@@ -160,9 +173,7 @@ struct RhythmRenderingTests {
     @Test("swing and shuffle emit one accessible first-staff feel mark")
     func feelMarksAreChartScoped() throws {
         for feel in [RhythmicFeel.swing, .shuffle] {
-            let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-                timing: .timeline(try snapshot(measures: [rhythmMeasure()], feel: feel))
-            ))
+            let layout = preparedLayout(try snapshot(measures: [rhythmMeasure()], feel: feel)).layout
             let mark = try #require(layout.feelMarks.first)
 
             #expect(layout.feelMarks.count == 1)
@@ -194,24 +205,20 @@ struct RhythmRenderingTests {
                 durationTicks: 80
             )
         ]
-        let swungPair = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let swungPair = preparedLayout(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: feelPair,
                 feel: .swing
-            ))
-        ))
+            )).layout
 
         #expect(swungPair.tuplets.isEmpty)
         #expect(swungPair.feelMarks.count == 1)
 
-        let straightPair = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let straightPair = preparedLayout(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: feelPair,
                 feel: .straight
-            ))
-        ))
+            )).layout
         #expect(straightPair.tuplets.count == 1)
 
         let literalID = tupletID(voice: .upper, durationTicks: 240, stableID: 37)
@@ -225,13 +232,11 @@ struct RhythmRenderingTests {
                 durationTicks: 80
             )
         }
-        let swungLiteral = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let swungLiteral = preparedLayout(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: literal,
                 feel: .swing
-            ))
-        ))
+            )).layout
 
         #expect(swungLiteral.tuplets.count == 1)
 
@@ -262,14 +267,12 @@ struct RhythmRenderingTests {
             visibility: .printed,
             tupletID: restID
         )
-        let shuffledRestTuplet = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let shuffledRestTuplet = preparedLayout(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: noteRestNote,
                 rests: [middleRest],
                 feel: .shuffle
-            ))
-        ))
+            )).layout
         #expect(shuffledRestTuplet.tuplets.count == 1)
     }
 
@@ -312,13 +315,11 @@ struct RhythmRenderingTests {
         ]
 
         for feel in [RhythmicFeel.swing, .shuffle] {
-            let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-                timing: .timeline(try snapshot(
-                    measures: [rhythmMeasure()],
-                    notes: chordalPair,
-                    feel: feel
-                ))
-            ))
+            let layout = preparedLayout(try snapshot(
+                measures: [rhythmMeasure()],
+                notes: chordalPair,
+                feel: feel
+            )).layout
 
             #expect(layout.tuplets.isEmpty)
             #expect(layout.feelMarks.count == 1)
@@ -350,20 +351,16 @@ struct RhythmRenderingTests {
             visibility: .printed,
             tupletID: nil
         )
-        let supported = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let supported = preparedLayout(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: notes,
                 rests: [generatedRest]
-            ))
-        ))
-        let unsupported = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+            )).layout
+        let unsupported = preparedLayout(try snapshot(
                 measures: [rhythmMeasure(support: .unsupported([.ambiguousBeatGrouping]))],
                 notes: notes,
                 rests: [generatedRest]
-            ))
-        ))
+            )).layout
         let warning = try #require(unsupported.rhythmWarnings.first)
 
         #expect(unsupported.noteHeads.map(\.position.x) == supported.noteHeads.map(\.position.x))
@@ -403,13 +400,11 @@ struct RhythmRenderingTests {
             visibility: .printed,
             tupletID: nil
         )
-        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try snapshot(
+        let layout = preparedLayout(try snapshot(
                 measures: [rhythmMeasure(support: .warning([.indeterminateTerminalDuration]))],
                 notes: notes,
                 rests: [lowerRest]
-            ))
-        ))
+            )).layout
         let warning = try #require(layout.rhythmWarnings.first)
 
         #expect(!layout.beams.isEmpty)
@@ -479,9 +474,8 @@ struct RhythmRenderingTests {
             "rhythmDiagnostic code=ambiguousBeatGrouping measureIndex=0 lineNumber=12"
         ])
 
-        let engine = NotationLayoutEngine()
-        _ = engine.layout(input: NotationLayoutInput(timing: .timeline(resolvedSnapshot)))
-        _ = engine.layout(input: NotationLayoutInput(timing: .timeline(resolvedSnapshot)))
+        _ = preparedLayout(resolvedSnapshot)
+        _ = preparedLayout(resolvedSnapshot)
 
         #expect(messages.count == 1)
     }

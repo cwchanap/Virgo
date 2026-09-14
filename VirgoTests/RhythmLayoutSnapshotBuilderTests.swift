@@ -34,9 +34,7 @@ struct RhythmLayoutSnapshotBuilderTests {
             tupletID: nil
         )
         let renderedHead = try #require(
-            NotationLayoutEngine().layout(
-                input: NotationLayoutInput(notes: [source], timeSignature: .fourFour)
-            ).noteHeads.first
+            NotationSnapshotTestSupport().prepare(notes: [source]).layout.noteHeads.first
         )
 
         let layoutLabels = Set(Mirror(reflecting: layoutNote).children.compactMap(\.label))

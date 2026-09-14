@@ -3,6 +3,21 @@ import Testing
 
 @Suite("Notation Layout Rhythm Tests")
 struct NotationLayoutRhythmTests {
+    /// The one preparation route (HPA-164): layouts compose from the
+    /// measured formatter output.
+    private func preparedLayout(
+        _ snapshot: RhythmLayoutSnapshot,
+        minimumMeasureCount: Int = 1,
+        style: NotationLayoutStyle = .gameplayDefault
+    ) -> GameplayNotationPreparedState {
+        GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: minimumMeasureCount,
+            style: style,
+            notePositionOverrides: [:]
+        ))
+    }
+
     @Test("timeline snapshot requires an explicit positive whole-note quantum")
     func snapshotRequiresPositiveWholeNoteQuantum() throws {
         let measure = rhythmMeasure(
@@ -31,18 +46,11 @@ struct NotationLayoutRhythmTests {
             rests: [],
             feel: .straight
         )
-        let input = NotationLayoutInput(timing: .timeline(snapshot))
 
         #expect(snapshot.ticksPerWholeNote == 960)
-        #expect(input.minimumMeasureCount == 1)
-        guard case let .timeline(captured) = input.timing else {
-            Issue.record("Expected timeline input")
-            return
-        }
-        #expect(captured == snapshot)
     }
 
-    @Test("timeline positions notes controls and rests without consulting legacy fractions")
+    @Test("timeline positions notes controls and rests on formatted columns")
     func timelineUsesExactSnapshotPositions() throws {
         let control = NotationControlEvent(ChartControlEvent(
             kind: .stop,
@@ -88,17 +96,24 @@ struct NotationLayoutRhythmTests {
             feel: .straight
         )
 
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(timing: .timeline(snapshot))
-        )
-        let measure = try #require(layout.measures.first)
+        let prepared = preparedLayout(snapshot)
+        let layout = prepared.layout
         let head = try #require(layout.noteHeads.first)
         let stop = try #require(layout.stopNotes.first)
         let rest = try #require(layout.rests.first { $0.voice == .upper && $0.isPrinted })
+        let noteColumn = try #require(
+            prepared.formatted.measures
+                .first { $0.index == 0 }?
+                .columns
+                .first { $0.localTick == 120 }
+        )
+        let restColumn = try #require(
+            prepared.formatted.measures
+                .first { $0.index == 0 }?
+                .columns
+                .first { $0.localTick == 240 }
+        )
 
-        #expect(layout.tabGrid.ticksPerWholeNote == 960)
-        #expect(measure.startTick == 0)
-        #expect(measure.durationTicks == 720)
         #expect(head.eventID == RhythmEventID(rawValue: 41))
         #expect(head.rhythmPosition == notePosition)
         #expect(head.rhythm == noteRhythm)
@@ -107,79 +122,14 @@ struct NotationLayoutRhythmTests {
         #expect(stop.rhythmPosition == notePosition)
         #expect(rest.rhythmPosition == restPosition)
         #expect(rest.rhythm == restRhythm)
-        #expect(head.position.x == layout.tabGrid.xPosition(in: measure, localTick: 120))
+        // The undisplaced head, the control, and the playhead lookup share
+        // the logical column X; the printed rest takes the package visual X.
+        #expect(head.position.x == noteColumn.logicalColumnX)
         #expect(stop.position.x == head.position.x)
-        #expect(rest.position.x == layout.tabGrid.xPosition(in: measure, localTick: 240))
-    }
-
-    @Test("timeline grid clamps local queries at each measure boundary")
-    func timelineGridClampsPerMeasure() throws {
-        let snapshot = try RhythmLayoutSnapshot(
-            ticksPerWholeNote: 960,
-            measures: [rhythmMeasure(
-                index: 0,
-                startTick: 0,
-                durationTicks: 720,
-                groupDurationTicks: 240
-            )],
-            notes: [],
-            controls: [],
-            rests: [],
-            feel: .straight
+        #expect(
+            prepared.formatted.position(measureIndex: 0, localTick: 120)?.x == noteColumn.logicalColumnX
         )
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(timing: .timeline(snapshot))
-        )
-        let measure = try #require(layout.measures.first)
-        let startX = measure.contentStartX
-        let endX = startX + CGFloat(measure.durationTicks) * layout.tabGrid.tickWidth
-
-        #expect(layout.tabGrid.xPosition(in: measure, localTick: -1) == startX)
-        #expect(layout.tabGrid.xPosition(in: measure, localTick: measure.durationTicks) == endX)
-        #expect(layout.tabGrid.xPosition(in: measure, localTick: measure.durationTicks + 1) == endX)
-        #expect(measure.width == layout.tabGrid.leftPadding + CGFloat(720) * layout.tabGrid.tickWidth)
-    }
-
-    @Test("variable measure spans scale proportionally and pack by pixel claim")
-    func variableMeasureWidthsAndRowPacking() throws {
-        let variableMeasures = [
-            rhythmMeasure(index: 0, startTick: 0, durationTicks: 720, groupDurationTicks: 240),
-            rhythmMeasure(index: 1, startTick: 720, durationTicks: 960, groupDurationTicks: 240),
-            rhythmMeasure(index: 2, startTick: 1_680, durationTicks: 1_440, groupDurationTicks: 240)
-        ]
-        let equalMeasures = [
-            rhythmMeasure(index: 0, startTick: 0, durationTicks: 960, groupDurationTicks: 240),
-            rhythmMeasure(index: 1, startTick: 960, durationTicks: 960, groupDurationTicks: 240),
-            rhythmMeasure(index: 2, startTick: 1_920, durationTicks: 960, groupDurationTicks: 240)
-        ]
-        let style = NotationLayoutStyle.gameplayDefault.with(rowWidth: 600)
-        let variable = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try emptySnapshot(measures: variableMeasures)),
-            style: style
-        ))
-        let equal = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try emptySnapshot(measures: equalMeasures)),
-            style: style
-        ))
-        let short = variable.measures[0].width - variable.tabGrid.leftPadding
-        let normal = variable.measures[1].width - variable.tabGrid.leftPadding
-        let extended = variable.measures[2].width - variable.tabGrid.leftPadding
-
-        #expect(abs(short / normal - 0.75) < 0.000_001)
-        #expect(abs(extended / normal - 1.5) < 0.000_001)
-        #expect(Set(equal.measures.map(\.width)).count == 1)
-        #expect(variable.measures.map(\.row) == [0, 0, 1])
-        #expect(equal.measures.map(\.row) == [0, 0, 0])
-
-        for measure in variable.measures {
-            let endBar = try #require(
-                variable.measureBars.first { $0.id == "bar_\(measure.measureIndex)_end" }
-            )
-            #expect(endBar.x == variable.tabGrid.xPosition(
-                in: measure,
-                localTick: measure.durationTicks
-            ))
-        }
+        #expect(rest.position.x == restColumn.rest?.visualX)
     }
 
     @Test("timeline minimum count extends from resolved cumulative measures")
@@ -190,10 +140,10 @@ struct NotationLayoutRhythmTests {
             durationTicks: 720,
             groupDurationTicks: 240
         )
-        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try emptySnapshot(measures: [pickup])),
+        let layout = preparedLayout(
+            try emptySnapshot(measures: [pickup]),
             minimumMeasureCount: 3
-        ))
+        ).layout
 
         #expect(layout.measures.map(\.measureIndex) == [0, 1, 2])
         #expect(layout.measures.map(\.startTick) == [0, 720, 1_680])
@@ -212,9 +162,7 @@ struct NotationLayoutRhythmTests {
             layoutNote(id: 1, tick: 1, interval: .sixtyfourth, durationTicks: 15),
             layoutNote(id: 2, tick: 2, interval: .sixtyfourth, durationTicks: 15)
         ]
-        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try emptySnapshot(measures: [measure], notes: notes))
-        ))
+        let layout = preparedLayout(try emptySnapshot(measures: [measure], notes: notes)).layout
         let positions = layout.noteHeads.map(\.position.x).sorted()
 
         #expect(positions.count == 2)
@@ -233,57 +181,22 @@ struct NotationLayoutRhythmTests {
             layoutNote(id: 1, tick: 0, interval: .eighth, durationTicks: 120),
             layoutNote(id: 2, tick: 120, interval: .eighth, durationTicks: 120)
         ]
-        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try emptySnapshot(measures: [measure], notes: notes))
-        ))
-        let renderedMeasure = try #require(layout.measures.first)
+        let prepared = preparedLayout(try emptySnapshot(measures: [measure], notes: notes))
+        let layout = prepared.layout
         let heads = layout.noteHeads.sorted { $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick }
         let first = try #require(heads.first)
         let last = try #require(heads.last)
         let beam = try #require(layout.beams.first { $0.kind == .full })
-        let playheadInputX = layout.tabGrid.xPosition(
-            in: renderedMeasure,
-            localTick: last.timeColumn.tickWithinMeasure
-        )
         let engine = NotationLayoutEngine()
 
-        #expect(first.position.x == layout.tabGrid.xPosition(in: renderedMeasure, localTick: 0))
-        #expect(last.position.x == playheadInputX)
+        // The playhead's event-tick lookup and the undisplaced heads agree
+        // on X; the beam endpoints anchor on those same head stem axes.
+        let firstOnset = try #require(prepared.formatted.position(measureIndex: 0, localTick: 0))
+        let lastOnset = try #require(prepared.formatted.position(measureIndex: 0, localTick: 120))
+        #expect(first.position.x == firstOnset.x)
+        #expect(last.position.x == lastOnset.x)
         #expect(beam.start.x == engine.stemAnchor(for: first, style: .gameplayDefault).x)
         #expect(beam.end.x == engine.stemAnchor(for: last, style: .gameplayDefault).x)
-    }
-
-    @Test("semantic rests do not change the note-column scale")
-    func restsDoNotInflateTimelineTickWidth() throws {
-        let measure = rhythmMeasure(
-            index: 0,
-            startTick: 0,
-            durationTicks: 960,
-            groupDurationTicks: 240
-        )
-        let notes = [
-            layoutNote(id: 1, tick: 0, interval: .quarter, durationTicks: 240),
-            layoutNote(id: 2, tick: 240, interval: .quarter, durationTicks: 240)
-        ]
-        let baseline = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try emptySnapshot(measures: [measure], notes: notes))
-        ))
-        let withDenseRest = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            timing: .timeline(try emptySnapshot(
-                measures: [measure],
-                notes: notes,
-                rests: [RhythmLayoutRest(
-                    position: RhythmEventPosition(measureIndex: 0, localTick: 1, absoluteTick: 1),
-                    durationTicks: 1,
-                    voice: .lower,
-                    rhythm: NotationRhythm(baseInterval: .sixtyfourth),
-                    visibility: .hiddenSpacing,
-                    tupletID: nil
-                )]
-            ))
-        ))
-
-        #expect(withDenseRest.tabGrid.tickWidth == baseline.tabGrid.tickWidth)
     }
 
     private func rhythmMeasure(

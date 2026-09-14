@@ -295,18 +295,22 @@ struct VirgoNotationAdapterProjectionTests {
             }
         )
 
-        // Post-format: the same pipeline the engine paints from.
-        let engine = NotationLayoutEngine()
-        let layoutInput = NotationLayoutInput(
-            timing: .timeline(snapshot),
+        // Post-format: the same pipeline the engine paints from — the one
+        // measured preparation route (HPA-164).
+        let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
             minimumMeasureCount: 1,
             style: style,
             notePositionOverrides: [:]
+        ))
+        let layout = prepared.layout
+        let beamBuild = NotationLayoutEngine().buildBeams(
+            noteHeads: layout.noteHeads,
+            measures: expandedMeasures,
+            style: style
         )
-        let layout = engine.layout(input: layoutInput)
-        let beamBuild = engine.buildBeams(noteHeads: layout.noteHeads, measures: expandedMeasures, style: style)
-        let stems = engine.buildStems(noteHeads: layout.noteHeads, beams: beamBuild.beams, style: style)
-        let flags = engine.buildFlags(
+        let stems = NotationLayoutEngine().buildStems(noteHeads: layout.noteHeads, beams: beamBuild.beams, style: style)
+        let flags = NotationLayoutEngine().buildFlags(
             noteHeads: layout.noteHeads,
             beamBuild: beamBuild,
             stems: stems,

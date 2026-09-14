@@ -1,7 +1,6 @@
 import CoreGraphics
 
 struct NotationLayoutFinalizationInput: Sendable {
-    let tabGrid: TabGrid
     let measures: [RenderedMeasure]
     let noteHeads: [RenderedNoteHead]
     let rests: [RenderedRest]
@@ -32,7 +31,6 @@ extension NotationLayoutEngine {
             GameplayLayout.MeasurePosition(row: $0.row, xOffset: $0.xOffset, measureIndex: $0.measureIndex)
         })
         var layout = NotationLayout(
-            tabGrid: input.tabGrid,
             measures: input.measures,
             noteHeadSize: input.style.noteHeadSize,
             noteHeads: input.noteHeads,
@@ -174,7 +172,7 @@ extension NotationLayoutEngine {
         return [RenderedFeelMark(
             feel: feel,
             position: CGPoint(
-                x: first.contentStartX + style.feelMarkSize.width / 2,
+                x: Self.leadingInsetX(in: first) + style.feelMarkSize.width / 2,
                 y: staffTop - style.feelMarkVerticalOffset
             ),
             rowIndex: first.row,
@@ -211,13 +209,21 @@ extension NotationLayoutEngine {
                 kind: kind,
                 codes: codes,
                 position: CGPoint(
-                    x: rendered.contentStartX + min(rendered.width, style.warningSize.width) / 2,
+                    x: Self.leadingInsetX(in: rendered)
+                        + min(rendered.width, style.warningSize.width) / 2,
                     y: staffTop - style.warningVerticalOffset
                 ),
                 rowIndex: rendered.row,
                 style: style
             )
         }
+    }
+
+    /// Leading measure inset (bar line + uniform spacing) — the anchor for
+    /// the app-owned marks placed just inside a measure's left edge. Matches
+    /// the formatter's `leadingMeasureInset`.
+    private static func leadingInsetX(in measure: RenderedMeasure) -> CGFloat {
+        measure.xOffset + GameplayLayout.barLineWidth + GameplayLayout.uniformSpacing
     }
 }
 

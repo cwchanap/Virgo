@@ -31,6 +31,9 @@ public struct ResolvedNote: Hashable, Sendable {
     public let id: Int
     public let position: NotationTickPosition
     public let stemDirection: NotationStemDirection
+    /// Pitch-ascending staff step (each unit is one staff half-position;
+    /// higher values sit higher on the staff). Callers whose steps are
+    /// Y-down negate at this seam.
     public let staffStep: Int
     public let noteheadStyle: PercussionNoteheadStyle
     public let duration: NotationDuration

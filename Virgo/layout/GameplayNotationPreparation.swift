@@ -71,25 +71,10 @@ struct GameplayNotationPreparer {
     }
 }
 
-// MARK: - Package geometry composition (HPA-164 Task 5)
-
-/// Repositioned primitives plus the base composition they derive from.
-private struct ComposedPrimitives {
-    let base: NotationLayout
-    let measures: [RenderedMeasure]
-    let noteHeads: [RenderedNoteHead]
-    let rests: [RenderedRest]
-    let stopNotes: [RenderedStopNote]
-}
-
-private struct MeasureTickKey: Hashable {
-    let measureIndex: Int
-    let tick: Int
-}
+// MARK: - Package geometry composition (HPA-164 Tasks 5–6)
 
 /// App-only marks and derived artifacts rebuilt from positioned primitives
-/// (Task 5 Step 4: they consume the composed geometry but never alter
-/// package spacing).
+/// (they consume the composed geometry but never alter package spacing).
 private struct RebuiltArtifacts {
     let derived: NotationLayoutEngine.BuiltDerivedArtifacts
     let articulations: [RenderedArticulation]
@@ -99,14 +84,13 @@ private struct RebuiltArtifacts {
     let rhythmWarnings: [RenderedRhythmWarning]
 }
 
-/// Task 5 composition (closes Ruling P1): copies package geometry from the
-/// measured `FormattedNotation` straight onto Virgo's rendered primitives.
-/// Measure rows/bounds, head centers, rest and control X and measure bars
-/// come from the package; Y stays Virgo (row + staff position). Stems, beams,
-/// flags and every X-dependent mark are rebuilt from the repositioned heads,
-/// so the shared stem axis remains on the undisplaced stem-side
-/// representative — the package's pinned VexFlow displacement never moves
-/// that head. No `contentStartX`, `tickWidth` or `leftMargin` post-transform.
+/// Composes Virgo's rendered layout directly from the measured
+/// `FormattedNotation`: measure rows/bounds and every primitive X come from
+/// the package, while Y stays Virgo (row + staff position). Stems, beams,
+/// flags and every X-dependent mark are rebuilt from the positioned heads, so
+/// the shared stem axis remains on the undisplaced stem-side representative —
+/// the package's pinned VexFlow displacement never moves that head. No
+/// post-format X transform and no grid geometry.
 private extension GameplayNotationPreparer {
     static func composeVirgoLayout(
         snapshot: RhythmLayoutSnapshot,
@@ -114,194 +98,58 @@ private extension GameplayNotationPreparer {
         expandedMeasures: [RhythmMeasure],
         request: GameplayNotationPreparationRequest
     ) -> NotationLayout {
-        // Base pass: Virgo Y, staff positions and the app-only semantics
-        // (voice grouping, rests, controls, tuplets, warnings) with the
-        // legacy grid X that the repositioning below replaces.
-        let input = NotationLayoutInput(
-            timing: .timeline(snapshot),
-            minimumMeasureCount: request.minimumMeasureCount,
+        let measures = composedMeasures(
+            expandedMeasures: expandedMeasures,
+            formatted: formatted
+        )
+        let columnXByKey = columnLookup(formatted: formatted) { $0.logicalColumnX }
+        let headCenterXByID = headCenterLookup(formatted: formatted)
+        let visualXByKey = restVisualLookup(formatted: formatted)
+        let unsupportedMeasureIndexes = Set(expandedMeasures.compactMap { measure -> Int? in
+            measure.engravingSupport.permitsEngraving ? nil : measure.measureIndex
+        })
+        let engine = NotationLayoutEngine()
+        let noteHeads = engine.buildNoteHeads(
+            notes: snapshot.notes,
+            measures: measures,
+            headCenterXByID: headCenterXByID,
+            columnXByKey: columnXByKey,
             style: request.style,
             notePositionOverrides: request.notePositionOverrides
         )
-        let base = NotationLayoutEngine().layout(input: input)
-        let primitives = ComposedPrimitives(
-            base: base,
-            measures: composedMeasures(from: base.measures, formatted: formatted),
-            noteHeads: composedNoteHeads(from: base.noteHeads, formatted: formatted),
-            rests: composedRests(from: base.rests, formatted: formatted),
-            stopNotes: composedStopNotes(from: base.stopNotes, formatted: formatted)
+        let rests = engine.buildRests(
+            rests: snapshot.rests.filter {
+                // Unsupported measures suppress duration-bearing engraving;
+                // their rests are dropped and the measure's warning is
+                // carried by `buildRhythmWarnings`.
+                !unsupportedMeasureIndexes.contains($0.position.measureIndex)
+            },
+            measures: measures,
+            visualXByKey: visualXByKey,
+            columnXByKey: columnXByKey,
+            style: request.style
         )
-        return finalizedComposition(
-            snapshot: snapshot,
-            request: request,
-            expandedMeasures: expandedMeasures,
-            primitives: primitives,
-            formatted: formatted
+        let stopNotes = engine.buildStopNotes(
+            controls: snapshot.controls,
+            measures: measures,
+            columnXByKey: columnXByKey,
+            style: request.style,
+            notePositionOverrides: request.notePositionOverrides
         )
-    }
-
-    /// Measures copy the package's row packing and sheet-local bounds
-    /// verbatim; timeline start/duration ticks stay with the rhythm measures.
-    static func composedMeasures(
-        from base: [RenderedMeasure],
-        formatted: FormattedNotation
-    ) -> [RenderedMeasure] {
-        let byIndex = Dictionary(uniqueKeysWithValues: formatted.measures.map { ($0.index, $0) })
-        return base.map { measure in
-            guard let packageMeasure = byIndex[measure.measureIndex] else { return measure }
-            return RenderedMeasure(
-                id: measure.id,
-                measureIndex: measure.measureIndex,
-                row: packageMeasure.rowIndex,
-                xOffset: packageMeasure.xOffset,
-                width: packageMeasure.width,
-                startTick: measure.startTick,
-                durationTicks: measure.durationTicks
-            )
-        }
-    }
-
-    /// Heads copy their package `headCenterX` (a displaced staff second rides
-    /// on the head itself) while Y stays Virgo. Head IDs are the package note
-    /// IDs, so the mapping is direct.
-    static func composedNoteHeads(
-        from base: [RenderedNoteHead],
-        formatted: FormattedNotation
-    ) -> [RenderedNoteHead] {
-        var centerXByID: [UInt64: CGFloat] = [:]
-        for measure in formatted.measures {
-            for column in measure.columns {
-                for head in column.noteHeads {
-                    centerXByID[UInt64(head.noteID)] = head.headCenterX
-                }
-            }
-        }
-        return base.map { head in
-            guard let centerX = centerXByID[head.id] else { return head }
-            return RenderedNoteHead(
-                id: head.id,
-                sourceLaneID: head.sourceLaneID,
-                sourceChipID: head.sourceChipID,
-                noteType: head.noteType,
-                drumType: head.drumType,
-                variant: head.variant,
-                voice: head.voice,
-                stemDirection: head.stemDirection,
-                timeColumn: head.timeColumn,
-                timePosition: head.timePosition,
-                row: head.row,
-                position: CGPoint(x: centerX, y: head.position.y),
-                staffStep: head.staffStep,
-                interval: head.interval,
-                catalogOrder: head.catalogOrder,
-                eventID: head.eventID,
-                rhythmPosition: head.rhythmPosition,
-                rhythmDurationTicks: head.rhythmDurationTicks,
-                rhythm: head.rhythm,
-                tupletID: head.tupletID
-            )
-        }
-    }
-
-    /// Rests take the package visual X: the column's `logicalColumnX`, or the
-    /// centered full-measure rest position the formatter finalized.
-    static func composedRests(
-        from base: [RenderedRest],
-        formatted: FormattedNotation
-    ) -> [RenderedRest] {
-        var visualXByKey: [MeasureTickKey: CGFloat] = [:]
-        for measure in formatted.measures {
-            for column in measure.columns {
-                if let rest = column.rest {
-                    visualXByKey[MeasureTickKey(
-                        measureIndex: measure.index,
-                        tick: column.localTick
-                    )] = rest.visualX
-                }
-            }
-        }
-        return base.map { rest in
-            guard let x = visualXByKey[MeasureTickKey(
-                measureIndex: rest.measureIndex,
-                tick: rest.timeColumn.tickWithinMeasure
-            )] else { return rest }
-            return RenderedRest(
-                id: rest.id,
-                timeColumn: rest.timeColumn,
-                measureIndex: rest.measureIndex,
-                row: rest.row,
-                voice: rest.voice,
-                durationTicks: rest.durationTicks,
-                duration: rest.duration,
-                visibility: rest.visibility,
-                position: CGPoint(x: x, y: rest.position.y),
-                rhythmPosition: rest.rhythmPosition,
-                rhythm: rest.rhythm,
-                tupletID: rest.tupletID
-            )
-        }
-    }
-
-    /// Controls anchor at the logical column X of their tick (the package
-    /// gives every control tick an exact column; controls carry zero ink).
-    static func composedStopNotes(
-        from base: [RenderedStopNote],
-        formatted: FormattedNotation
-    ) -> [RenderedStopNote] {
-        var columnXByKey: [MeasureTickKey: CGFloat] = [:]
-        for measure in formatted.measures {
-            for column in measure.columns {
-                columnXByKey[MeasureTickKey(
-                    measureIndex: measure.index,
-                    tick: column.localTick
-                )] = column.logicalColumnX
-            }
-        }
-        return base.map { stop in
-            guard let x = columnXByKey[MeasureTickKey(
-                measureIndex: stop.timeColumn.measureIndex,
-                tick: stop.timeColumn.tickWithinMeasure
-            )] else { return stop }
-            return RenderedStopNote(
-                id: stop.id,
-                kind: stop.kind,
-                sourceLaneID: stop.sourceLaneID,
-                sourceNoteID: stop.sourceNoteID,
-                targetLaneID: stop.targetLaneID,
-                targetDisplayName: stop.targetDisplayName,
-                timeColumn: stop.timeColumn,
-                row: stop.row,
-                position: CGPoint(x: x, y: stop.position.y),
-                eventID: stop.eventID,
-                rhythmPosition: stop.rhythmPosition
-            )
-        }
-    }
-
-    /// Rebuilds every X-dependent artifact from the repositioned primitives
-    /// and finalizes. Beam topology stays X-independent (it builds from the
-    /// same rhythm measures); stems pick the stem-side representative by Y,
-    /// which the package never displaces.
-    static func finalizedComposition(
-        snapshot: RhythmLayoutSnapshot,
-        request: GameplayNotationPreparationRequest,
-        expandedMeasures: [RhythmMeasure],
-        primitives: ComposedPrimitives,
-        formatted: FormattedNotation
-    ) -> NotationLayout {
-        let engine = NotationLayoutEngine()
         let rebuilt = rebuiltArtifacts(
             snapshot: snapshot,
             request: request,
-            primitives: primitives,
-            expandedMeasures: expandedMeasures
+            expandedMeasures: expandedMeasures,
+            measures: measures,
+            noteHeads: noteHeads,
+            rests: rests,
+            unsupportedMeasureIndexes: unsupportedMeasureIndexes
         )
         var layout = engine.finalizedLayout(NotationLayoutFinalizationInput(
-            tabGrid: primitives.base.tabGrid,
-            measures: primitives.measures,
-            noteHeads: primitives.noteHeads,
-            rests: primitives.rests,
-            stopNotes: primitives.stopNotes,
+            measures: measures,
+            noteHeads: noteHeads,
+            rests: rests,
+            stopNotes: stopNotes,
             articulations: rebuilt.articulations,
             derived: rebuilt.derived,
             rhythmDots: rebuilt.rhythmDots,
@@ -316,27 +164,110 @@ private extension GameplayNotationPreparer {
         return layout
     }
 
+    /// Measures pair the timeline's tick semantics with the package's
+    /// row packing and sheet-local bounds verbatim.
+    static func composedMeasures(
+        expandedMeasures: [RhythmMeasure],
+        formatted: FormattedNotation
+    ) -> [RenderedMeasure] {
+        let byIndex = Dictionary(uniqueKeysWithValues: formatted.measures.map { ($0.index, $0) })
+        return expandedMeasures.compactMap { rhythmMeasure in
+            guard let packageMeasure = byIndex[rhythmMeasure.measureIndex] else {
+                // The formatter emits one formatted measure per input
+                // measure; a gap means the input projection drifted.
+                assertionFailure("Formatter omitted measure \(rhythmMeasure.measureIndex)")
+                return nil
+            }
+            return RenderedMeasure(
+                id: rhythmMeasure.measureIndex,
+                measureIndex: rhythmMeasure.measureIndex,
+                row: packageMeasure.rowIndex,
+                xOffset: packageMeasure.xOffset,
+                width: packageMeasure.width,
+                startTick: rhythmMeasure.startTick,
+                durationTicks: rhythmMeasure.durationTicks
+            )
+        }
+    }
+
+    /// Logical onset X for every formatted column (the timing anchor notes,
+    /// rests and controls share).
+    private static func columnLookup(
+        formatted: FormattedNotation,
+        x: (FormattedColumn) -> CGFloat
+    ) -> [MeasureTickKey: CGFloat] {
+        var lookup: [MeasureTickKey: CGFloat] = [:]
+        for measure in formatted.measures {
+            for column in measure.columns {
+                lookup[MeasureTickKey(
+                    measureIndex: measure.index,
+                    tick: column.localTick
+                )] = x(column)
+            }
+        }
+        return lookup
+    }
+
+    /// Package head-center X per note ID (a displaced staff second rides on
+    /// the head itself).
+    private static func headCenterLookup(
+        formatted: FormattedNotation
+    ) -> [UInt64: CGFloat] {
+        var lookup: [UInt64: CGFloat] = [:]
+        for measure in formatted.measures {
+            for column in measure.columns {
+                for head in column.noteHeads {
+                    lookup[UInt64(head.noteID)] = head.headCenterX
+                }
+            }
+        }
+        return lookup
+    }
+
+    /// Package visual X for printed rests (only rest-bearing columns map).
+    private static func restVisualLookup(
+        formatted: FormattedNotation
+    ) -> [MeasureTickKey: CGFloat] {
+        var lookup: [MeasureTickKey: CGFloat] = [:]
+        for measure in formatted.measures {
+            for column in measure.columns {
+                guard let rest = column.rest else { continue }
+                lookup[MeasureTickKey(
+                    measureIndex: measure.index,
+                    tick: column.localTick
+                )] = rest.visualX
+            }
+        }
+        return lookup
+    }
+
     /// Rebuilds beams/stems/flags/ledger/bars plus the app-only marks from
-    /// the repositioned primitives (Task 5 Step 4: the marks consume the
-    /// composed geometry but never alter package spacing).
+    /// the positioned primitives (the marks consume the composed geometry
+    /// but never alter package spacing).
     static func rebuiltArtifacts(
         snapshot: RhythmLayoutSnapshot,
         request: GameplayNotationPreparationRequest,
-        primitives: ComposedPrimitives,
-        expandedMeasures: [RhythmMeasure]
+        expandedMeasures: [RhythmMeasure],
+        measures: [RenderedMeasure],
+        noteHeads: [RenderedNoteHead],
+        rests: [RenderedRest],
+        unsupportedMeasureIndexes: Set<Int>
     ) -> RebuiltArtifacts {
         let engine = NotationLayoutEngine()
         let style = request.style
-        let heads = primitives.noteHeads
-        let unsupportedMeasureIndexes = Set(expandedMeasures.compactMap { measure -> Int? in
-            measure.engravingSupport.permitsEngraving ? nil : measure.measureIndex
-        })
-        let derived = rebuiltDerivedArtifacts(
-            heads: heads,
-            measures: primitives.measures,
-            expandedMeasures: expandedMeasures,
-            style: style,
-            unsupportedMeasureIndexes: unsupportedMeasureIndexes
+        let beamBuild = engine.buildBeams(noteHeads: noteHeads, measures: expandedMeasures, style: style)
+        let stems = engine.buildStems(noteHeads: noteHeads, beams: beamBuild.beams, style: style)
+        let derived = NotationLayoutEngine.BuiltDerivedArtifacts(
+            beams: beamBuild.beams,
+            stems: stems,
+            flags: engine.buildFlags(
+                noteHeads: noteHeads.filter { !unsupportedMeasureIndexes.contains($0.measureIndex) },
+                beamBuild: beamBuild,
+                stems: stems,
+                style: style
+            ),
+            ledgerLines: engine.buildLedgerLines(noteHeads: noteHeads, style: style),
+            measureBars: engine.buildMeasureBars(measures: measures)
         )
         let tupletContext = TupletRenderingContext(
             beams: derived.beams,
@@ -347,55 +278,28 @@ private extension GameplayNotationPreparer {
         )
         return RebuiltArtifacts(
             derived: derived,
-            articulations: engine.buildArticulations(noteHeads: heads, style: style),
+            articulations: engine.buildArticulations(noteHeads: noteHeads, style: style),
             rhythmDots: engine.buildRhythmDots(
-                noteHeads: heads,
-                rests: primitives.rests,
+                noteHeads: noteHeads,
+                rests: rests,
                 unsupportedMeasureIndexes: unsupportedMeasureIndexes,
                 style: style
             ),
             tuplets: engine.buildTuplets(
-                noteHeads: heads,
-                rests: primitives.rests,
+                noteHeads: noteHeads,
+                rests: rests,
                 context: tupletContext
             ),
             feelMarks: engine.buildFeelMarks(
                 feel: snapshot.feel,
-                measures: primitives.measures,
+                measures: measures,
                 style: style
             ),
             rhythmWarnings: engine.buildRhythmWarnings(
                 rhythmMeasures: expandedMeasures,
-                renderedMeasures: primitives.measures,
+                renderedMeasures: measures,
                 style: style
             )
-        )
-    }
-
-    /// Stems pick the stem-side representative by Y (which the package never
-    /// displaces); beam topology is X-independent and rebuilds from the same
-    /// rhythm measures.
-    static func rebuiltDerivedArtifacts(
-        heads: [RenderedNoteHead],
-        measures: [RenderedMeasure],
-        expandedMeasures: [RhythmMeasure],
-        style: NotationLayoutStyle,
-        unsupportedMeasureIndexes: Set<Int>
-    ) -> NotationLayoutEngine.BuiltDerivedArtifacts {
-        let engine = NotationLayoutEngine()
-        let beamBuild = engine.buildBeams(noteHeads: heads, measures: expandedMeasures, style: style)
-        let stems = engine.buildStems(noteHeads: heads, beams: beamBuild.beams, style: style)
-        return NotationLayoutEngine.BuiltDerivedArtifacts(
-            beams: beamBuild.beams,
-            stems: stems,
-            flags: engine.buildFlags(
-                noteHeads: heads.filter { !unsupportedMeasureIndexes.contains($0.measureIndex) },
-                beamBuild: beamBuild,
-                stems: stems,
-                style: style
-            ),
-            ledgerLines: engine.buildLedgerLines(noteHeads: heads, style: style),
-            measureBars: engine.buildMeasureBars(measures: measures)
         )
     }
 }

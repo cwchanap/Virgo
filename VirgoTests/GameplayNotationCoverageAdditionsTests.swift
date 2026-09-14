@@ -215,7 +215,9 @@ struct GameplayNotationCoverageAdditionsTests {
 
         #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
         #expect(viewModel.isGameplayPrepared)
-        #expect(viewModel.cachedNotationLayout.noteHeads.count == 1)
+        // HPA-164 no-snapshot policy: legacy availability means empty
+        // notation; playback runs on the non-notation beat fallback.
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
     }
 }
 

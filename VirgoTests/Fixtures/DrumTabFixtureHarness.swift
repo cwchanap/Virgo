@@ -69,18 +69,18 @@ enum DrumTabFixtureHarness {
             feel: RhythmLayoutSnapshotBuilder.feel(for: chart)
         )
 
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                timing: .timeline(snapshot),
-                minimumMeasureCount: fixture.minimumMeasureCount,
-                style: lockedStyle,
-                notePositionOverrides: lockedOverrides
-            )
-        )
+        // HPA-164 Task 6: goldens exercise the one measured preparation route
+        // production uses (snapshot → formatter → composed layout).
+        let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: fixture.minimumMeasureCount,
+            style: lockedStyle,
+            notePositionOverrides: lockedOverrides
+        ))
 
         return FixtureRenderResult(
             chart: chart,
-            layout: layout,
+            layout: prepared.layout,
             snapshot: snapshot,
             timeline: timeline,
             style: lockedStyle,
