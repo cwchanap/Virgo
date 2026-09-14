@@ -113,7 +113,7 @@ struct VirgoNotationAdapterFlagFootprintTests {
             feel: .straight
         )
 
-        let input = try VirgoNotationAdapter.resolvedNotation(
+        let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
             expandedMeasures: [measure],
             notePositionOverrides: [:]

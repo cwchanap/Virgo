@@ -14,7 +14,12 @@ struct GameplayNotationPreparedState: Sendable {
     let layout: NotationLayout
     /// The measured formatter output the layout was composed from (HPA-164
     /// Task 5). Also embedded on `layout` for the live playhead lookup.
-    var formatted: FormattedNotation = FormattedNotation(measures: [])
+    let formatted: FormattedNotation
+
+    init(layout: NotationLayout, formatted: FormattedNotation = FormattedNotation(measures: [])) {
+        self.layout = layout
+        self.formatted = formatted
+    }
 }
 
 /// Pure value boundary for timeline-native gameplay notation preparation.
@@ -27,8 +32,8 @@ struct GameplayNotationPreparedState: Sendable {
 /// The single preparation route (HPA-164 Task 4): both the detached initial
 /// worker and the synchronous `cacheNotationLayout()` relayout run through
 /// ``prepare(_:)``, which projects the snapshot through
-/// `VirgoNotationAdapter.resolvedNotation`, maps the style through
-/// `VirgoNotationAdapter.formattingStyle`, runs the measured
+/// `VirgoNotationProjection.resolvedNotation`, maps the style through
+/// `VirgoNotationProjection.formattingStyle`, runs the measured
 /// `NotationFormatter`, and composes the rendered layout. There is no second
 /// style/formatting path.
 struct GameplayNotationPreparer {
@@ -40,19 +45,18 @@ struct GameplayNotationPreparer {
             minimumMeasureCount: request.minimumMeasureCount
         )
         do {
-            let input = try VirgoNotationAdapter.resolvedNotation(
+            let input = try VirgoNotationProjection.resolvedNotation(
                 snapshot: request.snapshot,
                 expandedMeasures: expandedMeasures,
                 notePositionOverrides: request.notePositionOverrides
             )
-            let style = VirgoNotationAdapter.formattingStyle(
+            let style = VirgoNotationProjection.formattingStyle(
                 rowWidth: request.style.rowWidth,
                 style: request.style
             )
             let formatted = try NotationFormatter.format(input, style: style)
             return GameplayNotationPreparedState(
                 layout: composeVirgoLayout(
-                    snapshot: request.snapshot,
                     formatted: formatted,
                     expandedMeasures: expandedMeasures,
                     request: request
@@ -79,6 +83,20 @@ private struct RebuiltArtifacts {
     let rhythmWarnings: [RenderedRhythmWarning]
 }
 
+/// Everything composed from the measured formatter output before the
+/// app-only marks are rebuilt: measures, the three X lookups, and the
+/// positioned primitives. Groups what used to be seven loose parameters.
+private struct ComposedNotation {
+    let measures: [RenderedMeasure]
+    let columnXByKey: [MeasureTickKey: CGFloat]
+    let headCenterXByID: [UInt64: CGFloat]
+    let visualXByKey: [MeasureTickKey: CGFloat]
+    let noteHeads: [RenderedNoteHead]
+    let rests: [RenderedRest]
+    let stopNotes: [RenderedStopNote]
+    let unsupportedMeasureIndexes: Set<Int>
+}
+
 /// Composes Virgo's rendered layout directly from the measured
 /// `FormattedNotation`: measure rows/bounds and every primitive X come from
 /// the package, while Y stays Virgo (row + staff position). Stems, beams,
@@ -88,24 +106,52 @@ private struct RebuiltArtifacts {
 /// post-format X transform and no grid geometry.
 private extension GameplayNotationPreparer {
     static func composeVirgoLayout(
-        snapshot: RhythmLayoutSnapshot,
         formatted: FormattedNotation,
         expandedMeasures: [RhythmMeasure],
         request: GameplayNotationPreparationRequest
     ) -> NotationLayout {
-        let measures = composedMeasures(
+        let engine = NotationLayoutEngine()
+        let composed = composedNotation(
+            engine: engine,
+            formatted: formatted,
             expandedMeasures: expandedMeasures,
-            formatted: formatted
+            request: request
         )
+        let rebuilt = rebuiltArtifacts(
+            engine: engine,
+            request: request,
+            expandedMeasures: expandedMeasures,
+            composed: composed
+        )
+        var layout = engine.finalizedLayout(
+            finalizationInput(request: request, composed: composed, rebuilt: rebuilt)
+        )
+        // The immutable formatter output rides on the installed layout for
+        // the live playhead lookup; no extra view-model caches are derived.
+        layout.formattedNotation = formatted
+        return layout
+    }
+
+    /// Composes measures, the X lookups and the positioned primitives from
+    /// the measured formatter output (package X, Virgo staff Y).
+    static func composedNotation(
+        engine: NotationLayoutEngine,
+        formatted: FormattedNotation,
+        expandedMeasures: [RhythmMeasure],
+        request: GameplayNotationPreparationRequest
+    ) -> ComposedNotation {
+        let measures = composedMeasures(expandedMeasures: expandedMeasures, formatted: formatted)
         let columnXByKey = columnLookup(formatted: formatted) { $0.logicalColumnX }
         let headCenterXByID = headCenterLookup(formatted: formatted)
         let visualXByKey = restVisualLookup(formatted: formatted)
-        let unsupportedMeasureIndexes = Set(expandedMeasures.compactMap { measure -> Int? in
-            measure.engravingSupport.permitsEngraving ? nil : measure.measureIndex
-        })
-        let engine = NotationLayoutEngine()
+        // Unsupported measures suppress duration-bearing engraving; their
+        // rests are dropped and the measure's warning is carried by
+        // `buildRhythmWarnings`.
+        let unsupportedMeasureIndexes = Set(
+            expandedMeasures.lazy.filter { !$0.engravingSupport.permitsEngraving }.map(\.measureIndex)
+        )
         let noteHeads = engine.buildNoteHeads(
-            notes: snapshot.notes,
+            notes: request.snapshot.notes,
             measures: measures,
             headCenterXByID: headCenterXByID,
             columnXByKey: columnXByKey,
@@ -113,10 +159,7 @@ private extension GameplayNotationPreparer {
             notePositionOverrides: request.notePositionOverrides
         )
         let rests = engine.buildRests(
-            rests: snapshot.rests.filter {
-                // Unsupported measures suppress duration-bearing engraving;
-                // their rests are dropped and the measure's warning is
-                // carried by `buildRhythmWarnings`.
+            rests: request.snapshot.rests.filter {
                 !unsupportedMeasureIndexes.contains($0.position.measureIndex)
             },
             measures: measures,
@@ -125,38 +168,22 @@ private extension GameplayNotationPreparer {
             style: request.style
         )
         let stopNotes = engine.buildStopNotes(
-            controls: snapshot.controls,
+            controls: request.snapshot.controls,
             measures: measures,
             columnXByKey: columnXByKey,
             style: request.style,
             notePositionOverrides: request.notePositionOverrides
         )
-        let rebuilt = rebuiltArtifacts(
-            snapshot: snapshot,
-            request: request,
-            expandedMeasures: expandedMeasures,
+        return ComposedNotation(
             measures: measures,
-            noteHeads: noteHeads,
-            rests: rests,
-            unsupportedMeasureIndexes: unsupportedMeasureIndexes
-        )
-        var layout = engine.finalizedLayout(NotationLayoutFinalizationInput(
-            measures: measures,
+            columnXByKey: columnXByKey,
+            headCenterXByID: headCenterXByID,
+            visualXByKey: visualXByKey,
             noteHeads: noteHeads,
             rests: rests,
             stopNotes: stopNotes,
-            articulations: rebuilt.articulations,
-            derived: rebuilt.derived,
-            rhythmDots: rebuilt.rhythmDots,
-            tuplets: rebuilt.tuplets,
-            feelMarks: rebuilt.feelMarks,
-            rhythmWarnings: rebuilt.rhythmWarnings,
-            style: request.style
-        ))
-        // The immutable formatter output rides on the installed layout for
-        // the live playhead lookup; no extra view-model caches are derived.
-        layout.formattedNotation = formatted
-        return layout
+            unsupportedMeasureIndexes: unsupportedMeasureIndexes
+        )
     }
 
     /// Measures pair the timeline's tick semantics with the package's
@@ -240,61 +267,80 @@ private extension GameplayNotationPreparer {
     /// the positioned primitives (the marks consume the composed geometry
     /// but never alter package spacing).
     static func rebuiltArtifacts(
-        snapshot: RhythmLayoutSnapshot,
+        engine: NotationLayoutEngine,
         request: GameplayNotationPreparationRequest,
         expandedMeasures: [RhythmMeasure],
-        measures: [RenderedMeasure],
-        noteHeads: [RenderedNoteHead],
-        rests: [RenderedRest],
-        unsupportedMeasureIndexes: Set<Int>
+        composed: ComposedNotation
     ) -> RebuiltArtifacts {
-        let engine = NotationLayoutEngine()
         let style = request.style
-        let beamBuild = engine.buildBeams(noteHeads: noteHeads, measures: expandedMeasures, style: style)
-        let stems = engine.buildStems(noteHeads: noteHeads, beams: beamBuild.beams, style: style)
+        let beamBuild = engine.buildBeams(noteHeads: composed.noteHeads, measures: expandedMeasures, style: style)
+        let stems = engine.buildStems(noteHeads: composed.noteHeads, beams: beamBuild.beams, style: style)
         let derived = NotationLayoutEngine.BuiltDerivedArtifacts(
             beams: beamBuild.beams,
             stems: stems,
             flags: engine.buildFlags(
-                noteHeads: noteHeads.filter { !unsupportedMeasureIndexes.contains($0.measureIndex) },
+                noteHeads: composed.noteHeads.filter {
+                    !composed.unsupportedMeasureIndexes.contains($0.measureIndex)
+                },
                 beamBuild: beamBuild,
                 stems: stems,
                 style: style
             ),
-            ledgerLines: engine.buildLedgerLines(noteHeads: noteHeads, style: style),
-            measureBars: engine.buildMeasureBars(measures: measures)
+            ledgerLines: engine.buildLedgerLines(noteHeads: composed.noteHeads, style: style),
+            measureBars: engine.buildMeasureBars(measures: composed.measures)
         )
         let tupletContext = TupletRenderingContext(
             beams: derived.beams,
-            feel: snapshot.feel,
+            feel: request.snapshot.feel,
             rhythmMeasures: expandedMeasures,
-            unsupportedMeasureIndexes: unsupportedMeasureIndexes,
+            unsupportedMeasureIndexes: composed.unsupportedMeasureIndexes,
             style: style
         )
         return RebuiltArtifacts(
             derived: derived,
-            articulations: engine.buildArticulations(noteHeads: noteHeads, style: style),
+            articulations: engine.buildArticulations(noteHeads: composed.noteHeads, style: style),
             rhythmDots: engine.buildRhythmDots(
-                noteHeads: noteHeads,
-                rests: rests,
-                unsupportedMeasureIndexes: unsupportedMeasureIndexes,
+                noteHeads: composed.noteHeads,
+                rests: composed.rests,
+                unsupportedMeasureIndexes: composed.unsupportedMeasureIndexes,
                 style: style
             ),
             tuplets: engine.buildTuplets(
-                noteHeads: noteHeads,
-                rests: rests,
+                noteHeads: composed.noteHeads,
+                rests: composed.rests,
                 context: tupletContext
             ),
             feelMarks: engine.buildFeelMarks(
-                feel: snapshot.feel,
-                measures: measures,
+                feel: request.snapshot.feel,
+                measures: composed.measures,
                 style: style
             ),
             rhythmWarnings: engine.buildRhythmWarnings(
                 rhythmMeasures: expandedMeasures,
-                renderedMeasures: measures,
+                renderedMeasures: composed.measures,
                 style: style
             )
+        )
+    }
+
+    /// Bundles the composed and rebuilt artifacts for the engine's finalizer.
+    static func finalizationInput(
+        request: GameplayNotationPreparationRequest,
+        composed: ComposedNotation,
+        rebuilt: RebuiltArtifacts
+    ) -> NotationLayoutFinalizationInput {
+        NotationLayoutFinalizationInput(
+            measures: composed.measures,
+            noteHeads: composed.noteHeads,
+            rests: composed.rests,
+            stopNotes: composed.stopNotes,
+            articulations: rebuilt.articulations,
+            derived: rebuilt.derived,
+            rhythmDots: rebuilt.rhythmDots,
+            tuplets: rebuilt.tuplets,
+            feelMarks: rebuilt.feelMarks,
+            rhythmWarnings: rebuilt.rhythmWarnings,
+            style: request.style
         )
     }
 }
