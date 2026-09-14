@@ -447,16 +447,19 @@ struct NotationFormatterInkTests {
                 }
                 // Bravura attaches every flag at its glyph origin with all ink
                 // to the right of that origin (left ink exactly 0 for up and
-                // down alike); the formatter anchors that origin on the note's
-                // stem axis (the head glyph's stem anchor at the column base:
-                // + for up, − for down). The left side keeps the bare head
-                // reach; the right side is the union of head ink and the
-                // stem-anchored flag ink.
+                // down alike); the formatter anchors that origin where Virgo
+                // paints the flag — the stem axis minus half the stem width
+                // (the painted stem origin convention). The left side keeps
+                // the bare head reach; the right side is the union of head
+                // ink and the flag ink.
                 #expect(Fixtures.flagLeftInk(duration: flagDuration, stem: stem) == 0)
-                let flagInk = Fixtures.stemAxisX(stem: stem)
-                    + Fixtures.flagRightInk(duration: flagDuration, stem: stem)
-                #expect(abs(column.leftExtent - headReach) < 0.001)
-                #expect(abs(column.rightExtent - max(headReach, flagInk)) < 0.001)
+                // Flag ink starts at its attachment origin (zero left ink),
+                // so for down-stems the origin — axis − stemWidth/2 — pokes
+                // one stem-half-width left of the head and must be reserved.
+                let flagInkMinX = Fixtures.stemAxisX(stem: stem) - style.stemWidth / 2
+                let flagInkMaxX = flagInkMinX + Fixtures.flagRightInk(duration: flagDuration, stem: stem)
+                #expect(abs(column.leftExtent - max(headReach, -flagInkMinX)) < 0.001)
+                #expect(abs(column.rightExtent - max(headReach, flagInkMaxX)) < 0.001)
             }
         }
     }
@@ -487,9 +490,11 @@ struct NotationFormatterInkTests {
         let next = try Fixtures.column(notation, localTick: 960)
 
         // Task 3 places the next column at rightExtent + clearance + leftExtent;
-        // reserving the full flag ink (measured from the stem axis) in
-        // rightExtent is what clears it.
-        let flagInk = Fixtures.stemAxisX(stem: .up) + Fixtures.flagRightInk(duration: .eighth, stem: .up)
+        // reserving the full flag ink (measured from the painted stem origin,
+        // stem axis − stemWidth/2) in rightExtent is what clears it.
+        let flagInk = Fixtures.stemAxisX(stem: .up)
+            - style.stemWidth / 2
+            + Fixtures.flagRightInk(duration: .eighth, stem: .up)
         #expect(abs(flagged.rightExtent - flagInk) < 0.001)
         #expect(abs(next.leftExtent - Fixtures.headReach()) < 0.001)
     }
