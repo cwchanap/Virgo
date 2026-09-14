@@ -133,16 +133,17 @@ public enum NotationFormatter {
     /// `rhythmicGap = minimumQuarterNoteSpacing * deltaTicks * 4 /
     /// ticksPerWholeNote` against `collisionGap = previous.rightExtent +
     /// minimumInterColumnClearance + next.leftExtent`, taking the larger. The
-    /// rhythmic term multiplies before it divides so the value stays exact up
-    /// to the final CGFloat conversion.
+    /// delta converts to CGFloat before scaling, so a near-`Int.max` tick
+    /// delta cannot overflow (exact for realistic grid values; the final
+    /// conversion keeps the value finite).
     private static func requiredGap(
         from previous: LaidOutColumn,
         to next: LaidOutColumn,
         style: NotationFormattingStyle,
         ticksPerWholeNote: Int
     ) -> CGFloat {
-        let rhythmicGap = (style.minimumQuarterNoteSpacing * CGFloat((next.tick - previous.tick) * 4))
-            / CGFloat(ticksPerWholeNote)
+        let rhythmicGap = CGFloat(next.tick - previous.tick)
+            * 4 * style.minimumQuarterNoteSpacing / CGFloat(ticksPerWholeNote)
         let collisionGap = previous.rightExtent + style.minimumInterColumnClearance + next.leftExtent
         return max(rhythmicGap, collisionGap)
     }

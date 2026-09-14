@@ -159,6 +159,17 @@ public struct ResolvedNotationInput: Hashable, Sendable {
                     durationTicks: measure.durationTicks
                 )
             }
+            // `startTick + durationTicks` must be representable; every
+            // downstream consumer (overlap check, end-anchor synthesis)
+            // relies on it. Reject instead of overflowing.
+            let endTick = measure.startTick.addingReportingOverflow(measure.durationTicks)
+            guard !endTick.overflow else {
+                throw ValidationError.invalidMeasure(
+                    index: measure.index,
+                    startTick: measure.startTick,
+                    durationTicks: measure.durationTicks
+                )
+            }
             guard seenIndices.insert(measure.index).inserted else {
                 throw ValidationError.duplicateMeasureIndex(measure.index)
             }
@@ -168,6 +179,8 @@ public struct ResolvedNotationInput: Hashable, Sendable {
         where next.startTick < previous.startTick + previous.durationTicks {
             throw ValidationError.overlappingMeasures(first: previous, second: next)
         }
+        // Every measure's end tick was already overflow-checked above, so
+        // this comparison cannot overflow.
         let measuresByIndex = Dictionary(uniqueKeysWithValues: measures.map { ($0.index, $0) })
         func requireInsideMeasure(_ position: NotationTickPosition, eventID: Int) throws {
             guard let measure = measuresByIndex[position.measureIndex],

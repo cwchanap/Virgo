@@ -134,6 +134,20 @@ struct NotationFormatterTests {
         }
     }
 
+    @Test("validation rejects a measure whose end tick overflows Int")
+    func validationRejectsOverflowingMeasureEnd() {
+        // startTick + durationTicks overflows; validation must reject, not trap.
+        #expect {
+            try Fixtures.document(measures: [
+                Fixtures.measure(),
+                ResolvedMeasure(index: 1, startTick: Int.max - 10, durationTicks: 100)
+            ])
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidMeasure(index: 1, startTick: Int.max - 10, durationTicks: 100)
+        }
+    }
+
     @Test("validation rejects event localTick outside its owning measure")
     func validationRejectsEventOutsideItsMeasure() {
         #expect {
