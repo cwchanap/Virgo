@@ -442,10 +442,9 @@ struct VirgoNotationAdapterProjectionTests {
         // Row-leading origin: the first measure of every row starts at the
         // leading inset.
         var firstMeasureXPerRow: [Int: CGFloat] = [:]
-        for measure in synchronous.formatted.measures {
-            if firstMeasureXPerRow[measure.rowIndex] == nil {
-                firstMeasureXPerRow[measure.rowIndex] = measure.xOffset
-            }
+        for measure in synchronous.formatted.measures
+        where firstMeasureXPerRow[measure.rowIndex] == nil {
+            firstMeasureXPerRow[measure.rowIndex] = measure.xOffset
         }
         #expect(!firstMeasureXPerRow.isEmpty)
         for (_, x) in firstMeasureXPerRow {

@@ -265,8 +265,10 @@ enum VirgoNotationAdapter {
         // Same event semantics as the engine's timeline
         // `buildTimelineEvents(noteHeads:)`, sorted with the same comparator
         // so topology coverage indices line up.
-        let stemGroups: [(entries: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)], event: BeamTimelineEvent)]
-            = grouped.values.compactMap { group in
+        let stemGroups: [(
+            entries: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)],
+            event: BeamTimelineEvent
+        )] = grouped.values.compactMap { group in
                 guard let representative = flagRepresentative(in: group) else { return nil }
                 let flagCount = representative.note.rhythm.baseInterval.flagCount
                 let role: BeamTimelineEventRole

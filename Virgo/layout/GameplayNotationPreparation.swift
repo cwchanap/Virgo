@@ -15,11 +15,6 @@ struct GameplayNotationPreparedState: Sendable {
     /// The measured formatter output the layout was composed from (HPA-164
     /// Task 5). Also embedded on `layout` for the live playhead lookup.
     var formatted: FormattedNotation = FormattedNotation(measures: [])
-
-    init(layout: NotationLayout, formatted: FormattedNotation = FormattedNotation(measures: [])) {
-        self.layout = layout
-        self.formatted = formatted
-    }
 }
 
 /// Pure value boundary for timeline-native gameplay notation preparation.
