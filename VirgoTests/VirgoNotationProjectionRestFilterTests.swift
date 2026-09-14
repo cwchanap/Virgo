@@ -20,7 +20,6 @@ struct VirgoNotationProjectionRestFilterTests {
                 makeRest(
                     measureIndex: 0,
                     localTick: 0,
-                    durationTicks: 960,
                     voice: .upper,
                     interval: .full,
                     visibility: .printed
@@ -28,7 +27,6 @@ struct VirgoNotationProjectionRestFilterTests {
                 makeRest(
                     measureIndex: 0,
                     localTick: 240,
-                    durationTicks: 240,
                     voice: .lower,
                     interval: .quarter,
                     visibility: .hiddenSpacing
@@ -36,7 +34,6 @@ struct VirgoNotationProjectionRestFilterTests {
                 makeRest(
                     measureIndex: 0,
                     localTick: 480,
-                    durationTicks: 240,
                     voice: .upper,
                     interval: .quarter,
                     visibility: .hiddenDuplicate
@@ -77,7 +74,6 @@ struct VirgoNotationProjectionRestFilterTests {
         let rest = makeRest(
             measureIndex: 1,
             localTick: 480,
-            durationTicks: 240,
             voice: .upper,
             interval: .quarter,
             visibility: .printed

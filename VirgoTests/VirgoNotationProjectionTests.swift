@@ -138,7 +138,6 @@ struct VirgoNotationProjectionTests {
             rests: [makeRest(
                 measureIndex: 0,
                 localTick: 240,
-                durationTicks: 240,
                 voice: .upper,
                 interval: .quarter,
                 visibility: .printed
