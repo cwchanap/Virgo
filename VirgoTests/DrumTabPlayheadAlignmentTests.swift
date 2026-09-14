@@ -58,25 +58,13 @@ struct DrumTabPlayheadAlignmentTests {
         // which flips `isPlaying` and then drives a synthetic elapsed time
         // through `updateContinuousVisualsForTesting`.
         //
-        // Target selection matters: `TabGrid.xPosition` returns
-        // `measure.contentStartX + tick * tickWidth`, and `contentStartX` is
-        // `xOffset + barLineWidth + uniformSpacing` on `NotationLayout`
-        // — it is `xOffset`, not the tick alone, that anchors a measure's
-        // column origin, and `xOffset` differs between measures that share a
-        // row. For these two fixtures specifically, every measure is 500pt
-        // wide (52pt leftPadding + 16 ticks * 28pt tickWidth) against the
-        // locked 900pt row width, so `buildMeasures` on
-        // `NotationLayoutEngine` wraps every measure onto its own row
-        // (100 + 500 + 12 measureSpacing = 612, then 612 + 500 =
-        // 1112 > 900) and each one lands back at `xOffset == leftMargin ==
-        // 100`, so `contentStartX == 152` for every measure in both charts.
-        // That means x alone cannot distinguish measures here, so
-        // "the middle event by index" was verified (via a throwaway
-        // diagnostic run) to still land on the same x=152 column that tick 0
-        // of measure 0 uses, for multiRowStableWidths, because its sparse
-        // measures only ever place a note at local tick 0. Picking the event
-        // with the largest local tick instead deterministically lands on a
-        // late-in-measure column, so the check exercises real alignment
+        // Target selection matters: on the measured route (HPA-164) the
+        // playhead resolves X through the formatter's column lookup, so each
+        // event tick has its own logical column X. Sparse measures in these
+        // fixtures place notes only at local tick 0, so "the middle event by
+        // index" can coincide with measure 0's tick-0 column; picking the
+        // event with the largest local tick instead deterministically lands
+        // on a late-in-measure column, so the check exercises real alignment
         // rather than only ever confirming "the playhead is at the start."
         let targets = viewModel.cachedRhythmNoteTargets
         try #require(!targets.isEmpty)
@@ -90,8 +78,8 @@ struct DrumTabPlayheadAlignmentTests {
             "playhead must have a position once gameplay is set up"
         )
 
-        // Because every measure in these fixtures shares the same
-        // contentStartX (see above), x alone can't tell a correct playhead
+        // Because sparse measures in these fixtures only place notes at
+        // local tick 0 (see above), x alone can't tell a correct playhead
         // apart from one that resolved to the wrong measure at the right
         // local tick — same column, wrong measure, and both assertions below
         // would still pass. Assert the measure independently first, matching

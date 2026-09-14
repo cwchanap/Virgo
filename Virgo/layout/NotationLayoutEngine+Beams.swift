@@ -112,30 +112,6 @@ extension NotationLayoutEngine {
 
     func buildBeams(
         noteHeads: [RenderedNoteHead],
-        tabGrid: TabGrid,
-        timeSignature: TimeSignature,
-        style: NotationLayoutStyle
-    ) -> BeamBuildResult {
-        let events = buildTimelineEvents(
-            noteHeads: noteHeads,
-            ticksPerMeasure: tabGrid.ticksPerMeasure,
-            timeSignature: timeSignature
-        )
-        let topology = NotationBeamTopologyBuilder().build(
-            events: events,
-            ticksPerMeasure: tabGrid.ticksPerMeasure,
-            timeSignature: timeSignature
-        )
-        return assembleBeams(
-            events: events,
-            topology: topology,
-            noteHeads: noteHeads,
-            style: style
-        )
-    }
-
-    func buildBeams(
-        noteHeads: [RenderedNoteHead],
         measures: [RhythmMeasure],
         style: NotationLayoutStyle
     ) -> BeamBuildResult {
@@ -260,52 +236,6 @@ extension NotationLayoutEngine {
 
     // MARK: - Beam Helpers
 
-    func buildTimelineEvents(
-        noteHeads: [RenderedNoteHead],
-        ticksPerMeasure: Int,
-        timeSignature: TimeSignature
-    ) -> [BeamTimelineEvent] {
-        Dictionary(grouping: noteHeads) {
-            StemGroupKey(
-                timeColumn: $0.timeColumn,
-                row: $0.row,
-                voice: $0.voice,
-                stemDirection: $0.stemDirection
-            )
-        }
-        .values
-        .compactMap { group in
-            // Dictionary(grouping:) never yields an empty group, so
-            // flagRepresentative (which delegates to Array.min) is guaranteed
-            // to return a non-nil representative here. The guard + assertion
-            // catches any future call-site change that breaks this invariant.
-            guard let representative = flagRepresentative(in: group) else {
-                assertionFailure("Dictionary(grouping:) yielded an empty group")
-                return nil
-            }
-            let maximumLevels = group.map(\.interval.flagCount).max() ?? 0
-            let role: BeamTimelineEventRole = maximumLevels == 0
-                ? .boundary
-                : .beamable(
-                    requiredBeamLevels: maximumLevels,
-                    durationTicks: durationTicks(
-                        for: representative.interval,
-                        ticksPerMeasure: ticksPerMeasure,
-                        timeSignature: timeSignature
-                    )
-                )
-            return BeamTimelineEvent(
-                timeColumn: representative.timeColumn,
-                row: representative.row,
-                voice: representative.voice,
-                stemDirection: representative.stemDirection,
-                noteHeadIDs: group.map(\.id).sorted(),
-                role: role
-            )
-        }
-        .sorted(by: timelineEventComesBefore)
-    }
-
     func buildTimelineEvents(noteHeads: [RenderedNoteHead]) -> [BeamTimelineEvent] {
         Dictionary(grouping: noteHeads) {
             StemGroupKey(
@@ -340,37 +270,6 @@ extension NotationLayoutEngine {
             )
         }
         .sorted(by: timelineEventComesBefore)
-    }
-
-    func durationTicks(
-        for interval: NoteInterval,
-        ticksPerMeasure: Int,
-        timeSignature: TimeSignature
-    ) -> Int? {
-        let denominator: Int
-        switch interval {
-        case .eighth: denominator = 8
-        case .sixteenth: denominator = 16
-        case .thirtysecond: denominator = 32
-        case .sixtyfourth: denominator = 64
-        case .full, .half, .quarter: return nil
-        }
-        // Subdivision denominators are fractions of a whole note, not of a
-        // measure. In simple X/4 meters the measure is shorter than a whole
-        // note (e.g. 3/4 spans 3/4 of a whole), so dividing ticksPerMeasure
-        // by the denominator under-counts each note's true duration and
-        // breaks run adjacency in the topology builder. Convert to
-        // whole-note ticks first: a measure holds beatsPerMeasure / noteValue
-        // whole notes, so ticksPerWhole = ticksPerMeasure * noteValue /
-        // beatsPerMeasure.
-        guard timeSignature.beatsPerMeasure > 0,
-              (ticksPerMeasure * timeSignature.noteValue)
-                .isMultiple(of: timeSignature.beatsPerMeasure) else {
-            return nil
-        }
-        let ticksPerWholeNote = ticksPerMeasure * timeSignature.noteValue / timeSignature.beatsPerMeasure
-        guard ticksPerWholeNote > 0, ticksPerWholeNote.isMultiple(of: denominator) else { return nil }
-        return ticksPerWholeNote / denominator
     }
 
     private func timelineEventComesBefore(

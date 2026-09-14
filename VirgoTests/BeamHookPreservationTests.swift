@@ -6,10 +6,10 @@ import CoreGraphics
 ///
 /// None of the eleven catalog fixtures produces a beam hook (every committed
 /// golden beam line is `kind=full`), so this suite synthesizes a layout that
-/// does: a 16th–8th–16th run inside one 4/4 beat groups into one primary run
+/// does: a 16th–8th–16th run inside one 4/4 beat group forms one primary run
 /// whose level-1 segments are a forward hook (first 16th) and a backward hook
-/// (last 16th). It rebuilds the engine's own `BeamBuildResult` from the laid-
-/// out heads and compares topology `BeamTopologySegment`s of kind
+/// (last 16th). It rebuilds the engine's own `BeamBuildResult` from the
+/// composed heads and compares topology `BeamTopologySegment`s of kind
 /// `.forwardHook`/`.backwardHook` (joined by primary group + level + kind,
 /// with the owner event's head IDs as the join key) against the rendered
 /// `RenderedBeam`s, asserting every topology hook produces exactly one
@@ -26,23 +26,37 @@ struct BeamHookPreservationTests {
     func topologyHooksRenderNonZero() throws {
         let style = NotationLayoutStyle.gameplayDefault
         let engine = NotationLayoutEngine()
+        let support = NotationSnapshotTestSupport()
         let notes = [
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 3.0 / 16.0)
         ]
-        let layout = engine.layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: style)
-        )
+        let snapshot: RhythmLayoutSnapshot
+        let prepared: GameplayNotationPreparedState
+        do {
+            snapshot = try support.snapshot(notes: notes)
+            prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+                snapshot: snapshot,
+                minimumMeasureCount: 1,
+                style: style,
+                notePositionOverrides: [:]
+            ))
+        } catch {
+            Issue.record("Snapshot construction failed: \(error)")
+            return
+        }
+        let layout = prepared.layout
+        let expandedMeasures = engine.expandedRhythmMeasures(snapshot, minimumMeasureCount: 1)
+        // The reproduction is faithful: same heads, same expanded rhythm
+        // measures, and same style as the composition's internal rebuild, so
+        // the rendered beams must be identical.
         let beamBuild = engine.buildBeams(
             noteHeads: layout.noteHeads,
-            tabGrid: layout.tabGrid,
-            timeSignature: .fourFour,
+            measures: expandedMeasures,
             style: style
         )
 
-        // The reproduction is faithful: same heads, same grid, same style as
-        // the layout's internal call, so the rendered beams must be identical.
         #expect(beamBuild.beams == layout.beams)
 
         let hooks = beamBuild.topology.primaryGroups.flatMap { group in

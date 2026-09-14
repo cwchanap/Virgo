@@ -4,9 +4,10 @@ import Foundation
 
 /// Serializes a rendered fixture to deterministic text for golden comparison.
 ///
-/// Locks layout geometry, the grid, the resolved style, and the layout's own
-/// dimensions. Does NOT lock anything downstream of layout — view modifiers,
-/// colour, z-order, font rasterization. That boundary is deliberate.
+/// Locks layout geometry, the composed formatter output, the resolved style,
+/// and the layout's own dimensions. Does NOT lock anything downstream of
+/// layout — view modifiers, colour, z-order, font rasterization. That
+/// boundary is deliberate.
 @MainActor
 enum NotationLayoutDigest {
     private static let posix = Locale(identifier: "en_US_POSIX")
@@ -56,14 +57,9 @@ enum NotationLayoutDigest {
 
     private static func layoutSection(_ result: FixtureRenderResult) -> [String] {
         let layout = result.layout
-        let grid = layout.tabGrid
         let style = result.style
         var lines: [String] = []
 
-        lines.append(
-            "grid  ticksPerWholeNote=\(grid.ticksPerWholeNote) "
-            + "tickWidth=\(f(grid.tickWidth)) leftPadding=\(f(grid.leftPadding))"
-        )
         lines.append(
             "style rowWidth=\(f(style.rowWidth)) overrides=default "
             + "minNoteColumnGap=\(f(style.minimumNoteColumnGap)) "
@@ -92,8 +88,7 @@ enum NotationLayoutDigest {
             lines.append(
                 "meas  m\(measure.measureIndex) row=\(measure.row) "
                 + "xOffset=\(f(measure.xOffset)) width=\(f(measure.width)) "
-                + "startTick=\(measure.startTick) durationTicks=\(measure.durationTicks) "
-                + "contentStartX=\(f(measure.contentStartX))"
+                + "startTick=\(measure.startTick) durationTicks=\(measure.durationTicks)"
             )
         }
 

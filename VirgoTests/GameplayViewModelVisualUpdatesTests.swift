@@ -188,13 +188,16 @@ struct GameplayViewModelVisualUpdatesTests {
         #expect(position == nil)
     }
 
-    @Test func testNotationPurpleBarPositionUsesTabGridMapper() async throws {
+    @Test func testPurpleBarPositionUsesBeatFallbackForLegacyCharts() async throws {
+        // Legacy chart (inadmissible manual offsets): notation stays empty
+        // (HPA-164) and the playhead resolves through the beat-based measure
+        // map.
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
         )
         chart.notes.append(
-            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 1.0 / 16.0)
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.4142135623730951)
         )
         let metronome = GameplayViewModelTestHarness.createTestMetronome()
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
@@ -202,15 +205,17 @@ struct GameplayViewModelVisualUpdatesTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
-        let measure = try #require(viewModel.cachedNotationLayout.measures.first)
-        let position = try #require(
-            viewModel.calculateNotationPurpleBarPosition(measureIndex: 0, beatWithinMeasure: 1.0)
+        #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
+        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        viewModel.isPlaying = true
+        // 1 second at 120 BPM = beat 2 of measure 0.
+        let position = try #require(viewModel.calculatePurpleBarPosition(elapsedTime: 1.0))
+        let measurePosition = try #require(viewModel.measurePositionMap[0])
+        let expectedX = GameplayLayout.preciseNoteXPosition(
+            measurePosition: measurePosition,
+            beatPosition: 2.0,
+            timeSignature: chart.timeSignature
         )
-        let tick = viewModel.cachedNotationLayout.tabGrid.tickIndex(
-            forBeatWithinMeasure: 1.0,
-            beatsPerMeasure: 4
-        )
-        let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: tick)
 
         #expect(abs(position.x - Double(expectedX)) < 0.001)
     }
@@ -257,33 +262,15 @@ struct GameplayViewModelVisualUpdatesTests {
         let position = try #require(
             viewModel.calculatePurpleBarPosition(elapsedTime: viewModel.pausedElapsedTime)
         )
-        let expectedPosition = try #require(
-            viewModel.calculateNotationPurpleBarPosition(measureIndex: 1, beatWithinMeasure: 0.0)
+        // Legacy chart: the beat fallback places beat 0 of measure 1.
+        let measurePosition = try #require(viewModel.measurePositionMap[1])
+        let expectedX = GameplayLayout.preciseNoteXPosition(
+            measurePosition: measurePosition,
+            beatPosition: 0.0,
+            timeSignature: chart.timeSignature
         )
 
-        #expect(abs(position.x - expectedPosition.x) < 0.001)
-        #expect(abs(position.y - expectedPosition.y) < 0.001)
-    }
-
-    @Test func testNotationPurpleBarPositionClampsAtEndOfTrack() async throws {
-        // Creates a chart with one measure (measureIndex 0) at BPM 120 (4 beats per measure)
-        // At elapsedTime = 2.0 seconds: 2 * 120 / 60 = 4 beats, measureIndex = 4 / 4 = 1
-        // This is one past the last measure, so the position should clamp to the last measure
-        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
-        chart.notes.append(
-            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
-        )
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
-        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
-
-        await viewModel.loadChartData()
-        await viewModel.setupGameplay(loadPersistedSpeed: false)
-        viewModel.isPlaying = true
-
-        // calculateNotationPurpleBarPosition directly returns nil when measure doesn't exist
-        #expect(viewModel.calculateNotationPurpleBarPosition(measureIndex: 1, beatWithinMeasure: 0.0) == nil)
-        // But calculatePurpleBarPosition clamps to the last valid measure at track end
-        #expect(viewModel.calculatePurpleBarPosition(elapsedTime: 2.0) != nil)
+        #expect(abs(position.x - Double(expectedX)) < 0.001)
     }
 
     @Test func testPurpleBarClampsToEndOfFinalMeasure() async throws {
@@ -305,16 +292,21 @@ struct GameplayViewModelVisualUpdatesTests {
         let clampedPosition = try #require(
             viewModel.calculatePurpleBarPosition(elapsedTime: 2.0)
         )
-        let measure = try #require(viewModel.cachedNotationLayout.measures.first)
-        let endTick = viewModel.cachedNotationLayout.tabGrid.ticksPerMeasure
-        let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: endTick)
+        let measurePosition = try #require(viewModel.measurePositionMap[0])
+        let endX = GameplayLayout.preciseNoteXPosition(
+            measurePosition: measurePosition,
+            beatPosition: 4.0,
+            timeSignature: chart.timeSignature
+        )
 
-        #expect(abs(clampedPosition.x - Double(expectedX)) < 0.5)
+        #expect(abs(clampedPosition.x - Double(endX)) < 0.5)
 
         // Verify it's NOT at the start of the measure (beat 0)
-        let startX = measure.xOffset
-            + GameplayLayout.barLineWidth
-            + GameplayLayout.uniformSpacing
+        let startX = GameplayLayout.preciseNoteXPosition(
+            measurePosition: measurePosition,
+            beatPosition: 0.0,
+            timeSignature: chart.timeSignature
+        )
         #expect(abs(clampedPosition.x - Double(startX)) > 1.0)
     }
 

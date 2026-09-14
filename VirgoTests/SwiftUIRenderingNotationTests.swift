@@ -109,14 +109,11 @@ struct SwiftUIRenderingNotationTests {
     @Test("Hi-hat noteheads own distinct labels while the open circle is hidden")
     func testHiHatAccessibilityOwnership() async throws {
         try await TestSetup.withTestSetup {
-            let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-                notes: [
+            let layout = NotationSnapshotTestSupport().prepare(notes: [
                     Note(interval: .quarter, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
                     Note(interval: .quarter, noteType: .openHiHat, measureNumber: 1, measureOffset: 0.25),
                     Note(interval: .quarter, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0.5)
-                ],
-                timeSignature: .fourFour
-            ))
+                ]).layout
             guard let openCircle = layout.articulations.first else {
                 Issue.record("Expected an open hi-hat articulation")
                 return
@@ -153,17 +150,13 @@ struct SwiftUIRenderingNotationTests {
     @Test("highest open hi-hat articulation bounds stay inside the sheet origin")
     func testHighestOpenHiHatArticulationStaysInsideTopMargin() throws {
         let style = NotationLayoutStyle.gameplayDefault
-        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
-            notes: [Note(
+        let layout = NotationSnapshotTestSupport().prepare(notes: [Note(
                 interval: .quarter,
                 noteType: .openHiHat,
                 measureNumber: 1,
                 measureOffset: 0
-            )],
-            timeSignature: .fourFour,
-            style: style,
-            notePositionOverrides: [.hiHat: .aboveLine9]
-        ))
+            )], style: style, notePositionOverrides: [.hiHat: .aboveLine9]
+        ).layout
         let head = try #require(layout.noteHeads.first)
         let articulation = try #require(layout.articulations.first)
         // Bravura pictOpen needs articulationVerticalOffset 24 > one staff space,
@@ -195,13 +188,12 @@ struct SwiftUIRenderingNotationTests {
             measureOffset: 0,
             targetLaneID: "1A"
         ))
-        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+        let layout = NotationSnapshotTestSupport().prepare(
             notes: [],
-            controlEvents: [event],
-            timeSignature: .fourFour,
+            controls: [event],
             style: style,
             notePositionOverrides: [.crash: .aboveLine9]
-        ))
+        ).layout
         let stop = try #require(layout.stopNotes.first)
         let paintedTopEdge = stop.position.y - style.stopMarkSize / 2 - style.stopMarkStrokeWidth / 2
         let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: Chart(difficulty: .medium))

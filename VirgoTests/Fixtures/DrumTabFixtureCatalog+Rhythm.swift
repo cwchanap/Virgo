@@ -66,8 +66,8 @@ extension DrumTabFixtureCatalog {
     ///
     /// No sentinel is added here. This fixture's own gates (measure count,
     /// row-wrap count) are unaffected by engraving support: measure count
-    /// and row assignment come from `TabGrid`/measure-width layout, which is
-    /// pure geometry over tick positions, not from
+    /// and row assignment come from the measured formatter's row packing
+    /// over tick positions, not from
     /// `NotationRhythmAnalyzer`'s duration inference.
     ///
     /// HPA-419 makes every measure in this fixture supported: each sparse

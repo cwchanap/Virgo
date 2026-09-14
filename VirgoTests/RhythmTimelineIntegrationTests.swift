@@ -86,11 +86,11 @@ struct RhythmTimelineIntegrationTests {
         let target = try #require(viewModel.cachedRhythmNoteTargets.first {
             $0.eventID == selectedEvent.eventID
         })
-        let renderedMeasure = try #require(viewModel.cachedNotationMeasuresByIndex[selectedEvent.position.measureIndex])
-        let expectedX = viewModel.cachedNotationLayout.tabGrid.xPosition(
-            in: renderedMeasure,
-            localTick: selectedEvent.position.localTick
-        )
+        let formatted = viewModel.cachedNotationLayout.formattedNotation
+        let expectedX = try #require(formatted.position(
+            measureIndex: selectedEvent.position.measureIndex,
+            localTick: Double(selectedEvent.position.localTick)
+        )).x
         let expectedSeconds = try #require(timeline.seconds(
             for: selectedEvent.position,
             bpm: fixture.chart.bpm,
@@ -216,9 +216,17 @@ struct RhythmTimelineIntegrationTests {
 
         viewModel.updateContinuousVisualsForTesting(elapsedTime: 1.51)
         let positionAfterBarline = try #require(viewModel.purpleBarPosition)
-        let renderedMeasure = try #require(viewModel.cachedNotationMeasuresByIndex[1])
-        let expectedX = renderedMeasure.contentStartX
-            + CGFloat(0.02) * viewModel.cachedNotationLayout.tabGrid.tickWidth
+        // The playhead interpolates between the formatted columns of the
+        // measure it just entered (tick 0 anchor plus 0.02 tick of drift).
+        let columns = try #require(
+            viewModel.cachedNotationLayout.formattedNotation
+                .measures.first { $0.index == 1 }?.columns
+        )
+        let startColumn = try #require(columns.first)
+        let nextColumn = try #require(columns.dropFirst().first)
+        let fraction = 0.02 / Double(nextColumn.localTick - startColumn.localTick)
+        let expectedX = startColumn.logicalColumnX
+            + (nextColumn.logicalColumnX - startColumn.logicalColumnX) * CGFloat(fraction)
 
         #expect(viewModel.currentMeasureIndex == 1)
         #expect(viewModel.currentRow == viewModel.rowForMeasure(1))

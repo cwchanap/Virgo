@@ -48,40 +48,6 @@ struct DTXControlImportIntegrationTests {
         #expect(stopNote.targetDisplayName == "Crash")
     }
 
-    @Test("parsed incommensurate control preserves measure but omits mark")
-    func parsedIncommensurateControlPreservesMeasure() throws {
-        // The control chip targets lane 16 (Crash) — a resolvable target — so the
-        // only reason the stop mark is omitted is that position 1/7 does not project
-        // exactly onto the 960-tick fallback grid (960 is not a multiple of 7). An
-        // earlier version of this test used noteID 01 (BGM, unresolvable target) at
-        // position 0, which passed for the wrong reason: the layout engine bailed at
-        // target resolution before ever checking tick projection.
-        let dtx = """
-        #TITLE: Incommensurate
-        #ARTIST: Tester
-        #BPM: 120
-        #DLEVEL: 50
-        #VIRGO_CONTROL: 1
-        #00012: 01000000
-        #00221: 00160000000000
-        """
-        let data = try DTXFileParser.parseChartMetadata(from: dtx)
-        let chart = Chart(difficulty: .medium)
-        let controls = data.toControlEvents(for: chart)
-        #expect(controls.count == 1)
-        let notationControls = controls.map { NotationControlEvent($0) }
-
-        let result = support.layout(
-            notes: [support.fallbackGridNote()],
-            controls: notationControls
-        )
-
-        // The control is at measure index 2 → total measures >= 3
-        #expect(result.measures.count >= 3)
-        // 1/7 does not project onto a 960-tick grid → no rendered mark
-        #expect(result.stopNotes.isEmpty)
-    }
-
     @Test("exact 7/8 timing drives gameplay while engraving falls back conservatively")
     func exactSevenEightTimingUsesConservativeEngraving() async throws {
         let chartData = try DTXFileParser.parseChartMetadata(from: """

@@ -207,6 +207,10 @@ extension GameplayViewModel {
             return calculateTimelinePurpleBarPosition(elapsedTime: elapsedTime)
         }
 
+        // No rhythm timeline: the notation layout is empty, so the playhead
+        // falls back to the beat-based `measurePositionMap` position. Clamp
+        // overshoot past the final measure onto its end so the bar stays at
+        // the end instead of jumping back to beat 0.
         let secondsPerBeat = 60.0 / effectiveBPM()
         let beatsPerMeasure = track.timeSignature.beatsPerMeasure
         let totalBeatsElapsed = quantizedPurpleBarBeatBoundaryBeats(elapsedTime / secondsPerBeat)
@@ -214,34 +218,20 @@ extension GameplayViewModel {
         let measureIndex = Int(continuousMeasureFraction)
         let beatWithinMeasure = totalBeatsElapsed - Double(measureIndex * beatsPerMeasure)
 
-        let hasRenderableNotation = cachedNotationHasRenderableContent
-        let hasPlayableNotation = cachedNotationHasPlayableContent
-        // Clamp measureIndex to valid range for notation layout lookup.
-        // Also clamp beatWithinMeasure so the purple bar stays at the end
-        // of the final measure instead of jumping back to beat 0.
+        let lastMeasureIndex = max(measurePositionMap.keys.max() ?? 0, 0)
         var clampedMeasureIndex = measureIndex
         var clampedBeatWithinMeasure = beatWithinMeasure
-        if hasPlayableNotation && measureIndex >= cachedNotationLayout.measures.count {
-            clampedMeasureIndex = cachedNotationLayout.measures.count - 1
+        if measureIndex > lastMeasureIndex {
+            clampedMeasureIndex = lastMeasureIndex
             clampedBeatWithinMeasure = Double(beatsPerMeasure)
         }
-        if let notationPosition = calculateNotationPurpleBarPosition(
-            measureIndex: clampedMeasureIndex,
-            beatWithinMeasure: clampedBeatWithinMeasure
-        ) {
-            return notationPosition
-        }
-        if hasRenderableNotation {
-            return nil
-        }
-
-        let clampedIndex = measurePositionMap[measureIndex] != nil
-            ? measureIndex
-            : (measurePositionMap.keys.max() ?? 0)
+        let clampedIndex = measurePositionMap[clampedMeasureIndex] != nil
+            ? clampedMeasureIndex
+            : lastMeasureIndex
         guard let measurePos = measurePositionMap[clampedIndex] else { return nil }
         let indicatorX = GameplayLayout.preciseNoteXPosition(
             measurePosition: measurePos,
-            beatPosition: beatWithinMeasure,
+            beatPosition: clampedBeatWithinMeasure,
             timeSignature: track.timeSignature
         )
         let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measurePos.row)
@@ -258,20 +248,12 @@ extension GameplayViewModel {
         // HPA-164: live tick→X comes from the installed formatter output;
         // clamp sub-tick overshoot past the measure end onto the end anchor.
         let localTick = min(resolved.localTick, Double(measure.durationTicks))
-        if let position = cachedNotationLayout.formattedNotation.position(
+        guard let position = cachedNotationLayout.formattedNotation.position(
             measureIndex: resolved.measure.measureIndex,
             localTick: localTick
-        ) {
-            let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.rowIndex)
-            return (x: Double(position.x), y: Double(staffCenterY))
-        }
-        // Grid fallback until Task 6 deletes the legacy conversion.
-        let indicatorX = cachedNotationLayout.tabGrid.xPosition(
-            in: measure,
-            localTick: resolved.localTick
-        )
-        let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
-        return (x: Double(indicatorX), y: Double(staffCenterY))
+        ) else { return nil }
+        let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.rowIndex)
+        return (x: Double(position.x), y: Double(staffCenterY))
     }
 
     private func quantizedPurpleBarBeatBoundaryBeats(_ totalBeats: Double) -> Double {
@@ -294,25 +276,6 @@ extension GameplayViewModel {
         guard shouldPublish else { return }
         lastPlaybackProgressPublishElapsedTime = elapsedTime
         playbackProgress = nextProgress
-    }
-
-    func calculateNotationPurpleBarPosition(
-        measureIndex: Int,
-        beatWithinMeasure: Double
-    ) -> (x: Double, y: Double)? {
-        guard let track = track, cachedNotationHasPlayableContent else { return nil }
-        guard let measure = cachedNotationMeasuresByIndex[measureIndex] else {
-            return nil
-        }
-
-        let tickIndex = cachedNotationLayout.tabGrid.tickIndex(
-            forBeatWithinMeasure: beatWithinMeasure,
-            beatsPerMeasure: track.timeSignature.beatsPerMeasure
-        )
-        let indicatorX = cachedNotationLayout.tabGrid.xPosition(in: measure, tickIndex: tickIndex)
-        let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: measure.row)
-
-        return (x: Double(indicatorX), y: Double(staffCenterY))
     }
 
     func calculateElapsedTime() -> Double? {
@@ -464,12 +427,5 @@ extension GameplayViewModel {
         Logger.audioPlayback(
             "Playback finished. Score: \(finalScore)\(recordResult == .newBest ? " (new high score!)" : "")"
         )
-    }
-}
-
-private extension TabGrid {
-    func xPosition(in measure: RenderedMeasure, localTick: Double) -> CGFloat {
-        let clampedTick = min(max(localTick, 0), Double(measure.durationTicks))
-        return measure.contentStartX + CGFloat(clampedTick) * tickWidth
     }
 }

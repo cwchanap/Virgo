@@ -7,15 +7,10 @@ struct NotationLayoutDefensiveGuardTests {
 
     @Test("beamEndY returns nil for zero-span beam (startX == endX)")
     func beamEndYReturnsNilForZeroSpanBeam() {
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: [
-                    Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
-                    Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0001)
-                ],
-                timeSignature: .fourFour
-            )
-        )
+        let layout = NotationSnapshotTestSupport().prepare(notes: [
+            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0),
+            Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0001)
+        ]).layout
 
         for beam in layout.beams {
             #expect(!beam.start.x.isNaN)
@@ -102,19 +97,18 @@ struct NotationLayoutDefensiveGuardTests {
     @Test("every legacy primitive reports finite nonempty painted bounds")
     func legacyPrimitivePaintedBoundsAreFinite() throws {
         let style = NotationLayoutStyle.gameplayDefault
-        let layout = NotationLayoutEngine().layout(input: NotationLayoutInput(
+        let layout = NotationSnapshotTestSupport().prepare(
             notes: [
                 Note(interval: .sixteenth, noteType: .crash, measureNumber: 1, measureOffset: 0),
                 Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
             ],
-            controlEvents: [NotationControlEvent(ChartControlEvent(
+            controls: [NotationControlEvent(ChartControlEvent(
                 kind: .stop,
                 measureNumber: 1,
                 measureOffset: 0.25,
                 targetLaneID: "1A"
-            ))],
-            timeSignature: .fourFour
-        ))
+            ))]
+        ).layout
         var bounds: [CGRect] = []
         bounds.append(contentsOf: layout.noteHeads.map { $0.paintedBounds(style: style) })
         bounds.append(contentsOf: layout.rests.filter(\.isPrinted).map { $0.paintedBounds(style: style) })

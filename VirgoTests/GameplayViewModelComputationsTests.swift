@@ -389,10 +389,11 @@ struct ComputationsVisualUpdatesTests {
         let position = try #require(vm.calculatePurpleBarPosition(elapsedTime: .infinity))
 
         // Infinity must clamp to beat 0 of measure 0 rather than crashing or returning nil.
-        let beatZero = try #require(
-            vm.calculateNotationPurpleBarPosition(measureIndex: 0, beatWithinMeasure: 0.0))
-        #expect(abs(position.x - beatZero.x) < 0.001)
-        #expect(abs(position.y - beatZero.y) < 0.001)
+        let measurePos = try #require(vm.measurePositionMap[0])
+        let expectedX = GameplayLayout.preciseNoteXPosition(
+            measurePosition: measurePos, beatPosition: 0.0,
+            timeSignature: vm.track?.timeSignature ?? .fourFour)
+        #expect(abs(position.x - Double(expectedX)) < 0.001)
     }
 
     // MARK: - updatePlaybackProgress
@@ -415,40 +416,6 @@ struct ComputationsVisualUpdatesTests {
         #expect(vm.playbackProgress < forwardProgress,
                 "Progress must republish with a lower value after a rewind")
         #expect(vm.playbackProgress > 0.0)
-    }
-
-    // MARK: - calculateNotationPurpleBarPosition
-
-    @Test("calculateNotationPurpleBarPosition returns nil without a notation layout")
-    func testCalculateNotationPurpleBarPositionReturnsNilWithoutLayout() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
-        defer { vm.cleanup() }
-        // track is nil and notation layout is empty before data is loaded
-
-        let position = vm.calculateNotationPurpleBarPosition(measureIndex: 0, beatWithinMeasure: 0.0)
-
-        #expect(position == nil, "Must return nil when track is nil / layout has no note heads")
-    }
-
-    @Test("renderable non-playable notation has no notation or fallback playhead")
-    func testRenderableNonPlayableNotationHasNoPlayhead() async throws {
-        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
-        chart.controlEvents.append(ChartControlEvent(
-            kind: .stop,
-            measureNumber: 1,
-            measureOffset: 0,
-            targetLaneID: "1A"
-        ))
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
-        defer { vm.cleanup() }
-        await vm.loadChartData()
-        await vm.setupGameplay(loadPersistedSpeed: false)
-        vm.isPlaying = true
-
-        #expect(vm.cachedNotationLayout.hasRenderableContent)
-        #expect(!vm.cachedNotationLayout.hasPlayableContent)
-        #expect(vm.calculateNotationPurpleBarPosition(measureIndex: 0, beatWithinMeasure: 0) == nil)
-        #expect(vm.calculatePurpleBarPosition(elapsedTime: 0) == nil)
     }
 
     // MARK: - rowForMeasure

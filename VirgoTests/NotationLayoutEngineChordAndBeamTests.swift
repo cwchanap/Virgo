@@ -9,6 +9,8 @@ import SwiftUI
 // swiftlint:disable:next type_body_length
 struct NotationLayoutEngineChordAndBeamTests {
 
+    private let support = NotationSnapshotTestSupport()
+
     @Test("beams are horizontal across notes at different staff positions")
     func beamsAreHorizontalAcrossDifferentPositions() throws {
         let notes = [
@@ -17,9 +19,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
             Note(interval: .eighth, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0.375)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         #expect(!layout.beams.isEmpty, "Run of beamable lower-voice notes should form a beam")
         let style = NotationLayoutStyle.gameplayDefault
@@ -42,9 +42,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let beam = try #require(layout.beams.first)
         #expect(abs(beam.start.y - beam.end.y) < 0.001)
@@ -62,9 +60,7 @@ struct NotationLayoutEngineChordAndBeamTests {
                 )
             }
         }
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let maxRow = layout.measures.map(\.row).max() ?? 0
         #expect(maxRow >= 1, "Sanity: 4 measures at 900pt cap should span multiple rows")
@@ -83,9 +79,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             }
         }
         let wideStyle = NotationLayoutStyle.gameplayDefault.with(rowWidth: 2_500)
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: wideStyle)
-        )
+        let layout = support.prepare(notes: notes, style: wideStyle).layout
 
         let rowCount = (layout.measures.map(\.row).max() ?? 0) + 1
         #expect(rowCount == 1, "All four 8th-note measures should pack into one row at 2500pt rowWidth")
@@ -110,9 +104,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             )
             return arr
         }
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
         let rows = Set(layout.measures.map(\.row)).sorted()
         #expect(rows.count >= 2, "Test setup should produce multiple rows")
 
@@ -132,9 +124,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         #expect(layout.stems.count == 1)
         let stem = try #require(layout.stems.first)
@@ -150,9 +140,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0.125),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         #expect(layout.beams.count == 1, "Same-direction chords should form one beam group")
         #expect(layout.stems.count == 2, "One stem per beat (each shared by both chord notes)")
@@ -167,9 +155,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         #expect(
             layout.beams.count == 1,
@@ -195,9 +181,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125),
             Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0.25)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let beam = try #require(layout.beams.first, "Should form a beam across all three notes")
         let heads = layout.noteHeads.filter { beam.noteHeadIDs.contains($0.id) }
@@ -214,9 +198,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let beam = try #require(layout.beams.first)
         #expect(layout.stems.count == 2)
@@ -234,9 +216,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.25),
             Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0.375)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let beam = try #require(layout.beams.first, "Down-stem bass eighths should form a beam")
         #expect(abs(beam.start.y - beam.end.y) < 0.001, "Down-stem beam should be horizontal")
@@ -263,9 +243,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.1875)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         #expect(
             !layout.beams.isEmpty,
@@ -295,9 +273,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0),
             Note(interval: .sixteenth, noteType: .bass, measureNumber: 1, measureOffset: 0.0625)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let level0Beam = try #require(
             layout.beams.first { $0.level == 0 },
@@ -325,12 +301,10 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let finalHead = try #require(
-            layout.noteHeads.first { abs($0.timePosition - 0.125) < 0.000_001 }
+            layout.noteHeads.first { abs($0.timePosition - 120) < 0.001 }
         )
         #expect(layout.beams.contains { $0.kind == .backwardHook && $0.level == 2 })
         #expect(layout.flags.filter { $0.noteHeadID == finalHead.id }.count == 2)
@@ -344,9 +318,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         #expect(layout.stems.count == 1)
         #expect(layout.beams.isEmpty, "Isolated chord notes should not form beams")
@@ -362,9 +334,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .half, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let crashHead = try #require(layout.noteHeads.first { $0.drumType == .crash })
         let snareHead = try #require(layout.noteHeads.first { $0.drumType == .snare })
@@ -390,13 +360,8 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: notes,
-                timeSignature: .fourFour,
-                notePositionOverrides: [.hiHat: .line1]
-            )
-        )
+        let layout = support.prepare(notes: notes, notePositionOverrides: [.hiHat: .line1]
+            ).layout
 
         let halfHead = try #require(layout.noteHeads.first { $0.drumType == .hiHat })
         let snareHeads = layout.noteHeads.filter { $0.drumType == .snare }
@@ -435,9 +400,7 @@ struct NotationLayoutEngineChordAndBeamTests {
     @Test("unbeamed eighth note flag attaches at stem tip")
     func unbeamedEighthNoteFlagAttachesAtStemTip() throws {
         let note = Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: [note]).layout
 
         let flag = try #require(layout.flags.first, "Eighth note should produce exactly one flag")
         let stem = try #require(layout.stems.first, "Eighth note should have a stem")
@@ -458,9 +421,7 @@ struct NotationLayoutEngineChordAndBeamTests {
         // different voices).  Actually, same-voice consecutive 16ths DO beam, so
         // use an isolated 16th note.
         let note = Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0)
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: [note]).layout
 
         #expect(layout.flags.count == 2, "Isolated 16th should have 2 flags")
         let stem = try #require(layout.stems.first)
@@ -495,9 +456,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .thirtysecond, noteType: .snare, measureNumber: 1, measureOffset: 0.0625),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let thirtySecond = try #require(
             layout.noteHeads.first { $0.interval == .thirtysecond }
@@ -516,9 +475,7 @@ struct NotationLayoutEngineChordAndBeamTests {
         // The stem tip is below the note head.  Extra flags should stack
         // upward (negative-y in SwiftUI) toward the note head.
         let note = Note(interval: .sixteenth, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0)
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: [note], timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: [note]).layout
 
         #expect(layout.flags.count == 2, "Isolated 16th pedal hi-hat should have 2 flags")
         let stem = try #require(layout.stems.first)
@@ -547,9 +504,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
         let upperHead = try #require(layout.noteHeads.first { $0.voice == .upper })
         let lowerHead = try #require(layout.noteHeads.first { $0.voice == .lower })
         let upperStem = try #require(layout.stems.first { $0.noteHeadIDs.contains(upperHead.id) })
@@ -580,13 +535,8 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .quarter, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .quarter, noteType: .lowTom, measureNumber: 1, measureOffset: 0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: notes,
-                timeSignature: .fourFour,
-                notePositionOverrides: [.crash: .aboveLine9, .tom3: .belowLine6]
-            )
-        )
+        let layout = support.prepare(notes: notes, notePositionOverrides: [.crash: .aboveLine9, .tom3: .belowLine6]
+            ).layout
         let stem = try #require(layout.stems.first)
         let highestVisibleY = try #require(
             layout.noteHeads.map {
@@ -619,13 +569,8 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .sixtyfourth, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .sixtyfourth, noteType: .lowTom, measureNumber: 1, measureOffset: 0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: notes,
-                timeSignature: .fourFour,
-                notePositionOverrides: [.crash: .aboveLine9, .tom3: .belowLine6]
-            )
-        )
+        let layout = support.prepare(notes: notes, notePositionOverrides: [.crash: .aboveLine9, .tom3: .belowLine6]
+            ).layout
         let stem = try #require(layout.stems.first)
         let highestVisibleY = try #require(
             layout.noteHeads.map {
@@ -657,13 +602,8 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0),
             Note(interval: .quarter, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(
-                notes: notes,
-                timeSignature: .fourFour,
-                notePositionOverrides: [.kick: .aboveLine9, .hiHatPedal: .belowLine6]
-            )
-        )
+        let layout = support.prepare(notes: notes, notePositionOverrides: [.kick: .aboveLine9, .hiHatPedal: .belowLine6]
+            ).layout
         let stem = try #require(layout.stems.first)
         let lowestVisibleY = try #require(
             layout.noteHeads.map {
@@ -695,9 +635,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .sixteenth, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
         let stem = try #require(layout.stems.first)
         let firstFlag = try #require(layout.flags.first { $0.flagIndex == 0 })
         let secondFlag = try #require(layout.flags.first { $0.flagIndex == 1 })
@@ -721,9 +659,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
         let firstColumn = try #require(
             layout.noteHeads.map(\.timeColumn).min(by: {
                 $0.absoluteLayoutTick < $1.absoluteLayoutTick
@@ -755,9 +691,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let snareQuarterOpt = layout.noteHeads.first { $0.drumType == .snare && $0.interval == .quarter }
         let snareQuarter = try #require(snareQuarterOpt)
@@ -811,9 +745,7 @@ struct NotationLayoutEngineChordAndBeamTests {
                 measureOffset: Double($0) / 16.0
             )
         }
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         #expect(layout.beams.filter { $0.level == 0 && $0.kind == .full }.count == 4)
         #expect(layout.beams.filter { $0.level == 1 && $0.kind == .full }.count == 4)
@@ -826,9 +758,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         let hook = try #require(layout.beams.first { $0.level == 1 })
         #expect(hook.kind == .forwardHook)
@@ -844,9 +774,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 8.0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
         let hook = try #require(layout.beams.first { $0.level == 1 })
         #expect(hook.kind == .backwardHook)
         #expect(hook.noteHeadIDs.count == 1)
@@ -862,9 +790,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .half, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 32.0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0)
         ]
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour)
-        )
+        let layout = support.prepare(notes: notes).layout
 
         #expect(layout.beams.isEmpty)
         #expect(layout.flags.count == 4)
@@ -886,9 +812,7 @@ struct NotationLayoutEngineChordAndBeamTests {
             Note(interval: .eighth, noteType: .snare, measureNumber: 2, measureOffset: 0.25)
         ]
         let wideStyle = NotationLayoutStyle.gameplayDefault.with(rowWidth: 2_500)
-        let layout = NotationLayoutEngine().layout(
-            input: NotationLayoutInput(notes: notes, timeSignature: .fourFour, style: wideStyle)
-        )
+        let layout = support.prepare(notes: notes, style: wideStyle).layout
 
         let headByID = Dictionary(uniqueKeysWithValues: layout.noteHeads.map { ($0.id, $0) })
 
