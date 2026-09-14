@@ -174,7 +174,12 @@ public struct ResolvedNotationInput: Hashable, Sendable {
                 throw ValidationError.duplicateMeasureIndex(measure.index)
             }
         }
-        let byStartTick = measures.sorted { $0.startTick < $1.startTick }
+        // Sorted by (startTick, index): Swift's `sorted` is not guaranteed
+        // stable, so the index tiebreak keeps the error payload's
+        // `first`/`second` order defined when start ticks tie.
+        let byStartTick = measures.sorted {
+            $0.startTick != $1.startTick ? $0.startTick < $1.startTick : $0.index < $1.index
+        }
         for (previous, next) in zip(byStartTick, byStartTick.dropFirst())
         where next.startTick < previous.startTick + previous.durationTicks {
             throw ValidationError.overlappingMeasures(first: previous, second: next)

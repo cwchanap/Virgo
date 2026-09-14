@@ -118,6 +118,26 @@ struct NotationFormatterTests {
         }
     }
 
+    @Test("overlapping-measure payload order breaks startTick ties by index")
+    func overlappingMeasurePayloadOrderBreaksStartTickTiesByIndex() {
+        // Input order intentionally puts the higher index first: the payload
+        // must still report the lower index as `first` (defined order, not
+        // sort stability).
+        let measures = [
+            Fixtures.measure(index: 5, startTick: 0),
+            Fixtures.measure(index: 2, startTick: 0)
+        ]
+        #expect {
+            try Fixtures.document(measures: measures)
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .overlappingMeasures(
+                    first: Fixtures.measure(index: 2, startTick: 0),
+                    second: Fixtures.measure(index: 5, startTick: 0)
+                )
+        }
+    }
+
     @Test("validation rejects measures with invalid bounds")
     func validationRejectsInvalidMeasureBounds() {
         #expect {

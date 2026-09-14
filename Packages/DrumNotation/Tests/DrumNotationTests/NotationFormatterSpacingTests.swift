@@ -63,8 +63,8 @@ struct NotationFormatterSpacingTests {
         }
         let endAnchor = try #require(measure.columns.last)
         #expect(abs(endAnchor.logicalColumnX - (100 + expectedWidth)) < 0.001)
-        // A measure starting at X=100 ends at X = 100 + width, safely inside the 900pt row.
-        #expect(abs(measure.xOffset + measure.width - (100 + expectedWidth)) < 0.001)
+        // Row containment: the measure's end anchor lands inside the row.
+        #expect(endAnchor.logicalColumnX < NotationFormattingStyle.virgoDefault.availableRowWidth)
         expectPosition(
             notation.position(measureIndex: 0, localTick: 1920),
             rowIndex: 0,
@@ -129,8 +129,11 @@ struct NotationFormatterSpacingTests {
         ]
         let document = try Fixtures.document(measures: measures, notes: [], rests: [], controls: [])
         let notation = try Fixtures.format(document)
-        // Empty 4/4 measures are 252 wide: rows hold three (100, 364, 628) before
-        // 628 + 252 + 12 would cross the 900pt row.
+        // Empty 4/4 measures are 252 wide: the running rowX advances
+        // 100 → 364 → 628 (each step adds width 252 + measure spacing 12),
+        // and the fourth candidate fails the wrap test 892 + 252 > 900
+        // (rowX 892 already includes measure 3's trailing spacing), so it
+        // rewraps at the 100pt leading inset.
         #expect(notation.measures.map(\.rowIndex) == [0, 0, 0, 1])
         #expect(notation.measures.map(\.xOffset) == [100, 364, 628, 100])
     }
