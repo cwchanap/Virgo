@@ -368,7 +368,10 @@ enum VirgoNotationAdapter {
     }
 
     /// Printed rests that pass the engine's rest guards, in its candidate
-    /// sort order (tick ascending, upper voice first, longer first).
+    /// sort order (tick ascending, upper voice first, longer first). Rests
+    /// in engraving-unsupported measures are filtered here too: Virgo
+    /// suppresses their engraving at composition, so they must not reserve
+    /// measured ink in the package.
     private static func printedRests(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure]
@@ -376,6 +379,7 @@ enum VirgoNotationAdapter {
         snapshot.rests.compactMap { rest -> RhythmLayoutRest? in
             guard rest.visibility == .printed,
                 let measure = measuresByIndex[rest.position.measureIndex],
+                measure.engravingSupport.permitsEngraving,
                 rest.position.localTick >= 0,
                 rest.position.localTick < measure.durationTicks,
                 rest.position.absoluteTick == measure.startTick + rest.position.localTick,

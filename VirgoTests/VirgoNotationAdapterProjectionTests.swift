@@ -388,6 +388,59 @@ struct VirgoNotationAdapterProjectionTests {
         #expect(input.notes.first?.visibleFlagDuration == nil)
     }
 
+    @Test("Rests in engraving-unsupported measures never reach the package input")
+    func unsupportedMeasureRestsAreFilteredAtProjection() throws {
+        let supported = makeMeasure(index: 0)
+        let unsupported = RhythmMeasure(
+            measureIndex: 1,
+            startTick: 960,
+            durationTicks: 960,
+            timeSignature: .fourFour,
+            beatGroups: (0..<4).map {
+                RhythmBeatGroup(groupIndex: $0, startTick: $0 * 240, durationTicks: 240, isResidual: false)
+            },
+            engravingSupport: .unsupported([.malformedMeasureLength])
+        )
+        // The chart's only rest is printed but lives in the unsupported
+        // measure: Virgo suppresses its engraving, so the package must never
+        // see it (it would widen the measured column for ink never painted).
+        let rest = makeRest(
+            id: "r1",
+            measureIndex: 1,
+            localTick: 480,
+            durationTicks: 240,
+            voice: .upper,
+            interval: .quarter,
+            visibility: .printed
+        )
+        let measures = [supported, unsupported]
+        let snapshot = try makeSnapshot(measures: measures, rests: [rest])
+
+        let input = try VirgoNotationAdapter.resolvedNotation(
+            snapshot: snapshot,
+            expandedMeasures: measures,
+            notePositionOverrides: [:]
+        )
+        #expect(input.rests.isEmpty)
+
+        // Measure geometry is identical to the same chart with no rest.
+        let withoutRest = try VirgoNotationAdapter.resolvedNotation(
+            snapshot: try makeSnapshot(measures: measures),
+            expandedMeasures: measures,
+            notePositionOverrides: [:]
+        )
+        let withoutRestGeometry = try NotationFormatter.format(
+            withoutRest,
+            style: VirgoNotationAdapter.formattingStyle(rowWidth: 1_400, style: .gameplayDefault)
+        )
+        let withRestGeometry = try NotationFormatter.format(
+            input,
+            style: VirgoNotationAdapter.formattingStyle(rowWidth: 1_400, style: .gameplayDefault)
+        )
+        #expect(withRestGeometry.measures.map(\.width) == withoutRestGeometry.measures.map(\.width))
+        #expect(withRestGeometry.measures.map(\.xOffset) == withoutRestGeometry.measures.map(\.xOffset))
+    }
+
     // MARK: - Step 5: the single style mapper
 
     @Test("formattingStyle maps resolved row width and the pinned Virgo values")
