@@ -188,6 +188,28 @@ struct NotationFormatterSpacingTests {
     }
 }
 
+@Suite("Notation formatter overflow safety")
+struct NotationFormatterOverflowTests {
+    @Test("a near-Int.max measure duration formats without trapping")
+    func hugeMeasureDurationDoesNotTrap() throws {
+        let document = try Fixtures.document(
+            measures: [ResolvedMeasure(index: 0, startTick: 0, durationTicks: Int.max)],
+            notes: [
+                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3),
+                Fixtures.makeNote(id: 2, localTick: 960, staffStep: 3)
+            ],
+            rests: [],
+            controls: []
+        )
+        let notation = try Fixtures.format(document)
+        let measure = try #require(notation.measures.first)
+        #expect(measure.columns.map(\.localTick) == [0, 960, Int.max])
+        // The end-anchor gap stays finite: delta scaling converts to CGFloat
+        // before multiplying, so no Int arithmetic can overflow.
+        #expect(measure.width.isFinite)
+    }
+}
+
 @Suite("Notation formatter tick lookup")
 struct NotationFormatterLookupTests {
     private let interval = NotationFormatterSpacingTests.collisionInterval
