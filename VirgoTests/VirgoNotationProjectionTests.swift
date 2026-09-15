@@ -215,7 +215,7 @@ struct VirgoNotationProjectionTests {
             // Isolated thirty-second in beat 3.
             BeamFixture(abstractTicks: [720], intervals: [.thirtysecond]),
             // Unflagged notes never carry a visible flag.
-            BeamFixture(abstractTicks: [960], intervals: [.quarter])
+            BeamFixture(abstractTicks: [0], intervals: [.quarter])
         ]
     )
     func preFormatClassificationAgreesWithPostFormatFlagPainting(fixture: BeamFixture) throws {
@@ -274,12 +274,6 @@ struct VirgoNotationProjectionTests {
 
         // Painted family per representative head: canonical duration when the
         // uncovered levels are exactly the expected set, .eighth otherwise.
-        let headsByEventID = Dictionary(
-            layout.noteHeads.compactMap { head -> (Int, RenderedNoteHead)? in
-                head.eventID.map { (Int($0.rawValue), head) }
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
         var paintedFamilyByID: [Int: NotationFlagDuration] = [:]
         for (headID, headFlags) in Dictionary(grouping: flags, by: \.noteHeadID) {
             guard let head = layout.noteHeads.first(where: { $0.id == headID }),
@@ -295,6 +289,15 @@ struct VirgoNotationProjectionTests {
             } else {
                 paintedFamilyByID[eventID] = .eighth
             }
+        }
+
+        // Unflagged intervals must carry a nil classification on the
+        // projected note itself — absence from classificationByID alone is
+        // vacuous when a note never reached the projection (the measure-
+        // bounds guard drops ticks at or past the measure duration).
+        for note in notes where note.rhythm.baseInterval.flagCount == 0 {
+            let projected = try #require(input.notes.first { $0.id == note.eventID.rawValue })
+            #expect(projected.visibleFlagDuration == nil)
         }
 
         // Every note's pre-format classification must equal the family its
