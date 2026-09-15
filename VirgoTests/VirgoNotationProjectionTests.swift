@@ -294,10 +294,13 @@ struct VirgoNotationProjectionTests {
         // Unflagged intervals must carry a nil classification on the
         // projected note itself — absence from classificationByID alone is
         // vacuous when a note never reached the projection (the measure-
-        // bounds guard drops ticks at or past the measure duration).
+        // bounds guard drops ticks at or past the measure duration) — and
+        // the post-format path must paint no flags for their heads.
         for note in notes where note.rhythm.baseInterval.flagCount == 0 {
             let projected = try #require(input.notes.first { $0.id == note.eventID.rawValue })
             #expect(projected.visibleFlagDuration == nil)
+            let headIDs = Set(layout.noteHeads.filter { $0.eventID == note.eventID }.map(\.id))
+            #expect(!headIDs.isEmpty && flags.allSatisfy { !headIDs.contains($0.noteHeadID) })
         }
 
         // Every note's pre-format classification must equal the family its
