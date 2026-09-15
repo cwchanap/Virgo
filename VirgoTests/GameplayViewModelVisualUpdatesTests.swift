@@ -292,22 +292,25 @@ struct GameplayViewModelVisualUpdatesTests {
         let clampedPosition = try #require(
             viewModel.calculatePurpleBarPosition(elapsedTime: 2.0)
         )
-        let measurePosition = try #require(viewModel.measurePositionMap[0])
-        let endX = GameplayLayout.preciseNoteXPosition(
-            measurePosition: measurePosition,
-            beatPosition: 4.0,
-            timeSignature: chart.timeSignature
+        // The live path reads the formatter's authoritative tick→X lookup, so
+        // the clamp target is the measure's real end anchor — the legacy
+        // uniform beat-grid end no longer matches once the centered
+        // full-measure rest's keep-clear pocket widens the measure.
+        let formatted = viewModel.cachedNotationLayout.formattedNotation
+        let endTick = try #require(
+            formatted.measures.first { $0.index == 0 }?.columns.last?.localTick
+        )
+        let endX = try #require(
+            formatted.position(measureIndex: 0, localTick: Double(endTick))?.x
         )
 
-        #expect(abs(clampedPosition.x - Double(endX)) < 0.5)
+        #expect(abs(clampedPosition.x - endX) < 0.5)
 
         // Verify it's NOT at the start of the measure (beat 0)
-        let startX = GameplayLayout.preciseNoteXPosition(
-            measurePosition: measurePosition,
-            beatPosition: 0.0,
-            timeSignature: chart.timeSignature
+        let startX = try #require(
+            formatted.position(measureIndex: 0, localTick: 0)?.x
         )
-        #expect(abs(clampedPosition.x - Double(startX)) > 1.0)
+        #expect(abs(clampedPosition.x - startX) > 1.0)
     }
 
     @Test func testTimelinePurpleBarUsesExactSubBeatPosition() async throws {

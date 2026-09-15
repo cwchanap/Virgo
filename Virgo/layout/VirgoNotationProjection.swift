@@ -44,7 +44,11 @@ enum VirgoNotationProjection {
             uniqueKeysWithValues: expandedMeasures.map { ($0.measureIndex, $0) }
         )
         let notes = mappedNotes(snapshot: snapshot, measuresByIndex: measuresByIndex)
-        let flags = visibleFlagClassifications(notes: notes, expandedMeasures: expandedMeasures)
+        let flags = visibleFlagClassifications(
+            notes: notes,
+            expandedMeasures: expandedMeasures,
+            notePositionOverrides: notePositionOverrides
+        )
         return try ResolvedNotationInput(
             ticksPerWholeNote: snapshot.ticksPerWholeNote,
             measures: expandedMeasures.map {
@@ -75,31 +79,6 @@ enum VirgoNotationProjection {
         return uncovered == expected ? canonical : .eighth
     }
 
-    /// Pre-format visible flag classification per note event ID. Rebuilds the
-    /// X-independent `BeamTimelineEvent` topology from the same
-    /// timing/voice/beat-group inputs the post-format flag builder consumes,
-    /// with provisional row identity (beam groups are measure-local), then
-    /// maps each stem group's uncovered beam levels through
-    /// ``visibleFlagClassification(uncovered:expected:canonical:)``.
-    static func visibleFlagClassifications(
-        notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)],
-        expandedMeasures: [RhythmMeasure]
-    ) -> [Int: NotationFlagDuration] {
-        let permitsEngraving = Dictionary(
-            uniqueKeysWithValues: expandedMeasures.map { ($0.measureIndex, $0.engravingSupport.permitsEngraving) }
-        )
-        let stemGroups = buildStemGroups(notes: notes)
-        let topology = NotationBeamTopologyBuilder().build(
-            events: stemGroups.map(\.event),
-            measures: expandedMeasures
-        )
-        return classifyUncoveredFlagLevels(
-            stemGroups: stemGroups,
-            topology: topology,
-            permitsEngraving: permitsEngraving
-        )
-    }
-
     // MARK: - Notes
 
     private static func resolvedNotes(
@@ -121,6 +100,10 @@ enum VirgoNotationProjection {
                 // ascending steps); Virgo's layout staffStep is Y-down, so
                 // negate at this seam. Keeps the stem-side head undisplaced.
                 staffStep: -NotationLayoutEngine.staffStep(for: position),
+                // The engine's stem membership: buildStems paints a shared
+                // stem only for supported notes whose interval needs one.
+                stemMember: entry.note.rhythm.baseInterval.needsStem
+                    && entry.note.rhythm.support == .supported,
                 noteheadStyle: VirgoNotationAdapter.noteheadStyle(for: entry.note.noteType),
                 duration: VirgoNotationAdapter.duration(for: entry.note.rhythm.baseInterval),
                 dotCount: entry.note.rhythm.dotCount,
@@ -150,7 +133,9 @@ enum VirgoNotationProjection {
         }
     }
 
-    private static func staffPosition(
+    /// Shared by `resolvedNotes` and the flag-classification extension's
+    /// stem-representative ordering: the rendered note position for an entry.
+    static func staffPosition(
         for entry: (note: RhythmLayoutNote, definition: DrumNotationDefinition),
         overrides: [DrumType: GameplayLayout.NotePosition]
     ) -> GameplayLayout.NotePosition {
@@ -238,137 +223,4 @@ enum VirgoNotationProjection {
         }
     }
 
-    // MARK: - Stem groups
-
-    /// One beam-topology stem group: its member entries plus the timeline
-    /// event the topology builder consumes.
-    private struct StemGroup {
-        let entries: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)]
-        let event: BeamTimelineEvent
-    }
-
-    /// Beam groups are measure-local, so the provisional row identity is the
-    /// (measure, tick, voice, stem direction) key.
-    private struct StemGroupKey: Hashable {
-        let measureIndex: Int
-        let localTick: Int
-        let voice: NotationVoice
-        let stemDirection: StemDirection
-    }
-
-    /// Same event semantics as the engine's timeline
-    /// `buildTimelineEvents(noteHeads:)`, sorted with the same comparator
-    /// so topology coverage indices line up.
-    private static func buildStemGroups(
-        notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)]
-    ) -> [StemGroup] {
-        var grouped: [StemGroupKey: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)]] = [:]
-        for entry in notes {
-            grouped[StemGroupKey(
-                measureIndex: entry.note.position.measureIndex,
-                localTick: entry.note.position.localTick,
-                voice: entry.definition.voice,
-                stemDirection: entry.definition.defaultStemDirection
-            ), default: []].append(entry)
-        }
-        return grouped.values.compactMap { group -> StemGroup? in
-            guard let representative = flagRepresentative(in: group) else { return nil }
-            return StemGroup(entries: group, event: stemGroupEvent(representative: representative, group: group))
-        }
-        .sorted(by: areStemGroupsOrdered)
-    }
-
-    private static func stemGroupEvent(
-        representative: (note: RhythmLayoutNote, definition: DrumNotationDefinition),
-        group: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)]
-    ) -> BeamTimelineEvent {
-        let flagCount = representative.note.rhythm.baseInterval.flagCount
-        let role: BeamTimelineEventRole
-        if flagCount > 0,
-            representative.note.rhythm.support == .supported,
-            representative.note.durationTicks > 0 {
-            role = .beamable(
-                requiredBeamLevels: flagCount,
-                durationTicks: representative.note.durationTicks
-            )
-        } else {
-            role = .boundary
-        }
-        return BeamTimelineEvent(
-            timeColumn: NotationTimeColumn(
-                measureIndex: representative.note.position.measureIndex,
-                tickWithinMeasure: representative.note.position.localTick,
-                absoluteLayoutTick: representative.note.position.absoluteTick
-            ),
-            row: 0,
-            voice: representative.definition.voice,
-            stemDirection: representative.definition.defaultStemDirection,
-            noteHeadIDs: group.map { UInt64($0.note.eventID.rawValue) }.sorted(),
-            role: role
-        )
-    }
-
-    private static func areStemGroupsOrdered(_ lhs: StemGroup, _ rhs: StemGroup) -> Bool {
-        if lhs.event.timeColumn.measureIndex != rhs.event.timeColumn.measureIndex {
-            return lhs.event.timeColumn.measureIndex < rhs.event.timeColumn.measureIndex
-        }
-        if lhs.event.timeColumn.absoluteLayoutTick != rhs.event.timeColumn.absoluteLayoutTick {
-            return lhs.event.timeColumn.absoluteLayoutTick < rhs.event.timeColumn.absoluteLayoutTick
-        }
-        if lhs.event.voice.rawValue != rhs.event.voice.rawValue {
-            return lhs.event.voice.rawValue < rhs.event.voice.rawValue
-        }
-        if lhs.event.stemDirection.rawValue != rhs.event.stemDirection.rawValue {
-            return lhs.event.stemDirection.rawValue < rhs.event.stemDirection.rawValue
-        }
-        return lhs.event.noteHeadIDs.lexicographicallyPrecedes(rhs.event.noteHeadIDs)
-    }
-
-    /// Maps each beamable stem group's uncovered beam levels to its flag
-    /// classification, keyed by the stem representative's event ID.
-    private static func classifyUncoveredFlagLevels(
-        stemGroups: [StemGroup],
-        topology: BeamTopologyResult,
-        permitsEngraving: [Int: Bool]
-    ) -> [Int: NotationFlagDuration] {
-        var classifications: [Int: NotationFlagDuration] = [:]
-        for (index, stemGroup) in stemGroups.enumerated() {
-            guard case let .beamable(requiredLevels, _) = stemGroup.event.role else { continue }
-            // Notes in engraving-unsupported measures never paint flags.
-            guard permitsEngraving[stemGroup.event.timeColumn.measureIndex] == true else { continue }
-            let covered = topology.coveredLevelsByEventIndex[index] ?? []
-            let expected = Set(0..<requiredLevels)
-            guard let representative = flagRepresentative(in: stemGroup.entries),
-                let canonical = VirgoNotationAdapter.flagDuration(for: representative.note.rhythm.baseInterval)
-            else { continue }
-            let classification = visibleFlagClassification(
-                uncovered: expected.subtracting(covered),
-                expected: expected,
-                canonical: canonical
-            )
-            guard let classification else { continue }
-            // ONE measured anchor per stem group: the classification rides on
-            // the stem representative — the same head buildFlags paints the
-            // flag on — so the formatter reserves a single flag footprint at
-            // the shared stem axis, never one per chord member.
-            classifications[representative.note.eventID.rawValue] = classification
-        }
-        return classifications
-    }
-
-    /// The engine's ``flagRepresentative`` comparator over snapshot notes:
-    /// most flags, then catalog order, then event ID.
-    private static func flagRepresentative(
-        in group: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)]
-    ) -> (note: RhythmLayoutNote, definition: DrumNotationDefinition)? {
-        group.min {
-            let lhsFlags = $0.note.rhythm.baseInterval.flagCount
-            let rhsFlags = $1.note.rhythm.baseInterval.flagCount
-            if lhsFlags != rhsFlags { return lhsFlags > rhsFlags }
-            if $0.definition.catalogOrder != $1.definition.catalogOrder {
-                return $0.definition.catalogOrder < $1.definition.catalogOrder
-            }
-            return $0.note.eventID.rawValue < $1.note.eventID.rawValue
-        }
-    }
 }

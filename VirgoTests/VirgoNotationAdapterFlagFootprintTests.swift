@@ -95,6 +95,106 @@ struct VirgoNotationAdapterFlagFootprintTests {
         #expect(abs(column.rightExtent - (ink.maxX - column.logicalColumnX)) < 0.001)
     }
 
+    @Test("mixed-glyph chord measures the flag at the painted stem axis, not the flag head's anchor")
+    func mixedGlyphChordMeasuresFlagAtPaintedStemAxis() throws {
+        let measure = makeMeasure(index: 0)
+        // Snare eighth + cowbell sixteenth at one tick: the sixteenth owns
+        // the flag glyph (more flags), but the painted stem axis — and the
+        // flag's painted origin — comes from the stem representative, the
+        // lower snare head. The two heads have different SMuFL stem anchors
+        // (noteheadBlack ≈1.18ss vs noteheadDiamondBlack ≈1.0ss), so
+        // measuring the flag at the flag representative's anchor misplaces
+        // the reserved ink relative to the painted flag.
+        let notes = [
+            makeNote(eventID: 1, noteType: .snare, measureIndex: 0, localTick: 240, interval: .eighth),
+            makeNote(eventID: 2, noteType: .cowbell, measureIndex: 0, localTick: 240, interval: .sixteenth)
+        ]
+        let snapshot = try RhythmLayoutSnapshot(
+            ticksPerWholeNote: 960,
+            measures: [measure],
+            notes: notes,
+            controls: [],
+            rests: [],
+            feel: .straight
+        )
+
+        let input = try VirgoNotationProjection.resolvedNotation(
+            snapshot: snapshot,
+            expandedMeasures: [measure],
+            notePositionOverrides: [:]
+        )
+        let flagged = input.notes.filter { $0.visibleFlagDuration != nil }
+        #expect(flagged.count == 1, "one stem group must measure exactly one flag anchor")
+        #expect(flagged.first?.id == 1, "the flag anchor must ride on the stem representative")
+
+        let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: 1,
+            style: style,
+            notePositionOverrides: [:]
+        ))
+        let column = try #require(
+            prepared.formatted.measures.first?.columns.first { $0.localTick == 240 }
+        )
+        let flagBounds = VirgoNotationAdapter
+            .flagPaintCommands(flags: prepared.layout.flags, heads: prepared.layout.noteHeads, style: style)
+            .reduce(CGRect.null) { $0.union($1.paintedBounds) }
+        #expect(flagBounds != .null, "the isolated sixteenth chord must paint a flag")
+
+        // Every painted flag point sits inside the reserved column ink.
+        #expect(flagBounds.minX >= column.logicalColumnX - column.leftExtent - 0.001)
+        #expect(flagBounds.maxX <= column.logicalColumnX + column.rightExtent + 0.001)
+    }
+
+    @Test("adjacent stemless half never moves the painted stem and flag off the column axis")
+    func stemlessHalfKeepsPaintedStemAxisOnColumn() throws {
+        let measure = makeMeasure(index: 0)
+        // Hi-hat half + snare eighth forced one staff step apart with the
+        // stemless half on the stem side: the eighth is the only stem member,
+        // so the shared stem (and flag) must paint from its undisplaced
+        // anchor — the formatter must displace the half, not the eighth.
+        let notes = [
+            makeNote(eventID: 1, noteType: .hiHat, measureIndex: 0, localTick: 240, interval: .half),
+            makeNote(eventID: 2, noteType: .snare, measureIndex: 0, localTick: 240, interval: .eighth)
+        ]
+        let overrides: [DrumType: GameplayLayout.NotePosition] = [.hiHat: .spaceBetween2And3]
+        let snapshot = try RhythmLayoutSnapshot(
+            ticksPerWholeNote: 960,
+            measures: [measure],
+            notes: notes,
+            controls: [],
+            rests: [],
+            feel: .straight
+        )
+        let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: 1,
+            style: style,
+            notePositionOverrides: overrides
+        ))
+
+        let column = try #require(
+            prepared.formatted.measures.first?.columns.first { $0.localTick == 240 }
+        )
+        let stemmedHead = try #require(
+            prepared.layout.noteHeads.first { $0.eventID?.rawValue == 2 }
+        )
+        // The stem member keeps the logical column X…
+        #expect(abs(stemmedHead.position.x - column.logicalColumnX) < 0.001)
+        // …so the painted stem axis stays on the column, and the painted
+        // flag ink stays inside the reserved extents.
+        let stem = try #require(
+            prepared.layout.stems.first { $0.noteHeadIDs.contains(stemmedHead.id) }
+        )
+        let flagOrigin = NotationLayoutEngine().flagStemOrigin(for: stem, style: style)
+        #expect(flagOrigin.x >= column.logicalColumnX - column.leftExtent - 0.001)
+        let flagBounds = VirgoNotationAdapter
+            .flagPaintCommands(flags: prepared.layout.flags, heads: prepared.layout.noteHeads, style: style)
+            .reduce(CGRect.null) { $0.union($1.paintedBounds) }
+        #expect(flagBounds.minX >= column.logicalColumnX - column.leftExtent - 0.001)
+        #expect(flagBounds.maxX <= column.logicalColumnX + column.rightExtent + 0.001)
+    }
+
     @Test("same-tick chord reserves ONE flag footprint at the shared stem axis")
     func chordReservesOneFlagFootprintAtSharedStem() throws {
         let measure = makeMeasure(index: 0)
