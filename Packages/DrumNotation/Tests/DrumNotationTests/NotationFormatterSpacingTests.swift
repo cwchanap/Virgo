@@ -119,6 +119,141 @@ struct NotationFormatterSpacingTests {
         #expect(abs(rest.visualX - 252) < 0.001)
     }
 
+    @Test("a centered full-measure rest opens a minimal pocket clearing column ink")
+    func centeredRestBandClearsMidMeasureInk() throws {
+        let fullMeasure = ResolvedRest(
+            id: 3,
+            position: NotationTickPosition(measureIndex: 0, localTick: 0),
+            duration: .whole,
+            dotCount: 0,
+            isFullMeasure: true
+        )
+        // One note at mid-measure: natural spacing lands its column at the
+        // content center, exactly where the full-measure rest paints.
+        let notes = [Fixtures.makeNote(id: 1, localTick: 960, staffStep: 3)]
+        let notation = try Fixtures.format(
+            try Fixtures.document(notes: notes, rests: [fullMeasure], controls: [])
+        )
+        let measure = try #require(notation.measures.first)
+        let rest = try #require(try Fixtures.column(notation, localTick: 0).rests.first)
+        let style = NotationFormattingStyle.virgoDefault
+        let bounds = PercussionGlyphMetrics.rest(
+            duration: .whole,
+            staffSpace: style.staffSpace
+        ).paintedBounds
+        let inkMin = rest.visualX + bounds.minX
+        let inkMax = rest.visualX + bounds.maxX
+
+        // The rest still centers in the finished content span...
+        let center = (measure.columns.first!.logicalColumnX
+            + measure.columns.last!.logicalColumnX) / 2
+        #expect(abs(rest.visualX - center) < 0.001)
+        // ...and every column's painted ink clears the rest's band by the
+        // pinned inter-column clearance — the formatter widened the measure
+        // rather than letting mid-measure ink overlap the painted rest.
+        for column in measure.columns where column.leftExtent > 0 || column.rightExtent > 0 {
+            let minX = column.logicalColumnX - column.leftExtent
+            let maxX = column.logicalColumnX + column.rightExtent
+            #expect(
+                maxX + style.minimumInterColumnClearance <= inkMin
+                    || minX - style.minimumInterColumnClearance >= inkMax,
+                "column at tick \(column.localTick) overlaps the centered rest"
+            )
+        }
+        // Concretely: the cheapest pocket keeps the note left of the band —
+        // the measure grew past the natural 252 so the band's near edge sits
+        // exactly one clearance past the note's ink.
+        #expect(measure.width > 252)
+        let note = try Fixtures.column(notation, localTick: 960)
+        #expect(note.logicalColumnX + note.rightExtent + style.minimumInterColumnClearance <= inkMin)
+    }
+
+    @Test("a centered full-measure rest splits a straddling pair with the least growth")
+    func centeredRestPocketSplitsStraddlingInk() throws {
+        let fullMeasure = ResolvedRest(
+            id: 3,
+            position: NotationTickPosition(measureIndex: 0, localTick: 0),
+            duration: .whole,
+            dotCount: 0,
+            isFullMeasure: true
+        )
+        // Notes at 800/1120 straddle the natural content center: no existing
+        // gap fits the rest's band, but splitting between the two costs far
+        // less than pushing the band past the last note's ink.
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 800, staffStep: 3),
+            Fixtures.makeNote(id: 2, localTick: 1120, staffStep: 3)
+        ]
+        let notation = try Fixtures.format(
+            try Fixtures.document(notes: notes, rests: [fullMeasure], controls: [])
+        )
+        let measure = try #require(notation.measures.first)
+        let rest = try #require(try Fixtures.column(notation, localTick: 0).rests.first)
+        let style = NotationFormattingStyle.virgoDefault
+        let bounds = PercussionGlyphMetrics.rest(
+            duration: .whole,
+            staffSpace: style.staffSpace
+        ).paintedBounds
+        let inkMin = rest.visualX + bounds.minX
+        let inkMax = rest.visualX + bounds.maxX
+        let clearance = style.minimumInterColumnClearance
+
+        let early = try Fixtures.column(notation, localTick: 800)
+        let late = try Fixtures.column(notation, localTick: 1120)
+        // The early column stays put, the late column shifted right of the
+        // band — the pocket sits between them.
+        #expect(early.logicalColumnX + early.rightExtent + clearance <= inkMin)
+        #expect(late.logicalColumnX - late.leftExtent - clearance >= inkMax)
+        // Growth is the pocket cost (~28.6pt), not an escape past all ink —
+        // escaping the late note would widen past 400.
+        #expect(measure.width > 252)
+        #expect(measure.width < 300)
+        // And the rest still paints at the finished content center.
+        let center = (measure.columns.first!.logicalColumnX
+            + measure.columns.last!.logicalColumnX) / 2
+        #expect(abs(rest.visualX - center) < 0.001)
+    }
+
+    @Test("a centered full-measure rest in a natural gap adds no width")
+    func centeredRestFitsExistingGapWithoutGrowth() throws {
+        let fullMeasure = ResolvedRest(
+            id: 3,
+            position: NotationTickPosition(measureIndex: 0, localTick: 0),
+            duration: .whole,
+            dotCount: 0,
+            isFullMeasure: true
+        )
+        // Notes at 480/1440 leave a wide clear pocket around the natural
+        // center — the band already fits, so nothing moves.
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 480, staffStep: 3),
+            Fixtures.makeNote(id: 2, localTick: 1440, staffStep: 3)
+        ]
+        let notation = try Fixtures.format(
+            try Fixtures.document(notes: notes, rests: [fullMeasure], controls: [])
+        )
+        let measure = try #require(notation.measures.first)
+        #expect(abs(measure.width - 252) < 0.001)
+        let rest = try #require(try Fixtures.column(notation, localTick: 0).rests.first)
+        let bounds = PercussionGlyphMetrics.rest(
+            duration: .whole,
+            staffSpace: NotationFormattingStyle.virgoDefault.staffSpace
+        ).paintedBounds
+        // Sheet-local center of [152, 352] — the un-widened content span.
+        #expect(abs(rest.visualX - 252) < 0.001)
+        for column in measure.columns where column.leftExtent > 0 || column.rightExtent > 0 {
+            let minX = column.logicalColumnX - column.leftExtent
+            let maxX = column.logicalColumnX + column.rightExtent
+            #expect(
+                maxX + NotationFormattingStyle.virgoDefault.minimumInterColumnClearance
+                    <= rest.visualX + bounds.minX
+                    || minX - NotationFormattingStyle.virgoDefault.minimumInterColumnClearance
+                    >= rest.visualX + bounds.maxX,
+                "column at tick \(column.localTick) overlaps the centered rest"
+            )
+        }
+    }
+
     @Test("same-tick full-measure and interval rests keep distinct X and union their ink")
     func mixedFullMeasureAndIntervalRestsKeepDistinctPlacement() throws {
         let style = NotationFormattingStyle.virgoDefault
@@ -149,20 +284,18 @@ struct NotationFormatterSpacingTests {
         #expect(abs(full.visualX - 252) < 0.001)
         #expect(interval.visualX == column.logicalColumnX)
 
-        // Both glyphs and the interval rest's dot contribute to the column's
-        // collision extents — not just the first rest's.
-        let wholeBounds = PercussionGlyphMetrics.rest(
-            duration: .whole,
-            staffSpace: style.staffSpace
-        ).paintedBounds
+        // The interval rest's glyph and dot contribute to the column's
+        // collision extents; the full-measure rest does not — its ink is the
+        // keep-clear band around the content center, enforced by widening,
+        // not onset-column ink.
         let quarterBounds = PercussionGlyphMetrics.rest(
             duration: .quarter,
             staffSpace: style.staffSpace
         ).paintedBounds
         let dottedQuarterRight = quarterBounds.maxX
             + style.rhythmDotSpacing + style.rhythmDotRadius * 2
-        #expect(abs(column.rightExtent - max(wholeBounds.maxX, dottedQuarterRight)) < 0.001)
-        #expect(abs(column.leftExtent - max(0, -min(wholeBounds.minX, quarterBounds.minX))) < 0.001)
+        #expect(abs(column.rightExtent - dottedQuarterRight) < 0.001)
+        #expect(abs(column.leftExtent - max(0, -quarterBounds.minX)) < 0.001)
     }
 
     @Test("greedy packing fits measures per row with measure spacing and wraps cleanly")

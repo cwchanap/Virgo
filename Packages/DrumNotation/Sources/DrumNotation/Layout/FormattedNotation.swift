@@ -43,8 +43,10 @@ public struct FormattedColumn: Hashable, Sendable {
     /// span; interval rests sit on `logicalColumnX`).
     public let rests: [FormattedRest]
     /// Collision ink reach left of `logicalColumnX` (≥ 0): the union of
-    /// displaced notehead bounds, dot footprints, printed-rest bounds and
+    /// displaced notehead bounds, dot footprints, interval-rest bounds and
     /// visible flag bounds attached at the undisplaced column axis.
+    /// Full-measure rests center in the measure instead — their ink is kept
+    /// clear by the formatter widening the measure, not by these extents.
     public let leftExtent: CGFloat
     /// Collision ink reach right of `logicalColumnX` (≥ 0), same union.
     public let rightExtent: CGFloat

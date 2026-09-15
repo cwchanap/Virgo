@@ -26,6 +26,7 @@ enum Fixtures {
             position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
             stemDirection: .up,
             staffStep: 3,
+            stemMember: true,
             noteheadStyle: .x,
             duration: .sixteenth,
             dotCount: 0,
@@ -33,7 +34,10 @@ enum Fixtures {
         )
     }
 
-    /// Fully parameterized note for column/displacement/ink tests.
+    /// Fully parameterized note for column/displacement/ink tests. Stem
+    /// membership defaults to the stemmed-duration rule the caller maps
+    /// (whole/half heads share no stem); pass an explicit value to model a
+    /// supported/unsupported override.
     static func makeNote(
         id: Int,
         localTick: Int,
@@ -43,6 +47,7 @@ enum Fixtures {
         duration: NotationDuration = .quarter,
         dotCount: Int = 0,
         flag: NotationFlagDuration? = nil,
+        stemMember: Bool? = nil,
         measureIndex: Int = 0
     ) -> ResolvedNote {
         ResolvedNote(
@@ -50,6 +55,7 @@ enum Fixtures {
             position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
             stemDirection: stem,
             staffStep: staffStep,
+            stemMember: stemMember ?? (duration != .whole && duration != .half),
             noteheadStyle: headStyle,
             duration: duration,
             dotCount: dotCount,

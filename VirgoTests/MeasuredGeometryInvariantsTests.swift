@@ -9,8 +9,10 @@ import CoreGraphics
 /// Binding numbers from the controller ruling: the vendored Bravura X-black
 /// head paints 23.2pt (half 11.6), so adjacent sixteenth pitch is
 /// 11.6 + 8 + 11.6 = 31.2pt and a 16-sixteenth 4/4 measure spans
-/// 52 + 15 × 31.2 + 19.6 = 539.6pt; at the 100pt row-leading inset it ends
-/// at 639.6, inside the 900pt row.
+/// 52 + 15 × 31.2 + 19.6 = 539.6pt. The silent-voice full-measure rest's
+/// keep-clear pocket adds 50.16 (whole-rest ink half 11.28 + 8 clearance,
+/// minus natural coverage around content center) for a 589.76pt measure;
+/// at the 100pt row-leading inset it ends at 689.76, inside the 900pt row.
 @Suite("Measured Geometry Invariants")
 @MainActor
 struct MeasuredGeometryInvariantsTests {
@@ -36,13 +38,14 @@ struct MeasuredGeometryInvariantsTests {
         #expect(sparse.width < dense.width)
     }
 
-    @Test("default sixteenth-run-4-4 first measure is 539.6pt wide and ends inside X=900")
+    @Test("default sixteenth-run-4-4 first measure is 589.76pt wide and ends inside X=900")
     func sixteenthRunMeasureWidthMatchesBindingNumbers() throws {
         let result = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.sixteenthRun)
         let measure = try #require(result.layout.measures.first)
 
-        // 52 leading inset + 15 columns × 31.2 pitch + 19.6 end remainder.
-        let expectedWidth: CGFloat = 52 + 15 * 31.2 + 19.6
+        // 52 leading inset + 15 columns × 31.2 pitch + 19.6 end remainder,
+        // plus 50.16 for the centered full-measure rest's keep-clear pocket.
+        let expectedWidth: CGFloat = 52 + 15 * 31.2 + 19.6 + 50.16
         #expect(abs(measure.width - expectedWidth) < tolerance)
         #expect(measure.xOffset + measure.width < 900)
     }
