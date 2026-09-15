@@ -83,12 +83,12 @@ struct NotationFormatterDisplacementTests {
 
     @Test("stemless stem-side head never holds the base slot; the stem member keeps the stem axis")
     func stemlessHeadNeverDisplacesStemMemberOntoPaintedAxis() throws {
-        // Adjacent staff steps, stemless half on the stem side: the caller
+        // Adjacent staff steps, stemless whole on the stem side: the caller
         // paints the shared stem and flag from the stem member's undisplaced
         // anchor, so the eighth must stay at base X and the stemless head
         // takes the shift.
         let notes = [
-            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: .half),
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: .whole),
             Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4, duration: .eighth, flag: .eighth)
         ]
         let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
@@ -97,8 +97,8 @@ struct NotationFormatterDisplacementTests {
         let stemmed = try #require(column.noteHeads.first { $0.noteID == 2 })
 
         #expect(stemmed.headCenterX == column.logicalColumnX)
-        let halfShift = displacement(headStyle: .x, duration: .half)
-        #expect(stemless.headCenterX == column.logicalColumnX + halfShift)
+        let wholeShift = displacement(headStyle: .x, duration: .whole)
+        #expect(stemless.headCenterX == column.logicalColumnX + wholeShift)
 
         // The flag's measured ink is anchored at the stem member's
         // undisplaced axis — the same axis the caller paints it from.
@@ -111,10 +111,10 @@ struct NotationFormatterDisplacementTests {
     @Test("a down-stem stemless head also yields the base slot to the stem member")
     func downStemlessHeadYieldsBaseSlot() throws {
         // Down-stem walk is descending (highest step = stem side): the
-        // stemless half sorts first but must take the far-side shift while
+        // stemless whole sorts first but must take the far-side shift while
         // the eighth keeps the painted stem axis at base X.
         let notes = [
-            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 4, stem: .down, duration: .half),
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 4, stem: .down, duration: .whole),
             Fixtures.makeNote(id: 2, localTick: 0, staffStep: 3, stem: .down, duration: .eighth)
         ]
         let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
@@ -123,8 +123,8 @@ struct NotationFormatterDisplacementTests {
         let stemmed = try #require(column.noteHeads.first { $0.noteID == 2 })
 
         #expect(stemmed.headCenterX == column.logicalColumnX)
-        let halfShift = displacement(headStyle: .x, duration: .half)
-        #expect(stemless.headCenterX == column.logicalColumnX - halfShift)
+        let wholeShift = displacement(headStyle: .x, duration: .whole)
+        #expect(stemless.headCenterX == column.logicalColumnX - wholeShift)
     }
 
     @Test("non-adjacent same-stem heads stay centered")

@@ -466,7 +466,7 @@ extension NotationLayoutEngine {
     func stemRepresentative(
         in noteHeads: [RenderedNoteHead]
     ) -> RenderedNoteHead? {
-        // Filter to notes that actually need a stem so stemless half/full
+        // Filter to notes that actually need a stem so stemless full
         // notes sharing a time column with beamed notes cannot be picked as
         // the beam endpoint representative (which would misalign beam X from
         // stem X). buildStems pre-filters its input, but beam rendering calls

@@ -69,8 +69,8 @@ struct DrumTypeExtensionsAndConstantsTests {
 
     @Test("NoteInterval stem, flag, and flag count logic is consistent")
     func testNoteIntervalProperties() {
-        let noStemIntervals: [NoteInterval] = [.full, .half]
-        let stemIntervals: [NoteInterval] = [.quarter, .eighth, .sixteenth, .thirtysecond, .sixtyfourth]
+        let noStemIntervals: [NoteInterval] = [.full]
+        let stemIntervals: [NoteInterval] = [.half, .quarter, .eighth, .sixteenth, .thirtysecond, .sixtyfourth]
 
         for interval in noStemIntervals {
             #expect(interval.needsStem == false)

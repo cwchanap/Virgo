@@ -146,15 +146,15 @@ struct VirgoNotationAdapterFlagFootprintTests {
         #expect(flagBounds.maxX <= column.logicalColumnX + column.rightExtent + 0.001)
     }
 
-    @Test("adjacent stemless half never moves the painted stem and flag off the column axis")
-    func stemlessHalfKeepsPaintedStemAxisOnColumn() throws {
+    @Test("adjacent stemless whole never moves the painted stem and flag off the column axis")
+    func stemlessWholeKeepsPaintedStemAxisOnColumn() throws {
         let measure = makeMeasure(index: 0)
-        // Hi-hat half + snare eighth forced one staff step apart with the
-        // stemless half on the stem side: the eighth is the only stem member,
+        // Hi-hat whole + snare eighth forced one staff step apart with the
+        // stemless whole on the stem side: the eighth is the only stem member,
         // so the shared stem (and flag) must paint from its undisplaced
-        // anchor — the formatter must displace the half, not the eighth.
+        // anchor — the formatter must displace the whole, not the eighth.
         let notes = [
-            makeNote(eventID: 1, noteType: .hiHat, measureIndex: 0, localTick: 240, interval: .half),
+            makeNote(eventID: 1, noteType: .hiHat, measureIndex: 0, localTick: 240, interval: .full),
             makeNote(eventID: 2, noteType: .snare, measureIndex: 0, localTick: 240, interval: .eighth)
         ]
         let overrides: [DrumType: GameplayLayout.NotePosition] = [.hiHat: .spaceBetween2And3]
