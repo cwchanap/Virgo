@@ -88,9 +88,9 @@ enum NoteInterval: String, Codable, CaseIterable {
 
     var needsStem: Bool {
         switch self {
-        case .full, .half:
+        case .full:
             return false
-        case .quarter, .eighth, .sixteenth, .thirtysecond, .sixtyfourth:
+        case .half, .quarter, .eighth, .sixteenth, .thirtysecond, .sixtyfourth:
             return true
         }
     }

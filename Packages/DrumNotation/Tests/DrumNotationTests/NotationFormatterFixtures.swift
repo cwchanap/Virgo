@@ -36,7 +36,7 @@ enum Fixtures {
 
     /// Fully parameterized note for column/displacement/ink tests. Stem
     /// membership defaults to the stemmed-duration rule the caller maps
-    /// (whole/half heads share no stem); pass an explicit value to model a
+    /// (whole heads share no stem); pass an explicit value to model a
     /// supported/unsupported override.
     static func makeNote(
         id: Int,
@@ -55,7 +55,7 @@ enum Fixtures {
             position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
             stemDirection: stem,
             staffStep: staffStep,
-            stemMember: stemMember ?? (duration != .whole && duration != .half),
+            stemMember: stemMember ?? (duration != .whole),
             noteheadStyle: headStyle,
             duration: duration,
             dotCount: dotCount,

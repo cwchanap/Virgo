@@ -3,13 +3,14 @@ tl-meas m0 startTick=0 durationTicks=64 sig=4/4 groups=[0,16,32,48] engraving=wa
 tl-meas m1 startTick=64 durationTicks=64 sig=4/4 groups=[0,16,32,48] engraving=supported
 
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
-dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,43.00,576.03,147.00)
+dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,25.76,576.03,164.24)
 row   0 measures=[m0,m1] contentWidth=900.00
 meas  m0 row=0 xOffset=100.00 width=311.03 startTick=0 durationTicks=64
 meas  m1 row=0 xOffset=423.03 width=252.00 startTick=64 durationTicks=64
 head  m0 t0000 abs0000 pos=(152.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Half rhythm=Half durTicks=32
 head  m0 t0033 abs0033 pos=(314.16,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Half rhythm=Half[indeterminate:indeterminateTerminalDuration] durTicks=15
 head  m1 t0000 abs0064 pos=(475.03,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Full rhythm=Full durTicks=64
+stem  ids=[0] dir=up start=(165.36,101.76) end=(165.36,26.76)
 rest  m0 t0000 voice=lower dur=fullMeasure ticks=64 vis=printed pos=(281.52,170.00) tuplet=-
 rest  m0 t0032 voice=upper dur=quarter ticks=1 vis=hiddenSpacing pos=(152.00,130.00) tuplet=-
 rest  m0 t0033 voice=upper dur=quarter ticks=31 vis=hiddenSpacing pos=(314.16,130.00) tuplet=-

@@ -3,7 +3,7 @@ tl-meas m0 startTick=0 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=suppor
 tl-meas m1 startTick=4 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=supported
 
 style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
-dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,100.00,517.00,140.00)
+dims  noteHeadSize=30.00x20.00 totalHeight=630.00 paintedBounds=(99.00,70.64,517.00,238.72)
 row   0 measures=[m0,m1] contentWidth=900.00
 meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4
 meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4
@@ -13,6 +13,10 @@ head  m1 t0000 abs0004 pos=(416.00,230.00) kick notehead=normal variant=standard
 head  m1 t0002 abs0006 pos=(516.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Half rhythm=Half durTicks=2
 head  m1 t0002 abs0006 pos=(516.00,150.00) snare notehead=normal variant=standard voice=upper stem=up row=0 lane=12 interval=Half rhythm=Half durTicks=2
 head  m1 t0002 abs0006 pos=(516.00,230.00) kick notehead=normal variant=standard voice=lower stem=down row=0 lane=13 interval=Half rhythm=Half durTicks=2
+stem  ids=[2] dir=down start=(404.20,233.36) end=(404.20,308.36)
+stem  ids=[0, 1] dir=up start=(427.80,146.64) end=(427.80,71.64)
+stem  ids=[5] dir=down start=(504.20,233.36) end=(504.20,308.36)
+stem  ids=[3, 4] dir=up start=(527.80,146.64) end=(527.80,71.64)
 rest  m0 t0000 voice=upper dur=fullMeasure ticks=4 vis=printed pos=(252.00,130.00) tuplet=-
 rest  m0 t0000 voice=lower dur=fullMeasure ticks=4 vis=hiddenDuplicate pos=(152.00,170.00) tuplet=-
 ledger row=0 start=(398.20,210.00) end=(433.80,210.00)

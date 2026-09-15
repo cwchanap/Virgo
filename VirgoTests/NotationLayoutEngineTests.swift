@@ -351,15 +351,28 @@ struct NotationLayoutEngineTests {
         #expect(layout.beams.isEmpty)
     }
 
-    @Test("full and half notes do not create stems")
-    func fullAndHalfNotesDoNotCreateStems() {
+    @Test("full notes do not create stems")
+    func fullNotesDoNotCreateStems() {
         let layout = support.prepare(notes: [
-            Note(interval: .full, noteType: .snare, measureNumber: 1, measureOffset: 0),
-            Note(interval: .half, noteType: .snare, measureNumber: 1, measureOffset: 0.5)
+            Note(interval: .full, noteType: .snare, measureNumber: 1, measureOffset: 0)
         ]).layout
 
         #expect(layout.stems.isEmpty)
         #expect(layout.beams.isEmpty)
+    }
+
+    @Test("half notes create a stem but no flag or beam")
+    func halfNotesCreateStemButNoFlagOrBeam() throws {
+        let layout = support.prepare(notes: [
+            Note(interval: .half, noteType: .snare, measureNumber: 1, measureOffset: 0)
+        ]).layout
+
+        let head = try #require(layout.noteHeads.first)
+        let stem = try #require(layout.stems.first)
+        #expect(layout.stems.count == 1)
+        #expect(stem.noteHeadIDs == [head.id])
+        #expect(layout.beams.isEmpty)
+        #expect(layout.flags.isEmpty)
     }
 
     @Test("consecutive sixteenths create two beam levels")

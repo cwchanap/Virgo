@@ -331,7 +331,7 @@ struct NotationLayoutEngineChordAndBeamTests {
     @Test("stemless head is excluded from shared stem membership")
     func stemlessHeadIsExcludedFromSharedStemMembership() throws {
         let notes = [
-            Note(interval: .half, noteType: .crash, measureNumber: 1, measureOffset: 0),
+            Note(interval: .full, noteType: .crash, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0)
         ]
         let layout = support.prepare(notes: notes).layout
@@ -348,32 +348,32 @@ struct NotationLayoutEngineChordAndBeamTests {
 
     @Test("stemless note sharing a beam run time column does not hijack beam endpoint X")
     func stemlessNoteInBeamRunDoesNotHijackEndpointX() throws {
-        // Two snare eighths form a beam run. A hiHat half sits at the same
+        // Two snare eighths form a beam run. A hiHat whole sits at the same
         // time column as the first eighth. hiHat's X-style package notehead
         // (different stem anchor X than snare's normal head), and its position is
         // overridden to line1 (below snare's line3) so that without the
-        // needsStem filter, stemRepresentative would pick the half note as the
+        // needsStem filter, stemRepresentative would pick the whole note as the
         // beam owner (largest y for up-stems), misaligning beam start.x from
         // the stem start.x that buildStems computes (it filters to needsStem).
         let notes = [
-            Note(interval: .half, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
+            Note(interval: .full, noteType: .hiHat, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0.125)
         ]
         let layout = support.prepare(notes: notes, notePositionOverrides: [.hiHat: .line1]
             ).layout
 
-        let halfHead = try #require(layout.noteHeads.first { $0.drumType == .hiHat })
+        let wholeHead = try #require(layout.noteHeads.first { $0.drumType == .hiHat })
         let snareHeads = layout.noteHeads.filter { $0.drumType == .snare }
         let firstSnare = try #require(
             snareHeads.min { $0.timeColumn.absoluteLayoutTick < $1.timeColumn.absoluteLayoutTick }
         )
 
-        // Sanity: the half and first eighth share the same time column, and
-        // the half is positioned lower (larger y) so it would be picked as
+        // Sanity: the whole and first eighth share the same time column, and
+        // the whole is positioned lower (larger y) so it would be picked as
         // representative for an up-stem without the needsStem filter.
-        #expect(halfHead.timeColumn == firstSnare.timeColumn)
-        #expect(halfHead.position.y > firstSnare.position.y)
+        #expect(wholeHead.timeColumn == firstSnare.timeColumn)
+        #expect(wholeHead.position.y > firstSnare.position.y)
 
         // A beam run should form.
         let beam = try #require(layout.beams.first { $0.kind == .full && $0.level == 0 })
@@ -381,19 +381,19 @@ struct NotationLayoutEngineChordAndBeamTests {
         // The stem for the first snare's stem group.
         let stem = try #require(layout.stems.first { $0.noteHeadIDs.contains(firstSnare.id) })
 
-        // The beam start.x must match the stem start.x — not the half note's
+        // The beam start.x must match the stem start.x — not the whole note's
         // stem anchor x. Without the needsStem filter this would fail because
-        // the half note (lower position, largest y for up-stem)
+        // the whole note (lower position, largest y for up-stem)
         // would be picked as the beam owner.
         let style = NotationLayoutStyle.gameplayDefault
-        let halfAnchorX = NotationLayoutEngine().stemAnchor(for: halfHead, style: style).x
+        let wholeAnchorX = NotationLayoutEngine().stemAnchor(for: wholeHead, style: style).x
         #expect(
             abs(beam.start.x - stem.start.x) < 0.001,
             "Beam start.x (\(beam.start.x)) should match stem start.x (\(stem.start.x))"
         )
         #expect(
-            abs(beam.start.x - halfAnchorX) > 0.001,
-            "Beam start.x should not coincide with the stemless half note's stem anchor (\(halfAnchorX))"
+            abs(beam.start.x - wholeAnchorX) > 0.001,
+            "Beam start.x should not coincide with the stemless whole note's stem anchor (\(wholeAnchorX))"
         )
     }
 
@@ -787,7 +787,7 @@ struct NotationLayoutEngineChordAndBeamTests {
     func stemlessBoundaryBreaksLayoutRun() {
         let notes = [
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
-            Note(interval: .half, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 32.0),
+            Note(interval: .full, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 32.0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0)
         ]
         let layout = support.prepare(notes: notes).layout
