@@ -208,7 +208,9 @@ struct NotationFormatterTests {
 
     @Test("validation accepts boundary local ticks")
     func validationAcceptsBoundaryLocalTicks() throws {
-        _ = try Fixtures.document(notes: [Fixtures.note(localTick: 1919)])
+        // The last valid onset carries a one-tick span ending exactly on the
+        // measure end — onset and span both stay inside the measure.
+        _ = try Fixtures.document(notes: [Fixtures.note(localTick: 1919, durationTicks: 1)])
         _ = try Fixtures.document(controls: [Fixtures.control(localTick: 0)])
     }
 

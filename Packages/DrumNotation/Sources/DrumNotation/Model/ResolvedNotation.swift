@@ -258,7 +258,9 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     ///   duplicate/invalid/overlapping measures, beat groups that fail to
     ///   cover their measure, duplicate event IDs, non-positive event
     ///   durations, an event whose `localTick` falls outside its owning
-    ///   measure, or a tuplet that references unknown members.
+    ///   measure, a note/rest whose `localTick + durationTicks` span crosses
+    ///   its owning measure's end, or a tuplet that references unknown
+    ///   members.
     public init(
         ticksPerWholeNote: Int,
         measures: [ResolvedMeasure],
@@ -291,6 +293,7 @@ public struct ResolvedNotationInput: Hashable, Sendable {
         case beatGroupsDoNotCoverMeasure(measureIndex: Int, durationTicks: Int, coveredTicks: Int)
         case duplicateEventID(Int)
         case invalidEventDurationTicks(eventID: Int, durationTicks: Int)
+        case eventSpanOutsideMeasure(eventID: Int, measureIndex: Int, localTick: Int, durationTicks: Int)
         case invalidTupletRatio(tupletID: Int, actual: Int, normal: Int)
         case unknownTupletMeasure(tupletID: Int, measureIndex: Int)
         case unknownTupletMember(tupletID: Int, memberID: Int)
@@ -334,7 +337,11 @@ public struct ResolvedNotationInput: Hashable, Sendable {
         try requireUniqueIDs(events.rests.map(\.id))
         try requireUniqueIDs(events.controls.map(\.id))
         try requireUniqueIDs(events.tuplets.map(\.id))
-        try validateEventDurations(notes: events.notes, rests: events.rests)
+        try validateEventDurations(
+            notes: events.notes,
+            rests: events.rests,
+            measuresByIndex: measuresByIndex
+        )
         try validateTuplets(
             tuplets: events.tuplets,
             notes: events.notes,
@@ -431,20 +438,56 @@ public struct ResolvedNotationInput: Hashable, Sendable {
         }
     }
 
-    /// Event durations stay positive. The onset is already measure-contained;
-    /// a nominal duration may legitimately extend past the measure edge
-    /// (stemless whole/half boundaries), so no span bound applies here.
-    private static func validateEventDurations(notes: [ResolvedNote], rests: [ResolvedRest]) throws {
-        for note in notes where note.durationTicks <= 0 {
-            throw ValidationError.invalidEventDurationTicks(
+    /// Event durations stay positive and their span stays inside the owning
+    /// measure: `localTick + durationTicks <= measure.durationTicks`, with the
+    /// exact measure end allowed. The addition is reporting-overflow safe —
+    /// an unrepresentable end is rejected, never trapped.
+    private static func validateEventDurations(
+        notes: [ResolvedNote],
+        rests: [ResolvedRest],
+        measuresByIndex: [Int: ResolvedMeasure]
+    ) throws {
+        for note in notes {
+            try requireContainedSpan(
                 eventID: note.id,
-                durationTicks: note.durationTicks
+                position: note.position,
+                durationTicks: note.durationTicks,
+                measuresByIndex: measuresByIndex
             )
         }
-        for rest in rests where rest.durationTicks <= 0 {
-            throw ValidationError.invalidEventDurationTicks(
+        for rest in rests {
+            try requireContainedSpan(
                 eventID: rest.id,
-                durationTicks: rest.durationTicks
+                position: rest.position,
+                durationTicks: rest.durationTicks,
+                measuresByIndex: measuresByIndex
+            )
+        }
+    }
+
+    /// One event's duration span must be contained in its owning measure.
+    /// The onset was already validated inside the measure above, so the
+    /// measure lookup cannot fail here.
+    private static func requireContainedSpan(
+        eventID: Int,
+        position: NotationTickPosition,
+        durationTicks: Int,
+        measuresByIndex: [Int: ResolvedMeasure]
+    ) throws {
+        guard durationTicks > 0 else {
+            throw ValidationError.invalidEventDurationTicks(
+                eventID: eventID,
+                durationTicks: durationTicks
+            )
+        }
+        guard let measure = measuresByIndex[position.measureIndex] else { return }
+        let endTick = position.localTick.addingReportingOverflow(durationTicks)
+        guard !endTick.overflow, endTick.partialValue <= measure.durationTicks else {
+            throw ValidationError.eventSpanOutsideMeasure(
+                eventID: eventID,
+                measureIndex: position.measureIndex,
+                localTick: position.localTick,
+                durationTicks: durationTicks
             )
         }
     }

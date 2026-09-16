@@ -784,13 +784,54 @@ struct NotationLayoutEngineChordAndBeamTests {
     }
 
     @Test("stemless boundary prevents adjacent flagged notes from beaming")
-    func stemlessBoundaryBreaksLayoutRun() {
-        let notes = [
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
-            Note(interval: .full, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 32.0),
-            Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0)
-        ]
-        let layout = support.prepare(notes: notes).layout
+    func stemlessBoundaryBreaksLayoutRun() throws {
+        // Exact spans as the analyzer emits them: each event's durationTicks
+        // is clipped at the next onset (the `.full` head's nominal span would
+        // otherwise cross the measure end, which resolved input rejects).
+        func layoutNote(id: Int, localTick: Int, durationTicks: Int, interval: NoteInterval) -> RhythmLayoutNote {
+            RhythmLayoutNote(
+                eventID: RhythmEventID(rawValue: id),
+                sourceLaneID: nil,
+                sourceChipID: nil,
+                noteType: .snare,
+                position: RhythmEventPosition(
+                    measureIndex: 0,
+                    localTick: localTick,
+                    absoluteTick: localTick
+                ),
+                durationTicks: durationTicks,
+                rhythm: NotationRhythm(baseInterval: interval),
+                tupletID: nil
+            )
+        }
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 960,
+            timeSignature: .fourFour,
+            beatGroups: (0..<4).map {
+                RhythmBeatGroup(groupIndex: $0, startTick: $0 * 240, durationTicks: 240, isResidual: false)
+            },
+            engravingSupport: .supported
+        )
+        let snapshot = try RhythmLayoutSnapshot(
+            ticksPerWholeNote: 960,
+            measures: [measure],
+            notes: [
+                layoutNote(id: 1, localTick: 0, durationTicks: 30, interval: .sixteenth),
+                layoutNote(id: 2, localTick: 30, durationTicks: 30, interval: .full),
+                layoutNote(id: 3, localTick: 60, durationTicks: 900, interval: .sixteenth)
+            ],
+            controls: [],
+            rests: [],
+            feel: .straight
+        )
+        let layout = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: 1,
+            style: .gameplayDefault,
+            notePositionOverrides: [:]
+        )).layout
 
         #expect(layout.beams.isEmpty)
         #expect(layout.flags.count == 4)

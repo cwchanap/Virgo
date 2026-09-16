@@ -28,7 +28,8 @@ struct VirgoNotationAdapterFlagFootprintTests {
         noteType: NoteType,
         measureIndex: Int,
         localTick: Int,
-        interval: NoteInterval
+        interval: NoteInterval,
+        durationTicks: Int? = nil
     ) -> RhythmLayoutNote {
         RhythmLayoutNote(
             eventID: RhythmEventID(rawValue: eventID),
@@ -40,7 +41,7 @@ struct VirgoNotationAdapterFlagFootprintTests {
                 localTick: localTick,
                 absoluteTick: measureIndex * 960 + localTick
             ),
-            durationTicks: 960 / Self.tickDivisor(of: interval),
+            durationTicks: durationTicks ?? 960 / Self.tickDivisor(of: interval),
             rhythm: NotationRhythm(baseInterval: interval),
             tupletID: nil
         )
@@ -154,7 +155,13 @@ struct VirgoNotationAdapterFlagFootprintTests {
         // so the shared stem (and flag) must paint from its undisplaced
         // anchor — the formatter must displace the whole, not the eighth.
         let notes = [
-            makeNote(eventID: 1, noteType: .hiHat, measureIndex: 0, localTick: 240, interval: .full),
+            // The stemless whole's exact span clips at the measure end
+            // (240 + 720 == 960) — the analyzer never emits a span that
+            // crosses it.
+            makeNote(
+                eventID: 1, noteType: .hiHat, measureIndex: 0,
+                localTick: 240, interval: .full, durationTicks: 720
+            ),
             makeNote(eventID: 2, noteType: .snare, measureIndex: 0, localTick: 240, interval: .eighth)
         ]
         let overrides: [DrumType: GameplayLayout.NotePosition] = [.hiHat: .spaceBetween2And3]
