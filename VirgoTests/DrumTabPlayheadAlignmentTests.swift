@@ -49,7 +49,8 @@ struct DrumTabPlayheadAlignmentTests {
         let runtime = viewModel.cachedRhythmRuntime
         #expect(runtime.availability == .valid)
         #expect(runtime.timeline != nil)
-        #expect(!viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        #expect(!engraved.noteHeads.isEmpty)
 
         // setupGameplay() alone leaves purpleBarPosition nil:
         // `calculatePurpleBarPosition` on `GameplayViewModel+VisualUpdates`
@@ -100,7 +101,7 @@ struct DrumTabPlayheadAlignmentTests {
         // "matches no rendered note column" is more diagnosable than a `#require`
         // failure on `matchingHead` — not as independent coverage.
         let columnXs = Set(
-            viewModel.cachedNotationLayout.noteHeads.map { ($0.position.x * 100).rounded() }
+            engraved.noteHeads.map { ($0.position.x * 100).rounded() }
         )
         #expect(
             columnXs.contains((CGFloat(position.x) * 100).rounded()),
@@ -113,7 +114,7 @@ struct DrumTabPlayheadAlignmentTests {
         // `RhythmTimelineIntegrationTests.validDTXFixtureSharesIdentityAndTime`
         // (`purpleBarPosition?.x == laterHead.position.x`).
         let matchingHead = try #require(
-            viewModel.cachedNotationLayout.noteHeads.first { $0.eventID == farTarget.eventID }
+            engraved.noteHeads.first { $0.noteID == farTarget.eventID.rawValue }
         )
         #expect(position.x == Double(matchingHead.position.x))
     }

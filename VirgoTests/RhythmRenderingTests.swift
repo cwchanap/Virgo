@@ -1,22 +1,33 @@
 import CoreGraphics
 import Testing
+import DrumNotation
 @testable import Virgo
 
 @Suite("Rhythm Rendering Tests")
 struct RhythmRenderingTests {
-    /// The one preparation route (HPA-164): every layout in this suite is
-    /// composed from the measured formatter output.
-    private func preparedLayout(
+    /// The one preparation route (HPA-166 Task 7): every engraving in this
+    /// suite comes from `GameplayNotationPreparer.prepare`, which ends in the
+    /// package `NotationEngraver`. `.ready` carries the `EngravedNotation`
+    /// plus the app-owned presentation (feel/warning annotations + VoiceOver
+    /// labels); `.unavailable`/`.failed` fail the test.
+    private func preparedEngraving(
         _ snapshot: RhythmLayoutSnapshot,
         minimumMeasureCount: Int = 1
-    ) -> GameplayNotationPreparedState {
-        GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+    ) throws -> (engraved: EngravedNotation, presentation: GameplayNotationPresentation) {
+        let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
             snapshot: snapshot,
             minimumMeasureCount: minimumMeasureCount,
             style: .gameplayDefault,
             notePositionOverrides: [:]
         ))
+        guard case let .ready(engraved, presentation) = prepared else {
+            Issue.record("Expected .ready, got \(prepared)")
+            throw PreparationNotReady()
+        }
+        return (engraved, presentation)
     }
+
+    private struct PreparationNotReady: Error {}
 
     @Test("dotted notes and rests retain exact timeline x positions")
     func dottedPrimitivesRetainTimelinePositions() throws {
@@ -36,28 +47,33 @@ struct RhythmRenderingTests {
             tupletID: nil
         )
 
-        let prepared = preparedLayout(try snapshot(measures: [measure], notes: [note], rests: [rest]))
-        let layout = prepared.layout
-        let head = try #require(layout.noteHeads.first)
-        let renderedRest = try #require(layout.rests.first)
-        let noteDot = try #require(layout.rhythmDots.first { $0.source == .event(note.eventID) })
-        let restDot = try #require(layout.rhythmDots.first { $0.source == .rest(renderedRest.id) })
+        let (engraved, _) = try preparedEngraving(
+            try snapshot(measures: [measure], notes: [note], rests: [rest])
+        )
+        let head = try #require(engraved.noteHeads.first)
+        let renderedRest = try #require(engraved.rests.first)
+        let noteDot = try #require(
+            engraved.rhythmDots.first { $0.source == .note(note.eventID.rawValue) }
+        )
+        let restDot = try #require(
+            engraved.rhythmDots.first { $0.source == .rest(renderedRest.restID) }
+        )
 
         // The live playhead lookup shares the logical column X with the
         // undisplaced head.
-        let onset = try #require(prepared.formatted.position(measureIndex: 0, localTick: 120))
+        let onset = try #require(engraved.formatted.position(measureIndex: 0, localTick: 120))
         #expect(head.position.x == onset.x)
         let restColumn = try #require(
-            prepared.formatted.measures
+            engraved.formatted.measures
                 .first { $0.index == 0 }?
                 .columns
                 .first { $0.localTick == 360 }
         )
         #expect(renderedRest.position.x == restColumn.rests.first?.visualX)
-        #expect(noteDot.position.x > head.paintedBounds(style: .gameplayDefault).maxX)
-        #expect(restDot.position.x > renderedRest.paintedBounds(style: .gameplayDefault).maxX)
-        #expect(layout.paintedBounds.contains(noteDot.paintedBounds(style: .gameplayDefault)))
-        #expect(layout.paintedBounds.contains(restDot.paintedBounds(style: .gameplayDefault)))
+        #expect(noteDot.position.x > head.paintedBounds.maxX)
+        #expect(restDot.position.x > renderedRest.paintedBounds.maxX)
+        #expect(engraved.paintedBounds.contains(noteDot.paintedBounds))
+        #expect(engraved.paintedBounds.contains(restDot.paintedBounds))
     }
 
     @Test("triplets use beam geometry when beamed and brackets otherwise in both voices")
@@ -73,12 +89,15 @@ struct RhythmRenderingTests {
                 durationTicks: 80
             )
         }
-        let beamed = preparedLayout(try snapshot(measures: [rhythmMeasure()], notes: beamedNotes)).layout
+        let (beamed, _) = try preparedEngraving(
+            try snapshot(measures: [rhythmMeasure()], notes: beamedNotes)
+        )
         let beamedTuplet = try #require(beamed.tuplets.first)
 
-        #expect(beamedTuplet.id == beamedID)
+        // Engraved tuplets carry package-local IDs; member notes cite their
+        // event IDs verbatim.
+        #expect(beamedTuplet.memberNoteIDs == beamedNotes.map { $0.eventID.rawValue })
         #expect(beamedTuplet.voice == .upper)
-        #expect(beamedTuplet.memberEventIDs == beamedNotes.map(\.eventID))
         #expect(!beamedTuplet.isBracketVisible)
         #expect(beamedTuplet.bracketPoints.isEmpty)
         #expect(beamedTuplet.labelPosition.y < beamed.beams.map(\.start.y).min() ?? .infinity)
@@ -94,17 +113,16 @@ struct RhythmRenderingTests {
                 durationTicks: 160
             )
         }
-        let bracketed = preparedLayout(try snapshot(
+        let (bracketed, _) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure(groupDurationTicks: 480)],
                 notes: bracketedNotes
-            )).layout
+            ))
         let bracketedTuplet = try #require(bracketed.tuplets.first)
 
         #expect(bracketedTuplet.voice == .lower)
         #expect(bracketedTuplet.isBracketVisible)
         #expect(bracketedTuplet.bracketPoints.count == 6)
         #expect(bracketedTuplet.labelPosition.y > bracketed.noteHeads.map(\.position.y).max() ?? 0)
-        #expect(bracketed.paintedBounds.contains(bracketedTuplet.paintedBounds(style: .gameplayDefault)))
     }
 
     @Test("partially beamed tuplets keep brackets around note-note-rest in both stem directions")
@@ -128,16 +146,17 @@ struct RhythmRenderingTests {
             visibility: .printed,
             tupletID: upperID
         )
-        let upper = preparedLayout(try snapshot(
+        let (upper, _) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: upperNotes,
                 rests: [upperRest]
-            )).layout
+            ))
         let upperTuplet = try #require(upper.tuplets.first)
 
         #expect(!upper.beams.isEmpty)
         #expect(upperTuplet.isBracketVisible)
         #expect(upperTuplet.bracketPoints.count == 6)
+        #expect(upperTuplet.memberRestIDs.count == 1)
 
         let lowerID = tupletID(voice: .lower, durationTicks: 240, stableID: 28)
         let lowerRest = RhythmLayoutRest(
@@ -158,29 +177,31 @@ struct RhythmRenderingTests {
                 durationTicks: 80
             )
         }
-        let lower = preparedLayout(try snapshot(
+        let (lower, _) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: lowerNotes,
                 rests: [lowerRest]
-            )).layout
+            ))
         let lowerTuplet = try #require(lower.tuplets.first)
 
         #expect(!lower.beams.isEmpty)
         #expect(lowerTuplet.isBracketVisible)
         #expect(lowerTuplet.bracketPoints.count == 6)
+        #expect(lowerTuplet.memberRestIDs.count == 1)
     }
 
     @Test("swing and shuffle emit one accessible first-staff feel mark")
     func feelMarksAreChartScoped() throws {
         for feel in [RhythmicFeel.swing, .shuffle] {
-            let layout = preparedLayout(try snapshot(measures: [rhythmMeasure()], feel: feel)).layout
-            let mark = try #require(layout.feelMarks.first)
+            let (_, presentation) = try preparedEngraving(
+                try snapshot(measures: [rhythmMeasure()], feel: feel)
+            )
+            let mark = try #require(presentation.annotations.feelMarks.first)
 
-            #expect(layout.feelMarks.count == 1)
+            #expect(presentation.annotations.feelMarks.count == 1)
             #expect(mark.feel == feel)
             #expect(mark.rowIndex == 0)
             #expect(mark.accessibilityLabel == "\(feel.rawValue.capitalized) feel")
-            #expect(layout.paintedBounds.contains(mark.paintedBounds(style: .gameplayDefault)))
         }
     }
 
@@ -205,20 +226,20 @@ struct RhythmRenderingTests {
                 durationTicks: 80
             )
         ]
-        let swungPair = preparedLayout(try snapshot(
+        let (swungPair, swungPresentation) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: feelPair,
                 feel: .swing
-            )).layout
+            ))
 
         #expect(swungPair.tuplets.isEmpty)
-        #expect(swungPair.feelMarks.count == 1)
+        #expect(swungPresentation.annotations.feelMarks.count == 1)
 
-        let straightPair = preparedLayout(try snapshot(
+        let (straightPair, _) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: feelPair,
                 feel: .straight
-            )).layout
+            ))
         #expect(straightPair.tuplets.count == 1)
 
         let literalID = tupletID(voice: .upper, durationTicks: 240, stableID: 37)
@@ -232,11 +253,11 @@ struct RhythmRenderingTests {
                 durationTicks: 80
             )
         }
-        let swungLiteral = preparedLayout(try snapshot(
+        let (swungLiteral, _) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: literal,
                 feel: .swing
-            )).layout
+            ))
 
         #expect(swungLiteral.tuplets.count == 1)
 
@@ -267,12 +288,12 @@ struct RhythmRenderingTests {
             visibility: .printed,
             tupletID: restID
         )
-        let shuffledRestTuplet = preparedLayout(try snapshot(
+        let (shuffledRestTuplet, _) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: noteRestNote,
                 rests: [middleRest],
                 feel: .shuffle
-            )).layout
+            ))
         #expect(shuffledRestTuplet.tuplets.count == 1)
     }
 
@@ -315,14 +336,14 @@ struct RhythmRenderingTests {
         ]
 
         for feel in [RhythmicFeel.swing, .shuffle] {
-            let layout = preparedLayout(try snapshot(
+            let (engraved, presentation) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: chordalPair,
                 feel: feel
-            )).layout
+            ))
 
-            #expect(layout.tuplets.isEmpty)
-            #expect(layout.feelMarks.count == 1)
+            #expect(engraved.tuplets.isEmpty)
+            #expect(presentation.annotations.feelMarks.count == 1)
         }
     }
 
@@ -351,17 +372,17 @@ struct RhythmRenderingTests {
             visibility: .printed,
             tupletID: nil
         )
-        let supported = preparedLayout(try snapshot(
+        let (supported, _) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure()],
                 notes: notes,
                 rests: [generatedRest]
-            )).layout
-        let unsupported = preparedLayout(try snapshot(
+            ))
+        let (unsupported, unsupportedPresentation) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure(support: .unsupported([.ambiguousBeatGrouping]))],
                 notes: notes,
                 rests: [generatedRest]
-            )).layout
-        let warning = try #require(unsupported.rhythmWarnings.first)
+            ))
+        let warning = try #require(unsupportedPresentation.annotations.rhythmWarnings.first)
 
         #expect(unsupported.noteHeads.map(\.position.x) == supported.noteHeads.map(\.position.x))
         #expect(unsupported.beams.isEmpty)
@@ -369,7 +390,7 @@ struct RhythmRenderingTests {
         #expect(unsupported.rhythmDots.isEmpty)
         #expect(unsupported.tuplets.isEmpty)
         #expect(unsupported.rests.isEmpty)
-        #expect(unsupported.rhythmWarnings.count == 1)
+        #expect(unsupportedPresentation.annotations.rhythmWarnings.count == 1)
         #expect(warning.scope == .measure(0))
         #expect(warning.kind == .unsupported)
         #expect(warning.accessibilityLabel.contains("measure 1"))
@@ -400,17 +421,18 @@ struct RhythmRenderingTests {
             visibility: .printed,
             tupletID: nil
         )
-        let layout = preparedLayout(try snapshot(
+        let (engraved, presentation) = try preparedEngraving(try snapshot(
                 measures: [rhythmMeasure(support: .warning([.indeterminateTerminalDuration]))],
                 notes: notes,
                 rests: [lowerRest]
-            )).layout
-        let warning = try #require(layout.rhythmWarnings.first)
+            ))
+        let warning = try #require(presentation.annotations.rhythmWarnings.first)
 
-        #expect(!layout.beams.isEmpty)
-        #expect(!layout.stems.isEmpty)
-        #expect(layout.rests.contains { $0.voice == .lower && $0.visibility == .printed })
-        #expect(layout.rhythmWarnings.count == 1)
+        #expect(!engraved.beams.isEmpty)
+        #expect(!engraved.stems.isEmpty)
+        // Every engraved rest is printed by construction.
+        #expect(engraved.rests.contains { $0.voice == .lower })
+        #expect(presentation.annotations.rhythmWarnings.count == 1)
         #expect(warning.scope == .measure(0))
         #expect(warning.kind == .warning)
         #expect(warning.codes == [.indeterminateTerminalDuration])
@@ -437,10 +459,10 @@ struct RhythmRenderingTests {
             sourceMeasureIndex: 12,
             sourceLineNumber: 4
         )
-        let warning = RenderedRhythmWarning.chartFatal(
+        let warning = GameplayRhythmWarning.chartFatal(
             diagnostics: [diagnostic],
             position: CGPoint(x: 100, y: 40),
-            style: .gameplayDefault
+            size: NotationLayoutStyle.gameplayDefault.warningSize
         )
 
         #expect(warning.scope == .chartFatal)
@@ -474,8 +496,8 @@ struct RhythmRenderingTests {
             "rhythmDiagnostic code=ambiguousBeatGrouping measureIndex=0 lineNumber=12"
         ])
 
-        _ = preparedLayout(resolvedSnapshot)
-        _ = preparedLayout(resolvedSnapshot)
+        _ = try? preparedEngraving(resolvedSnapshot)
+        _ = try? preparedEngraving(resolvedSnapshot)
 
         #expect(messages.count == 1)
     }

@@ -34,10 +34,12 @@ struct GameplayNotationPreparationTests {
 
         let prepared = GameplayNotationPreparer.prepare(request)
 
-        #expect(prepared.layout.noteHeads.isEmpty)
-        #expect(!prepared.layout.hasPlayableContent)
-        #expect(prepared.layout.hasRenderableContent)
-        #expect(prepared.layout.rests.contains { $0.isPrinted })
+        let (engraved, _) = try NotationSnapshotTestSupport().requireReady(prepared)
+        #expect(engraved.noteHeads.isEmpty)
+        // A rest-only sheet is printable (`.ready`) but not playable — the
+        // legacy hasPlayable/hasRenderable split now lives on the installed
+        // engraving's content.
+        #expect(!engraved.rests.isEmpty)
     }
 
     @Test("request and result expose no model identity fields")

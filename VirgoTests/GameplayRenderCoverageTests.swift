@@ -102,9 +102,10 @@ struct GameplayRenderCoverageTests {
     func testDrumNotationViewDoesNotRebuildOnBeatChanges() async throws {
         // Regression guard: beat-boundary highlighting was removed because
         // re-evaluating the notation tree on every beat forced expensive sheet
-        // re-layouts. The notation views must continue to depend only on
-        // cachedNotationLayout, never on per-beat state, so that the ~30 Hz
-        // visual tick does not invalidate them.
+        // re-layouts. The notation views must continue to depend only on the
+        // installed engraving (cachedEngravedNotation / notationPresentation),
+        // never on per-beat state, so that the ~30 Hz visual tick does not
+        // invalidate them.
         try await TestSetup.withTestSetup {
             let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
             defer { vm.cleanup() }
@@ -140,20 +141,10 @@ struct GameplayRenderCoverageTests {
             vm.updatePurpleBarPosition(elapsedTime: 0.01)
 
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
-            let measurePositions = view.sheetMeasurePositions(viewModel: vm)
-            let contentWidth = view.sheetContentWidth(viewModel: vm)
-            let contentTopInset = view.sheetContentTopInset(viewModel: vm)
-            let rowCount = view.sheetRowCount(measurePositions: measurePositions)
 
             var didInvalidate = false
             withObservationTracking {
-                _ = view.staticSheetMusicContent(
-                    measurePositions: measurePositions,
-                    contentWidth: contentWidth,
-                    contentTopInset: contentTopInset,
-                    rowCount: rowCount,
-                    viewModel: vm
-                )
+                _ = view.staticSheetMusicContent(viewModel: vm)
             } onChange: {
                 didInvalidate = true
             }
@@ -172,11 +163,11 @@ struct GameplayRenderCoverageTests {
     /// Staff lines are now built directly by the static notation child rather
     /// than being cached as an `AnyView` on the view model.
     ///
-    /// The ink probe varies only `contentWidth`, which `GameplayStaticNotationLayers`
-    /// feeds exclusively into `StaffLinesBackgroundView` — every other layer
-    /// consumes the layout or measure positions, held constant. So wider staff
-    /// lines painting more ink proves the staff-line layer is actually mounted;
-    /// deleting it from the layers fails this test.
+    /// With an engraving installed, `DrumNotationView` paints the staff lines
+    /// as part of the package sheet — the rasterized static layers must show
+    /// real ink across the staff band. The same probe on the fallback
+    /// `StaffLinesBackgroundView` (the layer mounted when nothing is
+    /// engraved) proves its width parameter still drives staff-line ink.
     @Test("GameplayView renders staff lines from the static notation input")
     func testGameplayView_staticNotationChildRendersStaffLines() async throws {
         try await TestSetup.withTestSetup {
@@ -185,29 +176,42 @@ struct GameplayRenderCoverageTests {
             let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
             let input = gameplayView.staticNotationInput(viewModel: vm)
             #expect(input.hasRenderableContent)
-            #expect(input.contentWidth >= GameplayLayout.maxRowWidth)
+            // The package sheet width is the engraving's declared content
+            // extent (widest row's right edge or painted ink) — it is not
+            // floored at the row-width budget like the legacy layout was.
+            let engraving = try #require(input.engraving)
+            #expect(input.contentWidth == engraving.contentWidth)
+            #expect(input.contentWidth >= engraving.paintedBounds.maxX)
 
             #if os(macOS)
             let size = CGSize(width: 1_280, height: 900)
             let positions = gameplayView.sheetMeasurePositions(viewModel: vm)
             try #require(!positions.isEmpty, "fixture must produce measure positions for the probe")
-            @MainActor func staticLayerInk(contentWidth: CGFloat) throws -> Int {
+
+            // The mounted static layers (engraved path: DrumNotationView)
+            // must paint ink — an unmounted renderer rasterizes empty.
+            let mountedInk = try rasterizeView(
+                gameplayView.staticSheetMusicContent(viewModel: vm),
+                size: size
+            ).count { $0.alpha > 20 }
+            #expect(
+                mountedInk > 0,
+                "The static notation layers painted no ink — the notation layer is not mounted"
+            )
+
+            // Fallback furniture layer: wider width must paint wider staff
+            // lines — proves the width parameter is still wired.
+            @MainActor func fallbackStaffLineInk(width: CGFloat) throws -> Int {
                 try rasterizeView(
-                    gameplayView.staticSheetMusicContent(
-                        measurePositions: positions,
-                        contentWidth: contentWidth,
-                        contentTopInset: gameplayView.sheetContentTopInset(viewModel: vm),
-                        rowCount: gameplayView.sheetRowCount(measurePositions: positions),
-                        viewModel: vm
-                    ),
+                    StaffLinesBackgroundView(measurePositions: positions, width: width),
                     size: size
                 ).count { $0.alpha > 20 }
             }
-            let inkAtContentWidth = try staticLayerInk(contentWidth: input.contentWidth)
-            let inkAtWiderWidth = try staticLayerInk(contentWidth: input.contentWidth + 200)
+            let inkAtContentWidth = try fallbackStaffLineInk(width: input.contentWidth)
+            let inkAtWiderWidth = try fallbackStaffLineInk(width: input.contentWidth + 200)
             #expect(
                 inkAtWiderWidth > inkAtContentWidth,
-                "Widening the staff-line width painted no extra ink — the staff-line layer is not mounted"
+                "Widening the staff-line width painted no extra ink — the fallback layer ignores width"
             )
             #endif
 
@@ -293,12 +297,10 @@ struct GameplayRenderCoverageTests {
             defer { vm.cleanup() }
 
             let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
-            let rowCount = gameplayView.sheetRowCount(
-                measurePositions: gameplayView.sheetMeasurePositions(viewModel: vm)
-            )
 
-            // The anchor column must render without error for any rowCount.
-            let anchorColumn = gameplayView.rowAnchorColumn(rowCount: rowCount, viewModel: vm)
+            // The anchor column must render without error for the installed
+            // input's row geometry.
+            let anchorColumn = gameplayView.rowAnchorColumn(viewModel: vm)
             SwiftUITestUtilities.assertViewWithEnvironment(
                 anchorColumn,
                 size: CGSize(width: 1280, height: 900)
@@ -311,7 +313,7 @@ struct GameplayRenderCoverageTests {
     /// still renders successfully.
     ///
     /// Note: Testing a true .aboveLine9 override is not feasible here because
-    /// `cacheNotationLayout()` bypasses UserDefaults in the test environment.
+    /// notation preparation bypasses UserDefaults in the test environment.
     @Test("rowAnchorColumn with above-staff crash notes renders correctly")
     func testRowAnchorColumn_withAboveStaffCrashNotes_renders() async throws {
         try await TestSetup.withTestSetup {
@@ -329,22 +331,26 @@ struct GameplayRenderCoverageTests {
             await vm.loadChartData()
             await vm.setupGameplay()
 
-            // Verify the crash note head is above the highest staff line (line5).
+            // Verify the crash note head is above the highest staff line
+            // (line5 = the top staff line, pitch-ascending last entry).
             // In screen coordinates, above-line5 means a smaller Y value.
-            let crashHead = try #require(
-                vm.cachedNotationLayout.noteHeads.first { $0.drumType == .crash },
-                "Layout should contain a crash note head"
+            let engraved = try #require(vm.cachedEngravedNotation)
+            let crashEventID = try #require(
+                vm.cachedRhythmRuntime.noteByEventID.first { $0.value.noteType == .crash }?.key,
+                "Runtime should carry a crash note"
             )
-            let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: crashHead.row)
+            let crashHead = try #require(
+                engraved.noteHeads.first { $0.noteID == crashEventID.rawValue },
+                "Engraving should contain a crash note head"
+            )
+            let row = try #require(engraved.rows.first { $0.index == crashHead.rowIndex })
+            let line5Y = try #require(row.staffLineYs.last)
             #expect(crashHead.position.y < line5Y,
                     "Crash note head should be above line5 (default .aboveLine5 position)")
 
             let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
-            let rowCount = gameplayView.sheetRowCount(
-                measurePositions: gameplayView.sheetMeasurePositions(viewModel: vm)
-            )
 
-            let anchorColumn = gameplayView.rowAnchorColumn(rowCount: rowCount, viewModel: vm)
+            let anchorColumn = gameplayView.rowAnchorColumn(viewModel: vm)
             SwiftUITestUtilities.assertViewWithEnvironment(
                 anchorColumn,
                 size: CGSize(width: 1280, height: 900)

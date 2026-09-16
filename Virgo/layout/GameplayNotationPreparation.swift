@@ -9,38 +9,67 @@ struct GameplayNotationPreparationRequest: Sendable {
     let notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
 }
 
-/// Layout produced from one notation preparation request.
-struct GameplayNotationPreparedState: Sendable {
-    let layout: NotationLayout
-    /// The measured formatter output the layout was composed from (HPA-164
-    /// Task 5). Also embedded on `layout` for the live playhead lookup.
-    let formatted: FormattedNotation
+/// The closed result of one notation preparation (HPA-166 Task 7): either the
+/// package engraving plus its app presentation, or the failure. No
+/// both-nil/both-set states.
+enum GameplayNotationPreparedState: Sendable {
+    /// Engraving plus its app presentation — installed together.
+    case ready(EngravedNotation, GameplayNotationPresentation)
+    /// The engraving produced nothing printable (no heads, rests, controls,
+    /// or annotations) — the sheet falls back to its furniture layer.
+    case unavailable
+    /// Engraving threw; the failure drives the practice-unavailable sheet.
+    case failed(GameplayNotationPreparationFailure)
+}
 
-    init(layout: NotationLayout, formatted: FormattedNotation = FormattedNotation(measures: [])) {
-        self.layout = layout
-        self.formatted = formatted
+/// App-owned presentation the package must never see: the feel/warning
+/// overlay annotations plus the VoiceOver labels `DrumNotationView` resolves
+/// per `NotationSemanticID` at paint time.
+struct GameplayNotationPresentation: Equatable, Sendable {
+    let annotations: GameplayNotationAnnotations
+    let accessibilityLabels: [NotationSemanticID: String]
+}
+
+/// One engraving failure surfaced to the app: `detail` is the log/test
+/// description of the thrown error; `userMessage` is the practice-unavailable
+/// copy shown on the existing fatal sheet.
+struct GameplayNotationPreparationFailure: Error, Equatable, Sendable {
+    let detail: String
+    let userMessage: String
+
+    init(
+        detail: String,
+        userMessage: String = String(localized: "This chart's notation could not be prepared.")
+    ) {
+        self.detail = detail
+        self.userMessage = userMessage
     }
 }
 
 /// Pure value boundary for timeline-native gameplay notation preparation.
 /// Cancellation is best-effort resource cleanup only: the dominant work is
-/// notation layout, which has no cooperative cancellation points, so an
+/// notation engraving, which has no cooperative cancellation points, so an
 /// abandoned worker may still run to completion. Correctness rests on the
 /// caller's generation checks — a stale result is discarded regardless of
 /// whether the worker finished or was cancelled.
 ///
-/// The single preparation route (HPA-164 Task 4): both the detached initial
-/// worker and the synchronous `cacheNotationLayout()` relayout run through
-/// ``prepare(_:)``, which projects the snapshot through
-/// `VirgoNotationProjection.resolvedNotation`, maps the style through
-/// `VirgoNotationProjection.formattingStyle`, runs the measured
-/// `NotationFormatter`, and composes the rendered layout. There is no second
-/// style/formatting path.
-struct GameplayNotationPreparer {
+/// The single preparation route (HPA-166 Task 7): both the detached initial
+/// worker and the synchronous `refreshNotationEngraving()` relayout run
+/// through ``prepare(_:)``, which expands trailing measures, projects the
+/// snapshot through `VirgoNotationProjection.resolvedNotation`, maps the
+/// style through `VirgoNotationProjection.engravingStyle`, and runs the
+/// package `NotationEngraver`. The app presentation (feel/warning
+/// annotations + VoiceOver labels) is built alongside the engraving and
+/// never enters the package. There is no second style/geometry path.
+enum GameplayNotationPreparer {
+    /// Bound per-measure arrays, synthesized rests, and row geometry with the
+    /// same chart-wide limit used by canonical rhythm validation.
+    static let maximumRenderableMeasureCount = RhythmLimits.maximumMeasureCount
+
     static func prepare(_ request: GameplayNotationPreparationRequest) -> GameplayNotationPreparedState {
         // Trailing-measure expansion happens before package conversion so the
-        // formatter sees the complete requested measure list.
-        let expandedMeasures = NotationLayoutEngine().expandedRhythmMeasures(
+        // engraver sees the complete requested measure list.
+        let expandedMeasures = expandedRhythmMeasures(
             request.snapshot,
             minimumMeasureCount: request.minimumMeasureCount
         )
@@ -50,298 +79,200 @@ struct GameplayNotationPreparer {
                 expandedMeasures: expandedMeasures,
                 notePositionOverrides: request.notePositionOverrides
             )
-            let style = VirgoNotationProjection.formattingStyle(
-                rowWidth: request.style.rowWidth,
-                style: request.style
+            let engraved = try NotationEngraver.engrave(
+                input,
+                style: VirgoNotationProjection.engravingStyle(for: request.style)
             )
-            let formatted = try NotationFormatter.format(input, style: style)
-            return GameplayNotationPreparedState(
-                layout: composeVirgoLayout(
-                    formatted: formatted,
+            let presentation = GameplayNotationPresentation(
+                annotations: .build(
+                    feel: request.snapshot.feel,
                     expandedMeasures: expandedMeasures,
-                    request: request
+                    engraved: engraved,
+                    style: request.style
                 ),
-                formatted: formatted
+                accessibilityLabels: accessibilityLabels(
+                    snapshot: request.snapshot,
+                    input: input,
+                    engraved: engraved
+                )
             )
+            guard hasPrintableNotation(engraved, annotations: presentation.annotations) else {
+                return .unavailable
+            }
+            return .ready(engraved, presentation)
         } catch {
-            Logger.error("Measured notation preparation failed: \(error)")
-            return GameplayNotationPreparedState(layout: .empty)
+            let failure = GameplayNotationPreparationFailure(detail: "\(error)")
+            Logger.error("Notation engraving failed: \(failure.detail)")
+            return .failed(failure)
         }
     }
-}
 
-// MARK: - Package geometry composition (HPA-164 Tasks 5–6)
-
-/// App-only marks and derived artifacts rebuilt from positioned primitives
-/// (they consume the composed geometry but never alter package spacing).
-private struct RebuiltArtifacts {
-    let derived: NotationLayoutEngine.BuiltDerivedArtifacts
-    let articulations: [RenderedArticulation]
-    let rhythmDots: [RenderedRhythmDot]
-    let tuplets: [RenderedTuplet]
-    let feelMarks: [RenderedFeelMark]
-    let rhythmWarnings: [RenderedRhythmWarning]
-}
-
-/// Everything composed from the measured formatter output before the
-/// app-only marks are rebuilt: measures, the three X lookups, and the
-/// positioned primitives. Groups what used to be seven loose parameters.
-private struct ComposedNotation {
-    let measures: [RenderedMeasure]
-    let columnXByKey: [MeasureTickKey: CGFloat]
-    let headCenterXByID: [UInt64: CGFloat]
-    let visualXByRestID: [Int: CGFloat]
-    let noteHeads: [RenderedNoteHead]
-    let rests: [RenderedRest]
-    let stopNotes: [RenderedStopNote]
-    let unsupportedMeasureIndexes: Set<Int>
-}
-
-/// Composes Virgo's rendered layout directly from the measured
-/// `FormattedNotation`: measure rows/bounds and every primitive X come from
-/// the package, while Y stays Virgo (row + staff position). Stems, beams,
-/// flags and every X-dependent mark are rebuilt from the positioned heads, so
-/// the shared stem axis remains on the undisplaced stem-side representative —
-/// the package's pinned VexFlow displacement never moves that head. No
-/// post-format X transform and no grid geometry.
-private extension GameplayNotationPreparer {
-    static func composeVirgoLayout(
-        formatted: FormattedNotation,
-        expandedMeasures: [RhythmMeasure],
-        request: GameplayNotationPreparationRequest
-    ) -> NotationLayout {
-        let engine = NotationLayoutEngine()
-        let composed = composedNotation(
-            engine: engine,
-            formatted: formatted,
-            expandedMeasures: expandedMeasures,
-            request: request
-        )
-        let rebuilt = rebuiltArtifacts(
-            engine: engine,
-            request: request,
-            expandedMeasures: expandedMeasures,
-            composed: composed
-        )
-        var layout = engine.finalizedLayout(
-            finalizationInput(request: request, composed: composed, rebuilt: rebuilt)
-        )
-        // The immutable formatter output rides on the installed layout for
-        // the live playhead lookup; no extra view-model caches are derived.
-        layout.formattedNotation = formatted
-        return layout
+    /// Mirrors the legacy `hasRenderableContent`: heads, printed rests,
+    /// controls, or app annotations (feel mark / rhythm warnings) — the
+    /// cases that made the notation sheet render instead of the legacy
+    /// furniture fallback.
+    private static func hasPrintableNotation(
+        _ engraved: EngravedNotation,
+        annotations: GameplayNotationAnnotations
+    ) -> Bool {
+        !engraved.noteHeads.isEmpty
+            || !engraved.rests.isEmpty
+            || !engraved.controls.isEmpty
+            || !annotations.feelMarks.isEmpty
+            || !annotations.rhythmWarnings.isEmpty
     }
 
-    /// Composes measures, the X lookups and the positioned primitives from
-    /// the measured formatter output (package X, Virgo staff Y).
-    static func composedNotation(
-        engine: NotationLayoutEngine,
-        formatted: FormattedNotation,
-        expandedMeasures: [RhythmMeasure],
-        request: GameplayNotationPreparationRequest
-    ) -> ComposedNotation {
-        let measures = composedMeasures(expandedMeasures: expandedMeasures, formatted: formatted)
-        let columnXByKey = columnLookup(formatted: formatted) { $0.logicalColumnX }
-        let headCenterXByID = headCenterLookup(formatted: formatted)
-        let visualXByRestID = restVisualLookup(formatted: formatted)
-        // Unsupported measures suppress duration-bearing engraving; their
-        // rests are dropped and the measure's warning is carried by
-        // `buildRhythmWarnings`.
-        let unsupportedMeasureIndexes = Set(
-            expandedMeasures.lazy.filter { !$0.engravingSupport.permitsEngraving }.map(\.measureIndex)
+    // MARK: - Measure expansion
+
+    /// Appends synthesized trailing measures up to `minimumMeasureCount`,
+    /// reusing the last snapshot measure's signature/support so the sheet's
+    /// tail keeps the chart's meter.
+    static func expandedRhythmMeasures(
+        _ snapshot: RhythmLayoutSnapshot,
+        minimumMeasureCount: Int
+    ) -> [RhythmMeasure] {
+        var measures = snapshot.measures.sorted { $0.measureIndex < $1.measureIndex }
+        let requestedCount = min(
+            max(minimumMeasureCount, measures.count, 1),
+            maximumRenderableMeasureCount
         )
-        let noteHeads = engine.buildNoteHeads(
-            notes: request.snapshot.notes,
-            measures: measures,
-            headCenterXByID: headCenterXByID,
-            columnXByKey: columnXByKey,
-            style: request.style,
-            notePositionOverrides: request.notePositionOverrides
-        )
-        let rests = engine.buildRests(
-            rests: request.snapshot.rests.filter {
-                !unsupportedMeasureIndexes.contains($0.position.measureIndex)
-            },
-            measures: measures,
-            visualXByRestID: visualXByRestID,
-            columnXByKey: columnXByKey,
-            style: request.style
-        )
-        let stopNotes = engine.buildStopNotes(
-            controls: request.snapshot.controls,
-            measures: measures,
-            columnXByKey: columnXByKey,
-            style: request.style,
-            notePositionOverrides: request.notePositionOverrides
-        )
-        return ComposedNotation(
-            measures: measures,
-            columnXByKey: columnXByKey,
-            headCenterXByID: headCenterXByID,
-            visualXByRestID: visualXByRestID,
-            noteHeads: noteHeads,
-            rests: rests,
-            stopNotes: stopNotes,
-            unsupportedMeasureIndexes: unsupportedMeasureIndexes
-        )
+        guard let template = measures.last else { return [] }
+        while measures.count < requestedCount {
+            let measureIndex = measures.count
+            let durationTicks = nominalDurationTicks(
+                timeSignature: template.timeSignature,
+                ticksPerWholeNote: snapshot.ticksPerWholeNote
+            ) ?? template.durationTicks
+            let startTick = measures.last?.endTick ?? 0
+            measures.append(RhythmMeasure(
+                measureIndex: measureIndex,
+                startTick: startTick,
+                durationTicks: durationTicks,
+                timeSignature: template.timeSignature,
+                beatGroups: RhythmBeatGroupBuilder.groups(
+                    timeSignature: template.timeSignature,
+                    durationTicks: durationTicks,
+                    ticksPerWholeNote: snapshot.ticksPerWholeNote
+                ),
+                engravingSupport: template.engravingSupport
+            ))
+        }
+        return measures
     }
 
-    /// Measures pair the timeline's tick semantics with the package's
-    /// row packing and sheet-local bounds verbatim.
-    static func composedMeasures(
-        expandedMeasures: [RhythmMeasure],
-        formatted: FormattedNotation
-    ) -> [RenderedMeasure] {
-        let byIndex = Dictionary(uniqueKeysWithValues: formatted.measures.map { ($0.index, $0) })
-        return expandedMeasures.compactMap { rhythmMeasure in
-            guard let packageMeasure = byIndex[rhythmMeasure.measureIndex] else {
-                // The formatter emits one formatted measure per input
-                // measure; a gap means the input projection drifted.
-                assertionFailure("Formatter omitted measure \(rhythmMeasure.measureIndex)")
-                return nil
-            }
-            return RenderedMeasure(
-                id: rhythmMeasure.measureIndex,
-                measureIndex: rhythmMeasure.measureIndex,
-                row: packageMeasure.rowIndex,
-                xOffset: packageMeasure.xOffset,
-                width: packageMeasure.width,
-                startTick: rhythmMeasure.startTick,
-                durationTicks: rhythmMeasure.durationTicks
+    private static func nominalDurationTicks(
+        timeSignature: TimeSignature,
+        ticksPerWholeNote: Int
+    ) -> Int? {
+        let product = ticksPerWholeNote.multipliedReportingOverflow(by: timeSignature.beatsPerMeasure)
+        guard !product.overflow,
+              timeSignature.noteValue > 0,
+              product.partialValue.isMultiple(of: timeSignature.noteValue) else { return nil }
+        return product.partialValue / timeSignature.noteValue
+    }
+
+    // MARK: - VoiceOver labels
+
+    /// The app's VoiceOver copy per collision-safe `NotationSemanticID` —
+    /// built at preparation time so `DrumNotationView` only resolves strings.
+    /// Localized/app strings never enter `ResolvedNotationInput` or
+    /// `EngravedNotation`.
+    private static func accessibilityLabels(
+        snapshot: RhythmLayoutSnapshot,
+        input: ResolvedNotationInput,
+        engraved: EngravedNotation
+    ) -> [NotationSemanticID: String] {
+        var labels: [NotationSemanticID: String] = [:]
+        let notesByEventID = Dictionary(
+            uniqueKeysWithValues: snapshot.notes.map { ($0.eventID.rawValue, $0) }
+        )
+        for note in input.notes {
+            guard let source = notesByEventID[note.id] else { continue }
+            labels[.note(note.id)] = noteAccessibilityLabel(
+                noteType: source.noteType,
+                variant: DrumNotationCatalog.resolve(
+                    noteType: source.noteType,
+                    sourceLaneID: source.sourceLaneID
+                )?.variant
             )
         }
-    }
-
-    /// Logical onset X for every formatted column (the timing anchor notes,
-    /// rests and controls share).
-    private static func columnLookup(
-        formatted: FormattedNotation,
-        x: (FormattedColumn) -> CGFloat
-    ) -> [MeasureTickKey: CGFloat] {
-        var lookup: [MeasureTickKey: CGFloat] = [:]
-        for measure in formatted.measures {
-            for column in measure.columns {
-                lookup[MeasureTickKey(
-                    measureIndex: measure.index,
-                    tick: column.localTick
-                )] = x(column)
-            }
-        }
-        return lookup
-    }
-
-    /// Package head-center X per note ID (a displaced staff second rides on
-    /// the head itself).
-    private static func headCenterLookup(
-        formatted: FormattedNotation
-    ) -> [UInt64: CGFloat] {
-        var lookup: [UInt64: CGFloat] = [:]
-        for measure in formatted.measures {
-            for column in measure.columns {
-                for head in column.noteHeads {
-                    lookup[UInt64(head.noteID)] = head.headCenterX
-                }
-            }
-        }
-        return lookup
-    }
-
-    /// Package visual X per printed rest (keyed by `FormattedRest.restID` —
-    /// the rest's ordinal in the projection's printed order). Same-tick rests
-    /// keep distinct X: full-measure rests center in the content span while
-    /// interval rests sit on the column anchor.
-    private static func restVisualLookup(
-        formatted: FormattedNotation
-    ) -> [Int: CGFloat] {
-        var lookup: [Int: CGFloat] = [:]
-        for measure in formatted.measures {
-            for column in measure.columns {
-                for rest in column.rests {
-                    lookup[rest.restID] = rest.visualX
-                }
-            }
-        }
-        return lookup
-    }
-
-    /// Rebuilds beams/stems/flags/ledger/bars plus the app-only marks from
-    /// the positioned primitives (the marks consume the composed geometry
-    /// but never alter package spacing).
-    static func rebuiltArtifacts(
-        engine: NotationLayoutEngine,
-        request: GameplayNotationPreparationRequest,
-        expandedMeasures: [RhythmMeasure],
-        composed: ComposedNotation
-    ) -> RebuiltArtifacts {
-        let style = request.style
-        let beamBuild = engine.buildBeams(noteHeads: composed.noteHeads, measures: expandedMeasures, style: style)
-        let stems = engine.buildStems(noteHeads: composed.noteHeads, beams: beamBuild.beams, style: style)
-        let derived = NotationLayoutEngine.BuiltDerivedArtifacts(
-            beams: beamBuild.beams,
-            stems: stems,
-            flags: engine.buildFlags(
-                noteHeads: composed.noteHeads.filter {
-                    !composed.unsupportedMeasureIndexes.contains($0.measureIndex)
-                },
-                beamBuild: beamBuild,
-                stems: stems,
-                style: style
-            ),
-            ledgerLines: engine.buildLedgerLines(noteHeads: composed.noteHeads, style: style),
-            measureBars: engine.buildMeasureBars(measures: composed.measures)
-        )
-        let tupletContext = TupletRenderingContext(
-            beams: derived.beams,
-            feel: request.snapshot.feel,
-            rhythmMeasures: expandedMeasures,
-            unsupportedMeasureIndexes: composed.unsupportedMeasureIndexes,
-            style: style
-        )
-        return RebuiltArtifacts(
-            derived: derived,
-            articulations: engine.buildArticulations(noteHeads: composed.noteHeads, style: style),
-            rhythmDots: engine.buildRhythmDots(
-                noteHeads: composed.noteHeads,
-                rests: composed.rests,
-                unsupportedMeasureIndexes: composed.unsupportedMeasureIndexes,
-                style: style
-            ),
-            tuplets: engine.buildTuplets(
-                noteHeads: composed.noteHeads,
-                rests: composed.rests,
-                context: tupletContext
-            ),
-            feelMarks: engine.buildFeelMarks(
-                feel: request.snapshot.feel,
-                measures: composed.measures,
-                style: style
-            ),
-            rhythmWarnings: engine.buildRhythmWarnings(
-                rhythmMeasures: expandedMeasures,
-                renderedMeasures: composed.measures,
-                style: style
+        for rest in engraved.rests {
+            labels[.rest(rest.restID)] = restAccessibilityLabel(
+                voice: rest.voice,
+                duration: rest.duration,
+                isFullMeasure: rest.isFullMeasure
             )
+        }
+        let controlsByEventID = Dictionary(
+            uniqueKeysWithValues: snapshot.controls.map { ($0.eventID.rawValue, $0) }
         )
+        for control in engraved.controls {
+            guard let source = controlsByEventID[control.controlID],
+                  let targetLaneID = source.event.targetLaneID,
+                  let target = DrumNotationCatalog.resolveTarget(laneID: targetLaneID)
+            else { continue }
+            labels[.control(control.controlID)]
+                = "\(control.kind.rawValue.capitalized) \(target.displayName)"
+        }
+        for tuplet in engraved.tuplets {
+            let voiceName = tuplet.voice == .upper
+                ? String(localized: "Upper")
+                : String(localized: "Lower")
+            labels[.tuplet(tuplet.tupletID)] = String(
+                localized: "\(voiceName) voice tuplet, \(tuplet.ratio.actual) in the time of \(tuplet.ratio.normal)"
+            )
+        }
+        return labels
     }
 
-    /// Bundles the composed and rebuilt artifacts for the engine's finalizer.
-    static func finalizationInput(
-        request: GameplayNotationPreparationRequest,
-        composed: ComposedNotation,
-        rebuilt: RebuiltArtifacts
-    ) -> NotationLayoutFinalizationInput {
-        NotationLayoutFinalizationInput(
-            measures: composed.measures,
-            noteHeads: composed.noteHeads,
-            rests: composed.rests,
-            stopNotes: composed.stopNotes,
-            articulations: rebuilt.articulations,
-            derived: rebuilt.derived,
-            rhythmDots: rebuilt.rhythmDots,
-            tuplets: rebuilt.tuplets,
-            feelMarks: rebuilt.feelMarks,
-            rhythmWarnings: rebuilt.rhythmWarnings,
-            style: request.style
-        )
+    private static func noteAccessibilityLabel(
+        noteType: NoteType,
+        variant: DrumNotationVariant?
+    ) -> String {
+        switch variant {
+        case .closedHiHat:
+            return "Closed hi-hat"
+        case .openHiHat:
+            return "Open hi-hat"
+        case .pedalHiHat:
+            return "Pedal hi-hat"
+        default:
+            return noteType.rawValue
+        }
     }
+
+    private static func restAccessibilityLabel(
+        voice: NotationVoiceRole,
+        duration: NotationDuration,
+        isFullMeasure: Bool
+    ) -> String {
+        let voiceName: String
+        switch voice {
+        case .upper: voiceName = "Upper"
+        case .lower: voiceName = "Lower"
+        }
+        let durationName: String
+        if isFullMeasure {
+            durationName = "full-measure"
+        } else {
+            switch duration {
+            case .whole: durationName = "whole"
+            case .half: durationName = "half"
+            case .quarter: durationName = "quarter"
+            case .eighth: durationName = "eighth"
+            case .sixteenth: durationName = "sixteenth"
+            case .thirtySecond: durationName = "thirty-second"
+            case .sixtyFourth: durationName = "sixty-fourth"
+            }
+        }
+        return "\(voiceName) voice \(durationName) rest"
+    }
+}
+
+/// One installed notation unit (HPA-166 Task 7): the package engraving plus
+/// the app-owned presentation built alongside it. Installed atomically by
+/// `GameplayViewModel.installPreparedNotation(_:generation:)`.
+struct GameplayNotationInstall: Equatable, Sendable {
+    let engraving: EngravedNotation
+    let presentation: GameplayNotationPresentation
 }

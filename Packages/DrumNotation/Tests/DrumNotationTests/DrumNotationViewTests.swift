@@ -191,7 +191,7 @@ struct DrumNotationViewRasterTests {
             notes: [
                 Fixtures.makeNote(
                     id: 1, localTick: 0, staffStep: 3,
-                    duration: .eighth, flag: .eighth
+                    duration: .eighth
                 )
             ],
             rests: [], controls: []

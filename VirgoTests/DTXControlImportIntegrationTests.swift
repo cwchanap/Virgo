@@ -7,15 +7,15 @@ import Testing
 import Foundation
 @testable import Virgo
 
-/// End-to-end test: DTX string → parse → ChartControlEvent → layout engine →
-/// rendered stop mark. Covers acceptance criterion 2 ("render") through the real
-/// parser and layout engine, not just the data pipeline.
+/// End-to-end test: DTX string → parse → ChartControlEvent → package
+/// engraving → rendered stop mark. Covers acceptance criterion 2 ("render")
+/// through the real parser and engraver, not just the data pipeline.
 @Suite("DTX Control Import Integration")
 @MainActor
 struct DTXControlImportIntegrationTests {
     private let support = NotationLayoutTestSupport()
 
-    @Test("parsed choke control renders as a stop mark through the layout engine")
+    @Test("parsed choke control renders as a stop mark through the package engraver")
     func parsedControlRendersAsStopMark() throws {
         let dtx = """
         #TITLE: Integration
@@ -32,20 +32,23 @@ struct DTXControlImportIntegrationTests {
 
         #expect(controls.count == 1)
 
-        // Convert to NotationControlEvent (the immutable snapshot the layout engine consumes)
+        // Convert to NotationControlEvent (the immutable snapshot the projection consumes)
         let notationControls = controls.map { NotationControlEvent($0) }
 
         // Include a playable note so the tab grid has content to project onto
-        let result = support.layout(
-            notes: [support.fallbackGridNote()],
-            controls: notationControls
+        let (engraved, presentation) = try NotationSnapshotTestSupport().requireReady(
+            NotationSnapshotTestSupport().prepare(
+                notes: [support.fallbackGridNote()],
+                controls: notationControls
+            )
         )
 
-        #expect(result.stopNotes.count == 1)
-        let stopNote = try #require(result.stopNotes.first)
-        #expect(stopNote.kind == .choke)
-        #expect(stopNote.targetLaneID == "16")
-        #expect(stopNote.targetDisplayName == "Crash")
+        #expect(engraved.controls.count == 1)
+        let control = try #require(engraved.controls.first)
+        #expect(control.kind == .choke)
+        // The lane/target names live in the app-owned label, not the package
+        // primitive: lane 16 resolves to Crash.
+        #expect(presentation.accessibilityLabels[.control(control.controlID)] == "Choke Crash")
     }
 
     @Test("exact 7/8 timing drives gameplay while engraving falls back conservatively")
@@ -82,13 +85,20 @@ struct DTXControlImportIntegrationTests {
         let timeline = try #require(viewModel.cachedRhythmRuntime.timeline)
         let snapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
         let targets = viewModel.cachedRhythmNoteTargets.filter { $0.position.measureIndex == 0 }
-        let heads = viewModel.cachedNotationLayout.noteHeads
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        // Engraved heads carry final geometry, not source ticks: order by
+        // their formatted-column onset.
+        let formatted = engraved.formatted
+        var tickByNoteID: [Int: Int] = [:]
+        for column in formatted.measures.first { $0.index == 0 }?.columns ?? [] {
+            for head in column.noteHeads { tickByNoteID[head.noteID] = column.localTick }
+        }
+        let heads = engraved.noteHeads
             .filter { $0.measureIndex == 0 }
-            .sorted { $0.rhythmPosition.localTick < $1.rhythmPosition.localTick }
+            .sorted { (tickByNoteID[$0.noteID] ?? 0) < (tickByNoteID[$1.noteID] ?? 0) }
         let pulses = try #require(viewModel.cachedRhythmRuntime.metronomeSchedule).pulses
             .filter { $0.position.measureIndex == 0 }
-        let headIDs = Set(heads.map(\.id))
-        let eventIDs = Set(heads.map(\.eventID))
+        let headIDs = Set(heads.map(\.noteID))
 
         #expect(viewModel.cachedRhythmRuntime.availability == .valid)
         #expect(targets.count == 7)
@@ -96,31 +106,35 @@ struct DTXControlImportIntegrationTests {
         #expect(pulses.count == 7)
         for (index, target) in targets.enumerated() {
             let expectedSeconds = Double(index) * 0.25
-            // HPA-164: head X resolves from the installed formatter output
+            // Head X resolves from the installed formatter output
             // (undisplaced single notes sit on their logical column).
-            let expectedX = viewModel.cachedNotationLayout.formattedNotation
+            let expectedX = formatted
                 .position(measureIndex: 0, localTick: Double(target.position.localTick))?
                 .x
             #expect(target.targetSecondsAtOneX == expectedSeconds)
-            #expect(heads[index].eventID == target.eventID)
-            #expect(heads[index].rhythmPosition == target.position)
+            #expect(heads[index].noteID == target.eventID.rawValue)
+            #expect(heads[index].measureIndex == target.position.measureIndex)
+            #expect(tickByNoteID[heads[index].noteID] == target.position.localTick)
             #expect(heads[index].position.x == expectedX)
             #expect(timeline.seconds(for: target.position, bpm: 120, speed: 1) == expectedSeconds)
         }
         #expect(pulses.map(\.offsetSecondsAtOneX) == (0..<7).map { Double($0) * 0.25 })
         #expect(pulses.map(\.accentLevel) == [.downbeat] + Array(repeating: .regular, count: 6))
         #expect(snapshot.measures[0].engravingSupport == .unsupported([.ambiguousBeatGrouping]))
-        #expect(viewModel.cachedNotationLayout.beams.allSatisfy { headIDs.isDisjoint(with: $0.noteHeadIDs) })
-        #expect(viewModel.cachedNotationLayout.flags.allSatisfy { !headIDs.contains($0.noteHeadID) })
-        #expect(viewModel.cachedNotationLayout.rhythmDots.allSatisfy { dot in
-            if case let .event(eventID) = dot.source { return !eventIDs.contains(eventID) }
+        #expect(engraved.beams.allSatisfy { headIDs.isDisjoint(with: $0.noteIDs) })
+        #expect(engraved.flags.allSatisfy { !headIDs.contains($0.noteID) })
+        #expect(engraved.rhythmDots.allSatisfy { dot in
+            if case let .note(noteID) = dot.source { return !headIDs.contains(noteID) }
             return true
         })
-        #expect(viewModel.cachedNotationLayout.tuplets.allSatisfy {
-            eventIDs.isDisjoint(with: $0.memberEventIDs)
+        #expect(engraved.tuplets.allSatisfy {
+            headIDs.isDisjoint(with: $0.memberNoteIDs)
         })
-        #expect(viewModel.cachedNotationLayout.rests.filter { $0.measureIndex == 0 }.isEmpty)
-        #expect(viewModel.cachedNotationLayout.rhythmWarnings.filter { $0.scope == .measure(0) }.count == 1)
+        #expect(engraved.rests.filter { $0.measureIndex == 0 }.isEmpty)
+        // The measure's unsupported diagnostic surfaces as an app-owned
+        // warning annotation, not package geometry.
+        let warnings = viewModel.notationPresentation?.annotations.rhythmWarnings ?? []
+        #expect(warnings.filter { $0.scope == .measure(0) }.count == 1)
 
         let selectedTarget = try #require(targets.first)
         let match = InputTimingMatcher(configuration: .timeline(

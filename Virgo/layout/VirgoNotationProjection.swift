@@ -1,12 +1,12 @@
 import CoreGraphics
 import DrumNotation
 
-/// The HPA-164 pre-format projection (Task 4): the single app-site style
-/// mapper, the snapshot→package input projection, and the pre-format visible
-/// flag classification. Split from `VirgoNotationAdapter`, which remains the
-/// primitive/flag-paint owner. HPA-166 Task 1 extends the projected input
-/// with the final engraving semantics (voice, meter, beat groups, control
-/// intent, resolved tuplets) while production still consumes the formatter.
+/// The app-to-package projection: the single app-site style mappers and the
+/// snapshot→`ResolvedNotationInput` projection. Split from
+/// `VirgoNotationAdapter`, which remains the primitive-mapper owner. HPA-166
+/// Task 7 makes `NotationEngraver` the sole production geometry route — the
+/// package now derives stem/beam/flag topology internally, so the app
+/// pre-format flag classification was deleted with the legacy renderer.
 enum VirgoNotationProjection {
     /// The single app-site style mapper for measured formatting (HPA-164 Task
     /// 4): resolved row width with the app's 900pt floor plus the exact
@@ -31,6 +31,50 @@ enum VirgoNotationProjection {
         )
     }
 
+    /// The single app-site mapper from `NotationLayoutStyle` to the package
+    /// `NotationEngravingStyle` (HPA-166 Task 7): `formatting` routes through
+    /// ``formattingStyle(rowWidth:style:)`` and every engraving scalar is
+    /// spelled out explicitly so this seam fails loudly if either side's
+    /// values ever drift. No other app site may construct
+    /// `NotationEngravingStyle`.
+    static func engravingStyle(for style: NotationLayoutStyle) -> NotationEngravingStyle {
+        NotationEngravingStyle(
+            formatting: formattingStyle(rowWidth: style.rowWidth, style: style),
+            rowHeight: GameplayLayout.rowHeight,
+            rowVerticalSpacing: GameplayLayout.rowVerticalSpacing,
+            stemLength: style.stemLength,
+            minimumStemExtensionPastChord: style.minimumStemExtensionPastChord,
+            beamThickness: style.beamThickness,
+            beamLevelSpacing: style.beamLevelSpacing,
+            beamHookLength: style.beamHookLength,
+            flagVerticalSpacing: GameplayLayout.flagVerticalSpacing,
+            ledgerLineOverhang: style.ledgerLineOverhang,
+            upperVoiceRestOffset: style.upperVoiceRestOffset,
+            lowerVoiceRestOffset: style.lowerVoiceRestOffset,
+            stopMarkSize: style.stopMarkSize,
+            stopMarkStrokeWidth: style.stopMarkStrokeWidth,
+            stopMarkVerticalOffset: style.stopMarkVerticalOffset,
+            articulationVerticalOffset: style.articulationVerticalOffset,
+            tupletLineWidth: style.tupletLineWidth,
+            tupletLabelSize: style.tupletLabelSize,
+            tupletVerticalOffset: style.tupletVerticalOffset,
+            tupletHookLength: style.tupletHookLength,
+            barLineWidth: GameplayLayout.barLineWidth,
+            doubleBarThinWidth: GameplayLayout.doubleBarLineWidths.thin,
+            doubleBarThickWidth: GameplayLayout.doubleBarLineWidths.thick,
+            doubleBarSpacing: GameplayLayout.doubleBarLineSpacing,
+            clefWidth: GameplayLayout.clefWidth,
+            meterWidth: GameplayLayout.timeSignatureWidth
+        )
+    }
+
+    /// The rendered staff step for a `GameplayLayout.NotePosition` — Y-down
+    /// half-spaces below line 1. Package consumers negate at the seam (the
+    /// package orders steps pitch-ascending).
+    static func staffStep(for position: GameplayLayout.NotePosition) -> Int {
+        Int((position.yOffset / (GameplayLayout.staffLineSpacing / 2)).rounded())
+    }
+
     /// Projects the snapshot into package formatter input (HPA-164 Task 4).
     /// Trailing-measure expansion must already have happened; the package
     /// receives the complete requested measure list and synthesizes no app
@@ -46,16 +90,10 @@ enum VirgoNotationProjection {
             uniqueKeysWithValues: expandedMeasures.map { ($0.measureIndex, $0) }
         )
         let notes = mappedNotes(snapshot: snapshot, measuresByIndex: measuresByIndex)
-        let flags = visibleFlagClassifications(
-            notes: notes,
-            expandedMeasures: expandedMeasures,
-            notePositionOverrides: notePositionOverrides
-        )
         // One sort feeds both boundary consumers: the printed subset crosses
         // as `ResolvedRest`s (its ordinal order is the adapter-local rest ID
         // namespace), while the full candidate set — every visibility — feeds
-        // tuplet feel-pair detection exactly like `buildTuplets` does over
-        // `buildRests` output.
+        // tuplet feel-pair detection.
         let candidates = restCandidates(snapshot: snapshot, measuresByIndex: measuresByIndex)
         let printed = candidates.filter { $0.visibility == .printed }
         return try ResolvedNotationInput(
@@ -76,7 +114,6 @@ enum VirgoNotationProjection {
             },
             notes: resolvedNotes(
                 notes: notes,
-                flags: flags,
                 notePositionOverrides: notePositionOverrides,
                 measuresByIndex: measuresByIndex
             ),
@@ -96,18 +133,6 @@ enum VirgoNotationProjection {
         )
     }
 
-    /// The three-arm visible-flag mapping pinned by the brief: no uncovered
-    /// level → nil, all expected levels uncovered → the canonical duration
-    /// flag, partially uncovered → an `.eighth` component footprint.
-    static func visibleFlagClassification(
-        uncovered: Set<Int>,
-        expected: Set<Int>,
-        canonical: NotationFlagDuration
-    ) -> NotationFlagDuration? {
-        guard !uncovered.isEmpty else { return nil }
-        return uncovered == expected ? canonical : .eighth
-    }
-
     /// `NotationVoice` → package `NotationVoiceRole` (file-private so the
     /// tuplet arm in this file can share it).
     fileprivate static func notationVoiceRole(_ voice: NotationVoice) -> NotationVoiceRole {
@@ -121,7 +146,6 @@ enum VirgoNotationProjection {
 
     private static func resolvedNotes(
         notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)],
-        flags: [Int: NotationFlagDuration],
         notePositionOverrides: [DrumType: GameplayLayout.NotePosition],
         measuresByIndex: [Int: RhythmMeasure]
     ) -> [ResolvedNote] {
@@ -138,15 +162,10 @@ enum VirgoNotationProjection {
                 // VexFlow displacement walks away from the stem side through
                 // ascending steps); Virgo's layout staffStep is Y-down, so
                 // negate at this seam. Keeps the stem-side head undisplaced.
-                staffStep: -NotationLayoutEngine.staffStep(for: position),
-                // The engine's stem membership: buildStems paints a shared
-                // stem only for supported notes whose interval needs one.
-                stemMember: entry.note.rhythm.baseInterval.needsStem
-                    && entry.note.rhythm.support == .supported,
+                staffStep: -Self.staffStep(for: position),
                 noteheadStyle: VirgoNotationAdapter.noteheadStyle(for: entry.note.noteType),
                 duration: VirgoNotationAdapter.duration(for: entry.note.rhythm.baseInterval),
                 dotCount: entry.note.rhythm.dotCount,
-                visibleFlagDuration: flags[entry.note.eventID.rawValue],
                 voice: notationVoiceRole(entry.definition.voice),
                 durationTicks: entry.note.durationTicks,
                 tiebreakOrder: entry.definition.catalogOrder,
@@ -204,9 +223,7 @@ enum VirgoNotationProjection {
 
     /// Deterministic adapter-local rest namespace: rests carry no event ID,
     /// so each printed rest's `ResolvedRest.id` is its ordinal in the printed
-    /// sort order below. `NotationLayoutEngine.buildRests` reconstructs the
-    /// same ordinal from its identically sorted candidates to join every
-    /// printed rest to its `FormattedRest` placement.
+    /// sort order below.
     private static func resolvedRests(
         printed: [RhythmLayoutRest],
         measuresByIndex: [Int: RhythmMeasure]
@@ -294,7 +311,7 @@ enum VirgoNotationProjection {
                 kind: controlKind(control.event.kind),
                 // Same pitch-ascending seam as note staffStep: the app's
                 // target step is Y-down, so negate here.
-                targetStaffStep: -NotationLayoutEngine.staffStep(for: targetPosition)
+                targetStaffStep: -Self.staffStep(for: targetPosition)
             )
         }
     }
@@ -305,6 +322,24 @@ enum VirgoNotationProjection {
         case .choke: return .choke
         case .damp: return .damp
         }
+    }
+}
+
+/// Duration mapping for timeline rests, shared with the adapter projection.
+/// A measure-filling rest renders as a full-measure rest.
+func legacyRestDuration(
+    rhythm: NotationRhythm,
+    fillsMeasure: Bool
+) -> NotationRestDuration {
+    if fillsMeasure { return .fullMeasure }
+    switch rhythm.baseInterval {
+    case .full: return .fullMeasure
+    case .half: return .half
+    case .quarter: return .quarter
+    case .eighth: return .eighth
+    case .sixteenth: return .sixteenth
+    case .thirtysecond: return .thirtySecond
+    case .sixtyfourth: return .sixtyFourth
     }
 }
 

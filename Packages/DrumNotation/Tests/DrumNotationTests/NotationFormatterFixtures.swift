@@ -35,11 +35,9 @@ enum Fixtures {
             position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
             stemDirection: .up,
             staffStep: 3,
-            stemMember: true,
             noteheadStyle: .x,
             duration: .sixteenth,
             dotCount: 0,
-            visibleFlagDuration: .sixteenth,
             voice: .upper,
             durationTicks: durationTicks,
             tiebreakOrder: 0,
@@ -48,9 +46,9 @@ enum Fixtures {
     }
 
     /// Fully parameterized note for column/displacement/ink tests. Stem
-    /// membership defaults to the stemmed-duration rule the caller maps
-    /// (whole heads share no stem); pass an explicit value to model a
-    /// supported/unsupported override. `durationTicks` defaults to the
+    /// membership and visible flags derive from `duration`/`isRhythmEngravable`
+    /// through the real stem topology — there is no per-note flag or
+    /// membership override to pass. `durationTicks` defaults to the
     /// interval's exact tick count at the fixture's 1920 ticks per whole
     /// note; pass an explicit value to pin boundary cases.
     static func makeNote(
@@ -61,8 +59,6 @@ enum Fixtures {
         headStyle: PercussionNoteheadStyle = .x,
         duration: NotationDuration = .quarter,
         dotCount: Int = 0,
-        flag: NotationFlagDuration? = nil,
-        stemMember: Bool? = nil,
         measureIndex: Int = 0,
         voice: NotationVoiceRole = .upper,
         durationTicks: Int? = nil,
@@ -75,11 +71,9 @@ enum Fixtures {
             position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
             stemDirection: stem,
             staffStep: staffStep,
-            stemMember: stemMember ?? (duration != .whole),
             noteheadStyle: headStyle,
             duration: duration,
             dotCount: dotCount,
-            visibleFlagDuration: flag,
             voice: voice,
             durationTicks: durationTicks ?? ticks(for: duration),
             tiebreakOrder: tiebreakOrder,

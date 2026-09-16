@@ -79,18 +79,9 @@ public struct ResolvedNote: Hashable, Sendable {
     /// higher values sit higher on the staff). Callers whose steps are
     /// Y-down negate at this seam.
     public let staffStep: Int
-    /// True when this onset joins its tick's shared stem group — the caller
-    /// paints a shared stem (and any visible flag) from the stem-side stem
-    /// member's undisplaced head anchor. Staff-second displacement never
-    /// leaves that member displaced; non-members (e.g. stemless half/whole
-    /// heads sharing the column) may take either parity.
-    public let stemMember: Bool
     public let noteheadStyle: PercussionNoteheadStyle
     public let duration: NotationDuration
     public let dotCount: Int
-    /// Nil when unflagged or fully covered by beams. When non-nil, this is the
-    /// canonical visible flag glyph whose horizontal footprint must be reserved.
-    public let visibleFlagDuration: NotationFlagDuration?
     /// The notation voice this onset belongs to.
     public let voice: NotationVoiceRole
     /// Exact timeline duration in ticks, used for adjacency; never
@@ -111,11 +102,9 @@ public struct ResolvedNote: Hashable, Sendable {
         position: NotationTickPosition,
         stemDirection: NotationStemDirection,
         staffStep: Int,
-        stemMember: Bool,
         noteheadStyle: PercussionNoteheadStyle,
         duration: NotationDuration,
         dotCount: Int,
-        visibleFlagDuration: NotationFlagDuration?,
         voice: NotationVoiceRole,
         durationTicks: Int,
         tiebreakOrder: Int,
@@ -126,11 +115,9 @@ public struct ResolvedNote: Hashable, Sendable {
         self.position = position
         self.stemDirection = stemDirection
         self.staffStep = staffStep
-        self.stemMember = stemMember
         self.noteheadStyle = noteheadStyle
         self.duration = duration
         self.dotCount = dotCount
-        self.visibleFlagDuration = visibleFlagDuration
         self.voice = voice
         self.durationTicks = durationTicks
         self.tiebreakOrder = tiebreakOrder

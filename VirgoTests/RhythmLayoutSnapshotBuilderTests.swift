@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import DrumNotation
 @testable import Virgo
 
 private func requireSendable<T: Sendable>(_: T.Type) {}
@@ -7,10 +8,11 @@ private func requireSendable<T: Sendable>(_: T.Type) {}
 @Suite("Rhythm layout snapshot builder", .serialized)
 @MainActor
 struct RhythmLayoutSnapshotBuilderTests {
-    @Test("timeline and rendered layout values satisfy the Sendable worker boundary")
+    @Test("timeline and engraved notation values satisfy the Sendable worker boundary")
     func timelineAndRenderedLayoutValuesAreSendable() {
         requireSendable(RhythmLayoutSnapshot.self)
-        requireSendable(NotationLayout.self)
+        requireSendable(EngravedNotation.self)
+        requireSendable(GameplayNotationPreparedState.self)
         requireSendable(NotationLayoutStyle.self)
     }
 
@@ -34,7 +36,9 @@ struct RhythmLayoutSnapshotBuilderTests {
             tupletID: nil
         )
         let renderedHead = try #require(
-            NotationSnapshotTestSupport().prepare(notes: [source]).layout.noteHeads.first
+            NotationSnapshotTestSupport().requireEngraved(
+                NotationSnapshotTestSupport().prepare(notes: [source])
+            ).noteHeads.first
         )
 
         let layoutLabels = Set(Mirror(reflecting: layoutNote).children.compactMap(\.label))
@@ -136,14 +140,15 @@ struct RhythmLayoutSnapshotBuilderTests {
 
         // The same snapshot must survive the full production preparation
         // route — before the clip, `resolvedNotation` threw and preparation
-        // collapsed to an empty layout.
+        // collapsed to `.failed`.
         let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
             snapshot: snapshot,
             minimumMeasureCount: 1,
             style: .gameplayDefault,
             notePositionOverrides: [:]
         ))
-        #expect(prepared.layout.noteHeads.count == 1)
+        let engraved = try NotationSnapshotTestSupport().requireEngraved(prepared)
+        #expect(engraved.noteHeads.count == 1)
     }
 
     @Test("terminal lower voice warning remains engraving-permitting in the snapshot")

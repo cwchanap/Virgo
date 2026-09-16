@@ -7,6 +7,7 @@ import AVFoundation
 import Foundation
 import SwiftData
 import Testing
+import DrumNotation
 @testable import Virgo
 
 @Suite("Rhythm timeline gameplay integration", .serialized)
@@ -80,13 +81,14 @@ struct RhythmTimelineIntegrationTests {
         let selectedEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "D1" })
         let layoutSnapshot = try #require(viewModel.cachedRhythmRuntime.layoutSnapshot)
         let layoutNote = try #require(layoutSnapshot.notes.first { $0.eventID == selectedEvent.eventID })
-        let noteHead = try #require(viewModel.cachedNotationLayout.noteHeads.first {
-            $0.eventID == selectedEvent.eventID
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        let noteHead = try #require(engraved.noteHeads.first {
+            $0.noteID == selectedEvent.eventID.rawValue
         })
         let target = try #require(viewModel.cachedRhythmNoteTargets.first {
             $0.eventID == selectedEvent.eventID
         })
-        let formatted = viewModel.cachedNotationLayout.formattedNotation
+        let formatted = engraved.formatted
         let expectedX = try #require(formatted.position(
             measureIndex: selectedEvent.position.measureIndex,
             localTick: Double(selectedEvent.position.localTick)
@@ -96,16 +98,26 @@ struct RhythmTimelineIntegrationTests {
             bpm: fixture.chart.bpm,
             speed: 1
         ))
+        // The engraved head carries final geometry, not source ticks — its
+        // onset tick is the formatted column it belongs to.
+        let headTick = try #require(
+            formatted.measures
+                .first { $0.index == noteHead.measureIndex }?
+                .columns
+                .first { $0.noteHeads.contains { $0.noteID == noteHead.noteID } }?
+                .localTick
+        )
 
         #expect(layoutNote.position == selectedEvent.position)
-        #expect(noteHead.rhythmPosition == selectedEvent.position)
+        #expect(noteHead.measureIndex == selectedEvent.position.measureIndex)
+        #expect(headTick == selectedEvent.position.localTick)
         #expect(target.position == selectedEvent.position)
         #expect(target.targetSecondsAtOneX == expectedSeconds)
         #expect(noteHead.position.x == expectedX)
         #expect(layoutNote.rhythm == NotationRhythm(baseInterval: .eighth, dotCount: 1))
-        #expect(viewModel.cachedNotationLayout.rhythmDots.contains { $0.source == .event(selectedEvent.eventID) })
+        #expect(engraved.rhythmDots.contains { $0.source == .note(selectedEvent.eventID.rawValue) })
 
-        try assertDTXTripletSlots(resolved, layoutSnapshot, viewModel.cachedNotationLayout)
+        try assertDTXTripletSlots(resolved, layoutSnapshot, engraved)
         #expect(layoutSnapshot.notes.first { $0.sourceChipID == "F1" }?.rhythm.baseInterval == .thirtysecond)
         #expect(layoutSnapshot.notes.first { $0.sourceChipID == "F2" }?.rhythm.baseInterval == .sixtyfourth)
 
@@ -142,12 +154,26 @@ struct RhythmTimelineIntegrationTests {
         })
         #expect(selectedPulse.offsetSecondsAtOneX == expectedSeconds)
 
+        try await assertSecondEventScoringAndCompletion(
+            viewModel: viewModel,
+            resolved: resolved,
+            engraved: engraved
+        )
+    }
+
+    /// The "D2" event leg: playhead reaches its engraved X, the miss scan
+    /// scores it by seconds, and the run completes at track end.
+    private func assertSecondEventScoringAndCompletion(
+        viewModel: GameplayViewModel,
+        resolved: ResolvedChartRhythm,
+        engraved: EngravedNotation
+    ) async throws {
         let laterEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "D2" })
         let laterTarget = try #require(viewModel.cachedRhythmNoteTargets.first {
             $0.eventID == laterEvent.eventID
         })
-        let laterHead = try #require(viewModel.cachedNotationLayout.noteHeads.first {
-            $0.eventID == laterEvent.eventID
+        let laterHead = try #require(engraved.noteHeads.first {
+            $0.noteID == laterEvent.eventID.rawValue
         })
         viewModel.updateContinuousVisualsForTesting(elapsedTime: laterTarget.targetSecondsAtOneX)
         #expect(viewModel.currentMeasureIndex == laterEvent.position.measureIndex)
@@ -191,7 +217,10 @@ struct RhythmTimelineIntegrationTests {
         let timeline = try #require(viewModel.cachedRhythmRuntime.timeline)
         #expect(viewModel.cachedLayoutMeasureCount == timeline.measures.count)
         #expect(viewModel.cachedDrumBeats.count == 2)
-        #expect(viewModel.cachedNotationLayout.measures.map(\.durationTicks) == timeline.measures.map(\.durationTicks))
+        #expect(
+            viewModel.cachedEngravedNotation?.measures.map(\.durationTicks)
+                == timeline.measures.map(\.durationTicks)
+        )
         #expect(abs(viewModel.cachedTrackDuration - 3.5) < 0.0001)
         #expect(abs(viewModel.bgmOffsetSeconds - 2.5) < 0.0001)
         #expect(viewModel.cachedSong?.duration == "9:59")
@@ -219,7 +248,7 @@ struct RhythmTimelineIntegrationTests {
         // The playhead interpolates between the formatted columns of the
         // measure it just entered (tick 0 anchor plus 0.02 tick of drift).
         let columns = try #require(
-            viewModel.cachedNotationLayout.formattedNotation
+            viewModel.cachedEngravedNotation?.formatted
                 .measures.first { $0.index == 1 }?.columns
         )
         let startColumn = try #require(columns.first)
@@ -422,8 +451,8 @@ struct RhythmTimelineIntegrationTests {
         #expect(viewModel.cachedRhythmRuntime.layoutSnapshot == nil)
         #expect(viewModel.cachedRhythmRuntime.noteTargets.isEmpty)
         #expect(viewModel.cachedRhythmRuntime.metronomeSchedule == nil)
-        #expect(!viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(viewModel.cachedNotationLayout.measures.isEmpty)
+        #expect(!viewModel.cachedNotationHasRenderableContent)
+        #expect(viewModel.cachedEngravedNotation == nil)
         #expect(viewModel.isGameplayPrepared == false)
         #expect(viewModel.isPlaying == false)
         #expect(metronome.startAtTimeCalls.isEmpty)
@@ -444,7 +473,7 @@ private extension RhythmTimelineIntegrationTests {
     }
 
     func assertDTXTripletSlots(
-        _ resolved: ResolvedChartRhythm, _ snapshot: RhythmLayoutSnapshot, _ renderedLayout: NotationLayout
+        _ resolved: ResolvedChartRhythm, _ snapshot: RhythmLayoutSnapshot, _ engraved: EngravedNotation
     ) throws {
         let firstEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "T1" })
         let secondEvent = try #require(resolved.orderedEvents.first { $0.sourceNoteID == "T2" })
@@ -459,8 +488,16 @@ private extension RhythmTimelineIntegrationTests {
         #expect(firstNote.position.localTick == tupletID.startTick)
         #expect(secondNote.position.localTick == tupletID.startTick + slotTicks)
         #expect(thirdNote.position.localTick == tupletID.startTick + slotTicks * 2)
-        let renderedTuplet = try #require(renderedLayout.tuplets.first { $0.id == tupletID })
-        #expect(renderedTuplet.memberEventIDs == [firstEvent.eventID, secondEvent.eventID, thirdEvent.eventID])
+        // The package tuplet carries resolved note IDs (eventID raw values)
+        // rather than the app `RhythmTupletID` — match by membership.
+        let renderedTuplet = try #require(engraved.tuplets.first {
+            $0.memberNoteIDs.contains(firstEvent.eventID.rawValue)
+        })
+        #expect(renderedTuplet.memberNoteIDs == [
+            firstEvent.eventID.rawValue,
+            secondEvent.eventID.rawValue,
+            thirdEvent.eventID.rawValue
+        ])
     }
 
     func dtxChipArray(gridSize: Int, chips: [Int: String]) -> String {

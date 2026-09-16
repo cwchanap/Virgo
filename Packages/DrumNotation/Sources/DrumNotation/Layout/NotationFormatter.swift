@@ -11,13 +11,14 @@ import CoreGraphics
 public enum NotationFormatter {
     /// Formats already-validated resolved input at `style`. The throwing
     /// signature is the pinned API the app and later tasks call through.
-    /// The flag-ink source is the transitional HPA-164 per-note field until
-    /// the Task-7 cutover hands the direct route the package flag plans.
+    /// Flag ink comes from the package stem-group plans: the public route
+    /// builds the real `StemTopology`, so no caller ever supplies per-note
+    /// flag state.
     public static func format(
         _ input: ResolvedNotationInput,
         style: NotationFormattingStyle
     ) throws -> FormattedNotation {
-        format(input, style: style, flagReservations: projectedFlagReservations(input))
+        format(input, style: style, stemTopology: StemTopologyBuilder().build(input))
     }
 
     private static func format(
@@ -383,7 +384,14 @@ public enum NotationFormatter {
                     runEnd += 1
                 }
                 let run = group[runStart...runEnd]
-                let anchor = run.firstIndex(where: \.stemMember) ?? run.startIndex
+                // Stem membership derives from engraving semantics: a member
+                // is a stem-requiring engravable head — the same eligibility
+                // the stem topology's representative pick uses, so the head
+                // the shared stem actually paints from always holds the base
+                // slot. Stemless/non-engravable heads never anchor the run.
+                let anchor = run.firstIndex(where: {
+                    $0.duration.needsStem && $0.isRhythmEngravable
+                }) ?? run.startIndex
                 let baseParity = run.distance(from: run.startIndex, to: anchor) % 2
                 for (position, note) in run.enumerated() where position % 2 != baseParity {
                     let width = PercussionGlyphMetrics.notehead(
@@ -416,19 +424,6 @@ extension NotationFormatter {
         stemTopology: StemTopology
     ) -> FormattedNotation {
         format(input, style: style, flagReservations: stemTopology.flagReservations)
-    }
-
-    /// The transitional flag source: the projection's per-note field.
-    private static func projectedFlagReservations(
-        _ input: ResolvedNotationInput
-    ) -> [Int: NotationFlagDuration] {
-        var reservations: [Int: NotationFlagDuration] = [:]
-        for note in input.notes {
-            if let flag = note.visibleFlagDuration {
-                reservations[note.id] = flag
-            }
-        }
-        return reservations
     }
 }
 
