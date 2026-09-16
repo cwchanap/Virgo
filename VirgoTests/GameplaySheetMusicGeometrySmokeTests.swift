@@ -14,17 +14,16 @@ import DrumNotation
 
 #if os(macOS)
 import AppKit
-import ApplicationServices
 
 /// The hosted sheet's viewport — the size the production `ScrollView`
 /// clips to in every scenario below.
-private let mountedViewport = CGSize(width: 1_024, height: 768)
+let mountedViewport = CGSize(width: 1_024, height: 768)
 
 /// Region-scoped differential: counts pixels inside `rect` (clamped to the
 /// bitmap) whose channels differ between two rasters. `changedPixelCount`
 /// proves a family paints *somewhere*; this pins the ink to the region the
 /// engraving says it must occupy.
-private func changedPixels(
+func changedPixels(
     in rect: CGRect,
     between lhs: RasterBitmap,
     and rhs: RasterBitmap
@@ -53,7 +52,7 @@ private func changedPixels(
 /// Everything one mounted scenario needs: the view model that owns the
 /// installed engraving, the production `GameplayView` mounting it, and the
 /// prepared state both came from.
-private struct MountedSheet {
+struct MountedSheet {
     let viewModel: GameplayViewModel
     let gameplayView: GameplayView
     let engraving: EngravedNotation
@@ -150,7 +149,7 @@ struct GameplaySheetMusicGeometrySmokeTests {
 
     /// Reinstalls the same prepared state with one primitive family
     /// swapped out — the region differential's "off"/sabotaged state.
-    private func reinstall(
+    func reinstall(
         _ sheet: MountedSheet,
         engraving: EngravedNotation,
         presentation: GameplayNotationPresentation? = nil
@@ -336,12 +335,17 @@ struct GameplaySheetMusicGeometrySmokeTests {
         }
     }
 
-    /// Viewport-edge clipping: the dense fixture engraves eight rows
-    /// (~2700pt) into a 768pt viewport. Stripping only the heads the
-    /// ScrollView clips outside the viewport must leave the raster
-    /// untouched — any change means offscreen content overflowed into the
-    /// hosted hierarchy. The visible-head strip keeps the differential
-    /// non-vacuous.
+    /// Viewport-edge clipping: `multiRowStableWidths` engraves ~2700pt of
+    /// content into a 768pt ScrollView viewport. The production sheet is
+    /// hosted at its fixed viewport size inside an oversized rasterized
+    /// ancestor carrying `sheetClipMargin` of capture space on every side —
+    /// if the sheet's ScrollView ever fails to clip, the overflow ink
+    /// lands in the margin bands instead of falling off the raster's edge,
+    /// so the differential can actually see it. A second leg hosts the
+    /// same production hierarchy with the scroll viewport grown to the
+    /// full content height: the identical off-viewport heads must then
+    /// produce differential ink outside the 768pt band — the unclipped
+    /// control proving the clipped leg's zero is not vacuous.
     @Test("sheetMusicView clips engraved content at the viewport edge")
     func mountedSheetClipsAtViewportEdge() async throws {
         try await TestSetup.withTestSetup {
@@ -362,64 +366,15 @@ struct GameplaySheetMusicGeometrySmokeTests {
             }
             try #require(!offscreen.isEmpty && !visible.isEmpty)
 
-            let headful = try rasterize(sheet)
-            #expect(headful.width == Int(mountedViewport.width))
-            #expect(headful.height == Int(mountedViewport.height))
-
-            try await assertClippedHeadsChangeNothing(
-                sheet: sheet, headful: headful,
-                offscreenCount: offscreen.count, viewportRect: viewportRect
+            let clipped = try rasterizeInAncestor(sheet, sheetSize: mountedViewport)
+            try await assertClipHolds(
+                sheet: sheet, reference: clipped, offscreenCount: offscreen.count
             )
+            try await assertUnclippedControl(sheet: sheet, offscreenCount: offscreen.count)
             try await assertVisibleHeadChangesRaster(
-                sheet: sheet, headful: headful, visible: visible
+                sheet: sheet, clipped: clipped, visible: visible
             )
         }
-    }
-
-    /// Removing every head clipped outside the viewport must leave the
-    /// hosted raster identical — the explicit unclipped-overflow gate.
-    private func assertClippedHeadsChangeNothing(
-        sheet: MountedSheet,
-        headful: RasterBitmap,
-        offscreenCount: Int,
-        viewportRect: CGRect
-    ) async throws {
-        reinstall(sheet, engraving: sheet.engraving.swapping(
-            noteHeads: sheet.engraving.noteHeads.filter {
-                viewportRect.intersects($0.paintedBounds)
-            }
-        ))
-        let clippedOnly = try rasterize(sheet)
-        #expect(
-            changedPixelCount(between: headful, and: clippedOnly) == 0,
-            """
-            removing \(offscreenCount) off-viewport head(s) changed the raster — \
-            clipped content is overflowing into the hosted sheet
-            """
-        )
-    }
-
-    /// Non-vacuity control for the clipping gate: removing a visible head
-    /// must change the raster inside its painted bounds.
-    private func assertVisibleHeadChangesRaster(
-        sheet: MountedSheet,
-        headful: RasterBitmap,
-        visible: [EngravedNoteHead]
-    ) async throws {
-        let sacrifice = try #require(visible.first)
-        reinstall(sheet, engraving: sheet.engraving.swapping(
-            noteHeads: sheet.engraving.noteHeads.filter {
-                $0.noteID != sacrifice.noteID
-            }
-        ))
-        let sacrificed = try rasterize(sheet)
-        #expect(
-            changedPixels(
-                in: sacrifice.paintedBounds,
-                between: headful, and: sacrificed
-            ) > 0,
-            "removing a visible head left the raster unchanged — differential is vacuous"
-        )
     }
 
     /// Hosted accessibility hierarchy: representative note, control, rest,
@@ -447,7 +402,7 @@ struct GameplaySheetMusicGeometrySmokeTests {
                 "Upper voice tuplet, 3 in the time of 2"
             ]
 
-            let labeledDump = hostedAccessibilityLabels(of: sheet)
+            let labeledDump = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
             for label in expected {
                 #expect(
                     labeledDump.labels.contains(label),
@@ -466,7 +421,7 @@ struct GameplaySheetMusicGeometrySmokeTests {
                     accessibilityLabels: [:]
                 )
             )
-            let unlabeled = hostedAccessibilityLabels(of: sheet)
+            let unlabeled = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
             for label in expected {
                 #expect(
                     !unlabeled.labels.contains(label),
@@ -477,95 +432,7 @@ struct GameplaySheetMusicGeometrySmokeTests {
     }
 }
 
-/// Labels plus a diagnostic kind-per-node dump so an empty traversal says
-/// *what* the tree exposed instead of a bare `[]`.
-private struct HostedAccessibilityDump {
-    let labels: [String]
-    let nodeKinds: [String]
-}
-
-/// Calls a no-arg accessibility selector returning a string, when the
-/// object implements the informal protocol member.
-private func performAXString(_ object: NSObject, _ selector: Selector) -> String? {
-    guard object.responds(to: selector) else { return nil }
-    return object.perform(selector)?.takeUnretainedValue() as? String
-}
-
-/// Calls a no-arg accessibility selector returning an array, when the
-/// object implements the informal protocol member.
-private func performAXList(_ object: NSObject, _ selector: Selector) -> [Any]? {
-    guard object.responds(to: selector) else { return nil }
-    return object.perform(selector)?.takeUnretainedValue() as? [Any]
-}
-
-/// Mounts the production sheet branch in a real `NSHostingView` inside an
-/// offscreen window and walks its accessibility tree — collecting every
-/// non-empty VoiceOver label. SwiftUI's `AccessibilityNode` conforms to
-/// the informal `NSAccessibility` protocol, so `accessibilityLabel` /
-/// `accessibilityChildren` are dispatched dynamically rather than through
-/// a Swift-visible member.
-@MainActor
-private func hostedAccessibilityLabels(of sheet: MountedSheet) -> HostedAccessibilityDump {
-    let hostingView = NSHostingView(
-        rootView: AnyView(
-            GeometryReader { proxy in
-                sheet.gameplayView.sheetMusicView(geometry: proxy)
-            }
-            .frame(width: mountedViewport.width, height: mountedViewport.height)
-        )
-    )
-    hostingView.frame = CGRect(origin: .zero, size: mountedViewport)
-    let window = NSWindow(
-        contentRect: CGRect(origin: .zero, size: mountedViewport),
-        styleMask: [.borderless],
-        backing: .buffered,
-        defer: false
-    )
-    window.contentView = hostingView
-    window.orderBack(nil)
-    defer { window.orderOut(nil) }
-    // SwiftUI materializes its accessibility subtree only for an
-    // "enhanced user interface" client — what VoiceOver sets on the
-    // application element. Same-process call, no TCC needed.
-    AXUIElementSetAttributeValue(
-        AXUIElementCreateApplication(getpid()),
-        "AXEnhancedUserInterface" as CFString,
-        kCFBooleanTrue
-    )
-    hostingView.layoutSubtreeIfNeeded()
-    hostingView.displayIfNeeded()
-    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    hostingView.layoutSubtreeIfNeeded()
-    return walkAccessibilityTree(roots: [hostingView, window])
-}
-
-/// Breadth-first walk of the accessibility tree under `roots`.
-private func walkAccessibilityTree(roots: [Any]) -> HostedAccessibilityDump {
-    var labels: [String] = []
-    var nodeKinds: [String] = []
-    var queue = roots
-    var visited = Set<ObjectIdentifier>()
-    while let element = queue.popLast() {
-        guard let object = element as? NSObject,
-              visited.insert(ObjectIdentifier(object)).inserted else { continue }
-        let label = performAXString(object, NSSelectorFromString("accessibilityLabel"))
-        if let label, !label.isEmpty {
-            labels.append(label)
-        }
-        var children = performAXList(object, NSSelectorFromString("accessibilityChildren")) ?? []
-        children += performAXList(
-            object, NSSelectorFromString("accessibilityChildrenInNavigationOrder")
-        ) ?? []
-        if let view = object as? NSView {
-            children += view.subviews
-        }
-        nodeKinds.append("\(type(of: object))\(label.map { ":\($0)" } ?? "")")
-        queue.append(contentsOf: children)
-    }
-    return HostedAccessibilityDump(labels: labels, nodeKinds: nodeKinds)
-}
-
-private extension EngravedNotation {
+extension EngravedNotation {
     /// A copy with selected primitive arrays swapped — the region
     /// differential's "off"/sabotaged states. Only the listed families are
     /// touched; every other primitive keeps its engraved identity.
