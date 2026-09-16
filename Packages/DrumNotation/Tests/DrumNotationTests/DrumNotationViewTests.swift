@@ -130,6 +130,22 @@ private struct RasterProbe {
         return count
     }
 
+    /// The rect's alpha bytes in row order — the differential probe that
+    /// compares one painted region across two rasterized views.
+    func alphaBytes(in rect: CGRect) -> [UInt8] {
+        var output: [UInt8] = []
+        let minX = max(0, Int(rect.minX.rounded(.down)))
+        let maxX = min(width, Int(rect.maxX.rounded(.up)))
+        let minY = max(0, Int(rect.minY.rounded(.down)))
+        let maxY = min(height, Int(rect.maxY.rounded(.up)))
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                output.append(bytes[(y * width + x) * Self.bytesPerPixel + 3])
+            }
+        }
+        return output
+    }
+
     /// Inked pixels whose centers fall outside `rect` — the containment probe.
     func inkOutside(_ rect: CGRect) -> Int {
         var count = 0
@@ -188,6 +204,45 @@ struct DrumNotationViewRasterTests {
             notes: [
                 Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: .eighth),
                 Fixtures.makeNote(id: 2, localTick: 240, staffStep: 3, duration: .eighth)
+            ],
+            rests: [], controls: []
+        )
+    }
+
+    /// A five-member quarter tuplet — unbeamable, so bracket + numeral
+    /// paint. `ratio` is a parameter so one fixture engraves two numerals
+    /// over identical member geometry for the differential probe.
+    /// `ResolvedTupletRatio` deliberately validates positivity only — the
+    /// same members may carry either declared ratio.
+    private func quintupletInput(actual: Int, normal: Int) throws -> ResolvedNotationInput {
+        try Fixtures.document(
+            notes: [0, 384, 768, 1152, 1536].enumerated().map { index, tick in
+                Fixtures.makeNote(
+                    id: index + 1, localTick: tick, staffStep: 3,
+                    duration: .quarter, durationTicks: 384
+                )
+            },
+            rests: [], controls: [],
+            tuplets: [
+                ResolvedTupletGroup(
+                    id: 1, measureIndex: 0, voice: .upper,
+                    ratio: ResolvedTupletRatio(actual: actual, normal: normal),
+                    memberNoteIDs: [1, 2, 3, 4, 5], memberRestIDs: []
+                )
+            ]
+        )
+    }
+
+    /// One stemless whole note (no stem/flag/beam reaching above the
+    /// staff) under a wide meter — isolates the furniture slots so clef
+    /// and meter overflow would escape the global painted bounds.
+    private func smallFurnitureInput() throws -> ResolvedNotationInput {
+        try Fixtures.document(
+            measures: [
+                Fixtures.measure(meter: NotationMeter(beats: 12, noteValue: 8))
+            ],
+            notes: [
+                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: .whole)
             ],
             rests: [], controls: []
         )
@@ -309,5 +364,64 @@ struct DrumNotationViewRasterTests {
             height: style.tupletLabelSize.height
         )
         #expect(raster.inkCount(in: labelRect) > 0)
+    }
+
+    @Test("the tuplet numeral paints ratio.actual, not a fixed three")
+    @MainActor
+    func tupletNumeralFollowsRatio() async throws {
+        // Identical members under two declared ratios give identical label
+        // geometry (`labelPosition` reads member bounds, never the ratio),
+        // so the label rect's alpha bytes isolate the painted numeral.
+        let fiveFour = try NotationEngraver.engrave(
+            quintupletInput(actual: 5, normal: 4), style: style
+        )
+        let control = try NotationEngraver.engrave(
+            quintupletInput(actual: 3, normal: 2), style: style
+        )
+        let tuplet5 = try #require(fiveFour.tuplets.first)
+        let tuplet3 = try #require(control.tuplets.first)
+        #expect(tuplet5.ratio.actual == 5)
+        #expect(tuplet5.isBracketVisible && tuplet3.isBracketVisible)
+        #expect(tuplet5.labelPosition == tuplet3.labelPosition)
+
+        let size = CGSize(
+            width: fiveFour.contentWidth, height: fiveFour.contentHeight
+        )
+        let raster5 = try rasterize(
+            DrumNotationView(layout: fiveFour, accessibilityLabels: [:]), size: size
+        )
+        let raster3 = try rasterize(
+            DrumNotationView(layout: control, accessibilityLabels: [:]), size: size
+        )
+        let labelRect = CGRect(
+            x: tuplet5.labelPosition.x - style.tupletLabelSize.width / 2,
+            y: tuplet5.labelPosition.y - style.tupletLabelSize.height / 2,
+            width: style.tupletLabelSize.width,
+            height: style.tupletLabelSize.height
+        )
+        #expect(raster5.inkCount(in: labelRect) > 0)
+        #expect(raster3.inkCount(in: labelRect) > 0)
+        #expect(raster5.alphaBytes(in: labelRect) != raster3.alphaBytes(in: labelRect))
+    }
+
+    @Test("clef + meter painters stay inside small slots with a wide meter")
+    @MainActor
+    func furniturePaintsInsideSmallSlots() async throws {
+        // staffSpace 6 → 24pt staff; clef slot 8×24, meter slot 10×24 under
+        // a 12/8 signature. A stemless whole note keeps all other ink below
+        // the staff top, so fixed-size furniture overflow escapes the union.
+        let smallStyle = NotationEngravingStyle(
+            formatting: NotationFormattingStyle(staffSpace: 6),
+            clefWidth: 8,
+            meterWidth: 10
+        )
+        let layout = try NotationEngraver.engrave(
+            smallFurnitureInput(), style: smallStyle
+        )
+        let raster = try probe(layout)
+
+        let row = try #require(layout.rows.first)
+        #expect(raster.inkCount(in: row.clef.paintedBounds) > 0)
+        #expect(raster.inkCount(in: row.meterSignature.paintedBounds) > 0)
     }
 }
