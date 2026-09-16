@@ -381,12 +381,13 @@ struct GameplaySheetMusicGeometrySmokeTests {
     /// oversized ancestor with its ScrollView scrolled `crossingScrollY`
     /// document points down, so the row-2 heads at sheet-y ~770–790
     /// straddle the 768pt clip edge by ~10pt on each side — the boundary
-    /// cuts real glyphs mid-stroke. Removing a crossing head must move ink
-    /// inside the clipped viewport while every outside region (margins and
-    /// the deep band past `clipEdgeBleed`) stays identical; the
-    /// full-height control must then move the same heads' ink outside the
-    /// band. Both `#require`s make a missing or shallow crossing selection
-    /// a failure, never a vacuous pass.
+    /// cuts real glyphs mid-stroke. ONE qualifying head then drives all
+    /// three legs: removing it must move ink inside the clipped viewport,
+    /// leave its own deep-outside mask (painted bounds below the clip edge
+    /// plus the `clipEdgeBleed` AA band) strict zero in the clipped
+    /// capture, and move ink inside that same document-space mask in the
+    /// full-height control — margin- and scroll-translated per capture.
+    /// Geometry depth alone cannot stand in for that pixel evidence.
     @Test("sheetMusicView clips a head straddling the viewport edge")
     func mountedSheetClipsEdgeCrossingHead() async throws {
         try await TestSetup.withTestSetup {
@@ -417,12 +418,19 @@ struct GameplaySheetMusicGeometrySmokeTests {
                 },
                 "crossing heads must straddle ≥6pt inside and ≥\(clipEdgeBleed + 2)pt outside"
             )
+            // The same primitive must drive every leg: pick the qualifying
+            // head reaching deepest below the edge so its deep-outside
+            // mask carries the most ink.
+            let head = try #require(
+                crossing.max { $0.paintedBounds.maxY < $1.paintedBounds.maxY },
+                "no qualifying boundary-crossing head"
+            )
 
             let clipped = try rasterizeInAncestor(
                 sheet, sheetSize: mountedViewport, scrollY: crossingScrollY
             )
             try await assertCrossingHeadClipsAtEdge(
-                sheet: sheet, clipped: clipped, crossing: crossing
+                sheet: sheet, clipped: clipped, head: head
             )
         }
     }
