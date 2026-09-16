@@ -41,7 +41,17 @@ extension SheetComposer {
                 stemTopology.stemGroups[index].stemRepresentativeID.flatMap { headsByID[$0] }
             }
             guard let direction = representatives.first?.note.stemDirection else { return [] }
-            let baseY = sharedBeamBaseY(representatives: representatives, direction: direction)
+            // Every chord member participating in the run — the far-edge
+            // bound the shared base must clear, not just the
+            // representatives' own anchors.
+            let members = group.eventIndices.flatMap { index in
+                stemTopology.stemGroups[index].memberNoteIDs.compactMap { headsByID[$0] }
+            }
+            let baseY = sharedBeamBaseY(
+                members: members,
+                representatives: representatives,
+                direction: direction
+            )
             let context = BeamRenderContext(
                 group: group,
                 events: stemTopology.events,
@@ -138,9 +148,14 @@ extension SheetComposer {
 
     /// The shared outermost beam Y of one primary group: every member stem
     /// reaches the same flat beam — the default stem length down/up from
-    /// the most extreme representative anchor, per the engine's
-    /// `sharedBeamBaseY`.
+    /// the most extreme representative anchor AND
+    /// `minimumStemExtensionPastChord` past the farthest participating
+    /// member ink, so a wide chord's far head can never reach the
+    /// innermost beam. The anchor term is the engine's `sharedBeamBaseY`;
+    /// the member-bound term is the same far-chord-edge rule
+    /// `unbeamedStemEndY` applies, minus flag ink (beams replace it).
     private func sharedBeamBaseY(
+        members: [PendingNoteHead],
         representatives: [PendingNoteHead],
         direction: NotationStemDirection
     ) -> CGFloat {
@@ -148,6 +163,10 @@ extension SheetComposer {
             direction == .up
                 ? $0.stemAnchor.y - style.stemLength
                 : $0.stemAnchor.y + style.stemLength
+        } + members.map {
+            direction == .up
+                ? $0.bounds.minY - style.minimumStemExtensionPastChord
+                : $0.bounds.maxY + style.minimumStemExtensionPastChord
         }
         return direction == .up
             ? candidates.min() ?? 0

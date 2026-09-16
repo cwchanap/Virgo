@@ -137,7 +137,10 @@ extension SheetComposer {
             beam.noteIDs.filter(Set(memberHeads.map { $0.note.id }).contains).count >= 2
         }
         let beamSpansEntireGroup = memberRests.isEmpty
-            && beamSpansEveryOnset(memberHeads: memberHeads, memberBeams: memberBeams)
+            && continuousPrimaryBeamCoversEveryOnset(
+                memberHeads: memberHeads,
+                memberBeams: memberBeams
+            )
         let direction = memberHeads.first?.note.stemDirection
             ?? (group.voice == .upper ? .up : .down)
         let memberBounds = memberHeads.map(\.bounds) + memberRests.map(\.bounds)
@@ -174,22 +177,25 @@ extension SheetComposer {
         )
     }
 
-    /// The engine's `beamSpansEntireGroup` arm minus its rest check: every
-    /// member onset must hold at least one head covered by a member beam.
-    private func beamSpansEveryOnset(
+    /// The strengthened `beamSpansEntireGroup` arm minus its rest check:
+    /// every member onset must hold at least one head inside a SINGLE
+    /// level-0 full beam — one continuous primary run. Two disconnected
+    /// runs that each beam their own members still earn the bracket.
+    /// A run emits exactly one level-0 full segment, so "one beam covers
+    /// every onset" is exactly "one run covers them".
+    private func continuousPrimaryBeamCoversEveryOnset(
         memberHeads: [PendingNoteHead],
         memberBeams: [EngravedBeam]
     ) -> Bool {
-        guard !memberBeams.isEmpty else { return false }
-        let beamedHeadIDs = Set(memberBeams.flatMap(\.noteIDs))
-        let headsByOnset = Dictionary(grouping: memberHeads) {
+        let onsetHeadIDs = Dictionary(grouping: memberHeads) {
             NotationTickPosition(
                 measureIndex: $0.note.position.measureIndex,
                 localTick: $0.note.position.localTick
             )
-        }
-        return headsByOnset.values.allSatisfy { heads in
-            heads.contains { beamedHeadIDs.contains($0.note.id) }
+        }.values.map { Set($0.map { $0.note.id }) }
+        return memberBeams.contains { beam in
+            beam.level == 0 && beam.kind == .full
+                && onsetHeadIDs.allSatisfy { !$0.isDisjoint(with: Set(beam.noteIDs)) }
         }
     }
 
@@ -253,39 +259,103 @@ extension SheetComposer {
         return bounds.insetBy(dx: -style.tupletLineWidth / 2, dy: -style.tupletLineWidth / 2)
     }
 
-    // MARK: - Row descriptors
+    // MARK: - Row furniture
 
-    /// One row descriptor at its final (shifted) geometry: staff lines in
-    /// pitch-ascending order, the leading clef, and the meter signature of
-    /// the row's first formatted measure — what the painter and Virgo's row
-    /// anchors/playhead Y consume.
-    func engravedRow(
-        index: Int,
-        shift: CGFloat,
-        measuresByIndex: [Int: ResolvedMeasure]
-    ) -> EngravedRow {
-        let centerY = staffCenterY(rowIndex: index) + shift
-        let staffSpace = formatting.staffSpace
-        let firstMeter = formatted.measures
-            .first { $0.rowIndex == index }
-            .flatMap { measuresByIndex[$0.index]?.meter }
-            ?? NotationMeter(beats: 4, noteValue: 4)
-        return EngravedRow(
-            index: index,
-            staffCenterY: centerY,
-            staffLineYs: [
+    /// Every formatted row's furniture in RAW sheet coordinates — the five
+    /// staff lines spanning the row's formatted extent, the leading clef
+    /// slot, and the meter-signature slot of the row's first measure.
+    /// Furniture ink joins `paintedUnion` like every other primitive so the
+    /// single normalization moves it too, and the row's own `paintedBounds`
+    /// proves containment to consumers.
+    func collectRowFurniture(raw: inout RawGeometry) {
+        let measuresByIndex = Dictionary(
+            input.measures.map { ($0.index, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for index in Set(formatted.measures.map(\.rowIndex)).sorted() {
+            let centerY = staffCenterY(rowIndex: index)
+            let staffSpace = formatting.staffSpace
+            let staffHeight = 4 * staffSpace
+            let staffLineYs = [
                 centerY + 2 * staffSpace,
                 centerY + staffSpace,
                 centerY,
                 centerY - staffSpace,
                 centerY - 2 * staffSpace
-            ],
-            clef: EngravedClef(position: CGPoint(x: style.clefWidth / 2, y: centerY)),
-            meterSignature: EngravedMeterSignature(
-                meter: firstMeter,
-                position: CGPoint(x: style.clefWidth + style.meterWidth / 2, y: centerY)
+            ]
+            // Each furniture descriptor's painted bounds is its reserved
+            // slot: the advance the formatter charges every row, spanning
+            // the staff height and centered on the descriptor's position.
+            let clef = EngravedClef(
+                position: CGPoint(x: style.clefWidth / 2, y: centerY),
+                paintedBounds: CGRect(
+                    x: 0, y: centerY - staffHeight / 2,
+                    width: style.clefWidth, height: staffHeight
+                )
+            )
+            let meter = meterSignature(
+                rowIndex: index, centerY: centerY,
+                staffHeight: staffHeight, measuresByIndex: measuresByIndex
+            )
+            let furniture = rowPaintedBounds(
+                rowIndex: index, staffLineYs: staffLineYs,
+                clef: clef, meter: meter
+            )
+            raw.include(furniture)
+            raw.rows.append(EngravedRow(
+                index: index,
+                staffCenterY: centerY,
+                staffLineYs: staffLineYs,
+                clef: clef,
+                meterSignature: meter,
+                paintedBounds: furniture
+            ))
+        }
+    }
+
+    /// The row's meter descriptor: the resolved meter of the row's first
+    /// formatted measure, centered in its reserved `meterWidth` slot.
+    private func meterSignature(
+        rowIndex: Int,
+        centerY: CGFloat,
+        staffHeight: CGFloat,
+        measuresByIndex: [Int: ResolvedMeasure]
+    ) -> EngravedMeterSignature {
+        let firstMeter = formatted.measures
+            .first { $0.rowIndex == rowIndex }
+            .flatMap { measuresByIndex[$0.index]?.meter }
+            ?? NotationMeter(beats: 4, noteValue: 4)
+        return EngravedMeterSignature(
+            meter: firstMeter,
+            position: CGPoint(x: style.clefWidth + style.meterWidth / 2, y: centerY),
+            paintedBounds: CGRect(
+                x: style.clefWidth, y: centerY - staffHeight / 2,
+                width: style.meterWidth, height: staffHeight
             )
         )
+    }
+
+    /// The row's furniture union: each staff line stroked `barLineWidth`
+    /// from the sheet edge through the row's last measure edge — the same
+    /// span the bars and the app's row painter cover — plus both slots.
+    private func rowPaintedBounds(
+        rowIndex: Int,
+        staffLineYs: [CGFloat],
+        clef: EngravedClef,
+        meter: EngravedMeterSignature
+    ) -> CGRect {
+        let rowEnd = formatted.measures
+            .filter { $0.rowIndex == rowIndex }
+            .map { $0.xOffset + $0.width }
+            .max() ?? 0
+        return staffLineYs.reduce(
+            clef.paintedBounds.union(meter.paintedBounds)
+        ) { bounds, lineY in
+            bounds.union(CGRect(
+                x: 0, y: lineY - style.barLineWidth / 2,
+                width: rowEnd, height: style.barLineWidth
+            ))
+        }
     }
 
     // MARK: - Measure bars
@@ -387,6 +457,40 @@ extension EngravedTuplet {
             bracketPoints: bracketPoints.map { CGPoint(x: $0.x, y: $0.y + delta) },
             labelPosition: CGPoint(x: labelPosition.x, y: labelPosition.y + delta),
             rowIndex: rowIndex
+        )
+    }
+}
+
+extension EngravedRow {
+    /// The row's whole furniture world moves with the single normalization:
+    /// center, staff-line Ys, both descriptor slots and the painted union.
+    func translated(byY delta: CGFloat) -> EngravedRow {
+        EngravedRow(
+            index: index,
+            staffCenterY: staffCenterY + delta,
+            staffLineYs: staffLineYs.map { $0 + delta },
+            clef: clef.translated(byY: delta),
+            meterSignature: meterSignature.translated(byY: delta),
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
+        )
+    }
+}
+
+extension EngravedClef {
+    func translated(byY delta: CGFloat) -> EngravedClef {
+        EngravedClef(
+            position: CGPoint(x: position.x, y: position.y + delta),
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
+        )
+    }
+}
+
+extension EngravedMeterSignature {
+    func translated(byY delta: CGFloat) -> EngravedMeterSignature {
+        EngravedMeterSignature(
+            meter: meter,
+            position: CGPoint(x: position.x, y: position.y + delta),
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
         )
     }
 }

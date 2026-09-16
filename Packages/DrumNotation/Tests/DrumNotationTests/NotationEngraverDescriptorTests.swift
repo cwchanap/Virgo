@@ -188,6 +188,47 @@ struct EngraverTupletTests {
         #expect(tuplet.bracketPoints.isEmpty)
     }
 
+    @Test("two disconnected beam runs still paint the bracket")
+    func disconnectedBeamRunsPaintBracket() throws {
+        // Four sixteenth members in two adjacent pairs: every onset is
+        // beamed, but no single primary run covers all of them — the
+        // label cannot float bracket-free over the gap between the runs.
+        let input = try Fixtures.document(
+            notes: [0, 120, 480, 600].enumerated().map { index, tick in
+                Fixtures.makeNote(
+                    id: index + 1, localTick: tick, staffStep: 3,
+                    duration: .sixteenth, durationTicks: 120
+                )
+            },
+            rests: [], controls: [],
+            tuplets: [
+                ResolvedTupletGroup(
+                    id: 1, measureIndex: 0, voice: .upper,
+                    ratio: ResolvedTupletRatio(actual: 3, normal: 2),
+                    memberNoteIDs: [1, 2, 3, 4], memberRestIDs: []
+                )
+            ]
+        )
+        let engraved = try NotationEngraver.engrave(input, style: style)
+
+        // Two primary runs — one level-0 full beam each.
+        #expect(engraved.beams.filter { $0.level == 0 && $0.kind == .full }.count == 2)
+        let tuplet = try #require(engraved.tuplets.first)
+        #expect(tuplet.isBracketVisible)
+        #expect(tuplet.bracketPoints.count == 6)
+
+        // The label still floats above the members' highest beam, and the
+        // bracket spans every member's bounds.
+        let bounds = memberBounds(engraved, noteIDs: [1, 2, 3, 4])
+        let topBeamY = try #require(engraved.beams.map(\.start.y).min())
+        #expect(tuplet.labelPosition == CGPoint(
+            x: bounds.midX,
+            y: topBeamY - style.tupletVerticalOffset
+        ))
+        #expect(tuplet.bracketPoints.first?.x == bounds.minX)
+        #expect(tuplet.bracketPoints.last?.x == bounds.maxX)
+    }
+
     @Test("tuplets carry their members' row")
     func tupletCarriesMemberRow() throws {
         let engraved = try NotationEngraver.engrave(triplet(), style: style)
@@ -271,6 +312,72 @@ struct EngraverBarRowTests {
             x: style.clefWidth + style.meterWidth / 2,
             y: row.staffCenterY
         ))
+    }
+
+    @Test("row furniture exposes painted bounds inside the final painted union")
+    func rowFurnitureInsidePaintedBounds() throws {
+        let staffSpace = NotationFormattingStyle.virgoDefault.staffSpace
+        let engraved = try NotationEngraver.engrave(document(measureCount: 1), style: style)
+        let row = try #require(engraved.rows.first)
+
+        // The clef and meter slots: furniture advance × staff height,
+        // centered on each descriptor's position.
+        #expect(row.clef.paintedBounds == CGRect(
+            x: 0, y: row.staffCenterY - 2 * staffSpace,
+            width: style.clefWidth, height: 4 * staffSpace
+        ))
+        #expect(row.meterSignature.paintedBounds == CGRect(
+            x: style.clefWidth, y: row.staffCenterY - 2 * staffSpace,
+            width: style.meterWidth, height: 4 * staffSpace
+        ))
+
+        // Staff lines stroke barLineWidth from the sheet edge through the
+        // row's last measure edge, centered on each staffLineY.
+        let rowEnd = try #require(engraved.measures.map { $0.xOffset + $0.width }.max())
+        for lineY in row.staffLineYs {
+            let line = CGRect(
+                x: 0, y: lineY - style.barLineWidth / 2,
+                width: rowEnd, height: style.barLineWidth
+            )
+            #expect(row.paintedBounds.contains(line))
+        }
+        #expect(row.paintedBounds.contains(row.clef.paintedBounds))
+        #expect(row.paintedBounds.contains(row.meterSignature.paintedBounds))
+        #expect(engraved.paintedBounds.contains(row.paintedBounds))
+    }
+
+    @Test("an event-free row still bounds its furniture — never a null union")
+    func furnitureAloneProducesPaintedBounds() throws {
+        let input = try Fixtures.document(notes: [], rests: [], controls: [])
+        let engraved = try NotationEngraver.engrave(input, style: style)
+        let row = try #require(engraved.rows.first)
+
+        #expect(engraved.paintedBounds.isNull == false)
+        #expect(engraved.paintedBounds.contains(row.paintedBounds))
+        #expect(engraved.contentHeight >= row.paintedBounds.maxY)
+    }
+
+    @Test("row furniture shares the single Y normalization")
+    func rowFurnitureTranslatesOnce() throws {
+        // Ink above the staff shifts every primitive down once; the
+        // furniture must land in the same shifted coordinates.
+        let staffSpace = NotationFormattingStyle.virgoDefault.staffSpace
+        let input = try Fixtures.document(
+            notes: [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 18)],
+            rests: [], controls: []
+        )
+        let engraved = try NotationEngraver.engrave(input, style: style)
+        let row = try #require(engraved.rows.first)
+
+        #expect(engraved.paintedBounds.minY == 0)
+        #expect(row.paintedBounds.minY >= 0)
+        // The descriptors' slots stay centered on their positions, and the
+        // staff lines keep their staff-center-relative spacing.
+        #expect(row.clef.paintedBounds.midY == row.clef.position.y)
+        #expect(row.clef.position.y == row.staffCenterY)
+        #expect(row.meterSignature.paintedBounds.midY == row.meterSignature.position.y)
+        #expect(row.staffLineYs.first == row.staffCenterY + 2 * staffSpace)
+        #expect(row.staffLineYs.last == row.staffCenterY - 2 * staffSpace)
     }
 
     @Test("a wrapped row signs its own first measure's meter")
