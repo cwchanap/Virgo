@@ -144,11 +144,12 @@ struct NotationLayoutRestTests {
         )
 
         // Hidden candidates feed spacing/tuplets but never resolve into
-        // `ResolvedNotationInput.rests`, so the engraving is empty and the
-        // sheet falls back to `.unavailable` — the non-printing outcome the
-        // legacy `hasRenderableContent == false` pinned.
-        guard case .unavailable = prepared else {
-            Issue.record("Expected .unavailable for a hidden-only rest sheet, got \(prepared)")
+        // `ResolvedNotationInput.rests`, so the engraving is empty — an
+        // unexpected printable-empty outcome the closed state reports as
+        // `.failed` (the old `hasRenderableContent == false` fallback state
+        // is gone; there is no `.unavailable` case).
+        guard case .failed = prepared else {
+            Issue.record("Expected .failed for a hidden-only rest sheet, got \(prepared)")
             return
         }
     }

@@ -124,7 +124,7 @@ struct GameplayNotationCompositionTests {
     }
 
     /// The `.ready` engraving out of a prepared state; preparation of these
-    /// fixtures must never degrade to `.unavailable`/`.failed`.
+    /// fixtures must never degrade to `.failed`.
     private func requireEngraved(
         _ prepared: GameplayNotationPreparedState
     ) throws -> EngravedNotation {

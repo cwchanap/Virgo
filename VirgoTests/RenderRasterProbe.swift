@@ -100,6 +100,57 @@ func rasterizeView<V: View>(_ view: V, size: CGSize) throws -> RasterBitmap {
     return RasterBitmap(bytes: bytes, width: width, height: height)
 }
 
+/// Renders `view` at exactly `size` by mounting it in a real `NSHostingView`
+/// and snapshotting the laid-out layer.
+///
+/// `ImageRenderer` does not paint `ScrollView` document content in this
+/// headless test host, so production branches that mount notation inside the
+/// sheet's `ScrollView` must rasterize through this hosted path instead.
+@MainActor
+func rasterizeHostedView<V: View>(_ view: V, size: CGSize) throws -> RasterBitmap {
+    let hostingView = NSHostingView(
+        rootView: AnyView(view.frame(width: size.width, height: size.height))
+    )
+    hostingView.frame = CGRect(origin: .zero, size: size)
+    hostingView.layoutSubtreeIfNeeded()
+    hostingView.displayIfNeeded()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    hostingView.layoutSubtreeIfNeeded()
+
+    guard let rep = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else {
+        throw RenderRasterProbeError.missingPixelBuffer
+    }
+    hostingView.cacheDisplay(in: hostingView.bounds, to: rep)
+    guard let cgImage = rep.cgImage else {
+        throw RenderRasterProbeError.missingCGImage
+    }
+
+    let width = Int(size.width)
+    let height = Int(size.height)
+    let bytesPerRow = width * RasterBitmap.bytesPerPixel
+    var bytes = [UInt8](repeating: 0, count: height * bytesPerRow)
+
+    try bytes.withUnsafeMutableBytes { buffer in
+        guard let baseAddress = buffer.baseAddress else {
+            throw RenderRasterProbeError.missingPixelBuffer
+        }
+        guard let context = CGContext(
+            data: baseAddress,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw RenderRasterProbeError.missingBitmapContext
+        }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+    }
+
+    return RasterBitmap(bytes: bytes, width: width, height: height)
+}
+
 /// Rasterizes `view` at exactly `size` (scale 1) and writes it as a PNG to `url`
 /// so a generated visual preview can be opened by its absolute path.
 @MainActor

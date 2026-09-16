@@ -167,10 +167,10 @@ struct GameplayNotationCoverageAdditionsTests {
         #expect(viewModel.cachedLegacyContentHeight == 0)
     }
 
-    // MARK: - applyPreparedNotation with unavailable content
+    // MARK: - applyPreparedNotation with a failed prepared state
 
-    @Test("applyPreparedNotation clears measure maps when the prepared state is unavailable")
-    func applyPreparedNotationClearsMapsForUnavailableContent() async throws {
+    @Test("applyPreparedNotation clears measure maps when the prepared state failed")
+    func applyPreparedNotationClearsMapsForFailedContent() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
         let viewModel = GameplayViewModel(
             chart: chart,
@@ -180,12 +180,14 @@ struct GameplayNotationCoverageAdditionsTests {
         defer { viewModel.cleanup() }
 
         let generation = viewModel.beginNotationPreparation()
-        #expect(viewModel.applyPreparedNotation(.unavailable, generation: generation))
+        let failure = GameplayNotationPreparationFailure(detail: "coverage probe")
+        #expect(viewModel.applyPreparedNotation(.failed(failure), generation: generation))
 
         #expect(viewModel.isGameplayPrepared)
         #expect(!viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedMeasureRowMap.isEmpty)
         #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
+        #expect(viewModel.notationPreparationFailure == failure)
     }
 
     // MARK: - setupGameplay timeline fallback when request is nil
@@ -310,10 +312,9 @@ struct SheetMusicViewCoverageAdditionsTests {
             await viewModel.setupGameplay(loadPersistedSpeed: false)
             defer { viewModel.cleanup() }
 
-            // Install the unavailable state so hasRenderableContent is false,
-            // but cachedMeasurePositions remains populated from the prior
-            // setup.
-            viewModel.installPreparedNotation(.unavailable)
+            // Clear the install so hasRenderableContent is false, but
+            // cachedMeasurePositions remains populated from the prior setup.
+            viewModel.clearNotationInstallation()
             #expect(!viewModel.cachedNotationHasRenderableContent)
             #expect(!viewModel.cachedMeasurePositions.isEmpty)
 

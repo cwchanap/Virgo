@@ -7,8 +7,7 @@ import DrumNotation
 /// Geometry runs through the one preparation route ending in
 /// `NotationEngraver.engrave` (HPA-166 Task 7).
 struct NotationLayoutTestSupport {
-    /// The `.ready` engraving for the given specs; test-failing on
-    /// `.unavailable`/`.failed`.
+    /// The `.ready` engraving for the given specs; test-failing on `.failed`.
     func engraved(
         notes: [Note],
         controls: [NotationControlEvent] = [],

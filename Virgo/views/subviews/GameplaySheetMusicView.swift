@@ -32,7 +32,7 @@ struct GameplayStaticNotationInput: Equatable {
 
     /// Engraved notation drives the sheet only when an install is present —
     /// `hasRenderableContent` is the install state resolved once per
-    /// generation (`.unavailable`/`.failed` leave it false).
+    /// generation (cleared installations and `.failed` leave it false).
     var usesEngravedNotation: Bool { hasRenderableContent && engraving != nil }
 
     var measurePositions: [GameplayLayout.MeasurePosition] {
@@ -203,19 +203,6 @@ extension GameplayView {
     // none of these wrappers are evaluated by the playback-observed container.
     func staticSheetMusicContent(viewModel: GameplayViewModel) -> some View {
         GameplayStaticNotationLayers(input: staticNotationInput(viewModel: viewModel))
-    }
-
-    /// Direct package-renderer mounting probe: `DrumNotationView` over the
-    /// installed engraving — nil input mounts nothing.
-    @ViewBuilder
-    func drumNotationView(viewModel: GameplayViewModel) -> some View {
-        if let engraving = viewModel.cachedEngravedNotation {
-            DrumNotationView(
-                layout: engraving,
-                appearance: Self.notationAppearance,
-                accessibilityLabels: viewModel.notationPresentation?.accessibilityLabels ?? [:]
-            )
-        }
     }
 
     /// Row-anchor column probe over the installed input's package-derived
