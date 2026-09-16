@@ -30,6 +30,11 @@ struct VirgoNotationProjectionTests {
 
         #expect(input.notes.map(\.id) == [42])
         #expect(input.controls.map(\.id) == [7])
+        // Stop lane targeting the snare (lane "12", `.line3`): the package
+        // step is pitch-ascending, so app step −4 crosses as +4.
+        let control = try #require(input.controls.first)
+        #expect(control.kind == .stop)
+        #expect(control.targetStaffStep == 4)
     }
 
     @Test("Measure/local tick survives; absolute tick is derivable, not copied")
@@ -122,14 +127,26 @@ struct VirgoNotationProjectionTests {
         #expect(hiHat.stemDirection == .up)
         #expect(hiHat.duration == .sixteenth)
         #expect(hiHat.dotCount == 1)
+        // HPA-166: voice comes from the resolved catalog definition, the
+        // tiebreak is its catalog order, and the open-hi-hat variant resolves
+        // to the package's articulation intent.
+        #expect(hiHat.voice == .upper)
+        #expect(hiHat.durationTicks == 60)
+        #expect(hiHat.tiebreakOrder == 3)
+        #expect(hiHat.isRhythmEngravable)
+        #expect(hiHat.articulation == .open)
         let bass = try #require(byID[2])
         #expect(bass.noteheadStyle == .normal)
         #expect(bass.stemDirection == .down)
         #expect(bass.duration == .quarter)
         #expect(bass.dotCount == 0)
+        #expect(bass.voice == .lower)
+        #expect(bass.durationTicks == 240)
+        #expect(bass.tiebreakOrder == 0)
+        #expect(bass.articulation == nil)
     }
 
-    @Test("Package model carries no voice/tuplet/beat-group/engraving-support copy")
+    @Test("Package projection carries resolved semantics only, no app-implementation fields")
     func packageModelCarriesNoAppSemanticsCopy() throws {
         let measure = makeMeasure(index: 0)
         let snapshot = try makeSnapshot(
@@ -150,13 +167,23 @@ struct VirgoNotationProjectionTests {
             notePositionOverrides: [:]
         )
 
-        let forbidden = ["voice", "tuplet", "beatgroup", "engravingsupport", "engraving"]
+        // Resolved engraving semantics (voice, meter, beatGroups, tuplets,
+        // targetStaffStep) legitimately cross since HPA-166 Task 1. What must
+        // never cross is the app's implementation vocabulary: lane/chip IDs,
+        // rest visibility, raw rhythm-support or engraving-support state,
+        // feel names, absolute ticks, beat-group internals like residual
+        // markers or group indexes, and per-member stable event IDs.
+        let forbidden = [
+            "lane", "chip", "visibility", "engravingsupport", "support",
+            "feel", "absolute", "groupindex", "isresidual", "stemless",
+            "variant", "instrument", "stablemember"
+        ]
         let findings = reflectedFieldNames(in: input).filter { field in
             forbidden.contains { field.lowercased().contains($0) }
         }
         #expect(
             findings.isEmpty,
-            Comment(rawValue: "package projection carries app-semantics fields: \(findings)")
+            Comment(rawValue: "package projection carries app-implementation fields: \(findings)")
         )
     }
 
@@ -179,6 +206,12 @@ struct VirgoNotationProjectionTests {
         #expect(input.measures.map(\.index) == [0, 1, 2])
         #expect(input.measures.map(\.startTick) == [0, 960, 1920])
         #expect(input.measures.map(\.durationTicks) == [960, 960, 960])
+        // Meter and ordered beat groups cross on every measure — including
+        // the synthesized trailing ones, which the same builder materializes.
+        let fourByFour = NotationMeter(beats: 4, noteValue: 4)
+        let expectedGroups = (0..<4).map { ResolvedBeatGroup(startTick: $0 * 240, durationTicks: 240) }
+        #expect(input.measures.allSatisfy { $0.meter == fourByFour })
+        #expect(input.measures.allSatisfy { $0.beatGroups == expectedGroups })
     }
 
     // MARK: - Step 3/4: visible flag classification
@@ -342,6 +375,9 @@ struct VirgoNotationProjectionTests {
         )
 
         #expect(input.notes.first?.visibleFlagDuration == nil)
+        // The note still crosses (Virgo preserves its identity) but the
+        // package suppresses its duration-bearing engraving.
+        #expect(input.notes.first?.isRhythmEngravable == false)
     }
 
     // MARK: - Step 5: the single style mapper
@@ -382,6 +418,8 @@ struct VirgoNotationProjectionTests {
 
     // MARK: - Step 6/7: one preparation route
     // The route-equivalence tests live in `VirgoNotationPreparationRouteTests`.
+    // The HPA-166 control-intent and tuplet mapping tests live in
+    // `VirgoNotationProjectionEngravingTests`.
 
     // MARK: - Fixtures
 
@@ -408,7 +446,8 @@ struct VirgoNotationProjectionTests {
         measures: [RhythmMeasure],
         notes: [RhythmLayoutNote] = [],
         rests: [RhythmLayoutRest] = [],
-        controls: [RhythmLayoutControl] = []
+        controls: [RhythmLayoutControl] = [],
+        feel: RhythmicFeel = .straight
     ) throws -> RhythmLayoutSnapshot {
         try RhythmLayoutSnapshot(
             ticksPerWholeNote: ticksPerWholeNote,
@@ -416,7 +455,7 @@ struct VirgoNotationProjectionTests {
             notes: notes,
             controls: controls,
             rests: rests,
-            feel: .straight
+            feel: feel
         )
     }
 
@@ -427,7 +466,10 @@ struct VirgoNotationProjectionTests {
         localTick: Int,
         absoluteTick: Int? = nil,
         interval: NoteInterval,
-        dotCount: Int = 0
+        dotCount: Int = 0,
+        durationTicks: Int? = nil,
+        tuplet: TupletRatio? = nil,
+        tupletID: RhythmTupletID? = nil
     ) -> RhythmLayoutNote {
         RhythmLayoutNote(
             eventID: RhythmEventID(rawValue: eventID),
@@ -439,9 +481,9 @@ struct VirgoNotationProjectionTests {
                 localTick: localTick,
                 absoluteTick: absoluteTick ?? measureIndex * 960 + localTick
             ),
-            durationTicks: durationTicks(of: interval),
-            rhythm: NotationRhythm(baseInterval: interval, dotCount: dotCount),
-            tupletID: nil
+            durationTicks: durationTicks ?? self.durationTicks(of: interval),
+            rhythm: NotationRhythm(baseInterval: interval, dotCount: dotCount, tuplet: tuplet),
+            tupletID: tupletID
         )
     }
 
@@ -450,7 +492,9 @@ struct VirgoNotationProjectionTests {
         localTick: Int,
         voice: NotationVoice,
         interval: NoteInterval,
-        visibility: NotationRestVisibility
+        visibility: NotationRestVisibility,
+        tuplet: TupletRatio? = nil,
+        tupletID: RhythmTupletID? = nil
     ) -> RhythmLayoutRest {
         let durationTicks = ticksPerWholeNote / Self.tickDivisor(of: interval)
         return RhythmLayoutRest(
@@ -461,9 +505,9 @@ struct VirgoNotationProjectionTests {
             ),
             durationTicks: durationTicks,
             voice: voice,
-            rhythm: NotationRhythm(baseInterval: interval),
+            rhythm: NotationRhythm(baseInterval: interval, tuplet: tuplet),
             visibility: visibility,
-            tupletID: nil
+            tupletID: tupletID
         )
     }
 
@@ -479,8 +523,19 @@ struct VirgoNotationProjectionTests {
         }
     }
 
-    private func makeControl(eventID: Int, measureIndex: Int, localTick: Int) -> RhythmLayoutControl {
-        let source = ChartControlEvent(kind: .stop, measureNumber: measureIndex + 1, measureOffset: 0)
+    private func makeControl(
+        eventID: Int,
+        measureIndex: Int,
+        localTick: Int,
+        kind: NotationControlEventKind = .stop,
+        targetLaneID: String? = "12"
+    ) -> RhythmLayoutControl {
+        let source = ChartControlEvent(
+            kind: kind,
+            measureNumber: measureIndex + 1,
+            measureOffset: 0,
+            targetLaneID: targetLaneID
+        )
         return RhythmLayoutControl(
             eventID: RhythmEventID(rawValue: eventID),
             event: NotationControlEvent(source),
