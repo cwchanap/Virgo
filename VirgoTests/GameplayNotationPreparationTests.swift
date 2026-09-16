@@ -66,6 +66,88 @@ struct GameplayNotationPreparationTests {
         #expect(!reflectedIdentityFindings(in: referenceModelProbe).isEmpty)
     }
 
+    @Test("expanded measures extend from the last resolved measure with cumulative ticks")
+    func expandedMeasuresExtendResolvedMeasures() throws {
+        // A short pickup measure: expansion reuses its signature/support while
+        // appended measures get the nominal (full-meter) duration.
+        let pickup = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 720,
+            timeSignature: .fourFour,
+            beatGroups: (0..<3).map {
+                RhythmBeatGroup(
+                    groupIndex: $0,
+                    startTick: $0 * 240,
+                    durationTicks: 240,
+                    isResidual: false
+                )
+            },
+            engravingSupport: .supported
+        )
+        // One printable note in the pickup measure so preparation is `.ready`.
+        let note = RhythmLayoutNote(
+            eventID: RhythmEventID(rawValue: 1),
+            sourceLaneID: "12",
+            sourceChipID: nil,
+            noteType: .snare,
+            position: RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0),
+            durationTicks: 240,
+            rhythm: NotationRhythm(baseInterval: .quarter),
+            tupletID: nil
+        )
+        let snapshot = try makeSnapshot(measures: [pickup], notes: [note])
+
+        let expanded = GameplayNotationPreparer.expandedRhythmMeasures(
+            snapshot,
+            minimumMeasureCount: 3
+        )
+
+        #expect(expanded.map(\.measureIndex) == [0, 1, 2])
+        #expect(expanded.map(\.startTick) == [0, 720, 1_680])
+        #expect(expanded.map(\.durationTicks) == [720, 960, 960])
+        #expect(expanded.allSatisfy { $0.timeSignature == .fourFour })
+        #expect(expanded.allSatisfy { $0.engravingSupport == .supported })
+        // Trailing empty measures survive preparation end-to-end.
+        let request = GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: 3,
+            style: .gameplayDefault,
+            notePositionOverrides: [:]
+        )
+        let (engraved, _) = try NotationSnapshotTestSupport().requireReady(
+            GameplayNotationPreparer.prepare(request)
+        )
+        #expect(engraved.measures.map(\.index) == [0, 1, 2])
+    }
+
+    @Test("renderable measure bound reuses the shared rhythm limit")
+    func renderableMeasureBoundReusesRhythmLimit() {
+        #expect(GameplayNotationPreparer.maximumRenderableMeasureCount == RhythmLimits.maximumMeasureCount)
+    }
+
+    @Test("row-width style copy preserves every other metric")
+    func rowWidthStyleCopyPreservesMetrics() {
+        let style = NotationLayoutStyle.gameplayDefault
+        let resized = style.with(rowWidth: 2_000)
+
+        #expect(resized.rowWidth == 2_000)
+        #expect(resized != style)
+        // The memberwise copy must carry every non-width metric verbatim —
+        // compare all stored children except `rowWidth` so a dropped field
+        // cannot slip through a hand-maintained assertion list.
+        let original = Dictionary(
+            uniqueKeysWithValues: Mirror(reflecting: style).children.map { ($0.label ?? "", "\($0.value)") }
+        )
+        let copy = Dictionary(
+            uniqueKeysWithValues: Mirror(reflecting: resized).children.map { ($0.label ?? "", "\($0.value)") }
+        )
+        #expect(original.keys == copy.keys)
+        for label in original.keys where label != "rowWidth" {
+            #expect(original[label] == copy[label], "metric \(label) changed under with(rowWidth:)")
+        }
+    }
+
     private func requireSendable<T: Sendable>(_: T.Type) {}
 
     private func reflectedIdentityFindings(in value: Any) -> [String] {
