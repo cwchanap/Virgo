@@ -17,6 +17,8 @@ enum BravuraFont {
     static let cgFont: CGFont = makeCGFont()
     /// `glyphsWithAnchors` from metadata.json; point values are staff spaces.
     private static let stemAnchors: [String: [String: CGPoint]] = decodeStemAnchors()
+    /// `glyphAdvanceWidths` from metadata.json; values are staff spaces.
+    private static let advanceWidths: [String: CGFloat] = decodeAdvanceWidths()
     /// CTFont at size == unitsPerEm so glyph paths come out in font units.
     private static let ctFont: CTFont = CTFontCreateWithGraphicsFont(
         cgFont, CGFloat(cgFont.unitsPerEm), nil, nil
@@ -52,6 +54,19 @@ enum BravuraFont {
             if !points.isEmpty { anchors[name] = points }
         }
         return anchors
+    }
+
+    private static func decodeAdvanceWidths() -> [String: CGFloat] {
+        guard let url = Bundle.module.url(forResource: "metadata", withExtension: "json"),
+            let data = try? Data(contentsOf: url),
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let widths = root["glyphAdvanceWidths"] as? [String: Any]
+        else {
+            preconditionFailure("metadata.json is missing or malformed in DrumNotation package resources")
+        }
+        return widths.compactMapValues { value in
+            (value as? NSNumber).map { CGFloat(truncating: $0) }
+        }
     }
 
     /// Resolves a catalog glyph's Unicode scalar to its Bravura CGGlyph.
@@ -141,6 +156,39 @@ enum BravuraFont {
         // SMuFL flags carry no stemUpSE/stemDownNW anchors; the stem
         // attachment reference is the flag glyph origin (font origin 0, 0).
         return FlagGlyphMetrics(paintedBounds: rawBounds.applying(t), attachmentOffset: CGPoint.zero.applying(t))
+    }
+
+    /// A fitted numeral path for `actual`: every digit paints as its Bravura
+    /// `tupletN` glyph (U+E880–U+E889), placed by the metadata advance
+    /// widths — real measurement, not a scale-factor floor — and the whole
+    /// run uniformly scaled so its union fits `size`. The returned path is
+    /// centered on the origin in Y-down points, ready to frame to the
+    /// reserved label rect. `ratio.actual` is an arbitrary positive Int per
+    /// the resolved-input model, so any digit count must fit.
+    static func tupletNumeralPath(actual: Int, fitting size: CGSize) -> CGPath {
+        precondition(actual > 0, "tuplet ratio.actual must be positive (got \(actual))")
+        let unitsPerStaffSpace = CGFloat(cgFont.unitsPerEm) / 4
+        var placed: [CGPath] = []
+        var xOffset: CGFloat = 0
+        for digit in String(actual).compactMap(\.wholeNumberValue) {
+            let name = "tuplet\(digit)"
+            guard let advance = advanceWidths[name] else {
+                preconditionFailure("Bravura metadata is missing glyphAdvanceWidths.\(name)")
+            }
+            let glyph = SMuFLGlyph(name: name, scalar: 0xE880 + UInt32(digit))
+            var placement = CGAffineTransform(translationX: xOffset, y: 0)
+            if let shifted = rawPath(for: glyph).copy(using: &placement) {
+                placed.append(shifted)
+            }
+            xOffset += advance * unitsPerStaffSpace
+        }
+        var union = CGRect.null
+        for path in placed { union = union.union(path.boundingBox) }
+        let scale = min(size.width / union.width, size.height / union.height)
+        let fit = transform(rawBounds: union, scale: scale)
+        let combined = CGMutablePath()
+        for path in placed { combined.addPath(path, transform: fit) }
+        return combined
     }
 }
 
