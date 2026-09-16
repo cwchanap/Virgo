@@ -84,6 +84,12 @@ struct VirgoNotationProjectionFlagParityTests {
         let packageTopology: StemTopology
         /// Painted flag levels per flag-representative event ID.
         let paintedFlagLevels: [Int: Set<Int>]
+        /// The catalog-mapped notes the app prepass consumes.
+        let mapped: [MappedNote]
+        /// The resolved package input for the same snapshot.
+        let input: ResolvedNotationInput
+        /// The composed layout — real heads/stems for the flag painter.
+        let layout: NotationLayout
     }
 
     /// Projects `notes` through the live app prepass, the package stem-group
@@ -134,7 +140,10 @@ struct VirgoNotationProjectionFlagParityTests {
         return ParityResult(
             appClassifications: appClassifications,
             packageTopology: packageTopology,
-            paintedFlagLevels: painted
+            paintedFlagLevels: painted,
+            mapped: mapped,
+            input: input,
+            layout: prepared.layout
         )
     }
 
@@ -236,49 +245,131 @@ struct VirgoNotationProjectionFlagParityTests {
         #expect(result.paintedFlagLevels == [1: [0, 1], 2: [0, 1]])
     }
 
-    /// One synthetic coverage case for the three-arm flag-plan mapping.
-    private struct FlagPlanCase {
-        let uncovered: Set<Int>
-        let expected: Set<Int>
-        let canonical: NotationFlagDuration
+    @Test("partially covered levels: package components match the app's plan through both pipelines")
+    func partiallyCoveredParity() throws {
+        // The three-arm mapping's partial arm is unreachable from real
+        // input — the beam topology's hook segments always cover their
+        // owner — so the parity gate injects the defensive coverage state
+        // the spec requires through each pipeline's SHARED planning
+        // decomposition. Nothing here bypasses production logic: both
+        // sides retain a real stem group with real representatives, and
+        // only the coverage input is synthetic.
+        let measure = makeMeasure(index: 0)
+        let notes = [
+            makeNote(
+                eventID: 1, noteType: .snare, measureIndex: 0, localTick: 240, interval: .sixteenth
+            ),
+            makeNote(
+                eventID: 2, noteType: .hiHat, measureIndex: 0, localTick: 240, interval: .sixteenth
+            )
+        ]
+        let result = try projectBoth(notes: notes, measures: [measure])
+
+        // Real stem groups in both pipelines, found by their tick.
+        let appGroups = VirgoNotationProjection.buildStemGroups(notes: result.mapped)
+        let packageIndex = try #require(
+            result.packageTopology.stemGroups.firstIndex { $0.key.localTick == 240 }
+        )
+        let appIndex = try #require(appGroups.firstIndex {
+            $0.event.timeColumn.tickWithinMeasure == 240
+        })
+        #expect(appGroups.count == 1)
+        #expect(result.packageTopology.stemGroups.count == 1)
+
+        // Inject the same synthetic coverage — level 0 covered, level 1
+        // left uncovered — through both real planning paths: the app's
+        // `classifyUncoveredFlagLevels` and the package's shared
+        // `StemTopologyBuilder` planning seam.
+        let coverage = SyntheticCoverage(
+            appGroups: appGroups, appIndex: appIndex,
+            packageIndex: packageIndex, covered: [0]
+        )
+        let plans = partiallyCoveredPlans(result: result, coverage: coverage)
+
+        // Ownership + component levels: identical stem groups and
+        // representatives, one `.components` plan carrying exactly the
+        // uncovered level.
+        let stemGroup = plans.package.stemGroups[packageIndex]
+        #expect(plans.package.stemGroups == result.packageTopology.stemGroups)
+        #expect(plans.package.flagPlans[packageIndex] == .components([1]))
+        #expect(stemGroup.stemRepresentativeID == 1)
+        #expect(stemGroup.flagRepresentativeID == 1)
+        // Reservation parity: same owner, same eighth footprint.
+        #expect(plans.appClassifications == [1: .eighth])
+        #expect(plans.package.flagReservations == plans.appClassifications)
+
+        try assertPaintedFlagParity(
+            result: result, coverage: coverage, stemGroup: stemGroup,
+            plan: plans.package.flagPlans[packageIndex]
+        )
     }
 
-    @Test("partially covered levels: package components match the app's eighth footprint")
-    func partiallyCoveredParity() {
-        // The three-arm mapping's partial arm is unreachable end-to-end —
-        // the beam topology's hook segments always cover their owner — so
-        // parity for it is pinned at the mapping level the brief requires:
-        // same uncovered/expected inputs must yield the same reservation.
-        let cases = [
-            FlagPlanCase(uncovered: [1], expected: [0, 1], canonical: .sixteenth),
-            FlagPlanCase(uncovered: [0, 2], expected: [0, 1, 2], canonical: .thirtySecond),
-            FlagPlanCase(uncovered: [2, 3], expected: [0, 1, 2, 3], canonical: .sixtyFourth),
-            FlagPlanCase(uncovered: [], expected: [0], canonical: .eighth),
-            FlagPlanCase(uncovered: [0], expected: [0], canonical: .eighth),
-            FlagPlanCase(uncovered: [0, 1, 2], expected: [0, 1, 2], canonical: .thirtySecond)
-        ]
-        for flagCase in cases {
-            let appResult = VirgoNotationProjection.visibleFlagClassification(
-                uncovered: flagCase.uncovered,
-                expected: flagCase.expected,
-                canonical: flagCase.canonical
+    /// One synthetic coverage injection: the real stem groups in both
+    /// pipelines plus the beam levels each side should treat as covered.
+    private struct SyntheticCoverage {
+        let appGroups: [VirgoNotationProjection.StemGroup]
+        let appIndex: Int
+        let packageIndex: Int
+        let covered: Set<Int>
+    }
+
+    /// Runs both real planning paths over the same synthetic `covered`
+    /// levels and returns each side's flag output.
+    private func partiallyCoveredPlans(
+        result: ParityResult,
+        coverage: SyntheticCoverage
+    ) -> (appClassifications: [Int: NotationFlagDuration], package: StemTopology) {
+        let appClassifications = VirgoNotationProjection.classifyUncoveredFlagLevels(
+            stemGroups: coverage.appGroups,
+            topology: Virgo.BeamTopologyResult(
+                primaryGroups: [],
+                coveredLevelsByEventIndex: [coverage.appIndex: coverage.covered]
+            ),
+            permitsEngraving: [0: true],
+            notePositionOverrides: [:]
+        )
+        let package = StemTopologyBuilder().build(
+            result.input,
+            topology: DrumNotation.BeamTopologyResult(
+                primaryGroups: [],
+                coveredLevelsByEventIndex: [coverage.packageIndex: coverage.covered]
             )
-            let packagePlan = VisibleFlagPlan(
-                uncovered: flagCase.uncovered,
-                expected: flagCase.expected,
-                canonical: flagCase.canonical
-            )
-            // The reserved footprint must be identical: canonical keeps its
-            // own glyph, partial components reserve the eighth footprint.
-            #expect(packagePlan.reservedFlagDuration == appResult)
-            if flagCase.uncovered.isEmpty {
-                #expect(packagePlan == .none)
-            } else if flagCase.uncovered == flagCase.expected {
-                #expect(packagePlan == .canonical(flagCase.canonical))
-            } else {
-                #expect(packagePlan == .components(flagCase.uncovered))
-                #expect(appResult == .eighth)
-            }
+        )
+        return (appClassifications, package)
+    }
+
+    /// Painted-plan interpretation: the app's real flag painter draws one
+    /// flag per uncovered level on the flag representative — the package
+    /// plan's component set must equal that painted level set.
+    private func assertPaintedFlagParity(
+        result: ParityResult,
+        coverage: SyntheticCoverage,
+        stemGroup: DrumNotation.StemGroup,
+        plan: VisibleFlagPlan
+    ) throws {
+        let paintedFlags = NotationLayoutEngine().buildFlags(
+            noteHeads: result.layout.noteHeads,
+            beamBuild: BeamBuildResult(
+                events: coverage.appGroups.map(\.event),
+                topology: Virgo.BeamTopologyResult(
+                    primaryGroups: [],
+                    coveredLevelsByEventIndex: [coverage.appIndex: coverage.covered]
+                ),
+                beams: []
+            ),
+            stems: result.layout.stems,
+            style: style
+        )
+        let flagRepHead = try #require(result.layout.noteHeads.first {
+            $0.eventID?.rawValue == stemGroup.flagRepresentativeID
+        })
+        #expect(paintedFlags.count == 1)
+        #expect(Set(paintedFlags.map(\.flagIndex)) == [1])
+        #expect(paintedFlags.first?.noteHeadID == flagRepHead.id)
+        guard case let .components(componentLevels) = plan else {
+            Issue.record("expected .components plan under partial coverage")
+            return
         }
+        #expect(componentLevels == Set(paintedFlags.map(\.flagIndex)))
     }
 }
