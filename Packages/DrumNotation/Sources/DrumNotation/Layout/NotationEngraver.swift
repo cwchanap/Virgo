@@ -177,6 +177,7 @@ struct SheetComposer {
         }
         return EngravedNotation(
             formatted: formatted,
+            style: style,
             rows: rows,
             measures: measures,
             noteHeads: raw.noteHeads.map { materialize($0, shift: shift) },

@@ -405,13 +405,20 @@ public struct EngravedMeasureBar: Hashable, Sendable {
     }
 }
 
-/// Immutable engraving output: the embedded formatter result, explicit rows
-/// and measures, every reusable primitive array, and the final painted
-/// bounds/content size — all in normalized sheet coordinates.
+/// Immutable engraving output: the embedded formatter result, the producing
+/// engraving style, explicit rows and measures, every reusable primitive
+/// array, and the final painted bounds/content size — all in normalized
+/// sheet coordinates.
 public struct EngravedNotation: Hashable, Sendable {
     /// The measured formatter output this engraving was composed from;
     /// remains the sole X and musical-position authority.
     public let formatted: FormattedNotation
+    /// The style this engraving was composed with. Geometry owns positions
+    /// and painted bounds; paint-time stroke/sizing metrics that are not
+    /// per-primitive geometry (stem/bar/staff-line widths, control and
+    /// tuplet mark sizing, staff-space glyph scale) read back from here,
+    /// so `DrumNotationView` never re-derives or duplicates them.
+    public let style: NotationEngravingStyle
     public let rows: [EngravedRow]
     public let measures: [EngravedMeasure]
     public let noteHeads: [EngravedNoteHead]
@@ -437,6 +444,7 @@ public struct EngravedNotation: Hashable, Sendable {
 
     public init(
         formatted: FormattedNotation,
+        style: NotationEngravingStyle,
         rows: [EngravedRow],
         measures: [EngravedMeasure],
         noteHeads: [EngravedNoteHead],
@@ -455,6 +463,7 @@ public struct EngravedNotation: Hashable, Sendable {
         contentHeight: CGFloat
     ) {
         self.formatted = formatted
+        self.style = style
         self.rows = rows
         self.measures = measures
         self.noteHeads = noteHeads
