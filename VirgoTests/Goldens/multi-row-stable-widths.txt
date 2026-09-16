@@ -8,209 +8,210 @@ tl-meas m5 startTick=80 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=sup
 tl-meas m6 startTick=96 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
 tl-meas m7 startTick=112 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=supported
 
-style rowWidth=900.00 overrides=default minNoteColumnGap=28.00 minQuarterBeatGap=50.00 staffLineSpacing=20.00 noteHeadWidth=30.00 noteHeadHeight=20.00 stemLength=75.00
-dims  noteHeadSize=30.00x20.00 totalHeight=3010.00 paintedBounds=(99.00,100.00,591.76,2470.00)
-row   0 measures=[m0] contentWidth=900.00
-row   1 measures=[m1] contentWidth=900.00
-row   2 measures=[m2] contentWidth=900.00
-row   3 measures=[m3] contentWidth=900.00
-row   4 measures=[m4] contentWidth=900.00
-row   5 measures=[m5] contentWidth=900.00
-row   6 measures=[m6] contentWidth=900.00
-row   7 measures=[m7] contentWidth=900.00
-meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=16
-meas  m1 row=1 xOffset=100.00 width=589.76 startTick=16 durationTicks=16
-meas  m2 row=2 xOffset=100.00 width=252.00 startTick=32 durationTicks=16
-meas  m3 row=3 xOffset=100.00 width=589.76 startTick=48 durationTicks=16
-meas  m4 row=4 xOffset=100.00 width=252.00 startTick=64 durationTicks=16
-meas  m5 row=5 xOffset=100.00 width=589.76 startTick=80 durationTicks=16
-meas  m6 row=6 xOffset=100.00 width=252.00 startTick=96 durationTicks=16
-meas  m7 row=7 xOffset=100.00 width=589.76 startTick=112 durationTicks=16
-head  m0 t0000 abs0000 pos=(152.00,110.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Full rhythm=Full durTicks=16
-head  m1 t0000 abs0016 pos=(152.00,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0001 abs0017 pos=(183.20,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0002 abs0018 pos=(214.40,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0003 abs0019 pos=(245.60,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0004 abs0020 pos=(276.80,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0005 abs0021 pos=(308.00,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0006 abs0022 pos=(339.20,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0007 abs0023 pos=(370.40,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0008 abs0024 pos=(451.76,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0009 abs0025 pos=(482.96,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0010 abs0026 pos=(514.16,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0011 abs0027 pos=(545.36,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0012 abs0028 pos=(576.56,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0013 abs0029 pos=(607.76,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0014 abs0030 pos=(638.96,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m1 t0015 abs0031 pos=(670.16,450.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m2 t0000 abs0032 pos=(152.00,790.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=2 lane=11 interval=Full rhythm=Full durTicks=16
-head  m3 t0000 abs0048 pos=(152.00,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0001 abs0049 pos=(183.20,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0002 abs0050 pos=(214.40,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0003 abs0051 pos=(245.60,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0004 abs0052 pos=(276.80,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0005 abs0053 pos=(308.00,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0006 abs0054 pos=(339.20,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0007 abs0055 pos=(370.40,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0008 abs0056 pos=(451.76,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0009 abs0057 pos=(482.96,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0010 abs0058 pos=(514.16,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0011 abs0059 pos=(545.36,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0012 abs0060 pos=(576.56,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0013 abs0061 pos=(607.76,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0014 abs0062 pos=(638.96,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m3 t0015 abs0063 pos=(670.16,1130.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m4 t0000 abs0064 pos=(152.00,1470.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=4 lane=11 interval=Full rhythm=Full durTicks=16
-head  m5 t0000 abs0080 pos=(152.00,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0001 abs0081 pos=(183.20,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0002 abs0082 pos=(214.40,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0003 abs0083 pos=(245.60,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0004 abs0084 pos=(276.80,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0005 abs0085 pos=(308.00,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0006 abs0086 pos=(339.20,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0007 abs0087 pos=(370.40,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0008 abs0088 pos=(451.76,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0009 abs0089 pos=(482.96,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0010 abs0090 pos=(514.16,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0011 abs0091 pos=(545.36,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0012 abs0092 pos=(576.56,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0013 abs0093 pos=(607.76,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0014 abs0094 pos=(638.96,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m5 t0015 abs0095 pos=(670.16,1810.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m6 t0000 abs0096 pos=(152.00,2150.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=6 lane=11 interval=Full rhythm=Full durTicks=16
-head  m7 t0000 abs0112 pos=(152.00,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0001 abs0113 pos=(183.20,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0002 abs0114 pos=(214.40,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0003 abs0115 pos=(245.60,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0004 abs0116 pos=(276.80,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0005 abs0117 pos=(308.00,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0006 abs0118 pos=(339.20,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0007 abs0119 pos=(370.40,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0008 abs0120 pos=(451.76,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0009 abs0121 pos=(482.96,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0010 abs0122 pos=(514.16,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0011 abs0123 pos=(545.36,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0012 abs0124 pos=(576.56,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0013 abs0125 pos=(607.76,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0014 abs0126 pos=(638.96,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-head  m7 t0015 abs0127 pos=(670.16,2490.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1
-stem  ids=[1] dir=up start=(163.60,441.12) end=(163.60,360.12)
-stem  ids=[18] dir=up start=(163.60,1121.12) end=(163.60,1040.12)
-stem  ids=[35] dir=up start=(163.60,1801.12) end=(163.60,1720.12)
-stem  ids=[52] dir=up start=(163.60,2481.12) end=(163.60,2400.12)
-stem  ids=[2] dir=up start=(194.80,441.12) end=(194.80,360.12)
-stem  ids=[19] dir=up start=(194.80,1121.12) end=(194.80,1040.12)
-stem  ids=[36] dir=up start=(194.80,1801.12) end=(194.80,1720.12)
-stem  ids=[53] dir=up start=(194.80,2481.12) end=(194.80,2400.12)
-stem  ids=[3] dir=up start=(226.00,441.12) end=(226.00,360.12)
-stem  ids=[20] dir=up start=(226.00,1121.12) end=(226.00,1040.12)
-stem  ids=[37] dir=up start=(226.00,1801.12) end=(226.00,1720.12)
-stem  ids=[54] dir=up start=(226.00,2481.12) end=(226.00,2400.12)
-stem  ids=[4] dir=up start=(257.20,441.12) end=(257.20,360.12)
-stem  ids=[21] dir=up start=(257.20,1121.12) end=(257.20,1040.12)
-stem  ids=[38] dir=up start=(257.20,1801.12) end=(257.20,1720.12)
-stem  ids=[55] dir=up start=(257.20,2481.12) end=(257.20,2400.12)
-stem  ids=[5] dir=up start=(288.40,441.12) end=(288.40,360.12)
-stem  ids=[22] dir=up start=(288.40,1121.12) end=(288.40,1040.12)
-stem  ids=[39] dir=up start=(288.40,1801.12) end=(288.40,1720.12)
-stem  ids=[56] dir=up start=(288.40,2481.12) end=(288.40,2400.12)
-stem  ids=[6] dir=up start=(319.60,441.12) end=(319.60,360.12)
-stem  ids=[23] dir=up start=(319.60,1121.12) end=(319.60,1040.12)
-stem  ids=[40] dir=up start=(319.60,1801.12) end=(319.60,1720.12)
-stem  ids=[57] dir=up start=(319.60,2481.12) end=(319.60,2400.12)
-stem  ids=[7] dir=up start=(350.80,441.12) end=(350.80,360.12)
-stem  ids=[24] dir=up start=(350.80,1121.12) end=(350.80,1040.12)
-stem  ids=[41] dir=up start=(350.80,1801.12) end=(350.80,1720.12)
-stem  ids=[58] dir=up start=(350.80,2481.12) end=(350.80,2400.12)
-stem  ids=[8] dir=up start=(382.00,441.12) end=(382.00,360.12)
-stem  ids=[25] dir=up start=(382.00,1121.12) end=(382.00,1040.12)
-stem  ids=[42] dir=up start=(382.00,1801.12) end=(382.00,1720.12)
-stem  ids=[59] dir=up start=(382.00,2481.12) end=(382.00,2400.12)
-stem  ids=[9] dir=up start=(463.36,441.12) end=(463.36,360.12)
-stem  ids=[26] dir=up start=(463.36,1121.12) end=(463.36,1040.12)
-stem  ids=[43] dir=up start=(463.36,1801.12) end=(463.36,1720.12)
-stem  ids=[60] dir=up start=(463.36,2481.12) end=(463.36,2400.12)
-stem  ids=[10] dir=up start=(494.56,441.12) end=(494.56,360.12)
-stem  ids=[27] dir=up start=(494.56,1121.12) end=(494.56,1040.12)
-stem  ids=[44] dir=up start=(494.56,1801.12) end=(494.56,1720.12)
-stem  ids=[61] dir=up start=(494.56,2481.12) end=(494.56,2400.12)
-stem  ids=[11] dir=up start=(525.76,441.12) end=(525.76,360.12)
-stem  ids=[28] dir=up start=(525.76,1121.12) end=(525.76,1040.12)
-stem  ids=[45] dir=up start=(525.76,1801.12) end=(525.76,1720.12)
-stem  ids=[62] dir=up start=(525.76,2481.12) end=(525.76,2400.12)
-stem  ids=[12] dir=up start=(556.96,441.12) end=(556.96,360.12)
-stem  ids=[29] dir=up start=(556.96,1121.12) end=(556.96,1040.12)
-stem  ids=[46] dir=up start=(556.96,1801.12) end=(556.96,1720.12)
-stem  ids=[63] dir=up start=(556.96,2481.12) end=(556.96,2400.12)
-stem  ids=[13] dir=up start=(588.16,441.12) end=(588.16,360.12)
-stem  ids=[30] dir=up start=(588.16,1121.12) end=(588.16,1040.12)
-stem  ids=[47] dir=up start=(588.16,1801.12) end=(588.16,1720.12)
-stem  ids=[64] dir=up start=(588.16,2481.12) end=(588.16,2400.12)
-stem  ids=[14] dir=up start=(619.36,441.12) end=(619.36,360.12)
-stem  ids=[31] dir=up start=(619.36,1121.12) end=(619.36,1040.12)
-stem  ids=[48] dir=up start=(619.36,1801.12) end=(619.36,1720.12)
-stem  ids=[65] dir=up start=(619.36,2481.12) end=(619.36,2400.12)
-stem  ids=[15] dir=up start=(650.56,441.12) end=(650.56,360.12)
-stem  ids=[32] dir=up start=(650.56,1121.12) end=(650.56,1040.12)
-stem  ids=[49] dir=up start=(650.56,1801.12) end=(650.56,1720.12)
-stem  ids=[66] dir=up start=(650.56,2481.12) end=(650.56,2400.12)
-stem  ids=[16] dir=up start=(681.76,441.12) end=(681.76,360.12)
-stem  ids=[33] dir=up start=(681.76,1121.12) end=(681.76,1040.12)
-stem  ids=[50] dir=up start=(681.76,1801.12) end=(681.76,1720.12)
-stem  ids=[67] dir=up start=(681.76,2481.12) end=(681.76,2400.12)
-beam  ids=[1, 2, 3, 4] dir=up level=1 kind=full start=(163.60,360.12) end=(257.20,360.12) thickness=4.00
-beam  ids=[1, 2, 3, 4] dir=up level=0 kind=full start=(163.60,366.12) end=(257.20,366.12) thickness=4.00
-beam  ids=[18, 19, 20, 21] dir=up level=1 kind=full start=(163.60,1040.12) end=(257.20,1040.12) thickness=4.00
-beam  ids=[18, 19, 20, 21] dir=up level=0 kind=full start=(163.60,1046.12) end=(257.20,1046.12) thickness=4.00
-beam  ids=[35, 36, 37, 38] dir=up level=1 kind=full start=(163.60,1720.12) end=(257.20,1720.12) thickness=4.00
-beam  ids=[35, 36, 37, 38] dir=up level=0 kind=full start=(163.60,1726.12) end=(257.20,1726.12) thickness=4.00
-beam  ids=[52, 53, 54, 55] dir=up level=1 kind=full start=(163.60,2400.12) end=(257.20,2400.12) thickness=4.00
-beam  ids=[52, 53, 54, 55] dir=up level=0 kind=full start=(163.60,2406.12) end=(257.20,2406.12) thickness=4.00
-beam  ids=[5, 6, 7, 8] dir=up level=1 kind=full start=(288.40,360.12) end=(382.00,360.12) thickness=4.00
-beam  ids=[5, 6, 7, 8] dir=up level=0 kind=full start=(288.40,366.12) end=(382.00,366.12) thickness=4.00
-beam  ids=[22, 23, 24, 25] dir=up level=1 kind=full start=(288.40,1040.12) end=(382.00,1040.12) thickness=4.00
-beam  ids=[22, 23, 24, 25] dir=up level=0 kind=full start=(288.40,1046.12) end=(382.00,1046.12) thickness=4.00
-beam  ids=[39, 40, 41, 42] dir=up level=1 kind=full start=(288.40,1720.12) end=(382.00,1720.12) thickness=4.00
-beam  ids=[39, 40, 41, 42] dir=up level=0 kind=full start=(288.40,1726.12) end=(382.00,1726.12) thickness=4.00
-beam  ids=[56, 57, 58, 59] dir=up level=1 kind=full start=(288.40,2400.12) end=(382.00,2400.12) thickness=4.00
-beam  ids=[56, 57, 58, 59] dir=up level=0 kind=full start=(288.40,2406.12) end=(382.00,2406.12) thickness=4.00
-beam  ids=[9, 10, 11, 12] dir=up level=1 kind=full start=(463.36,360.12) end=(556.96,360.12) thickness=4.00
-beam  ids=[9, 10, 11, 12] dir=up level=0 kind=full start=(463.36,366.12) end=(556.96,366.12) thickness=4.00
-beam  ids=[26, 27, 28, 29] dir=up level=1 kind=full start=(463.36,1040.12) end=(556.96,1040.12) thickness=4.00
-beam  ids=[26, 27, 28, 29] dir=up level=0 kind=full start=(463.36,1046.12) end=(556.96,1046.12) thickness=4.00
-beam  ids=[43, 44, 45, 46] dir=up level=1 kind=full start=(463.36,1720.12) end=(556.96,1720.12) thickness=4.00
-beam  ids=[43, 44, 45, 46] dir=up level=0 kind=full start=(463.36,1726.12) end=(556.96,1726.12) thickness=4.00
-beam  ids=[60, 61, 62, 63] dir=up level=1 kind=full start=(463.36,2400.12) end=(556.96,2400.12) thickness=4.00
-beam  ids=[60, 61, 62, 63] dir=up level=0 kind=full start=(463.36,2406.12) end=(556.96,2406.12) thickness=4.00
-beam  ids=[13, 14, 15, 16] dir=up level=1 kind=full start=(588.16,360.12) end=(681.76,360.12) thickness=4.00
-beam  ids=[13, 14, 15, 16] dir=up level=0 kind=full start=(588.16,366.12) end=(681.76,366.12) thickness=4.00
-beam  ids=[30, 31, 32, 33] dir=up level=1 kind=full start=(588.16,1040.12) end=(681.76,1040.12) thickness=4.00
-beam  ids=[30, 31, 32, 33] dir=up level=0 kind=full start=(588.16,1046.12) end=(681.76,1046.12) thickness=4.00
-beam  ids=[47, 48, 49, 50] dir=up level=1 kind=full start=(588.16,1720.12) end=(681.76,1720.12) thickness=4.00
-beam  ids=[47, 48, 49, 50] dir=up level=0 kind=full start=(588.16,1726.12) end=(681.76,1726.12) thickness=4.00
-beam  ids=[64, 65, 66, 67] dir=up level=1 kind=full start=(588.16,2400.12) end=(681.76,2400.12) thickness=4.00
-beam  ids=[64, 65, 66, 67] dir=up level=0 kind=full start=(588.16,2406.12) end=(681.76,2406.12) thickness=4.00
-rest  m0 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(252.00,170.00) tuplet=-
-rest  m1 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(420.88,510.00) tuplet=-
-rest  m2 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(252.00,850.00) tuplet=-
-rest  m3 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(420.88,1190.00) tuplet=-
-rest  m4 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(252.00,1530.00) tuplet=-
-rest  m5 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(420.88,1870.00) tuplet=-
-rest  m6 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(252.00,2210.00) tuplet=-
-rest  m7 t0000 voice=lower dur=fullMeasure ticks=16 vis=printed pos=(420.88,2550.00) tuplet=-
-bar   row=0 x=100.00 isFinal=false
-bar   row=0 x=352.00 isFinal=false
-bar   row=1 x=100.00 isFinal=false
-bar   row=1 x=689.76 isFinal=false
-bar   row=2 x=100.00 isFinal=false
-bar   row=2 x=352.00 isFinal=false
-bar   row=3 x=100.00 isFinal=false
-bar   row=3 x=689.76 isFinal=false
-bar   row=4 x=100.00 isFinal=false
-bar   row=4 x=352.00 isFinal=false
-bar   row=5 x=100.00 isFinal=false
-bar   row=5 x=689.76 isFinal=false
-bar   row=6 x=100.00 isFinal=false
-bar   row=6 x=352.00 isFinal=false
-bar   row=7 x=100.00 isFinal=false
-bar   row=7 x=689.76 isFinal=true
+style staffSpace=20.00 rowWidth=900.00 rowInset=100.00 stemWidth=2.00 colGap=8.00 quarterGap=50.00 measGap=12.00 leadInset=52.00 trailInset=0.00 dotRadius=2.50 dotSpacing=4.00 overrides=default
+style2 rowHeight=280.00 rowGap=60.00 stemLen=75.00 stemExt=10.00 beamThick=4.00 beamLevel=6.00 beamHook=12.00 flagGap=8.00 ledgerExt=6.00 restUp=-20.00 restDown=20.00 stopSize=14.00 stopStroke=2.00 stopOff=18.00 articOff=24.00 tupletLine=1.50 tupletLabel=14.00x16.00 tupletOff=10.00 tupletHook=6.00 bar=2.00 dblBar=2.00/3.00/4.00 clef=40.00 meter=30.00
+dims  contentWidth=690.76 contentHeight=2561.00 paintedBounds=(0.00,90.00,690.76,2471.00)
+row   0 measures=[m0] pitch=0.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
+row   1 measures=[m1] pitch=340.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
+row   2 measures=[m2] pitch=680.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
+row   3 measures=[m3] pitch=1020.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
+row   4 measures=[m4] pitch=1360.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
+row   5 measures=[m5] pitch=1700.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
+row   6 measures=[m6] pitch=2040.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
+row   7 measures=[m7] pitch=2380.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
+meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=16 meter=4/4
+meas  m1 row=1 xOffset=100.00 width=589.76 startTick=16 durationTicks=16 meter=4/4
+meas  m2 row=2 xOffset=100.00 width=252.00 startTick=32 durationTicks=16 meter=4/4
+meas  m3 row=3 xOffset=100.00 width=589.76 startTick=48 durationTicks=16 meter=4/4
+meas  m4 row=4 xOffset=100.00 width=252.00 startTick=64 durationTicks=16 meter=4/4
+meas  m5 row=5 xOffset=100.00 width=589.76 startTick=80 durationTicks=16 meter=4/4
+meas  m6 row=6 xOffset=100.00 width=252.00 startTick=96 durationTicks=16 meter=4/4
+meas  m7 row=7 xOffset=100.00 width=589.76 startTick=112 durationTicks=16 meter=4/4
+head  m0 t0000 abs0000 id=0 pos=(152.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=0 lane=11 interval=Full rhythm=Full durTicks=16 step=8 dur=whole
+head  m1 t0000 abs0016 id=1 pos=(152.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0001 abs0017 id=2 pos=(183.20,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0002 abs0018 id=3 pos=(214.40,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0003 abs0019 id=4 pos=(245.60,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0004 abs0020 id=5 pos=(276.80,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0005 abs0021 id=6 pos=(308.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0006 abs0022 id=7 pos=(339.20,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0007 abs0023 id=8 pos=(370.40,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0008 abs0024 id=9 pos=(451.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0009 abs0025 id=10 pos=(482.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0010 abs0026 id=11 pos=(514.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0011 abs0027 id=12 pos=(545.36,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0012 abs0028 id=13 pos=(576.56,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0013 abs0029 id=14 pos=(607.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0014 abs0030 id=15 pos=(638.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m1 t0015 abs0031 id=16 pos=(670.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=1 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m2 t0000 abs0032 id=17 pos=(152.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=2 lane=11 interval=Full rhythm=Full durTicks=16 step=8 dur=whole
+head  m3 t0000 abs0048 id=18 pos=(152.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0001 abs0049 id=19 pos=(183.20,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0002 abs0050 id=20 pos=(214.40,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0003 abs0051 id=21 pos=(245.60,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0004 abs0052 id=22 pos=(276.80,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0005 abs0053 id=23 pos=(308.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0006 abs0054 id=24 pos=(339.20,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0007 abs0055 id=25 pos=(370.40,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0008 abs0056 id=26 pos=(451.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0009 abs0057 id=27 pos=(482.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0010 abs0058 id=28 pos=(514.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0011 abs0059 id=29 pos=(545.36,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0012 abs0060 id=30 pos=(576.56,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0013 abs0061 id=31 pos=(607.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0014 abs0062 id=32 pos=(638.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m3 t0015 abs0063 id=33 pos=(670.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=3 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m4 t0000 abs0064 id=34 pos=(152.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=4 lane=11 interval=Full rhythm=Full durTicks=16 step=8 dur=whole
+head  m5 t0000 abs0080 id=35 pos=(152.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0001 abs0081 id=36 pos=(183.20,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0002 abs0082 id=37 pos=(214.40,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0003 abs0083 id=38 pos=(245.60,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0004 abs0084 id=39 pos=(276.80,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0005 abs0085 id=40 pos=(308.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0006 abs0086 id=41 pos=(339.20,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0007 abs0087 id=42 pos=(370.40,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0008 abs0088 id=43 pos=(451.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0009 abs0089 id=44 pos=(482.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0010 abs0090 id=45 pos=(514.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0011 abs0091 id=46 pos=(545.36,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0012 abs0092 id=47 pos=(576.56,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0013 abs0093 id=48 pos=(607.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0014 abs0094 id=49 pos=(638.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m5 t0015 abs0095 id=50 pos=(670.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=5 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m6 t0000 abs0096 id=51 pos=(152.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=6 lane=11 interval=Full rhythm=Full durTicks=16 step=8 dur=whole
+head  m7 t0000 abs0112 id=52 pos=(152.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0001 abs0113 id=53 pos=(183.20,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0002 abs0114 id=54 pos=(214.40,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0003 abs0115 id=55 pos=(245.60,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0004 abs0116 id=56 pos=(276.80,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0005 abs0117 id=57 pos=(308.00,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0006 abs0118 id=58 pos=(339.20,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0007 abs0119 id=59 pos=(370.40,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0008 abs0120 id=60 pos=(451.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0009 abs0121 id=61 pos=(482.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0010 abs0122 id=62 pos=(514.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0011 abs0123 id=63 pos=(545.36,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0012 abs0124 id=64 pos=(576.56,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0013 abs0125 id=65 pos=(607.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0014 abs0126 id=66 pos=(638.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+head  m7 t0015 abs0127 id=67 pos=(670.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
+stem  ids=[1] dir=up start=(163.60,-48.88) end=(163.60,-129.88)
+stem  ids=[18] dir=up start=(163.60,-48.88) end=(163.60,-129.88)
+stem  ids=[35] dir=up start=(163.60,-48.88) end=(163.60,-129.88)
+stem  ids=[52] dir=up start=(163.60,-48.88) end=(163.60,-129.88)
+stem  ids=[2] dir=up start=(194.80,-48.88) end=(194.80,-129.88)
+stem  ids=[19] dir=up start=(194.80,-48.88) end=(194.80,-129.88)
+stem  ids=[36] dir=up start=(194.80,-48.88) end=(194.80,-129.88)
+stem  ids=[53] dir=up start=(194.80,-48.88) end=(194.80,-129.88)
+stem  ids=[3] dir=up start=(226.00,-48.88) end=(226.00,-129.88)
+stem  ids=[20] dir=up start=(226.00,-48.88) end=(226.00,-129.88)
+stem  ids=[37] dir=up start=(226.00,-48.88) end=(226.00,-129.88)
+stem  ids=[54] dir=up start=(226.00,-48.88) end=(226.00,-129.88)
+stem  ids=[4] dir=up start=(257.20,-48.88) end=(257.20,-129.88)
+stem  ids=[21] dir=up start=(257.20,-48.88) end=(257.20,-129.88)
+stem  ids=[38] dir=up start=(257.20,-48.88) end=(257.20,-129.88)
+stem  ids=[55] dir=up start=(257.20,-48.88) end=(257.20,-129.88)
+stem  ids=[5] dir=up start=(288.40,-48.88) end=(288.40,-129.88)
+stem  ids=[22] dir=up start=(288.40,-48.88) end=(288.40,-129.88)
+stem  ids=[39] dir=up start=(288.40,-48.88) end=(288.40,-129.88)
+stem  ids=[56] dir=up start=(288.40,-48.88) end=(288.40,-129.88)
+stem  ids=[6] dir=up start=(319.60,-48.88) end=(319.60,-129.88)
+stem  ids=[23] dir=up start=(319.60,-48.88) end=(319.60,-129.88)
+stem  ids=[40] dir=up start=(319.60,-48.88) end=(319.60,-129.88)
+stem  ids=[57] dir=up start=(319.60,-48.88) end=(319.60,-129.88)
+stem  ids=[7] dir=up start=(350.80,-48.88) end=(350.80,-129.88)
+stem  ids=[24] dir=up start=(350.80,-48.88) end=(350.80,-129.88)
+stem  ids=[41] dir=up start=(350.80,-48.88) end=(350.80,-129.88)
+stem  ids=[58] dir=up start=(350.80,-48.88) end=(350.80,-129.88)
+stem  ids=[8] dir=up start=(382.00,-48.88) end=(382.00,-129.88)
+stem  ids=[25] dir=up start=(382.00,-48.88) end=(382.00,-129.88)
+stem  ids=[42] dir=up start=(382.00,-48.88) end=(382.00,-129.88)
+stem  ids=[59] dir=up start=(382.00,-48.88) end=(382.00,-129.88)
+stem  ids=[9] dir=up start=(463.36,-48.88) end=(463.36,-129.88)
+stem  ids=[26] dir=up start=(463.36,-48.88) end=(463.36,-129.88)
+stem  ids=[43] dir=up start=(463.36,-48.88) end=(463.36,-129.88)
+stem  ids=[60] dir=up start=(463.36,-48.88) end=(463.36,-129.88)
+stem  ids=[10] dir=up start=(494.56,-48.88) end=(494.56,-129.88)
+stem  ids=[27] dir=up start=(494.56,-48.88) end=(494.56,-129.88)
+stem  ids=[44] dir=up start=(494.56,-48.88) end=(494.56,-129.88)
+stem  ids=[61] dir=up start=(494.56,-48.88) end=(494.56,-129.88)
+stem  ids=[11] dir=up start=(525.76,-48.88) end=(525.76,-129.88)
+stem  ids=[28] dir=up start=(525.76,-48.88) end=(525.76,-129.88)
+stem  ids=[45] dir=up start=(525.76,-48.88) end=(525.76,-129.88)
+stem  ids=[62] dir=up start=(525.76,-48.88) end=(525.76,-129.88)
+stem  ids=[12] dir=up start=(556.96,-48.88) end=(556.96,-129.88)
+stem  ids=[29] dir=up start=(556.96,-48.88) end=(556.96,-129.88)
+stem  ids=[46] dir=up start=(556.96,-48.88) end=(556.96,-129.88)
+stem  ids=[63] dir=up start=(556.96,-48.88) end=(556.96,-129.88)
+stem  ids=[13] dir=up start=(588.16,-48.88) end=(588.16,-129.88)
+stem  ids=[30] dir=up start=(588.16,-48.88) end=(588.16,-129.88)
+stem  ids=[47] dir=up start=(588.16,-48.88) end=(588.16,-129.88)
+stem  ids=[64] dir=up start=(588.16,-48.88) end=(588.16,-129.88)
+stem  ids=[14] dir=up start=(619.36,-48.88) end=(619.36,-129.88)
+stem  ids=[31] dir=up start=(619.36,-48.88) end=(619.36,-129.88)
+stem  ids=[48] dir=up start=(619.36,-48.88) end=(619.36,-129.88)
+stem  ids=[65] dir=up start=(619.36,-48.88) end=(619.36,-129.88)
+stem  ids=[15] dir=up start=(650.56,-48.88) end=(650.56,-129.88)
+stem  ids=[32] dir=up start=(650.56,-48.88) end=(650.56,-129.88)
+stem  ids=[49] dir=up start=(650.56,-48.88) end=(650.56,-129.88)
+stem  ids=[66] dir=up start=(650.56,-48.88) end=(650.56,-129.88)
+stem  ids=[16] dir=up start=(681.76,-48.88) end=(681.76,-129.88)
+stem  ids=[33] dir=up start=(681.76,-48.88) end=(681.76,-129.88)
+stem  ids=[50] dir=up start=(681.76,-48.88) end=(681.76,-129.88)
+stem  ids=[67] dir=up start=(681.76,-48.88) end=(681.76,-129.88)
+beam  ids=[1, 2, 3, 4] dir=up level=1 kind=full start=(163.60,-129.88) end=(257.20,-129.88) thickness=4.00
+beam  ids=[1, 2, 3, 4] dir=up level=0 kind=full start=(163.60,-123.88) end=(257.20,-123.88) thickness=4.00
+beam  ids=[18, 19, 20, 21] dir=up level=1 kind=full start=(163.60,-129.88) end=(257.20,-129.88) thickness=4.00
+beam  ids=[18, 19, 20, 21] dir=up level=0 kind=full start=(163.60,-123.88) end=(257.20,-123.88) thickness=4.00
+beam  ids=[35, 36, 37, 38] dir=up level=1 kind=full start=(163.60,-129.88) end=(257.20,-129.88) thickness=4.00
+beam  ids=[35, 36, 37, 38] dir=up level=0 kind=full start=(163.60,-123.88) end=(257.20,-123.88) thickness=4.00
+beam  ids=[52, 53, 54, 55] dir=up level=1 kind=full start=(163.60,-129.88) end=(257.20,-129.88) thickness=4.00
+beam  ids=[52, 53, 54, 55] dir=up level=0 kind=full start=(163.60,-123.88) end=(257.20,-123.88) thickness=4.00
+beam  ids=[5, 6, 7, 8] dir=up level=1 kind=full start=(288.40,-129.88) end=(382.00,-129.88) thickness=4.00
+beam  ids=[5, 6, 7, 8] dir=up level=0 kind=full start=(288.40,-123.88) end=(382.00,-123.88) thickness=4.00
+beam  ids=[22, 23, 24, 25] dir=up level=1 kind=full start=(288.40,-129.88) end=(382.00,-129.88) thickness=4.00
+beam  ids=[22, 23, 24, 25] dir=up level=0 kind=full start=(288.40,-123.88) end=(382.00,-123.88) thickness=4.00
+beam  ids=[39, 40, 41, 42] dir=up level=1 kind=full start=(288.40,-129.88) end=(382.00,-129.88) thickness=4.00
+beam  ids=[39, 40, 41, 42] dir=up level=0 kind=full start=(288.40,-123.88) end=(382.00,-123.88) thickness=4.00
+beam  ids=[56, 57, 58, 59] dir=up level=1 kind=full start=(288.40,-129.88) end=(382.00,-129.88) thickness=4.00
+beam  ids=[56, 57, 58, 59] dir=up level=0 kind=full start=(288.40,-123.88) end=(382.00,-123.88) thickness=4.00
+beam  ids=[9, 10, 11, 12] dir=up level=1 kind=full start=(463.36,-129.88) end=(556.96,-129.88) thickness=4.00
+beam  ids=[9, 10, 11, 12] dir=up level=0 kind=full start=(463.36,-123.88) end=(556.96,-123.88) thickness=4.00
+beam  ids=[26, 27, 28, 29] dir=up level=1 kind=full start=(463.36,-129.88) end=(556.96,-129.88) thickness=4.00
+beam  ids=[26, 27, 28, 29] dir=up level=0 kind=full start=(463.36,-123.88) end=(556.96,-123.88) thickness=4.00
+beam  ids=[43, 44, 45, 46] dir=up level=1 kind=full start=(463.36,-129.88) end=(556.96,-129.88) thickness=4.00
+beam  ids=[43, 44, 45, 46] dir=up level=0 kind=full start=(463.36,-123.88) end=(556.96,-123.88) thickness=4.00
+beam  ids=[60, 61, 62, 63] dir=up level=1 kind=full start=(463.36,-129.88) end=(556.96,-129.88) thickness=4.00
+beam  ids=[60, 61, 62, 63] dir=up level=0 kind=full start=(463.36,-123.88) end=(556.96,-123.88) thickness=4.00
+beam  ids=[13, 14, 15, 16] dir=up level=1 kind=full start=(588.16,-129.88) end=(681.76,-129.88) thickness=4.00
+beam  ids=[13, 14, 15, 16] dir=up level=0 kind=full start=(588.16,-123.88) end=(681.76,-123.88) thickness=4.00
+beam  ids=[30, 31, 32, 33] dir=up level=1 kind=full start=(588.16,-129.88) end=(681.76,-129.88) thickness=4.00
+beam  ids=[30, 31, 32, 33] dir=up level=0 kind=full start=(588.16,-123.88) end=(681.76,-123.88) thickness=4.00
+beam  ids=[47, 48, 49, 50] dir=up level=1 kind=full start=(588.16,-129.88) end=(681.76,-129.88) thickness=4.00
+beam  ids=[47, 48, 49, 50] dir=up level=0 kind=full start=(588.16,-123.88) end=(681.76,-123.88) thickness=4.00
+beam  ids=[64, 65, 66, 67] dir=up level=1 kind=full start=(588.16,-129.88) end=(681.76,-129.88) thickness=4.00
+beam  ids=[64, 65, 66, 67] dir=up level=0 kind=full start=(588.16,-123.88) end=(681.76,-123.88) thickness=4.00
+rest  m0 t0000 id=0 voice=lower dur=whole full=true dots=0 ticks=16 pos=(252.00,20.00)
+rest  m1 t0000 id=1 voice=lower dur=whole full=true dots=0 ticks=16 pos=(420.88,20.00)
+rest  m2 t0000 id=2 voice=lower dur=whole full=true dots=0 ticks=16 pos=(252.00,20.00)
+rest  m3 t0000 id=3 voice=lower dur=whole full=true dots=0 ticks=16 pos=(420.88,20.00)
+rest  m4 t0000 id=4 voice=lower dur=whole full=true dots=0 ticks=16 pos=(252.00,20.00)
+rest  m5 t0000 id=5 voice=lower dur=whole full=true dots=0 ticks=16 pos=(420.88,20.00)
+rest  m6 t0000 id=6 voice=lower dur=whole full=true dots=0 ticks=16 pos=(252.00,20.00)
+rest  m7 t0000 id=7 voice=lower dur=whole full=true dots=0 ticks=16 pos=(420.88,20.00)
+bar   row=0 x=100.00 isFinal=false meas=0
+bar   row=0 x=352.00 isFinal=false meas=0
+bar   row=1 x=100.00 isFinal=false meas=1
+bar   row=1 x=689.76 isFinal=false meas=1
+bar   row=2 x=100.00 isFinal=false meas=2
+bar   row=2 x=352.00 isFinal=false meas=2
+bar   row=3 x=100.00 isFinal=false meas=3
+bar   row=3 x=689.76 isFinal=false meas=3
+bar   row=4 x=100.00 isFinal=false meas=4
+bar   row=4 x=352.00 isFinal=false meas=4
+bar   row=5 x=100.00 isFinal=false meas=5
+bar   row=5 x=689.76 isFinal=false meas=5
+bar   row=6 x=100.00 isFinal=false meas=6
+bar   row=6 x=352.00 isFinal=false meas=6
+bar   row=7 x=100.00 isFinal=false meas=7
+bar   row=7 x=689.76 isFinal=true meas=7
