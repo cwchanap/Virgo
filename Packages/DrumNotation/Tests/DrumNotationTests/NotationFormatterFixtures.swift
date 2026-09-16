@@ -27,7 +27,8 @@ enum Fixtures {
     static func note(
         id: Int = 42,
         measureIndex: Int = 0,
-        localTick: Int = 0
+        localTick: Int = 0,
+        durationTicks: Int = 120
     ) -> ResolvedNote {
         ResolvedNote(
             id: id,
@@ -40,7 +41,7 @@ enum Fixtures {
             dotCount: 0,
             visibleFlagDuration: .sixteenth,
             voice: .upper,
-            durationTicks: 120,
+            durationTicks: durationTicks,
             tiebreakOrder: 0,
             isRhythmEngravable: true
         )

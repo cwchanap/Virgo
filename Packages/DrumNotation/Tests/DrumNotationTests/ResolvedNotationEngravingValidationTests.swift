@@ -3,8 +3,8 @@ import DrumNotation
 
 /// HPA-166 Task 1: event and tuplet validation — exact event durations stay
 /// positive, IDs are unique per collection, and tuplets must reference
-/// existing members in their own measure and voice. Beat-group coverage
-/// validation lives in the sibling suite.
+/// existing members in their own measure and voice. Beat-group coverage and
+/// duration-span containment validation live in the sibling suites.
 @Suite("Resolved notation engraving validation")
 struct ResolvedNotationEngravingValidationTests {
     // MARK: Event durations
@@ -31,16 +31,6 @@ struct ResolvedNotationEngravingValidationTests {
             error as? ResolvedNotationInput.ValidationError
                 == .invalidEventDurationTicks(eventID: 2, durationTicks: -120)
         }
-    }
-
-    @Test("a nominal duration extending past the measure end still validates")
-    func nominalDurationPastMeasureEndStillValidates() throws {
-        // Resolved notes legitimately carry nominal `.whole`/`.half`
-        // durations that extend past the measure edge — the app's stemless
-        // boundary notes rely on this — so containment binds the onset,
-        // which `eventOutsideMeasure` already enforces, not the span.
-        let note = Fixtures.makeNote(id: 1, localTick: 240, staffStep: 3, duration: .whole)
-        _ = try Fixtures.document(notes: [note], rests: [], controls: [])
     }
 
     @Test("validation rejects a rest with non-positive durationTicks")
