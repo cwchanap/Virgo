@@ -258,15 +258,21 @@ private extension NotationRhythmAnalyzer {
         return locatedEvents.map { located in
             let event = located.event
             if event.origin == .manual {
-                let duration = durationTicks(
+                let nominal = durationTicks(
                     for: event.storedInterval,
                     ticksPerWholeNote: ticksPerWholeNote
                 ) ?? 1
+                // A late-onset manual note's nominal interval can run past
+                // the measure end, but the exact span must stay inside its
+                // owning measure — clip it the way terminal resolutions do.
+                // Only in-measure onsets reach this point, so the clipped
+                // span stays positive.
+                let clipped = min(nominal, measure.durationTicks - event.position.localTick)
                 return EventResolution(
                     event: event,
                     beatGroup: located.beatGroup,
                     hasFollowingDTXOnset: false,
-                    durationTicks: duration,
+                    durationTicks: clipped,
                     rhythm: NotationRhythm(baseInterval: event.storedInterval),
                     tupletID: nil
                 )
