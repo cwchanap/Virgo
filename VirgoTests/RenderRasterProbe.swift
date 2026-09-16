@@ -106,8 +106,17 @@ func rasterizeView<V: View>(_ view: V, size: CGSize) throws -> RasterBitmap {
 /// `ImageRenderer` does not paint `ScrollView` document content in this
 /// headless test host, so production branches that mount notation inside the
 /// sheet's `ScrollView` must rasterize through this hosted path instead.
+///
+/// `scrollY` scrolls the first `NSScrollView` found inside the hosted view
+/// by that many document points before snapshotting — the production scroll
+/// path (`NSClipView` bounds origin), used to position a boundary-crossing
+/// primitive mid-glyph across the sheet's clip edge.
 @MainActor
-func rasterizeHostedView<V: View>(_ view: V, size: CGSize) throws -> RasterBitmap {
+func rasterizeHostedView<V: View>(
+    _ view: V,
+    size: CGSize,
+    scrollY: CGFloat = 0
+) throws -> RasterBitmap {
     let hostingView = NSHostingView(
         rootView: AnyView(view.frame(width: size.width, height: size.height))
     )
@@ -115,7 +124,16 @@ func rasterizeHostedView<V: View>(_ view: V, size: CGSize) throws -> RasterBitma
     hostingView.layoutSubtreeIfNeeded()
     hostingView.displayIfNeeded()
     RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    if scrollY != 0, let scrollView = firstScrollView(in: hostingView) {
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
     hostingView.layoutSubtreeIfNeeded()
+
+    func firstScrollView(in view: NSView) -> NSScrollView? {
+        if let scrollView = view as? NSScrollView { return scrollView }
+        return view.subviews.lazy.compactMap(firstScrollView(in:)).first
+    }
 
     guard let rep = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else {
         throw RenderRasterProbeError.missingPixelBuffer
