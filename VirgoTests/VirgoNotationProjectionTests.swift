@@ -4,10 +4,11 @@ import Testing
 @testable import Virgo
 
 /// HPA-164 Task 4: the pre-format projection into `DrumNotation`, the single
-/// style mapper, the pre-format visible-flag classification, and the one
-/// preparation route shared by detached and synchronous invocation. The
-/// route-equivalence suite itself lives in
-/// `VirgoNotationPreparationRouteTests`.
+/// style mapper, and the one preparation route shared by detached and
+/// synchronous invocation. The route-equivalence suite itself lives in
+/// `VirgoNotationPreparationRouteTests`. HPA-166 Task 7 deleted the app-side
+/// pre-format flag classification — the package derives flag topology
+/// internally — so flag agreement is now asserted on the engraved output.
 @Suite("Virgo Notation Projection")
 struct VirgoNotationProjectionTests {
     private let ticksPerWholeNote = 960
@@ -196,7 +197,7 @@ struct VirgoNotationProjectionTests {
 
         let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
-            expandedMeasures: NotationLayoutEngine().expandedRhythmMeasures(
+            expandedMeasures: GameplayNotationPreparer.expandedRhythmMeasures(
                 snapshot,
                 minimumMeasureCount: 3
             ),
@@ -214,44 +215,30 @@ struct VirgoNotationProjectionTests {
         #expect(input.measures.allSatisfy { $0.beatGroups == expectedGroups })
     }
 
-    // MARK: - Step 3/4: visible flag classification
-
-    @Test("Flag classification maps uncovered levels to nil/canonical/.eighth")
-    func flagClassificationMapperCoversAllThreeArms() {
-        let expected: Set<Int> = [0, 1, 2]
-        #expect(VirgoNotationProjection.visibleFlagClassification(
-            uncovered: [],
-            expected: expected,
-            canonical: .thirtySecond
-        ) == nil)
-        #expect(VirgoNotationProjection.visibleFlagClassification(
-            uncovered: [0, 1, 2],
-            expected: expected,
-            canonical: .thirtySecond
-        ) == .thirtySecond)
-        #expect(VirgoNotationProjection.visibleFlagClassification(
-            uncovered: [0, 2],
-            expected: expected,
-            canonical: .thirtySecond
-        ) == .eighth)
-    }
+    // MARK: - Step 3/4: engraved flag output
 
     @Test(
-        "Pre-format classification agrees with the post-format painted flag family",
+        "Engraved flag families match the beaming outcome per fixture",
         arguments: [
-            // Fully beamed: two adjacent eighths inside beat 0.
-            BeamFixture(abstractTicks: [0, 120], intervals: [.eighth, .eighth]),
-            // Isolated: one sixteenth alone in beat 1.
-            BeamFixture(abstractTicks: [240], intervals: [.sixteenth]),
-            // Fully beamed mixed run: eighth + adjacent sixteenth in beat 2.
-            BeamFixture(abstractTicks: [480, 600], intervals: [.eighth, .sixteenth]),
-            // Isolated thirty-second in beat 3.
-            BeamFixture(abstractTicks: [720], intervals: [.thirtysecond]),
-            // Unflagged notes never carry a visible flag.
-            BeamFixture(abstractTicks: [0], intervals: [.quarter])
+            // Fully beamed: two adjacent eighths inside beat 0 — no flags.
+            FlagFixture(abstractTicks: [0, 120], intervals: [.eighth, .eighth], expected: [:]),
+            // Isolated: one sixteenth alone in beat 1 — canonical flag.
+            FlagFixture(abstractTicks: [240], intervals: [.sixteenth], expected: [1: .sixteenth]),
+            // Mixed run: eighth + adjacent sixteenth in beat 2 — the
+            // sixteenth's secondary level takes a hook beam, so nothing
+            // paints a flag.
+            FlagFixture(
+                abstractTicks: [480, 600],
+                intervals: [.eighth, .sixteenth],
+                expected: [:]
+            ),
+            // Isolated thirty-second in beat 3 — canonical flag.
+            FlagFixture(abstractTicks: [720], intervals: [.thirtysecond], expected: [1: .thirtySecond]),
+            // Unflagged intervals never carry a visible flag.
+            FlagFixture(abstractTicks: [0], intervals: [.quarter], expected: [:])
         ]
     )
-    func preFormatClassificationAgreesWithPostFormatFlagPainting(fixture: BeamFixture) throws {
+    func engravedFlagFamiliesMatchBeaming(fixture: FlagFixture) throws {
         let measure = makeMeasure(index: 0)
         let notes = zip(fixture.abstractTicks, fixture.intervals).enumerated().map { index, pair in
             makeNote(
@@ -263,92 +250,22 @@ struct VirgoNotationProjectionTests {
             )
         }
         let snapshot = try makeSnapshot(measures: [measure], notes: notes)
-        let expandedMeasures = [measure]
-        let style = NotationLayoutStyle.gameplayDefault
 
-        // Pre-format: the adapter projection.
-        let input = try VirgoNotationProjection.resolvedNotation(
-            snapshot: snapshot,
-            expandedMeasures: expandedMeasures,
-            notePositionOverrides: [:]
-        )
-        let classificationByID = Dictionary(
-            uniqueKeysWithValues: input.notes.compactMap { note in
-                note.visibleFlagDuration.map { (note.id, $0) }
-            }
-        )
-
-        // Post-format: the same pipeline the engine paints from — the one
-        // measured preparation route (HPA-164).
+        // The one measured preparation route — the package derives flag
+        // topology internally; each painted flag cites its stem group's
+        // representative note ID (the event ID verbatim).
         let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
             snapshot: snapshot,
             minimumMeasureCount: 1,
-            style: style,
+            style: .gameplayDefault,
             notePositionOverrides: [:]
         ))
-        let layout = prepared.layout
-        let beamBuild = NotationLayoutEngine().buildBeams(
-            noteHeads: layout.noteHeads,
-            measures: expandedMeasures,
-            style: style
-        )
-        let stems = NotationLayoutEngine().buildStems(noteHeads: layout.noteHeads, beams: beamBuild.beams, style: style)
-        let flags = NotationLayoutEngine().buildFlags(
-            noteHeads: layout.noteHeads,
-            beamBuild: beamBuild,
-            stems: stems,
-            style: style
-        )
-        let commands = VirgoNotationAdapter.flagPaintCommands(
-            flags: flags,
-            heads: layout.noteHeads,
-            style: style
+        let engraved = try DrumTabFixtureHarness.requireEngraved(prepared)
+        let paintedFamilyByID = Dictionary(
+            uniqueKeysWithValues: engraved.flags.map { ($0.noteID, $0.duration) }
         )
 
-        // Painted family per representative head: canonical duration when the
-        // uncovered levels are exactly the expected set, .eighth otherwise.
-        var paintedFamilyByID: [Int: NotationFlagDuration] = [:]
-        for (headID, headFlags) in Dictionary(grouping: flags, by: \.noteHeadID) {
-            guard let head = layout.noteHeads.first(where: { $0.id == headID }),
-                let eventID = head.eventID.map({ Int($0.rawValue) })
-            else { continue }
-            let levels = Set(headFlags.map(\.flagIndex))
-            let expectedLevels = Set(0..<head.interval.flagCount)
-            if levels == expectedLevels {
-                let canonical = try #require(
-                    commands.first { $0.id == headFlags.first { $0.flagIndex == 0 }?.id }
-                )
-                paintedFamilyByID[eventID] = canonical.duration
-            } else {
-                paintedFamilyByID[eventID] = .eighth
-            }
-        }
-
-        // Unflagged intervals must carry a nil classification on the
-        // projected note itself — absence from classificationByID alone is
-        // vacuous when a note never reached the projection (the measure-
-        // bounds guard drops ticks at or past the measure duration) — and
-        // the post-format path must paint no flags for their heads.
-        for note in notes where note.rhythm.baseInterval.flagCount == 0 {
-            let projected = try #require(input.notes.first { $0.id == note.eventID.rawValue })
-            #expect(projected.visibleFlagDuration == nil)
-            let headIDs = Set(layout.noteHeads.filter { $0.eventID == note.eventID }.map(\.id))
-            #expect(!headIDs.isEmpty && flags.allSatisfy { !headIDs.contains($0.noteHeadID) })
-        }
-
-        // Every note's pre-format classification must equal the family its
-        // stem group paints post-format.
-        for (eventID, classification) in classificationByID {
-            #expect(
-                paintedFamilyByID[eventID] == classification,
-                Comment(rawValue: "eventID \(eventID): pre-format \(String(describing: classification)) "
-                    + "vs painted \(String(describing: paintedFamilyByID[eventID]))")
-            )
-        }
-        // And every painted family must be claimed by a matching classification.
-        for (eventID, family) in paintedFamilyByID {
-            #expect(classificationByID[eventID] == family)
-        }
+        #expect(paintedFamilyByID == fixture.expected)
     }
 
     @Test("Notes in engraving-unsupported measures never carry a visible flag")
@@ -374,10 +291,16 @@ struct VirgoNotationProjectionTests {
             notePositionOverrides: [:]
         )
 
-        #expect(input.notes.first?.visibleFlagDuration == nil)
         // The note still crosses (Virgo preserves its identity) but the
         // package suppresses its duration-bearing engraving.
         #expect(input.notes.first?.isRhythmEngravable == false)
+        let engraved = try NotationEngraver.engrave(
+            input,
+            style: VirgoNotationProjection.engravingStyle(for: .gameplayDefault)
+        )
+        #expect(engraved.noteHeads.map(\.noteID) == [1])
+        #expect(engraved.stems.isEmpty && engraved.beams.isEmpty && engraved.flags.isEmpty)
+        #expect(engraved.rhythmDots.isEmpty)
     }
 
     // MARK: - Step 5: the single style mapper
@@ -423,9 +346,11 @@ struct VirgoNotationProjectionTests {
 
     // MARK: - Fixtures
 
-    struct BeamFixture: Sendable {
+    struct FlagFixture: Sendable {
         let abstractTicks: [Int]
         let intervals: [NoteInterval]
+        /// Painted flag duration per representative note ID (event ID raw value).
+        let expected: [Int: NotationFlagDuration]
     }
 
     /// Four-beat 4/4 measure at 960 ticks/whole-note: quarter = 240 ticks.

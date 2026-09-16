@@ -22,16 +22,16 @@ struct GameplayViewModelDataLoadingTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.cacheNotationLayout()
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        viewModel.refreshNotationEngraving()
+        #expect(viewModel.cachedNotationHasRenderableContent)
 
         let initialGeneration = viewModel.notationLayoutGeneration
         viewModel.track = nil
         viewModel.computeCachedLayoutData()
 
         #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
-        #expect(!viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(viewModel.cachedNotationLayout.measures.isEmpty)
+        #expect(!viewModel.cachedNotationHasRenderableContent)
+        #expect(viewModel.cachedEngravedNotation?.measures.isEmpty ?? true)
     }
 
     @Test("fatal rhythm timing reset replaces an existing layout")
@@ -46,30 +46,28 @@ struct GameplayViewModelDataLoadingTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        // Seed a renderable layout directly: legacy availability no longer
-        // formats notes (HPA-164 no-snapshot policy), so install one to
-        // prove the fatal reset clears it.
-        var seeded = NotationLayout.empty
-        seeded.rests = [RenderedRest(
-            id: "rest-seed-0-upper-fullMeasure",
-            timeColumn: NotationTimeColumn(measureIndex: 0, tickWithinMeasure: 0, absoluteLayoutTick: 0),
-            measureIndex: 0,
-            row: 0,
-            voice: .upper,
-            durationTicks: 960,
-            duration: .fullMeasure,
-            visibility: .printed,
-            position: .zero
-        )]
-        viewModel.installNotationLayout(seeded)
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        // Seed a renderable engraving directly: legacy availability no longer
+        // formats notes (HPA-164 no-snapshot policy), so install one through
+        // the preparation route to prove the fatal reset clears it.
+        let seeded = NotationSnapshotTestSupport().prepare(rests: [
+            RhythmLayoutRest(
+                position: RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0),
+                durationTicks: 960,
+                voice: .upper,
+                rhythm: NotationRhythm(baseInterval: .full),
+                visibility: .printed,
+                tupletID: nil
+            )
+        ])
+        viewModel.installPreparedNotation(seeded)
+        #expect(viewModel.cachedNotationHasRenderableContent)
 
         let initialGeneration = viewModel.notationLayoutGeneration
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
-        #expect(!viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(viewModel.cachedNotationLayout.measures.isEmpty)
+        #expect(!viewModel.cachedNotationHasRenderableContent)
+        #expect(viewModel.cachedEngravedNotation?.measures.isEmpty ?? true)
         #expect(viewModel.hasFatalRhythmTiming)
     }
 
@@ -153,7 +151,7 @@ struct GameplayViewModelDataLoadingTests {
         #expect(viewModel.cachedTrackDuration > 0)
     }
 
-    @Test func testSetupGameplayCachesNotationLayout() async throws {
+    @Test func testSetupGameplayCachesEngravedNotation() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
         chart.notes.append(
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
@@ -169,12 +167,13 @@ struct GameplayViewModelDataLoadingTests {
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedDrumBeats.count == 2)
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(viewModel.cachedNotationLayout.hasPlayableContent)
-        #expect(viewModel.cachedNotationLayout.noteHeads.count == 2)
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(viewModel.cachedNotationHasPlayableContent)
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        #expect(engraved.noteHeads.count == 2)
         // Both manual sixteenth notes retain distinct exact onsets, but their
         // near-overlap makes the measure conservatively unsupported.
-        #expect(viewModel.cachedNotationLayout.stems.isEmpty)
+        #expect(engraved.stems.isEmpty)
     }
 
     @Test("empty chart prepares renderable rests without playable caches")
@@ -188,10 +187,11 @@ struct GameplayViewModelDataLoadingTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
-        #expect(!viewModel.cachedNotationLayout.measures.isEmpty)
-        #expect(!viewModel.cachedNotationLayout.rests.filter(\.isPrinted).isEmpty)
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(!viewModel.cachedNotationHasPlayableContent)
+        #expect(!(viewModel.cachedEngravedNotation?.measures.isEmpty ?? true))
+        // Every engraved rest is printed by construction.
+        #expect(!(viewModel.cachedEngravedNotation?.rests.isEmpty ?? true))
         #expect(!viewModel.cachedMeasureRowMap.isEmpty)
         #expect(!viewModel.cachedNotationMeasuresByIndex.isEmpty)
         #expect(viewModel.cachedNotationHasRenderableContent)
@@ -216,9 +216,9 @@ struct GameplayViewModelDataLoadingTests {
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedControlEvents.count == 1)
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
-        #expect(viewModel.cachedNotationLayout.stopNotes.count == 1)
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(!viewModel.cachedNotationHasPlayableContent)
+        #expect(viewModel.cachedEngravedNotation?.controls.count == 1)
         #expect(!viewModel.cachedMeasureRowMap.isEmpty)
         #expect(!viewModel.cachedNotationMeasuresByIndex.isEmpty)
         #expect(viewModel.cachedNotationHasRenderableContent)
@@ -232,7 +232,7 @@ struct GameplayViewModelDataLoadingTests {
 
         viewModel.computeCachedLayoutData()
 
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.isEmpty ?? true)
         #expect(!viewModel.cachedNotationHasRenderableContent)
     }
 
@@ -285,22 +285,24 @@ struct GameplayViewModelDataLoadingTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.isEmpty ?? true)
+        #expect(viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedNotationHasRenderableContent)
     }
 
-    @Test func testEmptyNotationLayoutHasNoRenderedContent() {
-        #expect(NotationLayout.empty.measures.isEmpty)
-        #expect(NotationLayout.empty.noteHeads.isEmpty)
-        #expect(NotationLayout.empty.stems.isEmpty)
-        #expect(NotationLayout.empty.beams.isEmpty)
-        #expect(NotationLayout.empty.flags.isEmpty)
-        #expect(NotationLayout.empty.ledgerLines.isEmpty)
-        #expect(NotationLayout.empty.measureBars.isEmpty)
-        #expect(NotationLayout.empty.noteHeadPositionsByID.isEmpty)
-        #expect(NotationLayout.empty.noteHeadIDsByLayoutTick.isEmpty)
-        #expect(NotationLayout.empty.totalHeight == 0)
+    @Test func testFreshViewModelHasNoInstalledNotation() {
+        let viewModel = GameplayViewModel(
+            chart: Chart(difficulty: .easy),
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+
+        #expect(viewModel.cachedEngravedNotation == nil)
+        #expect(viewModel.notationPresentation == nil)
+        #expect(!viewModel.cachedNotationHasRenderableContent)
+        #expect(!viewModel.cachedNotationHasPlayableContent)
+        #expect(viewModel.cachedMeasureRowMap.isEmpty)
+        #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
+        #expect(viewModel.notationPreparationFailure == nil)
     }
 
     @Test func testSetupGameplayWithoutLoadingData() async throws {
@@ -418,22 +420,19 @@ struct GameplayViewModelDataLoadingTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay()
 
-        // The layout must use the DEFAULT snare position (.line3), NOT the
-        // persisted override (.aboveLine9).  In tests, TestEnvironment.isRunningTests
-        // is true, so cacheNotationLayout bypasses UserDefaults entirely.
-        try #require(!viewModel.cachedNotationLayout.noteHeads.isEmpty,
-                     "Notation layout should contain note heads for the snare note")
-
-        // Verify the snare is at its default position (line3), which is below line5
-        // in screen coordinates (larger Y value). The persisted .aboveLine9 override
-        // must have been ignored.
+        // The engraving must use the DEFAULT snare position (.line3 — the
+        // staff's middle line), NOT the persisted override (.aboveLine9). In
+        // tests, TestEnvironment.isRunningTests is true, so the preparation
+        // route bypasses UserDefaults entirely.
+        let engraved = try #require(viewModel.cachedEngravedNotation,
+                                    "Engraving should be installed for the snare note")
         let snareHead = try #require(
-            viewModel.cachedNotationLayout.noteHeads.first { $0.drumType == .snare },
-            "Layout should contain a snare note head"
+            engraved.noteHeads.first,
+            "Engraving should contain a snare note head"
         )
-        let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: snareHead.row)
-        #expect(snareHead.position.y > line5Y,
-                "Snare should be at default line3 (below line5), not at persisted aboveLine9")
+        let staffCenterY = engraved.rows[snareHead.rowIndex].staffCenterY
+        #expect(snareHead.position.y == staffCenterY,
+                "Snare should be at default line3 (the staff's middle line), not at persisted aboveLine9")
     }
 
     /// Verifies the @Observable `currentRow` updates as the playhead crosses measures.
@@ -450,14 +449,14 @@ struct GameplayViewModelDataLoadingTests {
 
         #expect(viewModel.cachedLayoutRowWidth == 1200,
                 "Initial geometry width should be stored before gameplay setup")
-        #expect(viewModel.cachedNotationLayout.measures.isEmpty,
+        #expect(viewModel.cachedEngravedNotation == nil,
                 "Pre-setup width seeding should not build a throwaway notation layout")
 
         await viewModel.setupGameplay()
 
         #expect(viewModel.cachedLayoutRowWidth == 1200,
                 "setupGameplay should build the first visible layout with the seeded width")
-        #expect(!viewModel.cachedNotationLayout.measures.isEmpty,
+        #expect(!(viewModel.cachedEngravedNotation?.measures.isEmpty ?? true),
                 "setupGameplay should build notation after data and row width are ready")
     }
 }

@@ -1,90 +1,130 @@
 import Testing
 import CoreGraphics
+import DrumNotation
 @testable import Virgo
 
 /// Adapter/preparer integration for note-position overrides: an override
 /// must reach the staff step (Y placement, ledger lines) through
-/// `VirgoNotationProjection.resolvedNotation`, not just the rendered head.
+/// `VirgoNotationProjection.resolvedNotation` and the package engraver, not
+/// just the rendered head.
+///
+/// Y is asserted row-relative: the engraver normalizes the whole sheet by
+/// one shift, so `head.position.y - rows[rowIndex].staffCenterY` is the
+/// stable quantity. A `GameplayLayout.NotePosition.yOffset` of `n` half
+/// staff-spaces below the bottom line maps to pitch-ascending staff step
+/// `-yOffset / (staffSpace / 2)`; the middle line is step 4, so the
+/// row-relative head Y is `-(staffStep - 4) * staffSpace / 2`.
 @Suite("Notation Layout Note Position Override Tests")
 struct NotationLayoutNotePositionOverrideTests {
     private let support = NotationSnapshotTestSupport()
 
+    /// Row-relative head Y for `position` under the package convention.
+    /// Subpixel normalization leaves a floating-point residue, so callers
+    /// compare with `tolerance`.
+    private func expectedRowRelativeY(
+        _ position: GameplayLayout.NotePosition,
+        engraved: EngravedNotation
+    ) -> CGFloat {
+        let halfStaffSpace = engraved.style.formatting.staffSpace / 2
+        let staffStep = -(position.yOffset / halfStaffSpace).rounded()
+        return -(staffStep - 4) * halfStaffSpace
+    }
+
+    private let tolerance: CGFloat = 0.001
+
     @Test("Override changes the note head Y to match the custom position")
-    func overrideChangesNoteHeadY() {
+    func overrideChangesNoteHeadY() throws {
         let snareNote = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
-        let baseY = GameplayLayout.StaffLinePosition.line1.absoluteY(for: 0)
 
-        let defaultLayout = support.prepare(notes: [snareNote]).layout
-        #expect(defaultLayout.noteHeads.count == 1)
-        #expect(defaultLayout.noteHeads[0].position.y == baseY + DrumType.snare.notePosition.yOffset)
+        let defaultEngraved = try support.requireEngraved(support.prepare(notes: [snareNote]))
+        let defaultHead = try #require(defaultEngraved.noteHeads.first)
+        let defaultCenterY = defaultEngraved.rows[defaultHead.rowIndex].staffCenterY
+        #expect(
+            abs(defaultHead.position.y - defaultCenterY
+                - expectedRowRelativeY(DrumType.snare.notePosition, engraved: defaultEngraved))
+                < tolerance
+        )
 
-        let overriddenLayout = support.prepare(
+        let overriddenEngraved = try support.requireEngraved(support.prepare(
             notes: [snareNote],
             notePositionOverrides: [.snare: .aboveLine6]
-        ).layout
-        #expect(overriddenLayout.noteHeads.count == 1)
-        #expect(overriddenLayout.noteHeads[0].position.y == baseY + GameplayLayout.NotePosition.aboveLine6.yOffset)
+        ))
+        let head = try #require(overriddenEngraved.noteHeads.first)
+        let centerY = overriddenEngraved.rows[head.rowIndex].staffCenterY
+        #expect(
+            abs(head.position.y - centerY
+                - expectedRowRelativeY(.aboveLine6, engraved: overriddenEngraved))
+                < tolerance
+        )
     }
 
     @Test("Override updates staffStep so ledger lines render at the custom position")
-    func overrideUpdatesStaffStepAndLedgerLines() {
+    func overrideUpdatesStaffStepAndLedgerLines() throws {
         let snareNote = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.0)
 
         // Default snare sits on line 3 — no ledger lines.
-        let defaultLayout = support.prepare(notes: [snareNote]).layout
-        #expect(defaultLayout.ledgerLines.isEmpty)
+        let defaultEngraved = try support.requireEngraved(support.prepare(notes: [snareNote]))
+        #expect(defaultEngraved.ledgerLines.isEmpty)
 
         // Forcing the snare far above the staff must produce ledger lines.
-        let overriddenLayout = support.prepare(
+        let overriddenEngraved = try support.requireEngraved(support.prepare(
             notes: [snareNote],
             notePositionOverrides: [.snare: .aboveLine9]
-        ).layout
-        #expect(!overriddenLayout.ledgerLines.isEmpty)
+        ))
+        #expect(!overriddenEngraved.ledgerLines.isEmpty)
+        #expect(
+            overriddenEngraved.ledgerLines.allSatisfy {
+                $0.noteID == overriddenEngraved.noteHeads.first?.noteID
+            }
+        )
     }
 
     @Test("Position override preserves canonical upper-voice stem direction")
     func positionOverridePreservesCanonicalStemDirection() throws {
         let snare = Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
-        let defaultLayout = support.prepare(notes: [snare]).layout
-        let overriddenLayout = support.prepare(
+        let defaultEngraved = try support.requireEngraved(support.prepare(notes: [snare]))
+        let overriddenEngraved = try support.requireEngraved(support.prepare(
             notes: [snare],
             notePositionOverrides: [.snare: .aboveLine9]
-        ).layout
-        let defaultHead = try #require(defaultLayout.noteHeads.first)
-        let head = try #require(overriddenLayout.noteHeads.first)
+        ))
+        let defaultHead = try #require(defaultEngraved.noteHeads.first)
+        let head = try #require(overriddenEngraved.noteHeads.first)
 
-        #expect(head.position.y != defaultHead.position.y)
+        #expect(head.noteID == defaultHead.noteID)
         #expect(head.position.x == defaultHead.position.x)
-        #expect(head.sourceLaneID == defaultHead.sourceLaneID)
-        #expect(head.sourceChipID == defaultHead.sourceChipID)
-        #expect(head.noteType == defaultHead.noteType)
-        #expect(head.drumType == defaultHead.drumType)
-        #expect(
-            VirgoNotationAdapter.noteheadStyle(for: head.noteType)
-                == VirgoNotationAdapter.noteheadStyle(for: defaultHead.noteType)
-        )
-        #expect(head.variant == defaultHead.variant)
+        // The staff step moved; the canonical voice/stem identity did not.
+        #expect(head.staffStep != defaultHead.staffStep)
+        #expect(head.noteheadStyle == defaultHead.noteheadStyle)
         #expect(head.voice == .upper)
         #expect(head.voice == defaultHead.voice)
         #expect(head.stemDirection == .up)
         #expect(head.stemDirection == defaultHead.stemDirection)
-        #expect(head.rhythmPosition == defaultHead.rhythmPosition)
-        #expect(head.rhythm == NotationRhythm(baseInterval: .quarter))
-        #expect(head.position.y == GameplayLayout.NotePosition.aboveLine9.absoluteY(for: 0))
+        #expect(head.duration == defaultHead.duration)
+
+        let centerY = overriddenEngraved.rows[head.rowIndex].staffCenterY
+        #expect(
+            abs(head.position.y - centerY
+                - expectedRowRelativeY(.aboveLine9, engraved: overriddenEngraved))
+                < tolerance
+        )
     }
 
     @Test("Drums without overrides keep their default note position")
-    func nonOverriddenDrumsKeepDefaults() {
+    func nonOverriddenDrumsKeepDefaults() throws {
         let kickNote = Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.0)
-        let baseY = GameplayLayout.StaffLinePosition.line1.absoluteY(for: 0)
 
-        let layout = support.prepare(
+        let engraved = try support.requireEngraved(support.prepare(
             notes: [kickNote],
             notePositionOverrides: [.snare: .aboveLine9] // unrelated drum
-        ).layout
+        ))
 
-        #expect(layout.noteHeads.count == 1)
-        #expect(layout.noteHeads[0].position.y == baseY + DrumType.kick.notePosition.yOffset)
+        let head = try #require(engraved.noteHeads.first)
+        let centerY = engraved.rows[head.rowIndex].staffCenterY
+        #expect(
+            abs(head.position.y - centerY
+                - expectedRowRelativeY(DrumType.kick.notePosition, engraved: engraved))
+                < tolerance
+        )
     }
 }
 

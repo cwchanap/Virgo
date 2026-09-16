@@ -77,17 +77,21 @@ struct StemTopologyTests {
         #expect(stemGroup.stemRepresentativeID == 3)
     }
 
-    @Test("stem membership derives from duration and engraving, not the transitional field")
+    @Test("stem membership derives from duration and engraving semantics alone")
     func stemMembershipDerivesFromEngravingSemantics() throws {
-        // An engravable eighth whose transitional `stemMember` is false is
-        // still a stem member by the pinned rule (needs stem + engravable).
+        // With no per-note membership field, every stem-requiring engravable
+        // head is a member; only stemless heads sit out.
         let topology = try topology(notes: [
-            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 0, duration: .eighth, stemMember: false),
-            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 6, duration: .eighth)
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 0, duration: .whole),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 2, duration: .eighth),
+            Fixtures.makeNote(id: 3, localTick: 0, staffStep: 6, duration: .eighth)
         ])
         let stemGroup = try group(topology, localTick: 0)
 
-        #expect(stemGroup.stemRepresentativeID == 1)
+        // Up-stem: the lowest stem member anchors the shared stem; the
+        // stemless whole keeps its chord slot but never participates.
+        #expect(stemGroup.memberNoteIDs == [1, 2, 3])
+        #expect(stemGroup.stemRepresentativeID == 2)
     }
 
     @Test("equal staff steps tiebreak the stem representative by tiebreakOrder then ID")
@@ -414,63 +418,27 @@ extension StemTopologyTests {
         let expected = expectedChordExtents()
         #expect(abs(column.leftExtent - expected.left) < 0.001)
         #expect(abs(column.rightExtent - expected.right) < 0.001)
-
-        // And the measure's width matches formatting the same chord with the
-        // flag stamped on the stem representative through the field path —
-        // no double reservation.
-        let stamped = try ResolvedNotationInput(
-            ticksPerWholeNote: Fixtures.ticksPerWholeNote,
-            measures: [measure()],
-            notes: [
-                Fixtures.makeNote(
-                    id: 1, localTick: 240, staffStep: 2, headStyle: .normal,
-                    duration: .sixteenth, flag: .sixteenth,
-                    durationTicks: 120, tiebreakOrder: 1
-                ),
-                Fixtures.makeNote(
-                    id: 2, localTick: 240, staffStep: 6, headStyle: .x,
-                    duration: .sixteenth, durationTicks: 120, tiebreakOrder: 2
-                )
-            ]
-        )
-        let reference = try Fixtures.format(stamped)
-        let measure = try #require(notation.measures.first)
-        let referenceMeasure = try #require(reference.measures.first)
-        #expect(abs(measure.width - referenceMeasure.width) < 0.001)
-        #expect(notation == reference)
     }
 
-    @Test("plan-driven formatting matches the field-driven formatter output")
-    func planPathMatchesFieldPath() throws {
-        // Isolated sixteenth: the projection stamps the flag on the stem
-        // representative; the package plan reserves it there itself.
+    @Test("the public formatter is the plan-driven path")
+    func publicFormatMatchesPlanPath() throws {
+        // The public `format` builds the real stem topology itself: its
+        // output must equal the internal plan-driven overload's on the same
+        // input — an isolated sixteenth reserves its canonical flag, and a
+        // fully beamed run reserves none.
         let isolated = [
-            Fixtures.makeNote(
-                id: 1, localTick: 240, staffStep: 3,
-                duration: .sixteenth, flag: .sixteenth, durationTicks: 120
-            )
-        ]
-        let unstampedIsolated = [
             Fixtures.makeNote(id: 1, localTick: 240, staffStep: 3, duration: .sixteenth, durationTicks: 120)
         ]
-        // A fully beamed run: neither path reserves flag ink.
         let beamed = (0..<4).map {
             Fixtures.makeNote(id: $0 + 1, localTick: $0 * 120, staffStep: 3, duration: .sixteenth, durationTicks: 120)
         }
-        for (stampedNotes, unstampedNotes) in [(isolated, unstampedIsolated), (beamed, beamed)] {
-            let stampedInput = try ResolvedNotationInput(
+        for notes in [isolated, beamed] {
+            let input = try ResolvedNotationInput(
                 ticksPerWholeNote: Fixtures.ticksPerWholeNote,
                 measures: [measure()],
-                notes: stampedNotes
+                notes: notes
             )
-            let unstampedInput = try ResolvedNotationInput(
-                ticksPerWholeNote: Fixtures.ticksPerWholeNote,
-                measures: [measure()],
-                notes: unstampedNotes
-            )
-            let fieldDriven = try Fixtures.format(stampedInput)
-            let planDriven = try planFormat(unstampedInput)
-            #expect(planDriven == fieldDriven)
+            #expect(try Fixtures.format(input) == planFormat(input))
         }
     }
 

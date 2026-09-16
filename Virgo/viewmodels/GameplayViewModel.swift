@@ -10,6 +10,7 @@ import SwiftUI
 import Observation
 import AVFoundation
 import Combine
+import DrumNotation
 
 /// Schedules the delayed playback-completion action. `action` is invoked on the
 /// main actor after `delaySeconds`; the returned cancellable's `cancel()` must
@@ -164,21 +165,41 @@ final class GameplayViewModel {
     var cachedBeatIndices: [Int] = [] // internal for cross-file extension access
     /// Fast lookup map from measure index to position
     var measurePositionMap: [Int: GameplayLayout.MeasurePosition] = [:] // internal for cross-file extension access
-    /// Pre-computed notation layout that drives rendering when notes are present.
-    /// The private storage keeps every replacement behind `installNotationLayout(_:)`.
-    private var notationLayoutStorage = NotationLayout.empty
+    /// One installed notation unit (HPA-166 Task 7): the package
+    /// `EngravedNotation` — the sole production notation geometry — plus the
+    /// app-owned presentation (annotations + VoiceOver labels) built
+    /// alongside it. The private storage keeps every replacement behind
+    /// `installPreparedNotation(_:generation:)`.
+    private var notationInstall: GameplayNotationInstall?
     private(set) var notationLayoutGeneration: UInt64 = 0
-    var cachedNotationLayout: NotationLayout { notationLayoutStorage }
-    /// Note-head presence is already an O(1) layout query. Printed-rest and
-    /// control renderability is resolved once at layout installation so playback
-    /// updates do not scan those arrays.
-    var cachedNotationHasPlayableContent: Bool { !notationLayoutStorage.noteHeads.isEmpty }
+    /// The installed package engraving. Nil when the preparation produced no
+    /// printable notation (`.unavailable`) or failed (`.failed`).
+    var cachedEngravedNotation: EngravedNotation? { notationInstall?.engraving }
+    /// The app-owned presentation installed atomically with the engraving.
+    var notationPresentation: GameplayNotationPresentation? { notationInstall?.presentation }
+    /// Note-head presence is an O(1) engraving query.
+    var cachedNotationHasPlayableContent: Bool {
+        !(notationInstall?.engraving.noteHeads.isEmpty ?? true)
+    }
+    /// Whether an engraving is installed (`notationInstall != nil`). Resolved
+    /// once at install time so playback updates do not rescan.
     private(set) var cachedNotationHasRenderableContent = false
-    /// Fast lookup from measure index to row for the notation layout path.
+    /// The most recent notation-preparation failure, installed atomically
+    /// with the generation that produced it.
+    private(set) var notationPreparationFailure: GameplayNotationPreparationFailure?
+    /// The one practice-unavailable presentation surface (HPA-166 Task 7): a
+    /// notation-preparation failure wins over the fatal-timing message —
+    /// fatal runtimes never reach engraving, so the two sources cannot be
+    /// set at once.
+    var practiceUnavailableMessage: String? {
+        notationPreparationFailure?.userMessage
+            ?? (hasFatalRhythmTiming ? rhythmFatalMessage : nil)
+    }
+    /// Fast lookup from measure index to row for the engraved notation path.
     var cachedMeasureRowMap: [Int: Int] = [:] // internal for cross-file extension access
-    /// Fast lookup from measure index to rendered measure for the notation layout path.
+    /// Fast lookup from measure index to engraved measure for the notation path.
     /// Replaces per-frame linear `first(where:)` scans in the playhead with O(1) access.
-    var cachedNotationMeasuresByIndex: [Int: RenderedMeasure] = [:] // internal for cross-file extension access
+    var cachedNotationMeasuresByIndex: [Int: EngravedMeasure] = [:] // internal for cross-file extension access
     /// Duration-based measure count shared with legacy and notation layouts.
     var cachedLayoutMeasureCount = 1 // internal for cross-file extension access
     /// O(1) legacy-sheet height used by the observable sheet container. The
@@ -340,12 +361,15 @@ final class GameplayViewModel {
     }
     #endif
 
-    /// Installs a notation layout through the single generation used to identify
-    /// the current static notation projection. Worker results pass their already
-    /// allocated generation so applying one does not create a second identity.
+    /// Installs one notation preparation result through the single generation
+    /// used to identify the current static notation projection (HPA-166 Task
+    /// 7). Worker results pass their already-allocated generation so applying
+    /// one does not create a second identity. Engraving, presentation, and
+    /// failure state always change together — a stale generation installs
+    /// nothing and leaves all three untouched.
     @discardableResult
-    func installNotationLayout(
-        _ layout: NotationLayout,
+    func installPreparedNotation(
+        _ prepared: GameplayNotationPreparedState,
         generation: UInt64? = nil
     ) -> Bool {
         if let generation {
@@ -353,8 +377,39 @@ final class GameplayViewModel {
         } else {
             notationLayoutGeneration &+= 1
         }
-        notationLayoutStorage = layout
-        cachedNotationHasRenderableContent = layout.hasRenderableContent
+        switch prepared {
+        case let .ready(engraving, presentation):
+            notationInstall = GameplayNotationInstall(
+                engraving: engraving,
+                presentation: presentation
+            )
+            notationPreparationFailure = nil
+            cachedNotationHasRenderableContent = true
+        case .unavailable:
+            notationInstall = nil
+            notationPreparationFailure = nil
+            cachedNotationHasRenderableContent = false
+        case let .failed(failure):
+            notationInstall = nil
+            notationPreparationFailure = failure
+            cachedNotationHasRenderableContent = false
+        }
+        return true
+    }
+
+    /// Clears the installed notation where there is nothing to engrave (no
+    /// track, no timeline snapshot, fatal reset). Same generation contract as
+    /// `installPreparedNotation`.
+    @discardableResult
+    func clearNotationInstallation(generation: UInt64? = nil) -> Bool {
+        if let generation {
+            guard generation == notationLayoutGeneration else { return false }
+        } else {
+            notationLayoutGeneration &+= 1
+        }
+        notationInstall = nil
+        notationPreparationFailure = nil
+        cachedNotationHasRenderableContent = false
         return true
     }
 
@@ -489,7 +544,7 @@ final class GameplayViewModel {
     /// inconsistent. The setup request already allocated `generation`; the reset
     /// reuses it so the reset remains a single notation installation.
     private func resetForFatalRhythmTiming(generation: UInt64) {
-        _ = installNotationLayout(.empty, generation: generation)
+        _ = clearNotationInstallation(generation: generation)
         cachedMeasureRowMap = [:]
         cachedNotationMeasuresByIndex = [:]
         cachedLegacyContentHeight = 0

@@ -206,7 +206,7 @@ struct GameplayViewModelVisualUpdatesTests {
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.isEmpty ?? true)
         viewModel.isPlaying = true
         // 1 second at 120 BPM = beat 2 of measure 0.
         let position = try #require(viewModel.calculatePurpleBarPosition(elapsedTime: 1.0))
@@ -234,8 +234,9 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.cachedLayoutRowWidth = 620
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
+        let engraved = try #require(viewModel.cachedEngravedNotation)
         let measureRows = Dictionary(
-            uniqueKeysWithValues: viewModel.cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
+            uniqueKeysWithValues: engraved.measures.map { ($0.index, $0.rowIndex) }
         )
 
         #expect(viewModel.rowForMeasure(0) == measureRows[0])
@@ -296,7 +297,7 @@ struct GameplayViewModelVisualUpdatesTests {
         // the clamp target is the measure's real end anchor — the legacy
         // uniform beat-grid end no longer matches once the centered
         // full-measure rest's keep-clear pocket widens the measure.
-        let formatted = viewModel.cachedNotationLayout.formattedNotation
+        let formatted = try #require(viewModel.cachedEngravedNotation?.formatted)
         let endTick = try #require(
             formatted.measures.first { $0.index == 0 }?.columns.last?.localTick
         )
@@ -333,7 +334,7 @@ struct GameplayViewModelVisualUpdatesTests {
         // legacy grid. On the fallback 16-tick grid the sixteenth sits at
         // localTick 1.
         let expectedX = try #require(
-            viewModel.cachedNotationLayout.formattedNotation
+            viewModel.cachedEngravedNotation?.formatted
                 .position(measureIndex: 0, localTick: 1)?
                 .x
         )
@@ -362,8 +363,8 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.isPlaying = true
         viewModel.currentRow = 2
 
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(!viewModel.cachedNotationHasPlayableContent)
         #expect(viewModel.rowForMeasure(8) == 2)
 
         viewModel.updateContinuousVisualsForTesting(elapsedTime: 18)
@@ -390,8 +391,8 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.isPlaying = true
         viewModel.currentRow = 1
 
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(!viewModel.cachedNotationHasPlayableContent)
         #expect(viewModel.rowForMeasure(3) == 1)
 
         viewModel.updateContinuousVisualsForTesting(elapsedTime: 6)
@@ -417,11 +418,11 @@ struct GameplayViewModelVisualUpdatesTests {
         await viewModel.setupGameplay()
 
         // Find the first measure that lives on a row > 0; we need the playhead to land in it.
-        let firstNonZeroRowMeasure = viewModel.cachedNotationLayout.measures
-            .first(where: { $0.row > 0 })
+        let firstNonZeroRowMeasure = viewModel.cachedEngravedNotation?.measures
+            .first(where: { $0.rowIndex > 0 })
         try #require(firstNonZeroRowMeasure != nil)
-        let targetMeasure = firstNonZeroRowMeasure!.measureIndex
-        let targetRow = firstNonZeroRowMeasure!.row
+        let targetMeasure = firstNonZeroRowMeasure!.index
+        let targetRow = firstNonZeroRowMeasure!.rowIndex
 
         // Initial state: row 0.
         #expect(viewModel.currentRow == 0)

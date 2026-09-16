@@ -1,10 +1,11 @@
 import Testing
 import CoreGraphics
+import DrumNotation
 @testable import Virgo
 
-/// HPA-164 Task 6 Step 5: composed-layout regression invariants, asserted
-/// against the measured formatter's output as rendered by
-/// `GameplayNotationPreparer.prepare` (not just package output).
+/// Composed-engraving regression invariants, asserted against the package
+/// `EngravedNotation` produced by `GameplayNotationPreparer.prepare` (not
+/// just package-internal fixtures).
 ///
 /// Binding numbers from the controller ruling: the vendored Bravura X-black
 /// head paints 23.2pt (half 11.6), so adjacent sixteenth pitch is
@@ -21,19 +22,19 @@ struct MeasuredGeometryInvariantsTests {
     private let clearance: CGFloat = 8
     private let tolerance: CGFloat = 0.5
 
-    // MARK: - Width invariants (composed RenderedMeasure)
+    // MARK: - Width invariants (composed EngravedMeasure)
 
     @Test("sparse named measure is narrower than its dense neighbor")
     func sparseMeasureIsNarrowerThanDenseNeighbor() throws {
-        let layout = support.prepare(notes: [
+        let engraved = try support.requireEngraved(support.prepare(notes: [
             Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 1.0 / 16.0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 2.0 / 16.0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 3.0 / 16.0)
-        ]).layout
-        let sparse = try #require(layout.measures.first { $0.measureIndex == 0 })
-        let dense = try #require(layout.measures.first { $0.measureIndex == 1 })
+        ]))
+        let sparse = try #require(engraved.measures.first { $0.index == 0 })
+        let dense = try #require(engraved.measures.first { $0.index == 1 })
 
         #expect(sparse.width < dense.width)
     }
@@ -41,7 +42,7 @@ struct MeasuredGeometryInvariantsTests {
     @Test("default sixteenth-run-4-4 first measure is 589.76pt wide and ends inside X=900")
     func sixteenthRunMeasureWidthMatchesBindingNumbers() throws {
         let result = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.sixteenthRun)
-        let measure = try #require(result.layout.measures.first)
+        let measure = try #require(result.engraved.measures.first)
 
         // 52 leading inset + 15 columns × 31.2 pitch + 19.6 end remainder,
         // plus 50.16 for the centered full-measure rest's keep-clear pocket.
@@ -54,18 +55,16 @@ struct MeasuredGeometryInvariantsTests {
 
     @Test("adjacent column ink clears by at least the inter-column clearance")
     func adjacentColumnsClearByMinimumClearance() throws {
-        let style = NotationLayoutStyle.gameplayDefault
         // Dense sixteenths plus dotted notes, rests and isolated flags in one
         // measure exercise every ink family the formatter reserves for.
-        let prepared = support.prepare(notes: [
+        let engraved = try support.requireEngraved(support.prepare(notes: [
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 16.0),
             Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 2.0 / 16.0),
             Note(interval: .sixteenth, noteType: .snare, measureNumber: 1, measureOffset: 3.0 / 16.0),
             Note(interval: .quarter, noteType: .openHiHat, measureNumber: 1, measureOffset: 4.0 / 16.0),
             Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 8.0 / 16.0)
-        ])
-        let layout = prepared.layout
+        ]))
 
         struct Ink {
             var minX: CGFloat = .infinity
@@ -77,6 +76,17 @@ struct MeasuredGeometryInvariantsTests {
             }
         }
 
+        // Engraved primitives carry final geometry, not source ticks: each
+        // head/rest's onset tick comes from its formatted-column membership.
+        var tickByNoteID: [Int: Int] = [:]
+        var tickByRestID: [Int: Int] = [:]
+        for measure in engraved.formatted.measures {
+            for column in measure.columns {
+                for head in column.noteHeads { tickByNoteID[head.noteID] = column.localTick }
+                for rest in column.rests { tickByRestID[rest.restID] = column.localTick }
+            }
+        }
+
         var inkByTick: [Int: Ink] = [:]
         func record(tick: Int?, _ bounds: CGRect) {
             guard let tick else { return }
@@ -84,37 +94,44 @@ struct MeasuredGeometryInvariantsTests {
             ink.add(bounds)
             inkByTick[tick] = ink
         }
-        let headByEventID = Dictionary(
-            layout.noteHeads.compactMap { head in head.eventID.map { ($0, head) } },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let restByID = Dictionary(uniqueKeysWithValues: layout.rests.map { ($0.id, $0) })
 
-        for head in layout.noteHeads {
-            record(tick: head.timeColumn.tickWithinMeasure, head.paintedBounds(style: style))
+        for head in engraved.noteHeads {
+            record(tick: tickByNoteID[head.noteID], head.paintedBounds)
         }
-        for dot in layout.rhythmDots {
+        for dot in engraved.rhythmDots {
             let tick: Int?
             switch dot.source {
-            case let .event(eventID):
-                tick = headByEventID[eventID]?.timeColumn.tickWithinMeasure
+            case let .note(noteID):
+                tick = tickByNoteID[noteID]
             case let .rest(restID):
-                tick = restByID[restID]?.timeColumn.tickWithinMeasure
+                tick = tickByRestID[restID]
             }
-            record(tick: tick, dot.paintedBounds(style: style))
+            record(tick: tick, dot.paintedBounds)
         }
-        for rest in layout.rests where rest.isPrinted {
-            record(tick: rest.timeColumn.tickWithinMeasure, rest.paintedBounds(style: style))
+        // Every engraved rest is printed by construction.
+        for rest in engraved.rests {
+            record(tick: tickByRestID[rest.restID], rest.paintedBounds)
         }
-        let headByID = Dictionary(uniqueKeysWithValues: layout.noteHeads.map { ($0.id, $0) })
-        for command in VirgoNotationAdapter.flagPaintCommands(
-            flags: layout.flags,
-            heads: layout.noteHeads,
-            style: style
-        ) {
-            // A visible flag belongs to the column of the head it hangs from.
-            let ownerID = layout.flags.first { $0.id == command.id }?.noteHeadID
-            record(tick: ownerID.flatMap { headByID[$0] }?.timeColumn.tickWithinMeasure, command.paintedBounds)
+        let staffSpace = engraved.style.formatting.staffSpace
+        for flag in engraved.flags {
+            // The package flag glyph paints a `paintedBounds`-sized frame
+            // centered at `origin - attachmentOffset` (see DrumNotationView's
+            // flagsLayer); a visible flag belongs to the column of the head
+            // it hangs from.
+            let metrics = PercussionGlyphMetrics.flag(
+                duration: flag.duration,
+                direction: flag.stemDirection,
+                staffSpace: staffSpace
+            )
+            let center = CGPoint(
+                x: flag.origin.x - metrics.attachmentOffset.x,
+                y: flag.origin.y - metrics.attachmentOffset.y
+            )
+            let bounds = metrics.paintedBounds.offsetBy(
+                dx: center.x - metrics.paintedBounds.midX,
+                dy: center.y - metrics.paintedBounds.midY
+            )
+            record(tick: tickByNoteID[flag.noteID], bounds)
         }
 
         let orderedTicks = inkByTick.keys.sorted()
@@ -134,7 +151,7 @@ struct MeasuredGeometryInvariantsTests {
     @Test("same tick resolves to one logical X and the playhead reads it")
     func playheadEventTickEqualsLogicalX() throws {
         let result = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.mixedEighthSixteenth)
-        let formatted = result.layout.formattedNotation
+        let formatted = result.engraved.formatted
 
         for measure in formatted.measures {
             for column in measure.columns {
@@ -146,20 +163,20 @@ struct MeasuredGeometryInvariantsTests {
                 #expect(onset.rowIndex == measure.rowIndex)
             }
         }
-        // Every rendered event's own tick resolves to its column anchor.
-        for head in result.layout.noteHeads {
-            let onset = try #require(formatted.position(
-                measureIndex: head.timeColumn.measureIndex,
-                localTick: Double(head.timeColumn.tickWithinMeasure)
-            ))
-            let columnX = try #require(
+        // Every rendered event's own tick resolves to its column anchor —
+        // the engraved head's onset tick is its formatted-column membership.
+        for head in result.engraved.noteHeads {
+            let column = try #require(
                 formatted.measures
-                    .first { $0.index == head.timeColumn.measureIndex }?
+                    .first { $0.index == head.measureIndex }?
                     .columns
-                    .first { $0.localTick == head.timeColumn.tickWithinMeasure }?
-                    .logicalColumnX
+                    .first { $0.noteHeads.contains { $0.noteID == head.noteID } }
             )
-            #expect(onset.x == columnX)
+            let onset = try #require(formatted.position(
+                measureIndex: head.measureIndex,
+                localTick: Double(column.localTick)
+            ))
+            #expect(onset.x == column.logicalColumnX)
         }
     }
 
@@ -219,7 +236,8 @@ struct MeasuredGeometryInvariantsTests {
         }
 
         func columnX(_ prepared: GameplayNotationPreparedState) -> [CGFloat] {
-            prepared.formatted.measures
+            guard case let .ready(engraved, _) = prepared else { return [] }
+            return engraved.formatted.measures
                 .flatMap(\.columns)
                 .map(\.logicalColumnX)
         }
@@ -246,28 +264,39 @@ struct MeasuredGeometryInvariantsTests {
     func reflowPreservesMusicalIdentity() throws {
         let result = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.multiRowStableWidths)
         // Re-prepare the same snapshot at a much wider row.
-        let wide = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
-            snapshot: result.snapshot,
-            minimumMeasureCount: result.layout.measures.count,
-            style: .gameplayDefault.with(rowWidth: 2_400),
-            notePositionOverrides: DrumTabFixtureHarness.lockedOverrides
+        let wideEngraved = try support.requireEngraved(GameplayNotationPreparer.prepare(
+            GameplayNotationPreparationRequest(
+                snapshot: result.snapshot,
+                minimumMeasureCount: result.engraved.measures.count,
+                style: .gameplayDefault.with(rowWidth: 2_400),
+                notePositionOverrides: DrumTabFixtureHarness.lockedOverrides
+            )
         ))
 
-        func identity(_ layout: NotationLayout) -> Set<String> {
-            Set(layout.noteHeads.map { head in
-                "\(head.eventID?.rawValue ?? 0)@\(head.rhythmPosition.measureIndex):\(head.rhythmPosition.localTick)"
+        // Musical identity = event ID at (measure, onset tick). Engraved
+        // primitives carry final geometry, so the onset tick comes from the
+        // head's formatted-column membership.
+        func identity(_ engraved: EngravedNotation) -> Set<String> {
+            var tickByNoteID: [Int: Int] = [:]
+            for measure in engraved.formatted.measures {
+                for column in measure.columns {
+                    for head in column.noteHeads { tickByNoteID[head.noteID] = column.localTick }
+                }
+            }
+            return Set(engraved.noteHeads.map { head in
+                "\(head.noteID)@\(head.measureIndex):\(tickByNoteID[head.noteID] ?? -1)"
             })
         }
 
-        let before = identity(result.layout)
-        let after = identity(wide.layout)
+        let before = identity(result.engraved)
+        let after = identity(wideEngraved)
         #expect(!before.isEmpty)
         #expect(before == after)
         // Rows may change; the installed playhead lookup follows the packing.
         // rowIndex is zero-based, so the maximum row is strictly below the
         // measure count (equality would mean a row index out of bounds).
-        let maxRow = wide.layout.formattedNotation.measures.map(\.rowIndex).max() ?? 0
-        #expect(maxRow < wide.layout.formattedNotation.measures.count)
+        let maxRow = wideEngraved.measures.map(\.rowIndex).max() ?? 0
+        #expect(maxRow < wideEngraved.measures.count)
     }
 
     // MARK: - Displaced second

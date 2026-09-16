@@ -89,7 +89,7 @@ struct NotationFormatterDisplacementTests {
         // takes the shift.
         let notes = [
             Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: .whole),
-            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4, duration: .eighth, flag: .eighth)
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4, duration: .eighth)
         ]
         let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
         let column = try Fixtures.column(notation, localTick: 0)

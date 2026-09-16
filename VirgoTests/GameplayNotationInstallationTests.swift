@@ -25,10 +25,10 @@ struct GameplayNotationInstallationTests {
         await viewModel.loadChartData()
 
         let initialGeneration = viewModel.notationLayoutGeneration
-        viewModel.cacheNotationLayout()
+        viewModel.refreshNotationEngraving()
 
         #expect(viewModel.notationLayoutGeneration == initialGeneration &+ 1)
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(viewModel.cachedNotationHasRenderableContent)
     }
 
     @Test("notation layout generation is exposed as read-only state")
@@ -51,19 +51,19 @@ struct GameplayNotationInstallationTests {
             metronome: GameplayViewModelTestHarness.createTestMetronome()
         )
         await viewModel.loadChartData()
-        viewModel.cacheNotationLayout()
-        let renderableLayout = viewModel.cachedNotationLayout
-        #expect(renderableLayout.hasRenderableContent)
+        viewModel.refreshNotationEngraving()
+        let renderableEngraving = try #require(viewModel.cachedEngravedNotation)
+        let renderablePresentation = try #require(viewModel.notationPresentation)
 
-        viewModel.installNotationLayout(.empty)
+        viewModel.installPreparedNotation(.unavailable)
         let emptyGeneration = viewModel.notationLayoutGeneration
-        #expect(!viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(!viewModel.cachedNotationHasRenderableContent)
 
-        viewModel.installNotationLayout(renderableLayout)
+        viewModel.installPreparedNotation(.ready(renderableEngraving, renderablePresentation))
         let renderableGeneration = viewModel.notationLayoutGeneration
 
         #expect(renderableGeneration == emptyGeneration &+ 1)
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
+        #expect(viewModel.cachedNotationHasRenderableContent)
     }
 
     @Test("stale timeline preparation cannot install layout or readiness")
@@ -76,15 +76,21 @@ struct GameplayNotationInstallationTests {
         await viewModel.loadChartData()
 
         let prepared = try makePreparedTimelineState(for: viewModel)
-        let initialLayout = viewModel.cachedNotationLayout
+        let initialEngraving = viewModel.cachedEngravedNotation
         let workerGeneration = viewModel.beginNotationPreparation()
         let newerGeneration = viewModel.beginNotationPreparation()
 
         #expect(newerGeneration == workerGeneration &+ 1)
         #expect(!viewModel.applyPreparedNotation(prepared, generation: workerGeneration))
         #expect(viewModel.notationLayoutGeneration == newerGeneration)
-        #expect(viewModel.cachedNotationLayout.measures.isEmpty == initialLayout.measures.isEmpty)
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty == initialLayout.noteHeads.isEmpty)
+        // The rejected stale apply must leave the installed engraving
+        // untouched — compare identities, not emptiness.
+        #expect(viewModel.cachedEngravedNotation?.measures.map(\.index)
+                == initialEngraving?.measures.map(\.index))
+        #expect(viewModel.cachedEngravedNotation?.measures.map(\.rowIndex)
+                == initialEngraving?.measures.map(\.rowIndex))
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.map(\.noteID)
+                == initialEngraving?.noteHeads.map(\.noteID))
         #expect(!viewModel.isGameplayPrepared)
     }
 
@@ -103,9 +109,14 @@ struct GameplayNotationInstallationTests {
 
         #expect(viewModel.notationLayoutGeneration == generation)
         #expect(viewModel.isGameplayPrepared)
-        #expect(viewModel.cachedNotationLayout.noteHeads.map(\.eventID) == prepared.layout.noteHeads.map(\.eventID))
-        let installedMeasures = viewModel.cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
-        let preparedMeasures = prepared.layout.measures.map { ($0.measureIndex, $0.row) }
+        guard case let .ready(preparedEngraving, _) = prepared else {
+            Issue.record("Expected a .ready preparation for the fixture chart")
+            return
+        }
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.map(\.noteID)
+                == preparedEngraving.noteHeads.map(\.noteID))
+        let installedMeasures = viewModel.cachedEngravedNotation?.measures.map { ($0.index, $0.rowIndex) } ?? []
+        let preparedMeasures = preparedEngraving.measures.map { ($0.index, $0.rowIndex) }
         #expect(installedMeasures.count == preparedMeasures.count)
         for (installed, expected) in zip(installedMeasures, preparedMeasures) {
             #expect(installed.0 == expected.0)
@@ -151,9 +162,10 @@ struct GameplayNotationInstallationTests {
 
         #expect(playbackInput == installedInput)
         #expect(playbackInput.generation == installedInput.generation)
-        #expect(playbackInput.layout.noteHeads.map(\.id) == installedInput.layout.noteHeads.map(\.id))
+        #expect(playbackInput.engraving?.noteHeads.map(\.noteID)
+                == installedInput.engraving?.noteHeads.map(\.noteID))
 
-        viewModel.installNotationLayout(.empty)
+        viewModel.clearNotationInstallation()
         let replacementInput = gameplayView.staticNotationInput(viewModel: viewModel)
         #expect(replacementInput.generation != installedInput.generation)
     }

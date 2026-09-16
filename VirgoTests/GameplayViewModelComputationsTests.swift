@@ -90,13 +90,14 @@ struct GameplayViewModelComputationsTests {
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
 
-        #expect(vm.cachedNotationLayout.hasRenderableContent)
-        #expect(!vm.cachedNotationLayout.hasPlayableContent)
-        try #require(!vm.cachedNotationLayout.measures.isEmpty)
+        #expect(vm.cachedNotationHasRenderableContent)
+        #expect(!vm.cachedNotationHasPlayableContent)
+        let engraved = try #require(vm.cachedEngravedNotation)
+        #expect(!engraved.measures.isEmpty)
 
-        for notationMeasure in vm.cachedNotationLayout.measures {
-            let cachedPosition = try #require(vm.measurePositionMap[notationMeasure.measureIndex])
-            #expect(cachedPosition.row == notationMeasure.row)
+        for notationMeasure in engraved.measures {
+            let cachedPosition = try #require(vm.measurePositionMap[notationMeasure.index])
+            #expect(cachedPosition.row == notationMeasure.rowIndex)
             #expect(abs(cachedPosition.xOffset - notationMeasure.xOffset) < 0.001)
         }
 
@@ -366,7 +367,7 @@ struct ComputationsVisualUpdatesTests {
         let vm = await CoverageHelpers.preparedLegacyVM(noteCount: 4)
         defer { vm.cleanup() }
 
-        vm.installNotationLayout(.empty)
+        vm.clearNotationInstallation()
         try #require(vm.measurePositionMap[0] != nil, "Pre-condition: legacy positions present")
         vm.isPlaying = true
 
@@ -432,8 +433,8 @@ struct ComputationsVisualUpdatesTests {
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
 
-        // Force the legacy path by clearing the notation layout.
-        vm.installNotationLayout(.empty)
+        // Force the legacy path by clearing the installed notation.
+        vm.clearNotationInstallation()
         vm.measurePositionMap = [
             0: GameplayLayout.MeasurePosition(row: 0, xOffset: GameplayLayout.leftMargin, measureIndex: 0),
             1: GameplayLayout.MeasurePosition(row: 1, xOffset: GameplayLayout.leftMargin, measureIndex: 1),

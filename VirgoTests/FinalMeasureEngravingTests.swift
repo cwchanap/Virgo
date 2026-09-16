@@ -79,11 +79,12 @@ struct FinalMeasureEngravingTests {
         #expect(terminalMeasure.engravingSupport == midChartMeasure.engravingSupport)
     }
 
-    /// Normalized per-note signature for every note head in a measure:
-    /// timing (tick within measure + absolute layout tick), drum lane
-    /// (drumType + voice + sourceLaneID), inferred interval, resolved
-    /// duration ticks, augmentation dots, tuplet ratio, and stem direction.
-    /// Geometry (`position`, `row`) is deliberately excluded -- the
+    /// Normalized per-note signature for every engraved note head in a
+    /// measure: timing (tick within measure + absolute tick) and the app
+    /// semantics (note type, voice, lane, interval, duration ticks, dots,
+    /// tuplet) join back through the snapshot via the note's event ID;
+    /// voice and stem direction come from the engraved primitive itself.
+    /// Geometry (`position`, `rowIndex`) is deliberately excluded -- the
     /// aggregate `MeasureArtifacts` parity above covers counts, and x/y
     /// differs between terminal and mid-chart placements by construction
     /// (different row offsets), so locking it here would make the test
@@ -92,28 +93,29 @@ struct FinalMeasureEngravingTests {
         in result: FixtureRenderResult,
         measureIndex: Int
     ) -> [String] {
-        result.layout.noteHeads
-            .filter { $0.timeColumn.measureIndex == measureIndex }
-            .sorted {
-                ($0.timeColumn.tickWithinMeasure,
-                 $0.timeColumn.absoluteLayoutTick,
-                 $0.catalogOrder,
-                 $0.id)
-                    < ($1.timeColumn.tickWithinMeasure,
-                       $1.timeColumn.absoluteLayoutTick,
-                       $1.catalogOrder,
-                       $1.id)
+        let notesByID = Dictionary(
+            uniqueKeysWithValues: result.snapshot.notes.map { ($0.eventID.rawValue, $0) }
+        )
+        return result.engraved.noteHeads
+            .filter { $0.measureIndex == measureIndex }
+            .sorted { headA, headB in
+                let tickA = notesByID[headA.noteID]?.position.localTick ?? 0
+                let tickB = notesByID[headB.noteID]?.position.localTick ?? 0
+                return tickA == tickB ? headA.noteID < headB.noteID : tickA < tickB
             }
             .map { head in
-                let tuplet = head.rhythm.tuplet.map { "\($0.actual):\($0.normal)" } ?? "-"
-                return "t\(head.timeColumn.tickWithinMeasure)"
-                    + "/abs\(head.timeColumn.absoluteLayoutTick)"
-                    + "/\(head.drumType.description)"
+                guard let note = notesByID[head.noteID] else {
+                    return "MISSING-SNAPSHOT-NOTE-\(head.noteID)"
+                }
+                let tuplet = note.rhythm.tuplet.map { "\($0.actual):\($0.normal)" } ?? "-"
+                return "t\(note.position.localTick)"
+                    + "/abs\(note.position.absoluteTick)"
+                    + "/\(note.noteType.rawValue)"
                     + "/v\(head.voice.rawValue)"
-                    + "/lane=\(head.sourceLaneID ?? "-")"
-                    + "/int=\(head.interval.rawValue)"
-                    + "/dur=\(head.rhythmDurationTicks.map(String.init) ?? "-")"
-                    + "/dots=\(head.rhythm.dotCount)"
+                    + "/lane=\(note.sourceLaneID ?? "-")"
+                    + "/int=\(note.rhythm.baseInterval.rawValue)"
+                    + "/dur=\(note.durationTicks)"
+                    + "/dots=\(note.rhythm.dotCount)"
                     + "/tup=\(tuplet)"
                     + "/stem=\(head.stemDirection.rawValue)"
             }
@@ -123,24 +125,24 @@ struct FinalMeasureEngravingTests {
         in result: FixtureRenderResult,
         measureIndex: Int
     ) -> MeasureArtifacts {
-        let noteHeads = result.layout.noteHeads.filter {
-            $0.timeColumn.measureIndex == measureIndex
+        let noteHeads = result.engraved.noteHeads.filter {
+            $0.measureIndex == measureIndex
         }
-        let noteHeadIDs = Set(noteHeads.map(\.id))
+        let noteHeadIDs = Set(noteHeads.map(\.noteID))
 
         return MeasureArtifacts(
             noteHeadCount: noteHeads.count,
-            stemCount: result.layout.stems.count {
-                $0.noteHeadIDs.contains(where: noteHeadIDs.contains)
+            stemCount: result.engraved.stems.count {
+                $0.noteIDs.contains(where: noteHeadIDs.contains)
             },
-            beamCount: result.layout.beams.count {
-                $0.noteHeadIDs.contains(where: noteHeadIDs.contains)
+            beamCount: result.engraved.beams.count {
+                $0.noteIDs.contains(where: noteHeadIDs.contains)
             },
-            flagCount: result.layout.flags.count {
-                noteHeadIDs.contains($0.noteHeadID)
+            flagCount: result.engraved.flags.count {
+                noteHeadIDs.contains($0.noteID)
             },
-            printedRestCount: result.layout.rests.count {
-                $0.measureIndex == measureIndex && $0.isPrinted
+            printedRestCount: result.engraved.rests.count {
+                $0.measureIndex == measureIndex
             }
         )
     }

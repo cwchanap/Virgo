@@ -19,14 +19,17 @@ struct VirgoNotationPreparationRouteTests {
             GameplayNotationPreparer.prepare(request)
         }.value
 
+        let (syncEngraved, _) = try NotationSnapshotTestSupport().requireReady(synchronous)
+        let (detachedEngraved, _) = try NotationSnapshotTestSupport().requireReady(detached)
+
         // Identical package measure geometry.
-        #expect(synchronous.formatted == detached.formatted)
-        #expect(!synchronous.formatted.measures.isEmpty)
+        #expect(syncEngraved.formatted == detachedEngraved.formatted)
+        #expect(!syncEngraved.formatted.measures.isEmpty)
 
         // Row-leading origin: the first measure of every row starts at the
         // leading inset.
         var firstMeasureXPerRow: [Int: CGFloat] = [:]
-        for measure in synchronous.formatted.measures
+        for measure in syncEngraved.formatted.measures
         where firstMeasureXPerRow[measure.rowIndex] == nil {
             firstMeasureXPerRow[measure.rowIndex] = measure.xOffset
         }
@@ -37,11 +40,11 @@ struct VirgoNotationPreparationRouteTests {
 
         // Logical tick lookup identical between the two routes, including a
         // between-anchor interpolation.
-        for measure in synchronous.formatted.measures {
+        for measure in syncEngraved.formatted.measures {
             for column in measure.columns {
                 #expect(
-                    synchronous.formatted.position(measureIndex: measure.index, localTick: Double(column.localTick))
-                        == detached.formatted.position(
+                    syncEngraved.formatted.position(measureIndex: measure.index, localTick: Double(column.localTick))
+                        == detachedEngraved.formatted.position(
                             measureIndex: measure.index,
                             localTick: Double(column.localTick)
                         )
@@ -49,18 +52,19 @@ struct VirgoNotationPreparationRouteTests {
             }
             let midpoint = Double(measure.columns.first?.localTick ?? 0) + 60
             #expect(
-                synchronous.formatted.position(measureIndex: measure.index, localTick: midpoint)
-                    == detached.formatted.position(measureIndex: measure.index, localTick: midpoint)
+                syncEngraved.formatted.position(measureIndex: measure.index, localTick: midpoint)
+                    == detachedEngraved.formatted.position(measureIndex: measure.index, localTick: midpoint)
             )
         }
     }
 
-    @Test("The one route installs the formatted output alongside the layout")
+    @Test("The one route installs the formatted output alongside the engraving")
     func preparedStateExposesFormattedOutput() throws {
         let request = try makeMultiMeasureRequest(measureCount: 2)
         let prepared = GameplayNotationPreparer.prepare(request)
 
-        #expect(prepared.layout.measures.map(\.measureIndex) == prepared.formatted.measures.map(\.index))
+        let (engraved, _) = try NotationSnapshotTestSupport().requireReady(prepared)
+        #expect(engraved.measures.map(\.index) == engraved.formatted.measures.map(\.index))
     }
 
     // MARK: - Fixtures

@@ -9,7 +9,7 @@ extension DrumTabFixtureCatalog {
     ///
     /// Content lives in DTX measure 0 (not 1) to avoid the empty lead-in
     /// measure that content-in-1 would add ahead of it (see `sixteenthRun`'s
-    /// doc comment); `result.layout.measures.first` would otherwise be that
+    /// doc comment); `result.engraved.measures.first` would otherwise be that
     /// lead-in, not the measure under test.
     ///
     /// A one-note sentinel in measure 1 gives the tick-33 chip a same-voice
