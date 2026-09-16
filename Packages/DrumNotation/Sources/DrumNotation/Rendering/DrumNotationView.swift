@@ -172,15 +172,18 @@ private extension DrumNotationView {
 
     /// The percussion clef mark: three stacked bars centered on the
     /// descriptor's glyph position — the app's `DrumClefSymbol`
-    /// proportions, a fixed furniture mark rather than a Bravura glyph.
+    /// proportions (12×32), uniformly shrunk to fit the reserved slot so a
+    /// smaller `clefWidth`/staff height can never paint outside it.
     func clefMark(at clef: EngravedClef) -> some View {
-        Path { path in
+        let slot = clef.paintedBounds
+        let scale = min(1, slot.width / 12, slot.height / 32)
+        return Path { path in
             for yOffset in [-16.0, -4.0, 8.0] {
                 path.addRect(CGRect(
-                    x: clef.position.x - 6,
-                    y: clef.position.y + yOffset,
-                    width: 12,
-                    height: 8
+                    x: clef.position.x - 6 * scale,
+                    y: clef.position.y + yOffset * scale,
+                    width: 12 * scale,
+                    height: 8 * scale
                 ))
             }
         }
@@ -188,16 +191,24 @@ private extension DrumNotationView {
     }
 
     /// The row's meter signature: beats over note value in the app's serif
-    /// bold, centered on the descriptor's reserved slot.
+    /// bold, framed to the descriptor's reserved slot. The font caps at
+    /// 18pt and shrinks with the slot so small furniture or wide meters
+    /// (e.g. 12/8) stay inside `paintedBounds`.
     func meterDigits(_ signature: EngravedMeterSignature) -> some View {
-        VStack(spacing: 2) {
+        let slot = signature.paintedBounds
+        return VStack(spacing: 2) {
             Text("\(signature.meter.beats)")
             Text("\(signature.meter.noteValue)")
         }
-        .font(.system(size: 18, weight: .bold, design: .serif))
+        .font(.system(
+            size: min(18, slot.height * 0.35), weight: .bold, design: .serif
+        ))
         .foregroundStyle(appearance.foreground)
-        .fixedSize()
-        .position(signature.position)
+        .lineLimit(1)
+        .minimumScaleFactor(0.4)
+        .frame(width: slot.width, height: slot.height)
+        .clipped()
+        .position(x: slot.midX, y: slot.midY)
     }
 
     // MARK: - Decorative notation geometry
@@ -340,8 +351,8 @@ private extension DrumNotationView {
     }
 
     /// One resolved tuplet: the six-point bracket (two strokes around the
-    /// label gap) when visible, plus the stroked numeral at `labelPosition`
-    /// — the app's `NotationTupletView` verbatim in package form.
+    /// label gap) when visible, plus the resolved `ratio.actual` numeral
+    /// fitted to the reserved label rect at `labelPosition`.
     var tupletsLayer: some View {
         ForEach(layout.tuplets, id: \.tupletID) { tuplet in
             labeled(
@@ -357,15 +368,18 @@ private extension DrumNotationView {
                         }
                         .stroke(appearance.foreground, lineWidth: style.tupletLineWidth)
                     }
-                    TupletNumeralShape()
-                        .stroke(
-                            appearance.foreground,
-                            style: StrokeStyle(
-                                lineWidth: style.tupletLineWidth,
-                                lineCap: .round,
-                                lineJoin: .round
-                            )
-                        )
+                    // The resolved numeral — `ratio.actual`, not a fixed
+                    // "3" — verbatim so digits never localize, fitted to
+                    // the reserved label rect with shrink for multi-digit
+                    // actuals.
+                    Text(verbatim: "\(tuplet.ratio.actual)")
+                        .font(.system(
+                            size: style.tupletLabelSize.height * 0.8,
+                            weight: .bold, design: .serif
+                        ))
+                        .foregroundStyle(appearance.foreground)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
                         .frame(
                             width: style.tupletLabelSize.width,
                             height: style.tupletLabelSize.height
@@ -376,25 +390,5 @@ private extension DrumNotationView {
                 as: .tuplet(tuplet.tupletID)
             )
         }
-    }
-}
-
-/// The stroked tuplet numeral — the port of the app's `TupletThreeShape`:
-/// a fixed "3" curve inside the reserved label frame.
-private struct TupletNumeralShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX + rect.width * 0.18, y: rect.minY + rect.height * 0.14))
-        path.addCurve(
-            to: CGPoint(x: rect.minX + rect.width * 0.52, y: rect.midY),
-            control1: CGPoint(x: rect.maxX, y: rect.minY),
-            control2: CGPoint(x: rect.maxX, y: rect.midY * 0.8)
-        )
-        path.addCurve(
-            to: CGPoint(x: rect.minX + rect.width * 0.12, y: rect.maxY - rect.height * 0.12),
-            control1: CGPoint(x: rect.maxX, y: rect.midY),
-            control2: CGPoint(x: rect.maxX, y: rect.maxY)
-        )
-        return path
     }
 }
