@@ -368,27 +368,34 @@ private extension DrumNotationView {
                         }
                         .stroke(appearance.foreground, lineWidth: style.tupletLineWidth)
                     }
-                    // The resolved numeral — `ratio.actual`, not a fixed
-                    // "3" — verbatim so digits never localize, fitted to
-                    // the reserved label rect with shrink for multi-digit
-                    // actuals.
-                    Text(verbatim: "\(tuplet.ratio.actual)")
-                        .font(.system(
-                            size: style.tupletLabelSize.height * 0.8,
-                            weight: .bold, design: .serif
-                        ))
-                        .foregroundStyle(appearance.foreground)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .frame(
-                            width: style.tupletLabelSize.width,
-                            height: style.tupletLabelSize.height
-                        )
-                        .position(tuplet.labelPosition)
+                    tupletNumeral(tuplet)
                 }
                 .accessibilityElement(children: .ignore),
                 as: .tuplet(tuplet.tupletID)
             )
         }
+    }
+
+    /// The resolved numeral — `ratio.actual` as measured Bravura tuplet
+    /// digits laid out by metadata advance widths and scaled so the whole
+    /// run fits the reserved label rect. The path is centered on the
+    /// origin, so it offsets to its bounds (the `GlyphFill` pattern)
+    /// before the label frame centers it; `.clipped()` is only the
+    /// containment safeguard.
+    private func tupletNumeral(_ tuplet: EngravedTuplet) -> some View {
+        let path = Path(BravuraFont.tupletNumeralPath(
+            actual: tuplet.ratio.actual,
+            fitting: style.tupletLabelSize
+        ))
+        let bounds = path.boundingRect
+        return path
+            .offset(x: -bounds.minX, y: -bounds.minY)
+            .fill(appearance.foreground)
+            .frame(
+                width: style.tupletLabelSize.width,
+                height: style.tupletLabelSize.height
+            )
+            .clipped()
+            .position(tuplet.labelPosition)
     }
 }

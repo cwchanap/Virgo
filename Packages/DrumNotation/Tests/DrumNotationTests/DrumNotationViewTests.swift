@@ -404,6 +404,73 @@ struct DrumNotationViewRasterTests {
         #expect(raster5.alphaBytes(in: labelRect) != raster3.alphaBytes(in: labelRect))
     }
 
+    @Test("multi-digit and long numerals stay inside the reserved label rect")
+    @MainActor
+    func longTupletNumeralFitsLabelRect() async throws {
+        // `ratio.actual` is an arbitrary positive Int. "12" covers real
+        // multi-digit tuplets; "123456789" overflows the old 0.5
+        // minimumScaleFactor floor outright. Either way the whole numeral
+        // must render inside the reserved `tupletLabelSize` rect.
+        for actual in [12, 123_456_789] {
+            let layout = try NotationEngraver.engrave(
+                quintupletInput(actual: actual, normal: 4), style: style
+            )
+            let tuplet = try #require(layout.tuplets.first)
+            let labelRect = CGRect(
+                x: tuplet.labelPosition.x - style.tupletLabelSize.width / 2,
+                y: tuplet.labelPosition.y - style.tupletLabelSize.height / 2,
+                width: style.tupletLabelSize.width,
+                height: style.tupletLabelSize.height
+            )
+            let raster = try rasterize(
+                DrumNotationView(layout: layout, accessibilityLabels: [:]),
+                size: CGSize(
+                    width: layout.contentWidth, height: layout.contentHeight
+                )
+            )
+            #expect(raster.inkCount(in: labelRect) > 0)
+            // Probe strips just past the label rect's left/right edges,
+            // restricted to the label's center band: inside the bracket
+            // gap (bracket ink stops halfGap = labelW/2 + dotSpacing past
+            // the center), away from staff lines (labelY sits mid-band
+            // between them) and member stems (member columns are well
+            // outside the strip). Only numeral ink spilling the reserved
+            // rect horizontally can land here.
+            let stripHeight: CGFloat = 3
+            for side: CGFloat in [-1, 1] {
+                let strip = CGRect(
+                    x: side < 0
+                        ? labelRect.minX - 2.5
+                        : labelRect.maxX + 1.25,
+                    y: tuplet.labelPosition.y - stripHeight / 2,
+                    width: 1.25,
+                    height: stripHeight
+                )
+                #expect(
+                    raster.inkCount(in: strip) == 0,
+                    "numeral spills the label rect (actual=\(actual), side=\(side))"
+                )
+            }
+        }
+    }
+
+    @Test("the measured numeral path fits the reserved label size for any digit count")
+    func tupletNumeralPathFitsLabelSize() {
+        // The fit contract directly: `boundingBox` is control-point bounds
+        // (⊇ ink), so if it fits the label size the painted numeral provably
+        // stays inside — for single digits, real multi-digit tuplets, and
+        // absurdly long positive ratios alike.
+        let size = CGSize(width: 14, height: 16)
+        for actual in [3, 12, 123_456_789] {
+            let bounds = BravuraFont.tupletNumeralPath(
+                actual: actual, fitting: size
+            ).boundingBox
+            #expect(bounds.width <= size.width + 0.01)
+            #expect(bounds.height <= size.height + 0.01)
+            #expect(bounds.width > 0 && bounds.height > 0)
+        }
+    }
+
     @Test("clef + meter painters stay inside small slots with a wide meter")
     @MainActor
     func furniturePaintsInsideSmallSlots() async throws {
