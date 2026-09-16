@@ -31,6 +31,16 @@ struct EngraverWideChordBeamTests {
         )
     }
 
+    /// The beam's stroked ink — the composer's `lineBounds` formula. The
+    /// centerline clearance assertions alone would miss that the painted
+    /// edge reaches `thickness / 2` back toward the chord.
+    private func beamInk(_ beam: EngravedBeam) -> CGRect {
+        CGRect(
+            x: min(beam.start.x, beam.end.x), y: min(beam.start.y, beam.end.y),
+            width: abs(beam.end.x - beam.start.x), height: abs(beam.end.y - beam.start.y)
+        ).insetBy(dx: -beam.thickness / 2, dy: -beam.thickness / 2)
+    }
+
     @Test("an up-stem beam clears the wide chord's far member ink")
     func upStemBeamClearsWideChord() throws {
         let input = try Fixtures.document(
@@ -57,18 +67,26 @@ struct EngraverWideChordBeamTests {
         let farHead = try head(engraved, id: 3)
 
         // A representative-only base cannot clear the far member — the
-        // finding's exact overlap; the chord term must bind instead.
+        // finding's exact overlap; the chord term must bind instead. The
+        // centerline must sit a half beam thickness beyond the minimum so
+        // the STROKED ink edge — what actually paints — keeps the full
+        // extension clear of the far chord member.
         let repBaseY = try anchor(engraved, noteID: 2).y - style.stemLength
         #expect(repBaseY > farHead.paintedBounds.minY - style.minimumStemExtensionPastChord)
-        #expect(primary.start.y <= farHead.paintedBounds.minY - style.minimumStemExtensionPastChord)
+        #expect(primary.start.y <= farHead.paintedBounds.minY
+            - style.minimumStemExtensionPastChord - style.beamThickness / 2)
+        #expect(beamInk(primary).maxY <= farHead.paintedBounds.minY
+            - style.minimumStemExtensionPastChord)
 
         // The shared base is the most extreme of the default-length reach
-        // and every participating member's far edge + extension.
+        // and every participating member's far edge + extension +
+        // half-thickness stroked offset.
         let repAnchors = [try anchor(engraved, noteID: 1), try anchor(engraved, noteID: 2)]
         let memberBounds = [try head(engraved, id: 1), try head(engraved, id: 2), farHead]
         let expected = (repAnchors.map { $0.y - style.stemLength }
             + memberBounds.map {
                 $0.paintedBounds.minY - style.minimumStemExtensionPastChord
+                    - style.beamThickness / 2
             }).min()
         #expect(primary.start.y == expected)
 
@@ -109,13 +127,17 @@ struct EngraverWideChordBeamTests {
 
         let repBaseY = try anchor(engraved, noteID: 2).y + style.stemLength
         #expect(repBaseY < farHead.paintedBounds.maxY + style.minimumStemExtensionPastChord)
-        #expect(primary.start.y >= farHead.paintedBounds.maxY + style.minimumStemExtensionPastChord)
+        #expect(primary.start.y >= farHead.paintedBounds.maxY
+            + style.minimumStemExtensionPastChord + style.beamThickness / 2)
+        #expect(beamInk(primary).minY >= farHead.paintedBounds.maxY
+            + style.minimumStemExtensionPastChord)
 
         let repAnchors = [try anchor(engraved, noteID: 1), try anchor(engraved, noteID: 2)]
         let memberBounds = [try head(engraved, id: 1), try head(engraved, id: 2), farHead]
         let expected = (repAnchors.map { $0.y + style.stemLength }
             + memberBounds.map {
                 $0.paintedBounds.maxY + style.minimumStemExtensionPastChord
+                    + style.beamThickness / 2
             }).max()
         #expect(primary.start.y == expected)
     }
@@ -131,6 +153,7 @@ struct EngraverMixedSupportTests {
             notes: [
                 // The engravable member: fewer flag levels than its
                 // suppressed sibling but the only legal representative.
+                // Its 60-tick duration chains the next onset at tick 60.
                 Fixtures.makeNote(
                     id: 1, localTick: 0, staffStep: 3,
                     duration: .thirtySecond, dotCount: 1, durationTicks: 60
@@ -143,13 +166,21 @@ struct EngraverMixedSupportTests {
                     duration: .sixtyFourth, dotCount: 1,
                     durationTicks: 30, isRhythmEngravable: false
                 ),
-                // A normal beamed pair elsewhere keeps beams in the fixture.
+                // Adjacent beamable onsets pull the mixed chord into a
+                // primary run — the asserted beam must be the chord's own.
                 Fixtures.makeNote(
-                    id: 3, localTick: 120, staffStep: 3,
+                    id: 3, localTick: 60, staffStep: 3,
                     duration: .sixteenth, durationTicks: 120
                 ),
                 Fixtures.makeNote(
-                    id: 4, localTick: 240, staffStep: 3,
+                    id: 4, localTick: 180, staffStep: 3,
+                    duration: .sixteenth, durationTicks: 120
+                ),
+                // An isolated engravable sixteenth keeps flag coverage
+                // non-vacuous: its canonical flag exists only because an
+                // engravable representative governs its group.
+                Fixtures.makeNote(
+                    id: 5, localTick: 480, staffStep: 3,
                     duration: .sixteenth, durationTicks: 120
                 )
             ],
@@ -157,25 +188,37 @@ struct EngraverMixedSupportTests {
         )
         let engraved = try NotationEngraver.engrave(input, style: style)
 
+        // Beams: the level-0 full beam of the chord's own primary run
+        // retains BOTH chord member IDs — the suppressed sibling keeps
+        // chord membership even though it owns no rhythm primitives.
+        let primaryBeam = try #require(engraved.beams.first {
+            $0.level == 0 && $0.kind == .full && $0.noteIDs.contains(1)
+        })
+        #expect(primaryBeam.noteIDs == [1, 2, 3, 4])
+
+        // The chord's extra level hooks forward onto the next onset; the
+        // hook's membership likewise carries the suppressed ID.
+        #expect(engraved.beams.contains {
+            $0.level == 2 && $0.kind == .forwardHook && $0.noteIDs == [1, 2]
+        })
+
         // Stems: one stem serves the engravable member only — the
         // suppressed head keeps its ink but no rhythm primitives.
         let stem = try #require(engraved.stems.first { $0.noteIDs.contains(1) })
         #expect(stem.noteIDs == [1])
+        #expect(engraved.stems.allSatisfy { !$0.noteIDs.contains(2) })
 
-        // Beams: the sixteenth pair forms one primary run untouched by
-        // the mixed onset.
-        #expect(engraved.beams.contains { $0.kind == .full && $0.noteIDs == [3, 4] })
-
-        // Flags: the isolated engravable 32nd paints its canonical flag —
-        // never suppressed by the sibling's higher flag count.
+        // Flags: the only painted flag is the isolated engravable
+        // sixteenth's canonical flag; the suppressed sibling can never
+        // own flag ink.
         let flag = try #require(engraved.flags.first)
         #expect(engraved.flags.count == 1)
-        #expect(flag.noteID == 1)
-        #expect(flag.duration == .thirtySecond)
-        #expect(flag.origin.y == stem.end.y)
+        #expect(flag.noteID == 5)
+        #expect(flag.duration == .sixteenth)
+        #expect(flag.origin.y == engraved.stems.first { $0.noteIDs == [5] }?.end.y)
 
         // Dots: the engravable member's dot paints; the suppressed
-        // sibling's does not.
+        // sibling's does not — even inside a shared beam.
         #expect(engraved.rhythmDots.contains { $0.source == .note(1) })
         #expect(engraved.rhythmDots.contains { $0.source == .note(2) } == false)
     }
