@@ -14,7 +14,7 @@ struct NotationFormatterTests {
         let document = try Fixtures.document()
 
         #expect(document.ticksPerWholeNote == 1920)
-        #expect(document.measures == [ResolvedMeasure(index: 0, startTick: 0, durationTicks: 1920)])
+        #expect(document.measures == [Fixtures.measure()])
 
         let note = document.notes.first
         #expect(note?.id == 42)
@@ -25,6 +25,11 @@ struct NotationFormatterTests {
         #expect(note?.duration == .sixteenth)
         #expect(note?.dotCount == 0)
         #expect(note?.visibleFlagDuration == .sixteenth)
+        #expect(note?.voice == .upper)
+        #expect(note?.durationTicks == 120)
+        #expect(note?.tiebreakOrder == 0)
+        #expect(note?.isRhythmEngravable == true)
+        #expect(note?.articulation == nil)
 
         let rest = document.rests.first
         #expect(rest?.id == 7)
@@ -32,13 +37,11 @@ struct NotationFormatterTests {
         #expect(rest?.duration == .quarter)
         #expect(rest?.dotCount == 1)
         #expect(rest?.isFullMeasure == false)
+        #expect(rest?.voice == .upper)
+        #expect(rest?.durationTicks == 480)
 
-        #expect(
-            document.controls.first == ResolvedControl(
-                id: 9,
-                position: NotationTickPosition(measureIndex: 0, localTick: 480)
-            )
-        )
+        #expect(document.controls.first == Fixtures.control())
+        #expect(document.tuplets.isEmpty)
         let again = try Fixtures.document()
         #expect(document == again)
     }
@@ -50,6 +53,19 @@ struct NotationFormatterTests {
         _ = requireSendable(Fixtures.note())
         _ = requireSendable(Fixtures.rest())
         _ = requireSendable(Fixtures.control())
+        _ = requireSendable(NotationVoiceRole.upper)
+        _ = requireSendable(NotationMeter(beats: 4, noteValue: 4))
+        _ = requireSendable(ResolvedBeatGroup(startTick: 0, durationTicks: 480))
+        _ = requireSendable(NotationControlKind.stop)
+        _ = requireSendable(ResolvedTupletRatio(actual: 3, normal: 2))
+        _ = requireSendable(ResolvedTupletGroup(
+            id: 0,
+            measureIndex: 0,
+            voice: .upper,
+            ratio: ResolvedTupletRatio(actual: 3, normal: 2),
+            memberNoteIDs: [],
+            memberRestIDs: []
+        ))
         _ = requireSendable(NotationTickPosition(measureIndex: 0, localTick: 0))
         _ = requireSendable(NotationFormattingStyle.virgoDefault)
         _ = requireSendable(Fixtures.formattedNotation())
@@ -160,7 +176,7 @@ struct NotationFormatterTests {
         #expect {
             try Fixtures.document(measures: [
                 Fixtures.measure(),
-                ResolvedMeasure(index: 1, startTick: Int.max - 10, durationTicks: 100)
+                Fixtures.measure(index: 1, startTick: Int.max - 10, durationTicks: 100)
             ])
         } throws: { error in
             error as? ResolvedNotationInput.ValidationError
