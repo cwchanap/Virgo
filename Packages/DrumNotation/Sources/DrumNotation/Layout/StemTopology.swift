@@ -319,10 +319,14 @@ struct StemTopologyBuilder {
         return direction == .up ? ordered.last : ordered.first
     }
 
-    /// The engine's `flagRepresentative` comparator over resolved notes:
-    /// most required flag levels, then `tiebreakOrder`, then ID.
+    /// The engine's `flagRepresentative` comparator over resolved notes,
+    /// restricted to duration-bearing engravable members: most required
+    /// flag levels, then `tiebreakOrder`, then ID. A suppressed member
+    /// keeps its `memberNoteIDs` chord slot but can never govern the
+    /// event — picking it would boundary the whole chord and suppress its
+    /// engravable siblings' beams and flags.
     private func flagRepresentative(in members: [ResolvedNote]) -> ResolvedNote? {
-        members.min { lhs, rhs in
+        members.filter { $0.isRhythmEngravable }.min { lhs, rhs in
             if lhs.duration.flagCount != rhs.duration.flagCount {
                 return lhs.duration.flagCount > rhs.duration.flagCount
             }

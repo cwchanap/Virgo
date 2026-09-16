@@ -11,27 +11,36 @@ import CoreGraphics
 // articulations, controls, tuplets, measure bars); their arrays exist here
 // already so the result contract does not change when they fill in.
 
-/// The percussion-clef furniture at a row's leading edge. Only its final
-/// center position is engraved — the painter owns the glyph metrics.
+/// The percussion-clef furniture at a row's leading edge. `position` is the
+/// glyph's final center; `paintedBounds` is the clef's reserved furniture
+/// slot (`clefWidth` × staff height, centered on `position`) — the
+/// engraver's bound while the painter owns the glyph metrics.
 public struct EngravedClef: Hashable, Sendable {
     /// Clef glyph center in final sheet coordinates.
     public let position: CGPoint
+    /// The reserved furniture slot in final sheet coordinates.
+    public let paintedBounds: CGRect
 
-    public init(position: CGPoint) {
+    public init(position: CGPoint, paintedBounds: CGRect) {
         self.position = position
+        self.paintedBounds = paintedBounds
     }
 }
 
 /// The meter signature beside a row's clef: the resolved meter of the row's
-/// first formatted measure at its furniture-center position.
+/// first formatted measure at its furniture-center position, plus the
+/// signature's reserved slot (`meterWidth` × staff height).
 public struct EngravedMeterSignature: Hashable, Sendable {
     public let meter: NotationMeter
     /// Signature center in final sheet coordinates.
     public let position: CGPoint
+    /// The reserved furniture slot in final sheet coordinates.
+    public let paintedBounds: CGRect
 
-    public init(meter: NotationMeter, position: CGPoint) {
+    public init(meter: NotationMeter, position: CGPoint, paintedBounds: CGRect) {
         self.meter = meter
         self.position = position
+        self.paintedBounds = paintedBounds
     }
 }
 
@@ -39,7 +48,11 @@ public struct EngravedMeterSignature: Hashable, Sendable {
 /// line (staff step 4) after the single Y normalization — the row-relative
 /// pitch anchor every consumer shares. `staffLineYs` carries the painted
 /// staff geometry row anchors and the playhead read from; `clef` and
-/// `meterSignature` are the row-leading furniture descriptors.
+/// `meterSignature` are the row-leading furniture descriptors; and
+/// `paintedBounds` unions all the row's furniture ink — the five stroked
+/// staff lines spanning the row's formatted extent plus both furniture
+/// slots — so the furniture participates in the single normalization and
+/// the sheet's painted bounds like every other primitive.
 public struct EngravedRow: Hashable, Sendable {
     public let index: Int
     public let staffCenterY: CGFloat
@@ -47,19 +60,23 @@ public struct EngravedRow: Hashable, Sendable {
     public let staffLineYs: [CGFloat]
     public let clef: EngravedClef
     public let meterSignature: EngravedMeterSignature
+    /// Union of the row's furniture ink in final sheet coordinates.
+    public let paintedBounds: CGRect
 
     public init(
         index: Int,
         staffCenterY: CGFloat,
         staffLineYs: [CGFloat],
         clef: EngravedClef,
-        meterSignature: EngravedMeterSignature
+        meterSignature: EngravedMeterSignature,
+        paintedBounds: CGRect
     ) {
         self.index = index
         self.staffCenterY = staffCenterY
         self.staffLineYs = staffLineYs
         self.clef = clef
         self.meterSignature = meterSignature
+        self.paintedBounds = paintedBounds
     }
 }
 

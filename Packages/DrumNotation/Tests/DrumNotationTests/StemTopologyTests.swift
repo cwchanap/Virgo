@@ -144,6 +144,45 @@ struct StemTopologyTests {
         #expect(try group(byID, localTick: 0).flagRepresentativeID == 4)
     }
 
+    @Test("a suppressed member never governs the flag representative but keeps its chord ID")
+    func flagRepresentativeSkipsNonEngravableMembers() throws {
+        let topology = try topology(notes: [
+            Fixtures.makeNote(
+                id: 1, localTick: 0, staffStep: 3,
+                duration: .thirtySecond, durationTicks: 60
+            ),
+            // The suppressed sibling owns MORE flag levels — the member
+            // the unfixed comparator would wrongly let govern the event.
+            Fixtures.makeNote(
+                id: 2, localTick: 0, staffStep: 5,
+                duration: .sixtyFourth, durationTicks: 30,
+                isRhythmEngravable: false
+            )
+        ])
+        let stemGroup = try group(topology, localTick: 0)
+        let index = try #require(topology.stemGroups.firstIndex(of: stemGroup))
+
+        #expect(stemGroup.flagRepresentativeID == 1)
+        // Chord membership is unchanged: every member ID still rides the
+        // stem group and its timeline event.
+        #expect(stemGroup.memberNoteIDs == [1, 2])
+        #expect(topology.events[index].noteIDs == [1, 2])
+        #expect(topology.events[index].role == .beamable(requiredBeamLevels: 3, durationTicks: 60))
+    }
+
+    @Test("a fully suppressed chord emits no flag representative")
+    func suppressedChordHasNoFlagRepresentative() throws {
+        let topology = try topology(notes: [
+            Fixtures.makeNote(
+                id: 1, localTick: 0, staffStep: 3,
+                duration: .sixteenth, isRhythmEngravable: false
+            )
+        ])
+
+        #expect(try group(topology, localTick: 0).flagRepresentativeID == nil)
+        #expect(topology.events.first?.role == .boundary)
+    }
+
     // MARK: Stem-group construction
 
     @Test("stem groups split by voice, stem direction and tick; member IDs are sorted")

@@ -139,6 +139,9 @@ struct SheetComposer {
         var controls: [EngravedControl] = []
         var tuplets: [EngravedTuplet] = []
         var measureBars: [EngravedMeasureBar] = []
+        /// Row furniture in raw coordinates — staff-line ink, clef and
+        /// meter slots — unioned into `paintedUnion` before the shift.
+        var rows: [EngravedRow] = []
         var paintedUnion: CGRect?
 
         mutating func include(_ bounds: CGRect) {
@@ -157,9 +160,9 @@ struct SheetComposer {
             input.measures.map { ($0.index, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        let rows = Set(formatted.measures.map(\.rowIndex)).sorted().map {
-            engravedRow(index: $0, shift: shift, measuresByIndex: measuresByIndex)
-        }
+        // Row furniture was laid out in raw coordinates inside `collect`,
+        // so it rides the same single shift as every other primitive.
+        let rows = raw.rows.map { $0.translated(byY: shift) }
         let measures = formatted.measures.compactMap { formattedMeasure -> EngravedMeasure? in
             guard let measure = measuresByIndex[formattedMeasure.index] else { return nil }
             return EngravedMeasure(
@@ -245,6 +248,7 @@ struct SheetComposer {
         collectControls(raw: &raw)
         collectTuplets(headsByID: headsByID, restsByID: pendingRestsByID, raw: &raw)
         collectMeasureBars(raw: &raw)
+        collectRowFurniture(raw: &raw)
     }
 
     private func collect(

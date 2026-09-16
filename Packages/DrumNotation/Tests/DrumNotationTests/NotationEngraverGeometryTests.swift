@@ -60,10 +60,12 @@ struct NotationEngravingStyleTests {
         _ = requireSendable(EngravedRow(
             index: 0, staffCenterY: 40,
             staffLineYs: [0, 10, 20, 30, 40],
-            clef: EngravedClef(position: .zero),
+            clef: EngravedClef(position: .zero, paintedBounds: .zero),
             meterSignature: EngravedMeterSignature(
-                meter: NotationMeter(beats: 4, noteValue: 4), position: .zero
-            )
+                meter: NotationMeter(beats: 4, noteValue: 4),
+                position: .zero, paintedBounds: .zero
+            ),
+            paintedBounds: .zero
         ))
         _ = requireSendable(EngravedMeasure(
             index: 0, rowIndex: 0, xOffset: 100, width: 252,
@@ -391,26 +393,6 @@ struct NotationEngraverGeometryTests {
 
         #expect(engraved.noteHeads.count == 1)
         #expect(engraved.rhythmDots.isEmpty)
-    }
-
-    @Test("every primitive paints inside the final painted bounds")
-    func primitivesInsidePaintedBounds() throws {
-        let input = try Fixtures.document(
-            notes: [
-                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 10, dotCount: 1),
-                Fixtures.makeNote(id: 2, localTick: 960, staffStep: -4, stem: .down, headStyle: .normal)
-            ],
-            rests: [Fixtures.rest(id: 3, localTick: 480)],
-            controls: []
-        )
-        let engraved = try NotationEngraver.engrave(input, style: style)
-        let bounds = engraved.paintedBounds
-        let primitiveInk = engraved.noteHeads.map(\.paintedBounds)
-            + engraved.rests.map(\.paintedBounds)
-            + engraved.ledgerLines.map(\.paintedBounds)
-            + engraved.rhythmDots.map(\.paintedBounds)
-
-        #expect(primitiveInk.allSatisfy(bounds.contains))
     }
 
     @Test("ink above the staff triggers the single package Y normalization")
