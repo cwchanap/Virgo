@@ -142,6 +142,37 @@ struct StemTopology: Equatable {
 struct StemTopologyBuilder {
     /// Builds the complete stem topology for already-validated input.
     func build(_ input: ResolvedNotationInput) -> StemTopology {
+        let context = stemContext(for: input)
+        return plan(
+            context: context,
+            topology: NotationBeamTopologyBuilder().build(
+                events: context.events,
+                measures: input.measures
+            )
+        )
+    }
+
+    /// The shared planning decomposition behind `build(_:)`: identical stem
+    /// groups, representatives, events and flag plans over a caller-supplied
+    /// beam topology. `build(_:)` feeds it the real topology; the Virgo
+    /// parity gate injects a synthetic coverage map so the defensive
+    /// partial-coverage plan arm is exercised through identical production
+    /// logic — an internal seam, never a public engine.
+    func build(_ input: ResolvedNotationInput, topology: BeamTopologyResult) -> StemTopology {
+        plan(context: stemContext(for: input), topology: topology)
+    }
+
+    /// The resolved pieces planning needs: notes by ID plus the ordered
+    /// stem-group/event pairs the topology and flag plans index into.
+    private struct StemContext {
+        let notesByID: [Int: ResolvedNote]
+        let stemGroups: [StemGroup]
+        let events: [BeamTimelineEvent]
+    }
+
+    /// Builds the same ordered stem groups and timeline events both entry
+    /// points share.
+    private func stemContext(for input: ResolvedNotationInput) -> StemContext {
         let notesByID = Dictionary(
             input.notes.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -152,24 +183,28 @@ struct StemTopologyBuilder {
         )
         let pairs = buildStemGroups(notes: input.notes, notesByID: notesByID, measuresByIndex: measuresByIndex)
             .sorted { stemGroupComesBefore($0.event, $1.event) }
-        let stemGroups = pairs.map(\.group)
-        let events = pairs.map(\.event)
-        let topology = NotationBeamTopologyBuilder().build(
-            events: events,
-            measures: input.measures
+        return StemContext(
+            notesByID: notesByID,
+            stemGroups: pairs.map(\.group),
+            events: pairs.map(\.event)
         )
-        let flagPlans = stemGroups.enumerated().map { index, group in
+    }
+
+    /// The flag-planning step both entry points share: one `VisibleFlagPlan`
+    /// per stem group derived from `topology`'s coverage.
+    private func plan(context: StemContext, topology: BeamTopologyResult) -> StemTopology {
+        let flagPlans = context.stemGroups.enumerated().map { index, group in
             flagPlan(
                 for: group,
                 eventIndex: index,
-                events: events,
+                events: context.events,
                 topology: topology,
-                notesByID: notesByID
+                notesByID: context.notesByID
             )
         }
         return StemTopology(
-            stemGroups: stemGroups,
-            events: events,
+            stemGroups: context.stemGroups,
+            events: context.events,
             topology: topology,
             flagPlans: flagPlans
         )

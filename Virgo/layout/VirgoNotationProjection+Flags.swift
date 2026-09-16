@@ -36,8 +36,10 @@ extension VirgoNotationProjection {
     // MARK: - Stem groups
 
     /// One beam-topology stem group: its member entries plus the timeline
-    /// event the topology builder consumes.
-    private struct StemGroup {
+    /// event the topology builder consumes. Internal (not private) so the
+    /// HPA-166 parity gate can drive the same classification decomposition
+    /// with a synthetic coverage map — production calls this exact path.
+    struct StemGroup {
         let entries: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)]
         let event: BeamTimelineEvent
     }
@@ -53,8 +55,8 @@ extension VirgoNotationProjection {
 
     /// Same event semantics as the engine's timeline
     /// `buildTimelineEvents(noteHeads:)`, sorted with the same comparator
-    /// so topology coverage indices line up.
-    private static func buildStemGroups(
+    /// so topology coverage indices line up. Internal for the parity gate.
+    static func buildStemGroups(
         notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)]
     ) -> [StemGroup] {
         var grouped: [StemGroupKey: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)]] = [:]
@@ -121,7 +123,9 @@ extension VirgoNotationProjection {
 
     /// Maps each beamable stem group's uncovered beam levels to its flag
     /// classification, keyed by the stem representative's event ID.
-    private static func classifyUncoveredFlagLevels(
+    /// Internal for the parity gate, which injects synthetic coverage to
+    /// pin the defensive partial-coverage arm through this exact function.
+    static func classifyUncoveredFlagLevels(
         stemGroups: [StemGroup],
         topology: BeamTopologyResult,
         permitsEngraving: [Int: Bool],
