@@ -257,10 +257,10 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     /// - Throws: `ValidationError` for a non-positive `ticksPerWholeNote`,
     ///   duplicate/invalid/overlapping measures, beat groups that fail to
     ///   cover their measure, duplicate event IDs, non-positive event
-    ///   durations, an event whose `localTick` falls outside its owning
-    ///   measure, a note/rest whose `localTick + durationTicks` span crosses
-    ///   its owning measure's end, or a tuplet that references unknown
-    ///   members.
+    ///   durations, a negative note/rest dot count, an event whose
+    ///   `localTick` falls outside its owning measure, a note/rest whose
+    ///   `localTick + durationTicks` span crosses its owning measure's end,
+    ///   or a tuplet that references unknown members.
     public init(
         ticksPerWholeNote: Int,
         measures: [ResolvedMeasure],
@@ -293,6 +293,7 @@ public struct ResolvedNotationInput: Hashable, Sendable {
         case beatGroupsDoNotCoverMeasure(measureIndex: Int, durationTicks: Int, coveredTicks: Int)
         case duplicateEventID(Int)
         case invalidEventDurationTicks(eventID: Int, durationTicks: Int)
+        case invalidEventDotCount(eventID: Int, dotCount: Int)
         case eventSpanOutsideMeasure(eventID: Int, measureIndex: Int, localTick: Int, durationTicks: Int)
         case invalidTupletRatio(tupletID: Int, actual: Int, normal: Int)
         case unknownTupletMeasure(tupletID: Int, measureIndex: Int)
@@ -441,13 +442,16 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     /// Event durations stay positive and their span stays inside the owning
     /// measure: `localTick + durationTicks <= measure.durationTicks`, with the
     /// exact measure end allowed. The addition is reporting-overflow safe —
-    /// an unrepresentable end is rejected, never trapped.
+    /// an unrepresentable end is rejected, never trapped. Dot counts must be
+    /// non-negative — a negative count has no engraving meaning and would
+    /// trap the dot painter.
     private static func validateEventDurations(
         notes: [ResolvedNote],
         rests: [ResolvedRest],
         measuresByIndex: [Int: ResolvedMeasure]
     ) throws {
         for note in notes {
+            try requireNonNegativeDotCount(eventID: note.id, dotCount: note.dotCount)
             try requireContainedSpan(
                 eventID: note.id,
                 position: note.position,
@@ -456,12 +460,21 @@ public struct ResolvedNotationInput: Hashable, Sendable {
             )
         }
         for rest in rests {
+            try requireNonNegativeDotCount(eventID: rest.id, dotCount: rest.dotCount)
             try requireContainedSpan(
                 eventID: rest.id,
                 position: rest.position,
                 durationTicks: rest.durationTicks,
                 measuresByIndex: measuresByIndex
             )
+        }
+    }
+
+    /// One event's dot count must be non-negative — the resolved boundary
+    /// rejects malformed rhythm so the engraver never sees it.
+    private static func requireNonNegativeDotCount(eventID: Int, dotCount: Int) throws {
+        guard dotCount >= 0 else {
+            throw ValidationError.invalidEventDotCount(eventID: eventID, dotCount: dotCount)
         }
     }
 

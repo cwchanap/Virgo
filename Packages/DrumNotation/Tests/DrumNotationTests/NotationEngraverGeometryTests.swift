@@ -5,14 +5,14 @@ import DrumNotation
 /// Compile-time Sendable proof: the call only compiles when `T` is `Sendable`.
 private func requireSendable<T: Sendable>(_ value: T) -> T { value }
 
-/// HPA-166 Task 3: the single package engraving style — defaults pin the
-/// Virgo mapping while `flagVerticalSpacing` stays an explicit argument so
-/// the app mapper can never silently drop `GameplayLayout.flagVerticalSpacing`.
+/// HPA-166 Task 3: the single package engraving style — a fully defaulted
+/// initializer pins the Virgo mapping (`GameplayLayout` + the app's layout
+/// style), so package-only tests engrave with ordinary construction.
 @Suite("Notation engraving style")
 struct NotationEngravingStyleTests {
-    @Test("defaulted arguments pin the Virgo mapping")
-    func defaultStylePinsVirgoMapping() {
-        let style = NotationEngravingStyle(flagVerticalSpacing: 8)
+    @Test("zero-argument construction pins the Virgo mapping")
+    func zeroArgumentStylePinsVirgoMapping() {
+        let style = NotationEngravingStyle()
 
         #expect(style.formatting == .virgoDefault)
         #expect(style.rowHeight == 280)
@@ -42,19 +42,21 @@ struct NotationEngravingStyleTests {
         #expect(style.meterWidth == 30)
     }
 
-    @Test("flag spacing is an explicit argument; stem width stays formatter-owned")
-    func explicitFlagSpacingAndFormatterStemWidth() {
-        let style = NotationEngravingStyle(flagVerticalSpacing: 11)
-
-        #expect(style.flagVerticalSpacing == 11)
+    @Test("flag spacing defaults to the app value and stays overridable")
+    func flagSpacingDefaultAndOverride() {
+        // The package default IS GameplayLayout.flagVerticalSpacing; the
+        // later Virgo projection still passes it explicitly, and the
+        // override must keep working.
+        #expect(NotationEngravingStyle().flagVerticalSpacing == 8)
+        #expect(NotationEngravingStyle(flagVerticalSpacing: 11).flagVerticalSpacing == 11)
         // Flag stem origins read the formatter's stem width — the engraving
         // style deliberately carries no second stem-width scalar.
-        #expect(style.formatting.stemWidth == 2)
+        #expect(NotationEngravingStyle().formatting.stemWidth == 2)
     }
 
     @Test("engraving model types are Sendable")
     func engravingModelTypesAreSendable() throws {
-        _ = requireSendable(NotationEngravingStyle(flagVerticalSpacing: 8))
+        _ = requireSendable(NotationEngravingStyle())
         _ = requireSendable(EngravedRow(index: 0, staffCenterY: 40))
         _ = requireSendable(EngravedMeasure(
             index: 0, rowIndex: 0, xOffset: 100, width: 252,
@@ -92,9 +94,7 @@ struct NotationEngravingStyleTests {
             measureIndex: 0, rowIndex: 0, x: 100, isFinal: false
         ))
         let input = try Fixtures.document(notes: [Fixtures.note()], rests: [], controls: [])
-        let engraved = try NotationEngraver.engrave(
-            input, style: NotationEngravingStyle(flagVerticalSpacing: 8)
-        )
+        let engraved = try NotationEngraver.engrave(input, style: NotationEngravingStyle())
         _ = requireSendable(engraved)
     }
 }
@@ -103,7 +103,7 @@ struct NotationEngravingStyleTests {
 /// staff Y, formatted X, Bravura painted bounds, and the one Y normalization.
 @Suite("Notation engraver geometry")
 struct NotationEngraverGeometryTests {
-    private let style = NotationEngravingStyle(flagVerticalSpacing: 8)
+    private let style = NotationEngravingStyle()
     private let staffSpace = NotationFormattingStyle.virgoDefault.staffSpace
 
     private func head(_ engraved: EngravedNotation, id: Int) throws -> EngravedNoteHead {
@@ -164,8 +164,7 @@ struct NotationEngraverGeometryTests {
     @Test("two formatted rows stack their staff centers by the row pitch")
     func twoRowsStackByRowPitch() throws {
         let narrow = NotationEngravingStyle(
-            formatting: NotationFormattingStyle(availableRowWidth: 300),
-            flagVerticalSpacing: 8
+            formatting: NotationFormattingStyle(availableRowWidth: 300)
         )
         let input = try Fixtures.document(
             measures: [
@@ -307,11 +306,11 @@ struct NotationEngraverGeometryTests {
         #expect(ledger.end.x == cymbal.paintedBounds.maxX + style.ledgerLineOverhang)
     }
 
-    @Test("rhythm dots trail the painted ink maxX at formatter spacing")
+    @Test("a single rhythm dot trails the painted ink maxX at formatter spacing")
     func rhythmDotsTrailPaintedInk() throws {
         let input = try Fixtures.document(
             notes: [
-                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, dotCount: 2)
+                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, dotCount: 1)
             ],
             rests: [
                 ResolvedRest(
@@ -327,14 +326,14 @@ struct NotationEngraverGeometryTests {
         let cymbal = try head(engraved, id: 1)
         let printedRest = try rest(engraved, id: 5)
 
+        // Single-dot parity with the app painter: one center at
+        // ink maxX + spacing + radius, vertically on the head/rest center.
         let noteDots = engraved.rhythmDots.filter { $0.source == .note(1) }
-        #expect(noteDots.count == 2)
-        let pitch = formatting.rhythmDotRadius * 2 + formatting.rhythmDotSpacing
+        #expect(noteDots.count == 1)
         #expect(
             noteDots[0].position.x
                 == cymbal.paintedBounds.maxX + formatting.rhythmDotSpacing + formatting.rhythmDotRadius
         )
-        #expect(noteDots[1].position.x == noteDots[0].position.x + pitch)
         #expect(noteDots[0].position.y == cymbal.position.y)
 
         let restDots = engraved.rhythmDots.filter { $0.source == .rest(5) }
@@ -344,6 +343,30 @@ struct NotationEngraverGeometryTests {
                 == printedRest.paintedBounds.maxX + formatting.rhythmDotSpacing + formatting.rhythmDotRadius
         )
         #expect(restDots[0].position.y == printedRest.position.y)
+    }
+
+    @Test("dot counts other than one paint no dots — app parity")
+    func nonSingleDotCountsPaintNoDots() throws {
+        // The ported painter guards `dotCount == 1`; 0 and 2+ emit nothing
+        // (the formatter still reserves their ink — painting is the parity
+        // surface, reservation stays the formatter's).
+        let input = try Fixtures.document(
+            notes: [
+                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, dotCount: 0),
+                Fixtures.makeNote(id: 2, localTick: 480, staffStep: 3, dotCount: 2)
+            ],
+            rests: [
+                ResolvedRest(
+                    id: 5, position: NotationTickPosition(measureIndex: 0, localTick: 960),
+                    duration: .quarter, dotCount: 2, isFullMeasure: false,
+                    voice: .upper, durationTicks: 480
+                )
+            ],
+            controls: []
+        )
+        let engraved = try NotationEngraver.engrave(input, style: style)
+
+        #expect(engraved.rhythmDots.isEmpty)
     }
 
     @Test("non-engravable notes keep their heads but drop their dots")
@@ -375,19 +398,12 @@ struct NotationEngraverGeometryTests {
         )
         let engraved = try NotationEngraver.engrave(input, style: style)
         let bounds = engraved.paintedBounds
+        let primitiveInk = engraved.noteHeads.map(\.paintedBounds)
+            + engraved.rests.map(\.paintedBounds)
+            + engraved.ledgerLines.map(\.paintedBounds)
+            + engraved.rhythmDots.map(\.paintedBounds)
 
-        for head in engraved.noteHeads {
-            #expect(bounds.contains(head.paintedBounds))
-        }
-        for rest in engraved.rests {
-            #expect(bounds.contains(rest.paintedBounds))
-        }
-        for ledger in engraved.ledgerLines {
-            #expect(bounds.contains(ledger.paintedBounds))
-        }
-        for dot in engraved.rhythmDots {
-            #expect(bounds.contains(dot.paintedBounds))
-        }
+        #expect(primitiveInk.allSatisfy(bounds.contains))
     }
 
     @Test("ink above the staff triggers the single package Y normalization")

@@ -285,27 +285,26 @@ private struct SheetComposer {
         }
     }
 
-    /// Rhythm dots trail the painted ink: first center at
-    /// `maxX + spacing + radius`, each next dot one diameter+spacing further.
-    /// The formatter reserves the same footprint, so painted ink never
-    /// exceeds the reserved collision span.
+    /// Rhythm dots trail the painted ink, single-dot parity with the ported
+    /// app painter: exactly one dot paints when `dotCount == 1`, centered at
+    /// `maxX + spacing + radius` on the source's Y. Other counts paint none —
+    /// the formatter still reserves the full `dotCount` footprint upstream,
+    /// so spacing is unaffected by the painted count.
     private func collectDots(anchor: DotAnchor, raw: inout RawGeometry) {
+        guard anchor.dotCount == 1 else { return }
         let radius = formatting.rhythmDotRadius
-        let pitch = radius * 2 + formatting.rhythmDotSpacing
-        for index in 0..<anchor.dotCount {
-            let center = CGPoint(
-                x: anchor.inkMaxX + formatting.rhythmDotSpacing + radius + CGFloat(index) * pitch,
-                y: anchor.centerY
-            )
-            let bounds = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-            raw.include(bounds)
-            raw.rhythmDots.append(EngravedRhythmDot(
-                source: anchor.source,
-                position: center,
-                rowIndex: anchor.rowIndex,
-                paintedBounds: bounds
-            ))
-        }
+        let center = CGPoint(
+            x: anchor.inkMaxX + formatting.rhythmDotSpacing + radius,
+            y: anchor.centerY
+        )
+        let bounds = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+        raw.include(bounds)
+        raw.rhythmDots.append(EngravedRhythmDot(
+            source: anchor.source,
+            position: center,
+            rowIndex: anchor.rowIndex,
+            paintedBounds: bounds
+        ))
     }
 
     /// Materializes one raw note head at its final (shifted) position.

@@ -25,9 +25,9 @@ public struct NotationEngravingStyle: Hashable, Sendable {
     /// Maximum horizontal reach of a beam hook segment.
     public let beamHookLength: CGFloat
     /// Vertical pitch between successive uncovered component flags painted
-    /// below/above a shared stem tip. **No default**: Virgo must map
-    /// `GameplayLayout.flagVerticalSpacing` explicitly so the package never
-    /// silently pins a different value.
+    /// below/above a shared stem tip. The default is the Virgo value
+    /// (`GameplayLayout.flagVerticalSpacing`); the app projection still
+    /// passes its scalar explicitly so the mapping stays visible.
     public let flagVerticalSpacing: CGFloat
     /// Extra ledger-line reach past each side of the head's painted bounds.
     public let ledgerLineOverhang: CGFloat
@@ -66,7 +66,7 @@ public struct NotationEngravingStyle: Hashable, Sendable {
         beamThickness: CGFloat = 4,
         beamLevelSpacing: CGFloat = 6,
         beamHookLength: CGFloat = 12,
-        flagVerticalSpacing: CGFloat,
+        flagVerticalSpacing: CGFloat = 8,
         ledgerLineOverhang: CGFloat = 6,
         upperVoiceRestOffset: CGFloat = -20,
         lowerVoiceRestOffset: CGFloat = 20,
