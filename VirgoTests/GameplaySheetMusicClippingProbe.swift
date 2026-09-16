@@ -68,6 +68,19 @@ let crossingScrollY: CGFloat = 12
 /// assertions start `clipEdgeBleed` points beyond the edge.
 let clipEdgeBleed: CGFloat = 4
 
+/// The deep region below the clip-edge bleed band — the strict-zero mask
+/// the clipped legs check and the exact region the unclipped controls
+/// must prove real ink can reach. Anything shallower would let bleed-band
+/// ink alone satisfy the control.
+func deepOutsideClipRect(contentHeight: CGFloat) -> CGRect {
+    let canvas = oversizedClipCanvasSize(contentHeight: contentHeight)
+    let bleedLine = ancestorViewportRect.maxY + clipEdgeBleed
+    return CGRect(
+        x: 0, y: bleedLine,
+        width: canvas.width, height: canvas.height - bleedLine
+    )
+}
+
 /// The four canvas regions a correctly clipped sheet must leave untouched:
 /// top margin, left/right margins (up to the bleed line), and the deep
 /// region below the bleed band.
@@ -82,11 +95,28 @@ func outsideClipRects(contentHeight: CGFloat) -> [CGRect] {
             x: band.maxX, y: band.minY,
             width: canvas.width - band.maxX, height: bleedLine - band.minY
         ),
-        CGRect(
-            x: 0, y: bleedLine,
-            width: canvas.width, height: canvas.height - bleedLine
-        )
+        deepOutsideClipRect(contentHeight: contentHeight)
     ]
+}
+
+/// The document-space mask where one boundary-crossing head's clipped
+/// part lands past the clip edge's AA bleed band: the head's painted
+/// bounds below `viewport height + crossingScrollY + clipEdgeBleed`. One
+/// mask drives both captures — offset by (`sheetClipMargin`,
+/// `sheetClipMargin - crossingScrollY`) it is the clipped raster's
+/// strict-zero region; offset by (`sheetClipMargin`, `sheetClipMargin`)
+/// it is the same ink the full-height control must show. Keeping the mask
+/// in document space is what makes the two captures comparable: the
+/// unclipped sheet is not scrolled, so the same head lands `crossingScrollY`
+/// points lower there.
+func crossingDeepMask(of head: EngravedNoteHead) -> CGRect {
+    let deepTop = mountedViewport.height + crossingScrollY + clipEdgeBleed
+    return CGRect(
+        x: head.paintedBounds.minX,
+        y: deepTop,
+        width: head.paintedBounds.width,
+        height: head.paintedBounds.maxY - deepTop
+    )
 }
 
 @MainActor
@@ -157,9 +187,10 @@ extension GameplaySheetMusicGeometrySmokeTests {
 
     /// Unclipped control: the same production hierarchy hosted with the
     /// scroll viewport grown to the full content height, so nothing beyond
-    /// the 768pt band is clipped. Removing the same heads must change ink
-    /// outside that band — proving the canvas can capture the overflow the
-    /// clipped leg forbids.
+    /// the 768pt band is clipped. Removing the same heads must move ink
+    /// inside the deep-outside mask — the exact region where the clipped
+    /// leg demands strict zero — not merely anywhere outside the band,
+    /// which the excluded bleed strip alone could satisfy.
     func assertUnclippedControl(
         sheet: MountedSheet,
         offscreenCount: Int
@@ -175,79 +206,101 @@ extension GameplaySheetMusicGeometrySmokeTests {
             }
         ))
         let stripped = try rasterizeInAncestor(sheet, sheetSize: fullHeight)
-        let overflow = ancestorOverflowInk(
-            between: unclipped, and: stripped, contentHeight: sheet.engraving.contentHeight
+        let deepInk = changedPixels(
+            in: deepOutsideClipRect(contentHeight: sheet.engraving.contentHeight),
+            between: unclipped, and: stripped
         )
         #expect(
-            overflow > 0,
+            deepInk > 0,
             """
             unclipped control: removing \(offscreenCount) off-viewport head(s) \
-            produced no ink outside the 768pt band — the clipping gate is vacuous
+            moved \(deepInk) pixel(s) inside the deep-outside mask — the \
+            clipped leg's strict zero there is unproven
             """
         )
         reinstall(sheet, engraving: sheet.engraving)
     }
 
-    /// Boundary-crossing leg: with the sheet scrolled `scrollY` document
-    /// points down, every head straddling the 768pt clip edge loses its
-    /// inside-viewport ink when removed, while nothing changes outside the
-    /// viewport — top/side margins and the deep region below the
-    /// `clipEdgeBleed` AA band all stay identical. In the full-height
-    /// control the same removal must move ink outside the band. The
-    /// upstream `#require` makes a missing or shallow crossing selection a
-    /// failure, so the gate can never silently vacate.
+    /// Boundary-crossing leg: with the sheet scrolled `crossingScrollY`
+    /// document points down, the selected head straddles the 768pt clip
+    /// edge. Removing exactly that head must (a) move ink inside the
+    /// clipped viewport and (b) leave the head's own deep-outside mask —
+    /// `crossingDeepMask` margin- and scroll-translated into canvas space —
+    /// strict zero, along with every outside region. The full-height
+    /// control must then (c) move ink inside that same document-space
+    /// mask. One primitive and one mask drive all three legs; a broad
+    /// outside-band count can no longer stand in for the deep region's
+    /// pixel evidence.
     func assertCrossingHeadClipsAtEdge(
         sheet: MountedSheet,
         clipped: RasterBitmap,
-        crossing: [EngravedNoteHead]
+        head: EngravedNoteHead
     ) async throws {
-        let crossingIDs = Set(crossing.map(\.noteID))
         let scrolledViewport = CGRect(
             origin: CGPoint(x: 0, y: crossingScrollY),
             size: mountedViewport
         )
-        // Inside part of each crossing head, in ancestor-canvas
+        // Inside part of the crossing head, in ancestor-canvas
         // coordinates: sheet bounds shifted by the margin, minus the
         // document scroll offset.
-        let insideRects = crossing.map {
-            $0.paintedBounds
-                .intersection(scrolledViewport)
-                .offsetBy(dx: sheetClipMargin, dy: sheetClipMargin - crossingScrollY)
-        }
+        let insideRect = head.paintedBounds
+            .intersection(scrolledViewport)
+            .offsetBy(dx: sheetClipMargin, dy: sheetClipMargin - crossingScrollY)
+        let deepMask = crossingDeepMask(of: head)
+        // Same mask in the clipped capture's canvas space: ancestor
+        // margin, minus the document scroll the clipped sheet carries.
+        let clippedDeepMask = deepMask.offsetBy(
+            dx: sheetClipMargin, dy: sheetClipMargin - crossingScrollY
+        )
         reinstall(sheet, engraving: sheet.engraving.swapping(
             noteHeads: sheet.engraving.noteHeads.filter {
-                !crossingIDs.contains($0.noteID)
+                $0.noteID != head.noteID
             }
         ))
         let stripped = try rasterizeInAncestor(
             sheet, sheetSize: mountedViewport, scrollY: crossingScrollY
         )
-        for rect in insideRects {
-            #expect(
-                changedPixels(in: rect, between: clipped, and: stripped) > 0,
-                "crossing head's inside-viewport part painted no ink at \(rect)"
-            )
-        }
+        #expect(
+            changedPixels(in: insideRect, between: clipped, and: stripped) > 0,
+            "crossing head's inside-viewport part painted no ink at \(insideRect)"
+        )
+        let deepEscape = changedPixels(
+            in: clippedDeepMask, between: clipped, and: stripped
+        )
+        #expect(
+            deepEscape == 0,
+            """
+            crossing head's clipped part changed \(deepEscape) pixel(s) in \
+            its deep-outside mask \(clippedDeepMask) — content escaped the \
+            clip edge
+            """
+        )
         for rect in outsideClipRects(contentHeight: sheet.engraving.contentHeight) {
             let outside = changedPixels(in: rect, between: clipped, and: stripped)
             #expect(
                 outside == 0,
                 """
-                crossing head's clipped part changed \(outside) pixel(s) in \
-                outside region \(rect) — content escaped the clip edge
+                crossing head removal changed \(outside) pixel(s) in outside \
+                region \(rect) — content escaped the clip edge
                 """
             )
         }
         reinstall(sheet, engraving: sheet.engraving)
-        try await assertCrossingHeadUnclipped(sheet: sheet, crossingIDs: crossingIDs)
+        try await assertCrossingHeadUnclipped(
+            sheet: sheet, head: head, deepMask: deepMask
+        )
     }
 
-    /// Full-height control for the crossing leg: the same heads, mounted
-    /// with no clip beyond the content — their removal must move ink
-    /// outside the 768pt band.
+    /// Full-height control for the crossing leg: the same head mounted
+    /// with no clip beyond the content — its removal must move ink inside
+    /// the same deep-outside mask, proving the clipped leg's strict zero
+    /// covers pixels that can actually carry the head's ink. The mask
+    /// translates by the ancestor margin only: the unclipped sheet is not
+    /// scrolled.
     private func assertCrossingHeadUnclipped(
         sheet: MountedSheet,
-        crossingIDs: Set<Int>
+        head: EngravedNoteHead,
+        deepMask: CGRect
     ) async throws {
         let fullHeight = CGSize(
             width: mountedViewport.width,
@@ -256,17 +309,27 @@ extension GameplaySheetMusicGeometrySmokeTests {
         let headful = try rasterizeInAncestor(sheet, sheetSize: fullHeight)
         reinstall(sheet, engraving: sheet.engraving.swapping(
             noteHeads: sheet.engraving.noteHeads.filter {
-                !crossingIDs.contains($0.noteID)
+                $0.noteID != head.noteID
             }
         ))
         let stripped = try rasterizeInAncestor(sheet, sheetSize: fullHeight)
-        let overflow = ancestorOverflowInk(
-            between: headful, and: stripped,
-            contentHeight: sheet.engraving.contentHeight
+        // The same mask in the unclipped capture's canvas space: ancestor
+        // margin only — the full-height sheet is not scrolled, so the
+        // head sits `crossingScrollY` points lower than in the clipped
+        // capture.
+        let canvasMask = deepMask.offsetBy(
+            dx: sheetClipMargin, dy: sheetClipMargin
+        )
+        let deepInk = changedPixels(
+            in: canvasMask, between: headful, and: stripped
         )
         #expect(
-            overflow > 0,
-            "unclipped crossing leg: no ink moved outside the 768pt band — gate is vacuous"
+            deepInk > 0,
+            """
+            unclipped crossing leg: removing the crossing head moved \
+            \(deepInk) pixel(s) inside its deep-outside mask \(canvasMask) — \
+            the clipped leg's strict zero there is unproven
+            """
         )
         reinstall(sheet, engraving: sheet.engraving)
     }
