@@ -11,14 +11,24 @@ import CoreGraphics
 public enum NotationFormatter {
     /// Formats already-validated resolved input at `style`. The throwing
     /// signature is the pinned API the app and later tasks call through.
+    /// The flag-ink source is the transitional HPA-164 per-note field until
+    /// the Task-7 cutover hands the direct route the package flag plans.
     public static func format(
         _ input: ResolvedNotationInput,
         style: NotationFormattingStyle
     ) throws -> FormattedNotation {
+        format(input, style: style, flagReservations: projectedFlagReservations(input))
+    }
+
+    private static func format(
+        _ input: ResolvedNotationInput,
+        style: NotationFormattingStyle,
+        flagReservations: [Int: NotationFlagDuration]
+    ) -> FormattedNotation {
         // Phase 1: per-measure column layout with local X and natural width.
         let laidOut = input.measures
             .sorted { $0.index < $1.index }
-            .map { layoutMeasure($0, input: input, style: style) }
+            .map { layoutMeasure($0, input: input, style: style, flagReservations: flagReservations) }
 
         // Phase 2: greedy whole-measure row packing, then sheet-local finalize.
         var measures: [FormattedMeasure] = []
@@ -77,7 +87,8 @@ public enum NotationFormatter {
     private static func layoutMeasure(
         _ measure: ResolvedMeasure,
         input: ResolvedNotationInput,
-        style: NotationFormattingStyle
+        style: NotationFormattingStyle,
+        flagReservations: [Int: NotationFlagDuration]
     ) -> LaidOutMeasure {
         var notesByTick: [Int: [ResolvedNote]] = [:]
         for note in input.notes where note.position.measureIndex == measure.index {
@@ -99,7 +110,8 @@ public enum NotationFormatter {
                 tick: tick,
                 notes: (notesByTick[tick] ?? []).sorted { $0.id < $1.id },
                 rests: (restsByTick[tick] ?? []).sorted { $0.id < $1.id },
-                style: style
+                style: style,
+                flagReservations: flagReservations
             )
         }
         // One-pass gap rule: tick 0 sits at the leading inset, each next column
@@ -259,7 +271,8 @@ public enum NotationFormatter {
         tick: Int,
         notes: [ResolvedNote],
         rests: [ResolvedRest],
-        style: NotationFormattingStyle
+        style: NotationFormattingStyle,
+        flagReservations: [Int: NotationFlagDuration]
     ) -> LaidOutColumn {
         let shifts = staffSecondShifts(for: notes, style: style)
 
@@ -280,9 +293,9 @@ public enum NotationFormatter {
             // stemUpSE/stemDownNW anchor at the undisplaced column X — and
             // attach where the flag paints from: the stem axis minus half
             // the stem width (Virgo's painted stem origin convention), never
-            // on the displaced head. A column with flagged notes in both
-            // directions unions each flag at its own direction's axis.
-            if let flagDuration = note.visibleFlagDuration {
+            // on the displaced head. The reservation is keyed by the stem
+            // group's representative, so chord members never double the ink.
+            if let flagDuration = flagReservations[note.id] {
                 let flag = PercussionGlyphMetrics.flag(
                     duration: flagDuration,
                     direction: note.stemDirection,
@@ -386,6 +399,36 @@ public enum NotationFormatter {
             }
         }
         return shifts
+    }
+}
+
+extension NotationFormatter {
+    // MARK: Flag-ink sources and the plan-driven entry point
+
+    /// Plan-driven formatting (HPA-166 Task 2): the same spacing engine, but
+    /// flag ink comes from the package stem-group plans — one reservation
+    /// per group measured once at the shared stem axis. `NotationEngraver`
+    /// and the package parity tests drive this path; it stays internal so
+    /// no second public formatting engine exists.
+    static func format(
+        _ input: ResolvedNotationInput,
+        style: NotationFormattingStyle,
+        stemTopology: StemTopology
+    ) -> FormattedNotation {
+        format(input, style: style, flagReservations: stemTopology.flagReservations)
+    }
+
+    /// The transitional flag source: the projection's per-note field.
+    private static func projectedFlagReservations(
+        _ input: ResolvedNotationInput
+    ) -> [Int: NotationFlagDuration] {
+        var reservations: [Int: NotationFlagDuration] = [:]
+        for note in input.notes {
+            if let flag = note.visibleFlagDuration {
+                reservations[note.id] = flag
+            }
+        }
+        return reservations
     }
 }
 
