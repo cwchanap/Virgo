@@ -93,21 +93,23 @@ struct DrumTabFixtureHarnessTests {
     }
 
     /// The probe set must cover every tick the bridge promises to check:
-    /// all formatted logical columns plus every resolved note/rest/control
-    /// onset — deduplicated, so the loop above cannot silently skip or
-    /// double-visit a tick.
+    /// all formatted logical columns on BOTH surfaces plus every resolved
+    /// note/rest/control onset — deduplicated, so the loop above cannot
+    /// silently skip or double-visit a tick.
     @Test("bridge probe ticks cover every column and event onset",
           arguments: DrumTabFixtureCatalog.all)
     func bridgeProbeTicksCoverAllOnsets(_ fixture: DrumTabFixture) throws {
         let result = try DrumTabFixtureHarness.render(fixture)
         let probes = Set(result.bridgeProbeTicks)
 
-        for measure in result.engraved.formatted.measures {
-            for column in measure.columns {
-                #expect(probes.contains(NotationTickPosition(
-                    measureIndex: measure.index,
-                    localTick: column.localTick
-                )), "\(fixture.name): column m\(measure.index) t\(column.localTick) missing from probes")
+        for formatted in [result.layout.formattedNotation, result.engraved.formatted] {
+            for measure in formatted.measures {
+                for column in measure.columns {
+                    #expect(probes.contains(NotationTickPosition(
+                        measureIndex: measure.index,
+                        localTick: column.localTick
+                    )), "\(fixture.name): column m\(measure.index) t\(column.localTick) missing from probes")
+                }
             }
         }
         let onsets = result.resolvedInput.notes.map(\.position)
@@ -123,6 +125,42 @@ struct DrumTabFixtureHarnessTests {
             probes.count == result.bridgeProbeTicks.count,
             "\(fixture.name): probe ticks contain duplicates"
         )
+    }
+
+    /// A formatted column that exists on only one surface must still be
+    /// probed — otherwise a legacy-only tick could escape the tick → row/X
+    /// comparison entirely. Synthetic divergent inputs prove both one-sided
+    /// cases land in the probe set.
+    @Test("bridge probe ticks include one-sided formatted columns")
+    func bridgeProbeTicksIncludeOneSidedColumns() {
+        let legacyOnly = FormattedNotation(measures: [
+            FormattedMeasure(index: 0, rowIndex: 0, xOffset: 100, width: 252, columns: [
+                FormattedColumn(localTick: 0, logicalColumnX: 152, noteHeads: [], rests: []),
+                FormattedColumn(localTick: 7, logicalColumnX: 300, noteHeads: [], rests: [])
+            ])
+        ])
+        let packageOnly = FormattedNotation(measures: [
+            FormattedMeasure(index: 0, rowIndex: 0, xOffset: 100, width: 252, columns: [
+                FormattedColumn(localTick: 0, logicalColumnX: 152, noteHeads: [], rests: []),
+                FormattedColumn(localTick: 9, logicalColumnX: 320, noteHeads: [], rests: [])
+            ])
+        ])
+
+        let probes = FixtureRenderResult.bridgeProbeTicks(
+            legacyFormatted: legacyOnly,
+            packageFormatted: packageOnly,
+            onsetTicks: []
+        )
+
+        #expect(probes.contains(NotationTickPosition(measureIndex: 0, localTick: 7)),
+                "legacy-only column tick missing from probes")
+        #expect(probes.contains(NotationTickPosition(measureIndex: 0, localTick: 9)),
+                "package-only column tick missing from probes")
+        #expect(probes == [
+            NotationTickPosition(measureIndex: 0, localTick: 0),
+            NotationTickPosition(measureIndex: 0, localTick: 7),
+            NotationTickPosition(measureIndex: 0, localTick: 9)
+        ], "probes must be the deduplicated, sorted union")
     }
 
     /// Identity helpers must be lossless: sorted ID arrays keep duplicate
