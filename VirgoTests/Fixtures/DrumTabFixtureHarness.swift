@@ -35,6 +35,77 @@ enum DrumTabFixtureHarnessError: Error {
     case missingTimeline
 }
 
+/// One control's bridge identity: event ID + kind kept as a pair, so a kind
+/// swap between two controls or a dropped duplicate fails the comparison.
+/// A concrete struct rather than a tuple so `[BridgeControlIdentity]`
+/// conforms to `Equatable`/`Comparable` for direct `==` and `.sorted()`.
+struct BridgeControlIdentity: Equatable, Comparable, Sendable {
+    let id: Int
+    let kind: String
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        (lhs.id, lhs.kind) < (rhs.id, rhs.kind)
+    }
+}
+
+/// Bridge-identity helpers (HPA-166 Task 6, review fix 1): the bridge test
+/// compares only the identities named in the brief — measure count/index,
+/// note event IDs, control (eventID, kind) pairs, and formatted
+/// tick → row/X. These helpers keep each of those comparisons lossless
+/// (sorted arrays/tuples preserve multiplicity and pairing; a nil legacy
+/// control ID fails instead of being dropped) and make the probe set cover
+/// every relevant tick without turning the test into a generalized
+/// dual-renderer comparator.
+extension FixtureRenderResult {
+    /// Every tick the bridge's tick → row/X check must visit: all formatted
+    /// logical columns plus every resolved note/rest/control onset,
+    /// deduplicated and sorted by (measureIndex, localTick).
+    var bridgeProbeTicks: [NotationTickPosition] {
+        let columnTicks = engraved.formatted.measures.flatMap { measure in
+            measure.columns.map {
+                NotationTickPosition(measureIndex: measure.index, localTick: $0.localTick)
+            }
+        }
+        let onsetTicks = resolvedInput.notes.map(\.position)
+            + resolvedInput.rests.map(\.position)
+            + resolvedInput.controls.map(\.position)
+        var seen = Set<NotationTickPosition>()
+        return (columnTicks + onsetTicks)
+            .filter { seen.insert($0).inserted }
+            .sorted { ($0.measureIndex, $0.localTick) < ($1.measureIndex, $1.localTick) }
+    }
+
+    /// Sorted note event IDs on each surface — an array, not a Set, so a
+    /// dropped or duplicated head changes the comparison.
+    var bridgeNoteIDs: (legacy: [Int], package: [Int]) {
+        (
+            legacy: layout.noteHeads.map { Int($0.id) }.sorted(),
+            package: engraved.noteHeads.map(\.noteID).sorted()
+        )
+    }
+
+    /// Sorted (eventID, kind) control identities on each surface. Legacy
+    /// stop notes must carry an event ID — `#require` fails the test rather
+    /// than `compactMap` silently narrowing the comparison — and pairing ID
+    /// with kind per element means a kind swap between two controls fails.
+    func bridgeControlIdentities() throws
+        -> (legacy: [BridgeControlIdentity], package: [BridgeControlIdentity]) {
+        let legacy = try layout.stopNotes.map { stop in
+            BridgeControlIdentity(
+                id: try #require(
+                    stop.eventID,
+                    "bridge requires every legacy control to carry an eventID"
+                ).rawValue,
+                kind: stop.kind.rawValue
+            )
+        }
+        let package = engraved.controls.map {
+            BridgeControlIdentity(id: $0.controlID, kind: $0.kind.rawValue)
+        }
+        return (legacy: legacy.sorted(), package: package.sorted())
+    }
+}
+
 /// Runs a fixture through the production import and layout path.
 ///
 /// Deliberately mirrors `LocalDTXFixtureImporter` / `ServerSongDownloader`:
