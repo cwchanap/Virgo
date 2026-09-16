@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import Testing
+import DrumNotation
 @testable import Virgo
 
 /// The rendered output of one fixture, plus the inputs later assertions need.
@@ -8,10 +9,20 @@ import Testing
 /// Carries `chart` because the playhead tests drive a real `GameplayViewModel`,
 /// and `snapshot` because beat groups and engraving support live on
 /// `RhythmMeasure` rather than on `RenderedMeasure`.
+///
+/// `layout` (the app-composed `NotationLayout`) and `engraved` (the package
+/// `EngravedNotation`) are produced from the *same* snapshot by the two
+/// parallel routes: `layout` is what production still mounts today, while
+/// `engraved` is the regression net's geometry authority (HPA-166 Task 6).
+/// `resolvedInput` is the projection output the engraving consumed — rest/
+/// control ticks live there because the engraved primitives carry only
+/// final geometry.
 @MainActor
 struct FixtureRenderResult {
     let chart: Chart
     let layout: NotationLayout
+    let engraved: EngravedNotation
+    let resolvedInput: ResolvedNotationInput
     let snapshot: RhythmLayoutSnapshot
     let timeline: RhythmTimeline
     let style: NotationLayoutStyle
@@ -35,10 +46,12 @@ enum DrumTabFixtureHarnessError: Error {
 @MainActor
 enum DrumTabFixtureHarness {
     /// Pinned so goldens cannot depend on window size or user settings.
-    static let lockedStyle = NotationLayoutStyle.gameplayDefault
+    /// `nonisolated` (immutable + Sendable) so the pure `engrave` path can
+    /// default to them without hopping onto the main actor.
+    nonisolated static let lockedStyle = NotationLayoutStyle.gameplayDefault
         .with(rowWidth: GameplayLayout.maxRowWidth)
 
-    static let lockedOverrides: [DrumType: GameplayLayout.NotePosition] =
+    nonisolated static let lockedOverrides: [DrumType: GameplayLayout.NotePosition] =
         Dictionary(uniqueKeysWithValues: DrumType.allCases.map { ($0, $0.notePosition) })
 
     static func render(
@@ -78,13 +91,90 @@ enum DrumTabFixtureHarness {
             notePositionOverrides: lockedOverrides
         ))
 
+        // HPA-166 Task 6: the package route shares the same snapshot and
+        // expansion; the regression net reads `engraved`, not `layout`.
+        let engraving = try engrave(
+            snapshot: snapshot,
+            minimumMeasureCount: fixture.minimumMeasureCount
+        )
+
         return FixtureRenderResult(
             chart: chart,
             layout: prepared.layout,
+            engraved: engraving.engraved,
+            resolvedInput: engraving.input,
             snapshot: snapshot,
             timeline: timeline,
             style: lockedStyle,
             container: container
+        )
+    }
+
+    /// The test-side package engraving path (HPA-166 Task 6): the same
+    /// expanded measure list `GameplayNotationPreparer.prepare` builds, the
+    /// app-site `VirgoNotationProjection` conversion, then the package
+    /// engraver — sharing the harness's locked style and overrides so
+    /// goldens stay pinned. `NotationSnapshotTestSupport` reuses this seam
+    /// for synthetic snapshots so both entry points engrave identically.
+    /// Nonisolated: every call below is a pure value-type function.
+    nonisolated static func engrave(
+        snapshot: RhythmLayoutSnapshot,
+        minimumMeasureCount: Int,
+        style: NotationLayoutStyle = lockedStyle,
+        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = lockedOverrides
+    ) throws -> (input: ResolvedNotationInput, engraved: EngravedNotation) {
+        let expandedMeasures = NotationLayoutEngine().expandedRhythmMeasures(
+            snapshot,
+            minimumMeasureCount: minimumMeasureCount
+        )
+        let input = try VirgoNotationProjection.resolvedNotation(
+            snapshot: snapshot,
+            expandedMeasures: expandedMeasures,
+            notePositionOverrides: notePositionOverrides
+        )
+        return try (
+            input,
+            NotationEngraver.engrave(input, style: engravingStyle(for: style))
+        )
+    }
+
+    /// Maps the app layout style onto the package engraving style. The
+    /// `formatting` half routes through `VirgoNotationProjection`'s single
+    /// app-site mapper (the same call `GameplayNotationPreparer` makes); the
+    /// engraving half spells out every app scalar explicitly — the values
+    /// `NotationEngravingStyle`'s defaults happen to encode — so this seam
+    /// fails loudly if either side's defaults ever drift.
+    nonisolated static func engravingStyle(for style: NotationLayoutStyle) -> NotationEngravingStyle {
+        NotationEngravingStyle(
+            formatting: VirgoNotationProjection.formattingStyle(
+                rowWidth: style.rowWidth,
+                style: style
+            ),
+            rowHeight: GameplayLayout.rowHeight,
+            rowVerticalSpacing: GameplayLayout.rowVerticalSpacing,
+            stemLength: style.stemLength,
+            minimumStemExtensionPastChord: style.minimumStemExtensionPastChord,
+            beamThickness: style.beamThickness,
+            beamLevelSpacing: style.beamLevelSpacing,
+            beamHookLength: style.beamHookLength,
+            flagVerticalSpacing: GameplayLayout.flagVerticalSpacing,
+            ledgerLineOverhang: style.ledgerLineOverhang,
+            upperVoiceRestOffset: style.upperVoiceRestOffset,
+            lowerVoiceRestOffset: style.lowerVoiceRestOffset,
+            stopMarkSize: style.stopMarkSize,
+            stopMarkStrokeWidth: style.stopMarkStrokeWidth,
+            stopMarkVerticalOffset: style.stopMarkVerticalOffset,
+            articulationVerticalOffset: style.articulationVerticalOffset,
+            tupletLineWidth: style.tupletLineWidth,
+            tupletLabelSize: style.tupletLabelSize,
+            tupletVerticalOffset: style.tupletVerticalOffset,
+            tupletHookLength: style.tupletHookLength,
+            barLineWidth: GameplayLayout.barLineWidth,
+            doubleBarThinWidth: GameplayLayout.doubleBarLineWidths.thin,
+            doubleBarThickWidth: GameplayLayout.doubleBarLineWidths.thick,
+            doubleBarSpacing: GameplayLayout.doubleBarLineSpacing,
+            clefWidth: GameplayLayout.clefWidth,
+            meterWidth: GameplayLayout.timeSignatureWidth
         )
     }
 

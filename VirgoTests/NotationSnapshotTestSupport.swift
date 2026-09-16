@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import DrumNotation
 @testable import Virgo
 
 /// Maps plain `Note`/`NotationControlEvent` specs onto timeline snapshots so
@@ -125,6 +126,32 @@ struct NotationSnapshotTestSupport {
             return GameplayNotationPreparedState(layout: .empty)
         }
         return GameplayNotationPreparer.prepare(request)
+    }
+
+    /// Runs the same snapshot construction through the package engraving
+    /// route (HPA-166 Task 6): `DrumTabFixtureHarness.engrave` is the single
+    /// seam — expanded measures, `VirgoNotationProjection`,
+    /// `NotationEngraver` — so synthetic snapshots engrave exactly like the
+    /// real-DTX fixtures.
+    func engrave(
+        notes: [Note] = [],
+        controls: [NotationControlEvent] = [],
+        rests: [RhythmLayoutRest] = [],
+        minimumMeasureCount: Int = 1,
+        style: NotationLayoutStyle = .gameplayDefault,
+        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
+    ) throws -> EngravedNotation {
+        try DrumTabFixtureHarness.engrave(
+            snapshot: snapshot(
+                notes: notes,
+                controls: controls,
+                rests: rests,
+                minimumMeasureCount: minimumMeasureCount
+            ),
+            minimumMeasureCount: minimumMeasureCount,
+            style: style,
+            notePositionOverrides: notePositionOverrides
+        ).engraved
     }
 
     private func makeRequest(
