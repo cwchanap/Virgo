@@ -58,21 +58,45 @@ struct BridgeControlIdentity: Equatable, Comparable, Sendable {
 /// dual-renderer comparator.
 extension FixtureRenderResult {
     /// Every tick the bridge's tick → row/X check must visit: all formatted
-    /// logical columns plus every resolved note/rest/control onset,
-    /// deduplicated and sorted by (measureIndex, localTick).
+    /// logical columns on BOTH surfaces plus every resolved note/rest/control
+    /// onset, deduplicated and sorted by (measureIndex, localTick).
     var bridgeProbeTicks: [NotationTickPosition] {
-        let columnTicks = engraved.formatted.measures.flatMap { measure in
+        Self.bridgeProbeTicks(
+            legacyFormatted: layout.formattedNotation,
+            packageFormatted: engraved.formatted,
+            onsetTicks: resolvedInput.notes.map(\.position)
+                + resolvedInput.rests.map(\.position)
+                + resolvedInput.controls.map(\.position)
+        )
+    }
+
+    /// The probe union: logical column ticks from BOTH formatted outputs —
+    /// a column that exists on only one surface must still be probed, or a
+    /// legacy-only tick could escape the tick → row/X comparison — plus all
+    /// resolved event onsets. `nonisolated`: pure value-type work.
+    nonisolated static func bridgeProbeTicks(
+        legacyFormatted: FormattedNotation,
+        packageFormatted: FormattedNotation,
+        onsetTicks: [NotationTickPosition]
+    ) -> [NotationTickPosition] {
+        var seen = Set<NotationTickPosition>()
+        return (
+            columnTicks(legacyFormatted)
+                + columnTicks(packageFormatted)
+                + onsetTicks
+        )
+        .filter { seen.insert($0).inserted }
+        .sorted { ($0.measureIndex, $0.localTick) < ($1.measureIndex, $1.localTick) }
+    }
+
+    private nonisolated static func columnTicks(
+        _ formatted: FormattedNotation
+    ) -> [NotationTickPosition] {
+        formatted.measures.flatMap { measure in
             measure.columns.map {
                 NotationTickPosition(measureIndex: measure.index, localTick: $0.localTick)
             }
         }
-        let onsetTicks = resolvedInput.notes.map(\.position)
-            + resolvedInput.rests.map(\.position)
-            + resolvedInput.controls.map(\.position)
-        var seen = Set<NotationTickPosition>()
-        return (columnTicks + onsetTicks)
-            .filter { seen.insert($0).inserted }
-            .sorted { ($0.measureIndex, $0.localTick) < ($1.measureIndex, $1.localTick) }
     }
 
     /// Sorted note event IDs on each surface — an array, not a Set, so a
