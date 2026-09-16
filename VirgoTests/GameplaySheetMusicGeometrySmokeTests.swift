@@ -377,6 +377,56 @@ struct GameplaySheetMusicGeometrySmokeTests {
         }
     }
 
+    /// Edge-straddling head: the production sheet is hosted in the
+    /// oversized ancestor with its ScrollView scrolled `crossingScrollY`
+    /// document points down, so the row-2 heads at sheet-y ~770–790
+    /// straddle the 768pt clip edge by ~10pt on each side — the boundary
+    /// cuts real glyphs mid-stroke. Removing a crossing head must move ink
+    /// inside the clipped viewport while every outside region (margins and
+    /// the deep band past `clipEdgeBleed`) stays identical; the
+    /// full-height control must then move the same heads' ink outside the
+    /// band. Both `#require`s make a missing or shallow crossing selection
+    /// a failure, never a vacuous pass.
+    @Test("sheetMusicView clips a head straddling the viewport edge")
+    func mountedSheetClipsEdgeCrossingHead() async throws {
+        try await TestSetup.withTestSetup {
+            let sheet = try await mountFixture(DrumTabFixtureCatalog.multiRowStableWidths)
+            defer { sheet.viewModel.cleanup() }
+            let engraving = sheet.engraving
+
+            try #require(
+                engraving.contentHeight > mountedViewport.height,
+                "fixture must overflow the viewport vertically for the crossing gate"
+            )
+            // Viewport coordinates: sheet bounds shifted down by the scroll
+            // offset. The head must straddle the edge deeply enough that
+            // its outside part reaches past the clip-edge AA bleed band.
+            let crossing = engraving.noteHeads.filter {
+                $0.paintedBounds.minY - crossingScrollY < mountedViewport.height
+                    && $0.paintedBounds.maxY - crossingScrollY > mountedViewport.height
+            }
+            try #require(
+                !crossing.isEmpty,
+                "no head straddles the 768pt edge at scroll \(crossingScrollY)"
+            )
+            try #require(
+                crossing.allSatisfy {
+                    mountedViewport.height - ($0.paintedBounds.minY - crossingScrollY) >= 6
+                        && $0.paintedBounds.maxY - crossingScrollY
+                            - (mountedViewport.height + clipEdgeBleed) >= 2
+                },
+                "crossing heads must straddle ≥6pt inside and ≥\(clipEdgeBleed + 2)pt outside"
+            )
+
+            let clipped = try rasterizeInAncestor(
+                sheet, sheetSize: mountedViewport, scrollY: crossingScrollY
+            )
+            try await assertCrossingHeadClipsAtEdge(
+                sheet: sheet, clipped: clipped, crossing: crossing
+            )
+        }
+    }
+
     /// Hosted accessibility hierarchy: representative note, control, rest,
     /// and tuplet VoiceOver labels must appear in the mounted tree's
     /// accessibility elements — not merely in the presentation's backing
