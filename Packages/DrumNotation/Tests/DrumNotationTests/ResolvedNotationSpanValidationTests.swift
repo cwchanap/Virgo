@@ -4,7 +4,9 @@ import DrumNotation
 /// HPA-166 review fix 1: a note/rest's exact duration span must stay inside
 /// its owning measure — `localTick + durationTicks <= durationTicks`, with
 /// the exact measure end allowed and no integer-overflow trap. Onset-only
-/// containment and positivity live in the sibling validation suite.
+/// containment and positivity live in the sibling validation suite. The
+/// `validateEventDurations` pass also rejects negative dot counts here —
+/// malformed rhythm the engraver must never see.
 @Suite("Resolved notation event-span validation")
 struct ResolvedNotationSpanValidationTests {
     @Test("event spans ending exactly at the measure end validate")
@@ -114,5 +116,51 @@ struct ResolvedNotationSpanValidationTests {
                     durationTicks: 480
                 )
         }
+    }
+
+    // MARK: Dot counts
+
+    @Test("validation rejects negative note and rest dot counts")
+    func validationRejectsNegativeDotCounts() {
+        #expect {
+            try Fixtures.document(
+                notes: [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, dotCount: -1)],
+                rests: [],
+                controls: []
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidEventDotCount(eventID: 1, dotCount: -1)
+        }
+        #expect {
+            try Fixtures.document(
+                notes: [],
+                rests: [ResolvedRest(
+                    id: 2,
+                    position: NotationTickPosition(measureIndex: 0, localTick: 480),
+                    duration: .quarter,
+                    dotCount: -2,
+                    isFullMeasure: false,
+                    voice: .upper,
+                    durationTicks: 480
+                )],
+                controls: []
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidEventDotCount(eventID: 2, dotCount: -2)
+        }
+    }
+
+    @Test("validation accepts zero and positive dot counts")
+    func validationAcceptsNonNegativeDotCounts() throws {
+        _ = try Fixtures.document(
+            notes: [
+                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, dotCount: 0),
+                Fixtures.makeNote(id: 2, localTick: 480, staffStep: 3, dotCount: 2)
+            ],
+            rests: [Fixtures.rest(id: 3, localTick: 960)],
+            controls: []
+        )
     }
 }
