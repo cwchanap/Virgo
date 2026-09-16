@@ -172,8 +172,9 @@ final class GameplayViewModel {
     /// `installPreparedNotation(_:generation:)`.
     private var notationInstall: GameplayNotationInstall?
     private(set) var notationLayoutGeneration: UInt64 = 0
-    /// The installed package engraving. Nil when the preparation produced no
-    /// printable notation (`.unavailable`) or failed (`.failed`).
+    /// The installed package engraving. Nil when nothing notation-bearing is
+    /// installed (cleared before preparation) or the preparation failed
+    /// (`.failed`).
     var cachedEngravedNotation: EngravedNotation? { notationInstall?.engraving }
     /// The app-owned presentation installed atomically with the engraving.
     var notationPresentation: GameplayNotationPresentation? { notationInstall?.presentation }
@@ -385,10 +386,6 @@ final class GameplayViewModel {
             )
             notationPreparationFailure = nil
             cachedNotationHasRenderableContent = true
-        case .unavailable:
-            notationInstall = nil
-            notationPreparationFailure = nil
-            cachedNotationHasRenderableContent = false
         case let .failed(failure):
             notationInstall = nil
             notationPreparationFailure = failure

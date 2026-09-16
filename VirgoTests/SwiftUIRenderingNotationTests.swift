@@ -51,7 +51,7 @@ struct SwiftUIRenderingNotationTests {
             let gameplayView = GameplayView(chart: viewModel.chart, metronome: viewModel.metronome)
 
             SwiftUITestUtilities.assertViewWithEnvironment(
-                gameplayView.drumNotationView(viewModel: viewModel),
+                gameplayView.staticSheetMusicContent(viewModel: viewModel),
                 size: CGSize(width: 1_024, height: 768)
             )
             // Every engraved rest is printed by construction: hidden
@@ -220,7 +220,7 @@ struct SwiftUIRenderingNotationTests {
             let yellowPixels = try countYellowPixels(
                 in: ZStack {
                     Color.black
-                    gameplayView.drumNotationView(viewModel: viewModel)
+                    gameplayView.staticSheetMusicContent(viewModel: viewModel)
                 },
                 size: CGSize(width: 1_024, height: 400)
             )

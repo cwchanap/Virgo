@@ -115,7 +115,7 @@ struct GameplayRenderCoverageTests {
 
             var didInvalidate = false
             withObservationTracking {
-                _ = view.drumNotationView(viewModel: vm)
+                _ = view.staticSheetMusicContent(viewModel: vm)
             } onChange: {
                 didInvalidate = true
             }

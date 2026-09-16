@@ -134,7 +134,7 @@ struct NotationSnapshotTestSupport {
     }
 
     /// The engraving + presentation out of a `.ready` prepared state; fails
-    /// the test on `.unavailable`/`.failed`.
+    /// the test on `.failed`.
     func requireReady(
         _ prepared: GameplayNotationPreparedState,
         _ comment: Comment? = nil

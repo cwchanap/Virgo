@@ -9,7 +9,7 @@ struct RhythmRenderingTests {
     /// suite comes from `GameplayNotationPreparer.prepare`, which ends in the
     /// package `NotationEngraver`. `.ready` carries the `EngravedNotation`
     /// plus the app-owned presentation (feel/warning annotations + VoiceOver
-    /// labels); `.unavailable`/`.failed` fail the test.
+    /// labels); `.failed` fails the test.
     private func preparedEngraving(
         _ snapshot: RhythmLayoutSnapshot,
         minimumMeasureCount: Int = 1
