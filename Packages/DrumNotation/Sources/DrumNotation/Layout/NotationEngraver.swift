@@ -16,45 +16,69 @@ public enum NotationEngraver {
         _ input: ResolvedNotationInput,
         style: NotationEngravingStyle
     ) throws -> EngravedNotation {
-        let stemTopology = StemTopologyBuilder().build(input)
+        engrave(input, style: style, stemTopology: StemTopologyBuilder().build(input))
+    }
+
+    /// The shared plan-driven path behind `engrave(_:style:)`: identical
+    /// compose over a caller-supplied stem topology. The production route
+    /// feeds the real topology; tests inject synthetic coverage so the
+    /// defensive component-flag arm runs through identical production logic
+    /// — the same seam shape as `NotationFormatter.format(_:style:stemTopology:)`.
+    /// Internal only: never a second public engine.
+    static func engrave(
+        _ input: ResolvedNotationInput,
+        style: NotationEngravingStyle,
+        stemTopology: StemTopology
+    ) -> EngravedNotation {
         let formatted = NotationFormatter.format(
             input,
             style: style.formatting,
             stemTopology: stemTopology
         )
-        return SheetComposer(input: input, style: style, formatted: formatted).compose()
+        return SheetComposer(
+            input: input,
+            style: style,
+            formatted: formatted,
+            stemTopology: stemTopology
+        ).compose()
     }
 }
 
 /// Composes final sheet geometry from one formatted result: rows and
 /// measures from the formatted assignments, note heads/rests at formatted
-/// X and package staff-step Y, ledger lines and rhythm dots from the actual
-/// Bravura painted bounds, then the single Y normalization.
-private struct SheetComposer {
+/// X and package staff-step Y, stems/beams/flags from the shared stem
+/// topology, controls/tuplets/bars from resolved semantics, then the
+/// single Y normalization. Internal so the Task 4 geometry passes can
+/// live in focused extension files; still never public API.
+struct SheetComposer {
     /// Staff-step convention: 0 is the bottom line, 4 the middle line, 8 the
     /// top line (ledger steps continue by twos outside the staff).
-    private static let bottomLineStaffStep = 0
-    private static let middleLineStaffStep = 4
-    private static let topLineStaffStep = 8
+    static let bottomLineStaffStep = 0
+    static let middleLineStaffStep = 4
+    static let topLineStaffStep = 8
 
     let input: ResolvedNotationInput
     let style: NotationEngravingStyle
     let formatted: FormattedNotation
+    /// The stem-group plan the formatter already consumed — stems, beams
+    /// and flags read its groups, representatives and visible-flag plans;
+    /// nothing here re-derives a second topology.
+    let stemTopology: StemTopology
 
-    private var formatting: NotationFormattingStyle { style.formatting }
+    var formatting: NotationFormattingStyle { style.formatting }
     /// Row pitch — the deterministic staff-center spacing between rows.
-    private var rowPitch: CGFloat { style.rowHeight + style.rowVerticalSpacing }
-    private var halfStaffSpace: CGFloat { formatting.staffSpace / 2 }
+    var rowPitch: CGFloat { style.rowHeight + style.rowVerticalSpacing }
+    var halfStaffSpace: CGFloat { formatting.staffSpace / 2 }
 
     /// One row's raw staff center: the staff is centered in each `rowHeight`
     /// band, so row 0's center is `rowHeight / 2` and successive centers are
     /// one row pitch apart — deterministic from the style alone.
-    private func staffCenterY(rowIndex: Int) -> CGFloat {
+    func staffCenterY(rowIndex: Int) -> CGFloat {
         style.rowHeight / 2 + CGFloat(rowIndex) * rowPitch
     }
 
     /// Raw sheet Y of a pitch-ascending staff step on a row.
-    private func staffStepY(_ staffStep: Int, rowIndex: Int) -> CGFloat {
+    func staffStepY(_ staffStep: Int, rowIndex: Int) -> CGFloat {
         staffCenterY(rowIndex: rowIndex)
             - CGFloat(staffStep - Self.middleLineStaffStep) * halfStaffSpace
     }
@@ -73,15 +97,18 @@ private struct SheetComposer {
     }
 
     /// One pending note head in raw (unshifted) sheet coordinates.
-    private struct PendingNoteHead {
+    struct PendingNoteHead {
         let note: ResolvedNote
         let rowIndex: Int
         let position: CGPoint
         let bounds: CGRect
+        /// The shared stem-axis point: head position + the Bravura
+        /// stemUpSE/stemDownNW anchor offset.
+        let stemAnchor: CGPoint
     }
 
     /// One pending rest in raw (unshifted) sheet coordinates.
-    private struct PendingRest {
+    struct PendingRest {
         let rest: ResolvedRest
         let rowIndex: Int
         let position: CGPoint
@@ -90,7 +117,7 @@ private struct SheetComposer {
 
     /// The shared trailing-dot anchor: which source owns the dots, which row
     /// they land on, the Y they center on, and the ink they trail.
-    private struct DotAnchor {
+    struct DotAnchor {
         let source: EngravedRhythmDot.Source
         let rowIndex: Int
         let centerY: CGFloat
@@ -100,11 +127,18 @@ private struct SheetComposer {
 
     /// Raw-geometry accumulator: pending primitives plus the running ink
     /// union, all still in unshifted sheet coordinates.
-    private struct RawGeometry {
+    struct RawGeometry {
         var noteHeads: [PendingNoteHead] = []
         var rests: [PendingRest] = []
+        var stems: [EngravedStem] = []
+        var beams: [EngravedBeam] = []
+        var flags: [EngravedFlag] = []
         var ledgerLines: [EngravedLedgerLine] = []
         var rhythmDots: [EngravedRhythmDot] = []
+        var articulations: [EngravedArticulation] = []
+        var controls: [EngravedControl] = []
+        var tuplets: [EngravedTuplet] = []
+        var measureBars: [EngravedMeasureBar] = []
         var paintedUnion: CGRect?
 
         mutating func include(_ bounds: CGRect) {
@@ -119,13 +153,13 @@ private struct SheetComposer {
         // primitive down by the same amount; nothing else ever translates.
         let shift = max(0, -(raw.paintedUnion?.minY ?? 0))
         let paintedBounds = raw.paintedUnion?.offsetBy(dx: 0, dy: shift)
-        let rows = Set(formatted.measures.map(\.rowIndex)).sorted().map {
-            EngravedRow(index: $0, staffCenterY: staffCenterY(rowIndex: $0) + shift)
-        }
         let measuresByIndex = Dictionary(
             input.measures.map { ($0.index, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        let rows = Set(formatted.measures.map(\.rowIndex)).sorted().map {
+            engravedRow(index: $0, shift: shift, measuresByIndex: measuresByIndex)
+        }
         let measures = formatted.measures.compactMap { formattedMeasure -> EngravedMeasure? in
             guard let measure = measuresByIndex[formattedMeasure.index] else { return nil }
             return EngravedMeasure(
@@ -144,15 +178,15 @@ private struct SheetComposer {
             measures: measures,
             noteHeads: raw.noteHeads.map { materialize($0, shift: shift) },
             rests: raw.rests.map { materialize($0, shift: shift) },
-            stems: [],
-            beams: [],
-            flags: [],
+            stems: raw.stems.map { $0.translated(byY: shift) },
+            beams: raw.beams.map { $0.translated(byY: shift) },
+            flags: raw.flags.map { $0.translated(byY: shift) },
             ledgerLines: raw.ledgerLines.map { $0.translated(byY: shift) },
             rhythmDots: raw.rhythmDots.map { $0.translated(byY: shift) },
-            articulations: [],
-            controls: [],
-            tuplets: [],
-            measureBars: [],
+            articulations: raw.articulations.map { $0.translated(byY: shift) },
+            controls: raw.controls.map { $0.translated(byY: shift) },
+            tuplets: raw.tuplets.map { $0.translated(byY: shift) },
+            measureBars: raw.measureBars,
             paintedBounds: paintedBounds ?? .null,
             contentWidth: contentWidth(painted: paintedBounds),
             contentHeight: contentHeight(painted: paintedBounds, rows: rows)
@@ -177,7 +211,10 @@ private struct SheetComposer {
 
     /// Pass 1: walks the formatted columns once, resolving every note head
     /// and rest to its raw position/painted bounds plus derived ledgers and
-    /// dots. All Y is raw — the union drives the single shift afterwards.
+    /// dots; then the topology pass paints beams, stems and flags off the
+    /// shared stem-group plan, and the descriptor pass paints articulations,
+    /// controls, tuplets and measure bars. All Y is raw — the union drives
+    /// the single shift afterwards.
     private func collect(_ raw: inout RawGeometry) {
         let notesByID = Dictionary(input.notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let restsByID = Dictionary(input.rests.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -193,6 +230,21 @@ private struct SheetComposer {
                 }
             }
         }
+        let headsByID = Dictionary(
+            raw.noteHeads.map { ($0.note.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let pendingRestsByID = Dictionary(
+            raw.rests.map { ($0.rest.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        collectBeams(headsByID: headsByID, raw: &raw)
+        let stemsByGroup = collectStems(headsByID: headsByID, raw: &raw)
+        collectFlags(stemsByGroup: stemsByGroup, raw: &raw)
+        collectArticulations(raw: &raw)
+        collectControls(raw: &raw)
+        collectTuplets(headsByID: headsByID, restsByID: pendingRestsByID, raw: &raw)
+        collectMeasureBars(raw: &raw)
     }
 
     private func collect(
@@ -205,15 +257,20 @@ private struct SheetComposer {
             x: headCenterX,
             y: staffStepY(note.staffStep, rowIndex: measure.rowIndex)
         )
-        let bounds = PercussionGlyphMetrics.notehead(
+        let metrics = PercussionGlyphMetrics.notehead(
             style: note.noteheadStyle,
             duration: note.duration,
             stemDirection: note.stemDirection,
             staffSpace: formatting.staffSpace
-        ).paintedBounds.offsetBy(dx: position.x, dy: position.y)
+        )
+        let bounds = metrics.paintedBounds.offsetBy(dx: position.x, dy: position.y)
         raw.include(bounds)
         raw.noteHeads.append(PendingNoteHead(
-            note: note, rowIndex: measure.rowIndex, position: position, bounds: bounds
+            note: note, rowIndex: measure.rowIndex, position: position, bounds: bounds,
+            stemAnchor: CGPoint(
+                x: position.x + metrics.stemAnchorOffset.x,
+                y: position.y + metrics.stemAnchorOffset.y
+            )
         ))
         collectLedgerLines(note: note, rowIndex: measure.rowIndex, headBounds: bounds, raw: &raw)
         // Unsupported-duration heads keep their ink but no rhythm semantics.

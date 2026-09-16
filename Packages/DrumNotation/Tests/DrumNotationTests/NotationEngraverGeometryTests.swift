@@ -57,7 +57,14 @@ struct NotationEngravingStyleTests {
     @Test("engraving model types are Sendable")
     func engravingModelTypesAreSendable() throws {
         _ = requireSendable(NotationEngravingStyle())
-        _ = requireSendable(EngravedRow(index: 0, staffCenterY: 40))
+        _ = requireSendable(EngravedRow(
+            index: 0, staffCenterY: 40,
+            staffLineYs: [0, 10, 20, 30, 40],
+            clef: EngravedClef(position: .zero),
+            meterSignature: EngravedMeterSignature(
+                meter: NotationMeter(beats: 4, noteValue: 4), position: .zero
+            )
+        ))
         _ = requireSendable(EngravedMeasure(
             index: 0, rowIndex: 0, xOffset: 100, width: 252,
             startTick: 0, durationTicks: 1920,

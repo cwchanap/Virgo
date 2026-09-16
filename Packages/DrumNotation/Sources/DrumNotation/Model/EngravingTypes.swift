@@ -11,16 +11,55 @@ import CoreGraphics
 // articulations, controls, tuplets, measure bars); their arrays exist here
 // already so the result contract does not change when they fill in.
 
+/// The percussion-clef furniture at a row's leading edge. Only its final
+/// center position is engraved — the painter owns the glyph metrics.
+public struct EngravedClef: Hashable, Sendable {
+    /// Clef glyph center in final sheet coordinates.
+    public let position: CGPoint
+
+    public init(position: CGPoint) {
+        self.position = position
+    }
+}
+
+/// The meter signature beside a row's clef: the resolved meter of the row's
+/// first formatted measure at its furniture-center position.
+public struct EngravedMeterSignature: Hashable, Sendable {
+    public let meter: NotationMeter
+    /// Signature center in final sheet coordinates.
+    public let position: CGPoint
+
+    public init(meter: NotationMeter, position: CGPoint) {
+        self.meter = meter
+        self.position = position
+    }
+}
+
 /// One staff row of the sheet. `staffCenterY` is the Y of the middle staff
 /// line (staff step 4) after the single Y normalization — the row-relative
-/// pitch anchor every consumer shares.
+/// pitch anchor every consumer shares. `staffLineYs` carries the painted
+/// staff geometry row anchors and the playhead read from; `clef` and
+/// `meterSignature` are the row-leading furniture descriptors.
 public struct EngravedRow: Hashable, Sendable {
     public let index: Int
     public let staffCenterY: CGFloat
+    /// Staff-line Ys in pitch-ascending order (bottom line first).
+    public let staffLineYs: [CGFloat]
+    public let clef: EngravedClef
+    public let meterSignature: EngravedMeterSignature
 
-    public init(index: Int, staffCenterY: CGFloat) {
+    public init(
+        index: Int,
+        staffCenterY: CGFloat,
+        staffLineYs: [CGFloat],
+        clef: EngravedClef,
+        meterSignature: EngravedMeterSignature
+    ) {
         self.index = index
         self.staffCenterY = staffCenterY
+        self.staffLineYs = staffLineYs
+        self.clef = clef
+        self.meterSignature = meterSignature
     }
 }
 
