@@ -10,19 +10,6 @@ import DrumNotation
 @testable import Virgo
 
 #if os(macOS)
-/// Counts pixels whose channels differ between two rasters — the mounting
-/// differential: the production sheet paints over an opaque stage
-/// background, so "ink" is "pixels the engraving changed".
-private func changedPixelCount(between lhs: RasterBitmap, and rhs: RasterBitmap) -> Int {
-    guard lhs.pixelCount == rhs.pixelCount else { return .max }
-    return (0..<lhs.pixelCount).count { index in
-        let first = lhs.pixel(at: index)
-        let second = rhs.pixel(at: index)
-        return first.red != second.red || first.green != second.green
-            || first.blue != second.blue || first.alpha != second.alpha
-    }
-}
-
 /// Gates that the production `GameplayView.sheetMusicView(geometry:)` branch
 /// actually *mounts* the package `DrumNotationView` over the installed
 /// engraving — as opposed to the package renderer merely being able to draw,
