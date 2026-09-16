@@ -148,62 +148,6 @@ vendored verbatim.
 The old Virgo app's hand-drawn half-circle, bullseye, and open-circle notehead shapes are
 intentionally retired in favor of these SMuFL glyphs.
 
-## Measured formatter contract (HPA-164)
-
-The package owns measured formatting over an exact integer-tick coordinate space. Input is
-`ResolvedNotationInput` — `ticksPerWholeNote` plus `ResolvedMeasure`s (index/startTick/durationTicks),
-`ResolvedNote`s (integer ID, measure/local tick position, stem direction, staff step, notehead style,
-duration, dots, optional visible-flag duration), printed `ResolvedRest`s (ID, position, duration, dots,
-`isFullMeasure`) and `ResolvedControl`s (ID + position). Construction validates: positive
-`ticksPerWholeNote`, unique/valid/non-overlapping measures, and every event `localTick` inside its owning
-measure. Absolute tick is derived (`startTick + localTick`), never accepted as input. There is no
-package voice, tuplet, beat group, BPM/seconds or DTX lane — the caller filters and resolves first.
-
-Output is immutable `FormattedNotation`: measures ordered by index, each with row assignment,
-sheet-local `xOffset`/`width`, and tick-ordered `FormattedColumn`s carrying the logical onset X
-(`logicalColumnX`, never displaced), per-head visual `headCenterX` (VexFlow staff-second displacement),
-the printed rest's visual X, and `leftExtent`/`rightExtent` collision ink reaches measured relative to
-`logicalColumnX` (displaced heads + dots + printed rests + visible flag ink attached at its stem
-direction's stem axis — the head glyph's `stemUpSE`/`stemDownNW` anchor at the undisplaced column;
-controls are timing anchors with zero width). All output X — measure origins, `logicalColumnX`, head
-centers, rest visuals — is final sheet-local (row-leading inset included); the caller applies no
-post-format X transform.
-
-Spacing, widths, rows and lookup are deterministic one-pass rules — no global density scan, iterative
-relaxation or chart-wide X-per-tick scale, so a dense measure never rescales a sparse neighbor:
-
-- **Per-gap rule.** The tick-0 column sits at `leadingMeasureInset`; each next column advances by
-  `max(rhythmicGap, collisionGap)` with `rhythmicGap = minimumQuarterNoteSpacing * deltaTicks * 4 /
-  ticksPerWholeNote` (multiply-then-divide, exact up to the final `CGFloat`) and `collisionGap =
-  previous.rightExtent + minimumInterColumnClearance + next.leftExtent`.
-- **Measure width.** Natural, never compressed: `leadingMeasureInset + (tick-0 → end-anchor span) +
-  trailingMeasureInset`. An over-wide measure keeps its natural width.
-- **Row packing.** Greedy over whole measures: each row's first measure sits at `rowLeadingInset`,
-  `measureSpacing` separates measures on a row, and a measure wraps to the next row before it would
-  cross `availableRowWidth`; a measure that cannot fit even alone on a row still gets its own row at
-  natural width.
-- **Full-measure rests.** The timing anchor stays the column's `logicalColumnX`; the rest's
-  `visualX` (finalized once the width is known) is the center of the measure content span
-  (`leadingMeasureInset … width − trailingMeasureInset`).
-- **Tick lookup.** `position(measureIndex:localTick:)` takes a `Double` local tick (the live
-  playhead passes continuous ticks). Exact anchors return their `logicalColumnX`; values between
-  anchors interpolate linearly between adjacent columns of the same measure only — never across a
-  measure or row boundary. The start/end anchor columns make empty, control-only and trailing
-  measures resolvable across their full span. Tiny floating-point drift at the measure edges
-  (±1e-6 ticks) clamps to the boundary anchor; anything further outside, an unknown measure index,
-  or non-finite input returns nil.
-
-The default style `NotationFormattingStyle.virgoDefault` pins the Virgo mapping:
-`availableRowWidth` 900 (the app's row-width floor), `rowLeadingInset` 100, `staffSpace` 20,
-`stemWidth` 2, `minimumInterColumnClearance` 8, `minimumQuarterNoteSpacing` 50, `measureSpacing` 12,
-`leadingMeasureInset` 52, `trailingMeasureInset` 0, `rhythmDotRadius` 2.5, `rhythmDotSpacing` 4.
-
-`minimumInterColumnClearance` is **edge-to-edge** clearance between adjacent column ink — not a
-center-to-center pitch. The 8pt default derives from the old 28pt center pitch minus the X-black
-notehead width at staff-space 20 (the vendored Bravura head paints 23.2pt ≈ 1.16 staff spaces, so
-the real collision pitch is ≈31.2pt; the historical 28pt figure assumed a 20pt hand-drawn head); it
-is a semantic conversion, not a field rename.
-
 ## Closed SMuFL glyph table
 
 The runtime lookup is a closed internal catalog (`Sources/DrumNotation/Glyphs/SMuFLGlyphCatalog.swift`)
