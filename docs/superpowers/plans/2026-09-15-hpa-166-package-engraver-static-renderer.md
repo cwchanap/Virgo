@@ -2,100 +2,102 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Finish the three-PR `DrumNotation` migration by moving shared stem-group/beam/modifier/control/tuplet engraving and the complete static notation view into the package, then delete Virgo's transitional engraving composition while preserving app-owned rhythm analysis, accessibility copy, annotations, scrolling and live playback.
+**Goal:** Finish the three-PR `DrumNotation` migration by moving reusable beam/modifier/control/tuplet engraving and the complete static notation view into the package, preserving the real-DTX regression net through the cutover, then deleting Virgo's transitional renderer.
 
-**Architecture:** Virgo continues to analyze DTX into `RhythmLayoutSnapshot`, then `VirgoNotationProjection` maps only resolved engraving semantics into package values. `DrumNotation.NotationEngraver` constructs first-class stem groups, runs the ported beam topology once, uses one `VisibleFlagPlan` per stem group for both formatter footprint and final flags, builds immutable final X/Y geometry, and returns `EngravedNotation`; `DrumNotationView` paints that value. Virgo keeps DTX/rhythm inference, feel/warning annotations, row anchors/scrolling, the live playhead, and app-specific accessibility strings.
+**Architecture:** Virgo keeps DTX/rhythm inference and projects resolved engraving values into `DrumNotation`. Package stem groups/topology drive both pre-format flag footprint and final beam/flag geometry. `NotationEngraver.engrave` returns pure immutable `EngravedNotation`; `DrumNotationView` paints it with caller-supplied appearance and accessibility labels. Before production switches, Virgo's real-DTX golden/invariant harness is retargeted to package engraving so later production cutover cannot hide geometry regressions behind blanket golden churn.
 
-**Tech Stack:** Swift Package Manager, SwiftUI, CoreGraphics, Swift Testing, Xcode macOS/iOS simulator builds, vendored Bravura/SMuFL resources, VexFlow 5.0.0 as semantic reference only.
+**Tech Stack:** Swift / Swift Package Manager / SwiftUI / CoreGraphics / Swift Testing / Xcode macOS + iOS Simulator, vendored Bravura/SMuFL resources, VexFlow 5.0.0 as semantic reference only.
 
 **Spec:** `docs/superpowers/specs/2026-09-15-hpa-166-package-engraver-static-renderer-design.md`
 
 ## Global Constraints
 
-- Exactly one PR for HPA-166; implementation continues on draft PR #67.
-- Keep one `DrumNotation` library target and one package test target; no Core/UI split.
-- No DTX parsing, SwiftData, `RhythmLayoutSnapshot`, `DrumType`, `GameplayViewModel`, `GameplayLayout`, `Palette`, `AppFonts`, app logger, playback clock or app diagnostics inside the package.
-- No old/new renderer toggle, fallback notation renderer, compatibility shim, repository-extraction harness, demo app or publication workflow.
-- No backward-compatibility requirement for package initializers/types; update the single Virgo consumer in the **same commit** as every package API change so the app remains compilable.
-- Preserve HPA-164 `FormattedNotation` as the horizontal authority; do not add another formatter or post-format app X transform.
-- Port the proven beam grouping/representative rules before changing musical behavior; parity changes require explicit VexFlow fixture evidence.
-- `StemGroup` is first-class inside the package. Topology, stems, flags and formatter flag footprint consume the same groups.
-- Exactly one `VisibleFlagPlan` belongs to one stem group; never reserve/paint a copy per chord member.
-- `tiebreakOrder` maps the current `DrumNotationDefinition.catalogOrder`; do not silently replace existing representative comparators.
-- `isRhythmEngravable` is note support **AND** owning measure `engravingSupport.permitsEngraving`.
-- Reuse existing package `PercussionArticulation`; do not add a duplicate articulation enum.
-- `flagVerticalSpacing` is an explicit engraving-style scalar. Stem width remains `NotationFormattingStyle.stemWidth`.
-- Feel text and rhythm-warning diagnostics remain Virgo annotations.
-- App-specific VoiceOver strings cross as optional scalar labels and are applied by the package view.
-- Keep `GameplayStaticNotationView` generation-isolated; live playback/playhead updates must not re-run engraving.
-- Package preparation values remain `Sendable` and view-free; SwiftUI `Color` appears only at the view appearance boundary.
-- Package output owns final normalized X/Y. Virgo row anchors and playhead consume package geometry rather than recreating staff/top-inset math.
-- Projection/engraver validation failures must not return a successful empty sheet; route them to the existing practice-unavailable/fatal flow.
-- Existing CI already runs `swift test --package-path Packages/DrumNotation`; do not add another workflow unless that step disappears.
+- Exactly one PR for HPA-166; implementation continues on this draft PR.
+- Keep one `DrumNotation` library target and one package test target.
+- No DTX parsing, SwiftData, `RhythmLayoutSnapshot`, `DrumType`, `GameplayViewModel`, `GameplayLayout`, `Palette`, `AppFonts`, app logger, playback clock, localized app copy, or app diagnostics inside package geometry/model code.
+- No old/new renderer toggle, fallback notation renderer, compatibility migration, second package target, repository-extraction harness, demo app, or publication workflow.
+- Every commit that changes a public package initializer/type must update Virgo's only consumer in the same commit so the app still compiles.
+- Preserve HPA-164 `FormattedNotation` as horizontal authority; no second formatter or app-side post-format X transform.
+- Port existing beam topology before changing musical behavior; any parity change needs an explicit fixture.
+- One package stem-group/topology result drives formatter flag footprint and final flags.
+- `isRhythmEngravable` = note support AND measure `permitsEngraving`.
+- Preserve current representative ordering with package scalar `tiebreakOrder` mapped from app `catalogOrder`.
+- `flagVerticalSpacing` is an engraving-style scalar; stem width remains in `NotationFormattingStyle`.
+- Package `EngravedNotation` contains geometry/semantics only; localized VoiceOver copy is passed to `DrumNotationView` at paint time.
+- Final package Y is normalized once; Virgo does not recreate notation `topContentInset` / staff-center formulas.
+- Keep feel/warning annotations in Virgo.
+- Package preparation remains value/Sendable and off-main capable; SwiftUI colors exist only at the view appearance boundary.
+- Keep macOS 14 and iOS/iPadOS 17.5 floors and current project Swift language mode.
 - App `xcodebuild` tests remain serial/non-parallel.
-- Do not add Node/VexFlow as a production dependency. Add executable reference tooling only if one disputed fixture needs it and a Swift test consumes its artifact.
-- No new image/art assets are required.
+- CI already runs `swift test --package-path Packages/DrumNotation`; do not add another package-test workflow unless that existing command disappears.
+- VexFlow/Node is not a production dependency. Add reference tooling only when a disputed fixture requires executable evidence consumed by a Swift test.
+- No new image/art assets.
 
 ---
 
 ## File Map
 
-### Package: create/extend
+### Package — modify/create
 
-- Modify: `Packages/DrumNotation/Sources/DrumNotation/Model/ResolvedNotation.swift`
-- Modify: `Packages/DrumNotation/Sources/DrumNotation/Model/PrimitiveTypes.swift` only where existing package types need conformance/API; reuse `PercussionArticulation`
-- Create: `Packages/DrumNotation/Sources/DrumNotation/Model/EngravingStyle.swift`
-- Create: `Packages/DrumNotation/Sources/DrumNotation/Model/EngravingTypes.swift`
-- Create: `Packages/DrumNotation/Sources/DrumNotation/Layout/BeamTopology.swift`
-- Modify: `Packages/DrumNotation/Sources/DrumNotation/Layout/NotationFormatter.swift`
-- Create: `Packages/DrumNotation/Sources/DrumNotation/Layout/NotationEngraver.swift`
-- Split `NotationEngraver+Rhythm.swift` / `NotationEngraver+Marks.swift` only if file-size/readability actually requires it
-- Create: `Packages/DrumNotation/Sources/DrumNotation/Rendering/DrumNotationView.swift`
-- Modify: `Packages/DrumNotation/Sources/DrumNotation/Rendering/PrimitiveViews.swift`
-- Modify: `Packages/DrumNotation/README.md`
+- `Packages/DrumNotation/Sources/DrumNotation/Model/ResolvedNotation.swift` — final resolved engraving input.
+- `Packages/DrumNotation/Sources/DrumNotation/Model/EngravingTypes.swift` — package voice/meter/tuplet/control values and immutable primitives.
+- `Packages/DrumNotation/Sources/DrumNotation/Model/EngravingStyle.swift` — numeric engraving style with defaulted initializer.
+- `Packages/DrumNotation/Sources/DrumNotation/Layout/BeamTopology.swift` — ported topology/stem-group/flag-plan logic.
+- `Packages/DrumNotation/Sources/DrumNotation/Layout/NotationFormatter.swift` — consume one group flag plan for spacing.
+- `Packages/DrumNotation/Sources/DrumNotation/Layout/NotationEngraver.swift` — single production package facade.
+- `Packages/DrumNotation/Sources/DrumNotation/Rendering/DrumNotationView.swift` — complete static notation view.
+- `Packages/DrumNotation/Sources/DrumNotation/Rendering/PrimitiveViews.swift` — reuse/extend Bravura painters.
+- `Packages/DrumNotation/README.md` — final public flow/ownership/reference contract.
 
 ### Package tests
 
-- Create: `StemGroupTests.swift`
-- Create: `BeamTopologyTests.swift`
-- Modify/add formatter flag-footprint tests in existing formatter suites
-- Create: `NotationEngraverGeometryTests.swift`
-- Create: `NotationEngraverModifierTests.swift`
-- Create: `DrumNotationViewTests.swift`
-- Modify: `PackageBoundaryTests.swift`
+- `Packages/DrumNotation/Tests/DrumNotationTests/ResolvedNotationEngravingTests.swift`
+- `Packages/DrumNotation/Tests/DrumNotationTests/BeamTopologyTests.swift`
+- `Packages/DrumNotation/Tests/DrumNotationTests/NotationEngraverGeometryTests.swift`
+- `Packages/DrumNotation/Tests/DrumNotationTests/NotationEngraverModifierTests.swift`
+- `Packages/DrumNotation/Tests/DrumNotationTests/DrumNotationViewTests.swift`
+- `Packages/DrumNotation/Tests/DrumNotationTests/PackageBoundaryTests.swift`
+- existing HPA-163/164 package tests as affected.
 
 ### Virgo integration
 
-- Modify throughout API changes: `Virgo/layout/VirgoNotationProjection.swift`
-- Delete after package topology is green: `Virgo/layout/VirgoNotationProjection+Flags.swift`
-- Modify: `Virgo/layout/GameplayNotationPreparation.swift`
-- Modify/shrink: `Virgo/layout/NotationLayout.swift`
-- Modify: `Virgo/views/subviews/GameplaySheetMusicView.swift`
-- Create: `Virgo/views/GameplayNotationAnnotationViews.swift` if moving feel/warning UI keeps the sheet readable
-- Modify: view-model notation installation/playhead files that currently store/consume `NotationLayout`
+- `Virgo/layout/VirgoNotationProjection.swift`
+- `Virgo/layout/VirgoNotationProjection+Flags.swift` — delete at production cutover.
+- `Virgo/layout/GameplayNotationPreparation.swift`
+- `Virgo/viewmodels/GameplayViewModel+Notation.swift` plus concrete notation cache/install call sites.
+- `Virgo/views/subviews/GameplaySheetMusicView.swift`
+- `Virgo/views/GameplayNotationAnnotationViews.swift` if app annotations need extraction.
+- `Virgo/views/NotationPrimitiveViews.swift` — delete after package render/mount probes are green.
+- existing app layout/topology files — delete/reduce after production cutover.
 
-### Delete after replacement coverage
+### Real-DTX regression net — explicitly migrate before cutover
 
-- `Virgo/layout/NotationBeamTopology.swift`
-- reusable portions of `NotationLayoutEngine+Beams.swift`
-- reusable portions of `NotationLayoutEngine+Controls.swift`
-- reusable portions of `NotationLayoutEngine+Rests.swift`
-- reusable portions of `NotationLayoutEngine+RhythmRendering.swift`
-- `Virgo/views/NotationPrimitiveViews.swift`
-- app `Rendered*` engraving values whose callers are gone
-- pure app topology/geometry tests duplicated by package tests
+- `VirgoTests/Fixtures/DrumTabFixtureHarness.swift`
+- `VirgoTests/NotationLayoutDigest.swift` (rename to `DrumNotationDigest.swift` if clearer).
+- `VirgoTests/DrumTabGoldenTests.swift`
+- `VirgoTests/DrumTabRegressionInvariantTests.swift`
+- `VirgoTests/DrumTabRenderProbeTests.swift`
+- `VirgoTests/GameplaySheetMusicMountingTests.swift`
+- `VirgoTests/DrumTabPlayheadAlignmentTests.swift`
+- `VirgoTests/Goldens/*`
 
 ---
 
-## Task 1: Extend the resolved model without breaking Virgo
+## Task 1: Extend the resolved package model without breaking Virgo
 
 **Files:**
-- Modify package `ResolvedNotation.swift`
-- Modify `Virgo/layout/VirgoNotationProjection.swift` in the same commit
-- Modify package fixtures/tests
-- Modify focused Virgo projection tests
+- Modify `ResolvedNotation.swift`.
+- Create/modify package engraving model tests.
+- Modify `VirgoNotationProjection.swift` in the same commit.
 
-**Interfaces produced:**
+**Interfaces:**
+- Package input gains only resolved engraving semantics.
+- Production may still call the existing formatter directly after this task.
+- Existing transitional `visibleFlagDuration` stays only until the production cutover; do not invent a new compatibility layer.
+
+- [ ] **Step 1: Add failing package model tests**
+
+Pin package-local values:
 
 ```swift
 public enum NotationVoiceRole: Int, Hashable, Sendable { case upper, lower }
@@ -106,100 +108,69 @@ public struct NotationMeter: Hashable, Sendable {
 }
 
 public struct ResolvedBeatGroup: Hashable, Sendable {
-    public let index: Int
     public let startTick: Int
     public let durationTicks: Int
 }
 ```
 
-Extend `ResolvedNote` with:
+Do not add `ResolvedBeatGroup.index`; array position is the validated group ordinal.
 
-```swift
-voice: NotationVoiceRole
-durationTicks: Int
-tiebreakOrder: Int
-isRhythmEngravable: Bool
-articulation: PercussionArticulation?
-accessibilityLabel: String?
-```
+- [ ] **Step 2: Extend `ResolvedMeasure`**
 
-Extend `ResolvedRest` with `voice`, `durationTicks`, `accessibilityLabel`. Extend `ResolvedControl` with package-local stop/choke/damp kind, resolved target staff step and accessibility label. Add resolved tuplet groups/ratios.
+Add `meter` + ordered `beatGroups`. Validation must reject:
 
-- [ ] **Step 1: Write package validation tests first**
+- non-positive group duration;
+- gaps/overlap;
+- first group not starting at 0;
+- final group not ending at `measure.durationTicks`.
 
-Cover:
+- [ ] **Step 3: Extend notes/rests/controls/tuplets**
 
-- 4/4 ordered beat groups exactly cover measure duration;
-- 6/8 resolved groups preserve caller ranges;
-- invalid gap/overlap/zero-length group rejects;
-- note/rest duration must be positive and contained in measure;
-- tuplet members must exist in same measure/voice;
-- package model remains `Sendable`.
-
-- [ ] **Step 2: Add projection tests before changing package initializers**
-
-Pin current app semantics:
+Final new note semantics:
 
 ```text
-NotationVoice.upper/lower -> package upper/lower
-TimeSignature -> NotationMeter
-RhythmBeatGroup ranges -> ResolvedBeatGroup (drop isResidual)
-rhythmDurationTicks -> exact durationTicks
-DrumNotationDefinition.catalogOrder -> tiebreakOrder
-open-hi-hat -> existing PercussionArticulation.open
+voice
+durationTicks
+tiebreakOrder
+isRhythmEngravable
+articulation: existing PercussionArticulation?
 ```
 
-Add the two engraving gates explicitly:
+Rest adds `voice` + `durationTicks`.
 
-```swift
-expected.isRhythmEngravable = note.rhythm.support == .supported
-    && owningMeasure.engravingSupport.permitsEngraving
-```
+Control adds package-local `stop/choke/damp` + resolved `targetStaffStep`.
 
-Use an unsupported-measure fixture whose head still projects, but `isRhythmEngravable == false`.
+Tuplet group carries deterministic adapter-local ID, measure, voice, ratio, note IDs and rest IDs.
 
-- [ ] **Step 3: Pin accessibility mapping**
+Do not add accessibility strings to any resolved type.
 
-Projection tests require the existing app labels for representative cases:
+- [ ] **Step 4: Define the exact app mapping**
+
+In `VirgoNotationProjection`:
 
 ```text
-Closed hi-hat
-Open hi-hat
-Pedal hi-hat
-Upper voice quarter rest
-Lower voice full-measure rest
-Choke Crash
+voice               <- existing NotationVoice
+meter/beatGroups    <- existing RhythmMeasure
+note.durationTicks  <- RhythmLayoutNote durationTicks
+note.tiebreakOrder  <- DrumNotationDefinition.catalogOrder
+isRhythmEngravable <- note.rhythm.support == .supported
+                       && owningMeasure.engravingSupport.permitsEngraving
+articulation        <- existing open-hi-hat intent
+control kind/step   <- existing control target resolution + user override
 ```
 
-The package stores strings only; do not move localized/catalog wording into the package.
+Keep rest filtering exactly as current: hidden rests and rests in non-engraving measures do not cross the boundary.
 
-- [ ] **Step 4: Implement package model + Virgo projection together**
+- [ ] **Step 5: Keep the current app compile path alive**
 
-Update package initializers and `VirgoNotationProjection.resolvedNotation(...)` in the same commit. Reuse `PercussionArticulation`; do not create `NotationArticulationKind`.
+If HPA-164's existing `stemMember` / `visibleFlagDuration` are still required by the direct production formatter, keep them temporarily unchanged in this commit. The final model removal happens in Task 7 when production stops calling the transitional path.
 
-Keep hidden/unsupported rests filtered in Virgo.
+This is not a new fallback; it is sequencing the deletion with its last consumer.
 
-- [ ] **Step 5: Add tuplet projection**
-
-Map only analyzer-supported tuplets. Use deterministic adapter-local integer group IDs. Apply the existing swing/shuffle declared-feel-pair suppression before crossing the package boundary.
-
-- [ ] **Step 6: Run package + focused projection tests**
+- [ ] **Step 6: Run package tests + app compile**
 
 ```bash
 swift test --package-path Packages/DrumNotation
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -parallel-testing-enabled NO \
-  -only-testing:VirgoTests/VirgoNotationProjectionTests
-```
-
-If the concrete suite name differs, use the exact existing test identifier from the projection test file.
-
-- [ ] **Step 7: Verify the app still compiles**
-
-```bash
 xcodebuild build \
   -project Virgo.xcodeproj \
   -scheme Virgo \
@@ -207,99 +178,70 @@ xcodebuild build \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-- [ ] **Step 8: Commit**
+Expected: both pass before commit.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add Packages/DrumNotation Virgo/layout/VirgoNotationProjection.swift VirgoTests
-git commit -m "feat: extend resolved notation engraving input"
+git add Packages/DrumNotation Virgo/layout/VirgoNotationProjection.swift
+git commit -m "feat: extend resolved notation for engraving"
 ```
 
 ---
 
-## Task 2: Port first-class stem groups and beam topology
+## Task 2: Port stem groups + beam topology and unify flag planning
 
 **Files:**
-- Create package `Layout/BeamTopology.swift`
-- Modify formatter API/tests as needed for group-level flag plans
-- Keep `VirgoNotationProjection+Flags.swift` temporarily until package behavior is proven
+- Create `Layout/BeamTopology.swift`.
+- Modify `NotationFormatter.swift` package internals/tests.
+- Read/port from `Virgo/layout/NotationBeamTopology.swift`, `NotationLayoutEngine+Beams.swift`, and `VirgoNotationProjection+Flags.swift`.
+- Do not delete app topology/prepass yet.
 
-**Interfaces produced:**
+**Interfaces:**
+- Internal `StemGroupKey = measure + localTick + voice + stemDirection`.
+- Internal `StemGroup` carries member IDs + explicit stem/flag representative IDs.
+- One internal `VisibleFlagPlan` per stem group.
 
-```swift
-struct StemGroupKey: Hashable {
-    let measureIndex: Int
-    let localTick: Int
-    let voice: NotationVoiceRole
-    let stemDirection: NotationStemDirection
-}
+- [ ] **Step 1: Add representative tests before porting topology**
 
-struct StemGroup {
-    let key: StemGroupKey
-    let noteIDs: [Int]
-    let stemRepresentativeID: Int?
-    let flagRepresentativeID: Int?
-}
-```
-
-Internal `BeamTopologyResult` contains groups/segments/coverage plus one `VisibleFlagPlan` per stem group.
-
-- [ ] **Step 1: Port representative tests before topology**
-
-Add a controlled chord fixture proving stem representative order:
+Pin current comparators:
 
 ```text
-needs stem + engravable only
-staffStep first
-tiebreakOrder second
-id third
-up stem chooses stem-side low head
-down stem chooses stem-side high head
+stem representative:
+  needs stem + isRhythmEngravable
+  staffStep
+  then tiebreakOrder
+  then ID
+  up -> lowest/stem-side, down -> highest/stem-side
+
+flag representative:
+  most required flag levels
+  then tiebreakOrder
+  then ID
 ```
 
-Add a separate flag representative fixture:
+Include equal-staff-position/equal-duration cases so `tiebreakOrder` is actually exercised.
 
-```text
-most flag levels first
-tiebreakOrder second
-id third
-```
+- [ ] **Step 2: Port the topology algorithm mechanically**
 
-Do not merge these two comparator concepts.
+Preserve current primary runs, exact-duration adjacency, beam levels, hook-neighbor rule, and boundaries by measure/voice/stem direction/beat-group ordinal.
 
-- [ ] **Step 2: Add the one-flag-per-stem-group regression**
+Do not use pre-format row in the grouping key; measures never split across rows. Add a post-format invariant that a group maps to exactly one row.
 
-Construct same-tick snare + closed hi-hat isolated sixteenths in one upper/up stem group. Assert:
+- [ ] **Step 3: Add required parity fixtures**
 
-- exactly one `StemGroup`;
-- one stem representative;
-- one flag representative;
-- one `VisibleFlagPlan`;
-- formatter reserves one flag footprint, not two note-level footprints.
-
-This must be green before the Virgo flag prepass is deleted.
-
-- [ ] **Step 3: Port topology structurally**
-
-Reuse current primary-run, secondary-level and hook-neighbor logic. Group by measure + voice + stem direction + resolved beat-group index. Do not include pre-format row; assert post-format that one group does not cross rows.
-
-- [ ] **Step 4: Preserve exact-duration adjacency**
-
-Use `ResolvedNote.durationTicks`; do not derive adjacency from `NotationDuration` or rendered spacing. `isRhythmEngravable == false` creates a boundary/non-beamable event.
-
-- [ ] **Step 5: Add parity tests**
-
-Cover:
+Package tests must cover:
 
 - mixed eighth/sixteenth;
 - mixed sixteenth/thirty-second;
 - forward hook;
 - backward hook;
 - upper/lower voice separation;
-- opposite stem-direction separation;
-- 6/8 beat-group boundary separation;
-- unsupported measure produces no duration-bearing beam/flag event.
+- opposite stem direction separation;
+- 6/8 beat-group boundary;
+- supported tuplet exact-duration adjacency.
 
-- [ ] **Step 6: Define one group-level flag plan**
+- [ ] **Step 4: Add one `VisibleFlagPlan` per stem group**
 
 ```swift
 enum VisibleFlagPlan: Hashable, Sendable {
@@ -309,282 +251,316 @@ enum VisibleFlagPlan: Hashable, Sendable {
 }
 ```
 
-Derive it once from topology coverage + flag representative. Key it by the stem group/stem representative identity.
+The plan is keyed by the stem group/stem-side representative. Formatter collision code must measure it once at the shared stem axis.
 
-- [ ] **Step 7: Change formatter footprint to consume flag plans**
+- [ ] **Step 5: Add the chord double-reservation regression**
 
-Stop reading public `ResolvedNote.visibleFlagDuration`. For each column/stem group, reserve the plan exactly once at the shared stem axis.
+Use same-tick snare + closed-hi-hat isolated sixteenths. Assert:
 
-Update HPA-164 formatter tests so isolated/full-beam/partial-beam cases arise from real package topology instead of manually stamping note-level flag state.
+- one stem group;
+- one visible flag plan;
+- one reserved flag extent;
+- row/measure width does not double because two heads share the stem.
 
-- [ ] **Step 8: Compare package classification with the still-existing Virgo prepass**
+- [ ] **Step 6: Keep production parity observable before deletion**
 
-For representative fixtures, assert the package plan produces the same effective canonical/component footprint as `visibleFlagClassifications` today. This is the deletion gate, not permanent duplicate behavior.
+Add a test-only parity helper in Virgo tests that projects a controlled snapshot through:
 
-- [ ] **Step 9: Run and commit**
+1. current `VirgoNotationProjection+Flags`;
+2. package `StemGroup`/topology plan.
+
+Compare visible-plan ownership/canonical/component levels for isolated, fully beamed, partially covered, and chord cases.
+
+Do not delete the app prepass until this gate is green.
+
+- [ ] **Step 7: Preserve the old direct formatter path temporarily**
+
+Package `NotationEngraver` work in later tasks may pass internal flag plans explicitly, while the still-live HPA-164 production formatter can continue reading its current projected flag field until Task 7. Do not expose a second public formatting engine.
+
+- [ ] **Step 8: Verify**
 
 ```bash
 swift test --package-path Packages/DrumNotation
-xcodebuild build \
+xcodebuild test \
   -project Virgo.xcodeproj \
   -scheme Virgo \
   -destination 'platform=macOS' \
-  CODE_SIGNING_ALLOWED=NO
-git add Packages/DrumNotation
-git commit -m "feat: move stem groups and beam topology into DrumNotation"
+  -parallel-testing-enabled NO \
+  -only-testing:VirgoTests/VirgoNotationProjectionFlagTests
+```
+
+Use the actual existing projection-flag suite identifier if its concrete name differs.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add Packages/DrumNotation VirgoTests
+git commit -m "feat: move beam topology into DrumNotation"
 ```
 
 ---
 
-## Task 3: Add engraving style and final package X/Y geometry
+## Task 3: Add package engraving style + immutable geometry result
 
 **Files:**
-- Create `Model/EngravingStyle.swift`
-- Create `Model/EngravingTypes.swift`
-- Create `Layout/NotationEngraver.swift`
-- Create `NotationEngraverGeometryTests.swift`
+- Create `Model/EngravingStyle.swift`.
+- Create/extend `Model/EngravingTypes.swift`.
+- Create `Layout/NotationEngraver.swift`.
+- Add `NotationEngraverGeometryTests.swift`.
 
 **Interfaces:**
+- `NotationEngravingStyle` contains formatting style + vertical/beam/control/tuplet/bar metrics.
+- No `.standard` static singleton: use a public initializer with default arguments.
+- `EngravedNotation` is pure geometry/semantics; no localized strings.
 
-`NotationEngravingStyle` contains the existing HPA-164 formatting style plus row/stem/beam/flag/rest/control/tuplet/bar/clef/meter scalars. It **must** include:
+- [ ] **Step 1: Add failing style tests**
 
-```swift
-public let flagVerticalSpacing: CGFloat
-```
+Pin defaults needed by package-only tests and require explicit `flagVerticalSpacing`.
 
-It must **not** duplicate `stemWidth`; use `style.formatting.stemWidth`.
+Virgo's later mapper must map `GameplayLayout.flagVerticalSpacing`; flag stem origin must use `style.formatting.stemWidth`.
 
-Add public `.standard` for ordinary package use; Virgo will map explicitly later.
+- [ ] **Step 2: Implement defaulted `NotationEngravingStyle.init(...)`**
 
-- [ ] **Step 1: Add style contract tests**
+Follow `NotationFormattingStyle`'s existing default-argument pattern. Do not add a `.standard` API whose only consumer is `PackageBoundaryTests`.
 
-Pin `.standard` as a complete usable package value. Add a focused assertion that partial flag levels use `flagVerticalSpacing` and flag stem-origin X uses `formatting.stemWidth / 2`.
+- [ ] **Step 3: Define immutable geometry values**
 
-- [ ] **Step 2: Define immutable engraving primitives**
-
-At minimum define focused read-only package values for rows, heads, rests, stems, beams, flags, ledger lines, dots, articulations, controls, tuplets, measure bars, clef/meter descriptors.
-
-Semantic primitives that currently expose app accessibility must carry `String?` labels:
+At minimum, public values for:
 
 ```text
-EngravedNoteHead.accessibilityLabel
-EngravedRest.accessibilityLabel
-EngravedControl.accessibilityLabel
-EngravedTuplet.accessibilityLabel
+EngravedRow
+EngravedMeasure
+EngravedNoteHead
+EngravedRest
+EngravedStem
+EngravedBeam
+EngravedFlag
+EngravedLedgerLine
+EngravedRhythmDot
+EngravedArticulation
+EngravedControl
+EngravedTuplet
+EngravedMeasureBar
 ```
 
-Decorative primitives do not invent labels.
+Each semantic primitive retains its source integer ID/kind so app tests/view accessibility can associate it without app types.
 
-- [ ] **Step 3: Define `EngravedNotation`**
+- [ ] **Step 4: Define `EngravedNotation`**
+
+Include:
+
+```text
+formatted: FormattedNotation
+rows + measures
+all reusable primitive arrays
+paintedBounds
+contentWidth
+contentHeight
+```
+
+Forward musical-position lookup to the embedded formatter rather than duplicating interpolation.
+
+- [ ] **Step 5: Implement one engraver facade**
 
 ```swift
-public struct EngravedNotation: Hashable, Sendable {
-    public let formatted: FormattedNotation
-    public let rows: [EngravedRow]
-    // immutable primitive arrays
-    public let paintedBounds: CGRect
-    public let contentWidth: CGFloat
-    public let contentHeight: CGFloat
+public enum NotationEngraver {
+    public static func engrave(
+        _ input: ResolvedNotationInput,
+        style: NotationEngravingStyle
+    ) throws -> EngravedNotation
 }
 ```
 
-Forward `position(measureIndex:localTick:)` to `formatted`; do not duplicate interpolation.
+Order:
 
-- [ ] **Step 4: Make `NotationEngraver.engrave` run topology → formatter once**
-
-```swift
-public static func engrave(
-    _ input: ResolvedNotationInput,
-    style: NotationEngravingStyle
-) throws -> EngravedNotation {
-    let stemGroups = StemGroupBuilder.build(input)
-    let topology = BeamTopologyBuilder.build(input: input, stemGroups: stemGroups)
-    let formatted = try NotationFormatter.format(
-        input,
-        style: style.formatting,
-        flagPlans: topology.visibleFlagPlans
-    )
-    return buildEngraving(
-        input: input,
-        stemGroups: stemGroups,
-        topology: topology,
-        formatted: formatted,
-        style: style
-    )
-}
+```text
+stem groups/topology
+-> one visible flag plan per group
+-> measured formatter using those package plans
+-> final vertical/primitive geometry
+-> painted bounds
+-> one Y normalization
 ```
 
-Keep helpers internal.
+- [ ] **Step 6: Build notes/rests/rows/ledgers/dots**
 
-- [ ] **Step 5: Build final note/rest positions**
+Use package-formatted X and package-owned Y:
 
-Use package formatted X, row staff center, `staffStep`, voice offsets and Bravura painted bounds. Preserve HPA-164 displaced-head X exactly.
+```text
+staffStep delta = formatting.staffSpace / 2
+row pitch = rowHeight + rowVerticalSpacing
+rest Y = row staff center + voice offset
+```
 
-- [ ] **Step 6: Build ledger lines and dots from final bounds**
-
-Ledger lines use final head bounds + `ledgerLineOverhang`. Dots use actual note/rest painted `maxX` + formatter dot spacing/radius.
-
-Do not create dots for `isRhythmEngravable == false` notes.
+Use Bravura painted bounds for heads/rests. Dots use actual painted maxX + formatter dot spacing/radius.
 
 - [ ] **Step 7: Normalize Y once**
 
-Build raw geometry, calculate raw painted bounds, then translate all rows/primitives by `max(0, -rawBounds.minY)`. Assert final `paintedBounds.minY >= 0` and that row geometry/playhead row Y sees the same normalized coordinate system.
+After raw geometry bounds are known, apply one package translation when minY < 0 to rows and every primitive. `DrumNotationView` must not add another hidden translation.
 
-- [ ] **Step 8: Add content-bounds tests**
+- [ ] **Step 8: Geometry/bounds tests**
 
-Every primitive must fit within final painted/content bounds, including high cymbal notes and lower-voice rests.
+Cover:
 
-- [ ] **Step 9: Run and commit**
+- two rows;
+- high cymbal / low rest;
+- displaced same-stem seconds;
+- full-measure rest;
+- every primitive inside final `paintedBounds`.
+
+- [ ] **Step 9: Verify + commit**
 
 ```bash
 swift test --package-path Packages/DrumNotation
-xcodebuild build \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  CODE_SIGNING_ALLOWED=NO
+xcodebuild build -project Virgo.xcodeproj -scheme Virgo -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
 git add Packages/DrumNotation
 git commit -m "feat: add package engraving geometry"
 ```
 
 ---
 
-## Task 4: Build stems, beams, flags and final modifiers
+## Task 4: Complete stems/beams/flags/modifiers/controls/tuplets and row descriptors
 
 **Files:**
-- Modify `NotationEngraver.swift`
-- Split rhythm/marks helpers only if readability requires it
-- Create `NotationEngraverModifierTests.swift`
-- Reference current Virgo builders before deleting them
+- Modify `NotationEngraver.swift`.
+- Split to focused extensions only if needed for file-size limits.
+- Add `NotationEngraverModifierTests.swift`.
 
-- [ ] **Step 1: Add stem attachment tests**
+**Interfaces:**
+- Reuse Task 2 topology/stem groups.
+- Produce all reusable primitive arrays consumed by `EngravedNotation`.
 
-For up/down isolated notes and same-stem seconds, assert stem start uses the `StemGroup.stemRepresentativeID` Bravura attachment. A displaced sibling must never become the shared stem axis accidentally.
+- [ ] **Step 1: Port stem + flat-beam geometry**
 
-- [ ] **Step 2: Port stem/beam geometry**
+Use current Virgo calculations and package metrics. Stem starts from the stem representative's Bravura attachment point; same-stem displaced sibling never moves the axis.
 
-Move the minimal proven calculations from `NotationLayoutEngine+Beams.swift`. Keep flat percussion beam policy and current hook-length behavior.
+- [ ] **Step 2: Add beam/hook geometry tests**
 
-- [ ] **Step 3: Test beam stacks/hooks**
+Assert:
 
-Assert primary/secondary level spacing, stem endpoint to outermost level, hook direction/length, and one formatted-row invariant.
+- primary/secondary stack spacing = `beamLevelSpacing`;
+- stem reaches the outermost beam + minimum chord clearance;
+- hook direction/length follows topology;
+- one beam group stays within one formatted row.
 
-- [ ] **Step 4: Paint flags from the same group plan**
+- [ ] **Step 3: Paint flags from the same group plan**
 
-Canonical isolated plan → one duration-specific Bravura flag at the shared stem axis.
+Canonical plan paints one duration-specific Bravura flag. Component plan paints uncovered eighth components using `flagVerticalSpacing`.
 
-Partial plan → one component flag per uncovered level, vertically separated by `style.flagVerticalSpacing`.
+Add invariant: formatter-reserved flag bounds contain final painted flag bounds.
 
-Assert formatter-reserved flag bounds contain the final painted flag bounds.
+- [ ] **Step 4: Port articulation placement**
 
-- [ ] **Step 5: Port articulations using existing enum**
+Reuse existing `PercussionArticulation.open`; do not add another articulation enum.
 
-`ResolvedNote.articulation == .open` produces the package open articulation from final notehead bounds. No second articulation type.
+- [ ] **Step 5: Port controls**
 
-- [ ] **Step 6: Port controls**
+Use logical-column X + resolved target staff step. Preserve stop/choke/damp kinds and existing cross-mark geometry first.
 
-For stop/choke/damp, preserve the current cross-mark geometry initially. X is `logicalColumnX`; Y is resolved target staff step + style offset. Preserve control kind/ID/accessibility label.
+- [ ] **Step 6: Port tuplets**
 
-Add adjacent note + stop/choke/damp coverage.
-
-- [ ] **Step 7: Port tuplets**
-
-Preserve current rule:
+Use resolved membership + final head/rest/beam bounds:
 
 ```text
 all members continuously beamed + no rests -> label only
 otherwise                                  -> bracket + label
 ```
 
-Cover up/down, bracket/no-bracket, dotted/rest member and triplet cases. Preserve tuplet accessibility label.
+Add up/down, bracket/no-bracket, dotted/rest-member, and supported triplet cases.
 
-- [ ] **Step 8: Add staff/bar/clef/meter descriptors**
+- [ ] **Step 7: Add staff/clef/meter/bar descriptors**
 
-Derive bars from formatted measure bounds and row identity. Create package row descriptors for five staff lines, percussion clef and resolved meter.
+Rows carry enough final geometry for package painting and Virgo row anchors/playhead Y. Derive bar X from formatted measure bounds.
 
-- [ ] **Step 9: Run package tests and commit**
+- [ ] **Step 8: Run + commit**
 
 ```bash
 swift test --package-path Packages/DrumNotation
-xcodebuild build \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  CODE_SIGNING_ALLOWED=NO
 git add Packages/DrumNotation
 git commit -m "feat: complete DrumNotation engraving primitives"
 ```
 
 ---
 
-## Task 5: Add `DrumNotationView` and prove the public boundary
+## Task 5: Add complete `DrumNotationView` + one view-only accessibility seam
 
 **Files:**
-- Create `Rendering/DrumNotationView.swift`
-- Modify `Rendering/PrimitiveViews.swift`
-- Create `DrumNotationViewTests.swift`
-- Modify `PackageBoundaryTests.swift`
+- Create `Rendering/DrumNotationView.swift`.
+- Modify `PrimitiveViews.swift`.
+- Add `DrumNotationViewTests.swift`.
+- Modify `PackageBoundaryTests.swift`.
 
 **Interfaces:**
+- `DrumNotationView(layout:appearance:accessibilityLabels:)`.
+- Geometry remains pure; accessibility is view input.
+
+- [ ] **Step 1: Add one collision-safe semantic accessibility key**
 
 ```swift
-public struct NotationAppearance {
-    public var foreground: Color
-    public var secondaryBarOpacity: Double
-    public static let standard: NotationAppearance
-}
-
-public struct DrumNotationView: View {
-    public init(
-        layout: EngravedNotation,
-        appearance: NotationAppearance = .standard
-    )
+public enum NotationSemanticID: Hashable, Sendable {
+    case note(Int)
+    case rest(Int)
+    case control(Int)
+    case tuplet(Int)
 }
 ```
 
-- [ ] **Step 1: Add ordinary-import consumer test first**
+Do not use one bare `[Int: String]` namespace: package note/rest/control/tuplet IDs are separate collections and may share the same integer.
 
-`PackageBoundaryTests.swift` remains ordinary `import DrumNotation`, not `@testable`:
+- [ ] **Step 2: Add view appearance**
 
-```swift
-@Test("public consumer engraves and constructs the static view")
-func publicConsumerFlow() throws {
-    let input = try ResolvedNotationInput(/* explicit one-measure values */)
-    let layout = try NotationEngraver.engrave(input, style: .standard)
-    #expect(layout.position(measureIndex: 0, localTick: 0)?.rowIndex == 0)
-    _ = DrumNotationView(layout: layout)
-}
+Keep view-only color/opacity in a narrow appearance value. No `Palette` import.
+
+- [ ] **Step 3: Paint all reusable package geometry**
+
+Render staff, ledger, stems, beams, flags, notes, rests, dots, articulations, controls, tuplets, bars, clef, and meter. Reuse package Bravura painters.
+
+- [ ] **Step 4: Apply labels at paint time**
+
+For each semantic primitive look up:
+
+```text
+.note(noteID)
+.rest(restID)
+.control(controlID)
+.tuplet(tupletID)
 ```
 
-Use the public `.standard`; do not expose a test-only default.
+Decorative geometry is accessibility-hidden. Do not store localized strings in `ResolvedNotationInput` or `EngravedNotation`.
 
-- [ ] **Step 2: Paint all reusable package geometry**
+- [ ] **Step 5: Add package raster/bounds tests**
 
-Render staff, ledger, stems, beams, flags, notes, rests, dots, articulations, controls, tuplets, bars, clef and meter. Reuse package `GlyphFill` for Bravura glyphs.
+Render focused fixtures and assert ink within final bounds for:
 
-- [ ] **Step 3: Preserve accessibility**
-
-Apply app-provided labels to notes/rests/controls/tuplets. Hide decorative stems/beams/ledger/dots/articulations from accessibility unless a future semantic requirement exists.
-
-Add a package-view accessibility construction test verifying labels remain attached to the correct semantic primitive values.
-
-- [ ] **Step 4: Add raster/bounds tests**
-
-Render focused package fixtures and assert visible ink remains inside final `paintedBounds` with small anti-alias tolerance. Include:
-
-- notehead + stem/flag;
+- notehead + isolated flag;
 - beamed run;
 - control + tuplet.
 
-- [ ] **Step 5: Verify package resources are independent**
+- [ ] **Step 6: Expand the ordinary-import consumer test**
+
+Keep `PackageBoundaryTests.swift` on ordinary `import DrumNotation`:
+
+```swift
+let input = try ResolvedNotationInput(/* simple resolved measure + note */)
+let layout = try NotationEngraver.engrave(
+    input,
+    style: NotationEngravingStyle()
+)
+#expect(layout.position(measureIndex: 0, localTick: 0)?.rowIndex == 0)
+_ = DrumNotationView(layout: layout, accessibilityLabels: [:])
+```
+
+No test-only `.standard` style.
+
+- [ ] **Step 7: Verify package resources independently**
 
 ```bash
 swift test --package-path Packages/DrumNotation
 ```
 
-No `AppFonts.registerAll()`, `Bundle.main`, Virgo test host or repository-root resource lookup.
+No `AppFonts.registerAll()`, `Bundle.main`, Virgo test host, or repository-root resource lookup.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add Packages/DrumNotation
@@ -593,81 +569,253 @@ git commit -m "feat: add complete DrumNotation static view"
 
 ---
 
-## Task 6: Cut Virgo preparation over and make failures explicit
+## Task 6: Move the real-DTX golden/invariant net to package engraving before production cutover
 
 **Files:**
-- Modify `Virgo/layout/VirgoNotationProjection.swift`
-- Delete after parity gate: `Virgo/layout/VirgoNotationProjection+Flags.swift`
-- Modify `Virgo/layout/GameplayNotationPreparation.swift`
-- Modify/shrink `Virgo/layout/NotationLayout.swift`
-- Modify view-model notation installation state/tests
+- Modify `VirgoTests/Fixtures/DrumTabFixtureHarness.swift`.
+- Retarget/rename `VirgoTests/NotationLayoutDigest.swift`.
+- Modify `DrumTabGoldenTests.swift`.
+- Modify `DrumTabRegressionInvariantTests.swift`.
+- Modify `DrumTabRenderProbeTests.swift`.
+- Regenerate/review `VirgoTests/Goldens/*` once.
+- Production Virgo renderer remains unchanged in this task.
 
-- [ ] **Step 1: Add engraving-style mapper tests**
+**Goal:** Establish a reviewable package-geometry baseline while the old production renderer still compiles. From the next task onward, production cutover should not require blanket golden regeneration.
 
-Replace formatter-only app mapping with:
+- [ ] **Step 1: Add test-only package engraving to the real-DTX harness**
 
-```swift
-static func engravingStyle(
-    rowWidth: CGFloat,
-    style: NotationLayoutStyle
-) -> NotationEngravingStyle
-```
+Keep the existing real import/analyzer path. From the same `RhythmLayoutSnapshot`, use `VirgoNotationProjection` + `NotationEngraver` to expose `EngravedNotation` for tests.
 
-Assert it maps existing HPA-164 values plus row/stem/beam/rest/control/tuplet/bar/clef/meter values and specifically:
+The app still mounts/installs its current `NotationLayout` in production at this checkpoint.
+
+- [ ] **Step 2: Retarget the digest to `EngravedNotation`**
+
+Keep the timeline/analyzer section from the existing digest.
+
+For engraving lines:
+
+- source package primitives, not `NotationLayout`;
+- express primitive Y relative to the owning row's `staffCenterY`;
+- keep X absolute/sheet-local;
+- output package semantic style values, not deleted app box widths/heights;
+- do not serialize hidden rests because package engraving intentionally never receives them.
+
+This makes package global Y normalization a digest no-op while preserving meaningful staff-relative geometry.
+
+- [ ] **Step 3: Retarget real-DTX geometric invariants**
+
+Keep these tests in `VirgoTests` because the harness exercises the real DTX/analyzer/projection path. Rewrite their primitive access to `EngravedNotation`:
+
+- beam extent within member stems;
+- beam membership within rhythm beat group;
+- partition by measure/row/voice/direction;
+- head X matches package formatted head center;
+- simultaneous onset alignment;
+- painted-bounds containment.
+
+Do not duplicate pure package unit assertions; these remain integration invariants across the real app source path.
+
+- [ ] **Step 4: Retarget the raster probe before old painters disappear**
+
+Replace `NotationNoteHeadView` / `RenderedNoteHead.paintedBounds` with `DrumNotationView` (or its package head painter for per-head isolation) + `EngravedNoteHead.paintedBounds`.
+
+Preserve the current claim separation:
+
+- raster probe proves package ink paints inside package geometry;
+- `GameplaySheetMusicMountingTests` later proves production mounts that package view.
+
+- [ ] **Step 5: Add direct old-vs-package bridge assertions where cheap**
+
+At this checkpoint only, compare a few high-value identities from the same fixture:
 
 ```text
-flagVerticalSpacing = GameplayLayout.flagVerticalSpacing
-formatting.stemWidth = existing stem width
+measure count/index
+note event IDs
+control kinds/IDs
+formatted tick -> row/X
 ```
 
-Do not add duplicate `stemWidth` to `NotationEngravingStyle`.
+Do not build a generalized dual-renderer comparator.
 
-- [ ] **Step 2: Switch production preparation to `NotationEngraver`**
+- [ ] **Step 6: Run the new package-backed regression net before updating goldens**
 
-Target shape:
+```bash
+xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -parallel-testing-enabled NO \
+  -only-testing:VirgoTests/DrumTabRegressionInvariantTests \
+  -only-testing:VirgoTests/DrumTabRenderProbeTests
+```
+
+Fix structural failures before any golden update.
+
+- [ ] **Step 7: Regenerate the package-geometry golden baseline exactly once**
+
+```bash
+TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1 xcodebuild test \
+  -project Virgo.xcodeproj \
+  -scheme Virgo \
+  -destination 'platform=macOS' \
+  -configuration Debug \
+  -only-testing:VirgoTests/DrumTabGoldenTests \
+  -parallel-testing-enabled NO \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  -destination-timeout 300 \
+  -derivedDataPath ./DerivedData
+```
+
+The regeneration run intentionally fails after rewriting per existing golden safety behavior; then run the same test without the update variable and require PASS.
+
+- [ ] **Step 8: Review every golden diff by named cause**
+
+Expected classes only:
+
+- digest schema changes from app `NotationLayout` → package `EngravedNotation`;
+- absolute Y → row-relative Y representation;
+- hidden-rest lines removed because package never engraves them;
+- explicitly accepted geometry correction such as one shared flag footprint per chord stem group.
+
+Reject unexplained beam membership, X movement, rest/control identity, or row-packing changes.
+
+- [ ] **Step 9: Commit the regression baseline separately**
+
+```bash
+git add VirgoTests
+git commit -m "test: move drum tab regression net to package engraving"
+```
+
+This commit is the geometry baseline for all later tasks.
+
+---
+
+## Task 7: Perform one compile-safe production cutover
+
+**Files:**
+- Modify `VirgoNotationProjection.swift` and delete `VirgoNotationProjection+Flags.swift`.
+- Modify `GameplayNotationPreparation.swift`.
+- Modify `GameplayViewModel+Notation.swift` and concrete notation cache/install call sites.
+- Modify `GameplaySheetMusicView.swift`.
+- Create `GameplayNotationAnnotationViews.swift` if needed.
+- Delete `NotationPrimitiveViews.swift` only after replacement tests are green in this same task.
+- Update mounting/playhead/failure/accessibility tests.
+
+**Rule:** Do not split preparation and view installation into separate commits. The app must compile at the task boundary.
+
+- [ ] **Step 1: Define closed prepared state**
 
 ```swift
-struct GameplayNotationPreparedState: Sendable {
-    let engraving: EngravedNotation?
+enum GameplayNotationPreparedState: Sendable {
+    case ready(EngravedNotation, GameplayNotationPresentation)
+    case failed(GameplayNotationPreparationFailure)
+}
+
+struct GameplayNotationPresentation: Sendable {
     let annotations: GameplayNotationAnnotations
-    let failure: GameplayNotationPreparationFailure?
+    let accessibilityLabels: [NotationSemanticID: String]
 }
 ```
 
-Success path:
+No both-nil/both-set states.
+
+- [ ] **Step 2: Build app-only presentation data**
+
+Virgo builds:
+
+- feel/warning annotations;
+- localized note/rest/control/tuplet labels keyed by collision-safe `NotationSemanticID`.
+
+Do not pass those strings into the engraver.
+
+- [ ] **Step 3: Switch preparation to one package engraver call**
 
 ```text
-expanded measures
--> resolvedNotation
--> engravingStyle
+expand measures
+-> project resolved package input
+-> map NotationEngravingStyle
 -> NotationEngraver.engrave
--> app-only feel/warning annotations
+-> build app presentation
+-> .ready(...)
 ```
 
-Delete `ComposedNotation`, `RebuiltArtifacts`, package-X lookup maps, `composeVirgoLayout`, `rebuiltArtifacts` and reusable finalization.
+Delete `ComposedNotation`, `RebuiltArtifacts`, app X lookup dictionaries, and reusable app finalization after all call sites switch.
 
-- [ ] **Step 3: Make validation failures loud but simple**
+- [ ] **Step 4: Make engraving failures explicit**
 
-Write a failing preparation test that injects invalid resolved beat-group/duration data and currently would produce an empty layout.
+Create one small app `GameplayNotationPreparationFailure` carrying log/test detail + one practice-unavailable user message.
 
-Implement one app-owned `GameplayNotationPreparationFailure` with:
+On package validation/engraving error return `.failed`, not an empty success.
 
-- diagnostic text for logs/tests;
-- one user-facing practice-unavailable message.
+Do not mutate rhythm-analysis truth. Store notation-preparation failure separately in the view model and expose one existing-screen presentation message, for example conceptually:
 
-The preparer returns failure instead of `.empty`. Installation routes it to the existing fatal/practice-unavailable presentation state. Do not add a second error screen or renderer.
+```swift
+var practiceUnavailableMessage: String? {
+    notationPreparationFailure?.userMessage
+        ?? (hasFatalRhythmTiming ? rhythmFatalMessage : nil)
+}
+```
 
-Debug may assert/log; production must not silently show blank notation.
+Reuse the existing `rhythmFatalSheet` / practice-unavailable surface; no second error screen.
 
-- [ ] **Step 4: Delete the Virgo flag prepass**
+- [ ] **Step 5: Replace view-model installation/cache**
 
-After Task 2 parity tests are green and production uses `NotationEngraver`, remove `visibleFlagClassifications` and delete `VirgoNotationProjection+Flags.swift`.
+`applyPreparedNotation` handles the enum exhaustively:
 
-- [ ] **Step 5: Keep feel/warning annotations app-owned**
+```text
+.ready -> install engraving + presentation for the generation
+.failed -> install failure for the generation and mark preparation settled
+stale generation -> ignore either result
+```
 
-Create `GameplayNotationAnnotations` only if needed. It may consume package measure/row bounds but contains no reusable note/rest/beam/control/tuplet geometry.
+Update every `cachedNotationLayout`/`prepared.layout` consumer in this same task before committing.
 
-- [ ] **Step 6: Run focused tests**
+- [ ] **Step 6: Replace the production static notation branch**
+
+Conceptual branch:
+
+```swift
+DrumNotationView(
+    layout: input.engraving,
+    appearance: .init(foreground: Palette.chalk),
+    accessibilityLabels: input.presentation.accessibilityLabels
+)
+```
+
+Overlay only Virgo feel/warning annotations. Live playhead remains a sibling outside the generation-equatable static subtree.
+
+- [ ] **Step 7: Use final package rows for anchors/playhead Y**
+
+Delete notation-branch `topContentInset`, notehead-derived row padding, and `GameplayLayout.StaffLinePosition` Y reconstruction. Row anchors and playhead resolve the same normalized package rows the package view paints.
+
+- [ ] **Step 8: Delete the app flag prepass and transitional input fields**
+
+Now remove:
+
+- `VirgoNotationProjection+Flags.swift`;
+- public `visibleFlagDuration`;
+- public `stemMember` if still present;
+- direct Virgo production calls to `NotationFormatter`.
+
+Package `NotationEngraver` becomes the sole production route.
+
+- [ ] **Step 9: Preserve VoiceOver behavior**
+
+Add app tests that pin representative current copy (`Closed hi-hat`, `Open hi-hat`, rest voice label, stop/choke label, tuplet label) and prove `DrumNotationView` receives labels through presentation without changing engraving equality.
+
+- [ ] **Step 10: Update production mounting and playhead tests**
+
+`GameplaySheetMusicMountingTests` must fail if the production static branch omits `DrumNotationView`.
+
+`DrumTabPlayheadAlignmentTests` covers multiple wrapped rows using package row Y + formatter X.
+
+- [ ] **Step 11: Delete old static primitive wrappers only after tests are green**
+
+Remove `NotationPrimitiveViews.swift`, `GameplayDrumNotationView`, package-replaced bar/clef/staff views, and obsolete compatibility wrappers in this same cutover commit.
+
+- [ ] **Step 12: Run the cutover gate**
 
 ```bash
 swift test --package-path Packages/DrumNotation
@@ -677,134 +825,71 @@ xcodebuild test \
   -destination 'platform=macOS' \
   -parallel-testing-enabled NO \
   -only-testing:VirgoTests/GameplayNotationPreparationTests \
-  -only-testing:VirgoTests/GameplayNotationInstallationTests
-```
-
-Also run the concrete projection suite used in Task 1.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add -A Packages/DrumNotation Virgo/layout Virgo/viewmodels VirgoTests
-git commit -m "refactor: consume DrumNotation engraver from Virgo"
-```
-
----
-
-## Task 7: Retarget the render probe, then replace the production static tree
-
-**Files:**
-- Modify `VirgoTests/DrumTabRenderProbeTests.swift`
-- Modify `Virgo/views/subviews/GameplaySheetMusicView.swift`
-- Create `Virgo/views/GameplayNotationAnnotationViews.swift` if needed
-- Modify `GameplaySheetMusicMountingTests.swift`
-- Modify `DrumTabPlayheadAlignmentTests.swift`
-- Do **not** delete `NotationPrimitiveViews.swift` until the new probe and mounting tests are green
-
-- [ ] **Step 1: Retarget `DrumTabRenderProbeTests` before deleting old painters**
-
-Replace the `NotationNoteHeadView` / `RenderedNoteHead.paintedBounds` differential with package evidence:
-
-- render `DrumNotationView` (or the package head painter for the per-head isolation arm);
-- sample `EngravedNoteHead.paintedBounds`;
-- keep the current differential claim that actual head ink appears inside its own bounds.
-
-Preserve the suite's documented boundary: this is rendering evidence, not the production-mounting claim.
-
-- [ ] **Step 2: Add/adjust production mounting test**
-
-`GameplaySheetMusicMountingTests` must fail if the mounted notation branch does not host `DrumNotationView`. It separately proves the production sheet mounts the package view; do not expect the raster probe to prove this.
-
-- [ ] **Step 3: Change static input**
-
-Carry `EngravedNotation`, app annotations, generation and only non-notation fallback values still required. Derive notation width/height from package output.
-
-- [ ] **Step 4: Replace notation layers**
-
-Conceptual notation branch:
-
-```swift
-ZStack(alignment: .topLeading) {
-    DrumNotationView(
-        layout: input.engraving,
-        appearance: .init(foreground: Palette.chalk)
-    )
-    GameplayNotationAnnotationsView(annotations: input.annotations)
-    GameplayRowAnchorColumn(rows: input.engraving.rows)
-}
-```
-
-The live `GameplayPlayheadBarView` remains a sibling outside the generation-equatable static subtree.
-
-- [ ] **Step 5: Make row anchors/playhead consume final package Y**
-
-Delete notation-branch notehead-derived top padding and `GameplayLayout.StaffLinePosition` recomputation. Use normalized `EngravedRow` geometry for anchors and playhead row Y.
-
-Add wrapped multi-row playhead alignment coverage.
-
-- [ ] **Step 6: Keep only app annotations in Virgo**
-
-Move feel/warning text views if necessary. Preserve their copy/theme/accessibility behavior.
-
-- [ ] **Step 7: Run probe + mounting + playhead tests**
-
-```bash
-xcodebuild test \
-  -project Virgo.xcodeproj \
-  -scheme Virgo \
-  -destination 'platform=macOS' \
-  -parallel-testing-enabled NO \
-  -only-testing:VirgoTests/DrumTabRenderProbeTests \
+  -only-testing:VirgoTests/GameplayNotationInstallationTests \
   -only-testing:VirgoTests/GameplaySheetMusicMountingTests \
-  -only-testing:VirgoTests/DrumTabPlayheadAlignmentTests
+  -only-testing:VirgoTests/DrumTabPlayheadAlignmentTests \
+  -only-testing:VirgoTests/DrumTabRenderProbeTests \
+  -only-testing:VirgoTests/DrumTabGoldenTests \
+  -only-testing:VirgoTests/DrumTabRegressionInvariantTests
 ```
 
-- [ ] **Step 8: Only now delete app primitive/static notation wrappers**
+**Important:** do not regenerate goldens here. They were intentionally baselined in Task 6. A golden diff now is a production-cutover regression unless a concrete bug fix explains it.
 
-Delete `NotationPrimitiveViews.swift`, `GameplayDrumNotationView`, package-replaced bar/clef/staff views and compatibility wrappers only after Step 7 is green.
-
-- [ ] **Step 9: Commit**
+- [ ] **Step 13: Commit the entire cutover together**
 
 ```bash
-git add -A Virgo/views VirgoTests
-git commit -m "refactor: mount package notation view"
+git add -A Packages/DrumNotation Virgo VirgoTests
+git commit -m "refactor: cut Virgo over to DrumNotation renderer"
 ```
 
 ---
 
-## Task 8: Delete app engraving implementations and migrate pure tests
+## Task 8: Delete superseded app engraving algorithms and migrate pure tests
 
 **Files:**
-- Delete `Virgo/layout/NotationBeamTopology.swift`
-- Reduce/delete reusable code from engine extensions and `NotationLayout.swift`
-- Migrate/delete pure topology/control/beam/tuplet tests now owned by package
-- Keep real-DTX, projection, source-semantic, mounted UI and playhead tests
+- Delete `Virgo/layout/NotationBeamTopology.swift`.
+- Reduce/delete package-replaced logic from `NotationLayoutEngine+Beams.swift`, `+Controls.swift`, `+Rests.swift`, `+RhythmRendering.swift`, `NotationLayout.swift`, and related engine helpers.
+- Migrate/delete pure app geometry tests now covered by package suites.
+- Keep source/analyzer/projection/real-DTX/mounted UI tests.
 
 - [ ] **Step 1: Inventory transitional symbols**
 
 ```bash
-rg 'NotationBeamTopologyBuilder|buildBeams\(|buildStems\(|buildFlags\(|buildLedgerLines\(|buildRests\(|buildStopNotes\(|buildTuplets\(|GameplayDrumNotationView|NotationNoteHeadView|NotationBeamView' Virgo VirgoTests
+rg 'NotationBeamTopologyBuilder|buildBeams\(|buildStems\(|buildFlags\(|buildLedgerLines\(|buildRests\(|buildStopNotes\(|buildTuplets\(|GameplayDrumNotationView|NotationNoteHeadView|NotationBeamView|RenderedNoteHead|RenderedBeam|RenderedFlag' Virgo VirgoTests
 ```
 
-Classify each hit before deleting anything.
+Classify each hit before deletion.
 
-- [ ] **Step 2: Delete topology after package replacement coverage**
+- [ ] **Step 2: Delete app topology after package parity coverage**
 
-Delete `NotationBeamTopology.swift` and app topology tests only after `BeamTopologyTests.swift` covers the existing behavior plus HPA-166 fixtures.
+Delete `NotationBeamTopology.swift` and its pure unit tests only after Task 2 package tests cover the same structural cases.
 
-- [ ] **Step 3: Remove reusable engine helpers/finalization**
+- [ ] **Step 3: Delete reusable app builders/finalization**
 
-Remove stems/beams/flags/ledger/rest/control/tuplet/bounds construction now owned by the package. Relocate any remaining feel/warning annotation helper to an app-appropriate file rather than leaving a misleading engine extension.
+Remove package-replaced stems/beams/flags/ledger/rest/control/tuplet/bounds construction. Relocate any remaining feel/warning helper to an app annotation file rather than keeping a misleading layout-engine extension.
 
 - [ ] **Step 4: Remove obsolete app `Rendered*` values**
 
-Delete note/rest/stem/beam/flag/ledger/bar/dot/articulation/control/tuplet render types after callers are gone. Keep only actual app annotation/domain values.
+Delete app note/rest/stem/beam/flag/ledger/bar/dot/articulation/control/tuplet render types after no callers remain.
+
+Keep app domain/analyzer values and presentation annotations that are genuinely outside the package.
 
 - [ ] **Step 5: Preserve source-semantic tests**
 
-Keep `ChartControlEventTests`, DTX parser/control tests, analyzer tests and projection tests because package control values intentionally do not own DTX lane/source semantics.
+Keep:
 
-- [ ] **Step 6: Run package + focused app regressions**
+- `ChartControlEventTests`;
+- DTX parser/control import tests;
+- rhythm analyzer/timeline tests;
+- Virgo projection tests;
+- real-DTX package integration goldens/invariants;
+- production mounting/playhead/accessibility/failure tests.
+
+- [ ] **Step 6: Re-run ownership search**
+
+Expected: no Virgo production hits for package-owned topology/builders/static primitive view types.
+
+- [ ] **Step 7: Run package + regression net**
 
 ```bash
 swift test --package-path Packages/DrumNotation
@@ -813,118 +898,101 @@ xcodebuild test \
   -scheme Virgo \
   -destination 'platform=macOS' \
   -parallel-testing-enabled NO \
+  -only-testing:VirgoTests/DrumTabGoldenTests \
   -only-testing:VirgoTests/DrumTabRegressionInvariantTests \
-  -only-testing:VirgoTests/NotationLayoutControlRenderingTests
+  -only-testing:VirgoTests/DrumTabRenderProbeTests \
+  -only-testing:VirgoTests/GameplaySheetMusicMountingTests \
+  -only-testing:VirgoTests/DrumTabPlayheadAlignmentTests
 ```
 
-If `NotationLayoutControlRenderingTests` becomes fully package-pure, migrate its structural claims and delete it; retain any projection/source-semantics assertion under an honest integration suite.
-
-- [ ] **Step 7: Re-run ownership search**
-
-Expected: no Virgo production implementation of package-owned beam topology or primitive rendering.
+Again: no blanket golden regeneration.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add -A
-git commit -m "refactor: retire app engraving renderer"
+git commit -m "refactor: retire Virgo engraving implementation"
 ```
 
 ---
 
-## Task 9: Lock parity, real-chart evidence, docs and existing CI
+## Task 9: Final parity evidence, docs, full verification, and PR readiness
 
-**Files:**
-- Package parity tests/reference artifacts only if needed
-- `Packages/DrumNotation/README.md`
-- Virgo golden/invariant/integration tests
-- `.github/workflows/ci.yml` only if the existing package-test step has disappeared
+**Files:** package parity tests/references only if still needed, package README, existing CI only if package-test command disappeared.
 
-- [ ] **Step 1: Audit required fixture matrix**
+- [ ] **Step 1: Audit the required fixture matrix**
 
-Package tests must contain named cases for:
+Require named package/real-DTX coverage for:
 
 ```text
 mixed 8th/16th
 mixed 16th/32nd
 forward hook
 backward hook
-isolated flag up
-isolated flag down
-same-stem chord isolated flag (one footprint)
+isolated flag up/down
 dotted note/rest
-triplet/tuplet bracket + no-bracket
-6/8 compound grouping
+supported triplet/tuplet
+6/8 grouping
 simultaneous upper/lower voices
 stop/choke/damp adjacent to notes
 multi-row dense passage
-representative tiebreakOrder behavior
-unsupported-measure engraving suppression
+shared-stem chord flag footprint
 ```
 
-- [ ] **Step 2: Decide whether executable VexFlow evidence is necessary**
+- [ ] **Step 2: Decide whether executable VexFlow evidence is actually needed**
 
-If source/known VexFlow 5.0.0 behavior makes all expectations unambiguous, add no tooling.
+If pinned VexFlow 5.0.0 behavior/source makes every structural expectation unambiguous, add no Node tooling.
 
-If one fixture remains disputed, add the smallest package-local VexFlow 5.0.0 script + committed artifact for that case and a Swift test that reads/compares it. The script by itself is not a deliverable.
+Only for a disputed fixture: add the smallest package-local pinned script + committed artifact and a Swift test that consumes it.
 
-- [ ] **Step 3: Update README**
+- [ ] **Step 3: Update package README**
 
-Document the public flow:
+Document the final flow using defaulted initializer arguments:
 
 ```swift
 let input = try ResolvedNotationInput(...)
-let layout = try NotationEngraver.engrave(input, style: .standard)
+let layout = try NotationEngraver.engrave(
+    input,
+    style: NotationEngravingStyle()
+)
 let position = layout.position(measureIndex: 0, localTick: 240)
-let view = DrumNotationView(layout: layout)
+let view = DrumNotationView(layout: layout, accessibilityLabels: [:])
 ```
 
-Document dependency direction, Bravura/VexFlow lineage, package-owned resources and that Virgo owns rhythm inference/playback/scrolling/app accessibility copy.
+Document dependency direction, Bravura/VexFlow lineage, package resources, and that Virgo owns rhythm inference/playback/scrolling/localized copy.
 
-- [ ] **Step 4: Run dense + sparse real-DTX integration fixtures**
+- [ ] **Step 4: Run dense + sparse real-DTX integration at controlled widths**
 
-Verify event identity, package rows/bars/controls, VoiceOver labels and playhead lookup through the real DTX → analyzer → projection → package path.
+Use one dense real chart + one sparse fixture, at the 900pt floor and at least one practical width that changes wrapping. Verify package rows, mounted row anchors, bars, controls, and playhead agree.
 
-- [ ] **Step 5: Exercise controlled wrap widths**
+- [ ] **Step 5: Audit golden history since Task 6**
 
-Use the 900pt floor plus a practical width that produces a different row packing. Assert package row count, mounted row anchors and playhead row agree.
+```bash
+git diff <TASK6_GOLDEN_BASELINE_COMMIT>..HEAD -- VirgoTests/Goldens
+```
 
-- [ ] **Step 6: Regenerate goldens only after structural tests are green**
+Every changed golden line after the Task 6 baseline must map to a named subsequent bug fix. If there was no such fix, expect no golden changes. Do not run another blanket update.
 
-Review every changed golden. Reject unrelated geometry churn; do not blanket-update snapshots.
+- [ ] **Step 6: Run production-mounted macOS visual + accessibility smoke**
 
-- [ ] **Step 7: Confirm existing CI package step**
+Review dense/sparse + changed-wrap examples for:
 
-Verify `.github/workflows/ci.yml` still contains:
+- head/stem attachment;
+- beam/hook direction;
+- dots/rests/tuplets;
+- control marks;
+- staff/clef/meter/bars;
+- collisions/clipping;
+- playhead alignment;
+- representative VoiceOver labels.
+
+- [ ] **Step 7: Run package tests**
 
 ```bash
 swift test --package-path Packages/DrumNotation
 ```
 
-If present, leave workflow unchanged. Only restore it if it disappeared.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add Packages/DrumNotation VirgoTests .github
-git commit -m "test: lock DrumNotation renderer parity"
-```
-
----
-
-## Task 10: Final production verification and PR readiness gate
-
-**Files:** no planned production changes; only fixes exposed by these gates.
-
-- [ ] **Step 1: Independent package test**
-
-```bash
-swift test --package-path Packages/DrumNotation
-```
-
-Expected: PASS.
-
-- [ ] **Step 2: Full serial macOS suite**
+- [ ] **Step 8: Run full serial macOS tests**
 
 ```bash
 xcodebuild test \
@@ -934,23 +1002,7 @@ xcodebuild test \
   -parallel-testing-enabled NO
 ```
 
-Expected: PASS.
-
-- [ ] **Step 3: Production-mounted macOS visual smoke**
-
-Use the actual gameplay sheet for:
-
-- one dense real DTX;
-- one sparse chart;
-- at least two widths with different wrapping.
-
-Inspect notehead/stem attachment, primary/secondary beams, hook direction, flags, dots/rests/tuplets, stop/choke/damp marks, staff/bar/clef/meter alignment, clipping/collisions, app annotations and playhead alignment.
-
-- [ ] **Step 4: Accessibility smoke**
-
-Confirm production-mounted semantics still expose representative current labels such as a named hi-hat/rest/control rather than generic glyph names.
-
-- [ ] **Step 5: iPad compile gate**
+- [ ] **Step 9: Run iPad compile gate**
 
 ```bash
 xcodebuild build \
@@ -960,46 +1012,33 @@ xcodebuild build \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-Expected: BUILD SUCCEEDED. Add an iPad-specific visual baseline only if a platform-specific rendering difference is actually observed.
+- [ ] **Step 10: Run SwiftLint**
 
-- [ ] **Step 6: SwiftLint**
+Use the repository's existing command/workflow. Fix only HPA-166-touched serious violations/readability issues; no unrelated cleanup.
 
-Run the repository's existing SwiftLint command/workflow. Fix only HPA-166-touched violations; no unrelated cleanup.
-
-- [ ] **Step 7: Ownership/dependency searches**
+- [ ] **Step 11: Run final ownership searches**
 
 ```bash
 rg 'import (Virgo|SwiftData)|GameplayLayout|Palette|AppFonts|RhythmLayoutSnapshot|DrumType' Packages/DrumNotation/Sources
-rg 'NotationBeamTopologyBuilder|GameplayDrumNotationView|NotationNoteHeadView|NotationBeamView' Virgo
+rg 'NotationBeamTopologyBuilder|GameplayDrumNotationView|NotationNoteHeadView|NotationBeamView|VirgoNotationProjection\+Flags' Virgo
 ```
 
-Expected:
+Expected: no package app-dependency leaks and no superseded production renderer/topology symbols.
 
-- no app dependency leaks into package sources;
-- no superseded app renderer/topology production symbols.
+- [ ] **Step 12: Check acceptance criteria directly**
 
-- [ ] **Step 8: Verify no silent empty-layout failure remains**
+Confirm:
 
-Search `GameplayNotationPreparer` error paths and run its invalid-input regression. Package validation failure must surface as practice unavailable/fatal state.
+- package owns reusable engraving/static view;
+- one group topology drives beam + spacing + flags;
+- representative order and engraving suppression preserved;
+- geometry is final normalized X/Y;
+- accessibility labels are view-only and preserved;
+- golden/invariant net moved before cutover and remains meaningful;
+- cutover used closed ready/failed state and no blank-success failure;
+- generation isolation/playhead behavior remains;
+- no fallback/compatibility path, HPA-584 work, extra target, or unused VexFlow harness.
 
-- [ ] **Step 9: Self-review against HPA-166 acceptance**
-
-Check directly:
-
-- first-class stem groups;
-- one group-level flag plan;
-- explicit representative tiebreaks;
-- measure + note engraving suppression;
-- `flagVerticalSpacing` style mapping;
-- app accessibility strings preserved;
-- package X/Y authority;
-- ordinary-import public flow;
-- render probe retargeted before old painter deletion;
-- app compiles throughout API changes;
-- preparation failure is not swallowed;
-- package/static renderer ownership singular;
-- no HPA-584 scope or compatibility renderer.
-
-- [ ] **Step 10: Mark this same PR ready only after all gates pass**
+- [ ] **Step 13: Mark this same PR ready for review**
 
 Do not open a second implementation PR for HPA-166.
