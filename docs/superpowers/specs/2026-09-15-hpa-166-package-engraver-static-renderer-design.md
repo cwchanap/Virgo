@@ -10,13 +10,14 @@
 
 HPA-163 and HPA-164 deliberately stopped before the final renderer migration:
 
-- `DrumNotation` owns Bravura resources, glyph metrics/primitive glyph views, exact resolved tick input, measured formatting, row packing, notehead displacement, printed-rest X placement, and authoritative tick → row/X lookup.
-- `VirgoNotationProjection` maps the analyzed app snapshot into `ResolvedNotationInput` and currently performs a Virgo-side beam-topology prepass only to classify one visible flag footprint per stem group.
-- `GameplayNotationPreparer` still converts `FormattedNotation` back into Virgo `Rendered*` values, then rebuilds stems, beams, flags, ledger lines, dots, articulations, controls, tuplets, bars and bounds in Virgo.
-- `GameplaySheetMusicView` still owns the complete static layer stack: staff lines, bars, clefs/time signatures, app primitive wrappers, tuplets, controls and app annotations.
-- The live playhead and scroll/auto-scroll orchestration are already separate from the generation-isolated static sheet and stay separate.
+- `DrumNotation` owns Bravura resources, glyph metrics/primitive glyph views, the resolved tick input, measured formatter, row packing, notehead displacement, printed-rest X placement, and the authoritative tick → row/X lookup.
+- `VirgoNotationProjection` maps the analyzed app snapshot into `ResolvedNotationInput` and currently performs a Virgo-side beam-topology prepass only to tell the formatter which visible flag footprint to reserve.
+- `GameplayNotationPreparer` still turns `FormattedNotation` back into Virgo `Rendered*` values, then runs Virgo beam/stem/flag/ledger/rest/control/articulation/tuplet builders and finalization.
+- `GameplaySheetMusicView` still owns the static layer stack: staff lines, bars, clefs/time signatures, app primitive wrappers, tuplets, controls, and annotations.
+- `DrumTabGoldenTests`, `DrumTabRegressionInvariantTests`, `DrumTabRenderProbeTests`, and the real-DTX fixture harness are the regression net around exactly this renderer boundary.
+- Live playhead and scrolling are already separate from the generation-isolated static sheet and remain app-owned.
 
-This ticket is therefore an ownership cutover, not another formatter or rhythm-analysis rewrite.
+This ticket is an ownership cutover of existing behavior, not a new notation architecture.
 
 ## Decision
 
@@ -33,27 +34,18 @@ Virgo DTX / SwiftData / rhythm analysis
   - expand requested measures
   - apply staff overrides
   - resolve voice / beat groups / tuplets
-  - resolve control + articulation intent
-  - map catalog-order tiebreak + accessibility copy
-  - fold note + measure engraving support
-  - preserve feel/warning diagnostics separately
+  - resolve articulation + control intent
                 |
                 v
  DrumNotation.ResolvedNotationInput
                 |
                 v
-     package StemGroup construction
-  measure + tick + voice + stem direction
-  explicit stem/flag representatives
+   package stem groups + beam topology
+  - representative selection
+  - primary / secondary beams / hooks
+  - one visible flag plan per stem group
                 |
                 v
-   package beam-topology prepass
-  primary + secondary beams / hooks
-  one VisibleFlagPlan per StemGroup
-                |
-                +----> formatter flag footprint
-                |             |
-                v             v
         NotationFormatter.format
                 |
                 v
@@ -68,15 +60,16 @@ Virgo DTX / SwiftData / rhythm analysis
           |                  +--> tick/row/bounds lookup
           v
       DrumNotationView
+          ^
+          |  appearance + accessibility labels
           |
-          v
 Virgo static generation wrapper
   + app-only feel/warning annotations
   + separate live playhead
   + ScrollView / auto-scroll
 ```
 
-There is no old/new renderer toggle, no second package target, no app copy of beam topology after cutover, and no second musical timeline.
+Final state has no old/new renderer toggle, no second package target, no app beam-topology copy, no app flag prepass, and no second rhythm-analysis subsystem.
 
 ## Ownership after HPA-166
 
@@ -85,30 +78,26 @@ There is no old/new renderer toggle, no second package target, no app copy of be
 | DTX parsing, source lanes, SwiftData | Virgo | Never imported by `DrumNotation` |
 | Rhythm inference / diagnostics | Virgo | Package receives resolved values only |
 | Staff-position overrides | Virgo projection | Convert to package `staffStep` once |
-| Catalog-order tie break | Virgo projection → scalar | Package gets one integer, never `DrumType`/catalog types |
-| Accessibility instrument/control copy | Virgo projection → optional strings | Package view exposes those labels; it does not invent app terminology |
+| Localized VoiceOver copy | Virgo presentation | Passed to `DrumNotationView`; never stored in engraving geometry |
 | Meter + beat-group ranges | Package input | Resolved by Virgo, consumed by package topology |
 | Horizontal formatting / row packing | `DrumNotation` | Existing HPA-164 formatter remains authoritative |
-| Stem groups + representative picking | `DrumNotation` | One explicit group model shared by topology/stems/flags |
-| Beam/hook topology + flag coverage | `DrumNotation` | One topology result; no app prepass remains |
+| Beam/hook topology + flag coverage | `DrumNotation` | Port current proven beat-group algorithm |
 | Stem/beam/flag/rest/dot/tuplet/control geometry | `DrumNotation` | One immutable engraving result |
 | Staff/ledger/clef/meter/bar/static notation view | `DrumNotation` | One package view over immutable geometry |
-| Feel text + rhythm-warning diagnostics | Virgo | App annotations, not reusable engraving semantics |
-| Playback clock / scoring / MIDI | Virgo | Unchanged |
-| Tick → row/X lookup | `DrumNotation` | Package result is the notation position authority |
-| Final notation Y / row staff centers | `DrumNotation` | Virgo never recreates `GameplayLayout.StaffLinePosition` for the notation branch |
-| Row anchors, ScrollView, auto-scroll | Virgo | Consume package row geometry only |
-| Live playhead | Virgo | Separate overlay using package tick/row geometry |
+| Feel text + rhythm warning diagnostics | Virgo | App annotations, not reusable engraving semantics |
+| Tick → row/X lookup | `DrumNotation` | Package result remains the only notation position authority |
+| Final notation Y / row staff centers | `DrumNotation` | App consumes package row geometry; no parallel `GameplayLayout` formula |
+| Row anchors, ScrollView, auto-scroll | Virgo | Consume package row geometry |
+| Live playhead | Virgo | Separate overlay using package position/row geometry |
+| Preparation failure presentation | Virgo | Closed ready/failed state; failed engraving uses existing practice-unavailable UI |
 
 The existing non-notation gameplay fallback for charts with no renderable notation is not a second notation renderer and remains app-owned.
 
 ## Minimal resolved package model
 
-HPA-164 omitted fields not needed for horizontal formatting. HPA-166 adds only final engraving inputs.
+HPA-164 intentionally omitted fields not needed for horizontal formatting. HPA-166 adds only final-engraving semantics.
 
-### Voice, meter and beat groups
-
-Add package-local value types; do not expose Virgo enums:
+### Voice, meter, and beat groups
 
 ```swift
 public enum NotationVoiceRole: Int, Hashable, Sendable {
@@ -122,17 +111,18 @@ public struct NotationMeter: Hashable, Sendable {
 }
 
 public struct ResolvedBeatGroup: Hashable, Sendable {
-    public let index: Int
     public let startTick: Int
     public let durationTicks: Int
 }
 ```
 
-Extend `ResolvedMeasure` with `meter` and ordered `beatGroups`. Validate groups are positive, contiguous from tick 0, and exactly cover `durationTicks`. Do not carry `RhythmBeatGroup.isResidual`; topology needs ranges, not analyzer diagnostics.
+Extend `ResolvedMeasure` with `meter` and ordered `beatGroups`.
+
+Validation requires groups to be positive, ordered, contiguous from tick 0, and to exactly cover `durationTicks`. The topology group ordinal is the array position; do not carry a redundant public `index` field. Do not carry `RhythmBeatGroup.isResidual`; that is analyzer diagnostic state, not engraving input.
 
 ### Notes
 
-Extend `ResolvedNote` with:
+Final `ResolvedNote` adds:
 
 ```swift
 public let voice: NotationVoiceRole
@@ -140,37 +130,33 @@ public let durationTicks: Int
 public let tiebreakOrder: Int
 public let isRhythmEngravable: Bool
 public let articulation: PercussionArticulation?
-public let accessibilityLabel: String?
 ```
 
 Rules:
 
-- `durationTicks` is exact timeline duration used for adjacency; do not reconstruct it from `NotationDuration`.
+- `durationTicks` is exact timeline duration used for adjacency; never reconstruct it from `NotationDuration`.
 - `tiebreakOrder` maps `DrumNotationDefinition.catalogOrder` once in `VirgoNotationProjection`; package code never receives `DrumType` or the app catalog.
-- `isRhythmEngravable` is **the AND of both current gates**: the note rhythm is supported **and** the owning measure `engravingSupport.permitsEngraving`.
-- Heads may still exist in an unsupported measure when the app intentionally preserves note identity; `isRhythmEngravable == false` suppresses duration-bearing stems/beams/flags/dots.
-- Reuse the package's existing `PercussionArticulation`; do not add a second articulation enum.
-- `accessibilityLabel` is app copy such as instrument names. The package view paints it but does not generate Virgo-specific wording.
+- `isRhythmEngravable` is **note rhythm supported AND owning measure `engravingSupport.permitsEngraving`**.
+- A head may still exist in an unsupported measure when Virgo preserves note identity; false `isRhythmEngravable` suppresses duration-bearing stems/beams/flags/dots.
+- Reuse existing `PercussionArticulation`; do not add a second articulation enum.
+- Localized accessibility strings do not belong on `ResolvedNote` or any geometry type.
 
-Delete public `visibleFlagDuration`. Once topology is package-owned, an app-supplied flag verdict would preserve the transitional duplicate source of truth.
-
-Delete public `stemMember`; package stem membership derives from `isRhythmEngravable` + duration stem requirement.
+Final state deletes public `visibleFlagDuration` and `stemMember`. Package topology owns flag coverage, and stem membership derives from `isRhythmEngravable` plus duration stem requirement.
 
 ### Rests
 
-Extend `ResolvedRest` with:
+Extend `ResolvedRest` only with:
 
 ```swift
 public let voice: NotationVoiceRole
 public let durationTicks: Int
-public let accessibilityLabel: String?
 ```
 
-Hidden rests and rests from measures that do not permit engraving remain filtered at the Virgo projection boundary, matching current behavior. The package never receives an invisible spacing anchor.
+Hidden rests and rests from measures that do not permit engraving remain filtered at the Virgo projection boundary. The package never receives invisible spacing anchors.
 
 ### Tuplets
 
-Represent already-resolved supported groups directly; do not rediscover tuplets:
+Represent already-resolved supported groups; do not rediscover tuplets:
 
 ```swift
 public struct ResolvedTupletRatio: Hashable, Sendable {
@@ -185,11 +171,10 @@ public struct ResolvedTupletGroup: Hashable, Sendable {
     public let ratio: ResolvedTupletRatio
     public let memberNoteIDs: [Int]
     public let memberRestIDs: [Int]
-    public let accessibilityLabel: String?
 }
 ```
 
-`VirgoNotationProjection` creates groups only for tuplets already supported by the analyzer. Existing swing/shuffle feel-pairs that should not show a tuplet bracket are filtered at the adapter boundary rather than adding `RhythmicFeel` to the package.
+Virgo creates groups only for tuplets the analyzer already supports. Swing/shuffle feel-pairs that should not draw a tuplet bracket are filtered at the adapter boundary rather than adding `RhythmicFeel` to the package.
 
 ### Controls
 
@@ -207,26 +192,25 @@ public struct ResolvedControl: Hashable, Sendable {
     public let position: NotationTickPosition
     public let kind: NotationControlKind
     public let targetStaffStep: Int
-    public let accessibilityLabel: String?
 }
 ```
 
-Virgo resolves target lane/instrument semantics and user staff overrides. The package never receives source lane IDs, target lane IDs, display-name models, source note IDs or `DrumType`.
+Virgo resolves target lane/instrument semantics and user staff overrides. Package code never receives DTX lane IDs, source note IDs, target display-name models, or `DrumType`.
 
 ### Input validation
 
 `ResolvedNotationInput` additionally owns `[ResolvedTupletGroup]` and validates:
 
-- unique event/group IDs within each collection;
-- note/rest `durationTicks > 0` and contained in the owning measure;
+- unique IDs within each collection;
+- positive note/rest `durationTicks` contained in the owning measure;
 - beat groups exactly cover each measure;
 - tuplets reference existing notes/rests in the same measure/voice and have a positive ratio.
 
-No backward-compatible package initializers are required. **However, every commit that changes the public package input also updates the single Virgo projection consumer in that same commit so the app continues to compile.**
+No backward-compatible package initializers are required. Every commit that changes a public package initializer also updates the single Virgo projection consumer in that same commit so the app keeps compiling.
 
 ## First-class stem groups
 
-The current renderer does not beam or flag individual heads. It collapses one onset/voice/direction chord into a shared stem group. HPA-166 makes that invariant explicit inside the package.
+The existing renderer already collapses one onset/voice/direction chord into one stem group. HPA-166 makes that existing concept explicit inside the package.
 
 ```swift
 struct StemGroupKey: Hashable {
@@ -244,44 +228,35 @@ struct StemGroup {
 }
 ```
 
-`StemGroup` stays internal. Topology, stem geometry, flag coverage, formatter flag footprint and final flag painting all consume these same groups.
+`StemGroup` stays internal. Topology, stem geometry, formatter flag footprint, and final flag painting consume the same groups.
 
 ### Stem representative
 
-Preserve the current deterministic comparator:
+Preserve the current comparator:
 
 1. candidates require a stem and `isRhythmEngravable`;
 2. sort by final staff position (`staffStep` replaces rendered Y ordering);
-3. then `tiebreakOrder` (mapped from catalog order);
+3. then `tiebreakOrder`;
 4. then event ID;
 5. up-stem takes the lowest/stem-side head; down-stem takes the highest/stem-side head.
 
-This is the shared stem axis and remains undisplaced under the HPA-164 staff-second rule.
+This remains the shared, undisplaced stem axis.
 
 ### Flag representative
 
 Preserve the current comparator:
 
-1. head with most required flag levels;
+1. most required flag levels;
 2. then `tiebreakOrder`;
 3. then event ID.
 
-The flag representative decides required beam/flag levels and canonical flag family. It is intentionally distinct from the stem representative.
+It decides required beam/flag levels and canonical flag family. It is intentionally distinct from the stem representative.
 
-## Package beam topology and one flag plan per stem group
+## Package topology and one flag plan per stem group
 
-Port the current `NotationBeamTopologyBuilder` algorithm, changing types/ownership rather than musical behavior.
+Port `NotationBeamTopologyBuilder` by changing ownership/types, not musical behavior.
 
-### Grouping and adjacency
-
-Topology groups stem events by:
-
-- measure;
-- resolved voice;
-- stem direction;
-- resolved beat group.
-
-Pre-format row is omitted because HPA-164 never splits a measure across rows. After formatting, assert every group lies in one formatted row.
+Topology groups stem events by measure, voice, stem direction, and resolved beat-group ordinal. Pre-format row is unnecessary because HPA-164 never splits a measure across rows; after formatting, assert a beam group belongs to one row.
 
 Preserve exact-duration adjacency and segment behavior:
 
@@ -289,11 +264,9 @@ Preserve exact-duration adjacency and segment behavior:
 - level 0 spans the primary run;
 - higher levels form full secondary segments when adjacent members share the level;
 - one isolated higher level becomes a forward/backward hook using the existing neighbor/tie-break rule;
-- groups never cross measure, voice, stem direction or beat-group boundaries.
+- groups never cross measure, voice, stem direction, or beat-group boundaries.
 
-### VisibleFlagPlan
-
-`VisibleFlagPlan` belongs to **one `StemGroup`**, never each note:
+`VisibleFlagPlan` belongs to exactly one stem group:
 
 ```swift
 enum VisibleFlagPlan: Hashable, Sendable {
@@ -309,11 +282,9 @@ Rules:
 - all required levels uncovered → `.canonical(...)` from the flag representative;
 - partially uncovered levels → `.components(uncoveredLevels)`.
 
-Store/lookup the plan by the stem-side representative/group identity. The formatter reserves flag ink **once** at the shared stem axis. It never unions the same flag footprint for every chord member.
+The formatter reserves flag ink **once at the shared stem axis**, keyed by the stem group/stem-side representative. It never unions the same flag footprint for every chord member. Add a mandatory same-tick snare + closed-hi-hat isolated-sixteenth fixture that proves exactly one flag extent is reserved.
 
-Add a mandatory regression fixture: same-tick snare + closed hi-hat isolated sixteenths share one stem group and reserve exactly one flag extent.
-
-The final flag painter consumes the exact same plan/topology result. `VirgoNotationProjection+Flags.swift` is then deleted.
+The final flag painter consumes the same plan/topology result. Final production cutover deletes `VirgoNotationProjection+Flags.swift` and public `visibleFlagDuration` together.
 
 ## Engraving style
 
@@ -350,12 +321,13 @@ public struct NotationEngravingStyle: Hashable, Sendable {
 }
 ```
 
-Important style rules:
+Use defaulted initializer arguments for package-only/ordinary-import construction, following `NotationFormattingStyle`; do **not** add a public `.standard` convenience whose only consumer is a test. Virgo explicitly maps every app scalar through `VirgoNotationProjection.engravingStyle(...)`.
 
-- `flagVerticalSpacing` maps `GameplayLayout.flagVerticalSpacing`; do not leak or hard-code the app constant inside the package.
-- Flag stem-origin X uses `style.formatting.stemWidth`; do not duplicate stem width in the engraving style.
+Additional rules:
+
+- `flagVerticalSpacing` maps `GameplayLayout.flagVerticalSpacing`.
+- Flag stem-origin X uses `style.formatting.stemWidth`; do not duplicate stem width.
 - Bravura metrics remain the authority for notehead/rest/flag/articulation bounds; do not carry legacy box sizes.
-- Provide a small public `.standard` style for package-only/ordinary-import use. Virgo explicitly maps every app scalar through `VirgoNotationProjection.engravingStyle(...)` and does not rely on `.standard`.
 
 ## Engraving result
 
@@ -363,11 +335,13 @@ Expose one immutable `EngravedNotation` containing:
 
 - existing `FormattedNotation`;
 - formatted measures and explicit row geometry;
-- notes/rests/controls with final positions, painted bounds, semantics and optional accessibility labels;
-- stems, beams, flags, ledger lines, dots, articulations, tuplets and measure bars;
-- row staff-line, percussion-clef and meter descriptors;
+- notes/rests/controls with final geometry and semantic source IDs;
+- stems, beams, flags, ledger lines, dots, articulations, tuplets, and measure bars;
+- staff-row, percussion-clef, and meter descriptors;
 - `paintedBounds`, `contentWidth`, `contentHeight`;
 - lookup helpers for note ID and musical tick positions.
+
+`EngravedNotation` is pure reusable geometry/semantics. It does **not** contain localized accessibility strings.
 
 Expose one production entry point:
 
@@ -382,6 +356,35 @@ public enum NotationEngraver {
 
 Virgo production code calls only `NotationEngraver.engrave`; it does not reconstruct package geometry.
 
+## Accessibility boundary
+
+Preserve Virgo's current instrument/rest/control/tuplet VoiceOver copy without polluting geometry values.
+
+Add one small view-only semantic key:
+
+```swift
+public enum NotationSemanticID: Hashable, Sendable {
+    case note(Int)
+    case rest(Int)
+    case control(Int)
+    case tuplet(Int)
+}
+```
+
+The package static view accepts one label map at paint time:
+
+```swift
+DrumNotationView(
+    layout: engraving,
+    appearance: appearance,
+    accessibilityLabels: [NotationSemanticID: String]
+)
+```
+
+The enum prevents collisions between the package's separate integer ID namespaces. Virgo builds the localized label map from its domain/catalog state alongside app annotations. A locale/copy change therefore updates the view without changing `EngravedNotation` identity or re-running geometry.
+
+Decorative stems/beams/ledger lines/dots/articulations remain accessibility-hidden unless they gain an independent semantic requirement.
+
 ## Geometry rules
 
 ### Final sheet-local Y
@@ -395,212 +398,148 @@ Package output becomes authoritative in X **and** notation Y:
 - ledger lines derive from final head bounds;
 - stems use Bravura attachment metrics and the undisplaced stem representative.
 
-Build raw vertical geometry, calculate painted bounds once, then normalize the complete engraving by one package-owned Y translation when raw `minY < 0`. `EngravedNotation.rows`, every primitive, `paintedBounds`, playhead row Y and row-anchor geometry all use these final normalized coordinates. `DrumNotationView` applies no hidden translation, and Virgo has no parallel `topContentInset` formula for notation.
+Build raw vertical geometry, calculate painted bounds once, then normalize the complete engraving by one package-owned Y translation when raw `minY < 0`. `EngravedNotation.rows`, every primitive, `paintedBounds`, playhead row Y, and row-anchor geometry all use final normalized coordinates. `DrumNotationView` applies no hidden translation, and Virgo has no parallel notation `topContentInset` formula.
 
-### Stems, beams and flags
+### Stems, beams, flags
 
 - Stem starts from the stem representative's Bravura attachment anchor.
 - Primary/secondary beams remain flat percussion beams unless an explicit VexFlow fixture proves otherwise.
-- Stem length reaches the outermost beam stack or isolated-flag clearance plus the existing minimum chord clearance.
+- Stem length reaches the outermost beam stack or isolated-flag clearance plus minimum chord clearance.
 - Hook geometry uses the existing neighbor direction and `beamHookLength`.
 - Canonical isolated flags use duration-specific Bravura glyphs.
 - Partial uncovered levels use component flag geometry with `flagVerticalSpacing`.
 - Formatter-reserved flag bounds must contain final painted flag bounds.
 
-### Rests, dots and articulations
+### Rests, dots, articulations
 
 - Printed rest X remains HPA-164 formatter output.
 - Voice owns rest Y.
 - Dot X uses actual final note/rest painted `maxX` + formatter dot spacing/radius.
-- `.open` articulation uses existing `PercussionArticulation.open` and final head bounds.
+- `.open` articulation reuses `PercussionArticulation.open` and final head bounds.
 - Closed hi-hat remains an X notehead, not a new articulation.
 
 ### Controls
 
-Stop/choke/damp remain independent control primitives:
-
-- X is the formatted logical timing column, never a displaced head X;
-- Y derives from resolved target staff step;
-- keep the existing cross-mark shape in HPA-166 unless a parity fixture provides evidence for a different glyph;
-- preserve app-provided accessibility copy.
+Stop/choke/damp remain independent control primitives. X is the formatted logical timing column, Y derives from resolved target staff step, and the existing cross-mark shape stays unless a reference fixture proves another rule.
 
 ### Tuplets
 
-Use resolved group membership:
+Use resolved group membership. If all members are continuously beamed and there are no rests, show label only; otherwise show bracket + label. Support only tuplets Virgo already resolves; no arbitrary/nested tuplets.
 
-- continuously beamed group with no rests → label only;
-- otherwise → bracket + label;
-- label/bracket sits outside member/beam bounds in the resolved stem/voice direction;
-- no arbitrary/nested tuplets.
+## Static package view
 
-## Static package view and accessibility
+Add one `DrumNotationView` that consumes only:
 
-Add:
+- `EngravedNotation`;
+- explicit view appearance;
+- view-only accessibility label map.
 
-```swift
-public struct NotationAppearance {
-    public var foreground: Color
-    public var secondaryBarOpacity: Double
-}
+It draws staff lines, ledgers, clef, meter, bars, noteheads, rests, stems, beams, flags, dots, articulations, controls, and tuplets. It observes no gameplay clock and reads no Virgo environment/theme/global layout values.
 
-public struct DrumNotationView: View {
-    public init(
-        layout: EngravedNotation,
-        appearance: NotationAppearance = .standard
-    )
-}
-```
+Virgo's generation-equatable static wrapper hosts this view plus app-only feel/warning annotations. The playhead remains a sibling overlay so playback does not re-run engraving.
 
-The view draws staff lines, clef, meter, bars and every reusable engraving primitive from `EngravedNotation`. It does not read `Palette`, app environment keys, screen dimensions or gameplay clock state.
+## Regression-net migration before production cutover
 
-Accessibility ownership is explicit:
+This migration must not blanket-regenerate the current golden suite after the old types are deleted. The real-DTX regression net is moved **before** the production view/preparation cutover, while the current renderer still compiles.
 
-- Virgo projection supplies optional note/rest/control/tuplet labels using current app terminology (`Closed hi-hat`, `Choke Crash`, voice-aware rest labels, etc.).
-- `EngravedNotation` preserves those strings on the corresponding primitive.
-- `DrumNotationView` applies `.accessibilityLabel` to the visible semantic primitive.
-- decorative stem/beam/ledger/dot/articulation layers stay hidden from accessibility unless they carry independent semantics.
-- generic package wording such as `x notehead` is not a substitute for Virgo instrument labels.
+After package engraving + static view are complete and package tests are green:
 
-This lets `NotationPrimitiveViews.swift` be deleted without regressing VoiceOver.
+1. Extend the test fixture harness to derive `EngravedNotation` from the same real `RhythmLayoutSnapshot` in a test-only package path while the production app still uses the old `NotationLayout` path.
+2. Retarget the digest to package engraving. Rename it if useful, but keep the timeline/analyzer section app-owned.
+3. Serialize vertical geometry **row-relative to each row's staff center** instead of absolute sheet Y. Package Y normalization then does not cause meaningless full-golden churn.
+4. Remove obsolete app `NotationLayoutStyle` box fields from the digest; serialize only enduring package style/geometry values.
+5. Hidden/unprinted rests disappear from engraving digest by design; analyzer/timeline semantics remain covered by the timeline section and source tests.
+6. Retarget `DrumTabRegressionInvariantTests` to package primitives/lookup while keeping the real-DTX app harness. These are integration invariants, not duplicate package-only unit tests.
+7. Retarget `DrumTabRenderProbeTests` to `DrumNotationView`/`EngravedNoteHead.paintedBounds` before deleting the app painter.
+8. Regenerate the golden baseline once and review every change. Expected changes are digest schema reshaping plus explicitly named engraving fixes (for example one flag footprint per stem group), not an unexplained blanket update.
 
-## Virgo integration
+From that baseline onward, later production-cutover tasks should leave geometry goldens unchanged unless a concrete bug fix names the cause. Final verification checks attribution rather than running a blanket regeneration at the end.
 
-`GameplayNotationPreparer` remains the pure off-main preparation boundary. After cutover it does only:
+## Production cutover is one compile-safe task
 
-```text
-expand measures
--> VirgoNotationProjection.resolvedNotation
--> VirgoNotationProjection.engravingStyle
--> NotationEngraver.engrave
--> build app-only feel/warning annotations from analysis + package row/measure geometry
-```
+Do not commit preparation and view cutover separately.
 
-Delete `ComposedNotation`, `RebuiltArtifacts`, app X lookup dictionaries, `composeVirgoLayout`, reusable builder calls and app `Rendered*` finalization.
+The same implementation task must update together:
 
-`GameplayStaticNotationView` stays generation-equatable. The notation branch mounts one `DrumNotationView` plus Virgo feel/warning annotations and row anchors. The live playhead stays a sibling outside the static subtree.
+- `GameplayNotationPreparer`;
+- prepared-state shape;
+- view-model installation/cache;
+- `GameplayStaticNotationInput`;
+- `GameplaySheetMusicView`;
+- row anchors and playhead Y lookup;
+- accessibility label map construction/consumption;
+- app flag prepass removal;
+- old static primitive wrappers after replacement tests are green.
 
-## Preparation failures are not an empty sheet
-
-Current HPA-164 code catches every projection/formatter error and returns `.empty`. HPA-166 adds stricter beat-group/tuplet/duration validation, so silent blanking is no longer acceptable.
-
-Keep failure handling small:
+Use a closed state:
 
 ```swift
-struct GameplayNotationPreparedState: Sendable {
-    let engraving: EngravedNotation?
+enum GameplayNotationPreparedState: Sendable {
+    case ready(EngravedNotation, GameplayNotationPresentation)
+    case failed(GameplayNotationPreparationFailure)
+}
+
+struct GameplayNotationPresentation: Sendable {
     let annotations: GameplayNotationAnnotations
-    let failure: GameplayNotationPreparationFailure?
+    let accessibilityLabels: [NotationSemanticID: String]
 }
 ```
 
-`GameplayNotationPreparationFailure` is one small app-owned value carrying a user-facing fallback message and diagnostic description. Projection/engraver validation errors return `.failure`, not an empty successful layout. Installation surfaces that failure through the existing `Practice unavailable` / fatal-rhythm sheet path (or an equivalent single app-owned fatal-practice state); it must not introduce a second renderer or a separate error UI.
+No both-nil/both-set state is representable.
 
-Debug builds may additionally assert/log the invariant failure, but production remains a controlled unavailable state rather than a crash or silent empty notation.
+Package validation/engraving failures must not become a successful empty sheet. Keep rhythm-analysis availability honest; store the notation-preparation failure separately in the view model and route its message through the existing practice-unavailable presentation branch. Debug may additionally assert/log. Do not add a second error screen.
 
-## Reference parity
+## VexFlow reference policy
 
-Required package fixture matrix:
+Keep VexFlow 5.0.0 as the semantic reference. Do not add Node/jsdom/runtime tooling by default. If one disputed beam/modifier fixture cannot be settled from pinned source/behavior, add the smallest package-local script + committed reference artifact for that fixture and make a Swift test consume it. A generator whose output no test reads is not part of this ticket.
 
-1. mixed eighth/sixteenth beam levels;
-2. mixed sixteenth/thirty-second levels;
-3. forward hook;
-4. backward hook;
-5. isolated flag, stem up;
-6. isolated flag, stem down;
-7. same-stem chord isolated flag (one footprint/one flag group);
-8. dotted note/rest;
-9. triplet/tuplet bracket + no-bracket cases;
-10. 6/8 resolved grouping;
-11. simultaneous upper/lower voices;
-12. stop/choke/damp adjacent to playable notes;
-13. multi-row dense passage.
+Required high-value cases include mixed eighth/sixteenth levels, mixed sixteenth/thirty-second levels, forward/backward hooks, isolated flags both directions, dotted note/rest, supported tuplet, 6/8 grouping, simultaneous voices, stop/choke/damp near notes, and a dense multi-row passage.
 
-Also lock representative tie-break behavior with an equal-staff-position/equal-flag-count chord fixture using `tiebreakOrder`.
+## Verification boundary
 
-Do not add Node/jsdom/VexFlow runtime by default. If a concrete parity fixture is disputed and source/behavior is insufficient, add the smallest package-local VexFlow 5.0.0 reference script and committed artifact for that case **only when a Swift test consumes it**.
+Package tests own pure formatter/topology/engraving/view behavior. Virgo tests keep evidence that only the app can provide:
 
-## Test ownership and migration
-
-Package tests own pure engraving behavior:
-
-- resolved input validation;
-- stem-group construction/representative picks;
-- beam topology + hooks + flag plans;
-- formatter flag footprint;
-- final geometry/bounds;
-- flags/rests/dots/articulations/tuplets/controls;
-- package raster/resource tests;
-- ordinary `import DrumNotation` public consumer flow.
-
-Virgo tests keep evidence that needs app semantics/integration:
-
-- DTX/control import semantics;
-- rhythm analyzer/projection mapping;
-- real-DTX adapter → package integration;
-- source event identity;
-- feel/warning annotation behavior;
-- generation isolation;
+- real DTX → analyzer → projection → package integration;
+- stable event/control identity;
 - row/playhead alignment;
-- production mounting.
+- generation isolation;
+- golden/invariant regression net using package engraving;
+- production-mounted static view;
+- app accessibility copy;
+- practice-unavailable failure routing.
 
-`DrumTabRenderProbeTests` must move **before** `NotationNoteHeadView`/`RenderedNoteHead` are deleted. Retarget its differential pixel evidence to `DrumNotationView`/`EngravedNoteHead.paintedBounds` (or the package notehead painter where appropriate), while `GameplaySheetMusicMountingTests` continues to prove the production sheet actually mounts the package view. Do not let the package raster test replace this integration probe by accident.
-
-## CI and verification
-
-Current CI already runs:
-
-```bash
-swift test --package-path Packages/DrumNotation
-```
-
-Keep that existing job; do not add another workflow unless it is removed later.
-
-Final verification:
-
-- independent package tests;
-- focused projection/preparation/mount/playhead app tests;
-- full serial macOS `VirgoTests`;
-- dense + sparse real DTX at controlled widths that change wrapping;
-- production-mounted macOS visual smoke;
-- generic iOS/iPad simulator build;
-- SwiftLint;
-- ownership searches proving no package dependency leak and no superseded app renderer/topology production symbols.
-
-No new image/art assets are required.
+CI already runs `swift test --package-path Packages/DrumNotation`; do not add another workflow unless that existing command disappears.
 
 ## Explicit non-goals
 
-- no `NotationRhythmAnalyzer` rewrite unless a fixture proves a concrete existing correctness bug blocking accepted engraving;
+- no `NotationRhythmAnalyzer` rewrite unless a required fixture exposes a concrete bug;
 - no arbitrary/nested tuplets;
-- no pitched-score engraving or cross-staff notation;
-- no MusicXML import/export;
-- no WebView/Canvas/Metal rewrite;
-- no virtualization, pagination or HPA-584 work;
-- no second package target, demo app, standalone repository or publication pipeline;
-- no old/new renderer toggle or backward-compatibility shim;
-- no generalized VexFlow harness.
+- no pitched score, cross-staff notation, MusicXML, WebView, Canvas/Metal, virtualization, or pagination;
+- no repository extraction/demo app/publication workflow;
+- no backward-compatibility shim or old/new renderer toggle;
+- no HPA-584 performance scope;
+- no new image assets.
 
 ## Acceptance criteria
 
-- All reusable engraving and static notation drawing live in `DrumNotation`.
-- Virgo package projection remains the only app→package semantic seam.
-- `StemGroup` is first-class internally; topology/stems/flags share it.
-- `VisibleFlagPlan` is one plan per stem group and formatter flag footprint is reserved once.
-- Stem/flag representative comparators preserve staff position + catalog-order tiebreak + ID behavior.
-- `isRhythmEngravable` folds both note support and measure `permitsEngraving`; unsupported measures do not regain duration engraving.
-- `flagVerticalSpacing` is an explicit package style scalar; stem width remains formatter-owned.
-- Ordinary-import consumer coverage constructs resolved notation → `NotationEngraver` → tick/row/bounds lookup → `DrumNotationView` using `.standard`.
-- Package resources resolve without Virgo/AppFonts/Bundle.main scanning.
-- App accessibility labels survive the renderer cutover and are applied by `DrumNotationView`.
-- Package output owns final normalized X/Y; Virgo row anchors/playhead consume that geometry without recomputation.
-- Preparation validation failure surfaces through the existing fatal/practice-unavailable flow, not as an empty successful sheet.
-- Every API-breaking package commit updates Virgo projection in the same commit so the app remains compilable.
-- Mixed beam/hook/flag/tuplet/control fixtures match the approved VexFlow-referenced behavior.
-- `DrumTabRenderProbeTests` follows package geometry/view before old app primitive wrappers are deleted.
-- Production mounting, event identity and playhead alignment remain green.
-- `VirgoNotationProjection+Flags.swift`, app beam topology, reusable `Rendered*` engraving builders and duplicate static notation layers are deleted after replacement coverage is green.
-- Existing package CI, full serial macOS tests, mounted visual smoke and iPad build pass.
+- Reusable engraving and static notation drawing live in `DrumNotation`; Virgo has no copied package-owned renderer/topology.
+- Ordinary `import DrumNotation` consumer coverage constructs input → engraver → lookup → static view using the public initializer defaults, not a test-only `.standard` API.
+- Package resources resolve without `AppFonts`, `Bundle.main`, Virgo test host, or repository-relative paths.
+- One topology/stem-group result owns beam coverage, formatter flag footprint, and final flags; a chord reserves one shared flag footprint.
+- Existing representative ordering (`staffStep`/catalog tiebreak/ID and flag-count/catalog tiebreak/ID) is preserved.
+- `isRhythmEngravable` combines note support and measure engraving permission.
+- `flagVerticalSpacing` is explicit package style; stem width remains formatter style.
+- `EngravedNotation` owns final normalized X/Y geometry and contains no localized copy.
+- Existing note/rest/control/tuplet VoiceOver labels survive through one view-only semantic label map.
+- The real-DTX golden + geometric invariant suite is retargeted to `EngravedNotation` **before** production cutover, using row-relative Y; the new baseline is reviewed before old geometry types are deleted.
+- `DrumTabRenderProbeTests` targets package rendering before `NotationPrimitiveViews.swift` is removed.
+- Production preparation + view installation cut over in one compile-safe task using a closed ready/failed state.
+- Package validation failure surfaces through existing practice-unavailable UI, never an empty successful notation state.
+- Generation isolation remains; live playhead does not re-run engraving.
+- Mixed beam/hook/flag/rest/dot/articulation/tuplet/control fixtures match the accepted VexFlow-referenced structure.
+- Production-mounted dense/sparse notation and changed wrap widths are visually reviewed; iPad remains a build/compile gate unless a platform-specific difference appears.
+- `swift test --package-path Packages/DrumNotation`, focused app integration tests, full serial macOS tests, iPad build, SwiftLint, and final ownership searches pass.
 
 ## PR boundary
 
-**Exactly one PR for HPA-166.** Planning and implementation continue on draft PR #67. Do not split this ticket into extraction, rendering or cleanup PRs; the cutover is only complete when package ownership is singular and the transitional Virgo renderer is gone.
+**Exactly one PR for HPA-166.** The suggested midpoint merge is intentionally not taken: this project uses one ticket → one PR, and HPA-166 is already the final package ownership/parity ticket. Keep the branch draft through implementation and mark this same PR ready only after the final verification gate.
