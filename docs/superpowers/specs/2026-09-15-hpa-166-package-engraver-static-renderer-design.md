@@ -101,6 +101,7 @@ Chosen. Extend the existing resolved input with the smallest information the eng
 | Feel text + rhythm warning diagnostics | Virgo | App annotations, because these are app analysis/status UI rather than reusable engraving semantics |
 | Playback clock / scoring / MIDI | Virgo | Unchanged |
 | Tick → row/X lookup | `DrumNotation` | Package result remains the only notation position authority |
+| Final notation Y / row staff centers | `DrumNotation` | App consumes package row geometry; no parallel `GameplayLayout` formula |
 | Row anchors, ScrollView, auto-scroll | Virgo | Consume package row geometry; do not recreate notation layout |
 | Live playhead | Virgo | Separate overlay using package position/row geometry |
 
@@ -169,7 +170,7 @@ public struct ResolvedTupletGroup: Hashable, Sendable {
 }
 ```
 
-`VirgoNotationProjection` creates these groups only for tuplets the analyzer already supports. Existing swing/shuffle feel-pairs that should not show a tuplet bracket are filtered at the adapter boundary, using the current app rule, rather than adding `RhythmicFeel` to the package.
+`VirgoNotationProjection` creates these groups only for tuplets the analyzer already supports. The group ID is a deterministic adapter-local ordinal after sorting the app's stable tuple identity; it is not a Swift `Hasher` result and does not need to survive outside one prepared engraving. Existing swing/shuffle feel-pairs that should not show a tuplet bracket are filtered at the adapter boundary, using the current app rule, rather than adding `RhythmicFeel` to the package.
 
 ### Controls
 
@@ -199,8 +200,7 @@ Virgo continues to resolve target lane/instrument semantics and user position ov
 - unique event/group IDs within each collection;
 - note/rest `durationTicks > 0` and remain inside their measure;
 - beat groups exactly cover each measure;
-- tuplets reference existing notes/rests in the same measure/voice and have a positive ratio;
-- controls target a valid staff step value without applying app-specific range policy.
+- tuplets reference existing notes/rests in the same measure/voice and have a positive ratio.
 
 Do not add defensive compatibility conversions for old package initializers. This is a pre-release package with one consumer; update package fixtures and Virgo projection in the same PR.
 
@@ -279,7 +279,7 @@ public struct NotationEngravingStyle: Hashable, Sendable {
 
 Derive staff height and line Y positions from the formatter's `staffSpace`; do not add app-authored notehead/rest box sizes because Bravura metrics already own those glyph bounds.
 
-`VirgoNotationProjection.engravingStyle(rowWidth:style:)` is the only app mapper. It maps current numeric `GameplayLayout`/`NotationLayoutStyle` values and embeds the existing HPA-164 formatting style. No view/color enters this Sendable value.
+Provide a small public `.standard` style so the package's ordinary-import consumer test and a future second consumer can construct the API without Virgo. Virgo does **not** rely on that convenience: `VirgoNotationProjection.engravingStyle(rowWidth:style:)` remains the only app mapper and explicitly maps current numeric `GameplayLayout`/`NotationLayoutStyle` values.
 
 ### Immutable result
 
@@ -319,8 +319,9 @@ Package output becomes authoritative in both X and notation Y:
 - rests use voice offsets from the staff center;
 - controls use their resolved target staff step and stop-mark vertical offset;
 - ledger lines derive from final head geometry;
-- stems use Bravura head attachment metrics and keep the HPA-164 undisplaced stem-side axis;
-- the live playhead remains Virgo-owned but obtains row center from `EngravedNotation.rows` instead of recomputing a parallel staff Y formula.
+- stems use Bravura head attachment metrics and keep the HPA-164 undisplaced stem-side axis.
+
+Build raw vertical geometry, calculate its painted bounds once, then normalize the complete engraving by one package-owned Y translation when raw `minY < 0`. `EngravedNotation.rows`, every primitive, `paintedBounds`, and the row geometry consumed by Virgo are all the **final normalized sheet-local coordinates**. `DrumNotationView` therefore applies no hidden layout translation, and Virgo has no `topContentInset` formula to reproduce for the playhead or row anchors.
 
 This removes the current state where package X is authoritative but Virgo recomputes every notation Y.
 
@@ -377,8 +378,8 @@ public struct DrumNotationView: View {
 The view owns only static notation drawing:
 
 - five staff lines per rendered row;
-- percussion clef;
-- meter at row starts where current Virgo behavior expects it;
+- percussion clef at each row start;
+- meter at each row start and at a resolved meter change within a row;
 - measure/final bars;
 - ledger lines;
 - noteheads/rests/stems/beams/flags/dots;
@@ -403,7 +404,7 @@ Move the reusable portions of `NotationPrimitiveViews.swift`, `GameplayBarLinesV
 2. map measures + beat groups + meter;
 3. map notes with resolved voice, staff step, duration ticks, notehead style, articulation and rhythm-engravable verdict;
 4. map printed rests with voice/duration/tuplet membership;
-5. map supported tuplets, filtering current feel-pairs that intentionally have no tuplet mark;
+5. map supported tuplets to deterministic adapter-local group IDs, filtering current feel-pairs that intentionally have no tuplet mark;
 6. resolve control target lane + user staff override to package control intent;
 7. map one `NotationEngravingStyle`;
 8. call `NotationEngraver.engrave`.
@@ -436,7 +437,7 @@ ZStack
 
 The parent still places the separate playhead overlay and owns scrolling.
 
-The package result supplies content bounds/row geometry. Delete app `contentWidth`, `topContentInset`, notehead-derived row padding, and measure-position geometry that exist only to re-derive the static sheet. Keep only the legacy non-notation fallback values needed when there is no renderable notation.
+The package result supplies normalized content bounds/row geometry. Delete app `contentWidth`, `topContentInset`, notehead-derived row padding, and measure-position geometry that exist only to re-derive the static sheet. Keep only the legacy non-notation fallback values needed when there is no renderable notation.
 
 ## VexFlow reference strategy
 
@@ -444,9 +445,10 @@ Do not add Node/jsdom tooling by default.
 
 First port current topology and add package structural fixtures for:
 
-- mixed eighth/sixteenth beam levels;
-- mixed sixteenth/thirty-second levels;
-- forward and backward hooks;
+- mixed 8/16;
+- mixed 16/32;
+- forward hooks;
+- backward hooks;
 - isolated flags in both stem directions;
 - dotted notes and rests;
 - triplets/tuplets;
@@ -480,7 +482,7 @@ Move pure geometry/topology checks into `Packages/DrumNotation/Tests/DrumNotatio
 - tuplet bracket/no-bracket tests;
 - staff/clef/meter/bar descriptor tests;
 - raster ink-within-painted-bounds coverage for the final package view;
-- an ordinary `import DrumNotation` public-consumer test that constructs resolved input → `NotationEngraver.engrave` → geometry lookup → `DrumNotationView` without `@testable` or Virgo.
+- an ordinary `import DrumNotation` public-consumer test that constructs resolved input → `NotationEngraver.engrave(style: .standard)` → geometry lookup → `DrumNotationView` without `@testable` or Virgo.
 
 Run `swift test --package-path Packages/DrumNotation` independently.
 
@@ -535,7 +537,7 @@ Mitigation: one package topology result must feed both pre-format flag footprint
 
 ### Vertical coordinate drift
 
-Mitigation: package output becomes the only notation Y authority. Lock row/staff/notehead numeric invariants before visual golden regeneration; app playhead/row anchors consume package row geometry.
+Mitigation: package output becomes the only notation Y authority and normalizes to final zero-based sheet coordinates once. Lock row/staff/notehead numeric invariants before visual golden regeneration; app playhead/row anchors consume those final package row coordinates.
 
 ### Test churn hides real regressions
 
@@ -564,10 +566,11 @@ HPA-166 is complete when:
 1. `DrumNotation` owns beam topology, modifier/control/tuplet geometry, vertical geometry and the complete static notation view.
 2. Virgo maps resolved domain semantics once, then consumes one `EngravedNotation`; it does not rebuild package engraving.
 3. The package topology result drives both formatter flag footprint and rendered flags.
-4. The mounted sheet hosts `DrumNotationView` while Virgo retains only app annotations, row anchors, scrolling and the live playhead.
-5. Pure package tests cover the requested VexFlow beam/modifier fixtures and the ordinary-import consumer flow.
-6. Real-DTX/golden/playhead/mounted-sheet integration coverage remains in Virgo and passes.
-7. Transitional app geometry/rendering code is deleted rather than hidden behind a compatibility path.
-8. `swift test --package-path Packages/DrumNotation`, focused/full macOS verification, mounted visual smoke, iPad build and SwiftLint are green before this same PR is marked ready.
+4. Package row/primitives are normalized final sheet-local Y coordinates, and Virgo playhead/row anchors consume them without a parallel inset formula.
+5. The mounted sheet hosts `DrumNotationView` while Virgo retains only app annotations, row anchors, scrolling and the live playhead.
+6. Pure package tests cover the requested VexFlow beam/modifier fixtures and the ordinary-import consumer flow.
+7. Real-DTX/golden/playhead/mounted-sheet integration coverage remains in Virgo and passes.
+8. Transitional app geometry/rendering code is deleted rather than hidden behind a compatibility path.
+9. `swift test --package-path Packages/DrumNotation`, focused/full macOS verification, mounted visual smoke, iPad build and SwiftLint are green before this same PR is marked ready.
 
 **Exactly one PR for HPA-166.** Planning documents land first on the ticket branch; implementation continues on this same draft PR.
