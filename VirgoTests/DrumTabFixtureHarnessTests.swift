@@ -36,77 +36,114 @@ struct DrumTabFixtureHarnessTests {
     /// produces both surfaces from one snapshot, so a handful of high-value
     /// identities must agree while both renderers still exist. This is
     /// deliberately NOT a generalized dual-renderer comparator — only the
-    /// identities named in the task are compared.
+    /// identities named in the task are compared: measure count/index, note
+    /// event IDs, control (ID, kind) pairs, and formatted tick → row/X.
+    /// Whole `FormattedNotation` values, row packing, measure offsets and
+    /// measure widths are intentionally NOT compared.
     @Test("old layout and package engraving agree on shared identities",
           arguments: DrumTabFixtureCatalog.all)
     func oldAndPackageOutputsBridge(_ fixture: DrumTabFixture) throws {
         let result = try DrumTabFixtureHarness.render(fixture)
 
-        // Both routes consume the measured formatter; the formatted output
-        // the engraving embedded must equal the one the old layout composed
-        // from — one assertion that covers every column X, head-center X,
-        // rest visual X, measure xOffset/width and row assignment at once.
-        #expect(
-            result.engraved.formatted == result.layout.formattedNotation,
-            "\(fixture.name): package formatted output diverged from the layout's"
-        )
-
-        // Measure count/index and row packing.
+        // Measure count + index sequence only.
         #expect(
             result.engraved.measures.map(\.index) == result.layout.measures.map(\.measureIndex),
             "\(fixture.name): measure index lists disagree"
         )
+
+        // Note event IDs as sorted arrays — multiplicity is load-bearing, so
+        // a dropped or duplicated head fails instead of hiding inside a Set.
+        let noteIDs = result.bridgeNoteIDs
         #expect(
-            result.engraved.measures.map(\.rowIndex) == result.layout.measures.map(\.row),
-            "\(fixture.name): row packing disagrees"
-        )
-        #expect(
-            result.engraved.measures.map(\.xOffset) == result.layout.measures.map(\.xOffset),
-            "\(fixture.name): measure xOffsets disagree"
-        )
-        #expect(
-            result.engraved.measures.map(\.width) == result.layout.measures.map(\.width),
-            "\(fixture.name): measure widths disagree"
+            noteIDs.package == noteIDs.legacy,
+            "\(fixture.name): note event ID lists disagree"
         )
 
-        // Note event IDs survive the projection verbatim.
+        // Control identities as sorted (eventID, kind) tuples — a kind swap
+        // between two controls or a dropped duplicate cannot pass, and a
+        // nil legacy eventID fails inside the helper rather than silently
+        // narrowing the comparison.
+        let controlIdentities = try result.bridgeControlIdentities()
         #expect(
-            Set(result.engraved.noteHeads.map(\.noteID))
-                == Set(result.layout.noteHeads.map { Int($0.id) }),
-            "\(fixture.name): note event ID sets disagree"
+            controlIdentities.package == controlIdentities.legacy,
+            "\(fixture.name): control identities disagree"
         )
 
-        // Control kinds/IDs cross as the same resolved intent.
-        #expect(
-            result.engraved.controls.map(\.controlID).sorted()
-                == result.layout.stopNotes.compactMap { $0.eventID?.rawValue }.sorted(),
-            "\(fixture.name): control IDs disagree"
-        )
-        #expect(
-            result.engraved.controls.map(\.kind.rawValue).sorted()
-                == result.layout.stopNotes.map { $0.kind.rawValue }.sorted(),
-            "\(fixture.name): control kinds disagree"
-        )
-
-        // formatted tick -> row/X: the playhead lookup must agree on both
-        // surfaces for every resolved onset tick.
-        for note in result.resolvedInput.notes {
+        // formatted tick -> row/X for every probe tick: every formatted
+        // logical column plus every resolved note/rest/control onset, so no
+        // relevant tick escapes the check.
+        for tick in result.bridgeProbeTicks {
             let oldPosition = result.layout.formattedNotation.position(
-                measureIndex: note.position.measureIndex,
-                localTick: Double(note.position.localTick)
+                measureIndex: tick.measureIndex,
+                localTick: Double(tick.localTick)
             )
             let newPosition = result.engraved.position(
-                measureIndex: note.position.measureIndex,
-                localTick: Double(note.position.localTick)
+                measureIndex: tick.measureIndex,
+                localTick: Double(tick.localTick)
             )
             #expect(
                 oldPosition?.rowIndex == newPosition?.rowIndex,
-                "\(fixture.name): tick \(note.position) row disagrees"
+                "\(fixture.name): tick \(tick) row disagrees"
             )
             #expect(
                 oldPosition?.x == newPosition?.x,
-                "\(fixture.name): tick \(note.position) x disagrees"
+                "\(fixture.name): tick \(tick) x disagrees"
             )
         }
+    }
+
+    /// The probe set must cover every tick the bridge promises to check:
+    /// all formatted logical columns plus every resolved note/rest/control
+    /// onset — deduplicated, so the loop above cannot silently skip or
+    /// double-visit a tick.
+    @Test("bridge probe ticks cover every column and event onset",
+          arguments: DrumTabFixtureCatalog.all)
+    func bridgeProbeTicksCoverAllOnsets(_ fixture: DrumTabFixture) throws {
+        let result = try DrumTabFixtureHarness.render(fixture)
+        let probes = Set(result.bridgeProbeTicks)
+
+        for measure in result.engraved.formatted.measures {
+            for column in measure.columns {
+                #expect(probes.contains(NotationTickPosition(
+                    measureIndex: measure.index,
+                    localTick: column.localTick
+                )), "\(fixture.name): column m\(measure.index) t\(column.localTick) missing from probes")
+            }
+        }
+        let onsets = result.resolvedInput.notes.map(\.position)
+            + result.resolvedInput.rests.map(\.position)
+            + result.resolvedInput.controls.map(\.position)
+        for onset in onsets {
+            #expect(
+                probes.contains(onset),
+                "\(fixture.name): onset \(onset) missing from probes"
+            )
+        }
+        #expect(
+            probes.count == result.bridgeProbeTicks.count,
+            "\(fixture.name): probe ticks contain duplicates"
+        )
+    }
+
+    /// Identity helpers must be lossless: sorted ID arrays keep duplicate
+    /// note heads, and control tuples keep (eventID, kind) pairs — the
+    /// fixture with real controls proves the legacy IDs are all non-nil.
+    @Test("bridge identity helpers preserve multiplicity and pairs")
+    func bridgeIdentityHelpersAreLossless() throws {
+        let result = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.stopChokeDamp)
+
+        let noteIDs = result.bridgeNoteIDs
+        #expect(noteIDs.legacy == noteIDs.package)
+        #expect(noteIDs.legacy.count == result.layout.noteHeads.count)
+        #expect(noteIDs.package.count == result.engraved.noteHeads.count)
+        #expect(noteIDs.package == noteIDs.package.sorted())
+
+        let controls = try result.bridgeControlIdentities()
+        #expect(controls.legacy == controls.package)
+        // stop-choke-damp carries exactly stop + choke + damp.
+        #expect(controls.legacy.count == 3)
+        #expect(controls.package.count == result.engraved.controls.count)
+        #expect(Set(controls.package.map(\.kind)) == ["stop", "choke", "damp"])
+        #expect(controls.package == controls.package.sorted())
     }
 }
