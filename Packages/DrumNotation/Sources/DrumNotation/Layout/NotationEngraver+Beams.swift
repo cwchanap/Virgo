@@ -151,9 +151,12 @@ extension SheetComposer {
     /// the most extreme representative anchor AND
     /// `minimumStemExtensionPastChord` past the farthest participating
     /// member ink, so a wide chord's far head can never reach the
-    /// innermost beam. The anchor term is the engine's `sharedBeamBaseY`;
-    /// the member-bound term is the same far-chord-edge rule
-    /// `unbeamedStemEndY` applies, minus flag ink (beams replace it).
+    /// innermost beam. The member-edge term also pushes the CENTERLINE a
+    /// half `beamThickness` farther out so the stroked beam edge — the
+    /// ink that actually paints — keeps the full extension clear. The
+    /// anchor term is the engine's `sharedBeamBaseY`; the member-bound
+    /// term is the same far-chord-edge rule `unbeamedStemEndY` applies,
+    /// minus flag ink (beams replace it).
     private func sharedBeamBaseY(
         members: [PendingNoteHead],
         representatives: [PendingNoteHead],
@@ -166,7 +169,9 @@ extension SheetComposer {
         } + members.map {
             direction == .up
                 ? $0.bounds.minY - style.minimumStemExtensionPastChord
+                    - style.beamThickness / 2
                 : $0.bounds.maxY + style.minimumStemExtensionPastChord
+                    + style.beamThickness / 2
         }
         return direction == .up
             ? candidates.min() ?? 0
