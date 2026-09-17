@@ -140,8 +140,25 @@ layout, so the stages must be understood in order:
    materializes — both group construction and the timeline's pre-allocation bound route through it, so
    expanded layout measures cannot drift from the persisted timeline. Do not recompute it locally.
 5. `NotationRhythmAnalyzer` (`layout/`): infers note durations, rests, and tuplets from tick spacing
-6. `NotationLayoutEngine` (+`Beams`/`Rests`/`Controls`/`TabGrid`/`RhythmRendering` extensions):
-   produces the drawable layout
+6. `GameplayNotationPreparer.prepare` (`layout/`): the single preparation route. It expands
+   trailing measures, projects the snapshot through `VirgoNotationProjection` into the local
+   `DrumNotation` package's `ResolvedNotationInput`, runs `NotationEngraver`, and returns a
+   closed `GameplayNotationPreparedState` — `.ready(EngravedNotation,
+   GameplayNotationPresentation)` or `.failed(GameplayNotationPreparationFailure)`. The view
+   model installs a `.ready` result atomically and `GameplaySheetMusicView` mounts the package
+   `DrumNotationView` on it. There is no second style or geometry path.
+
+Notation rendering is split at the package boundary (`Packages/DrumNotation`): the package owns
+reusable geometry and static painting — `ResolvedNotationInput` validation, `NotationFormatter`
+(the sole horizontal/X authority), `StemTopologyBuilder`, `NotationEngraver`, immutable
+`EngravedNotation`, and `DrumNotationView` painting over the vendored Bravura/SMuFL glyphs.
+Virgo owns everything upstream and alongside: DTX import, rhythm analysis, the
+`VirgoNotationProjection` projection (voice assignment, staff steps, suppression, tuplets),
+`NotationLayoutStyle` → `NotationEngravingStyle` mapping, feel/warning annotations, gameplay
+state, scrolling, the playhead, and localized VoiceOver copy. The production chain is:
+
+`RhythmLayoutSnapshot → VirgoNotationProjection → ResolvedNotationInput → NotationEngraver →
+EngravedNotation → DrumNotationView`
 
 Normalized tick fields are persisted on `Note` and `ChartControlEvent` during current DTX import.
 Virgo does not backfill older imported development rows after representation changes; reset/reseed
@@ -149,11 +166,16 @@ local development data instead. Runtime missing-metadata fallback remains separa
 backfill. `RhythmMetronomeSchedule` derives the metronome schedule from the same timeline.
 
 ### Drum Tab Golden Coverage
-`VirgoTests/Fixtures/DrumTabFixtureCatalog*.swift` holds 11 DTX fixtures driven through the real
+`VirgoTests/Fixtures/DrumTabFixtureCatalog*.swift` holds 12 DTX fixtures driven through the real
 import path by `DrumTabFixtureHarness` (`persistenceProjection()` + `setRhythmMetadata`, **not**
 `toNotes`/`toControlEvents` — the latter leaves `rhythmMetadataState == .missing` and stamps control
-ticks at each chip's native grid size). `NotationLayoutDigest` serializes the result to text, compared
-against `VirgoTests/Goldens/<fixture>.txt`.
+ticks at each chip's native grid size). The harness's reported `engraved` is bound to the production
+`GameplayNotationPreparer.prepare` result — its direct engraving seam survives only to expose
+`resolvedInput` and must equal the prepared engraving. `EngravedNotationDigest` serializes the
+result to text — a timeline/analyzer section plus the package engraving geometry with primitive Y
+printed row-relative to staff centers — compared against `VirgoTests/Goldens/<fixture>.txt`.
+There are 11 golden files; the twelfth catalog fixture (`tripletHooksAndStop`) backs the
+probe/mounting suites only.
 
 Regenerate with `TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1` (via `xcodebuild test` — `xcodebuild` forwards
 only `TEST_RUNNER_`-prefixed variables into the spawned test host, stripping the prefix before exec;
@@ -165,19 +187,25 @@ marks a golden that pins known-suspect output.
 `RhythmLayoutSnapshotBuilder` (`Virgo/layout/`) is shared by `GameplayViewModel` and the harness on
 purpose — a parallel copy in tests would let goldens pass while production rendering broke.
 
-Four suites cover this: `DrumTabGoldenTests` (full-digest goldens per fixture),
+The fixture suites cover this: `DrumTabGoldenTests` (full-digest goldens per fixture),
 `DrumTabRegressionInvariantTests` (geometric invariants — beam extent within member stems and within
 the beat group, head-to-grid routing, simultaneous-column identity, painted-bounds containment),
-`DrumTabRenderProbeTests` (differential `ImageRenderer` ink probe; gates that `NotationNoteHeadView`
-actually paints, and deliberately does not gate production's mounting of it), and
-`DrumTabPlayheadAlignmentTests` (playhead x and measure index against the rendered note columns).
+`DrumTabRenderProbeTests` (differential `ImageRenderer` ink probe rasterizing the package
+`DrumNotationView` over fixture engravings — it gates package ink inside package geometry only and
+deliberately does not gate production's mounting of the view), and `DrumTabPlayheadAlignmentTests`
+(playhead x and measure index against the rendered note columns). Production mounting is gated
+separately by the `GameplaySheetMusic*` suites — raster differentials plus a hosted
+accessibility-tree probe on the real `GameplaySheetMusicView`. The package's own geometry/render
+tests live in `Packages/DrumNotation/Tests` and run via `swift test --package-path
+Packages/DrumNotation`.
 
 ### Gameplay Architecture
 `GameplayView` delegates all state to `GameplayViewModel` (`@Observable @MainActor`), which is split
 across `GameplayViewModel.swift` plus `+BGM`, `+Computations`, `+Playback`, `+SpeedControl`, and
 `+VisualUpdates` extension files (SwiftLint type-body limits). The view model:
 - Caches SwiftData relationships (`cachedNotes`, `cachedSong`) to avoid main-thread blocking
-- Pre-computes layout data (`cachedDrumBeats`, `cachedMeasurePositions`, `cachedBeamGroups`) to avoid per-frame recalculation
+- Pre-computes layout data (`cachedDrumBeats`, `cachedMeasurePositions`, `cachedEngravedNotation`,
+  `cachedNotationMeasuresByIndex`) to avoid per-frame recalculation
 - Manages BGM (`AVAudioPlayer`) synchronized with metronome via `CFAbsoluteTime`
 - Handles speed changes with trailing-edge debounce (100ms) to avoid slider jitter
 
@@ -301,7 +329,7 @@ Virgo/
 │   ├── services/                # Business logic services (PlaybackService, ScorePersistenceService, etc.)
 │   ├── utilities/               # Audio engines, DTX/rhythm parsing, timeline, input, MIDI, server, logging
 │   ├── design/                  # Theme, Palette, Typography, Spacing, font registration
-│   ├── layout/                  # Musical notation layout + rhythm analysis
+│   ├── layout/                  # Rhythm analysis, snapshot, projection & preparation into the package
 │   ├── constants/               # Drum type definitions
 │   ├── GraphQL/                 # .graphql operations + committed Apollo-generated code
 │   ├── Config/                  # ServerEndpoints.env (gitignored) + .example template
@@ -310,6 +338,7 @@ Virgo/
 │   └── Assets.xcassets/
 ├── VirgoTests/                  # Unit tests (Swift Testing framework, not XCTest)
 ├── VirgoUITests/                # UI automation tests
+├── Packages/DrumNotation/       # Local package: notation engraving + static DrumNotationView
 ├── docs/                        # PRD, architecture blueprint, superpowers plans/specs
 ├── scripts/                     # setup-git-hooks.sh
 └── server/                      # Legacy local REST fixture server (not the GraphQL backend)

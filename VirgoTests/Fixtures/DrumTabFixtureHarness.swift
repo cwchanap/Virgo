@@ -13,9 +13,10 @@ import DrumNotation
 /// `engraved` (the package `EngravedNotation`) is the sole production
 /// geometry: `GameplayNotationPreparer.prepare` is the single preparation
 /// route, so `prepared` is the same closed state the view model installs
-/// (HPA-166 Task 7). `resolvedInput` is the projection output the engraving
-/// consumed — rest/control ticks live there because the engraved primitives
-/// carry only final geometry.
+/// (HPA-166 Task 7) and `engraved` is bound out of it — never a parallel
+/// test-side result. `resolvedInput` is the projection output the
+/// engraving consumed — rest/control ticks live there because the
+/// engraved primitives carry only final geometry.
 @MainActor
 struct FixtureRenderResult {
     let chart: Chart
@@ -33,6 +34,9 @@ enum DrumTabFixtureHarnessError: Error {
     case rhythmUnavailable(RhythmTimelineAvailability)
     case missingTimeline
     case notationNotReady(GameplayNotationPreparedState)
+    /// The direct engraving seam produced a different `EngravedNotation`
+    /// than production `prepare` — the harness must not report it.
+    case engravingDiverged
 }
 
 /// Runs a fixture through the production import and notation path.
@@ -93,16 +97,22 @@ enum DrumTabFixtureHarness {
             notePositionOverrides: lockedOverrides
         ))
 
-        let engraving = try engrave(
+        // The direct seam stays only to expose `resolvedInput` (its ticks
+        // back the rest/control assertions); `boundEngraving` throws when
+        // production preparation failed or the seam's output diverges, so
+        // this net cannot pass on a parallel test-side engraving while
+        // production preparation is broken.
+        let direct = try engrave(
             snapshot: snapshot,
             minimumMeasureCount: fixture.minimumMeasureCount
         )
+        let engraved = try boundEngraving(prepared: prepared, direct: direct.engraved)
 
         return FixtureRenderResult(
             chart: chart,
             prepared: prepared,
-            engraved: engraving.engraved,
-            resolvedInput: engraving.input,
+            engraved: engraved,
+            resolvedInput: direct.input,
             snapshot: snapshot,
             timeline: timeline,
             style: lockedStyle,
@@ -114,7 +124,11 @@ enum DrumTabFixtureHarness {
     /// `GameplayNotationPreparer.prepare` builds, the app-site
     /// `VirgoNotationProjection` conversion, then the package engraver —
     /// sharing the harness's locked style and overrides so goldens stay
-    /// pinned. `NotationSnapshotTestSupport` reuses this seam for synthetic
+    /// pinned. `render` keeps this seam only to expose `resolvedInput`
+    /// (its ticks back the rest/control assertions) and asserts the seam's
+    /// engraving equals the production `prepare` result via
+    /// `boundEngraving` — it is never a second opinion on production.
+    /// `NotationSnapshotTestSupport` reuses this seam for synthetic
     /// snapshots so both entry points engrave identically.
     /// Nonisolated: every call below is a pure value-type function.
     nonisolated static func engrave(
@@ -148,6 +162,23 @@ enum DrumTabFixtureHarness {
     ) throws -> EngravedNotation {
         guard case let .ready(engraved, _) = prepared else {
             throw DrumTabFixtureHarnessError.notationNotReady(prepared)
+        }
+        return engraved
+    }
+
+    /// Binds the harness's reported engraving to the production prepared
+    /// result: returns the `.ready` engraving after asserting the direct
+    /// seam produced the identical `EngravedNotation`. Throws
+    /// `notationNotReady` when production preparation failed and
+    /// `engravingDiverged` when the seam disagrees — in both cases the
+    /// test-side result cannot stand in for production.
+    nonisolated static func boundEngraving(
+        prepared: GameplayNotationPreparedState,
+        direct: EngravedNotation
+    ) throws -> EngravedNotation {
+        let engraved = try requireEngraved(prepared)
+        guard engraved == direct else {
+            throw DrumTabFixtureHarnessError.engravingDiverged
         }
         return engraved
     }

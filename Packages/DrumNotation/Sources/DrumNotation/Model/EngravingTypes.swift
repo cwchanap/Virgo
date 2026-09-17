@@ -435,8 +435,10 @@ public struct EngravedNotation: Hashable, Sendable {
     /// Union of every primitive's ink, post-normalization (`.null` when the
     /// input engraved nothing).
     public let paintedBounds: CGRect
-    /// Sheet width: the nominal row width floor or the painted right edge,
-    /// whichever is wider.
+    /// Sheet width: the widest laid-out row's right edge — the largest
+    /// formatted measure `xOffset + width` — or the painted ink's right
+    /// edge, whichever is wider (a flag/displacement may out-ink the
+    /// column span).
     public let contentWidth: CGFloat
     /// Sheet height: covers the painted ink and the lowest row's staff
     /// bottom.
