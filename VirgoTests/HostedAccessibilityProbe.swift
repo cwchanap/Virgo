@@ -9,6 +9,7 @@
 
 import SwiftUI
 import Foundation
+import Testing
 @testable import Virgo
 
 #if os(macOS)
@@ -65,19 +66,74 @@ func hostedAccessibilityLabels(
     window.contentView = hostingView
     window.orderBack(nil)
     defer { window.orderOut(nil) }
-    // SwiftUI materializes its accessibility subtree only for an
-    // "enhanced user interface" client — what VoiceOver sets on the
-    // application element. Same-process call, no TCC needed.
-    AXUIElementSetAttributeValue(
-        AXUIElementCreateApplication(getpid()),
-        "AXEnhancedUserInterface" as CFString,
-        kCFBooleanTrue
-    )
+
+    // The prior application-element value is captured verbatim inside and
+    // the returned closure restores it — run in `defer` so the probe
+    // cannot leak global accessibility state into the rest of the test
+    // host, even on failure.
+    let restoreEnhancedUI = setEnhancedUserInterface()
+    defer { restoreEnhancedUI() }
+
     hostingView.layoutSubtreeIfNeeded()
     hostingView.displayIfNeeded()
-    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    hostingView.layoutSubtreeIfNeeded()
-    return walkAccessibilityTree(roots: [hostingView, window])
+
+    // The accessibility subtree materializes asynchronously: pump the run
+    // loop in short increments and re-walk until a semantic label shows up
+    // or the bounded deadline passes — never a fixed sleep. For an
+    // unlabeled mount the full window doubles as the observation period
+    // before judging absence.
+    let deadline = Date().addingTimeInterval(2)
+    var dump = walkAccessibilityTree(roots: [hostingView, window])
+    while dump.labels.isEmpty, Date() < deadline {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        hostingView.layoutSubtreeIfNeeded()
+        dump = walkAccessibilityTree(roots: [hostingView, window])
+    }
+    return dump
+}
+
+/// Sets `AXEnhancedUserInterface` on this process's application element —
+/// SwiftUI materializes its accessibility subtree only for an enhanced-UI
+/// client (what VoiceOver sets). Same-process call, no TCC needed.
+/// Returns a closure restoring the prior value verbatim (neutral `false`
+/// when none was set) so the probe leaks no global accessibility state.
+///
+/// Every AX status is classified: `.apiDisabled`/`.notImplemented` (the
+/// xctest host cannot write the attribute — the informal-protocol walk
+/// still sees SwiftUI's nodes there) and the read-side "unset" errors are
+/// tolerated; anything unexpected is recorded as a test issue.
+private func setEnhancedUserInterface() -> () -> Void {
+    let application = AXUIElementCreateApplication(getpid())
+    let attribute = "AXEnhancedUserInterface" as CFString
+    var priorValue: CFTypeRef?
+    switch AXUIElementCopyAttributeValue(application, attribute, &priorValue) {
+    case .success:
+        break
+    case .noValue, .attributeUnsupported, .apiDisabled, .notImplemented:
+        // No prior client state — the attribute reads as unset.
+        priorValue = nil
+    case let error:
+        Issue.record("AXEnhancedUserInterface read failed: \(error.rawValue)")
+        priorValue = nil
+    }
+    switch AXUIElementSetAttributeValue(application, attribute, kCFBooleanTrue) {
+    case .success, .apiDisabled, .notImplemented:
+        break
+    case let error:
+        Issue.record("AXEnhancedUserInterface enable failed: \(error.rawValue)")
+    }
+    return {
+        switch AXUIElementSetAttributeValue(
+            application,
+            attribute,
+            priorValue ?? kCFBooleanFalse
+        ) {
+        case .success, .apiDisabled, .notImplemented:
+            break
+        case let error:
+            Issue.record("AXEnhancedUserInterface restore failed: \(error.rawValue)")
+        }
+    }
 }
 
 /// Breadth-first walk of the accessibility tree under `roots`.
