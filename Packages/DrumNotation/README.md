@@ -23,11 +23,15 @@ let position = layout.position(measureIndex: 0, localTick: 240)
 let view = DrumNotationView(layout: layout, accessibilityLabels: [:])
 ```
 
-`NotationEngraver.engrave` is the single public route to geometry; `DrumNotationView` is the single
-public route to pixels. `NotationFormatter.format` remains public for consumers that need the
-formatting layer alone, but `engrave` already embeds the `FormattedNotation` it produces
+`NotationEngraver.engrave` is the canonical complete-engraving route: one pass from
+`ResolvedNotationInput` to the full immutable `EngravedNotation`. `DrumNotationView` is the
+canonical complete-sheet route: it paints that engraving as-is, furniture included. Lower-level
+public API stays available for consumers that need it — `NotationFormatter.format` for the
+formatting layer alone, and the individual primitive views (`PercussionNoteheadView`,
+`NotationRestGlyphView`, `NotationFlagGlyphView`, `PercussionArticulationView`) for custom
+composition — but `engrave` already embeds the `FormattedNotation` it produces
 (`EngravedNotation.formatted`), including the `position(measureIndex:localTick:)` lookup the live
-playhead consumes.
+playhead consumes, and `DrumNotationView` is the only painter that covers every primitive family.
 
 ## Ownership boundary
 

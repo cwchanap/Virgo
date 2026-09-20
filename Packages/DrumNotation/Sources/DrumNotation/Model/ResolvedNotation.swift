@@ -430,8 +430,8 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     /// measure: `localTick + durationTicks <= measure.durationTicks`, with the
     /// exact measure end allowed. The addition is reporting-overflow safe —
     /// an unrepresentable end is rejected, never trapped. Dot counts must be
-    /// non-negative — a negative count has no engraving meaning and would
-    /// trap the dot painter.
+    /// non-negative — a negative count has no engraving meaning and is
+    /// rejected here at input validation.
     private static func validateEventDurations(
         notes: [ResolvedNote],
         rests: [ResolvedRest],

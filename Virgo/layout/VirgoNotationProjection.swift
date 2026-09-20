@@ -80,7 +80,8 @@ enum VirgoNotationProjection {
     /// receives the complete requested measure list and synthesizes no app
     /// timing policy. Hidden rests are filtered here (the package has no
     /// hidden-rest state), and notes/rests/controls that would fall outside
-    /// their measure are dropped exactly like the current engine guards.
+    /// their measure are dropped by the projection guards below — this is
+    /// the only filter between the snapshot and the package boundary.
     static func resolvedNotation(
         snapshot: RhythmLayoutSnapshot,
         expandedMeasures: [RhythmMeasure],
@@ -189,8 +190,9 @@ enum VirgoNotationProjection {
         )?.variant == .openHiHat ? .open : nil
     }
 
-    /// Snapshot notes that pass the same guards the engine applies before
-    /// building timeline note heads, paired with their catalog definitions.
+    /// Snapshot notes that pass the projection's catalog-resolution and
+    /// measure-containment guards before becoming resolved notes, paired
+    /// with their catalog definitions.
     private static func mappedNotes(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure]
@@ -248,14 +250,14 @@ enum VirgoNotationProjection {
         }
     }
 
-    /// Every rest that passes the engine's rest guards in an
+    /// Every rest that passes the projection's rest guards in an
     /// engraving-permitting measure, in its candidate sort order (tick
     /// ascending, upper voice first, longer first) — all visibilities.
     /// Rests in engraving-unsupported measures are filtered here: Virgo
     /// suppresses their engraving at composition, so they must not reserve
     /// measured ink in the package. Callers filter `.printed` themselves;
-    /// the full candidate set mirrors `buildRests`'s population for tuplet
-    /// feel-pair detection.
+    /// the full candidate set feeds the tuplet projection's feel-pair
+    /// detection below.
     private static func restCandidates(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure]
@@ -282,11 +284,10 @@ enum VirgoNotationProjection {
 
     // MARK: - Controls
 
-    /// Controls cross only with resolved visual intent: the same target
-    /// resolution `buildStopNotes` applies (target lane + staff-position
-    /// override), so a control whose target cannot resolve never reaches the
-    /// package — mirroring the engine dropping it rather than painting a
-    /// mark at a fabricated step.
+    /// Controls cross only with resolved visual intent: the projection
+    /// resolves the target itself (target lane + staff-position override),
+    /// so a control whose target cannot resolve never reaches the package —
+    /// it is dropped here rather than painted at a fabricated step.
     private static func resolvedControls(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure],
@@ -344,15 +345,15 @@ func legacyRestDuration(
 }
 
 /// The tuplet arm of the projection, split out so the main enum stays under
-/// the SwiftLint type-body limit — the mirror of `buildTuplets`: only
-/// already-resolved groups in engraving-permitting measures cross, and
-/// declared swing/shuffle feel-pairs stay suppressed at this boundary
-/// rather than carrying `RhythmicFeel` into the package.
+/// the SwiftLint type-body limit: only already-resolved groups in
+/// engraving-permitting measures cross, and declared swing/shuffle
+/// feel-pairs stay suppressed at this boundary rather than carrying
+/// `RhythmicFeel` into the package.
 private enum VirgoNotationTupletProjection {
     /// Resolved tuplet groups keyed by deterministic adapter-local IDs.
     /// `notes` are the mapped note-head candidates; `rests` are the sorted
-    /// rest candidates of every visibility (the engine's `buildTuplets`
-    /// population); `printedRests` is the subset that crosses the boundary —
+    /// rest candidates of every visibility (`restCandidates`' full set);
+    /// `printedRests` is the subset that crosses the boundary —
     /// its ordinal order is the `ResolvedRest` ID namespace members cite.
     static func resolvedTuplets(
         notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)],
@@ -422,7 +423,7 @@ private enum VirgoNotationTupletProjection {
         )
     }
 
-    /// The engine's declared feel-pair detection over snapshot-level values:
+    /// The projection's declared feel-pair detection over snapshot-level values:
     /// a swing/shuffle chart where the group covers one whole beat group,
     /// has no rest members, and its notes occupy exactly the long/short
     /// triplet slots.

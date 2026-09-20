@@ -283,8 +283,12 @@ struct EngraverStemBeamTests {
         #expect(Set(engraved.measures.map(\.rowIndex)).count > 1)
         #expect(engraved.beams.isEmpty == false)
         for beam in engraved.beams {
-            let rows = Set(beam.noteIDs.map { noteID -> Int in
-                engraved.noteHeads.first { $0.noteID == noteID }?.rowIndex ?? -1
+            let rows = Set(try beam.noteIDs.map { noteID -> Int in
+                let head = try #require(
+                    engraved.noteHeads.first { $0.noteID == noteID },
+                    "missing note head for beam member \(noteID)"
+                )
+                return head.rowIndex
             })
             #expect(rows.count == 1, "beam \(beam) spans rows \(rows)")
         }
