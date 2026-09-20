@@ -470,10 +470,13 @@ extension StemTopologyTests {
         #expect(topology.topology.primaryGroups.count == 8)
         #expect(Set(notation.measures.map { $0.rowIndex }).count > 1)
         for primaryGroup in topology.topology.primaryGroups {
-            let rows = Set(primaryGroup.eventIndices.map { index -> Int in
+            let rows = Set(try primaryGroup.eventIndices.map { index -> Int in
                 let event = topology.events[index]
-                let formatted = notation.measures.first { $0.index == event.measureIndex }
-                return formatted?.rowIndex ?? -1
+                let formatted = try #require(
+                    notation.measures.first { $0.index == event.measureIndex },
+                    "missing formatted measure \(event.measureIndex)"
+                )
+                return formatted.rowIndex
             })
             #expect(rows.count == 1, "beam group spans rows \(String(describing: rows))")
         }

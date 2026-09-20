@@ -17,11 +17,15 @@ import DrumNotation
 /// one test that rasterizes through `ImageRenderer` and checks that ink landed where
 /// the engraving said it would.
 ///
-/// Know its boundary. This suite proves *package ink inside package geometry*:
-/// `PercussionNoteheadView`, the flag glyph painter, and the `DrumNotationView`
-/// layer stack itself -- an empty body, a zero frame, a transparent fill, a
-/// broken glyph path, a dropped `.position`, a layer mounted behind the staff
-/// lines. Head *placement* is a separate claim this probe does not make: the
+/// Know its boundary. This suite proves *package ink contribution inside
+/// package geometry*: `PercussionNoteheadView`, the flag glyph painter, and
+/// the `DrumNotationView` layer stack itself -- an empty body, a zero frame,
+/// a transparent fill, a broken glyph path, a dropped `.position`. Alpha
+/// differencing cannot prove z-order: where a swapped layer's ink overlaps
+/// the staff-line band, the staff lines' own paint covers those pixels in
+/// both legs, so a layer mounted *behind* opaque staff ink would go
+/// undetected -- the claim here is ink contribution within package-claimed
+/// bounds only. Head *placement* is a separate claim this probe does not make: the
 /// sample rect is the head's own `paintedBounds` and the glyph is drawn at that
 /// same position, so a wrong position moves rect and glyph together and this
 /// probe stays green. Placement is gated by the goldens (`DrumTabGoldenTests`),

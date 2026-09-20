@@ -32,7 +32,9 @@ func changedPixelCount(between lhs: RasterBitmap, and rhs: RasterBitmap) -> Int 
 /// Each family's ink only reaches the raster through `DrumNotationView`,
 /// so an identical raster proves that layer is not mounted (or the family
 /// never paints). `.furniture` clears `rows` — staff lines, clef and meter
-/// all hang off the row staff frame; bar descriptors have their own case.
+/// all hang off the row staff frame; bar descriptors have their own case,
+/// but they resolve that frame through `rows`, so the furniture comparison
+/// strips bars from both legs to keep the differential attributable.
 enum MountedPrimitiveFamily: String, Sendable {
     case noteHeads, rests, stems, beams, flags, rhythmDots, controls, measureBars, furniture
 }
@@ -160,10 +162,10 @@ struct GameplaySheetMusicSmokeTests {
                 )
             }
 
+            let pair = scenario.comparisonPair(in: engraving)
+            viewModel.installPreparedNotation(.ready(pair.baseline, presentation))
             let headful = try rasterizeProductionSheet()
-            viewModel.installPreparedNotation(
-                .ready(engraving.stripped(scenario.family), presentation)
-            )
+            viewModel.installPreparedNotation(.ready(pair.stripped, presentation))
             let stripped = try rasterizeProductionSheet()
 
             #expect(
@@ -466,6 +468,27 @@ private extension MountedSmokeCase {
         case .controls: return engraving.controls.count
         case .measureBars: return engraving.measureBars.count
         case .furniture: return engraving.rows.count
+        }
+    }
+
+    /// The two engravings one differential rasterizes: `baseline` keeps the
+    /// family's ink, `stripped` removes it — the only difference between the
+    /// pair is the family under test.
+    ///
+    /// Furniture is the exception: `DrumNotationView` resolves every measure
+    /// bar's staff frame through `layout.rows`, so emptying `rows` would
+    /// also remove bar ink and make the staff/clef/meter differential
+    /// ambiguous. Bars are stripped from BOTH legs first, so measure bars
+    /// are absent on both sides before rows are removed.
+    func comparisonPair(
+        in engraving: EngravedNotation
+    ) -> (baseline: EngravedNotation, stripped: EngravedNotation) {
+        switch family {
+        case .furniture:
+            let withoutBars = engraving.stripped(.measureBars)
+            return (baseline: withoutBars, stripped: withoutBars.stripped(.furniture))
+        default:
+            return (baseline: engraving, stripped: engraving.stripped(family))
         }
     }
 }

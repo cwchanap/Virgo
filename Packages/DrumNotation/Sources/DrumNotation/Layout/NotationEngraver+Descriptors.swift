@@ -38,9 +38,8 @@ extension SheetComposer {
     // MARK: - Controls
 
     /// Control marks at their resolved target staff step on the logical
-    /// column X — the engine's `buildStopNotes` with the app-side lane
-    /// resolution already folded into `ResolvedControl.targetStaffStep`.
-    /// Sorted by absolute tick then ID, matching the engine.
+    /// column X — the caller's lane resolution is already folded into
+    /// `ResolvedControl.targetStaffStep`. Sorted by absolute tick then ID.
     func collectControls(raw: inout RawGeometry) {
         let measuresByIndex = Dictionary(
             input.measures.map { ($0.index, $0) },
@@ -61,8 +60,8 @@ extension SheetComposer {
                 y: staffStepY(control.targetStaffStep, rowIndex: formattedMeasure.rowIndex)
                     - style.stopMarkVerticalOffset
             )
-            // The cross mark's ink: the mark square plus its stroke width,
-            // matching the engine's `RenderedStopNote.paintedBounds`.
+            // The cross mark's ink: the mark square plus its stroke width —
+            // the same union the production sheet relies on for bounds.
             let markExtent = style.stopMarkSize + style.stopMarkStrokeWidth
             raw.include(CGRect(
                 x: position.x - markExtent / 2,

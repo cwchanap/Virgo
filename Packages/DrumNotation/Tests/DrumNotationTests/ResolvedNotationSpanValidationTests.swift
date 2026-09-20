@@ -2,7 +2,7 @@ import Testing
 import DrumNotation
 
 /// HPA-166 review fix 1: a note/rest's exact duration span must stay inside
-/// its owning measure — `localTick + durationTicks <= durationTicks`, with
+/// its owning measure — `localTick + durationTicks <= measure.durationTicks`, with
 /// the exact measure end allowed and no integer-overflow trap. Onset-only
 /// containment and positivity live in the sibling validation suite. The
 /// `validateEventDurations` pass also rejects negative dot counts here —

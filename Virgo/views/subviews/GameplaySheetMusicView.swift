@@ -22,7 +22,6 @@ struct GameplayStaticNotationInput: Equatable {
     let legacyMeasurePositions: [GameplayLayout.MeasurePosition]
     let legacyContentHeight: CGFloat
     let timeSignature: TimeSignature
-    let hasPlayableContent: Bool
     let hasRenderableContent: Bool
     let generation: UInt64
 
@@ -153,7 +152,6 @@ extension GameplayView {
             legacyMeasurePositions: viewModel.cachedMeasurePositions,
             legacyContentHeight: viewModel.cachedLegacyContentHeight,
             timeSignature: viewModel.track?.timeSignature ?? .fourFour,
-            hasPlayableContent: viewModel.cachedNotationHasPlayableContent,
             hasRenderableContent: viewModel.cachedNotationHasRenderableContent,
             generation: viewModel.notationLayoutGeneration
         )

@@ -113,8 +113,7 @@ enum EngravedNotationDigest {
                 + "leadInset=\(f(formatting.leadingMeasureInset)) "
                 + "trailInset=\(f(formatting.trailingMeasureInset)) "
                 + "dotRadius=\(f(formatting.rhythmDotRadius)) "
-                + "dotSpacing=\(f(formatting.rhythmDotSpacing)) "
-                + "overrides=default",
+                + "dotSpacing=\(f(formatting.rhythmDotSpacing))",
             "style2 rowHeight=\(f(style.rowHeight)) rowGap=\(f(style.rowVerticalSpacing)) "
                 + "stemLen=\(f(style.stemLength)) stemExt=\(f(style.minimumStemExtensionPastChord)) "
                 + "beamThick=\(f(style.beamThickness)) beamLevel=\(f(style.beamLevelSpacing)) "
