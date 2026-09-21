@@ -332,17 +332,18 @@ struct EngraverBarRowTests {
         ))
 
         // Staff lines stroke the fixed staffLineWidth (the app's legacy
-        // 1pt, not barLineWidth) from the sheet edge through the row's
-        // last measure edge, centered on each staffLineY.
+        // 1pt, not barLineWidth) across the full declared sheet width —
+        // the app's row painter drew every row to the floored
+        // `contentWidth`, not to each row's last measure edge.
         let staffLineWidth = NotationEngravingStyle.staffLineWidth
-        let rowEnd = try #require(engraved.measures.map { $0.xOffset + $0.width }.max())
         for lineY in row.staffLineYs {
             let line = CGRect(
                 x: 0, y: lineY - staffLineWidth / 2,
-                width: rowEnd, height: staffLineWidth
+                width: engraved.contentWidth, height: staffLineWidth
             )
             #expect(row.paintedBounds.contains(line))
         }
+        #expect(row.paintedBounds.maxX == engraved.contentWidth)
         // The stroked staff lines are the furniture union's vertical
         // extremes — the slots end at the outer line centers — so the
         // edges pin the stroke width exactly.
@@ -410,5 +411,43 @@ struct EngraverBarRowTests {
         let secondRow = try #require(engraved.rows.first { $0.index == 1 })
         #expect(secondRow.meterSignature.meter == NotationMeter(beats: 6, noteValue: 8))
         #expect(engraved.rows.first?.meterSignature.meter == NotationMeter(beats: 4, noteValue: 4))
+    }
+
+    @Test("content width keeps the wrap-width floor plus trailing room")
+    func contentWidthFloorAndTrailingRoom() throws {
+        // The pre-cutover contract — `max(maxRowWidth, ink.maxX +
+        // uniformSpacing)` — survives the ownership move: the formatter's
+        // `availableRowWidth` is the floor (the app's 900pt row width) and
+        // `minimumQuarterNoteSpacing` is the trailing room (the app's
+        // `uniformSpacing`). A sparse sheet never narrows below the floor,
+        // and every row's staff lines span the declared width.
+        let sparse = try NotationEngraver.engrave(document(measureCount: 1), style: style)
+        #expect(sparse.contentWidth == style.formatting.availableRowWidth)
+        #expect(sparse.paintedBounds.maxX == sparse.contentWidth)
+        #expect(sparse.rows.allSatisfy { $0.paintedBounds.maxX == sparse.contentWidth })
+
+        // Ink past the floor keeps one spacing unit of trailing room. The
+        // bar tier is the rightmost ink here — the only note sits on the
+        // first column — so the pre-furniture union ends at the widest
+        // measure edge's bar ink (interior bars stroke half a width past
+        // their X; the final double bar ends at it).
+        let narrow = NotationEngravingStyle(
+            formatting: NotationFormattingStyle(availableRowWidth: 200)
+        )
+        let wrapped = try NotationEngraver.engrave(document(measureCount: 3), style: narrow)
+        let barInkMaxX = try #require(wrapped.measureBars.map {
+            $0.isFinal ? $0.x : $0.x + narrow.barLineWidth / 2
+        }.max())
+        let expected = max(
+            narrow.formatting.availableRowWidth,
+            barInkMaxX + narrow.formatting.minimumQuarterNoteSpacing
+        )
+        try #require(
+            expected > narrow.formatting.availableRowWidth,
+            "fixture must push ink past the floor"
+        )
+        #expect(wrapped.contentWidth == expected)
+        #expect(wrapped.paintedBounds.maxX == wrapped.contentWidth)
+        #expect(wrapped.rows.allSatisfy { $0.paintedBounds.maxX == wrapped.contentWidth })
     }
 }

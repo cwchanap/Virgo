@@ -546,7 +546,8 @@ public struct ResolvedNotationInput: Hashable, Sendable {
 }
 
 /// Plain scalar formatter style; every value is points. The defaults are the
-/// mapping Virgo uses (`availableRowWidth` = the app's 900pt row-width floor).
+/// mapping Virgo uses (`availableRowWidth` = the app's 900pt row-width floor —
+/// both the measure-wrap boundary and the engraved sheet's minimum width).
 public struct NotationFormattingStyle: Hashable, Sendable {
     public let availableRowWidth: CGFloat
     public let rowLeadingInset: CGFloat
