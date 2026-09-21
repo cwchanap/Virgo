@@ -331,16 +331,23 @@ struct EngraverBarRowTests {
             width: style.meterWidth, height: 4 * staffSpace
         ))
 
-        // Staff lines stroke barLineWidth from the sheet edge through the
-        // row's last measure edge, centered on each staffLineY.
+        // Staff lines stroke the fixed staffLineWidth (the app's legacy
+        // 1pt, not barLineWidth) from the sheet edge through the row's
+        // last measure edge, centered on each staffLineY.
+        let staffLineWidth = NotationEngravingStyle.staffLineWidth
         let rowEnd = try #require(engraved.measures.map { $0.xOffset + $0.width }.max())
         for lineY in row.staffLineYs {
             let line = CGRect(
-                x: 0, y: lineY - style.barLineWidth / 2,
-                width: rowEnd, height: style.barLineWidth
+                x: 0, y: lineY - staffLineWidth / 2,
+                width: rowEnd, height: staffLineWidth
             )
             #expect(row.paintedBounds.contains(line))
         }
+        // The stroked staff lines are the furniture union's vertical
+        // extremes — the slots end at the outer line centers — so the
+        // edges pin the stroke width exactly.
+        #expect(row.paintedBounds.minY == row.staffLineYs.last.map { $0 - staffLineWidth / 2 })
+        #expect(row.paintedBounds.maxY == row.staffLineYs.first.map { $0 + staffLineWidth / 2 })
         #expect(row.paintedBounds.contains(row.clef.paintedBounds))
         #expect(row.paintedBounds.contains(row.meterSignature.paintedBounds))
         #expect(engraved.paintedBounds.contains(row.paintedBounds))

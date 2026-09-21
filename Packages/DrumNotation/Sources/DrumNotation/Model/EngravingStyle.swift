@@ -113,3 +113,13 @@ public struct NotationEngravingStyle: Hashable, Sendable {
         self.meterWidth = meterWidth
     }
 }
+
+extension NotationEngravingStyle {
+    /// Staff-line stroke width — fixed at the app's legacy 1pt
+    /// (`StaffLinesBackgroundView` painted `height: 1` rectangles), not
+    /// `barLineWidth` like the bars and ledger lines. A shared constant
+    /// rather than a configurable field: the cutover keeps the app's
+    /// fixed weight, and the engraver's furniture bounds and the view's
+    /// stroke must never drift apart.
+    static let staffLineWidth: CGFloat = 1
+}

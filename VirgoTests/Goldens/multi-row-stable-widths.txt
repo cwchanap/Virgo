@@ -10,7 +10,7 @@ tl-meas m7 startTick=112 durationTicks=16 sig=4/4 groups=[0,4,8,12] engraving=su
 
 style staffSpace=20.00 rowWidth=900.00 rowInset=100.00 stemWidth=2.00 colGap=8.00 quarterGap=50.00 measGap=12.00 leadInset=52.00 trailInset=0.00 dotRadius=2.50 dotSpacing=4.00
 style2 rowHeight=280.00 rowGap=60.00 stemLen=75.00 stemExt=10.00 beamThick=4.00 beamLevel=6.00 beamHook=12.00 flagGap=8.00 ledgerExt=6.00 restUp=-20.00 restDown=20.00 stopSize=14.00 stopStroke=2.00 stopOff=18.00 articOff=24.00 tupletLine=1.50 tupletLabel=14.00x16.00 tupletOff=10.00 tupletHook=6.00 bar=2.00 dblBar=2.00/3.00/4.00 clef=40.00 meter=30.00
-dims  contentWidth=690.76 contentHeight=2720.00 paintedBounds=(0.00,90.00,690.76,2471.00)
+dims  contentWidth=690.76 contentHeight=2720.00 paintedBounds=(0.00,90.00,690.76,2470.50)
 row   0 measures=[m0] pitch=0.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
 row   1 measures=[m1] pitch=340.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
 row   2 measures=[m2] pitch=680.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)

@@ -334,9 +334,10 @@ extension SheetComposer {
         )
     }
 
-    /// The row's furniture union: each staff line stroked `barLineWidth`
-    /// from the sheet edge through the row's last measure edge — the same
-    /// span the bars and the app's row painter cover — plus both slots.
+    /// The row's furniture union: each staff line stroked `staffLineWidth`
+    /// (the app's fixed 1pt staff-line weight, not `barLineWidth`) from
+    /// the sheet edge through the row's last measure edge — the same span
+    /// the bars and the app's row painter cover — plus both slots.
     private func rowPaintedBounds(
         rowIndex: Int,
         staffLineYs: [CGFloat],
@@ -351,8 +352,8 @@ extension SheetComposer {
             clef.paintedBounds.union(meter.paintedBounds)
         ) { bounds, lineY in
             bounds.union(CGRect(
-                x: 0, y: lineY - style.barLineWidth / 2,
-                width: rowEnd, height: style.barLineWidth
+                x: 0, y: lineY - NotationEngravingStyle.staffLineWidth / 2,
+                width: rowEnd, height: NotationEngravingStyle.staffLineWidth
             ))
         }
     }
