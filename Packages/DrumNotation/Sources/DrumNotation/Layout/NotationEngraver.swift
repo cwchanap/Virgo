@@ -142,6 +142,10 @@ struct SheetComposer {
         /// Row furniture in raw coordinates — staff-line ink, clef and
         /// meter slots — unioned into `paintedUnion` before the shift.
         var rows: [EngravedRow] = []
+        /// The declared sheet width, resolved by `collectRowFurniture`
+        /// from the pre-furniture ink union — the wrap-width floor or the
+        /// ink's right edge plus trailing room, whichever is wider.
+        var sheetWidth: CGFloat = 0
         var paintedUnion: CGRect?
 
         mutating func include(_ bounds: CGRect) {
@@ -192,16 +196,9 @@ struct SheetComposer {
             tuplets: raw.tuplets.map { $0.translated(byY: shift) },
             measureBars: raw.measureBars,
             paintedBounds: paintedBounds ?? .null,
-            contentWidth: contentWidth(painted: paintedBounds),
+            contentWidth: raw.sheetWidth,
             contentHeight: contentHeight(painted: paintedBounds, rows: rows)
         )
-    }
-
-    /// Sheet width: the widest laid-out row's right edge or the painted ink's,
-    /// whichever is wider (a flag/displacement may out-ink the column span).
-    private func contentWidth(painted: CGRect?) -> CGFloat {
-        let contentRight = formatted.measures.map { $0.xOffset + $0.width }.max() ?? 0
-        return max(contentRight, painted?.maxX ?? 0)
     }
 
     /// Sheet height: the painted bottom or the lowest row's full anchor

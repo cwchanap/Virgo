@@ -90,20 +90,16 @@ private extension DrumNotationView {
     }
 
     /// The five staff lines of every row, spanning the sheet edge through
-    /// the row's last formatted measure edge — the same span the engraver
-    /// unioned into the row's furniture bounds. Stroked at the fixed
+    /// the declared `contentWidth` — the same span the engraver unioned
+    /// into each row's furniture bounds. Stroked at the fixed
     /// `staffLineWidth`, not `barLineWidth`: the app's staff lines were
     /// 1pt while its bars and ledger lines were `barLineWidth`.
     var staffLines: some View {
         Path { path in
             for row in layout.rows {
-                let rowEnd = layout.measures
-                    .filter { $0.rowIndex == row.index }
-                    .map { $0.xOffset + $0.width }
-                    .max() ?? 0
                 for lineY in row.staffLineYs {
                     path.move(to: CGPoint(x: 0, y: lineY))
-                    path.addLine(to: CGPoint(x: rowEnd, y: lineY))
+                    path.addLine(to: CGPoint(x: layout.contentWidth, y: lineY))
                 }
             }
         }

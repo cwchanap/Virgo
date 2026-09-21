@@ -4,7 +4,7 @@ tl-meas m1 startTick=4 durationTicks=4 sig=4/4 groups=[0,1,2,3] engraving=suppor
 
 style staffSpace=20.00 rowWidth=900.00 rowInset=100.00 stemWidth=2.00 colGap=8.00 quarterGap=50.00 measGap=12.00 leadInset=52.00 trailInset=0.00 dotRadius=2.50 dotSpacing=4.00
 style2 rowHeight=280.00 rowGap=60.00 stemLen=75.00 stemExt=10.00 beamThick=4.00 beamLevel=6.00 beamHook=12.00 flagGap=8.00 ledgerExt=6.00 restUp=-20.00 restDown=20.00 stopSize=14.00 stopStroke=2.00 stopOff=18.00 articOff=24.00 tupletLine=1.50 tupletLabel=14.00x16.00 tupletOff=10.00 tupletHook=6.00 bar=2.00 dblBar=2.00/3.00/4.00 clef=40.00 meter=30.00
-dims  contentWidth=616.00 contentHeight=340.00 paintedBounds=(0.00,15.12,616.00,269.12)
+dims  contentWidth=900.00 contentHeight=340.00 paintedBounds=(0.00,15.12,900.00,269.12)
 row   0 measures=[m0,m1] pitch=0.00 lines=[40.00,20.00,0.00,-20.00,-40.00] clef=(20.00,0.00) meter=4/4 (55.00,0.00)
 meas  m0 row=0 xOffset=100.00 width=252.00 startTick=0 durationTicks=4 meter=4/4
 meas  m1 row=0 xOffset=364.00 width=252.00 startTick=4 durationTicks=4 meter=4/4

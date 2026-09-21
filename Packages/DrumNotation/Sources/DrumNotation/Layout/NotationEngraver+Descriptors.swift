@@ -261,7 +261,7 @@ extension SheetComposer {
     // MARK: - Row furniture
 
     /// Every formatted row's furniture in RAW sheet coordinates — the five
-    /// staff lines spanning the row's formatted extent, the leading clef
+    /// staff lines spanning the declared sheet width, the leading clef
     /// slot, and the meter-signature slot of the row's first measure.
     /// Furniture ink joins `paintedUnion` like every other primitive so the
     /// single normalization moves it too, and the row's own `paintedBounds`
@@ -270,6 +270,19 @@ extension SheetComposer {
         let measuresByIndex = Dictionary(
             input.measures.map { ($0.index, $0) },
             uniquingKeysWith: { first, _ in first }
+        )
+        // The declared sheet width, resolved before furniture joins the
+        // union so the union at this point is the legacy `paintedBounds`
+        // analogue (all ink and bars, no staff lines): the wrap-width
+        // floor `availableRowWidth` (the app's 900pt row-width floor) or
+        // the ink's right edge plus one `minimumQuarterNoteSpacing` of
+        // trailing room — the pre-cutover `max(GameplayLayout.maxRowWidth,
+        // paintedBounds.maxX + GameplayLayout.uniformSpacing)` contract.
+        // Every row's staff lines span it, so the final union's maxX and
+        // `EngravedNotation.contentWidth` both equal this value.
+        raw.sheetWidth = max(
+            formatting.availableRowWidth,
+            (raw.paintedUnion?.maxX ?? 0) + formatting.minimumQuarterNoteSpacing
         )
         for index in Set(formatted.measures.map(\.rowIndex)).sorted() {
             let centerY = staffCenterY(rowIndex: index)
@@ -297,8 +310,8 @@ extension SheetComposer {
                 staffHeight: staffHeight, measuresByIndex: measuresByIndex
             )
             let furniture = rowPaintedBounds(
-                rowIndex: index, staffLineYs: staffLineYs,
-                clef: clef, meter: meter
+                staffLineYs: staffLineYs,
+                clef: clef, meter: meter, sheetWidth: raw.sheetWidth
             )
             raw.include(furniture)
             raw.rows.append(EngravedRow(
@@ -336,24 +349,21 @@ extension SheetComposer {
 
     /// The row's furniture union: each staff line stroked `staffLineWidth`
     /// (the app's fixed 1pt staff-line weight, not `barLineWidth`) from
-    /// the sheet edge through the row's last measure edge — the same span
-    /// the bars and the app's row painter cover — plus both slots.
+    /// the sheet edge through the declared sheet width — the span the
+    /// app's row painter drew to the floored `contentWidth`, so a short
+    /// wrapped row never ends its staff early — plus both slots.
     private func rowPaintedBounds(
-        rowIndex: Int,
         staffLineYs: [CGFloat],
         clef: EngravedClef,
-        meter: EngravedMeterSignature
+        meter: EngravedMeterSignature,
+        sheetWidth: CGFloat
     ) -> CGRect {
-        let rowEnd = formatted.measures
-            .filter { $0.rowIndex == rowIndex }
-            .map { $0.xOffset + $0.width }
-            .max() ?? 0
-        return staffLineYs.reduce(
+        staffLineYs.reduce(
             clef.paintedBounds.union(meter.paintedBounds)
         ) { bounds, lineY in
             bounds.union(CGRect(
                 x: 0, y: lineY - NotationEngravingStyle.staffLineWidth / 2,
-                width: rowEnd, height: NotationEngravingStyle.staffLineWidth
+                width: sheetWidth, height: NotationEngravingStyle.staffLineWidth
             ))
         }
     }
