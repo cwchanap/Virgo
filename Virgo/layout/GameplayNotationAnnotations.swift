@@ -248,13 +248,24 @@ extension GameplayNotationAnnotations {
                   let staffTop = staffTopY(rowIndex: engravedMeasure.rowIndex, engraved: engraved) else {
                 return nil
             }
+            // The fixed-width frame still overhangs the sheet when the measure
+            // is narrower than the warning: the centered half-width pushes the
+            // right edge past `contentWidth` on a trailing measure (and past
+            // zero on a leading one). Clamp the center so the whole frame
+            // stays inside the engraved sheet.
+            let halfWarningWidth = style.warningSize.width / 2
+            let preferredX = leadingInsetX(in: engravedMeasure, engraved: engraved)
+                + min(engravedMeasure.width, style.warningSize.width) / 2
+            let clampedX = min(
+                max(preferredX, halfWarningWidth),
+                max(halfWarningWidth, engraved.contentWidth - halfWarningWidth)
+            )
             return GameplayRhythmWarning.measure(
                 measureIndex: measure.measureIndex,
                 kind: kind,
                 codes: codes,
                 position: CGPoint(
-                    x: leadingInsetX(in: engravedMeasure, engraved: engraved)
-                        + min(engravedMeasure.width, style.warningSize.width) / 2,
+                    x: clampedX,
                     y: staffTop - style.warningVerticalOffset
                 ),
                 rowIndex: engravedMeasure.rowIndex,

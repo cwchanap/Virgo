@@ -153,6 +153,22 @@ extension GameplaySheetMusicGeometrySmokeTests {
         )
     }
 
+    /// Hosts the production sheet at `mountedViewport` and returns the
+    /// scroll offset its `NSScrollView` actually reached for `scrollY` —
+    /// the post-clamp readback, not the request.
+    func hostedSheetScrollOffset(
+        _ sheet: MountedSheet,
+        scrollY: CGFloat
+    ) -> CGFloat? {
+        hostedScrollOffset(
+            GeometryReader { proxy in
+                sheet.gameplayView.sheetMusicView(geometry: proxy)
+            },
+            size: mountedViewport,
+            scrollY: scrollY
+        )
+    }
+
     /// Clipped leg: removing every head the ScrollView clips outside the
     /// viewport must leave the oversized-canvas raster identical — inside
     /// AND outside the sheet's viewport band. Any outside-band change
@@ -332,6 +348,60 @@ extension GameplaySheetMusicGeometrySmokeTests {
             """
         )
         reinstall(sheet, engraving: sheet.engraving)
+    }
+
+    /// Last-row anchor reach: `scrollTo("row_N", anchor: .top)` can only
+    /// land the final band top on the viewport's top edge when the scroll
+    /// canvas extends a full viewport below it — `contentHeight` ends at
+    /// the anchor block's own bottom. The hosted `NSScrollView` must
+    /// actually reach the anchor's document offset (a shorter canvas reads
+    /// back the clamped shortfall), and a last-row head must then paint
+    /// inside the viewport's top band where the anchor promised it.
+    @Test("sheetMusicView lets the last row anchor reach the viewport top")
+    func mountedSheetReachesLastRowAnchor() async throws {
+        try await TestSetup.withTestSetup {
+            let sheet = try await mountFixture(DrumTabFixtureCatalog.multiRowStableWidths)
+            defer { sheet.viewModel.cleanup() }
+            let engraving = sheet.engraving
+            let lastRow = try #require(engraving.rows.last)
+            try #require(engraving.rows.count > 1, "fixture must mount multiple rows")
+
+            let input = sheet.gameplayView.staticNotationInput(viewModel: sheet.viewModel)
+            let lastAnchorTop = input.lastRowAnchorTop
+            #expect(lastAnchorTop > 0)
+            // The package sheet covers the anchor's full block; the mounted
+            // canvas must additionally run one viewport below its top.
+            #expect(engraving.contentHeight >= lastAnchorTop + input.rowAnchors.rowPitch)
+
+            let reached = try #require(
+                hostedSheetScrollOffset(sheet, scrollY: lastAnchorTop),
+                "production sheet must host an NSScrollView"
+            )
+            #expect(
+                abs(reached - lastAnchorTop) < 0.5,
+                "scroll clamped at \(reached) — \(lastAnchorTop - reached)pt short of the last anchor top"
+            )
+
+            // Ink evidence: with the anchor pinned, a last-row head paints
+            // where the anchor promised — removing it must change pixels
+            // inside the viewport.
+            let head = try #require(
+                engraving.noteHeads
+                    .filter { $0.rowIndex == lastRow.index }
+                    .min { $0.paintedBounds.minY < $1.paintedBounds.minY },
+                "last row must carry a head"
+            )
+            let pinned = try rasterize(sheet, scrollY: lastAnchorTop)
+            reinstall(sheet, engraving: engraving.swapping(
+                noteHeads: engraving.noteHeads.filter { $0.noteID != head.noteID }
+            ))
+            let stripped = try rasterize(sheet, scrollY: lastAnchorTop)
+            let viewportRect = head.paintedBounds.offsetBy(dx: 0, dy: -lastAnchorTop)
+            #expect(
+                changedPixels(in: viewportRect, between: pinned, and: stripped) > 0,
+                "last-row head \(head.noteID) painted nothing at \(viewportRect) with the anchor pinned"
+            )
+        }
     }
 
     /// Non-vacuity control for the clipped leg: removing a visible head

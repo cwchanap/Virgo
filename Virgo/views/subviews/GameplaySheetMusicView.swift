@@ -57,9 +57,26 @@ struct GameplayStaticNotationInput: Equatable {
     }
 
     /// Sheet height: the engraving's declared `contentHeight` already covers
-    /// its normalized ink and staff bottoms — no app-side inset applies.
+    /// its normalized ink and the last row's anchor extent — no app-side
+    /// inset applies.
     var contentHeight: CGFloat {
         engraving?.contentHeight ?? legacyContentHeight
+    }
+
+    /// The deepest row anchor's top edge in sheet coordinates — the offset
+    /// `scrollTo("row_N", anchor: .top)` targets for the final row.
+    var lastRowAnchorTop: CGFloat {
+        let anchors = rowAnchors
+        return anchors.firstRowTop + CGFloat(max(rowCount - 1, 0)) * anchors.rowPitch
+    }
+
+    /// Scroll-canvas height: the sheet content, extended when needed so the
+    /// deepest row anchor can still reach the viewport top. The scroll view
+    /// clamps the offset at `canvas − viewport`, so the last band top only
+    /// arrives when the canvas runs a full viewport height below it —
+    /// `contentHeight` alone ends at the anchor block's bottom.
+    func scrollContentHeight(viewportHeight: CGFloat) -> CGFloat {
+        max(contentHeight, lastRowAnchorTop + max(0, viewportHeight))
     }
 
     /// Row-anchor geometry: the top of each row's band in sheet coordinates
@@ -102,41 +119,48 @@ extension GameplayView {
         } else if let viewModel = viewModel, viewModel.isGameplayPrepared {
             let staticInput = staticNotationInput(viewModel: viewModel)
 
-            ScrollViewReader { proxy in
-                ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                    ZStack(alignment: .topLeading) {
-                        GameplayStaticNotationView(input: staticInput)
-                            .equatable()
-                        GameplayPlayheadBarView(position: viewModel.purpleBarPosition)
+            // The inner reader reports the ScrollView's own viewport size —
+            // `geometry` spans the header and controls too — so the scroll
+            // canvas extends exactly one real viewport below the last anchor.
+            GeometryReader { sheetProxy in
+                ScrollViewReader { proxy in
+                    ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                        ZStack(alignment: .topLeading) {
+                            GameplayStaticNotationView(input: staticInput)
+                                .equatable()
+                            GameplayPlayheadBarView(position: viewModel.purpleBarPosition)
+                        }
+                        .frame(
+                            width: staticInput.contentWidth,
+                            height: staticInput.scrollContentHeight(
+                                viewportHeight: sheetProxy.size.height
+                            ),
+                            alignment: .topLeading
+                        )
                     }
-                    .frame(
-                        width: staticInput.contentWidth,
-                        height: staticInput.contentHeight,
-                        alignment: .topLeading
-                    )
-                }
-                .background(Palette.stage)
-                .onChange(of: viewModel.currentRow) { _, newRow in
-                    guard shouldAutoScrollSheet(
-                        viewModel: viewModel,
-                        isPlaying: viewModel.isPlaying
-                    ) else { return }
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo("row_\(newRow)", anchor: .top)
+                    .background(Palette.stage)
+                    .onChange(of: viewModel.currentRow) { _, newRow in
+                        guard shouldAutoScrollSheet(
+                            viewModel: viewModel,
+                            isPlaying: viewModel.isPlaying
+                        ) else { return }
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo("row_\(newRow)", anchor: .top)
+                        }
                     }
-                }
-                .onChange(of: viewModel.isPlaying) { _, nowPlaying in
-                    guard shouldAutoScrollSheet(
-                        viewModel: viewModel,
-                        isPlaying: nowPlaying
-                    ) else { return }
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo("row_\(viewModel.currentRow)", anchor: .top)
+                    .onChange(of: viewModel.isPlaying) { _, nowPlaying in
+                        guard shouldAutoScrollSheet(
+                            viewModel: viewModel,
+                            isPlaying: nowPlaying
+                        ) else { return }
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo("row_\(viewModel.currentRow)", anchor: .top)
+                        }
                     }
-                }
-                .onAppear { viewModel.updateRowWidth(geometry.size.width) }
-                .onChange(of: geometry.size.width) { _, newWidth in
-                    viewModel.updateRowWidth(newWidth)
+                    .onAppear { viewModel.updateRowWidth(geometry.size.width) }
+                    .onChange(of: geometry.size.width) { _, newWidth in
+                        viewModel.updateRowWidth(newWidth)
+                    }
                 }
             }
         } else {

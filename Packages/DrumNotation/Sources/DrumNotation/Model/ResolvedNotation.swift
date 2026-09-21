@@ -242,8 +242,9 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     public let tuplets: [ResolvedTupletGroup]
 
     /// - Throws: `ValidationError` for a non-positive `ticksPerWholeNote`,
-    ///   duplicate/invalid/overlapping measures, beat groups that fail to
-    ///   cover their measure, duplicate event IDs, non-positive event
+    ///   duplicate/invalid/overlapping measures, a measure meter with a
+    ///   non-positive term, beat groups that fail to cover their measure,
+    ///   duplicate event IDs, non-positive event
     ///   durations, a negative note/rest dot count, an event whose
     ///   `localTick` falls outside its owning measure, a note/rest whose
     ///   `localTick + durationTicks` span crosses its owning measure's end,
@@ -281,6 +282,7 @@ public struct ResolvedNotationInput: Hashable, Sendable {
         case duplicateEventID(Int)
         case invalidEventDurationTicks(eventID: Int, durationTicks: Int)
         case invalidEventDotCount(eventID: Int, dotCount: Int)
+        case invalidMeter(measureIndex: Int, beats: Int, noteValue: Int)
         case eventSpanOutsideMeasure(eventID: Int, measureIndex: Int, localTick: Int, durationTicks: Int)
         case invalidTupletRatio(tupletID: Int, actual: Int, normal: Int)
         case unknownTupletMeasure(tupletID: Int, measureIndex: Int)
@@ -359,6 +361,15 @@ public struct ResolvedNotationInput: Hashable, Sendable {
                     index: measure.index,
                     startTick: measure.startTick,
                     durationTicks: measure.durationTicks
+                )
+            }
+            // The meter signature prints both terms verbatim — a non-positive
+            // term would render an impossible signature like 0/4.
+            guard measure.meter.beats > 0, measure.meter.noteValue > 0 else {
+                throw ValidationError.invalidMeter(
+                    measureIndex: measure.index,
+                    beats: measure.meter.beats,
+                    noteValue: measure.meter.noteValue
                 )
             }
             try validateBeatGroups(measure)

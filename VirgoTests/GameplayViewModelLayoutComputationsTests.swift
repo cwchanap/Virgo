@@ -476,15 +476,16 @@ struct GameplayViewModelLayoutComputationsTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay()
 
-        // If the notation engraving is active, cachedMeasureRowMap must be populated.
-        if let engraved = viewModel.cachedEngravedNotation, !engraved.noteHeads.isEmpty {
-            try #require(!viewModel.cachedMeasureRowMap.isEmpty,
-                         "cachedMeasureRowMap should be populated after setupGameplay")
-            // Every measure in the engraving must have an entry in the map.
-            for measure in engraved.measures {
-                #expect(viewModel.cachedMeasureRowMap[measure.index] == measure.rowIndex,
-                        "cachedMeasureRowMap[\(measure.index)] should be \(measure.rowIndex)")
-            }
+        // The notation engraving must be installed for this chart — an
+        // absent or empty engraving is a preparation failure, not a skip.
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        try #require(!engraved.noteHeads.isEmpty)
+        try #require(!viewModel.cachedMeasureRowMap.isEmpty,
+                     "cachedMeasureRowMap should be populated after setupGameplay")
+        // Every measure in the engraving must have an entry in the map.
+        for measure in engraved.measures {
+            #expect(viewModel.cachedMeasureRowMap[measure.index] == measure.rowIndex,
+                    "cachedMeasureRowMap[\(measure.index)] should be \(measure.rowIndex)")
         }
     }
 
