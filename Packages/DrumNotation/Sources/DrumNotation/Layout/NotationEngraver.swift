@@ -323,7 +323,7 @@ struct SheetComposer {
 
     /// One ledger line per staff step outside the staff, overhanging the
     /// head's painted bounds; the stroke is `barLineWidth` (the app's
-    /// ledger/staff-furniture width).
+    /// ledger width — its staff lines were the fixed `staffLineWidth`).
     private func collectLedgerLines(
         note: ResolvedNote,
         rowIndex: Int,

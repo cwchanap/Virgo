@@ -91,7 +91,9 @@ private extension DrumNotationView {
 
     /// The five staff lines of every row, spanning the sheet edge through
     /// the row's last formatted measure edge — the same span the engraver
-    /// unioned into the row's furniture bounds.
+    /// unioned into the row's furniture bounds. Stroked at the fixed
+    /// `staffLineWidth`, not `barLineWidth`: the app's staff lines were
+    /// 1pt while its bars and ledger lines were `barLineWidth`.
     var staffLines: some View {
         Path { path in
             for row in layout.rows {
@@ -105,7 +107,7 @@ private extension DrumNotationView {
                 }
             }
         }
-        .stroke(appearance.staffLines, lineWidth: style.barLineWidth)
+        .stroke(appearance.staffLines, lineWidth: NotationEngravingStyle.staffLineWidth)
     }
 
     /// One bar per engraved measure boundary: a normal `barLineWidth` bar
