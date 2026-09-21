@@ -415,12 +415,16 @@ struct NotationEngraverGeometryTests {
         let center = try #require(engraved.rows.first).staffCenterY
         let head1 = try head(engraved, id: 1)
         let rest3 = try rest(engraved, id: 3)
-        #expect(head1.position.y - center == -(18 - 4) * staffSpace / 2)
+        let expectedHeadOffset: CGFloat = -CGFloat(18 - 4) * staffSpace / 2
+        #expect(head1.position.y - center == expectedHeadOffset)
         #expect(rest3.position.y - center == style.upperVoiceRestOffset)
-        // The result still covers the lowest row's staff bottom, and the
-        // deep kick ink reaches past it — height is the *shifted* ink union.
-        #expect(engraved.contentHeight >= center + 2 * staffSpace)
-        #expect(engraved.contentHeight == engraved.paintedBounds.maxY)
+        // The result covers the last row's full anchor extent — band top
+        // plus one row pitch — and still contains the shifted ink union.
+        let anchorExtentBottom = center - style.rowHeight / 2
+            + style.rowHeight + style.rowVerticalSpacing
+        #expect(engraved.contentHeight >= anchorExtentBottom)
+        #expect(engraved.contentHeight >= engraved.paintedBounds.maxY)
+        #expect(engraved.contentHeight == max(anchorExtentBottom, engraved.paintedBounds.maxY))
         #expect(engraved.contentWidth >= engraved.paintedBounds.maxX)
     }
 
@@ -439,8 +443,40 @@ struct NotationEngraverGeometryTests {
 
         #expect(engraved.rows.first?.staffCenterY == style.rowHeight / 2)
         #expect(engraved.paintedBounds.minY > 0)
-        // Painted ink already reaches below the staff bottom, so content
-        // height is exactly the painted union — no extra translation.
-        #expect(engraved.contentHeight == engraved.paintedBounds.maxY)
+        // Height covers the single row's anchor extent — band top (0 here)
+        // plus one row pitch — whether or not ink reaches that deep.
+        let anchorExtentBottom = style.rowHeight + style.rowVerticalSpacing
+        #expect(engraved.contentHeight >= anchorExtentBottom)
+        #expect(engraved.contentHeight == max(anchorExtentBottom, engraved.paintedBounds.maxY))
+    }
+
+    @Test("content height covers the last row's anchor extent")
+    func contentHeightCoversLastRowAnchorExtent() throws {
+        // Enough full measures to wrap past `availableRowWidth` onto a
+        // second row. The sheet must reach the last row anchor block's
+        // bottom — band top plus one row pitch, the block the mounted
+        // `row_*` anchors occupy — or the scroll canvas ends inside it and
+        // `scrollTo(anchor: .top)` clamps before the final row can reach
+        // the viewport top.
+        let measures = (0..<4).map {
+            Fixtures.measure(index: $0, startTick: $0 * Fixtures.ticksPerWholeNote)
+        }
+        let input = try Fixtures.document(
+            measures: measures,
+            notes: [
+                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3),
+                Fixtures.makeNote(id: 2, localTick: 0, staffStep: 3, measureIndex: 3)
+            ],
+            rests: [], controls: []
+        )
+        let engraved = try NotationEngraver.engrave(input, style: style)
+
+        let lastRow = try #require(engraved.rows.last)
+        try #require(lastRow.index > 0, "fixture must wrap onto a second row")
+        let anchorExtentBottom = lastRow.staffCenterY - style.rowHeight / 2
+            + style.rowHeight + style.rowVerticalSpacing
+        #expect(engraved.contentHeight >= anchorExtentBottom)
+        #expect(engraved.contentHeight >= engraved.paintedBounds.maxY)
+        #expect(engraved.contentHeight == max(anchorExtentBottom, engraved.paintedBounds.maxY))
     }
 }

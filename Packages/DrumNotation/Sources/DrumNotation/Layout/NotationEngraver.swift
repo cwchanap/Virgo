@@ -204,13 +204,17 @@ struct SheetComposer {
         return max(contentRight, painted?.maxX ?? 0)
     }
 
-    /// Sheet height: the painted bottom or the lowest row's staff bottom —
-    /// the sheet always covers its staff lines even when ink sits high.
+    /// Sheet height: the painted bottom or the lowest row's full anchor
+    /// extent — band top (`staffCenterY − rowHeight / 2`) plus one row
+    /// pitch, the same block the mounted sheet's `row_*` scroll anchors
+    /// occupy. Ending at the staff bottom let the scroll canvas terminate
+    /// inside the final anchor block, so `scrollTo(anchor: .top)` clamped
+    /// before the last row could reach the viewport top.
     private func contentHeight(painted: CGRect?, rows: [EngravedRow]) -> CGFloat {
-        let staffBottom = rows.last.map {
-            $0.staffCenterY + CGFloat(Self.topLineStaffStep - Self.middleLineStaffStep) * halfStaffSpace
+        let anchorExtentBottom = rows.last.map {
+            $0.staffCenterY - style.rowHeight / 2 + rowPitch
         } ?? 0
-        return max(painted?.maxY ?? 0, staffBottom)
+        return max(painted?.maxY ?? 0, anchorExtentBottom)
     }
 
     /// Pass 1: walks the formatted columns once, resolving every note head

@@ -360,6 +360,15 @@ struct GameplaySheetMusicSmokeTests {
         #expect(anchors.firstRowTop == max(0, firstRow.staffCenterY - engraved.style.rowHeight / 2))
         #expect(anchors.rowPitch == engraved.style.rowHeight + engraved.style.rowVerticalSpacing)
 
+        // The scroll canvas must reach one viewport below the deepest row
+        // anchor — `scrollTo(anchor: .top)` clamps at canvas − viewport, so
+        // anything shorter leaves the final row short of the top edge.
+        #expect(input.lastRowAnchorTop == anchors.firstRowTop
+            + CGFloat(engraved.rows.count - 1) * anchors.rowPitch)
+        #expect(input.scrollContentHeight(viewportHeight: 768)
+            >= input.lastRowAnchorTop + 768)
+        #expect(input.scrollContentHeight(viewportHeight: 768) >= input.contentHeight)
+
         // Mounted measure positions and the autoscroll measure→row cache
         // both agree with the engraved measure placement.
         let positions = input.measurePositions

@@ -111,7 +111,7 @@ struct GameplaySheetMusicGeometrySmokeTests {
     /// `GameplayNotationPreparer` → `installPreparedNotation` — at the
     /// viewport width the hosted sheet's `onAppear` will report, so the
     /// first raster cannot trigger a re-engrave mid-differential.
-    private func mountFixture(_ fixture: DrumTabFixture) async throws -> MountedSheet {
+    func mountFixture(_ fixture: DrumTabFixture) async throws -> MountedSheet {
         let rendered = try DrumTabFixtureHarness.render(fixture)
         let viewModel = GameplayViewModel(
             chart: rendered.chart,
@@ -138,12 +138,19 @@ struct GameplaySheetMusicGeometrySmokeTests {
     /// Rasterizes the mounted production sheet — the same
     /// `sheetMusicView(geometry:)` call `GameplayView.body` makes, hosted
     /// in a real `NSHostingView` so the `ScrollView` document paints.
-    private func rasterize(_ sheet: MountedSheet) throws -> RasterBitmap {
+    func rasterize(_ sheet: MountedSheet) throws -> RasterBitmap {
+        try rasterize(sheet, scrollY: 0)
+    }
+
+    /// Same hosted rasterization after scrolling the sheet's `NSScrollView`
+    /// `scrollY` document points down.
+    func rasterize(_ sheet: MountedSheet, scrollY: CGFloat) throws -> RasterBitmap {
         try rasterizeHostedView(
             GeometryReader { proxy in
                 sheet.gameplayView.sheetMusicView(geometry: proxy)
             },
-            size: mountedViewport
+            size: mountedViewport,
+            scrollY: scrollY
         )
     }
 

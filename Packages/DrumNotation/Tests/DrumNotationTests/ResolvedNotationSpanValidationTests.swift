@@ -163,4 +163,55 @@ struct ResolvedNotationSpanValidationTests {
             controls: []
         )
     }
+
+    // MARK: Meter terms
+
+    @Test("validation rejects non-positive meter terms")
+    func validationRejectsNonPositiveMeter() {
+        // The meter signature prints both terms verbatim — a 0/4 or 4/0
+        // would render an impossible signature.
+        #expect {
+            try Fixtures.document(
+                measures: [Fixtures.measure(meter: NotationMeter(beats: 0, noteValue: 4))],
+                notes: [],
+                rests: [],
+                controls: []
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidMeter(measureIndex: 0, beats: 0, noteValue: 4)
+        }
+        #expect {
+            try Fixtures.document(
+                measures: [Fixtures.measure(meter: NotationMeter(beats: 4, noteValue: 0))],
+                notes: [],
+                rests: [],
+                controls: []
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidMeter(measureIndex: 0, beats: 4, noteValue: 0)
+        }
+        #expect {
+            try Fixtures.document(
+                measures: [Fixtures.measure(meter: NotationMeter(beats: -3, noteValue: -8))],
+                notes: [],
+                rests: [],
+                controls: []
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidMeter(measureIndex: 0, beats: -3, noteValue: -8)
+        }
+    }
+
+    @Test("validation accepts ordinary meters")
+    func validationAcceptsPositiveMeters() throws {
+        _ = try Fixtures.document(
+            measures: [Fixtures.measure(meter: NotationMeter(beats: 6, noteValue: 8))],
+            notes: [],
+            rests: [],
+            controls: []
+        )
+    }
 }

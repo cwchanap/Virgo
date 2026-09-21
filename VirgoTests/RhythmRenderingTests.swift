@@ -442,6 +442,31 @@ struct RhythmRenderingTests {
         #expect(warning.accessibilityLabel.contains("measure 1"))
     }
 
+    @Test("a warning on a narrow measure keeps its frame inside the sheet")
+    func narrowMeasureWarningStaysInsideSheet() throws {
+        // A measure narrower than the fixed-width warning frame pushed the
+        // centered annotation's trailing edge past `contentWidth` — the frame
+        // must clamp inside the engraved sheet.
+        let (engraved, presentation) = try preparedEngraving(try snapshot(
+            measures: [rhythmMeasure(
+                support: .warning([.indeterminateTerminalDuration]),
+                durationTicks: 240
+            )],
+            notes: [layoutNote(
+                id: 61, tick: 0, noteType: .snare,
+                rhythm: NotationRhythm(baseInterval: .eighth), durationTicks: 120
+            )]
+        ))
+        let warning = try #require(presentation.annotations.rhythmWarnings.first)
+        let measure = try #require(engraved.measures.first { $0.index == 0 })
+
+        // Non-vacuous: the measure really is narrower than the warning frame,
+        // so an unclamped centered placement would overhang the sheet edge.
+        #expect(measure.width < warning.size.width)
+        #expect(warning.position.x - warning.size.width / 2 >= 0)
+        #expect(warning.position.x + warning.size.width / 2 <= engraved.contentWidth)
+    }
+
     @Test("diagnostic presentation covers stable codes and chart-fatal accessibility")
     func diagnosticPresentationIsStableAndLocalized() throws {
         for code in RhythmDiagnosticCode.allCases {
@@ -506,18 +531,19 @@ struct RhythmRenderingTests {
 private extension RhythmRenderingTests {
     func rhythmMeasure(
         support: RhythmEngravingSupport = .supported,
-        groupDurationTicks: Int = 240
+        groupDurationTicks: Int = 240,
+        durationTicks: Int = 960
     ) -> RhythmMeasure {
         RhythmMeasure(
             measureIndex: 0,
             startTick: 0,
-            durationTicks: 960,
+            durationTicks: durationTicks,
             timeSignature: .fourFour,
-            beatGroups: stride(from: 0, to: 960, by: groupDurationTicks).enumerated().map {
+            beatGroups: stride(from: 0, to: durationTicks, by: groupDurationTicks).enumerated().map {
                 RhythmBeatGroup(
                     groupIndex: $0.offset,
                     startTick: $0.element,
-                    durationTicks: min(groupDurationTicks, 960 - $0.element),
+                    durationTicks: min(groupDurationTicks, durationTicks - $0.element),
                     isResidual: false
                 )
             },

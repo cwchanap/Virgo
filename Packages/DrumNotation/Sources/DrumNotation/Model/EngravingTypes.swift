@@ -440,8 +440,9 @@ public struct EngravedNotation: Hashable, Sendable {
     /// edge, whichever is wider (a flag/displacement may out-ink the
     /// column span).
     public let contentWidth: CGFloat
-    /// Sheet height: covers the painted ink and the lowest row's staff
-    /// bottom.
+    /// Sheet height: covers the painted ink and the lowest row's full
+    /// anchor extent — its band top plus one row pitch, the block the
+    /// mounted sheet's `row_*` scroll anchors occupy.
     public let contentHeight: CGFloat
 
     public init(

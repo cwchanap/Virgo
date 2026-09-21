@@ -389,6 +389,33 @@ struct NotationFormatterInkTests {
                 #expect(abs(column.rightExtent - max(headReach, flagInkMaxX)) < 0.001)
             }
         }
+
+        // A beam-covered sixteenth must collapse to head-only extents too:
+        // the lone cases above end at a flagless quarter, which cannot
+        // exercise flag filtering — a formatter that still reserved flag ink
+        // for beam-covered levels would pass them all. Drive full coverage
+        // through the injected-topology seam so the plan computes to `.none`.
+        for stem in [NotationStemDirection.up, .down] {
+            let notes = [
+                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, stem: stem, duration: .sixteenth)
+            ]
+            let document = try Fixtures.document(notes: notes, rests: [], controls: [])
+            let notation = NotationFormatter.format(
+                document,
+                style: style,
+                stemTopology: StemTopologyBuilder().build(
+                    document,
+                    topology: BeamTopologyResult(
+                        primaryGroups: [],
+                        coveredLevelsByEventIndex: [0: [0, 1]]
+                    )
+                )
+            )
+            let column = try Fixtures.column(notation, localTick: 0)
+            let headReach = Fixtures.headReach(stem: stem)
+            #expect(abs(column.rightExtent - headReach) < 0.001)
+            #expect(abs(column.leftExtent - headReach) < 0.001)
+        }
     }
 
     @Test("partially uncovered flag reserves one eighth-component footprint")
