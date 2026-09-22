@@ -96,6 +96,29 @@ struct ResolvedNotationBeatGroupValidationTests {
         }
     }
 
+    @Test("validation rejects beat-group accumulation that overflows Int")
+    func validationRejectsBeatGroupTickOverflow() {
+        // [0,Int.max-10) then [Int.max-10,Int.max+10): the second group's
+        // advance wraps past Int.max before coverage can be judged, so the
+        // failure reports the saturated Int.max rather than a wrapped sum.
+        #expect {
+            try Fixtures.document(measures: [Fixtures.measure(
+                durationTicks: Int.max,
+                beatGroups: [
+                    ResolvedBeatGroup(startTick: 0, durationTicks: Int.max - 10),
+                    ResolvedBeatGroup(startTick: Int.max - 10, durationTicks: 20)
+                ]
+            )])
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .beatGroupsDoNotCoverMeasure(
+                    measureIndex: 0,
+                    durationTicks: Int.max,
+                    coveredTicks: Int.max
+                )
+        }
+    }
+
     @Test("validation rejects a measure with no beat groups")
     func validationRejectsEmptyBeatGroups() {
         #expect {

@@ -229,6 +229,56 @@ struct EngraverTupletTests {
         #expect(tuplet.bracketPoints.last?.x == bounds.maxX)
     }
 
+    @Test("simultaneous members inside one tuplet order deterministically")
+    func simultaneousMembersOrderDeterministically() throws {
+        // A chord on the middle onset: heads 2 and 4 share tiebreak 0 (id
+        // breaks their tie) while head 3 carries tiebreak 1 — the member-head
+        // ordering must consult (absoluteTick, tiebreakOrder, id).
+        let input = try Fixtures.document(
+            notes: [
+                Fixtures.makeNote(
+                    id: 1, localTick: 0, staffStep: 3,
+                    duration: .quarter, durationTicks: 320
+                ),
+                Fixtures.makeNote(
+                    id: 2, localTick: 320, staffStep: 3,
+                    duration: .quarter, durationTicks: 320, tiebreakOrder: 0
+                ),
+                Fixtures.makeNote(
+                    id: 3, localTick: 320, staffStep: 5,
+                    duration: .quarter, durationTicks: 320, tiebreakOrder: 1
+                ),
+                Fixtures.makeNote(
+                    id: 4, localTick: 320, staffStep: 4,
+                    duration: .quarter, durationTicks: 320, tiebreakOrder: 0
+                ),
+                Fixtures.makeNote(
+                    id: 5, localTick: 640, staffStep: 3,
+                    duration: .quarter, durationTicks: 320
+                )
+            ],
+            rests: [], controls: [],
+            tuplets: [
+                ResolvedTupletGroup(
+                    id: 1, measureIndex: 0, voice: .upper,
+                    ratio: ResolvedTupletRatio(actual: 3, normal: 2),
+                    memberNoteIDs: [1, 2, 3, 4, 5], memberRestIDs: []
+                )
+            ]
+        )
+        let engraved = try NotationEngraver.engrave(input, style: style)
+        let tuplet = try #require(engraved.tuplets.first)
+
+        // Quarter members never beam, so the bracket spans every head in the
+        // chord — not just one head per onset.
+        #expect(engraved.beams.isEmpty)
+        #expect(tuplet.isBracketVisible)
+        let bounds = memberBounds(engraved, noteIDs: [1, 2, 3, 4, 5])
+        #expect(tuplet.labelPosition.x == bounds.midX)
+        #expect(tuplet.bracketPoints.first?.x == bounds.minX)
+        #expect(tuplet.bracketPoints.last?.x == bounds.maxX)
+    }
+
     @Test("tuplets carry their members' row")
     func tupletCarriesMemberRow() throws {
         let engraved = try NotationEngraver.engrave(triplet(), style: style)

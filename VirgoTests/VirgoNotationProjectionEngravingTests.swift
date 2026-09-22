@@ -281,6 +281,61 @@ struct VirgoNotationProjectionTupletTests {
         )
         #expect(swung.tuplets.isEmpty)
     }
+
+    @Test("Tuplet package IDs follow measure, start tick, then stable event order")
+    func tupletOrderingFollowsMeasureTickStableID() throws {
+        let measure0 = EngravingProjectionFixtures.makeMeasure(index: 0)
+        let measure1 = EngravingProjectionFixtures.makeMeasure(index: 1, startTick: 960)
+        // Four groups exercising every comparator arm: D separates by
+        // measureIndex, C by startTick inside measure 0, and A vs B share
+        // measure+tick so the stable member event ID must order them.
+        func tid(_ measure: Int, _ voice: NotationVoice, _ group: Int, _ tick: Int, _ event: Int)
+            -> RhythmTupletID {
+            RhythmTupletID(
+                measureIndex: measure, voice: voice, beatGroupIndex: group,
+                startTick: tick, durationTicks: 240,
+                stableMemberEventID: RhythmEventID(rawValue: event)
+            )
+        }
+        let idA = tid(0, .upper, 0, 0, 1)
+        let idB = tid(0, .lower, 0, 0, 9)
+        let idC = tid(0, .upper, 1, 240, 5)
+        let idD = tid(1, .upper, 0, 0, 3)
+        let snapshot = try EngravingProjectionFixtures.makeSnapshot(
+            measures: [measure0, measure1],
+            notes: [
+                EngravingProjectionFixtures.makeNote(
+                    eventID: 1, noteType: .snare, measureIndex: 0, localTick: 0,
+                    interval: .eighth, durationTicks: 80, tupletID: idA
+                ),
+                EngravingProjectionFixtures.makeNote(
+                    eventID: 9, noteType: .bass, measureIndex: 0, localTick: 0,
+                    interval: .eighth, durationTicks: 80, tupletID: idB
+                ),
+                EngravingProjectionFixtures.makeNote(
+                    eventID: 5, noteType: .hiHat, measureIndex: 0, localTick: 240,
+                    interval: .eighth, durationTicks: 80, tupletID: idC
+                ),
+                EngravingProjectionFixtures.makeNote(
+                    eventID: 3, noteType: .snare, measureIndex: 1, localTick: 0,
+                    interval: .eighth, durationTicks: 80, tupletID: idD
+                )
+            ]
+        )
+
+        let input = try VirgoNotationProjection.resolvedNotation(
+            snapshot: snapshot,
+            expandedMeasures: [measure0, measure1],
+            notePositionOverrides: [:]
+        )
+
+        // Sorted order A < B < C < D assigns package IDs 0...3: A beats B on
+        // the stable member event ID alone (identical measure and tick).
+        #expect(input.tuplets.map(\.id) == [0, 1, 2, 3])
+        #expect(input.tuplets.map(\.memberNoteIDs) == [[1], [9], [5], [3]])
+        #expect(input.tuplets.map(\.voice) == [.upper, .lower, .upper, .upper])
+        #expect(input.tuplets.map(\.measureIndex) == [0, 0, 0, 1])
+    }
 }
 
 /// Shared 960-ticks-per-whole-note fixtures for the two engraving

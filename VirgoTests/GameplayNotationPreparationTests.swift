@@ -121,6 +121,52 @@ struct GameplayNotationPreparationTests {
         #expect(engraved.measures.map(\.index) == [0, 1, 2])
     }
 
+    @Test("malformed beat groups fail preparation instead of trapping")
+    func malformedBeatGroupsFailPreparation() throws {
+        // Groups cover only 240 of the measure's 960 ticks: package input
+        // validation rejects the projection, and prepare must surface the
+        // failure as `.failed` — the practice-unavailable sheet — rather
+        // than crash or fabricate geometry.
+        let broken = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 960,
+            timeSignature: .fourFour,
+            beatGroups: [RhythmBeatGroup(
+                groupIndex: 0,
+                startTick: 0,
+                durationTicks: 240,
+                isResidual: false
+            )],
+            engravingSupport: .supported
+        )
+        let note = RhythmLayoutNote(
+            eventID: RhythmEventID(rawValue: 1),
+            sourceLaneID: "12",
+            sourceChipID: nil,
+            noteType: .snare,
+            position: RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0),
+            durationTicks: 240,
+            rhythm: NotationRhythm(baseInterval: .quarter),
+            tupletID: nil
+        )
+        let snapshot = try makeSnapshot(measures: [broken], notes: [note])
+
+        let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: 1,
+            style: .gameplayDefault,
+            notePositionOverrides: [:]
+        ))
+
+        guard case let .failed(failure) = prepared else {
+            Issue.record("Expected .failed, got \(prepared)")
+            return
+        }
+        #expect(!failure.detail.isEmpty)
+        #expect(failure.userMessage == "This chart's notation could not be prepared.")
+    }
+
     @Test("renderable measure bound reuses the shared rhythm limit")
     func renderableMeasureBoundReusesRhythmLimit() {
         #expect(GameplayNotationPreparer.maximumRenderableMeasureCount == RhythmLimits.maximumMeasureCount)
