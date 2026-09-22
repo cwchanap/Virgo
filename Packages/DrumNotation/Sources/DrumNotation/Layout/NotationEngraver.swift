@@ -143,8 +143,8 @@ struct SheetComposer {
         /// meter slots — unioned into `paintedUnion` before the shift.
         var rows: [EngravedRow] = []
         /// The declared sheet width, resolved by `collectRowFurniture`
-        /// from the pre-furniture ink union — the wrap-width floor or the
-        /// ink's right edge plus trailing room, whichever is wider.
+        /// from the pre-furniture ink union — the `minimumSheetWidth` floor
+        /// or the ink's right edge plus trailing room, whichever is wider.
         var sheetWidth: CGFloat = 0
         var paintedUnion: CGRect?
 

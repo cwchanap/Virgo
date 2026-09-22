@@ -110,7 +110,9 @@ relaxation or chart-wide X-per-tick scale, so a dense measure never rescales a s
   or non-finite input returns nil.
 
 The default style `NotationFormattingStyle.virgoDefault` pins the Virgo mapping:
-`availableRowWidth` 900 (the app's row-width floor), `rowLeadingInset` 100, `staffSpace` 20,
+`availableRowWidth` 900 (the app's resolved row width — the wrap budget, which widens with the
+viewport), `minimumSheetWidth` 900 (the app's fixed row-width floor — the declared sheet width's
+minimum, independent of the wrap budget), `rowLeadingInset` 100, `staffSpace` 20,
 `stemWidth` 2, `minimumInterColumnClearance` 8, `minimumQuarterNoteSpacing` 50, `measureSpacing` 12,
 `leadingMeasureInset` 52, `trailingMeasureInset` 0, `rhythmDotRadius` 2.5, `rhythmDotSpacing` 4.
 

@@ -299,6 +299,32 @@ struct MeasuredGeometryInvariantsTests {
         #expect(maxRow < wideEngraved.measures.count)
     }
 
+    @Test("a sparse sheet keeps the fixed 900pt floor at a wide row width")
+    func wideReflowKeepsSheetWidthFloor() throws {
+        // Pre-cutover contract: `contentWidth = max(900, ink.maxX + 50)` —
+        // the floor is the fixed `maxRowWidth`, not the wrap budget. A sparse
+        // chart prepared at 2400pt must still report a 900pt sheet rather
+        // than stretching staff lines across the viewport-wide budget.
+        let result = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.sameTimeTrio)
+        let wideEngraved = try support.requireEngraved(GameplayNotationPreparer.prepare(
+            GameplayNotationPreparationRequest(
+                snapshot: result.snapshot,
+                minimumMeasureCount: result.engraved.measures.count,
+                style: .gameplayDefault.with(rowWidth: 2_400),
+                notePositionOverrides: DrumTabFixtureHarness.lockedOverrides
+            )
+        ))
+
+        // The wrap budget still widens — only the floor must not.
+        #expect(wideEngraved.style.formatting.availableRowWidth == 2_400)
+        #expect(wideEngraved.style.formatting.minimumSheetWidth == GameplayLayout.maxRowWidth)
+        // The fixture's ink stays under the floor at this packing, so the
+        // declared width IS the floor — identical to the 900pt engraving.
+        #expect(wideEngraved.contentWidth == GameplayLayout.maxRowWidth)
+        #expect(wideEngraved.contentWidth == result.engraved.contentWidth)
+        #expect(wideEngraved.rows.allSatisfy { $0.paintedBounds.maxX == GameplayLayout.maxRowWidth })
+    }
+
     // MARK: - Displaced second
 
     // The displaced-second invariant (second head's ink moves while the

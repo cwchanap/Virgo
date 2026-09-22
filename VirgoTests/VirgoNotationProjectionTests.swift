@@ -313,6 +313,10 @@ struct VirgoNotationProjectionTests {
         )
 
         #expect(style.availableRowWidth == 1200)
+        // The sheet-width floor stays the fixed 900pt `maxRowWidth` — it
+        // must not track the widened wrap budget.
+        #expect(style.minimumSheetWidth == GameplayLayout.maxRowWidth)
+        #expect(style.minimumSheetWidth == 900)
         #expect(style.rowLeadingInset == GameplayLayout.leftMargin)
         #expect(style.rowLeadingInset == 100)
         #expect(style.staffSpace == GameplayLayout.staffLineSpacing)
