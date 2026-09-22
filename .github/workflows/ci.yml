@@ -72,7 +72,7 @@ jobs:
         run: bash .github/scripts/generate-endpoints-env.sh
 
       - name: Run DrumNotation package tests
-        run: swift test --package-path Packages/DrumNotation
+        run: swift test --package-path Packages/DrumNotation --enable-code-coverage
 
       - name: Run unit tests
         run: |
@@ -137,6 +137,49 @@ jobs:
 
           echo "Coverage report created at $COVERAGE_REPORT"
           ls -la "$COVERAGE_DIR"
+
+      - name: Export Package Coverage Report
+        if: always()
+        run: |
+          set -euo pipefail
+          COVERAGE_DIR="$GITHUB_WORKSPACE/coverage"
+          PACKAGE_LCOV="$COVERAGE_DIR/package.lcov"
+          PKG_BUILD_DIR="$GITHUB_WORKSPACE/Packages/DrumNotation/.build"
+
+          mkdir -p "$COVERAGE_DIR"
+
+          if [ ! -d "$PKG_BUILD_DIR" ]; then
+            echo "No package build directory at $PKG_BUILD_DIR"
+            exit 0
+          fi
+
+          PROF=$(find "$PKG_BUILD_DIR" -name "default.profdata" | head -1)
+          BIN=$(find "$PKG_BUILD_DIR" -path "*DrumNotationTests.xctest/Contents/MacOS/*" -type f | head -1)
+
+          if [ -z "$PROF" ] || [ -z "$BIN" ]; then
+            echo "No package coverage data found under $PKG_BUILD_DIR"
+            exit 0
+          fi
+
+          echo "Exporting package coverage to lcov format..."
+          echo "profdata: $PROF"
+          echo "test binary: $BIN"
+
+          # Relativize SF paths to the repo root and drop non-source records
+          # (test files and .build derived sources are not production code).
+          xcrun llvm-cov export -format=lcov -instr-profile "$PROF" "$BIN" \
+            | sed "s|^SF:$GITHUB_WORKSPACE/|SF:|" \
+            | awk '/^SF:/ { skip = ($0 ~ /\.build\// || $0 ~ /\/Tests\//) } !skip { print }' \
+            > "$PACKAGE_LCOV"
+
+          if [ ! -s "$PACKAGE_LCOV" ]; then
+            echo "Package coverage export produced empty file"
+            rm -f "$PACKAGE_LCOV"
+            exit 0
+          fi
+
+          echo "Package coverage report created at $PACKAGE_LCOV"
+          head -5 "$PACKAGE_LCOV"
 
       - name: Upload Coverage Results
         if: always()
@@ -262,12 +305,45 @@ jobs:
           echo "Coverage report is valid:"
           head -20 "$report"
 
+      - name: Validate package coverage report
+        id: validate_pkg
+        run: |
+          set -euo pipefail
+          pkg_report="coverage-results/package.lcov"
+
+          if [ ! -s "$pkg_report" ]; then
+            echo "Package coverage report is missing or empty — skipping package upload"
+            echo "skip_pkg_upload=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! grep -q '^SF:' "$pkg_report"; then
+            echo "Package coverage report has no lcov SF records"
+            exit 1
+          fi
+
+          echo "Package coverage report is valid:"
+          head -5 "$pkg_report"
+
       - name: Upload coverage to Codecov
         if: steps.validate.outputs.skip_upload != 'true'
         uses: codecov/codecov-action@v5
         with:
           files: coverage-results/cobertura.xml
           flags: unit-tests
+          disable_search: true
+          override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
+          override_branch: ${{ github.head_ref || github.ref_name }}
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+
+      - name: Upload package coverage to Codecov
+        if: steps.validate_pkg.outputs.skip_pkg_upload != 'true'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage-results/package.lcov
+          flags: package-tests
           disable_search: true
           override_commit: ${{ github.event.pull_request.head.sha || github.sha }}
           override_branch: ${{ github.head_ref || github.ref_name }}
