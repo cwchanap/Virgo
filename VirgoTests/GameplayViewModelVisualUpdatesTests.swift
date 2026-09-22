@@ -8,6 +8,7 @@ import Foundation
 import AVFoundation
 import Observation
 import SwiftUI
+import DrumNotation
 @testable import Virgo
 
 @Suite("Visual Updates", .serialized)
@@ -445,6 +446,98 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.isPlaying = false
         viewModel.restartPlayback()
         #expect(viewModel.currentRow == 0)
+    }
+
+    // MARK: - Engraving edge states
+
+    /// An installable engraving carrying one note head but no measures —
+    /// the degenerate "renderable + playable, yet empty measure list" state
+    /// the row and playhead guards defend against.
+    private func degenerateEngraving() -> EngravedNotation {
+        EngravedNotation(
+            formatted: FormattedNotation(measures: []),
+            style: NotationEngravingStyle(),
+            rows: [],
+            measures: [],
+            noteHeads: [EngravedNoteHead(
+                noteID: 1,
+                measureIndex: 0,
+                rowIndex: 0,
+                staffStep: 4,
+                voice: .upper,
+                stemDirection: .up,
+                noteheadStyle: .x,
+                duration: .quarter,
+                position: .zero,
+                paintedBounds: .zero
+            )],
+            rests: [],
+            stems: [],
+            beams: [],
+            flags: [],
+            ledgerLines: [],
+            rhythmDots: [],
+            articulations: [],
+            controls: [],
+            tuplets: [],
+            measureBars: [],
+            paintedBounds: .zero,
+            contentWidth: 0,
+            contentHeight: 0
+        )
+    }
+
+    @Test("rowForMeasure anchors row 0 when the installed engraving has no measures")
+    func rowForMeasureWithEmptyEngravingMeasures() {
+        let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        viewModel.installPreparedNotation(.ready(
+            degenerateEngraving(),
+            GameplayNotationPresentation(annotations: .empty, accessibilityLabels: [:])
+        ))
+
+        // Renderable + playable, but the measure list is empty — the cursor
+        // anchors on row 0 rather than indexing into nothing.
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(viewModel.cachedNotationHasPlayableContent)
+        #expect(viewModel.rowForMeasure(0) == 0)
+        #expect(viewModel.rowForMeasure(7) == 0)
+    }
+
+    @Test("timeline playhead hides when the installed engraving cannot resolve the position")
+    func timelinePlayheadHidesOnUnresolvablePosition() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+        viewModel.isPlaying = true
+
+        // Control: the real install resolves a playhead at elapsed 0.
+        viewModel.updatePurpleBarPosition(elapsedTime: 0)
+        #expect(viewModel.purpleBarPosition != nil)
+
+        // Swap in an engraving whose embedded formatter cannot resolve
+        // measure 0 — its heads keep "playable" true so the timeline branch
+        // still runs the position lookup.
+        viewModel.installPreparedNotation(.ready(
+            degenerateEngraving(),
+            GameplayNotationPresentation(annotations: .empty, accessibilityLabels: [:])
+        ))
+        viewModel.cachedNotationMeasuresByIndex = [0: EngravedMeasure(
+            index: 0,
+            rowIndex: 0,
+            xOffset: 0,
+            width: 200,
+            startTick: 0,
+            durationTicks: 960,
+            meter: NotationMeter(beats: 4, noteValue: 4)
+        )]
+        viewModel.updatePurpleBarPosition(elapsedTime: 0)
+
+        // The lookup fails cleanly — the bar hides rather than pinning a
+        // stale X at the row's leading edge.
+        #expect(viewModel.purpleBarPosition == nil)
     }
 
 }

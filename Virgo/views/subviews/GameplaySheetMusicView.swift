@@ -260,24 +260,6 @@ extension GameplayView {
     func sheetContentWidth(viewModel: GameplayViewModel) -> CGFloat {
         staticNotationInput(viewModel: viewModel).contentWidth
     }
-
-    func sheetRowCount(measurePositions: [GameplayLayout.MeasurePosition]) -> Int {
-        (measurePositions.map { $0.row }.max() ?? 0) + 1
-    }
-
-    func measurePositions(from engraving: EngravedNotation) -> [GameplayLayout.MeasurePosition] {
-        engraving.measures.map { measure in
-            GameplayLayout.MeasurePosition(
-                row: measure.rowIndex,
-                xOffset: measure.xOffset,
-                measureIndex: measure.index
-            )
-        }
-    }
-
-    func notationContentWidth(for engraving: EngravedNotation) -> CGFloat {
-        engraving.contentWidth
-    }
 }
 
 private struct GameplayStaticNotationView: View, Equatable {

@@ -389,6 +389,82 @@ struct SheetMusicViewCoverageAdditionsTests {
             #expect(texts.contains("Loading..."))
         }
     }
+
+    /// The sheet's own fatal guard (distinct from `body`'s interception):
+    /// calling `sheetMusicView` directly on a view model whose installed
+    /// preparation failed must render the fatal sheet.
+    @Test("sheetMusicView renders the fatal sheet when installed preparation failed")
+    func sheetMusicViewRendersFatalSheetOnPreparationFailure() async throws {
+        try await TestSetup.withTestSetup {
+            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+            viewModel.installPreparedNotation(.failed(GameplayNotationPreparationFailure(
+                detail: "synthetic failure",
+                userMessage: "Notation exploded"
+            )))
+            #expect(viewModel.practiceUnavailableMessage == "Notation exploded")
+
+            let gameplayView = GameplayView(
+                chart: viewModel.chart,
+                metronome: viewModel.metronome,
+                initialViewModel: viewModel
+            )
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                GeometryReader { proxy in
+                    gameplayView.sheetMusicView(geometry: proxy)
+                },
+                size: CGSize(width: 800, height: 600)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
+            #expect(texts.contains("Practice unavailable"))
+            #expect(texts.contains("Notation exploded"))
+        }
+    }
+
+    /// The mounted sheet's live wiring: `currentRow` and `isPlaying` changes
+    /// run their auto-scroll `onChange` arms, and a container resize feeds
+    /// `updateRowWidth` through the width `onChange`.
+    @Test("mounted sheet drives auto-scroll and row-width onChange handlers")
+    func mountedSheetDrivesAutoScrollAndRowWidth() async throws {
+        try await TestSetup.withTestSetup {
+            let rendered = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.multiRowStableWidths)
+            let viewModel = GameplayViewModel(
+                chart: rendered.chart,
+                metronome: GameplayViewModelTestHarness.createTestMetronome()
+            )
+            await viewModel.loadChartData()
+            await viewModel.setupGameplay(loadPersistedSpeed: false)
+            defer { viewModel.cleanup() }
+
+            let gameplayView = GameplayView(
+                chart: viewModel.chart,
+                metronome: viewModel.metronome,
+                initialViewModel: viewModel
+            )
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                GeometryReader { proxy in
+                    gameplayView.sheetMusicView(geometry: proxy)
+                },
+                size: CGSize(width: 1_024, height: 768)
+            )
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+
+            // Playing + a row change: both scroll `onChange` arms take their
+            // `scrollTo` path against real playable content.
+            let maxRow = try #require(viewModel.cachedEngravedNotation?.rows.map(\.index).max())
+            viewModel.isPlaying = true
+            viewModel.currentRow = maxRow
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+            #expect(viewModel.currentRow == maxRow)
+
+            #if os(macOS)
+            // A container resize re-engraves at the new width through the
+            // geometry `onChange`.
+            mounted.hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 1_400, height: 768))
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+            #expect(viewModel.cachedLayoutRowWidth == 1_400)
+            #endif
+        }
+    }
 }
 
 // MARK: - GameplayView .task lifecycle coverage

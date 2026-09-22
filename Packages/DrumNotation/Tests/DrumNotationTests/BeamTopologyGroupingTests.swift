@@ -56,6 +56,20 @@ extension BeamTopologyTests {
         #expect(result.coveredLevelsByEventIndex == [0: [0, 1, 2, 3], 1: [0]])
     }
 
+    @Test("Co-located onsets in one stem group never fabricate a beam")
+    func coLocatedOnsetsNeverBeam() {
+        // Two events share measure/voice/direction/beat-group AND absolute
+        // tick — the (absoluteTick, noteIDs) event sort is the only ordering
+        // left between them, and strict duration adjacency still cannot
+        // connect them into a run.
+        let result = build([
+            event(tick: 0, levels: 1, durationTicks: 120, noteID: 2),
+            event(tick: 0, levels: 1, durationTicks: 120, noteID: 1)
+        ])
+
+        #expect(result == .empty)
+    }
+
     @Test("Malformed measures return the empty topology")
     func malformedMeasuresReturnEmpty() {
         let events = [
