@@ -21,8 +21,10 @@ ignore:
   - "**/*.generated.swift"
   - "**/DerivedData/**"
   - "**/build/**"
+  - "**/.build/**"
   - "VirgoTests"
   - "VirgoUITests"
+  - "Packages/DrumNotation/Tests"
   - "**/*.xctest/**"
 
 comment:
@@ -34,6 +36,8 @@ comment:
 
 flags:
   unit-tests:
+    carryforward: false
+  package-tests:
     carryforward: false
   ui-tests:
     carryforward: false
