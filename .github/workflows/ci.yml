@@ -148,17 +148,32 @@ jobs:
 
           mkdir -p "$COVERAGE_DIR"
 
+          # This report is required: fail closed rather than let a missing
+          # upload pass silently. The SwiftPM product layout differs across
+          # toolchains/build systems (<Package>PackageTests.xctest under
+          # .build/debug vs <TestTarget>.xctest under .build/out/Products),
+          # so discover the test bundle and coverage profile instead of
+          # assuming names.
           if [ ! -d "$PKG_BUILD_DIR" ]; then
-            echo "No package build directory at $PKG_BUILD_DIR"
-            exit 0
+            echo "error: no package build directory at $PKG_BUILD_DIR — did the package test step run?"
+            exit 1
           fi
 
-          PROF=$(find "$PKG_BUILD_DIR" -name "default.profdata" | head -1)
-          BIN=$(find "$PKG_BUILD_DIR" -path "*DrumNotationTests.xctest/Contents/MacOS/*" -type f | head -1)
+          PROF=$(find "$PKG_BUILD_DIR" -name "*.profdata" -type f | sort | head -1)
+          XCTEST_BUNDLE=$(find "$PKG_BUILD_DIR" -name "*.xctest" -type d -not -path "*/checkouts/*" | sort | head -1)
+          BIN=""
+          if [ -n "$XCTEST_BUNDLE" ]; then
+            BIN=$(find "$XCTEST_BUNDLE" -path "*/Contents/MacOS/*" -type f | sort | head -1)
+          fi
 
           if [ -z "$PROF" ] || [ -z "$BIN" ]; then
-            echo "No package coverage data found under $PKG_BUILD_DIR"
-            exit 0
+            echo "error: package coverage inputs not found under $PKG_BUILD_DIR"
+            echo "profdata: ${PROF:-<none>}"
+            echo "xctest bundle: ${XCTEST_BUNDLE:-<none>}"
+            echo "test binary: ${BIN:-<none>}"
+            echo "candidates under $PKG_BUILD_DIR:"
+            find "$PKG_BUILD_DIR" \( -name "*.profdata" -o -name "*.xctest" \) | sort || true
+            exit 1
           fi
 
           echo "Exporting package coverage to lcov format..."
@@ -173,9 +188,9 @@ jobs:
             > "$PACKAGE_LCOV"
 
           if [ ! -s "$PACKAGE_LCOV" ]; then
-            echo "Package coverage export produced empty file"
+            echo "error: package coverage export produced empty file"
             rm -f "$PACKAGE_LCOV"
-            exit 0
+            exit 1
           fi
 
           echo "Package coverage report created at $PACKAGE_LCOV"
@@ -306,15 +321,16 @@ jobs:
           head -20 "$report"
 
       - name: Validate package coverage report
-        id: validate_pkg
         run: |
           set -euo pipefail
           pkg_report="coverage-results/package.lcov"
 
+          # The package report is required: a missing or empty upload must
+          # fail rather than skip, or the package coverage gate is inert.
           if [ ! -s "$pkg_report" ]; then
-            echo "Package coverage report is missing or empty — skipping package upload"
-            echo "skip_pkg_upload=true" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "Package coverage report is missing or empty"
+            ls -la coverage-results || true
+            exit 1
           fi
 
           if ! grep -q '^SF:' "$pkg_report"; then
@@ -339,7 +355,6 @@ jobs:
           fail_ci_if_error: true
 
       - name: Upload package coverage to Codecov
-        if: steps.validate_pkg.outputs.skip_pkg_upload != 'true'
         uses: codecov/codecov-action@v5
         with:
           files: coverage-results/package.lcov
