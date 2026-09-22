@@ -9,15 +9,18 @@ import DrumNotation
 /// pre-format flag classification was deleted with the legacy renderer.
 enum VirgoNotationProjection {
     /// The single app-site style mapper for measured formatting (HPA-164 Task
-    /// 4): resolved row width with the app's 900pt floor plus the exact
-    /// default values pinned in Task 1. No other app site may construct
-    /// `NotationFormattingStyle`.
+    /// 4): resolved row width with the app's 900pt floor as the wrap budget,
+    /// plus the exact default values pinned in Task 1. The sheet-width floor
+    /// stays the fixed `maxRowWidth` — on wide windows the budget widens but
+    /// a sparse sheet's staff lines must not stretch to it. No other app
+    /// site may construct `NotationFormattingStyle`.
     static func formattingStyle(
         rowWidth: CGFloat,
         style: NotationLayoutStyle
     ) -> NotationFormattingStyle {
         NotationFormattingStyle(
             availableRowWidth: max(GameplayLayout.maxRowWidth, rowWidth),
+            minimumSheetWidth: GameplayLayout.maxRowWidth,
             rowLeadingInset: GameplayLayout.leftMargin,
             staffSpace: style.staffLineSpacing,
             stemWidth: GameplayLayout.stemWidth,

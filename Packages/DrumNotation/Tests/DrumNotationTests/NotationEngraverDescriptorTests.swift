@@ -463,16 +463,16 @@ struct EngraverBarRowTests {
         #expect(engraved.rows.first?.meterSignature.meter == NotationMeter(beats: 4, noteValue: 4))
     }
 
-    @Test("content width keeps the wrap-width floor plus trailing room")
+    @Test("content width keeps the sheet-width floor plus trailing room")
     func contentWidthFloorAndTrailingRoom() throws {
         // The pre-cutover contract — `max(maxRowWidth, ink.maxX +
-        // uniformSpacing)` — survives the ownership move: the formatter's
-        // `availableRowWidth` is the floor (the app's 900pt row width) and
+        // uniformSpacing)` — survives the ownership move: `minimumSheetWidth`
+        // is the floor (the app's fixed 900pt row width) and
         // `minimumQuarterNoteSpacing` is the trailing room (the app's
         // `uniformSpacing`). A sparse sheet never narrows below the floor,
         // and every row's staff lines span the declared width.
         let sparse = try NotationEngraver.engrave(document(measureCount: 1), style: style)
-        #expect(sparse.contentWidth == style.formatting.availableRowWidth)
+        #expect(sparse.contentWidth == style.formatting.minimumSheetWidth)
         #expect(sparse.paintedBounds.maxX == sparse.contentWidth)
         #expect(sparse.rows.allSatisfy { $0.paintedBounds.maxX == sparse.contentWidth })
 
@@ -482,22 +482,43 @@ struct EngraverBarRowTests {
         // measure edge's bar ink (interior bars stroke half a width past
         // their X; the final double bar ends at it).
         let narrow = NotationEngravingStyle(
-            formatting: NotationFormattingStyle(availableRowWidth: 200)
+            formatting: NotationFormattingStyle(availableRowWidth: 200, minimumSheetWidth: 200)
         )
         let wrapped = try NotationEngraver.engrave(document(measureCount: 3), style: narrow)
         let barInkMaxX = try #require(wrapped.measureBars.map {
             $0.isFinal ? $0.x : $0.x + narrow.barLineWidth / 2
         }.max())
         let expected = max(
-            narrow.formatting.availableRowWidth,
+            narrow.formatting.minimumSheetWidth,
             barInkMaxX + narrow.formatting.minimumQuarterNoteSpacing
         )
         try #require(
-            expected > narrow.formatting.availableRowWidth,
+            expected > narrow.formatting.minimumSheetWidth,
             "fixture must push ink past the floor"
         )
         #expect(wrapped.contentWidth == expected)
         #expect(wrapped.paintedBounds.maxX == wrapped.contentWidth)
         #expect(wrapped.rows.allSatisfy { $0.paintedBounds.maxX == wrapped.contentWidth })
+    }
+
+    @Test("a wide wrap budget never widens a sparse sheet past the floor")
+    func wideWrapBudgetKeepsFixedSheetFloor() throws {
+        // `availableRowWidth` is only the packing budget: on a wide window
+        // (the app's `max(maxRowWidth, rowWidth)` mapping) it can be 2400pt
+        // while the sheet floor stays the fixed `minimumSheetWidth` — the
+        // pre-cutover `max(900, paintedBounds.maxX + uniformSpacing)`
+        // contract. A sparse sheet must NOT stretch its staff lines to the
+        // budget.
+        let wide = NotationEngravingStyle(
+            formatting: NotationFormattingStyle(availableRowWidth: 2_400, minimumSheetWidth: 900)
+        )
+        let sparse = try NotationEngraver.engrave(document(measureCount: 1), style: wide)
+        try #require(
+            sparse.contentWidth < wide.formatting.availableRowWidth,
+            "fixture ink must sit under the wrap budget"
+        )
+        #expect(sparse.contentWidth == wide.formatting.minimumSheetWidth)
+        #expect(sparse.paintedBounds.maxX == sparse.contentWidth)
+        #expect(sparse.rows.allSatisfy { $0.paintedBounds.maxX == sparse.contentWidth })
     }
 }

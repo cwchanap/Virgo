@@ -1,5 +1,66 @@
 import CoreGraphics
 
+/// Plain scalar formatter style; every value is points. The defaults are the
+/// mapping Virgo uses (`availableRowWidth` = the app's resolved row width —
+/// the measure-wrap boundary, which widens with the viewport — and
+/// `minimumSheetWidth` = the app's fixed 900pt row-width floor, the engraved
+/// sheet's minimum width regardless of the wrap budget).
+public struct NotationFormattingStyle: Hashable, Sendable {
+    /// The row-packing budget: a measure wraps to the next row before it
+    /// would cross this width. Tracks the caller's viewport, so it is NOT
+    /// the sheet-width floor — that is `minimumSheetWidth`.
+    public let availableRowWidth: CGFloat
+    /// The declared sheet width (`EngravedNotation.contentWidth`) never
+    /// narrows below this floor; sparse content on a wide budget keeps the
+    /// fixed floor instead of stretching staff lines to `availableRowWidth`.
+    public let minimumSheetWidth: CGFloat
+    public let rowLeadingInset: CGFloat
+    public let staffSpace: CGFloat
+    public let stemWidth: CGFloat
+    /// Edge-to-edge clearance between adjacent column ink, **not** a
+    /// center-to-center pitch. With the Bravura X-black head (23.2pt wide at
+    /// staff-space 20) the default 8pt clearance yields the 31.2pt adjacent
+    /// pitch Virgo's sixteenth runs actually render.
+    public let minimumInterColumnClearance: CGFloat
+    public let minimumQuarterNoteSpacing: CGFloat
+    public let measureSpacing: CGFloat
+    public let leadingMeasureInset: CGFloat
+    public let trailingMeasureInset: CGFloat
+    public let rhythmDotRadius: CGFloat
+    public let rhythmDotSpacing: CGFloat
+
+    public init(
+        availableRowWidth: CGFloat = 900,
+        minimumSheetWidth: CGFloat = 900,
+        rowLeadingInset: CGFloat = 100,
+        staffSpace: CGFloat = 20,
+        stemWidth: CGFloat = 2,
+        minimumInterColumnClearance: CGFloat = 8,
+        minimumQuarterNoteSpacing: CGFloat = 50,
+        measureSpacing: CGFloat = 12,
+        leadingMeasureInset: CGFloat = 52,
+        trailingMeasureInset: CGFloat = 0,
+        rhythmDotRadius: CGFloat = 2.5,
+        rhythmDotSpacing: CGFloat = 4
+    ) {
+        self.availableRowWidth = availableRowWidth
+        self.minimumSheetWidth = minimumSheetWidth
+        self.rowLeadingInset = rowLeadingInset
+        self.staffSpace = staffSpace
+        self.stemWidth = stemWidth
+        self.minimumInterColumnClearance = minimumInterColumnClearance
+        self.minimumQuarterNoteSpacing = minimumQuarterNoteSpacing
+        self.measureSpacing = measureSpacing
+        self.leadingMeasureInset = leadingMeasureInset
+        self.trailingMeasureInset = trailingMeasureInset
+        self.rhythmDotRadius = rhythmDotRadius
+        self.rhythmDotSpacing = rhythmDotSpacing
+    }
+
+    /// The default mapping used by Virgo.
+    public static let virgoDefault = NotationFormattingStyle()
+}
+
 /// Plain scalar engraving style; every value is points. `formatting` stays
 /// the sole horizontal authority — this style adds the vertical, beam,
 /// control, tuplet and bar metrics the final geometry pass consumes. The

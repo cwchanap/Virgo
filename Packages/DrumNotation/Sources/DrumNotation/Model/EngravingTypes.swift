@@ -435,11 +435,13 @@ public struct EngravedNotation: Hashable, Sendable {
     /// Union of every primitive's ink, post-normalization (`.null` when the
     /// input engraved nothing).
     public let paintedBounds: CGRect
-    /// Sheet width: the formatter's wrap-width floor (`availableRowWidth`,
-    /// the app's 900pt row-width floor) or the painted ink's right edge
-    /// plus one `minimumQuarterNoteSpacing` of trailing room, whichever is
-    /// wider — the pre-cutover `max(maxRowWidth, paintedBounds.maxX +
-    /// uniformSpacing)` contract. Every row's staff lines span it.
+    /// Sheet width: the fixed sheet-width floor (`minimumSheetWidth`, the
+    /// app's 900pt `maxRowWidth`) or the painted ink's right edge plus one
+    /// `minimumQuarterNoteSpacing` of trailing room, whichever is wider —
+    /// the pre-cutover `max(maxRowWidth, paintedBounds.maxX +
+    /// uniformSpacing)` contract. Independent of the formatter's wrap
+    /// budget (`availableRowWidth`), so a wide viewport cannot widen a
+    /// sparse sheet. Every row's staff lines span it.
     public let contentWidth: CGFloat
     /// Sheet height: covers the painted ink and the lowest row's full
     /// anchor extent — its band top plus one row pitch, the block the

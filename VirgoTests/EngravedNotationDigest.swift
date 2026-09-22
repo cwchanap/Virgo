@@ -105,6 +105,7 @@ enum EngravedNotationDigest {
         return [
             "style staffSpace=\(f(formatting.staffSpace)) "
                 + "rowWidth=\(f(formatting.availableRowWidth)) "
+                + "sheetFloor=\(f(formatting.minimumSheetWidth)) "
                 + "rowInset=\(f(formatting.rowLeadingInset)) "
                 + "stemWidth=\(f(formatting.stemWidth)) "
                 + "colGap=\(f(formatting.minimumInterColumnClearance)) "

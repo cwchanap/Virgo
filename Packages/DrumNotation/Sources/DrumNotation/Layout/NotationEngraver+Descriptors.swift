@@ -273,15 +273,18 @@ extension SheetComposer {
         )
         // The declared sheet width, resolved before furniture joins the
         // union so the union at this point is the legacy `paintedBounds`
-        // analogue (all ink and bars, no staff lines): the wrap-width
-        // floor `availableRowWidth` (the app's 900pt row-width floor) or
-        // the ink's right edge plus one `minimumQuarterNoteSpacing` of
-        // trailing room — the pre-cutover `max(GameplayLayout.maxRowWidth,
+        // analogue (all ink and bars, no staff lines): the fixed sheet-width
+        // floor `minimumSheetWidth` (the app's 900pt `maxRowWidth`) or the
+        // ink's right edge plus one `minimumQuarterNoteSpacing` of trailing
+        // room — the pre-cutover `max(GameplayLayout.maxRowWidth,
         // paintedBounds.maxX + GameplayLayout.uniformSpacing)` contract.
+        // The floor is deliberately NOT `availableRowWidth`: that is the
+        // formatter's wrap budget, which widens with the viewport — a sparse
+        // sheet on a wide window must not stretch its staff lines to it.
         // Every row's staff lines span it, so the final union's maxX and
         // `EngravedNotation.contentWidth` both equal this value.
         raw.sheetWidth = max(
-            formatting.availableRowWidth,
+            formatting.minimumSheetWidth,
             (raw.paintedUnion?.maxX ?? 0) + formatting.minimumQuarterNoteSpacing
         )
         for index in Set(formatted.measures.map(\.rowIndex)).sorted() {
