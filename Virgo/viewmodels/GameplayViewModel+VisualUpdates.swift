@@ -257,7 +257,7 @@ extension GameplayViewModel {
         guard let position = engraving.position(
             measureIndex: resolved.measure.measureIndex,
             localTick: localTick
-        ), let row = engraving.rows.first(where: { $0.index == position.rowIndex }) else {
+        ), let row = engraving.row(at: position.rowIndex) else {
             return nil
         }
         return (x: Double(position.x), y: Double(row.staffCenterY))

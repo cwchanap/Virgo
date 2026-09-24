@@ -354,11 +354,11 @@ struct NotationEngraverGeometryTests {
         #expect(restDots[0].position.y == printedRest.position.y)
     }
 
-    @Test("dot counts other than one paint no dots — app parity")
-    func nonSingleDotCountsPaintNoDots() throws {
-        // The ported painter guards `dotCount == 1`; 0 and 2+ emit nothing
-        // (the formatter still reserves their ink — painting is the parity
-        // surface, reservation stays the formatter's).
+    @Test("each reserved rhythm dot paints at formatter pitch")
+    func multiDotCountsPaintAllDots() throws {
+        // Painted dots must equal the footprint the formatter reserves in
+        // `dotInkRight`: `dotCount` centers at one `spacing + diameter`
+        // pitch trailing the ink maxX.
         let input = try Fixtures.document(
             notes: [
                 Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, dotCount: 0),
@@ -374,8 +374,30 @@ struct NotationEngraverGeometryTests {
             controls: []
         )
         let engraved = try NotationEngraver.engrave(input, style: style)
+        let formatting = style.formatting
+        let pitch = formatting.rhythmDotRadius * 2 + formatting.rhythmDotSpacing
 
-        #expect(engraved.rhythmDots.isEmpty)
+        #expect(engraved.rhythmDots.filter { $0.source == .note(1) }.isEmpty)
+
+        let noteDots = engraved.rhythmDots.filter { $0.source == .note(2) }
+        let head2 = try head(engraved, id: 2)
+        #expect(noteDots.count == 2)
+        for (index, dot) in noteDots.sorted(by: { $0.position.x < $1.position.x }).enumerated() {
+            #expect(
+                dot.position.x
+                    == head2.paintedBounds.maxX + formatting.rhythmDotSpacing
+                    + formatting.rhythmDotRadius + CGFloat(index) * pitch
+            )
+        }
+
+        let restDots = engraved.rhythmDots.filter { $0.source == .rest(5) }
+        let printedRest = try rest(engraved, id: 5)
+        #expect(restDots.count == 2)
+        #expect(
+            restDots.map(\.position.x).max()
+                == printedRest.paintedBounds.maxX + formatting.rhythmDotSpacing
+                + formatting.rhythmDotRadius + pitch
+        )
     }
 
     @Test("non-engravable notes keep their heads but drop their dots")

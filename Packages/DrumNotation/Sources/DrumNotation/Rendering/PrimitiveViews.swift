@@ -10,6 +10,10 @@ public enum NotationSemanticID: Hashable, Sendable {
     case rest(Int)
     case control(Int)
     case tuplet(Int)
+    /// One painted rhythm dot — `source` names its owning primitive in that
+    /// owner's namespace and `index` numbers the dots of one owner
+    /// left-to-right, so multi-dot sources stay collision-free.
+    case rhythmDot(EngravedRhythmDot.Source, index: Int)
 }
 
 /// The narrow view-only paint input for `DrumNotationView`: colors and

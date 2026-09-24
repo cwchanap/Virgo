@@ -287,7 +287,10 @@ public enum NotationFormatter {
             let head = headMetrics.paintedBounds
             ink.union(centerX + head.minX)
             ink.union(centerX + head.maxX)
-            if let dotRight = dotInkRight(after: centerX + head.maxX, dotCount: note.dotCount, style: style) {
+            // Dots only paint for engravable notes (the engraver drops them
+            // otherwise), so non-engravable ink must not reserve dot room.
+            if note.isRhythmEngravable,
+                let dotRight = dotInkRight(after: centerX + head.maxX, dotCount: note.dotCount, style: style) {
                 ink.union(dotRight)
             }
             // Flags hang on the shared stem axis — the head glyph's

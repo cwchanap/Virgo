@@ -12,7 +12,7 @@ import Testing
 /// the ordinary public surface.
 @Suite("Notation semantic IDs")
 struct NotationSemanticIDTests {
-    @Test("note/rest/control/tuplet namespaces never collide on the same integer")
+    @Test("note/rest/control/tuplet/dot namespaces never collide on the same integer")
     func namespacesDoNotCollide() {
         #expect(NotationSemanticID.note(7) != .rest(7))
         #expect(NotationSemanticID.note(7) != .control(7))
@@ -20,21 +20,31 @@ struct NotationSemanticIDTests {
         #expect(NotationSemanticID.rest(7) != .control(7))
         #expect(NotationSemanticID.rest(7) != .tuplet(7))
         #expect(NotationSemanticID.control(7) != .tuplet(7))
+        // A dot key must not bleed into its owner's or the sibling
+        // namespace's key on the same integer.
+        #expect(NotationSemanticID.rhythmDot(.note(7), index: 0) != .note(7))
+        #expect(NotationSemanticID.rhythmDot(.rest(7), index: 0) != .rest(7))
+        #expect(NotationSemanticID.rhythmDot(.note(7), index: 0)
+            != .rhythmDot(.rest(7), index: 0))
+        #expect(NotationSemanticID.rhythmDot(.note(7), index: 0)
+            != .rhythmDot(.note(7), index: 1))
     }
 
-    @Test("one label map keeps all four namespaces distinct")
+    @Test("one label map keeps all five namespaces distinct")
     func labelMapKeepsNamespacesDistinct() {
         var labels: [NotationSemanticID: String] = [:]
         labels[.note(7)] = "note"
         labels[.rest(7)] = "rest"
         labels[.control(7)] = "control"
         labels[.tuplet(7)] = "tuplet"
+        labels[.rhythmDot(.note(7), index: 0)] = "dot"
 
-        #expect(labels.count == 4)
+        #expect(labels.count == 5)
         #expect(labels[.note(7)] == "note")
         #expect(labels[.rest(7)] == "rest")
         #expect(labels[.control(7)] == "control")
         #expect(labels[.tuplet(7)] == "tuplet")
+        #expect(labels[.rhythmDot(.note(7), index: 0)] == "dot")
     }
 }
 

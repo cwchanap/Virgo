@@ -45,15 +45,26 @@ extension SheetComposer {
             input.measures.map { ($0.index, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        // Direct lookups replace the per-control measure and column scans —
+        // formatted measure indices and (measure, localTick) positions are
+        // the same keys the formatter emitted.
+        let formattedByIndex = Dictionary(
+            formatted.measures.map { ($0.index, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let columnsByPosition = Dictionary(
+            formatted.measures.flatMap { measure in
+                measure.columns.map {
+                    (NotationTickPosition(measureIndex: measure.index, localTick: $0.localTick), $0)
+                }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
         var stamped: [(control: EngravedControl, absoluteTick: Int)] = []
         for control in input.controls {
             guard let resolvedMeasure = measuresByIndex[control.position.measureIndex],
-                  let formattedMeasure = formatted.measures.first(where: {
-                      $0.index == control.position.measureIndex
-                  }),
-                  let column = formattedMeasure.columns.first(where: {
-                      $0.localTick == control.position.localTick
-                  })
+                  let formattedMeasure = formattedByIndex[control.position.measureIndex],
+                  let column = columnsByPosition[control.position]
             else { continue }
             let position = CGPoint(
                 x: column.logicalColumnX,
@@ -132,8 +143,9 @@ extension SheetComposer {
             }
         let memberRests = group.memberRestIDs.compactMap { restsByID[$0] }
         guard !memberHeads.isEmpty || !memberRests.isEmpty else { return nil }
+        let memberHeadIDs = Set(memberHeads.map { $0.note.id })
         let memberBeams = raw.beams.filter { beam in
-            beam.noteIDs.filter(Set(memberHeads.map { $0.note.id }).contains).count >= 2
+            beam.noteIDs.filter(memberHeadIDs.contains).count >= 2
         }
         let beamSpansEntireGroup = memberRests.isEmpty
             && continuousPrimaryBeamCoversEveryOnset(

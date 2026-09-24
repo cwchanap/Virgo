@@ -259,6 +259,24 @@ extension GameplayViewModel {
         currentRow = endRow
     }
 
+    // MARK: - Interruption Handling
+
+    /// Sets up audio interruption handling to pause playback on phone calls, Siri, etc.
+    /// `cleanup()` clears the handler (`metronome.onInterruption = nil`).
+    func setupInterruptionHandling() {
+        metronome.onInterruption = { [weak self] isInterrupted in
+            guard let self = self else { return }
+            if isInterrupted {
+                Logger.audioPlayback("Audio interruption began - pausing gameplay")
+                self.pausePlayback()
+            } else {
+                // Interruption ended - user can manually resume if desired
+                // We don't auto-resume to avoid unexpected playback
+                Logger.audioPlayback("Audio interruption ended - user can resume manually")
+            }
+        }
+    }
+
     // MARK: - Cleanup
 
     /// Restores beat/measure/progress state when resuming playback from a pause.

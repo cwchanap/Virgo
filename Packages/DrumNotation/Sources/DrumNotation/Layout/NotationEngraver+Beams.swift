@@ -210,8 +210,8 @@ extension SheetComposer {
 
         var stemsByGroup: [Int: EngravedStem] = [:]
         for (index, group) in stemTopology.stemGroups.enumerated() {
-            let members = group.memberNoteIDs
-                .compactMap { headsByID[$0] }
+            let chordMembers = group.memberNoteIDs.compactMap { headsByID[$0] }
+            let members = chordMembers
                 .filter { $0.note.duration.needsStem && $0.note.isRhythmEngravable }
             guard let representativeID = group.stemRepresentativeID,
                   let representative = headsByID[representativeID],
@@ -224,7 +224,7 @@ extension SheetComposer {
                 : candidateBeams.max(by: { $0.start.y < $1.start.y })
             let endY = outermostBeam
                 .flatMap { beamEndY(stemX: start.x, beam: $0) }
-                ?? unbeamedStemEndY(members: members, start: start)
+                ?? unbeamedStemEndY(members: members, chordMembers: chordMembers, start: start)
             let stem = EngravedStem(
                 noteIDs: memberIDs.sorted(),
                 direction: group.key.stemDirection,
@@ -251,8 +251,16 @@ extension SheetComposer {
 
     /// The stem end for a group with no beam reaching it — the engine's
     /// `unbeamedStemEndY`: the effective stem length keeps the flag ink and
-    /// the far chord edge `minimumStemExtensionPastChord` clear.
-    private func unbeamedStemEndY(members: [PendingNoteHead], start: CGPoint) -> CGFloat {
+    /// the far chord edge `minimumStemExtensionPastChord` clear. The edge
+    /// bound runs over every painted chord member — including stemless
+    /// (whole) and non-engravable heads, whose ink still occupies the chord
+    /// — the same member-edge rule `sharedBeamBaseY` applies to beamed
+    /// groups; the flag extent stays on stem members since only they flag.
+    private func unbeamedStemEndY(
+        members: [PendingNoteHead],
+        chordMembers: [PendingNoteHead],
+        start: CGPoint
+    ) -> CGFloat {
         guard let direction = members.first?.note.stemDirection else { return start.y }
         let flagInwardExtent = maximumFlagInwardExtent(members: members)
         let effectiveStemLength = max(
@@ -261,13 +269,13 @@ extension SheetComposer {
         )
         switch direction {
         case .up:
-            let highestVisibleY = members.map(\.bounds.minY).min() ?? start.y
+            let highestVisibleY = chordMembers.map(\.bounds.minY).min() ?? start.y
             return min(
                 start.y - effectiveStemLength,
                 highestVisibleY - style.minimumStemExtensionPastChord - flagInwardExtent
             )
         case .down:
-            let lowestVisibleY = members.map(\.bounds.maxY).max() ?? start.y
+            let lowestVisibleY = chordMembers.map(\.bounds.maxY).max() ?? start.y
             return max(
                 start.y + effectiveStemLength,
                 lowestVisibleY + style.minimumStemExtensionPastChord + flagInwardExtent

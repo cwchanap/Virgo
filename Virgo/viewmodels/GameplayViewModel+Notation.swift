@@ -11,6 +11,23 @@ import Foundation
 import DrumNotation
 
 extension GameplayViewModel {
+    /// Tears down runtime state for a chart whose persisted timing is fatally
+    /// inconsistent. The setup request already allocated `generation`; the reset
+    /// reuses it so the reset remains a single notation installation.
+    func resetForFatalRhythmTiming(generation: UInt64) {
+        _ = clearNotationInstallation(generation: generation)
+        cachedMeasureRowMap = [:]
+        cachedNotationMeasuresByIndex = [:]
+        cachedLegacyContentHeight = 0
+        cachedTrackDuration = 0
+        bgmOffsetSeconds = 0
+        metronome.stop()
+        bgmPlayer?.stop()
+        bgmPlayer = nil
+        inputManager.stopListening()
+        Logger.error(rhythmFatalMessage)
+    }
+
     /// Reports the sheet music view's currently available row width. If this changes
     /// the notation engraving is rebuilt so measures repack at the new width. Values at
     /// or below the legacy `maxRowWidth` (900) are treated as the floor so behavior

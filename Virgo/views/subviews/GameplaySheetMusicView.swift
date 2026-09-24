@@ -6,7 +6,8 @@
 //  `EngravedNotation` goes straight into `DrumNotationView`, the app-owned
 //  feel/warning annotations layer above it, and the playhead + row anchors
 //  read package row geometry. The legacy furniture fallback (staff lines,
-//  bars, clef/meter) remains for charts with no printable notation.
+//  bars, clef/meter) remains only for charts with no timeline notation; a
+//  `.failed` preparation surfaces the practice-unavailable sheet instead.
 //
 
 import SwiftUI
