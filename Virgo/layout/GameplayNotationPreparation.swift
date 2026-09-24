@@ -188,8 +188,12 @@ enum GameplayNotationPreparer {
         engraved: EngravedNotation
     ) -> [NotationSemanticID: String] {
         var labels: [NotationSemanticID: String] = [:]
+        // First-wins over `uniqueKeysWithValues` — a duplicate event ID in a
+        // malformed snapshot must fail closed through `prepare`'s catch, not
+        // trap the detached worker.
         let notesByEventID = Dictionary(
-            uniqueKeysWithValues: snapshot.notes.map { ($0.eventID.rawValue, $0) }
+            snapshot.notes.map { ($0.eventID.rawValue, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
         for note in input.notes {
             guard let source = notesByEventID[note.id] else { continue }
@@ -209,7 +213,8 @@ enum GameplayNotationPreparer {
             )
         }
         let controlsByEventID = Dictionary(
-            uniqueKeysWithValues: snapshot.controls.map { ($0.eventID.rawValue, $0) }
+            snapshot.controls.map { ($0.eventID.rawValue, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
         for control in engraved.controls {
             guard let source = controlsByEventID[control.controlID],
@@ -226,6 +231,15 @@ enum GameplayNotationPreparer {
             labels[.tuplet(tuplet.tupletID)] = String(
                 localized: "\(voiceName) voice tuplet, \(tuplet.ratio.actual) in the time of \(tuplet.ratio.normal)"
             )
+        }
+        // Every painted dot is its own "Rhythm dot" element — the per-source
+        // index numbering matches `DrumNotationView`'s enumeration order.
+        var dotIndexBySource: [EngravedRhythmDot.Source: Int] = [:]
+        let dotLabel = String(localized: "Rhythm dot")
+        for dot in engraved.rhythmDots {
+            let index = dotIndexBySource[dot.source, default: 0]
+            dotIndexBySource[dot.source] = index + 1
+            labels[.rhythmDot(dot.source, index: index)] = dotLabel
         }
         return labels
     }

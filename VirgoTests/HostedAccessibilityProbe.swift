@@ -78,13 +78,17 @@ func hostedAccessibilityLabels(
     hostingView.displayIfNeeded()
 
     // The accessibility subtree materializes asynchronously: pump the run
-    // loop in short increments and re-walk until a semantic label shows up
-    // or the bounded deadline passes — never a fixed sleep. For an
-    // unlabeled mount the full window doubles as the observation period
-    // before judging absence.
+    // loop in short increments and re-walk until the label set survives one
+    // full poll unchanged — first appearance can precede the rest of the
+    // subtree materializing — or the bounded deadline passes, never a fixed
+    // sleep. For an unlabeled mount the full window doubles as the
+    // observation period before judging absence.
     let deadline = Date().addingTimeInterval(2)
     var dump = walkAccessibilityTree(roots: [hostingView, window])
-    while dump.labels.isEmpty, Date() < deadline {
+    var previousLabels: [String] = []
+    while Date() < deadline,
+          dump.labels.isEmpty || dump.labels != previousLabels {
+        previousLabels = dump.labels
         RunLoop.current.run(until: Date().addingTimeInterval(0.01))
         hostingView.layoutSubtreeIfNeeded()
         dump = walkAccessibilityTree(roots: [hostingView, window])
@@ -136,13 +140,17 @@ private func setEnhancedUserInterface() -> () -> Void {
     }
 }
 
-/// Breadth-first walk of the accessibility tree under `roots`.
+/// Breadth-first walk of the accessibility tree under `roots` — the queue
+/// advances by index (not `popLast`), so parents dump before their children.
 private func walkAccessibilityTree(roots: [Any]) -> HostedAccessibilityDump {
     var labels: [String] = []
     var nodeKinds: [String] = []
     var queue = roots
     var visited = Set<ObjectIdentifier>()
-    while let element = queue.popLast() {
+    var head = 0
+    while head < queue.count {
+        let element = queue[head]
+        head += 1
         guard let object = element as? NSObject,
               visited.insert(ObjectIdentifier(object)).inserted else { continue }
         let label = performAXString(object, NSSelectorFromString("accessibilityLabel"))

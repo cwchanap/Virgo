@@ -91,7 +91,8 @@ enum VirgoNotationProjection {
         notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
     ) throws -> ResolvedNotationInput {
         let measuresByIndex = Dictionary(
-            uniqueKeysWithValues: expandedMeasures.map { ($0.measureIndex, $0) }
+            expandedMeasures.map { ($0.measureIndex, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
         let notes = mappedNotes(snapshot: snapshot, measuresByIndex: measuresByIndex)
         // One sort feeds both boundary consumers: the printed subset crosses
@@ -209,7 +210,12 @@ enum VirgoNotationProjection {
                 let measure = measuresByIndex[note.position.measureIndex],
                 note.position.localTick >= 0,
                 note.position.localTick < measure.durationTicks,
-                note.position.absoluteTick == measure.startTick + note.position.localTick
+                note.position.absoluteTick == measure.startTick + note.position.localTick,
+                // Same duration/span guards rests get: a malformed note drops
+                // here rather than failing the whole chart inside the package's
+                // ResolvedNotation validation.
+                note.durationTicks > 0,
+                note.position.localTick + note.durationTicks <= measure.durationTicks
             else { return nil }
             return (note, definition)
         }

@@ -390,6 +390,7 @@ final class GameplayViewModel {
             notationInstall = nil
             notationPreparationFailure = failure
             cachedNotationHasRenderableContent = false
+            teardownForFailedNotationPreparation()
         }
         return true
     }
@@ -418,6 +419,18 @@ final class GameplayViewModel {
         notationPreparationWorkerTask = nil
         notationLayoutGeneration &+= 1
         return notationLayoutGeneration
+    }
+
+    /// The `.failed` arm of `installPreparedNotation`: a settled failure
+    /// replaces the sheet with the practice-unavailable surface, so the
+    /// playback resources setup already configured (BGM player, metronome
+    /// configuration, input delegate) release the same way the fatal-timing
+    /// reset tears them down.
+    private func teardownForFailedNotationPreparation() {
+        metronome.stop()
+        bgmPlayer?.stop()
+        bgmPlayer = nil
+        inputManager.stopListening()
     }
 
     /// Production default: a background-queue `DispatchSourceTimer` whose handler
@@ -464,7 +477,8 @@ final class GameplayViewModel {
         }
         if cachedNotes.isEmpty {
             Logger.warning(
-                "loadChartData: chart.notes returned empty array - chart may have no notes or relationship failed to load"
+                "loadChartData: chart.notes returned empty array - "
+                    + "chart may have no notes or relationship failed to load"
             )
         }
 
@@ -535,38 +549,6 @@ final class GameplayViewModel {
             return
         }
         await prepareTimelineNotation(request, generation: setupGeneration)
-    }
-
-    /// Tears down runtime state for a chart whose persisted timing is fatally
-    /// inconsistent. The setup request already allocated `generation`; the reset
-    /// reuses it so the reset remains a single notation installation.
-    private func resetForFatalRhythmTiming(generation: UInt64) {
-        _ = clearNotationInstallation(generation: generation)
-        cachedMeasureRowMap = [:]
-        cachedNotationMeasuresByIndex = [:]
-        cachedLegacyContentHeight = 0
-        cachedTrackDuration = 0
-        bgmOffsetSeconds = 0
-        metronome.stop()
-        bgmPlayer?.stop()
-        bgmPlayer = nil
-        inputManager.stopListening()
-        Logger.error(rhythmFatalMessage)
-    }
-
-    /// Sets up audio interruption handling to pause playback on phone calls, Siri, etc.
-    private func setupInterruptionHandling() {
-        metronome.onInterruption = { [weak self] isInterrupted in
-            guard let self = self else { return }
-            if isInterrupted {
-                Logger.audioPlayback("Audio interruption began - pausing gameplay")
-                self.pausePlayback()
-            } else {
-                // Interruption ended - user can manually resume if desired
-                // We don't auto-resume to avoid unexpected playback
-                Logger.audioPlayback("Audio interruption ended - user can resume manually")
-            }
-        }
     }
 
     /// Sets up metronome subscription for visual sync

@@ -150,7 +150,7 @@ private extension DrumNotationView {
     /// The staff's vertical extent on a bar's row: `staffLineYs` is
     /// pitch-ascending (bottom line first), so first→last is the staff height.
     func staffFrame(rowIndex: Int) -> CGRect? {
-        guard let row = layout.rows.first(where: { $0.index == rowIndex }),
+        guard let row = layout.row(at: rowIndex),
               let bottom = row.staffLineYs.first,
               let top = row.staffLineYs.last else { return nil }
         return CGRect(x: 0, y: top, width: 0, height: bottom - top)
@@ -269,14 +269,30 @@ private extension DrumNotationView {
         .accessibilityHidden(true)
     }
 
+    /// Every painted rhythm dot as a semantic element: dots number
+    /// left-to-right within their owning note/rest source so the label map
+    /// key is stable and collision-free.
     var dotsLayer: some View {
-        ForEach(layout.rhythmDots, id: \.self) { dot in
-            Ellipse()
-                .fill(appearance.foreground)
-                .frame(width: dot.paintedBounds.width, height: dot.paintedBounds.height)
-                .position(dot.position)
+        ForEach(indexedDots, id: \.id) { entry in
+            labeled(
+                Ellipse()
+                    .fill(appearance.foreground)
+                    .frame(width: entry.dot.paintedBounds.width, height: entry.dot.paintedBounds.height)
+                    .position(entry.dot.position),
+                as: entry.id
+            )
         }
-        .accessibilityHidden(true)
+    }
+
+    /// Dots paired with their semantic IDs in paint order — per-source
+    /// numbering keeps a double-dotted owner's two dots distinct.
+    private var indexedDots: [(id: NotationSemanticID, dot: EngravedRhythmDot)] {
+        var nextIndex: [EngravedRhythmDot.Source: Int] = [:]
+        return layout.rhythmDots.map { dot in
+            let index = nextIndex[dot.source, default: 0]
+            nextIndex[dot.source] = index + 1
+            return (id: .rhythmDot(dot.source, index: index), dot: dot)
+        }
     }
 
     var articulationsLayer: some View {
@@ -376,10 +392,10 @@ private extension DrumNotationView {
 
     /// The resolved numeral — `ratio.actual` as measured Bravura tuplet
     /// digits laid out by metadata advance widths and scaled so the whole
-    /// run fits the reserved label rect. The path is centered on the
-    /// origin, so it offsets to its bounds (the `GlyphFill` pattern)
-    /// before the label frame centers it; `.clipped()` is only the
-    /// containment safeguard.
+    /// run fits the reserved label rect. The path's ink is centered inside
+    /// the label rect (a `Path` ignores its frame rect, so offsetting to
+    /// the bounds' top-left alone would leave the slack on the right and
+    /// bottom); `.clipped()` is only the containment safeguard.
     private func tupletNumeral(_ tuplet: EngravedTuplet) -> some View {
         let path = Path(BravuraFont.tupletNumeralPath(
             actual: tuplet.ratio.actual,
@@ -387,7 +403,10 @@ private extension DrumNotationView {
         ))
         let bounds = path.boundingRect
         return path
-            .offset(x: -bounds.minX, y: -bounds.minY)
+            .offset(
+                x: (style.tupletLabelSize.width - bounds.width) / 2 - bounds.minX,
+                y: (style.tupletLabelSize.height - bounds.height) / 2 - bounds.minY
+            )
             .fill(appearance.foreground)
             .frame(
                 width: style.tupletLabelSize.width,

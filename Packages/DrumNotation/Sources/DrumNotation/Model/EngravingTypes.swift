@@ -498,4 +498,14 @@ public struct EngravedNotation: Hashable, Sendable {
     public func noteHeadPosition(noteID: Int) -> CGPoint? {
         noteHeads.first { $0.noteID == noteID }?.position
     }
+
+    /// The row with `index` — O(1): the formatter wraps measures into rows
+    /// numbered contiguously from 0, so the slot at `index` is the row; the
+    /// stored `index` is verified before returning so a non-contiguous
+    /// input still resolves correctly.
+    public func row(at index: Int) -> EngravedRow? {
+        guard rows.indices.contains(index) else { return nil }
+        let row = rows[index]
+        return row.index == index ? row : rows.first { $0.index == index }
+    }
 }

@@ -193,9 +193,10 @@ extension GameplayNotationAnnotations {
     }
 
     /// The top staff line's Y on the row — `staffLineYs` is pitch-ascending
-    /// (bottom line first), so `last` is the staff top.
+    /// (bottom line first), so `last` is the staff top. Rows are contiguous
+    /// from 0, so `row(at:)` resolves in O(1) per warning instead of a scan.
     private static func staffTopY(rowIndex: Int, engraved: EngravedNotation) -> CGFloat? {
-        engraved.rows.first { $0.index == rowIndex }?.staffLineYs.last
+        engraved.row(at: rowIndex)?.staffLineYs.last
     }
 
     /// The engraved measure's leading inset edge — the anchor for app marks
