@@ -213,9 +213,12 @@ enum VirgoNotationProjection {
                 note.position.absoluteTick == measure.startTick + note.position.localTick,
                 // Same duration/span guards rests get: a malformed note drops
                 // here rather than failing the whole chart inside the package's
-                // ResolvedNotation validation.
+                // ResolvedNotation validation. Subtraction keeps the span check
+                // non-trapping for extreme `durationTicks` — the bounds checks
+                // above pin `localTick` to [0, durationTicks), so the
+                // difference cannot overflow.
                 note.durationTicks > 0,
-                note.position.localTick + note.durationTicks <= measure.durationTicks
+                note.durationTicks <= measure.durationTicks - note.position.localTick
             else { return nil }
             return (note, definition)
         }
@@ -278,7 +281,8 @@ enum VirgoNotationProjection {
                 rest.position.localTick < measure.durationTicks,
                 rest.position.absoluteTick == measure.startTick + rest.position.localTick,
                 rest.durationTicks > 0,
-                rest.position.localTick + rest.durationTicks <= measure.durationTicks
+                // Same non-trapping subtraction form as the note guard.
+                rest.durationTicks <= measure.durationTicks - rest.position.localTick
             else { return nil }
             return rest
         }

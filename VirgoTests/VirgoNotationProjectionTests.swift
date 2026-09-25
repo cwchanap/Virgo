@@ -188,6 +188,57 @@ struct VirgoNotationProjectionTests {
         )
     }
 
+    @Test("Extreme durations drop at the span guard instead of trapping")
+    func extremeDurationsDropInsteadOfTrapping() throws {
+        let measure = makeMeasure(index: 0)
+        let snapshot = try makeSnapshot(
+            measures: [measure],
+            notes: [
+                // Boundary-valid: the span exactly fills the measure
+                // remainder, so it survives — the guard's predicate is
+                // unchanged, only non-trapping.
+                makeNote(
+                    eventID: 1,
+                    noteType: .snare,
+                    measureIndex: 0,
+                    localTick: 720,
+                    interval: .quarter,
+                    durationTicks: 240
+                ),
+                // `localTick + durationTicks` would overflow: the malformed
+                // note must drop here, not trap the detached worker.
+                makeNote(
+                    eventID: 2,
+                    noteType: .bass,
+                    measureIndex: 0,
+                    localTick: 240,
+                    interval: .quarter,
+                    durationTicks: .max
+                )
+            ],
+            rests: [
+                // Same guard on the rest side.
+                makeRest(
+                    measureIndex: 0,
+                    localTick: 480,
+                    voice: .upper,
+                    interval: .quarter,
+                    visibility: .printed,
+                    durationTicks: .max
+                )
+            ]
+        )
+
+        let input = try VirgoNotationProjection.resolvedNotation(
+            snapshot: snapshot,
+            expandedMeasures: [measure],
+            notePositionOverrides: [:]
+        )
+
+        #expect(input.notes.map(\.id) == [1])
+        #expect(input.rests.isEmpty)
+    }
+
     // MARK: - Step 2: trailing-measure expansion before package conversion
 
     @Test("Minimum measure count expansion happens before package conversion")
@@ -422,17 +473,18 @@ struct VirgoNotationProjectionTests {
         voice: NotationVoice,
         interval: NoteInterval,
         visibility: NotationRestVisibility,
+        durationTicks: Int? = nil,
         tuplet: TupletRatio? = nil,
         tupletID: RhythmTupletID? = nil
     ) -> RhythmLayoutRest {
-        let durationTicks = ticksPerWholeNote / Self.tickDivisor(of: interval)
+        let resolvedDurationTicks = durationTicks ?? ticksPerWholeNote / Self.tickDivisor(of: interval)
         return RhythmLayoutRest(
             position: RhythmEventPosition(
                 measureIndex: measureIndex,
                 localTick: localTick,
                 absoluteTick: measureIndex * 960 + localTick
             ),
-            durationTicks: durationTicks,
+            durationTicks: resolvedDurationTicks,
             voice: voice,
             rhythm: NotationRhythm(baseInterval: interval, tuplet: tuplet),
             visibility: visibility,
