@@ -206,28 +206,31 @@ struct DrumTabRenderProbeTests {
 
     private let checklistSupport = NotationSnapshotTestSupport()
 
+    /// Every checklist shape drives the production `GameplayNotationPreparer.prepare`
+    /// route (fixture shapes via `DrumTabFixtureHarness.render`, synthetic ones via
+    /// `NotationSnapshotTestSupport.prepare`) — never the direct engraving seam.
     private func makeChecklistEngraving(for shape: ChecklistShape) throws -> EngravedNotation {
         switch shape {
         case .sparseNextToDense:
-            return try checklistSupport.engrave(notes: [
+            return try checklistSupport.requireEngraved(checklistSupport.prepare(notes: [
                 Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
                 Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 0),
                 Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 1.0 / 16.0),
                 Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 2.0 / 16.0),
                 Note(interval: .sixteenth, noteType: .snare, measureNumber: 2, measureOffset: 3.0 / 16.0)
-            ])
+            ]))
         case .uncoveredFlagFootprints:
             return try DrumTabFixtureHarness
                 .render(DrumTabFixtureCatalog.isolatedFlaggedNotes).engraved
         case .upDisplacedSecond:
-            return try checklistSupport.engrave(notes: [
+            return try checklistSupport.requireEngraved(checklistSupport.prepare(notes: [
                 Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 0),
                 Note(interval: .eighth, noteType: .highTom, measureNumber: 1, measureOffset: 0),
                 Note(interval: .eighth, noteType: .snare, measureNumber: 1, measureOffset: 1.0 / 8.0),
                 Note(interval: .eighth, noteType: .highTom, measureNumber: 1, measureOffset: 1.0 / 8.0)
-            ])
+            ]))
         case .downDisplacedSecond:
-            return try checklistSupport.engrave(
+            return try checklistSupport.requireEngraved(checklistSupport.prepare(
                 notes: [
                     Note(interval: .eighth, noteType: .hiHatPedal, measureNumber: 1, measureOffset: 0),
                     Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 0),
@@ -235,7 +238,7 @@ struct DrumTabRenderProbeTests {
                     Note(interval: .eighth, noteType: .bass, measureNumber: 1, measureOffset: 1.0 / 8.0)
                 ],
                 notePositionOverrides: [.kick: .belowLine1, .hiHatPedal: .spaceBetweenLine1AndBelow]
-            )
+            ))
         }
     }
 

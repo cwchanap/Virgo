@@ -211,13 +211,17 @@ extension GameplayViewModel {
         )
     }
 
-    /// Logs a diagnostic when the engraving drops notes (i.e. the engraved
-    /// note-head count is lower than the timeline's event count).
+    /// Logs a diagnostic when the engraving drops timeline events (i.e. the
+    /// engraved note-head/control counts are lower than the timeline's, or
+    /// printed rests went missing — the projection drops each of these at
+    /// its span/lane guards).
     /// With no timeline snapshot the notation is intentionally uninstalled
     /// (HPA-164), so no drop diagnostics apply.
     private func logDroppedNotesIfAny() {
         guard cachedRhythmRuntime.availability == .valid else { return }
         logDroppedTimelineNotesIfAny()
+        logDroppedTimelineControlsIfAny()
+        logDroppedTimelineRestsIfAny()
     }
 
     private func logDroppedTimelineNotesIfAny() {
@@ -237,6 +241,37 @@ extension GameplayViewModel {
             "Engraver dropped \(droppedEventIDs.count) timeline note(s): "
                 + droppedReasons.joined(separator: "; ")
                 + (droppedEventIDs.count > 5 ? " … and \(droppedEventIDs.count - 5) more" : "")
+        )
+    }
+
+    private func logDroppedTimelineControlsIfAny() {
+        let renderedControlIDs = Set(cachedEngravedNotation?.controls.map(\.controlID) ?? [])
+        let droppedControlIDs = cachedRhythmRuntime.controlByEventID.keys
+            .filter { !renderedControlIDs.contains($0.rawValue) }
+            .sorted { $0.rawValue < $1.rawValue }
+        guard !droppedControlIDs.isEmpty else { return }
+        let droppedReasons = droppedControlIDs.prefix(5).map { eventID in
+            let kind = cachedRhythmRuntime.controlByEventID[eventID]?.kind.rawValue ?? "unknown"
+            return "eventID=\(eventID.rawValue), kind=\(kind)"
+        }
+        Logger.warning(
+            "Engraver dropped \(droppedControlIDs.count) timeline control event(s): "
+                + droppedReasons.joined(separator: "; ")
+                + (droppedControlIDs.count > 5 ? " … and \(droppedControlIDs.count - 5) more" : "")
+        )
+    }
+
+    /// Printed rests carry no event IDs (the projection's rests use an
+    /// adapter-local ordinal namespace), so the drop check is the monotone
+    /// count: the projection only ever removes printed candidates, never
+    /// synthesizes new ones.
+    private func logDroppedTimelineRestsIfAny() {
+        guard let snapshot = cachedRhythmRuntime.layoutSnapshot else { return }
+        let printedCount = snapshot.rests.filter { $0.visibility == .printed }.count
+        let renderedCount = cachedEngravedNotation?.rests.count ?? 0
+        guard renderedCount < printedCount else { return }
+        Logger.warning(
+            "Engraver dropped \(printedCount - renderedCount) printed timeline rest(s)"
         )
     }
 

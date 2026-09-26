@@ -497,6 +497,66 @@ struct GameplaySheetMusicGeometrySmokeTests {
     }
 }
 
+// MARK: - Rhythm-dot VoiceOver
+
+extension GameplaySheetMusicGeometrySmokeTests {
+    /// Hosted rhythm-dot VoiceOver: a prepare-produced dotted engraving,
+    /// installed through the production `installPreparedNotation` seam, must
+    /// surface one "Rhythm dot" element per painted dot in the mounted
+    /// tree — and the view must hide dots whose label is absent (the
+    /// negative leg keeps every other label to prove the reinstall took).
+    @Test("sheetMusicView exposes rhythm dot labels in the hosted hierarchy")
+    func hostedSheetExposesRhythmDotLabels() async throws {
+        try await TestSetup.withTestSetup {
+            let sheet = try await mountFixture(DrumTabFixtureCatalog.tripletHooksAndStop)
+            defer { sheet.viewModel.cleanup() }
+
+            let support = NotationSnapshotTestSupport()
+            let (dottedEngraving, dottedPresentation) = try support.requireReady(
+                support.prepare(rests: [
+                    RhythmLayoutRest(
+                        position: RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0),
+                        durationTicks: 360,
+                        voice: .upper,
+                        rhythm: NotationRhythm(baseInterval: .quarter, dotCount: 2),
+                        visibility: .printed,
+                        tupletID: nil
+                    )
+                ])
+            )
+            try #require(!dottedEngraving.rhythmDots.isEmpty, "dotted state must paint rhythm dots")
+
+            reinstall(sheet, engraving: dottedEngraving, presentation: dottedPresentation)
+            let labeled = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
+            #expect(
+                labeled.labels.filter { $0 == "Rhythm dot" }.count >= dottedEngraving.rhythmDots.count,
+                """
+                hosted tree lacks per-dot \"Rhythm dot\" labels — visited nodes: \
+                \(labeled.nodeKinds.prefix(24))
+                """
+            )
+
+            let strippedLabels = dottedPresentation.accessibilityLabels.filter { key, _ in
+                if case .rhythmDot = key { return false }
+                return true
+            }
+            reinstall(sheet, engraving: dottedEngraving, presentation: GameplayNotationPresentation(
+                annotations: dottedPresentation.annotations,
+                accessibilityLabels: strippedLabels
+            ))
+            let unlabeled = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
+            #expect(
+                !unlabeled.labels.contains("Rhythm dot"),
+                "\"Rhythm dot\" survived without a dot label — the mount isn't reading the map"
+            )
+            #expect(
+                unlabeled.labels.contains("Upper voice quarter rest"),
+                "non-dot labels vanished with the strip — the reinstall did not take"
+            )
+        }
+    }
+}
+
 extension EngravedNotation {
     /// A copy with selected primitive arrays swapped — the region
     /// differential's "off"/sabotaged states. Only the listed families are

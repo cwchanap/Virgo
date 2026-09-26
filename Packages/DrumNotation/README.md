@@ -90,7 +90,8 @@ relaxation or chart-wide X-per-tick scale, so a dense measure never rescales a s
 
 - **Per-gap rule.** The tick-0 column sits at `leadingMeasureInset`; each next column advances by
   `max(rhythmicGap, collisionGap)` with `rhythmicGap = minimumQuarterNoteSpacing * deltaTicks * 4 /
-  ticksPerWholeNote` (multiply-then-divide, exact up to the final `CGFloat`) and `collisionGap =
+  ticksPerWholeNote` (the tick delta converts to `CGFloat` first, so the scaling is floating-point
+  end-to-end and a near-`Int.max` delta cannot overflow) and `collisionGap` =
   previous.rightExtent + minimumInterColumnClearance + next.leftExtent`.
 - **Measure width.** Natural, never compressed: `leadingMeasureInset + (tick-0 → end-anchor span) +
   trailingMeasureInset`. An over-wide measure keeps its natural width.
@@ -99,8 +100,8 @@ relaxation or chart-wide X-per-tick scale, so a dense measure never rescales a s
   cross `availableRowWidth`; a measure that cannot fit even alone on a row still gets its own row at
   natural width.
 - **Full-measure rests.** The timing anchor stays the column's `logicalColumnX`; the rest's
-  `visualX` (finalized once the width is known) is the center of the measure content span
-  (`leadingMeasureInset … width − trailingMeasureInset`).
+  `visualX` (finalized once the width is known) is sheet-local — the row origin plus the center of
+  the measure-local content span (`leadingMeasureInset … width − trailingMeasureInset`).
 - **Tick lookup.** `position(measureIndex:localTick:)` takes a `Double` local tick (the live
   playhead passes continuous ticks). Exact anchors return their `logicalColumnX`; values between
   anchors interpolate linearly between adjacent columns of the same measure only — never across a
@@ -128,7 +129,9 @@ is a semantic conversion, not a field rename.
 numerals, bar lines) at the engraving's final coordinates. It reads nothing from the app: no
 Virgo environment values, theme, or global layout, and no gameplay clock. Colors come from
 `DrumNotationAppearance`; VoiceOver text comes from the `accessibilityLabels` map keyed by
-`NotationSemanticID` (`.note(id)`, `.rest(id)`, `.control(id)`, `.tuplet(id)`). Accessibility copy
+`NotationSemanticID` (`.note(id)`, `.rest(id)`, `.control(id)`, `.tuplet(id)`,
+`.rhythmDot(source, index:)` — one entry per painted dot, `index` counting per source in the
+engraving's dot order). Accessibility copy
 is a view-only input — changing the label map never changes engraving equality or geometry.
 
 ## Vendored Bravura font
