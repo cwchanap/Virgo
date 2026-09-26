@@ -121,6 +121,63 @@ struct GameplayNotationPreparationTests {
         #expect(engraved.measures.map(\.index) == [0, 1, 2])
     }
 
+    @Test("padding measures keep .supported when the template measure is not")
+    func paddingMeasuresKeepSupportedWhenTemplateIsNot() throws {
+        // The last real measure carries a warning verdict; the synthesized
+        // padding bars must not inherit it — they have no events to diagnose,
+        // and a copied verdict would stamp the warning badge onto every
+        // padding measure through `rhythmWarnings`.
+        let supported = makeMeasure(index: 0, startTick: 0, durationTicks: 960)
+        let warned = RhythmMeasure(
+            measureIndex: 1,
+            startTick: 960,
+            durationTicks: 960,
+            timeSignature: .fourFour,
+            beatGroups: [RhythmBeatGroup(
+                groupIndex: 0,
+                startTick: 0,
+                durationTicks: 960,
+                isResidual: false
+            )],
+            engravingSupport: .warning([.indeterminateTerminalDuration])
+        )
+        let note = RhythmLayoutNote(
+            eventID: RhythmEventID(rawValue: 1),
+            sourceLaneID: "12",
+            sourceChipID: nil,
+            noteType: .snare,
+            position: RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0),
+            durationTicks: 240,
+            rhythm: NotationRhythm(baseInterval: .quarter),
+            tupletID: nil
+        )
+        let snapshot = try makeSnapshot(measures: [supported, warned], notes: [note])
+
+        let expanded = GameplayNotationPreparer.expandedRhythmMeasures(
+            snapshot,
+            minimumMeasureCount: 4
+        )
+
+        #expect(expanded.map(\.engravingSupport) == [
+            .supported,
+            .warning([.indeterminateTerminalDuration]),
+            .supported,
+            .supported
+        ])
+
+        // End-to-end: only the real warned measure gets a warning annotation.
+        let request = GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: 4,
+            style: .gameplayDefault,
+            notePositionOverrides: [:]
+        )
+        let (_, presentation) = try NotationSnapshotTestSupport().requireReady(
+            GameplayNotationPreparer.prepare(request)
+        )
+        #expect(presentation.annotations.rhythmWarnings.map(\.scope) == [.measure(1)])
+    }
+
     @Test("malformed beat groups fail preparation instead of trapping")
     func malformedBeatGroupsFailPreparation() throws {
         // Groups cover only 240 of the measure's 960 ticks: package input

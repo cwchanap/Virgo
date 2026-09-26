@@ -130,8 +130,11 @@ enum GameplayNotationPreparer {
     // MARK: - Measure expansion
 
     /// Appends synthesized trailing measures up to `minimumMeasureCount`,
-    /// reusing the last snapshot measure's signature/support so the sheet's
-    /// tail keeps the chart's meter.
+    /// reusing the last snapshot measure's signature so the sheet's tail
+    /// keeps the chart's meter. Padding measures carry no events, so their
+    /// engraving support is always `.supported` — the template's warning /
+    /// unsupported verdict describes its own events and must not stamp a
+    /// diagnostic badge onto every padding bar.
     static func expandedRhythmMeasures(
         _ snapshot: RhythmLayoutSnapshot,
         minimumMeasureCount: Int
@@ -159,7 +162,7 @@ enum GameplayNotationPreparer {
                     durationTicks: durationTicks,
                     ticksPerWholeNote: snapshot.ticksPerWholeNote
                 ),
-                engravingSupport: template.engravingSupport
+                engravingSupport: .supported
             ))
         }
         return measures

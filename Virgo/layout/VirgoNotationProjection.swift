@@ -138,6 +138,18 @@ enum VirgoNotationProjection {
         )
     }
 
+    /// Overflow-safe `absoluteTick == startTick + localTick`: a pathological
+    /// tick sum drops the event instead of trapping — `prepare`'s do/catch
+    /// cannot catch an arithmetic trap, and this runs on the detached worker.
+    private static func absoluteTickMatches(
+        _ absoluteTick: Int,
+        measureStartTick: Int,
+        localTick: Int
+    ) -> Bool {
+        let sum = measureStartTick.addingReportingOverflow(localTick)
+        return !sum.overflow && absoluteTick == sum.partialValue
+    }
+
     /// `NotationVoice` → package `NotationVoiceRole` (file-private so the
     /// tuplet arm in this file can share it).
     fileprivate static func notationVoiceRole(_ voice: NotationVoice) -> NotationVoiceRole {
@@ -210,7 +222,11 @@ enum VirgoNotationProjection {
                 let measure = measuresByIndex[note.position.measureIndex],
                 note.position.localTick >= 0,
                 note.position.localTick < measure.durationTicks,
-                note.position.absoluteTick == measure.startTick + note.position.localTick,
+                absoluteTickMatches(
+                    note.position.absoluteTick,
+                    measureStartTick: measure.startTick,
+                    localTick: note.position.localTick
+                ),
                 // Same duration/span guards rests get: a malformed note drops
                 // here rather than failing the whole chart inside the package's
                 // ResolvedNotation validation. Subtraction keeps the span check
@@ -279,7 +295,11 @@ enum VirgoNotationProjection {
                 measure.engravingSupport.permitsEngraving,
                 rest.position.localTick >= 0,
                 rest.position.localTick < measure.durationTicks,
-                rest.position.absoluteTick == measure.startTick + rest.position.localTick,
+                absoluteTickMatches(
+                    rest.position.absoluteTick,
+                    measureStartTick: measure.startTick,
+                    localTick: rest.position.localTick
+                ),
                 rest.durationTicks > 0,
                 // Same non-trapping subtraction form as the note guard.
                 rest.durationTicks <= measure.durationTicks - rest.position.localTick
@@ -310,7 +330,11 @@ enum VirgoNotationProjection {
             guard let measure = measuresByIndex[control.position.measureIndex],
                 control.position.localTick >= 0,
                 control.position.localTick < measure.durationTicks,
-                control.position.absoluteTick == measure.startTick + control.position.localTick,
+                absoluteTickMatches(
+                    control.position.absoluteTick,
+                    measureStartTick: measure.startTick,
+                    localTick: control.position.localTick
+                ),
                 let targetLaneID = control.event.targetLaneID,
                 let target = DrumNotationCatalog.resolveTarget(laneID: targetLaneID)
             else { return nil }

@@ -74,6 +74,32 @@ struct GameplayNotationAccessibilityTests {
         #expect(presentation.accessibilityLabels[.rest(rest.restID)] == "Upper voice full-measure rest")
     }
 
+    @Test("rhythm dot labels cover every painted dot per source")
+    func rhythmDotLabelsCoverEveryPaintedDot() throws {
+        // A double-dotted rest paints two dots — prepare must emit one
+        // "Rhythm dot" label per dot with per-source indices matching
+        // `DrumNotationView`'s enumeration order (a dot with no label is
+        // hidden by the view).
+        let (engraved, presentation) = try support.requireReady(support.prepare(
+            rests: [
+                RhythmLayoutRest(
+                    position: RhythmEventPosition(measureIndex: 0, localTick: 0, absoluteTick: 0),
+                    durationTicks: 360,
+                    voice: .upper,
+                    rhythm: NotationRhythm(baseInterval: .quarter, dotCount: 2),
+                    visibility: .printed,
+                    tupletID: nil
+                )
+            ]
+        ))
+
+        let rest = try #require(engraved.rests.first)
+        #expect(engraved.rhythmDots.count == 2)
+        #expect(engraved.rhythmDots.allSatisfy { $0.source == .rest(rest.restID) })
+        #expect(presentation.accessibilityLabels[.rhythmDot(.rest(rest.restID), index: 0)] == "Rhythm dot")
+        #expect(presentation.accessibilityLabels[.rhythmDot(.rest(rest.restID), index: 1)] == "Rhythm dot")
+    }
+
     @Test("tuplet labels carry the localized voice and ratio wording")
     func tupletLabelsCarryLocalizedVoiceAndRatio() throws {
         let (engraved, presentation) = try support.requireReady(
