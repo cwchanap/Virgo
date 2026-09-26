@@ -239,6 +239,38 @@ struct VirgoNotationProjectionTests {
         #expect(input.rests.isEmpty)
     }
 
+    @Test("Overflowing absolute-tick sums drop at the guard instead of trapping")
+    func overflowingAbsoluteTickSumsDropInsteadOfTrapping() throws {
+        // `localTick < durationTicks` means a measure whose
+        // `startTick + localTick` overflows necessarily fails package
+        // `startTick + durationTicks` validation too — the malformed events
+        // must drop at the projection guards so the input init throws
+        // instead of trapping on a bare `+` first.
+        let measure = makeMeasure(index: 0, startTick: .max - 10)
+        let snapshot = try makeSnapshot(
+            measures: [measure],
+            // `absoluteTick` equals the wrapped sum: the drop must come from
+            // the overflow flag, not value inequality.
+            notes: [makeNote(
+                eventID: 1, noteType: .snare, measureIndex: 0,
+                localTick: 240, absoluteTick: (Int.max - 10) &+ 240, interval: .quarter
+            )],
+            rests: [makeRest(
+                measureIndex: 0, localTick: 480, voice: .upper,
+                interval: .quarter, visibility: .printed
+            )],
+            controls: [makeControl(eventID: 2, measureIndex: 0, localTick: 600)]
+        )
+
+        #expect(throws: ResolvedNotationInput.ValidationError.invalidMeasure(
+            index: 0, startTick: .max - 10, durationTicks: 960
+        )) {
+            try VirgoNotationProjection.resolvedNotation(
+                snapshot: snapshot, expandedMeasures: [measure], notePositionOverrides: [:]
+            )
+        }
+    }
+
     // MARK: - Step 2: trailing-measure expansion before package conversion
 
     @Test("Minimum measure count expansion happens before package conversion")
