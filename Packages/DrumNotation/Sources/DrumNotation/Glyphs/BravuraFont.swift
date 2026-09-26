@@ -15,12 +15,20 @@ enum BravuraFont {
     /// Cached package font. Swift `static let` initialization is thread-safe
     /// by construction (dispatch_once semantics).
     static let cgFont: CGFont = makeCGFont()
+    /// metadata.json decoded once — both tables derive from the single parse.
+    private static let metadata = decodeMetadata()
     /// `glyphsWithAnchors` from metadata.json; point values are staff spaces.
-    private static let stemAnchors: [String: [String: CGPoint]] = decodeStemAnchors()
+    private static var stemAnchors: [String: [String: CGPoint]] { metadata.stemAnchors }
+    /// `glyphAdvanceWidths` from metadata.json; values are staff spaces.
+    private static var advanceWidths: [String: CGFloat] { metadata.advanceWidths }
     /// CTFont at size == unitsPerEm so glyph paths come out in font units.
     private static let ctFont: CTFont = CTFontCreateWithGraphicsFont(
         cgFont, CGFloat(cgFont.unitsPerEm), nil, nil
     )
+    /// Glyph ID + raw outline + outline bounds per glyph — the CoreText
+    /// calls are the same for a given glyph at any staffSpace, so each
+    /// catalog glyph pays them once.
+    private static let glyphCache = GlyphCache()
 
     private static func makeCGFont() -> CGFont {
         guard let url = Bundle.module.url(forResource: "Bravura", withExtension: "otf"),
@@ -33,16 +41,22 @@ enum BravuraFont {
         return font
     }
 
-    private static func decodeStemAnchors() -> [String: [String: CGPoint]] {
+    /// Both decoded metadata tables in one JSON parse — the file is ~730KB
+    /// and was previously read and parsed per table.
+    private struct Metadata {
+        let stemAnchors: [String: [String: CGPoint]]
+        let advanceWidths: [String: CGFloat]
+    }
+
+    private static func decodeMetadata() -> Metadata {
         guard let url = Bundle.module.url(forResource: "metadata", withExtension: "json"),
             let data = try? Data(contentsOf: url),
-            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let all = root["glyphsWithAnchors"] as? [String: [String: Any]]
+            let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
             preconditionFailure("metadata.json is missing or malformed in DrumNotation package resources")
         }
         var anchors: [String: [String: CGPoint]] = [:]
-        for (name, entry) in all {
+        for (name, entry) in (root["glyphsWithAnchors"] as? [String: [String: Any]]) ?? [:] {
             var points: [String: CGPoint] = [:]
             for key in ["stemUpSE", "stemDownNW"] {
                 if let pair = entry[key] as? [CGFloat], pair.count == 2 {
@@ -51,11 +65,46 @@ enum BravuraFont {
             }
             if !points.isEmpty { anchors[name] = points }
         }
-        return anchors
+        let widths = (root["glyphAdvanceWidths"] as? [String: Any]) ?? [:]
+        return Metadata(
+            stemAnchors: anchors,
+            advanceWidths: widths.compactMapValues { value in
+                (value as? NSNumber).map { CGFloat(truncating: $0) }
+            }
+        )
+    }
+
+    /// Lock-guarded per-glyph cache: engraving runs off-main and the view
+    /// reads the same outlines on the main actor, so misses populate under
+    /// the lock while hits stay a dictionary read.
+    struct GlyphCacheEntry {
+        let glyphID: CGGlyph
+        let outline: CGPath
+        let bounds: CGRect
+    }
+
+    private final class GlyphCache {
+        private var entries: [UInt32: GlyphCacheEntry] = [:]
+        private let lock = NSLock()
+
+        func entry(for glyph: SMuFLGlyph, ctFont: CTFont) -> GlyphCacheEntry {
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached = entries[glyph.scalar] { return cached }
+            let glyphID = BravuraFont.resolveGlyphID(for: glyph, ctFont: ctFont)
+            let outline = BravuraFont.makeRawPath(for: glyph, glyphID: glyphID, ctFont: ctFont)
+            let entry = GlyphCacheEntry(glyphID: glyphID, outline: outline, bounds: outline.boundingBox)
+            entries[glyph.scalar] = entry
+            return entry
+        }
     }
 
     /// Resolves a catalog glyph's Unicode scalar to its Bravura CGGlyph.
     static func glyphID(for glyph: SMuFLGlyph) -> CGGlyph {
+        glyphCache.entry(for: glyph, ctFont: ctFont).glyphID
+    }
+
+    private static func resolveGlyphID(for glyph: SMuFLGlyph, ctFont: CTFont) -> CGGlyph {
         guard let scalar = Unicode.Scalar(glyph.scalar) else {
             let hex = String(glyph.scalar, radix: 16)
             preconditionFailure("glyph \(glyph.name) scalar U+\(hex) is not a Unicode scalar")
@@ -73,7 +122,16 @@ enum BravuraFont {
 
     /// Raw Bravura outline in font units (Y-up), per the CTFont size convention above.
     static func rawPath(for glyph: SMuFLGlyph) -> CGPath {
-        guard let path = CTFontCreatePathForGlyph(ctFont, glyphID(for: glyph), nil) else {
+        glyphCache.entry(for: glyph, ctFont: ctFont).outline
+    }
+
+    /// The raw outline's font-unit bounds — cached with the outline.
+    static func rawBounds(for glyph: SMuFLGlyph) -> CGRect {
+        glyphCache.entry(for: glyph, ctFont: ctFont).bounds
+    }
+
+    private static func makeRawPath(for glyph: SMuFLGlyph, glyphID: CGGlyph, ctFont: CTFont) -> CGPath {
+        guard let path = CTFontCreatePathForGlyph(ctFont, glyphID, nil) else {
             preconditionFailure("Bravura has no outline for glyph \(glyph.name)")
         }
         return path
@@ -105,7 +163,7 @@ enum BravuraFont {
         requiresStemAnchor: Bool
     ) -> NoteheadMetrics {
         let scale = staffScale(for: staffSpace)
-        let rawBounds = rawPath(for: glyph).boundingBox
+        let rawBounds = BravuraFont.rawBounds(for: glyph)
         let t = transform(rawBounds: rawBounds, scale: scale)
         let anchorKey = stemDirection == .up ? "stemUpSE" : "stemDownNW"
         let stemAnchorOffset: CGPoint
@@ -130,17 +188,83 @@ enum BravuraFont {
 
     static func primitiveMetrics(glyph: SMuFLGlyph, staffSpace: CGFloat) -> PrimitiveGlyphMetrics {
         let scale = staffScale(for: staffSpace)
-        let rawBounds = rawPath(for: glyph).boundingBox
+        let rawBounds = BravuraFont.rawBounds(for: glyph)
         return PrimitiveGlyphMetrics(paintedBounds: rawBounds.applying(transform(rawBounds: rawBounds, scale: scale)))
     }
 
     static func flagMetrics(glyph: SMuFLGlyph, staffSpace: CGFloat) -> FlagGlyphMetrics {
         let scale = staffScale(for: staffSpace)
-        let rawBounds = rawPath(for: glyph).boundingBox
+        let rawBounds = BravuraFont.rawBounds(for: glyph)
         let t = transform(rawBounds: rawBounds, scale: scale)
         // SMuFL flags carry no stemUpSE/stemDownNW anchors; the stem
         // attachment reference is the flag glyph origin (font origin 0, 0).
         return FlagGlyphMetrics(paintedBounds: rawBounds.applying(t), attachmentOffset: CGPoint.zero.applying(t))
+    }
+
+    /// A fitted numeral path for `actual`: every digit paints as its Bravura
+    /// `tupletN` glyph (U+E880–U+E889), placed by the metadata advance
+    /// widths — real measurement, not a scale-factor floor — and the whole
+    /// run uniformly scaled so its union fits `size`. The returned path is
+    /// centered on the origin in Y-down points, ready to frame to the
+    /// reserved label rect. `ratio.actual` is an arbitrary positive Int per
+    /// the resolved-input model, so any digit count must fit.
+    ///
+    /// Results are cached per (actual, size) — `DrumNotationView` calls this
+    /// inside its body, and the result is identical for repeated evaluations
+    /// of the same tuplet at the same label size.
+    static func tupletNumeralPath(actual: Int, fitting size: CGSize) -> CGPath {
+        precondition(actual > 0, "tuplet ratio.actual must be positive (got \(actual))")
+        return numeralPathCache.path(actual: actual, size: size) {
+            makeTupletNumeralPath(actual: actual, fitting: size)
+        }
+    }
+
+    private static let numeralPathCache = NumeralPathCache()
+
+    private struct NumeralKey: Hashable {
+        let actual: Int
+        let width: CGFloat
+        let height: CGFloat
+    }
+
+    private final class NumeralPathCache {
+        private var paths: [NumeralKey: CGPath] = [:]
+        private let lock = NSLock()
+
+        func path(actual: Int, size: CGSize, build: () -> CGPath) -> CGPath {
+            let key = NumeralKey(actual: actual, width: size.width, height: size.height)
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached = paths[key] { return cached }
+            let path = build()
+            paths[key] = path
+            return path
+        }
+    }
+
+    private static func makeTupletNumeralPath(actual: Int, fitting size: CGSize) -> CGPath {
+        let unitsPerStaffSpace = CGFloat(cgFont.unitsPerEm) / 4
+        var placed: [CGPath] = []
+        var xOffset: CGFloat = 0
+        for digit in String(actual).compactMap(\.wholeNumberValue) {
+            let name = "tuplet\(digit)"
+            guard let advance = advanceWidths[name] else {
+                preconditionFailure("Bravura metadata is missing glyphAdvanceWidths.\(name)")
+            }
+            let glyph = SMuFLGlyph(name: name, scalar: 0xE880 + UInt32(digit))
+            var placement = CGAffineTransform(translationX: xOffset, y: 0)
+            if let shifted = rawPath(for: glyph).copy(using: &placement) {
+                placed.append(shifted)
+            }
+            xOffset += advance * unitsPerStaffSpace
+        }
+        var union = CGRect.null
+        for path in placed { union = union.union(path.boundingBox) }
+        let scale = min(size.width / union.width, size.height / union.height)
+        let fit = transform(rawBounds: union, scale: scale)
+        let combined = CGMutablePath()
+        for path in placed { combined.addPath(path, transform: fit) }
+        return combined
     }
 }
 

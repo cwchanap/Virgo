@@ -11,33 +11,46 @@ enum Fixtures {
     static func measure(
         index: Int = 0,
         startTick: Int = 0,
-        durationTicks: Int = ticksPerWholeNote
+        durationTicks: Int = ticksPerWholeNote,
+        meter: NotationMeter = NotationMeter(beats: 4, noteValue: 4),
+        beatGroups: [ResolvedBeatGroup]? = nil
     ) -> ResolvedMeasure {
-        ResolvedMeasure(index: index, startTick: startTick, durationTicks: durationTicks)
+        ResolvedMeasure(
+            index: index,
+            startTick: startTick,
+            durationTicks: durationTicks,
+            meter: meter,
+            beatGroups: beatGroups ?? [ResolvedBeatGroup(startTick: 0, durationTicks: durationTicks)]
+        )
     }
 
     static func note(
         id: Int = 42,
         measureIndex: Int = 0,
-        localTick: Int = 0
+        localTick: Int = 0,
+        durationTicks: Int = 120
     ) -> ResolvedNote {
         ResolvedNote(
             id: id,
             position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
             stemDirection: .up,
             staffStep: 3,
-            stemMember: true,
             noteheadStyle: .x,
             duration: .sixteenth,
             dotCount: 0,
-            visibleFlagDuration: .sixteenth
+            voice: .upper,
+            durationTicks: durationTicks,
+            tiebreakOrder: 0,
+            isRhythmEngravable: true
         )
     }
 
     /// Fully parameterized note for column/displacement/ink tests. Stem
-    /// membership defaults to the stemmed-duration rule the caller maps
-    /// (whole heads share no stem); pass an explicit value to model a
-    /// supported/unsupported override.
+    /// membership and visible flags derive from `duration`/`isRhythmEngravable`
+    /// through the real stem topology — there is no per-note flag or
+    /// membership override to pass. `durationTicks` defaults to the
+    /// interval's exact tick count at the fixture's 1920 ticks per whole
+    /// note; pass an explicit value to pin boundary cases.
     static func makeNote(
         id: Int,
         localTick: Int,
@@ -46,21 +59,41 @@ enum Fixtures {
         headStyle: PercussionNoteheadStyle = .x,
         duration: NotationDuration = .quarter,
         dotCount: Int = 0,
-        flag: NotationFlagDuration? = nil,
-        stemMember: Bool? = nil,
-        measureIndex: Int = 0
+        measureIndex: Int = 0,
+        voice: NotationVoiceRole = .upper,
+        durationTicks: Int? = nil,
+        tiebreakOrder: Int = 0,
+        isRhythmEngravable: Bool = true,
+        articulation: PercussionArticulation? = nil
     ) -> ResolvedNote {
         ResolvedNote(
             id: id,
             position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
             stemDirection: stem,
             staffStep: staffStep,
-            stemMember: stemMember ?? (duration != .whole),
             noteheadStyle: headStyle,
             duration: duration,
             dotCount: dotCount,
-            visibleFlagDuration: flag
+            voice: voice,
+            durationTicks: durationTicks ?? ticks(for: duration),
+            tiebreakOrder: tiebreakOrder,
+            isRhythmEngravable: isRhythmEngravable,
+            articulation: articulation
         )
+    }
+
+    /// Exact tick count of a `NotationDuration` at the fixture's
+    /// 1920 ticks per whole note.
+    private static func ticks(for duration: NotationDuration) -> Int {
+        switch duration {
+        case .whole: return ticksPerWholeNote
+        case .half: return ticksPerWholeNote / 2
+        case .quarter: return ticksPerWholeNote / 4
+        case .eighth: return ticksPerWholeNote / 8
+        case .sixteenth: return ticksPerWholeNote / 16
+        case .thirtySecond: return ticksPerWholeNote / 32
+        case .sixtyFourth: return ticksPerWholeNote / 64
+        }
     }
 
     static func rest(
@@ -73,7 +106,9 @@ enum Fixtures {
             position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
             duration: .quarter,
             dotCount: 1,
-            isFullMeasure: false
+            isFullMeasure: false,
+            voice: .upper,
+            durationTicks: 480
         )
     }
 
@@ -82,7 +117,12 @@ enum Fixtures {
         measureIndex: Int = 0,
         localTick: Int = 480
     ) -> ResolvedControl {
-        ResolvedControl(id: id, position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick))
+        ResolvedControl(
+            id: id,
+            position: NotationTickPosition(measureIndex: measureIndex, localTick: localTick),
+            kind: .stop,
+            targetStaffStep: 0
+        )
     }
 
     static func document(
@@ -90,14 +130,16 @@ enum Fixtures {
         measures: [ResolvedMeasure] = [Fixtures.measure()],
         notes: [ResolvedNote] = [Fixtures.note()],
         rests: [ResolvedRest] = [Fixtures.rest()],
-        controls: [ResolvedControl] = [Fixtures.control()]
+        controls: [ResolvedControl] = [Fixtures.control()],
+        tuplets: [ResolvedTupletGroup] = []
     ) throws -> ResolvedNotationInput {
         try ResolvedNotationInput(
             ticksPerWholeNote: ticksPerWholeNote,
             measures: measures,
             notes: notes,
             rests: rests,
-            controls: controls
+            controls: controls,
+            tuplets: tuplets
         )
     }
 

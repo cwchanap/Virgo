@@ -9,7 +9,7 @@ extension DrumTabFixtureCatalog {
     ///
     /// Content lives in DTX measure 0 (not 1) to avoid the empty lead-in
     /// measure that content-in-1 would add ahead of it (see `sixteenthRun`'s
-    /// doc comment); `result.layout.measures.first` would otherwise be that
+    /// doc comment); `result.engraved.measures.first` would otherwise be that
     /// lead-in, not the measure under test.
     ///
     /// A one-note sentinel in measure 1 gives the tick-33 chip a same-voice
@@ -154,6 +154,53 @@ extension DrumTabFixtureCatalog {
         dtx: chart([
             DrumTabFixture.line(measure: 0, lane: "11", at: Array(0..<12), total: 12),
             DrumTabFixture.line(measure: 1, lane: "11", at: [0], total: 1)
+        ])
+    )
+
+    /// Fixture 12: one real-DTX chart carrying every semantic primitive the
+    /// mounted smoke needs to pin — a supported eighth-note triplet,
+    /// explicit forward and backward hooks, a stop control, and the
+    /// unconditional lower-voice full-measure rests (no lower-voice lane is
+    /// ever used). Unlike `tripletGrid`, the triplet here is the
+    /// `.supported` kind: the 6/8 measure resolves `ticksPerWholeNote`
+    /// high enough that triplet eighths stay integral.
+    ///
+    /// Measure 0 (snare, 18-position grid): chips at 0/2/4 are three
+    /// evenly spaced eighth-note triplets covering one quarter beat — the
+    /// same supported measure shape `RhythmTimelineIntegrationTests`
+    /// drives through resolve → snapshot → engrave — followed by four
+    /// plain eighths at 6/9/12/15. The stop control targets the snare lane
+    /// at the triplet's first onset tick.
+    ///
+    /// Measure 1 (hi-hat, 72-position grid): two identical
+    /// {eighth, sixteenth, eighth, sixteenth} beats at
+    /// 0/12/18/30 and 36/48/54/66. In each beat the two sixteenths are
+    /// separated by an eighth, so the shared topology cannot run a level-1
+    /// full segment between them: the first sixteenth's nearer neighbor is
+    /// the *next* event (`forwardHook`), and the last sixteenth ends the
+    /// run (`backwardHook`) — `BeamTopology`'s singleton rule.
+    ///
+    /// Measure 2's one-chip sentinels give both used lanes same-voice
+    /// terminal evidence, matching the other fixtures' convention.
+    static let tripletHooksAndStop = DrumTabFixture(
+        name: "triplet-hooks-stop",
+        dtx: chart([
+            "#VIRGO_TIME_SIGNATURE: 6/8",
+            "#VIRGO_FEEL: straight",
+            "#VIRGO_CONTROL: 1",
+            DrumTabFixture.line(
+                measure: 0, lane: "12",
+                at: [0, 2, 4, 6, 9, 12, 15], total: 18
+            ),
+            DrumTabFixture.line(
+                measure: 0, lane: "21", positions: [0: "12"], total: 18
+            ),
+            DrumTabFixture.line(
+                measure: 1, lane: "11",
+                at: [0, 12, 18, 30, 36, 48, 54, 66], total: 72
+            ),
+            DrumTabFixture.line(measure: 2, lane: "11", at: [0], total: 1),
+            DrumTabFixture.line(measure: 2, lane: "12", at: [0], total: 1)
         ])
     )
 }

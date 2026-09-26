@@ -1,3 +1,18 @@
+// HPA-166 Task 2 — package ownership of Virgo's proven beam topology.
+// This is a mechanical port of `Virgo/layout/NotationBeamTopology.swift`:
+// same primary runs, exact-duration adjacency, beam levels, hook-neighbor
+// rule, and boundaries by measure, voice, stem direction and beat-group
+// ordinal.
+//
+// The pre-format row is intentionally absent from every grouping key — the
+// formatter packs whole measures onto rows, so a group always maps to
+// exactly one row (asserted post-format by the package test suite).
+// Everything here is internal: the engraving result and tests consume the
+// topology; no public API is added. Stem groups and the visible-flag plan
+// that rides this topology live in `StemTopology.swift`.
+
+// MARK: - Beam topology (mechanical port)
+
 enum BeamTimelineEventRole: Hashable {
     case beamable(requiredBeamLevels: Int, durationTicks: Int?)
     case boundary
@@ -13,12 +28,15 @@ enum BeamTimelineEventRole: Hashable {
     }
 }
 
+/// The package timeline event: measure-local tick + absolute tick replace
+/// the app's `NotationTimeColumn`; no row exists pre-format.
 struct BeamTimelineEvent: Hashable {
-    let timeColumn: NotationTimeColumn
-    let row: Int
-    let voice: NotationVoice
-    let stemDirection: StemDirection
-    let noteHeadIDs: [UInt64]
+    let measureIndex: Int
+    let localTick: Int
+    let absoluteTick: Int
+    let voice: NotationVoiceRole
+    let stemDirection: NotationStemDirection
+    let noteIDs: [Int]
     let role: BeamTimelineEventRole
 }
 
@@ -37,9 +55,8 @@ struct BeamTopologySegment: Hashable {
 
 struct BeamPrimaryGroupID: Hashable {
     let measureIndex: Int
-    let row: Int
-    let voice: NotationVoice
-    let stemDirection: StemDirection
+    let voice: NotationVoiceRole
+    let stemDirection: NotationStemDirection
     let beatGroupIndex: Int
     let firstAbsoluteTick: Int
     let lastAbsoluteTick: Int
@@ -61,73 +78,23 @@ struct BeamTopologyResult: Equatable {
     )
 }
 
+/// Beat-scoped beam topology, ported verbatim minus the pre-format row and
+/// the legacy simple-meter compatibility overload (the package only ever
+/// sees resolved measure beat groups).
 struct NotationBeamTopologyBuilder {
     private struct GroupKey: Hashable {
         let measureIndex: Int
-        let row: Int
-        let voice: NotationVoice
-        let direction: StemDirection
+        let voice: NotationVoiceRole
+        let direction: NotationStemDirection
         let beatGroupIndex: Int
         let beatGroupStartTick: Int
         let beatGroupDurationTicks: Int
     }
 
-    /// Builds beat-scoped beam topology from timeline events.
-    ///
-    /// Events are grouped by measure, row, voice, stem direction, and beat
-    /// group index. Consecutive beamable events within a beat group form
-    /// primary runs, which are then segmented into full beams and hooks.
-    /// This legacy fixed-measure overload supports simple X/4 meters only.
-    /// Timeline-native callers use ``build(events:measures:)`` so compound and
-    /// variable measures retain their resolved beat groups.
-    func build(
-        events: [BeamTimelineEvent],
-        ticksPerMeasure: Int,
-        timeSignature: TimeSignature
-    ) -> BeamTopologyResult {
-        // Keep the compatibility overload limited to its original simple-meter
-        // contract. Resolved compound/variable grouping belongs to the
-        // measure-driven overload above rather than being reconstructed here.
-        guard timeSignature.noteValue == 4,
-              ticksPerMeasure > 0,
-              ticksPerMeasure.isMultiple(of: timeSignature.beatsPerMeasure) else {
-            return .empty
-        }
-
-        let beatTicks = ticksPerMeasure / timeSignature.beatsPerMeasure
-        let measure = RhythmMeasure(
-            measureIndex: 0,
-            startTick: 0,
-            durationTicks: ticksPerMeasure,
-            timeSignature: timeSignature,
-            beatGroups: (0..<timeSignature.beatsPerMeasure).map {
-                RhythmBeatGroup(
-                    groupIndex: $0,
-                    startTick: $0 * beatTicks,
-                    durationTicks: beatTicks,
-                    isResidual: false
-                )
-            },
-            engravingSupport: .supported
-        )
-        let measureIndices = Set(events.map(\.timeColumn.measureIndex))
-        let measures = measureIndices.map { index in
-            RhythmMeasure(
-                measureIndex: index,
-                startTick: 0,
-                durationTicks: measure.durationTicks,
-                timeSignature: measure.timeSignature,
-                beatGroups: measure.beatGroups,
-                engravingSupport: measure.engravingSupport
-            )
-        }
-        return build(events: events, measures: measures.isEmpty ? [measure] : measures)
-    }
-
     /// Builds topology from the canonical measure-local beat groups.
-    func build(events: [BeamTimelineEvent], measures: [RhythmMeasure]) -> BeamTopologyResult {
+    func build(events: [BeamTimelineEvent], measures: [ResolvedMeasure]) -> BeamTopologyResult {
         guard !measures.isEmpty,
-              Set(measures.map(\.measureIndex)).count == measures.count,
+              Set(measures.map(\.index)).count == measures.count,
               measures.allSatisfy(validMeasure) else {
             return .empty
         }
@@ -142,32 +109,29 @@ struct NotationBeamTopologyBuilder {
 
     /// Groups beamable event indices by their containing beat.
     ///
-    /// Events whose `tickWithinMeasure` falls outside `[0, ticksPerMeasure)` are
-    /// intentionally skipped: such ticks arise only from malformed input or
-    /// partial-measure/pickup columns that beat-scoped topology does not model.
-    /// Dropping them keeps the grouper total without manufacturing a beat index
-    /// from an out-of-range tick. The skip is silent by design — callers that
-    /// need to detect malformed input should validate upstream.
+    /// Events whose `localTick` falls outside `[0, durationTicks)` are
+    /// intentionally skipped: such ticks arise only from malformed input
+    /// beat-scoped topology does not model. Validated input never produces
+    /// them; the silent skip mirrors the app builder.
     private func groupEventsByResolvedGroup(
         events: [BeamTimelineEvent],
-        measures: [RhythmMeasure]
+        measures: [ResolvedMeasure]
     ) -> [GroupKey: [Int]] {
-        let measuresByIndex = Dictionary(uniqueKeysWithValues: measures.map { ($0.measureIndex, $0) })
+        let measuresByIndex = Dictionary(uniqueKeysWithValues: measures.map { ($0.index, $0) })
         var grouped: [GroupKey: [Int]] = [:]
         for (index, event) in events.enumerated() {
-            let tick = event.timeColumn.tickWithinMeasure
-            guard let measure = measuresByIndex[event.timeColumn.measureIndex],
-                  measure.engravingSupport.permitsEngraving,
+            let tick = event.localTick
+            guard let measure = measuresByIndex[event.measureIndex],
                   tick >= 0, tick < measure.durationTicks,
-                  let beatGroup = measure.beatGroups.first(where: {
-                    tick >= $0.startTick && tick < $0.endTick
+                  let beatGroupOrdinal = measure.beatGroups.firstIndex(where: {
+                      tick >= $0.startTick && tick < $0.startTick + $0.durationTicks
                   }) else { continue }
+            let beatGroup = measure.beatGroups[beatGroupOrdinal]
             let key = GroupKey(
-                measureIndex: event.timeColumn.measureIndex,
-                row: event.row,
+                measureIndex: event.measureIndex,
                 voice: event.voice,
                 direction: event.stemDirection,
-                beatGroupIndex: beatGroup.groupIndex,
+                beatGroupIndex: beatGroupOrdinal,
                 beatGroupStartTick: beatGroup.startTick,
                 beatGroupDurationTicks: beatGroup.durationTicks
             )
@@ -214,9 +178,9 @@ struct NotationBeamTopologyBuilder {
         events: [BeamTimelineEvent]
     ) -> [[Int]] {
         // Adjacency is exact tick-to-tick based on each event's duration.
-        // Tuplets (which subdivide a beat into non-power-of-two parts) are not
-        // supported: their compressed durations would not satisfy the strict
-        // equality below and would break runs prematurely.
+        // Tuplet members satisfy the same strict equality — their exact
+        // resolved durations tile the beat group — so no tuplet-specific
+        // handling is needed.
         var runs: [[Int]] = []
         var current: [Int] = []
 
@@ -234,8 +198,8 @@ struct NotationBeamTopologyBuilder {
             }
             if let previous = current.last,
                let previousDuration = events[previous].role.durationTicks,
-               events[index].timeColumn.absoluteLayoutTick
-                == events[previous].timeColumn.absoluteLayoutTick + previousDuration {
+               events[index].absoluteTick
+                == events[previous].absoluteTick + previousDuration {
                 current.append(index)
             } else {
                 flush()
@@ -251,8 +215,8 @@ struct NotationBeamTopologyBuilder {
         run: [Int],
         events: [BeamTimelineEvent]
     ) -> BeamPrimaryGroup {
-        let firstTick = events[run[0]].timeColumn.absoluteLayoutTick
-        let lastTick = events[run[run.count - 1]].timeColumn.absoluteLayoutTick
+        let firstTick = events[run[0]].absoluteTick
+        let lastTick = events[run[run.count - 1]].absoluteTick
         var segments = [BeamTopologySegment(
             level: 0,
             kind: .full,
@@ -273,7 +237,6 @@ struct NotationBeamTopologyBuilder {
         return BeamPrimaryGroup(
             id: BeamPrimaryGroupID(
                 measureIndex: key.measureIndex,
-                row: key.row,
                 voice: key.voice,
                 stemDirection: key.direction,
                 beatGroupIndex: key.beatGroupIndex,
@@ -314,8 +277,8 @@ struct NotationBeamTopologyBuilder {
                 let ownerIndex = run[position]
                 let neighborIndex = run[neighborPosition]
                 let kind: BeamSegmentKind = events[neighborIndex]
-                    .timeColumn.absoluteLayoutTick
-                    > events[ownerIndex].timeColumn.absoluteLayoutTick
+                    .absoluteTick
+                    > events[ownerIndex].absoluteTick
                     ? .forwardHook : .backwardHook
                 segments.append(BeamTopologySegment(
                     level: level,
@@ -348,9 +311,9 @@ struct NotationBeamTopologyBuilder {
         if ownerPosition == run.startIndex { return ownerPosition + 1 }
         if ownerPosition == run.index(before: run.endIndex) { return ownerPosition - 1 }
 
-        let ownerTick = events[run[ownerPosition]].timeColumn.tickWithinMeasure
-        let previousTick = events[run[ownerPosition - 1]].timeColumn.tickWithinMeasure
-        let nextTick = events[run[ownerPosition + 1]].timeColumn.tickWithinMeasure
+        let ownerTick = events[run[ownerPosition]].localTick
+        let previousTick = events[run[ownerPosition - 1]].localTick
+        let nextTick = events[run[ownerPosition + 1]].localTick
         let previousDistance = ownerTick - previousTick
         let nextDistance = nextTick - ownerTick
         if previousDistance != nextDistance {
@@ -360,14 +323,15 @@ struct NotationBeamTopologyBuilder {
         return ownerTick < beatMidpoint ? ownerPosition + 1 : ownerPosition - 1
     }
 
-    private func validMeasure(_ measure: RhythmMeasure) -> Bool {
+    private func validMeasure(_ measure: ResolvedMeasure) -> Bool {
         guard measure.durationTicks > 0, !measure.beatGroups.isEmpty else { return false }
         var endTick = 0
         for group in measure.beatGroups {
+            let groupEnd = group.startTick + group.durationTicks
             guard group.durationTicks > 0,
                   group.startTick == endTick,
-                  group.endTick <= measure.durationTicks else { return false }
-            endTick = group.endTick
+                  groupEnd <= measure.durationTicks else { return false }
+            endTick = groupEnd
         }
         return endTick == measure.durationTicks
     }
@@ -376,9 +340,10 @@ struct NotationBeamTopologyBuilder {
         if lhs.measureIndex != rhs.measureIndex {
             return lhs.measureIndex < rhs.measureIndex
         }
-        if lhs.row != rhs.row { return lhs.row < rhs.row }
-        if lhs.voice.rawValue != rhs.voice.rawValue {
-            return lhs.voice.rawValue < rhs.voice.rawValue
+        // App parity: `NotationVoice` is String-raw there, so "lower" sorts
+        // before "upper" — replicate it with the Int-raw package role.
+        if lhs.voice != rhs.voice {
+            return lhs.voice == .lower
         }
         if lhs.direction.rawValue != rhs.direction.rawValue {
             return lhs.direction.rawValue < rhs.direction.rawValue
@@ -390,9 +355,9 @@ struct NotationBeamTopologyBuilder {
         _ lhs: BeamTimelineEvent,
         _ rhs: BeamTimelineEvent
     ) -> Bool {
-        if lhs.timeColumn.absoluteLayoutTick != rhs.timeColumn.absoluteLayoutTick {
-            return lhs.timeColumn.absoluteLayoutTick < rhs.timeColumn.absoluteLayoutTick
+        if lhs.absoluteTick != rhs.absoluteTick {
+            return lhs.absoluteTick < rhs.absoluteTick
         }
-        return lhs.noteHeadIDs.lexicographicallyPrecedes(rhs.noteHeadIDs)
+        return lhs.noteIDs.lexicographicallyPrecedes(rhs.noteIDs)
     }
 }

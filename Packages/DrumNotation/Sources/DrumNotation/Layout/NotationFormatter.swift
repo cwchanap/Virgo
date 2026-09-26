@@ -11,14 +11,25 @@ import CoreGraphics
 public enum NotationFormatter {
     /// Formats already-validated resolved input at `style`. The throwing
     /// signature is the pinned API the app and later tasks call through.
+    /// Flag ink comes from the package stem-group plans: the public route
+    /// builds the real `StemTopology`, so no caller ever supplies per-note
+    /// flag state.
     public static func format(
         _ input: ResolvedNotationInput,
         style: NotationFormattingStyle
     ) throws -> FormattedNotation {
+        format(input, style: style, stemTopology: StemTopologyBuilder().build(input))
+    }
+
+    private static func format(
+        _ input: ResolvedNotationInput,
+        style: NotationFormattingStyle,
+        flagReservations: [Int: NotationFlagDuration]
+    ) -> FormattedNotation {
         // Phase 1: per-measure column layout with local X and natural width.
         let laidOut = input.measures
             .sorted { $0.index < $1.index }
-            .map { layoutMeasure($0, input: input, style: style) }
+            .map { layoutMeasure($0, input: input, style: style, flagReservations: flagReservations) }
 
         // Phase 2: greedy whole-measure row packing, then sheet-local finalize.
         var measures: [FormattedMeasure] = []
@@ -77,7 +88,8 @@ public enum NotationFormatter {
     private static func layoutMeasure(
         _ measure: ResolvedMeasure,
         input: ResolvedNotationInput,
-        style: NotationFormattingStyle
+        style: NotationFormattingStyle,
+        flagReservations: [Int: NotationFlagDuration]
     ) -> LaidOutMeasure {
         var notesByTick: [Int: [ResolvedNote]] = [:]
         for note in input.notes where note.position.measureIndex == measure.index {
@@ -99,7 +111,8 @@ public enum NotationFormatter {
                 tick: tick,
                 notes: (notesByTick[tick] ?? []).sorted { $0.id < $1.id },
                 rests: (restsByTick[tick] ?? []).sorted { $0.id < $1.id },
-                style: style
+                style: style,
+                flagReservations: flagReservations
             )
         }
         // One-pass gap rule: tick 0 sits at the leading inset, each next column
@@ -259,7 +272,8 @@ public enum NotationFormatter {
         tick: Int,
         notes: [ResolvedNote],
         rests: [ResolvedRest],
-        style: NotationFormattingStyle
+        style: NotationFormattingStyle,
+        flagReservations: [Int: NotationFlagDuration]
     ) -> LaidOutColumn {
         let shifts = staffSecondShifts(for: notes, style: style)
 
@@ -273,6 +287,10 @@ public enum NotationFormatter {
             let head = headMetrics.paintedBounds
             ink.union(centerX + head.minX)
             ink.union(centerX + head.maxX)
+            // Dot ink is reserved even when the note is not rhythm-engravable.
+            // The engraver drops those dots at paint time, but an unsupported
+            // measure must keep the same event X as the engravable layout;
+            // omitting the footprint here shrinks every following column.
             if let dotRight = dotInkRight(after: centerX + head.maxX, dotCount: note.dotCount, style: style) {
                 ink.union(dotRight)
             }
@@ -280,9 +298,9 @@ public enum NotationFormatter {
             // stemUpSE/stemDownNW anchor at the undisplaced column X — and
             // attach where the flag paints from: the stem axis minus half
             // the stem width (Virgo's painted stem origin convention), never
-            // on the displaced head. A column with flagged notes in both
-            // directions unions each flag at its own direction's axis.
-            if let flagDuration = note.visibleFlagDuration {
+            // on the displaced head. The reservation is keyed by the stem
+            // group's representative, so chord members never double the ink.
+            if let flagDuration = flagReservations[note.id] {
                 let flag = PercussionGlyphMetrics.flag(
                     duration: flagDuration,
                     direction: note.stemDirection,
@@ -370,7 +388,14 @@ public enum NotationFormatter {
                     runEnd += 1
                 }
                 let run = group[runStart...runEnd]
-                let anchor = run.firstIndex(where: \.stemMember) ?? run.startIndex
+                // Stem membership derives from engraving semantics: a member
+                // is a stem-requiring engravable head — the same eligibility
+                // the stem topology's representative pick uses, so the head
+                // the shared stem actually paints from always holds the base
+                // slot. Stemless/non-engravable heads never anchor the run.
+                let anchor = run.firstIndex(where: {
+                    $0.duration.needsStem && $0.isRhythmEngravable
+                }) ?? run.startIndex
                 let baseParity = run.distance(from: run.startIndex, to: anchor) % 2
                 for (position, note) in run.enumerated() where position % 2 != baseParity {
                     let width = PercussionGlyphMetrics.notehead(
@@ -386,6 +411,23 @@ public enum NotationFormatter {
             }
         }
         return shifts
+    }
+}
+
+extension NotationFormatter {
+    // MARK: Flag-ink sources and the plan-driven entry point
+
+    /// Plan-driven formatting (HPA-166 Task 2): the same spacing engine, but
+    /// flag ink comes from the package stem-group plans — one reservation
+    /// per group measured once at the shared stem axis. `NotationEngraver`
+    /// and the package parity tests drive this path; it stays internal so
+    /// no second public formatting engine exists.
+    static func format(
+        _ input: ResolvedNotationInput,
+        style: NotationFormattingStyle,
+        stemTopology: StemTopology
+    ) -> FormattedNotation {
+        format(input, style: style, flagReservations: stemTopology.flagReservations)
     }
 }
 

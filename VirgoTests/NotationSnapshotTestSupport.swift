@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import DrumNotation
 @testable import Virgo
 
 /// Maps plain `Note`/`NotationControlEvent` specs onto timeline snapshots so
@@ -104,7 +105,10 @@ struct NotationSnapshotTestSupport {
         )
     }
 
-    /// Runs the specs through the production preparation route.
+    /// Runs the specs through the production preparation route — the same
+    /// `GameplayNotationPreparer.prepare` the view model drives (HPA-166
+    /// Task 7). Returns the closed prepared-state enum; `.ready` carries
+    /// the `EngravedNotation` + app presentation.
     func prepare(
         notes: [Note] = [],
         controls: [NotationControlEvent] = [],
@@ -122,9 +126,60 @@ struct NotationSnapshotTestSupport {
             notePositionOverrides: notePositionOverrides
         ) else {
             Issue.record("Snapshot construction failed for test notes")
-            return GameplayNotationPreparedState(layout: .empty)
+            return .failed(GameplayNotationPreparationFailure(
+                detail: "snapshot construction failed"
+            ))
         }
         return GameplayNotationPreparer.prepare(request)
+    }
+
+    /// The engraving + presentation out of a `.ready` prepared state; fails
+    /// the test on `.failed`.
+    func requireReady(
+        _ prepared: GameplayNotationPreparedState,
+        _ comment: Comment? = nil
+    ) throws -> (engraved: EngravedNotation, presentation: GameplayNotationPresentation) {
+        guard case let .ready(engraved, presentation) = prepared else {
+            Issue.record(comment ?? "Expected .ready, got \(prepared)")
+            throw PreparationNotReady()
+        }
+        return (engraved, presentation)
+    }
+
+    /// The engraving out of a `.ready` prepared state.
+    func requireEngraved(
+        _ prepared: GameplayNotationPreparedState,
+        _ comment: Comment? = nil
+    ) throws -> EngravedNotation {
+        try requireReady(prepared, comment).engraved
+    }
+
+    struct PreparationNotReady: Error {}
+
+    /// Runs the same snapshot construction through the package engraving
+    /// route (HPA-166 Task 6): `DrumTabFixtureHarness.engrave` is the single
+    /// seam — expanded measures, `VirgoNotationProjection`,
+    /// `NotationEngraver` — so synthetic snapshots engrave exactly like the
+    /// real-DTX fixtures.
+    func engrave(
+        notes: [Note] = [],
+        controls: [NotationControlEvent] = [],
+        rests: [RhythmLayoutRest] = [],
+        minimumMeasureCount: Int = 1,
+        style: NotationLayoutStyle = .gameplayDefault,
+        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
+    ) throws -> EngravedNotation {
+        try DrumTabFixtureHarness.engrave(
+            snapshot: snapshot(
+                notes: notes,
+                controls: controls,
+                rests: rests,
+                minimumMeasureCount: minimumMeasureCount
+            ),
+            minimumMeasureCount: minimumMeasureCount,
+            style: style,
+            notePositionOverrides: notePositionOverrides
+        ).engraved
     }
 
     private func makeRequest(
@@ -149,7 +204,7 @@ struct NotationSnapshotTestSupport {
     }
 
     private func maximumMeasureCountCandidate(minimum: Int) -> Int {
-        min(max(minimum, 1), NotationLayoutEngine.maximumRenderableMeasureCount)
+        min(max(minimum, 1), GameplayNotationPreparer.maximumRenderableMeasureCount)
     }
 
     private func position(

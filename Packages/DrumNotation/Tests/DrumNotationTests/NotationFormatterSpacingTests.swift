@@ -104,7 +104,9 @@ struct NotationFormatterSpacingTests {
             position: NotationTickPosition(measureIndex: 0, localTick: 0),
             duration: .whole,
             dotCount: 0,
-            isFullMeasure: true
+            isFullMeasure: true,
+            voice: .upper,
+            durationTicks: 1920
         )
         let notation = try Fixtures.format(try Fixtures.document(notes: [], rests: [fullMeasure], controls: []))
         let measure = try #require(notation.measures.first)
@@ -126,7 +128,9 @@ struct NotationFormatterSpacingTests {
             position: NotationTickPosition(measureIndex: 0, localTick: 0),
             duration: .whole,
             dotCount: 0,
-            isFullMeasure: true
+            isFullMeasure: true,
+            voice: .upper,
+            durationTicks: 1920
         )
         // One note at mid-measure: natural spacing lands its column at the
         // content center, exactly where the full-measure rest paints.
@@ -175,7 +179,9 @@ struct NotationFormatterSpacingTests {
             position: NotationTickPosition(measureIndex: 0, localTick: 0),
             duration: .whole,
             dotCount: 0,
-            isFullMeasure: true
+            isFullMeasure: true,
+            voice: .upper,
+            durationTicks: 1920
         )
         // Notes at 800/1120 straddle the natural content center: no existing
         // gap fits the rest's band, but splitting between the two costs far
@@ -221,7 +227,9 @@ struct NotationFormatterSpacingTests {
             position: NotationTickPosition(measureIndex: 0, localTick: 0),
             duration: .whole,
             dotCount: 0,
-            isFullMeasure: true
+            isFullMeasure: true,
+            voice: .upper,
+            durationTicks: 1920
         )
         // Notes at 480/1440 leave a wide clear pocket around the natural
         // center — the band already fits, so nothing moves.
@@ -263,14 +271,18 @@ struct NotationFormatterSpacingTests {
                 position: NotationTickPosition(measureIndex: 0, localTick: 0),
                 duration: .whole,
                 dotCount: 0,
-                isFullMeasure: true
+                isFullMeasure: true,
+                voice: .upper,
+                durationTicks: 1920
             ),
             ResolvedRest(
                 id: 4,
                 position: NotationTickPosition(measureIndex: 0, localTick: 0),
                 duration: .quarter,
                 dotCount: 1,
-                isFullMeasure: false
+                isFullMeasure: false,
+                voice: .upper,
+                durationTicks: 480
             )
         ]
         let notation = try Fixtures.format(try Fixtures.document(notes: [], rests: rests, controls: []))
@@ -374,7 +386,7 @@ struct NotationFormatterOverflowTests {
     @Test("a near-Int.max measure duration formats without trapping")
     func hugeMeasureDurationDoesNotTrap() throws {
         let document = try Fixtures.document(
-            measures: [ResolvedMeasure(index: 0, startTick: 0, durationTicks: Int.max)],
+            measures: [Fixtures.measure(durationTicks: Int.max)],
             notes: [
                 Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3),
                 Fixtures.makeNote(id: 2, localTick: 960, staffStep: 3)

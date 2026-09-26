@@ -53,6 +53,47 @@ struct VirgoNotationProjectionRestFilterTests {
         #expect(rest.position.localTick == 0)
         #expect(rest.duration == .whole)
         #expect(rest.isFullMeasure)
+        // HPA-166: the resolved rest carries its voice and exact tick span.
+        #expect(rest.voice == .upper)
+        #expect(rest.durationTicks == 960)
+    }
+
+    @Test("Printed rests carry voice and exact duration ticks in candidate order")
+    func printedRestsCarryVoiceAndDurationTicks() throws {
+        let measure = makeMeasure(index: 0)
+        let snapshot = try makeSnapshot(
+            measures: [measure],
+            rests: [
+                makeRest(
+                    measureIndex: 0,
+                    localTick: 240,
+                    voice: .lower,
+                    interval: .quarter,
+                    visibility: .printed
+                ),
+                makeRest(
+                    measureIndex: 0,
+                    localTick: 480,
+                    voice: .upper,
+                    interval: .eighth,
+                    visibility: .printed
+                )
+            ]
+        )
+
+        let input = try VirgoNotationProjection.resolvedNotation(
+            snapshot: snapshot,
+            expandedMeasures: [measure],
+            notePositionOverrides: [:]
+        )
+
+        // Candidate order is absolute-tick ascending, so the rest at 240 is
+        // resolved ID 0 and the one at 480 is ID 1.
+        #expect(input.rests.map(\.id) == [0, 1])
+        #expect(input.rests[0].voice == .lower)
+        #expect(input.rests[0].durationTicks == 240)
+        #expect(input.rests[1].voice == .upper)
+        #expect(input.rests[1].durationTicks == 120)
     }
 
     @Test("Rests in engraving-unsupported measures never reach the package input")

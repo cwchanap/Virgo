@@ -8,6 +8,7 @@ import Foundation
 import AVFoundation
 import Observation
 import SwiftUI
+import DrumNotation
 @testable import Virgo
 
 @Suite("Visual Updates", .serialized)
@@ -206,7 +207,7 @@ struct GameplayViewModelVisualUpdatesTests {
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
         #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.isEmpty ?? true)
         viewModel.isPlaying = true
         // 1 second at 120 BPM = beat 2 of measure 0.
         let position = try #require(viewModel.calculatePurpleBarPosition(elapsedTime: 1.0))
@@ -234,8 +235,9 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.cachedLayoutRowWidth = 620
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
+        let engraved = try #require(viewModel.cachedEngravedNotation)
         let measureRows = Dictionary(
-            uniqueKeysWithValues: viewModel.cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
+            uniqueKeysWithValues: engraved.measures.map { ($0.index, $0.rowIndex) }
         )
 
         #expect(viewModel.rowForMeasure(0) == measureRows[0])
@@ -296,7 +298,7 @@ struct GameplayViewModelVisualUpdatesTests {
         // the clamp target is the measure's real end anchor — the legacy
         // uniform beat-grid end no longer matches once the centered
         // full-measure rest's keep-clear pocket widens the measure.
-        let formatted = viewModel.cachedNotationLayout.formattedNotation
+        let formatted = try #require(viewModel.cachedEngravedNotation?.formatted)
         let endTick = try #require(
             formatted.measures.first { $0.index == 0 }?.columns.last?.localTick
         )
@@ -333,7 +335,7 @@ struct GameplayViewModelVisualUpdatesTests {
         // legacy grid. On the fallback 16-tick grid the sixteenth sits at
         // localTick 1.
         let expectedX = try #require(
-            viewModel.cachedNotationLayout.formattedNotation
+            viewModel.cachedEngravedNotation?.formatted
                 .position(measureIndex: 0, localTick: 1)?
                 .x
         )
@@ -362,8 +364,8 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.isPlaying = true
         viewModel.currentRow = 2
 
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(!viewModel.cachedNotationHasPlayableContent)
         #expect(viewModel.rowForMeasure(8) == 2)
 
         viewModel.updateContinuousVisualsForTesting(elapsedTime: 18)
@@ -390,8 +392,8 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.isPlaying = true
         viewModel.currentRow = 1
 
-        #expect(viewModel.cachedNotationLayout.hasRenderableContent)
-        #expect(!viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(!viewModel.cachedNotationHasPlayableContent)
         #expect(viewModel.rowForMeasure(3) == 1)
 
         viewModel.updateContinuousVisualsForTesting(elapsedTime: 6)
@@ -417,11 +419,11 @@ struct GameplayViewModelVisualUpdatesTests {
         await viewModel.setupGameplay()
 
         // Find the first measure that lives on a row > 0; we need the playhead to land in it.
-        let firstNonZeroRowMeasure = viewModel.cachedNotationLayout.measures
-            .first(where: { $0.row > 0 })
+        let firstNonZeroRowMeasure = viewModel.cachedEngravedNotation?.measures
+            .first(where: { $0.rowIndex > 0 })
         try #require(firstNonZeroRowMeasure != nil)
-        let targetMeasure = firstNonZeroRowMeasure!.measureIndex
-        let targetRow = firstNonZeroRowMeasure!.row
+        let targetMeasure = firstNonZeroRowMeasure!.index
+        let targetRow = firstNonZeroRowMeasure!.rowIndex
 
         // Initial state: row 0.
         #expect(viewModel.currentRow == 0)
@@ -444,6 +446,98 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.isPlaying = false
         viewModel.restartPlayback()
         #expect(viewModel.currentRow == 0)
+    }
+
+    // MARK: - Engraving edge states
+
+    /// An installable engraving carrying one note head but no measures —
+    /// the degenerate "renderable + playable, yet empty measure list" state
+    /// the row and playhead guards defend against.
+    private func degenerateEngraving() -> EngravedNotation {
+        EngravedNotation(
+            formatted: FormattedNotation(measures: []),
+            style: NotationEngravingStyle(),
+            rows: [],
+            measures: [],
+            noteHeads: [EngravedNoteHead(
+                noteID: 1,
+                measureIndex: 0,
+                rowIndex: 0,
+                staffStep: 4,
+                voice: .upper,
+                stemDirection: .up,
+                noteheadStyle: .x,
+                duration: .quarter,
+                position: .zero,
+                paintedBounds: .zero
+            )],
+            rests: [],
+            stems: [],
+            beams: [],
+            flags: [],
+            ledgerLines: [],
+            rhythmDots: [],
+            articulations: [],
+            controls: [],
+            tuplets: [],
+            measureBars: [],
+            paintedBounds: .zero,
+            contentWidth: 0,
+            contentHeight: 0
+        )
+    }
+
+    @Test("rowForMeasure anchors row 0 when the installed engraving has no measures")
+    func rowForMeasureWithEmptyEngravingMeasures() {
+        let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        viewModel.installPreparedNotation(.ready(
+            degenerateEngraving(),
+            GameplayNotationPresentation(annotations: .empty, accessibilityLabels: [:])
+        ))
+
+        // Renderable + playable, but the measure list is empty — the cursor
+        // anchors on row 0 rather than indexing into nothing.
+        #expect(viewModel.cachedNotationHasRenderableContent)
+        #expect(viewModel.cachedNotationHasPlayableContent)
+        #expect(viewModel.rowForMeasure(0) == 0)
+        #expect(viewModel.rowForMeasure(7) == 0)
+    }
+
+    @Test("timeline playhead hides when the installed engraving cannot resolve the position")
+    func timelinePlayheadHidesOnUnresolvablePosition() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+        viewModel.isPlaying = true
+
+        // Control: the real install resolves a playhead at elapsed 0.
+        viewModel.updatePurpleBarPosition(elapsedTime: 0)
+        #expect(viewModel.purpleBarPosition != nil)
+
+        // Swap in an engraving whose embedded formatter cannot resolve
+        // measure 0 — its heads keep "playable" true so the timeline branch
+        // still runs the position lookup.
+        viewModel.installPreparedNotation(.ready(
+            degenerateEngraving(),
+            GameplayNotationPresentation(annotations: .empty, accessibilityLabels: [:])
+        ))
+        viewModel.cachedNotationMeasuresByIndex = [0: EngravedMeasure(
+            index: 0,
+            rowIndex: 0,
+            xOffset: 0,
+            width: 200,
+            startTick: 0,
+            durationTicks: 960,
+            meter: NotationMeter(beats: 4, noteValue: 4)
+        )]
+        viewModel.updatePurpleBarPosition(elapsedTime: 0)
+
+        // The lookup fails cleanly — the bar hides rather than pinning a
+        // stale X at the row's leading edge.
+        #expect(viewModel.purpleBarPosition == nil)
     }
 
 }

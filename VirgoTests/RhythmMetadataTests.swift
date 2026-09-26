@@ -158,6 +158,44 @@ struct RhythmMetadataTests {
         #expect(ChartRhythmMetadataCodec.decode(unsupported) == .invalid(.unsupportedMetadataVersion))
     }
 
+    @Test("layout snapshot requires an explicit positive whole-note quantum")
+    func layoutSnapshotRequiresPositiveWholeNoteQuantum() throws {
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 960,
+            timeSignature: .fourFour,
+            beatGroups: [RhythmBeatGroup(
+                groupIndex: 0,
+                startTick: 0,
+                durationTicks: 960,
+                isResidual: false
+            )],
+            engravingSupport: .supported
+        )
+
+        #expect(throws: RhythmMetadataValidationError.invalidTicksPerWholeNote) {
+            _ = try RhythmLayoutSnapshot(
+                ticksPerWholeNote: 0,
+                measures: [measure],
+                notes: [],
+                controls: [],
+                rests: [],
+                feel: .straight
+            )
+        }
+
+        let snapshot = try RhythmLayoutSnapshot(
+            ticksPerWholeNote: 960,
+            measures: [measure],
+            notes: [],
+            controls: [],
+            rests: [],
+            feel: .straight
+        )
+        #expect(snapshot.ticksPerWholeNote == 960)
+    }
+
     @Test("terminal-duration warnings permit engraving while structural warnings block it")
     func warningSupportProjection() {
         let warning = RhythmEngravingSupport.supported.applyingRuntimeWarnings([

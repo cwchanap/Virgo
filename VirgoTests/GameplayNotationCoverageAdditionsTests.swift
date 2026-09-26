@@ -75,7 +75,7 @@ struct GameplayNotationCoverageAdditionsTests {
 
         #expect(viewModel.isGameplayPrepared)
         #expect(viewModel.notationLayoutGeneration == generation)
-        #expect(viewModel.cachedNotationLayout.hasPlayableContent)
+        #expect(viewModel.cachedNotationHasPlayableContent)
         #expect(viewModel.notationPreparationWorkerTask == nil)
     }
 
@@ -98,19 +98,18 @@ struct GameplayNotationCoverageAdditionsTests {
         preparationTask.cancel()
         await preparationTask.value
 
-        // After cancellation, the layout should not have been installed from this
-        // generation (the worker was cancelled before it could apply). The
+        // After cancellation, the engraving should not have been installed from
+        // this generation (the worker was cancelled before it could apply). The
         // generation check alone is insufficient: a broken implementation could
-        // still install the prepared layout tagged with this same generation and
-        // pass it. Assert the viewModel state that installNotationLayout and
-        // applyPreparedNotation would have mutated is unchanged — readiness,
-        // the installed layout storage, the renderable flag set only by
-        // installNotationLayout, and the derived measure maps populated only by
-        // applyPreparedNotation.
+        // still install the prepared notation tagged with this same generation
+        // and pass it. Assert the viewModel state that installPreparedNotation
+        // and applyPreparedNotation would have mutated is unchanged — readiness,
+        // the installed engraving, the renderable flag set only by
+        // installPreparedNotation, and the derived measure maps populated only
+        // by applyPreparedNotation.
         #expect(viewModel.notationLayoutGeneration == generation)
         #expect(!viewModel.isGameplayPrepared)
-        #expect(viewModel.cachedNotationLayout.measures.isEmpty)
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(viewModel.cachedEngravedNotation == nil)
         #expect(!viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedMeasureRowMap.isEmpty)
         #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
@@ -144,10 +143,10 @@ struct GameplayNotationCoverageAdditionsTests {
         #expect(viewModel.cachedLayoutRowWidth == initialWidth, "Infinite width should be ignored")
     }
 
-    // MARK: - cacheNotationLayout no-track reset
+    // MARK: - refreshNotationEngraving no-track reset
 
-    @Test("cacheNotationLayout resets all caches when track is nil")
-    func cacheNotationLayoutResetsCachesWhenTrackIsNil() async throws {
+    @Test("refreshNotationEngraving resets all caches when track is nil")
+    func refreshNotationEngravingResetsCachesWhenTrackIsNil() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
         let viewModel = GameplayViewModel(
             chart: chart,
@@ -160,7 +159,7 @@ struct GameplayNotationCoverageAdditionsTests {
         #expect(viewModel.cachedNotationHasRenderableContent)
 
         viewModel.track = nil
-        viewModel.cacheNotationLayout()
+        viewModel.refreshNotationEngraving()
 
         #expect(!viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedMeasureRowMap.isEmpty)
@@ -168,10 +167,10 @@ struct GameplayNotationCoverageAdditionsTests {
         #expect(viewModel.cachedLegacyContentHeight == 0)
     }
 
-    // MARK: - applyPreparedNotation with empty renderable content
+    // MARK: - applyPreparedNotation with a failed prepared state
 
-    @Test("applyPreparedNotation clears measure maps when prepared layout has no renderable content")
-    func applyPreparedNotationClearsMapsForEmptyRenderableContent() async throws {
+    @Test("applyPreparedNotation clears measure maps when the prepared state failed")
+    func applyPreparedNotationClearsMapsForFailedContent() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
         let viewModel = GameplayViewModel(
             chart: chart,
@@ -180,16 +179,15 @@ struct GameplayNotationCoverageAdditionsTests {
         await viewModel.loadChartData()
         defer { viewModel.cleanup() }
 
-        let emptyPrepared = GameplayNotationPreparedState(
-            layout: .empty
-        )
         let generation = viewModel.beginNotationPreparation()
-        #expect(viewModel.applyPreparedNotation(emptyPrepared, generation: generation))
+        let failure = GameplayNotationPreparationFailure(detail: "coverage probe")
+        #expect(viewModel.applyPreparedNotation(.failed(failure), generation: generation))
 
         #expect(viewModel.isGameplayPrepared)
         #expect(!viewModel.cachedNotationHasRenderableContent)
         #expect(viewModel.cachedMeasureRowMap.isEmpty)
         #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
+        #expect(viewModel.notationPreparationFailure == failure)
     }
 
     // MARK: - setupGameplay timeline fallback when request is nil
@@ -215,9 +213,9 @@ struct GameplayNotationCoverageAdditionsTests {
 
         #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
         #expect(viewModel.isGameplayPrepared)
-        // HPA-164 no-snapshot policy: legacy availability means empty
-        // notation; playback runs on the non-notation beat fallback.
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        // HPA-164 no-snapshot policy: legacy availability means no engraving
+        // is installed; playback runs on the non-notation beat fallback.
+        #expect(viewModel.cachedEngravedNotation == nil)
     }
 }
 
@@ -302,25 +300,6 @@ struct SheetMusicViewCoverageAdditionsTests {
         #expect(!restView.shouldAutoScrollSheet(viewModel: restVM, isPlaying: true))
     }
 
-    @Test("sheetContentHeight with explicit contentTopInset uses the provided inset")
-    func sheetContentHeightWithExplicitInset() async throws {
-        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
-        let viewModel = GameplayViewModel(
-            chart: chart,
-            metronome: GameplayViewModelTestHarness.createTestMetronome()
-        )
-        await viewModel.loadChartData()
-        await viewModel.setupGameplay(loadPersistedSpeed: false)
-        defer { viewModel.cleanup() }
-
-        let view = GameplayView(chart: chart, metronome: viewModel.metronome)
-        let defaultHeight = view.sheetContentHeight(viewModel: viewModel)
-        let explicitInsetHeight = view.sheetContentHeight(viewModel: viewModel, contentTopInset: 50)
-
-        #expect(defaultHeight != explicitInsetHeight)
-        #expect(explicitInsetHeight > defaultHeight)
-    }
-
     @Test("static sheet music renders legacy bar lines when layout has no renderable content")
     func staticSheetMusicRendersLegacyBarLinesForNonRenderableLayout() async throws {
         try await TestSetup.withTestSetup {
@@ -333,28 +312,18 @@ struct SheetMusicViewCoverageAdditionsTests {
             await viewModel.setupGameplay(loadPersistedSpeed: false)
             defer { viewModel.cleanup() }
 
-            // Install empty layout so hasRenderableContent is false, but
+            // Clear the install so hasRenderableContent is false, but
             // cachedMeasurePositions remains populated from the prior setup.
-            viewModel.installNotationLayout(.empty)
+            viewModel.clearNotationInstallation()
             #expect(!viewModel.cachedNotationHasRenderableContent)
             #expect(!viewModel.cachedMeasurePositions.isEmpty)
 
             let view = GameplayView(chart: chart, metronome: viewModel.metronome)
-            let measurePositions = view.sheetMeasurePositions(viewModel: viewModel)
-            let contentWidth = view.sheetContentWidth(viewModel: viewModel)
-            let contentTopInset = view.sheetContentTopInset(viewModel: viewModel)
-            let rowCount = view.sheetRowCount(measurePositions: measurePositions)
 
-            // Rendering the static layers with hasRenderableContent=false exercises
-            // the legacy bar-line branch in GameplayBarLinesView.
+            // Rendering the static layers with hasRenderableContent=false
+            // exercises the legacy bar-line branch in GameplayBarLinesView.
             SwiftUITestUtilities.assertViewWithEnvironment(
-                view.staticSheetMusicContent(
-                    measurePositions: measurePositions,
-                    contentWidth: contentWidth,
-                    contentTopInset: contentTopInset,
-                    rowCount: rowCount,
-                    viewModel: viewModel
-                ),
+                view.staticSheetMusicContent(viewModel: viewModel),
                 size: CGSize(width: 1280, height: 900)
             )
         }
@@ -418,6 +387,82 @@ struct SheetMusicViewCoverageAdditionsTests {
             )
             let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
             #expect(texts.contains("Loading..."))
+        }
+    }
+
+    /// The sheet's own fatal guard (distinct from `body`'s interception):
+    /// calling `sheetMusicView` directly on a view model whose installed
+    /// preparation failed must render the fatal sheet.
+    @Test("sheetMusicView renders the fatal sheet when installed preparation failed")
+    func sheetMusicViewRendersFatalSheetOnPreparationFailure() async throws {
+        try await TestSetup.withTestSetup {
+            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+            viewModel.installPreparedNotation(.failed(GameplayNotationPreparationFailure(
+                detail: "synthetic failure",
+                userMessage: "Notation exploded"
+            )))
+            #expect(viewModel.practiceUnavailableMessage == "Notation exploded")
+
+            let gameplayView = GameplayView(
+                chart: viewModel.chart,
+                metronome: viewModel.metronome,
+                initialViewModel: viewModel
+            )
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                GeometryReader { proxy in
+                    gameplayView.sheetMusicView(geometry: proxy)
+                },
+                size: CGSize(width: 800, height: 600)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
+            #expect(texts.contains("Practice unavailable"))
+            #expect(texts.contains("Notation exploded"))
+        }
+    }
+
+    /// The mounted sheet's live wiring: `currentRow` and `isPlaying` changes
+    /// run their auto-scroll `onChange` arms, and a container resize feeds
+    /// `updateRowWidth` through the width `onChange`.
+    @Test("mounted sheet drives auto-scroll and row-width onChange handlers")
+    func mountedSheetDrivesAutoScrollAndRowWidth() async throws {
+        try await TestSetup.withTestSetup {
+            let rendered = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.multiRowStableWidths)
+            let viewModel = GameplayViewModel(
+                chart: rendered.chart,
+                metronome: GameplayViewModelTestHarness.createTestMetronome()
+            )
+            await viewModel.loadChartData()
+            await viewModel.setupGameplay(loadPersistedSpeed: false)
+            defer { viewModel.cleanup() }
+
+            let gameplayView = GameplayView(
+                chart: viewModel.chart,
+                metronome: viewModel.metronome,
+                initialViewModel: viewModel
+            )
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                GeometryReader { proxy in
+                    gameplayView.sheetMusicView(geometry: proxy)
+                },
+                size: CGSize(width: 1_024, height: 768)
+            )
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+
+            // Playing + a row change: both scroll `onChange` arms take their
+            // `scrollTo` path against real playable content.
+            let maxRow = try #require(viewModel.cachedEngravedNotation?.rows.map(\.index).max())
+            viewModel.isPlaying = true
+            viewModel.currentRow = maxRow
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+            #expect(viewModel.currentRow == maxRow)
+
+            #if os(macOS)
+            // A container resize re-engraves at the new width through the
+            // geometry `onChange`.
+            mounted.hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 1_400, height: 768))
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+            #expect(viewModel.cachedLayoutRowWidth == 1_400)
+            #endif
         }
     }
 }

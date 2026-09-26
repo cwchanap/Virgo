@@ -5,6 +5,7 @@
 
 import Testing
 import Foundation
+import DrumNotation
 @testable import Virgo
 
 /// Verifies the gameplay playhead lands on a column a note head is actually
@@ -49,7 +50,8 @@ struct DrumTabPlayheadAlignmentTests {
         let runtime = viewModel.cachedRhythmRuntime
         #expect(runtime.availability == .valid)
         #expect(runtime.timeline != nil)
-        #expect(!viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        #expect(!engraved.noteHeads.isEmpty)
 
         // setupGameplay() alone leaves purpleBarPosition nil:
         // `calculatePurpleBarPosition` on `GameplayViewModel+VisualUpdates`
@@ -100,7 +102,7 @@ struct DrumTabPlayheadAlignmentTests {
         // "matches no rendered note column" is more diagnosable than a `#require`
         // failure on `matchingHead` — not as independent coverage.
         let columnXs = Set(
-            viewModel.cachedNotationLayout.noteHeads.map { ($0.position.x * 100).rounded() }
+            engraved.noteHeads.map { ($0.position.x * 100).rounded() }
         )
         #expect(
             columnXs.contains((CGFloat(position.x) * 100).rounded()),
@@ -113,8 +115,98 @@ struct DrumTabPlayheadAlignmentTests {
         // `RhythmTimelineIntegrationTests.validDTXFixtureSharesIdentityAndTime`
         // (`purpleBarPosition?.x == laterHead.position.x`).
         let matchingHead = try #require(
-            viewModel.cachedNotationLayout.noteHeads.first { $0.eventID == farTarget.eventID }
+            engraved.noteHeads.first { $0.noteID == farTarget.eventID.rawValue }
         )
         #expect(position.x == Double(matchingHead.position.x))
+    }
+
+    /// The playhead must follow the *wrapped* package rows, not a
+    /// single-row reconstruction: drive one note target on each of two
+    /// distinct `EngravedRow`s and assert the live X is the formatter's own
+    /// `FormattedNotation.position` lookup and the live Y is that row's
+    /// `staffCenterY`.
+    @Test("playhead tracks formatter X and row staffCenterY across wrapped rows")
+    func playheadTracksFormatterXAndRowCenterYAcrossWrappedRows() async throws {
+        // Eight measures of 16ths at the default row width wrap onto
+        // multiple package rows — the fixture is built for stable wrapped
+        // widths, so every row carries note targets.
+        let rendered = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.multiRowStableWidths)
+
+        let viewModel = GameplayViewModel(
+            chart: rendered.chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+
+        #expect(viewModel.cachedRhythmRuntime.availability == .valid)
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        try #require(
+            engraved.rows.count >= 2,
+            "fixture must wrap onto at least two package rows for this probe"
+        )
+
+        let rowIndexByMeasure = Dictionary(
+            uniqueKeysWithValues: engraved.measures.map { ($0.index, $0.rowIndex) }
+        )
+        let targets = viewModel.cachedRhythmNoteTargets
+        // One representative target per row, covering at least two rows.
+        var targetsByRow: [Int: RhythmNoteTarget] = [:]
+        for target in targets.sorted(by: { $0.position.absoluteTick < $1.position.absoluteTick }) {
+            guard let rowIndex = rowIndexByMeasure[target.position.measureIndex],
+                  targetsByRow[rowIndex] == nil else { continue }
+            targetsByRow[rowIndex] = target
+        }
+        try #require(
+            targetsByRow.count >= 2,
+            "fixture must place note targets on at least two wrapped rows"
+        )
+
+        viewModel.isPlaying = true
+        for (rowIndex, target) in targetsByRow.sorted(by: { $0.key < $1.key }).prefix(2) {
+            try expectPlayhead(
+                viewModel: viewModel,
+                target: target,
+                rowIndex: rowIndex,
+                engraved: engraved
+            )
+        }
+    }
+
+    /// Asserts the live playhead at `target` matches the formatter's own
+    /// tick→X lookup (not a head-center or stale `measurePositionMap`
+    /// reconstruction) and the wrapped `EngravedRow.staffCenterY` — so the
+    /// bar rides the row the package painted.
+    private func expectPlayhead(
+        viewModel: GameplayViewModel,
+        target: RhythmNoteTarget,
+        rowIndex: Int,
+        engraved: EngravedNotation
+    ) throws {
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: target.targetSecondsAtOneX)
+        let position = try #require(
+            viewModel.purpleBarPosition,
+            "playhead must resolve on row \(rowIndex)"
+        )
+        let measureIndex = target.position.measureIndex
+        let measure = try #require(
+            engraved.measures.first { $0.index == measureIndex }
+        )
+        let formatterPosition = try #require(
+            engraved.formatted.position(
+                measureIndex: measureIndex,
+                localTick: min(Double(target.position.localTick), Double(measure.durationTicks))
+            )
+        )
+        #expect(
+            abs(position.x - Double(formatterPosition.x)) < 0.001,
+            "row \(rowIndex): playhead x \(position.x) != formatter x \(formatterPosition.x)"
+        )
+        let row = try #require(engraved.rows.first { $0.index == rowIndex })
+        #expect(
+            abs(position.y - Double(row.staffCenterY)) < 0.001,
+            "row \(rowIndex): playhead y \(position.y) != staffCenterY \(row.staffCenterY)"
+        )
     }
 }

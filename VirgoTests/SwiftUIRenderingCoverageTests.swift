@@ -144,25 +144,26 @@ struct SwiftUIRenderingCoverageTests {
             await emptyViewModel.setupGameplay()
 
             let gameplayView = GameplayView(chart: emptyViewModel.chart, metronome: emptyViewModel.metronome)
-            #expect(gameplayView.usesNotationLayout(viewModel: emptyViewModel))
-            #expect(emptyViewModel.cachedNotationLayout.hasRenderableContent)
-            #expect(!emptyViewModel.cachedNotationLayout.hasPlayableContent)
-            #expect(emptyViewModel.cachedNotationLayout.measureBars.count >= 1)
+            #expect(gameplayView.usesEngravedNotation(viewModel: emptyViewModel))
+            #expect(emptyViewModel.cachedNotationHasRenderableContent)
+            #expect(!emptyViewModel.cachedNotationHasPlayableContent)
+            let emptyEngraving = try #require(emptyViewModel.cachedEngravedNotation)
+            #expect(emptyEngraving.measureBars.count >= 1)
             #expect(
                 gameplayView.sheetMeasurePositions(viewModel: emptyViewModel).count
-                    == emptyViewModel.cachedNotationLayout.measures.count
+                    == emptyEngraving.measures.count
             )
             #expect(
                 gameplayView.sheetContentWidth(viewModel: emptyViewModel)
-                    == emptyViewModel.cachedNotationLayout.contentWidth
+                    == emptyEngraving.contentWidth
             )
             #expect(
                 gameplayView.sheetContentHeight(viewModel: emptyViewModel)
-                    == emptyViewModel.cachedNotationLayout.totalHeight
+                    == emptyEngraving.contentHeight
             )
 
-            emptyViewModel.installNotationLayout(.empty)
-            #expect(!gameplayView.usesNotationLayout(viewModel: emptyViewModel))
+            emptyViewModel.clearNotationInstallation()
+            #expect(!gameplayView.usesEngravedNotation(viewModel: emptyViewModel))
             #expect(gameplayView.sheetContentWidth(viewModel: emptyViewModel) == GameplayLayout.maxRowWidth)
             #expect(
                 gameplayView.sheetContentHeight(viewModel: emptyViewModel)
@@ -184,11 +185,11 @@ struct SwiftUIRenderingCoverageTests {
             await denseViewModel.loadChartData()
             await denseViewModel.setupGameplay()
 
-            #expect(gameplayView.usesNotationLayout(viewModel: denseViewModel))
+            #expect(gameplayView.usesEngravedNotation(viewModel: denseViewModel))
             #expect(gameplayView.sheetContentWidth(viewModel: denseViewModel) > GameplayLayout.maxRowWidth)
             #expect(
                 gameplayView.sheetContentHeight(viewModel: denseViewModel)
-                    == denseViewModel.cachedNotationLayout.totalHeight
+                    == denseViewModel.cachedEngravedNotation?.contentHeight
             )
         }
     }
@@ -221,7 +222,7 @@ struct SwiftUIRenderingCoverageTests {
             let legacyEmptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 0)
             await legacyEmptyViewModel.loadChartData()
             await legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)
-            legacyEmptyViewModel.installNotationLayout(.empty)
+            legacyEmptyViewModel.clearNotationInstallation()
 
             let gameplayView = GameplayView(chart: playableViewModel.chart, metronome: playableViewModel.metronome)
             #expect(!gameplayView.shouldAutoScrollSheet(viewModel: restOnlyViewModel, isPlaying: true))

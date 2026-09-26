@@ -132,14 +132,7 @@ struct GameplayLayout {
     static let beatColumnCornerRadius: CGFloat = 4
     static let stemWidth: CGFloat = 2
     static let stemHeight: CGFloat = 75
-    static let stemExtension: CGFloat = 35
-    static let beamYPosition: CGFloat = -60
-    static let connectorWidth: CGFloat = 5
-    static let connectorHeight: CGFloat = 2
-    static let connectorXOffset: CGFloat = 4.5
     static let flagVerticalSpacing: CGFloat = 8
-    static let individualFlagXOffset: CGFloat = 9
-    static let individualFlagYOffset: CGFloat = 67.5
     static let drumSymbolFontSize: CGFloat = 20
     static let activeOpacity: CGFloat = 0.3
     static let beamLevelSpacing: CGFloat = 6

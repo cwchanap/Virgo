@@ -178,6 +178,7 @@ enum DrumTabFixtureCatalog {
     static let all: [DrumTabFixture] = [
         sameTimeTrio, sixteenthRun, mixedEighthSixteenth, sparseHiResLane,
         tripletGrid, hiHatOpenClosedPedal, leftBass1C, stopChokeDamp,
-        voiceRests, multiRowStableWidths, isolatedFlaggedNotes
+        voiceRests, multiRowStableWidths, isolatedFlaggedNotes,
+        tripletHooksAndStop
     ]
 }

@@ -3,10 +3,10 @@ import DrumNotation
 import Testing
 @testable import Virgo
 
-/// HPA-164 Task 5: `composeVirgoLayout` copies package geometry straight from
-/// `FormattedNotation` — measure rows/bounds, head centers, rest and control
-/// X, measure bars — while stems and beams stay on the undisplaced stem-side
-/// representative.
+/// HPA-164 Task 5 / HPA-166 Task 7: the installed `EngravedNotation` copies
+/// package geometry straight from `FormattedNotation` — measure rows/bounds,
+/// head centers, rest and control X, measure bars — while stems and beams
+/// stay on the undisplaced stem-side representative.
 @Suite("Gameplay Notation Composition")
 struct GameplayNotationCompositionTests {
     private let ticksPerWholeNote = 960
@@ -123,114 +123,128 @@ struct GameplayNotationCompositionTests {
         )
     }
 
+    /// The `.ready` engraving out of a prepared state; preparation of these
+    /// fixtures must never degrade to `.failed`.
+    private func requireEngraved(
+        _ prepared: GameplayNotationPreparedState
+    ) throws -> EngravedNotation {
+        try DrumTabFixtureHarness.requireEngraved(prepared)
+    }
+
     // MARK: - Composition copying
 
-    @Test("composition copies package measure geometry verbatim")
+    @Test("engraving copies package measure geometry verbatim")
     func compositionCopiesPackageMeasureGeometry() throws {
-        let prepared = try GameplayNotationPreparer.prepare(makeCompositionRequest())
+        let engraved = try requireEngraved(GameplayNotationPreparer.prepare(makeCompositionRequest()))
 
-        #expect(prepared.layout.measures.count == prepared.formatted.measures.count)
-        for (measure, packageMeasure) in zip(prepared.layout.measures, prepared.formatted.measures) {
-            #expect(measure.measureIndex == packageMeasure.index)
-            #expect(measure.row == packageMeasure.rowIndex)
-            #expect(measure.xOffset == packageMeasure.xOffset)
-            #expect(measure.width == packageMeasure.width)
+        #expect(engraved.measures.count == engraved.formatted.measures.count)
+        for (measure, formattedMeasure) in zip(engraved.measures, engraved.formatted.measures) {
+            #expect(measure.index == formattedMeasure.index)
+            #expect(measure.rowIndex == formattedMeasure.rowIndex)
+            #expect(measure.xOffset == formattedMeasure.xOffset)
+            #expect(measure.width == formattedMeasure.width)
         }
 
         // The sixteenth measure's collision-driven package width exceeds the
         // uniform TabGrid width it used to carry (52 inset + 960 ticks ×
-        // 200/960 = 252), proving the X source switched to the package.
-        let sixteenthsMeasure = try #require(prepared.layout.measures.first)
+        // 200/960 = 252), proving the X source is the package.
+        let sixteenthsMeasure = try #require(engraved.measures.first)
         #expect(sixteenthsMeasure.width > 252)
     }
 
-    @Test("note heads take package headCenterX and keep Virgo staff Y")
-    func noteHeadsTakePackageHeadCenterXAndKeepVirgoY() throws {
-        let prepared = try GameplayNotationPreparer.prepare(makeCompositionRequest())
+    @Test("note heads take package headCenterX and staff-step Y")
+    func noteHeadsTakePackageHeadCenterAndStaffStepY() throws {
+        let engraved = try requireEngraved(GameplayNotationPreparer.prepare(makeCompositionRequest()))
 
-        var centerXByID: [UInt64: CGFloat] = [:]
-        for measure in prepared.formatted.measures {
+        var centerXByID: [Int: CGFloat] = [:]
+        for measure in engraved.formatted.measures {
             for column in measure.columns {
                 for head in column.noteHeads {
-                    centerXByID[UInt64(head.noteID)] = head.headCenterX
+                    centerXByID[head.noteID] = head.headCenterX
                 }
             }
         }
         #expect(centerXByID.count == 16)
 
-        for head in prepared.layout.noteHeads {
-            let centerX = try #require(centerXByID[head.id])
+        let staffSpace = engraved.style.formatting.staffSpace
+        for head in engraved.noteHeads {
+            let centerX = try #require(centerXByID[head.noteID])
             #expect(head.position.x == centerX)
-            let expectedY = GameplayLayout.StaffLinePosition.line1.absoluteY(for: head.row)
-                + DrumType.snare.notePosition.yOffset
-            #expect(head.position.y == expectedY)
+            // Package Y: pitch-ascending staff step around the row's
+            // normalized staff center (step 4 = middle line).
+            let row = try #require(engraved.rows.first { $0.index == head.rowIndex })
+            #expect(head.position.y == row.staffCenterY - CGFloat(head.staffStep - 4) * staffSpace / 2)
         }
     }
 
     @Test("rests take the package visual X")
     func restsTakePackageVisualX() throws {
-        let prepared = try GameplayNotationPreparer.prepare(makeCompositionRequest())
+        let engraved = try requireEngraved(GameplayNotationPreparer.prepare(makeCompositionRequest()))
 
         var visualXByKey: [String: CGFloat] = [:]
-        for measure in prepared.formatted.measures {
+        for measure in engraved.formatted.measures {
             for column in measure.columns {
                 for rest in column.rests {
                     visualXByKey["\(measure.index)-\(column.localTick)"] = rest.visualX
                 }
             }
         }
-        let printedRest = try #require(prepared.layout.rests.first { $0.isPrinted })
+        // Every engraved rest is printed — hidden rests never cross into the
+        // package input.
+        let printedRest = try #require(engraved.rests.first { $0.measureIndex == 1 })
         let expectedX = try #require(visualXByKey["1-0"])
         #expect(printedRest.position.x == expectedX)
     }
 
     @Test("controls take the logical column X")
     func controlsTakeLogicalColumnX() throws {
-        let prepared = try GameplayNotationPreparer.prepare(makeCompositionRequest())
+        let engraved = try requireEngraved(GameplayNotationPreparer.prepare(makeCompositionRequest()))
 
         let controlColumn = try #require(
-            prepared.formatted.measures
+            engraved.formatted.measures
                 .first { $0.index == 1 }?
                 .columns
                 .first { $0.localTick == 480 }
         )
-        let stop = try #require(prepared.layout.stopNotes.first)
-        #expect(stop.timeColumn.measureIndex == 1)
+        let stop = try #require(engraved.controls.first)
+        #expect(stop.measureIndex == 1)
         #expect(stop.position.x == controlColumn.logicalColumnX)
     }
 
     @Test("measure bars span the package measure bounds")
     func measureBarsSpanPackageBounds() throws {
-        let prepared = try GameplayNotationPreparer.prepare(makeCompositionRequest())
-        let layout = prepared.layout
+        let engraved = try requireEngraved(GameplayNotationPreparer.prepare(makeCompositionRequest()))
 
-        for measure in layout.measures {
+        for measure in engraved.measures {
+            // A closing bar cites the measure it closes; a leading bar cites
+            // the measure it opens — disambiguate by X.
             let endBar = try #require(
-                layout.measureBars.first { $0.id == "bar_\(measure.measureIndex)_end" }
+                engraved.measureBars.first {
+                    $0.measureIndex == measure.index && $0.x == measure.xOffset + measure.width
+                }
             )
-            #expect(endBar.row == measure.row)
-            #expect(endBar.x == measure.xOffset + measure.width)
+            #expect(endBar.rowIndex == measure.rowIndex)
 
-            let isFirstInRow = layout.measures
-                .first { $0.row == measure.row }?.measureIndex == measure.measureIndex
+            let isFirstInRow = engraved.measures
+                .first { $0.rowIndex == measure.rowIndex }?.index == measure.index
             if isFirstInRow {
-                let startBar = try #require(
-                    layout.measureBars.first { $0.id == "bar_\(measure.measureIndex)" }
+                _ = try #require(
+                    engraved.measureBars.first {
+                        $0.measureIndex == measure.index && $0.x == measure.xOffset
+                    }
                 )
-                #expect(startBar.x == measure.xOffset)
             }
         }
-        #expect(layout.measureBars.last?.isFinal == true)
+        #expect(engraved.measureBars.last?.isFinal == true)
     }
 
-    @Test("installed layout embeds the formatted notation for live lookup")
-    func installedLayoutEmbedsFormattedNotation() throws {
-        let prepared = try GameplayNotationPreparer.prepare(makeCompositionRequest())
+    @Test("engraved notation embeds the formatted notation for live lookup")
+    func engravedNotationEmbedsFormattedNotation() throws {
+        let engraved = try requireEngraved(GameplayNotationPreparer.prepare(makeCompositionRequest()))
 
-        #expect(prepared.layout.formattedNotation == prepared.formatted)
-        let onset = try #require(prepared.layout.formattedNotation.position(measureIndex: 0, localTick: 0))
-        #expect(onset.rowIndex == prepared.layout.measures[0].row)
-        #expect(onset.x == prepared.formatted.measures[0].columns.first?.logicalColumnX)
+        let onset = try #require(engraved.formatted.position(measureIndex: 0, localTick: 0))
+        #expect(onset.rowIndex == engraved.measures[0].rowIndex)
+        #expect(onset.x == engraved.formatted.measures[0].columns.first?.logicalColumnX)
     }
 }
 
@@ -297,56 +311,67 @@ struct DisplacedSecondStemAxisTests {
         )
     }
 
+    /// The `.ready` engraving out of a prepared state.
+    private func requireEngraved(
+        _ prepared: GameplayNotationPreparedState
+    ) throws -> EngravedNotation {
+        try DrumTabFixtureHarness.requireEngraved(prepared)
+    }
+
+    /// Bravura stem-anchor offset for an engraved head — the same metrics the
+    /// package engraver uses to attach the shared stem.
+    private func stemAnchorX(for head: EngravedNoteHead, engraved: EngravedNotation) -> CGFloat {
+        PercussionGlyphMetrics.notehead(
+            style: head.noteheadStyle,
+            duration: head.duration,
+            stemDirection: head.stemDirection,
+            staffSpace: engraved.style.formatting.staffSpace
+        ).stemAnchorOffset.x
+    }
+
     @Test("up-stem second: stem and beam stay on the undisplaced lower head")
     func upStemSecondKeepsUndisplacedStemAxis() throws {
         // Snare (line3) + highTom (space 3-4): adjacent staff steps, both up.
-        let prepared = try GameplayNotationPreparer.prepare(
+        let engraved = try requireEngraved(GameplayNotationPreparer.prepare(
             makeChordRequest(noteTypes: (.snare, .highTom), overrides: [:])
-        )
+        ))
 
         // One logical column carries both heads; only the upper (displaced)
         // head moves off `logicalColumnX`, to the right.
-        let column = try #require(prepared.formatted.measures[0].columns.first { $0.localTick == 0 })
+        let column = try #require(engraved.formatted.measures[0].columns.first { $0.localTick == 0 })
         #expect(Set(column.noteHeads.map(\.noteID)) == Set([1, 2]))
         let stemSidePackage = try #require(column.noteHeads.first { $0.noteID == 1 })
         let displacedPackage = try #require(column.noteHeads.first { $0.noteID == 2 })
         #expect(stemSidePackage.headCenterX == column.logicalColumnX)
         #expect(displacedPackage.headCenterX > column.logicalColumnX)
 
-        let stemSideHead = try #require(prepared.layout.noteHeads.first { $0.id == 1 })
-        let displacedHead = try #require(prepared.layout.noteHeads.first { $0.id == 2 })
+        let stemSideHead = try #require(engraved.noteHeads.first { $0.noteID == 1 })
+        let displacedHead = try #require(engraved.noteHeads.first { $0.noteID == 2 })
         #expect(stemSideHead.position.x == column.logicalColumnX)
         #expect(displacedHead.position.x == displacedPackage.headCenterX)
 
         // The shared stem anchors on the undisplaced stem-side head.
-        let stem = try #require(prepared.layout.stems.first { $0.noteHeadIDs.contains(1) })
-        let stemSideAnchor = VirgoNotationAdapter
-            .noteheadMetrics(for: stemSideHead, style: .gameplayDefault).stemAnchorOffset
-        #expect(stem.start.x == stemSideHead.position.x + stemSideAnchor.x)
-        let displacedAnchor = VirgoNotationAdapter
-            .noteheadMetrics(for: displacedHead, style: .gameplayDefault).stemAnchorOffset
-        #expect(stem.start.x != displacedHead.position.x + displacedAnchor.x)
+        let stem = try #require(engraved.stems.first { $0.noteIDs.contains(1) })
+        #expect(stem.start.x == stemSideHead.position.x + stemAnchorX(for: stemSideHead, engraved: engraved))
+        #expect(stem.start.x != displacedHead.position.x + stemAnchorX(for: displacedHead, engraved: engraved))
 
         // Both heads touch or overlap the shared stem (pinned VexFlow rule).
         for head in [stemSideHead, displacedHead] {
-            let bounds = VirgoNotationAdapter
-                .noteheadMetrics(for: head, style: .gameplayDefault).paintedBounds
-                .offsetBy(dx: head.position.x, dy: head.position.y)
-            // Guarded by a tolerance: offsetBy rounding can miss by one ULP.
+            let bounds = head.paintedBounds
             #expect(bounds.minX <= stem.start.x + 0.001)
             #expect(bounds.maxX >= stem.start.x - 0.001)
         }
 
         // The beam endpoint shares that stem axis.
         let beam = try #require(
-            prepared.layout.beams.first { $0.noteHeadIDs.contains(1) && $0.noteHeadIDs.contains(2) }
+            engraved.beams.first { $0.noteIDs.contains(1) && $0.noteIDs.contains(2) }
         )
-        let stemAtSecondChord = try #require(prepared.layout.stems.first { $0.noteHeadIDs.contains(3) })
+        let stemAtSecondChord = try #require(engraved.stems.first { $0.noteIDs.contains(3) })
         #expect(beam.start.x == stem.start.x)
         #expect(beam.end.x == stemAtSecondChord.start.x)
 
         // The playhead's logical onset stays on the undisplaced column axis.
-        let onset = try #require(prepared.formatted.position(measureIndex: 0, localTick: 0))
+        let onset = try #require(engraved.formatted.position(measureIndex: 0, localTick: 0))
         #expect(onset.x == column.logicalColumnX)
     }
 
@@ -354,62 +379,56 @@ struct DisplacedSecondStemAxisTests {
     func downStemSecondKeepsUndisplacedStemAxis() throws {
         // Kick below line1 + hi-hat pedal in the space below line1: adjacent
         // staff steps, both down-stem, both lower voice.
-        let prepared = try GameplayNotationPreparer.prepare(
+        let engraved = try requireEngraved(GameplayNotationPreparer.prepare(
             makeChordRequest(
                 noteTypes: (.hiHatPedal, .bass),
                 overrides: [.kick: .belowLine1, .hiHatPedal: .spaceBetweenLine1AndBelow]
             )
-        )
+        ))
 
         // One logical column; the lower (displaced) head shifts left while the
         // stem-side upper head stays put.
-        let column = try #require(prepared.formatted.measures[0].columns.first { $0.localTick == 0 })
+        let column = try #require(engraved.formatted.measures[0].columns.first { $0.localTick == 0 })
         #expect(Set(column.noteHeads.map(\.noteID)) == Set([1, 2]))
         let stemSidePackage = try #require(column.noteHeads.first { $0.noteID == 1 })
         let displacedPackage = try #require(column.noteHeads.first { $0.noteID == 2 })
         #expect(stemSidePackage.headCenterX == column.logicalColumnX)
         #expect(displacedPackage.headCenterX < column.logicalColumnX)
 
-        let stemSideHead = try #require(prepared.layout.noteHeads.first { $0.id == 1 })
-        let displacedHead = try #require(prepared.layout.noteHeads.first { $0.id == 2 })
+        let stemSideHead = try #require(engraved.noteHeads.first { $0.noteID == 1 })
+        let displacedHead = try #require(engraved.noteHeads.first { $0.noteID == 2 })
         #expect(stemSideHead.position.x == column.logicalColumnX)
         #expect(displacedHead.position.x == displacedPackage.headCenterX)
 
         // The shared stem anchors on the undisplaced stem-side head.
-        let stem = try #require(prepared.layout.stems.first { $0.noteHeadIDs.contains(1) })
-        let stemSideAnchor = VirgoNotationAdapter
-            .noteheadMetrics(for: stemSideHead, style: .gameplayDefault).stemAnchorOffset
-        #expect(stem.start.x == stemSideHead.position.x + stemSideAnchor.x)
-        let displacedAnchor = VirgoNotationAdapter
-            .noteheadMetrics(for: displacedHead, style: .gameplayDefault).stemAnchorOffset
-        #expect(stem.start.x != displacedHead.position.x + displacedAnchor.x)
+        let stem = try #require(engraved.stems.first { $0.noteIDs.contains(1) })
+        #expect(stem.start.x == stemSideHead.position.x + stemAnchorX(for: stemSideHead, engraved: engraved))
+        #expect(stem.start.x != displacedHead.position.x + stemAnchorX(for: displacedHead, engraved: engraved))
 
         // Both heads touch or overlap the shared stem (pinned VexFlow rule).
         for head in [stemSideHead, displacedHead] {
-            let bounds = VirgoNotationAdapter
-                .noteheadMetrics(for: head, style: .gameplayDefault).paintedBounds
-                .offsetBy(dx: head.position.x, dy: head.position.y)
-            // Guarded by a tolerance: offsetBy rounding can miss by one ULP.
+            let bounds = head.paintedBounds
             #expect(bounds.minX <= stem.start.x + 0.001)
             #expect(bounds.maxX >= stem.start.x - 0.001)
         }
 
         // The beam endpoint shares that stem axis.
         let beam = try #require(
-            prepared.layout.beams.first { $0.noteHeadIDs.contains(1) && $0.noteHeadIDs.contains(2) }
+            engraved.beams.first { $0.noteIDs.contains(1) && $0.noteIDs.contains(2) }
         )
-        let stemAtSecondChord = try #require(prepared.layout.stems.first { $0.noteHeadIDs.contains(3) })
+        let stemAtSecondChord = try #require(engraved.stems.first { $0.noteIDs.contains(3) })
         #expect(beam.start.x == stem.start.x)
         #expect(beam.end.x == stemAtSecondChord.start.x)
 
         // The playhead's logical onset stays on the undisplaced column axis.
-        let onset = try #require(prepared.formatted.position(measureIndex: 0, localTick: 0))
+        let onset = try #require(engraved.formatted.position(measureIndex: 0, localTick: 0))
         #expect(onset.x == column.logicalColumnX)
     }
 }
 
 /// Task 5 live-lookup wiring: the snapshot-driven playhead branch resolves
-/// its X from the installed `formattedNotation`, never from the grid.
+/// its X from the installed engraving's `position(measureIndex:localTick:)`
+/// (the embedded formatter), never from the grid.
 @Suite("Timeline Playhead Lookup", .serialized)
 @MainActor
 struct TimelinePlayheadLookupTests {
@@ -424,16 +443,18 @@ struct TimelinePlayheadLookupTests {
         await viewModel.setupGameplay(loadPersistedSpeed: false)
         defer { viewModel.cleanup() }
 
-        // The snapshot route installed the formatter output alongside the
-        // layout, so the playhead can resolve ticks against it.
-        let formatted = viewModel.cachedNotationLayout.formattedNotation
+        // The snapshot route installed the engraving (which embeds the
+        // formatter output), so the playhead can resolve ticks against it.
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        let formatted = engraved.formatted
         #expect(!formatted.measures.isEmpty)
 
         viewModel.isPlaying = true
         viewModel.updateContinuousVisualsForTesting(elapsedTime: 0)
         let position = try #require(viewModel.purpleBarPosition)
         let expected = try #require(formatted.position(measureIndex: 0, localTick: 0))
+        let row = try #require(engraved.rows.first { $0.index == expected.rowIndex })
         #expect(position.x == Double(expected.x))
-        #expect(position.y == Double(GameplayLayout.StaffLinePosition.line3.absoluteY(for: expected.rowIndex)))
+        #expect(position.y == Double(row.staffCenterY))
     }
 }

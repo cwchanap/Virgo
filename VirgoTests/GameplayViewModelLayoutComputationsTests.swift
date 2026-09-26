@@ -111,7 +111,7 @@ struct GameplayViewModelLayoutComputationsTests {
         // HPA-164 no-snapshot policy: no timeline snapshot means empty
         // notation (cachedNotes are never formatted) and the legacy
         // non-notation beat fallback drives playback visuals.
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.isEmpty ?? true)
         #expect(!viewModel.cachedNotationHasPlayableContent)
         #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
         #expect(viewModel.bgmOffsetSeconds == 0.5)
@@ -153,7 +153,7 @@ struct GameplayViewModelLayoutComputationsTests {
         let timeline = try #require(viewModel.cachedRhythmTimeline)
         #expect(viewModel.cachedRhythmRuntime.availability == .valid)
         #expect(target.position == viewModel.cachedDrumBeats.first?.rhythmPosition)
-        #expect(target.eventID == viewModel.cachedNotationLayout.noteHeads.first?.eventID)
+        #expect(target.eventID.rawValue == viewModel.cachedEngravedNotation?.noteHeads.first?.noteID)
         #expect(timeline.seconds(for: target.position, bpm: 120, speed: 1) == target.targetSecondsAtOneX)
         if case .timeline = try #require(viewModel.inputTimingConfiguration(speed: 1)) {
             // Expected canonical input configuration.
@@ -194,7 +194,14 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(memberTicks.count == 2)
         #expect(memberTicks.first.map { $0 < rest.position.localTick } == true)
         #expect(memberTicks.last.map { rest.position.localTick < $0 } == true)
-        #expect(viewModel.cachedNotationLayout.tuplets.contains { $0.id == tupletID })
+        // The engraved tuplet carries package-local IDs: member notes cite
+        // their event IDs verbatim; member rests cite printed-rest ordinals.
+        let memberEventIDs = snapshot.notes
+            .filter { $0.tupletID == tupletID }
+            .map { $0.eventID.rawValue }
+        #expect(viewModel.cachedEngravedNotation?.tuplets.contains {
+            $0.memberNoteIDs.sorted() == memberEventIDs.sorted() && !$0.memberRestIDs.isEmpty
+        } == true)
         viewModel.cleanup()
     }
 
@@ -231,7 +238,7 @@ struct GameplayViewModelLayoutComputationsTests {
         #expect(viewModel.cachedRhythmNoteTargets.isEmpty)
         // HPA-164 no-snapshot policy: inadmissible manual timing means empty
         // notation; playback runs on the non-notation beat fallback.
-        #expect(viewModel.cachedNotationLayout.noteHeads.isEmpty)
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.isEmpty ?? true)
         #expect(viewModel.isGameplayPrepared)
         if case .legacy = try #require(viewModel.inputTimingConfiguration(speed: 1)) {
             // Expected all-or-nothing legacy fallback.
@@ -439,22 +446,23 @@ struct GameplayViewModelLayoutComputationsTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay()
 
-        // Sanity: layout actually produced multiple rows.
-        let maxRow = viewModel.cachedNotationLayout.measures.map { $0.row }.max() ?? 0
+        // Sanity: engraving actually produced multiple rows.
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        let maxRow = engraved.measures.map(\.rowIndex).max() ?? 0
         try #require(maxRow >= 1)
 
         // Each measure index must resolve to the rendered notation row.
-        for measure in viewModel.cachedNotationLayout.measures {
-            #expect(viewModel.rowForMeasure(measure.measureIndex) == measure.row,
-                    "rowForMeasure(\(measure.measureIndex)) should equal notation row \(measure.row)")
+        for measure in engraved.measures {
+            #expect(viewModel.rowForMeasure(measure.index) == measure.rowIndex,
+                    "rowForMeasure(\(measure.index)) should equal notation row \(measure.rowIndex)")
         }
 
         // Out-of-range indices clamp to the last known row instead of snapping to 0.
         #expect(viewModel.rowForMeasure(9_999) == maxRow)
     }
 
-    /// Verifies that cacheNotationLayout() populates cachedMeasureRowMap and that
-    /// rowForMeasure uses it instead of scanning measures with first(where:).
+    /// Verifies that notation installation populates cachedMeasureRowMap and
+    /// that rowForMeasure uses it instead of scanning measures with first(where:).
 
     @Test func testCachedMeasureRowMapPopulatedAfterLayout() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
@@ -468,19 +476,20 @@ struct GameplayViewModelLayoutComputationsTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay()
 
-        // If the notation layout is active, cachedMeasureRowMap must be populated.
-        if !viewModel.cachedNotationLayout.noteHeads.isEmpty {
-            try #require(!viewModel.cachedMeasureRowMap.isEmpty,
-                         "cachedMeasureRowMap should be populated after setupGameplay")
-            // Every measure in the layout must have an entry in the map.
-            for measure in viewModel.cachedNotationLayout.measures {
-                #expect(viewModel.cachedMeasureRowMap[measure.measureIndex] == measure.row,
-                        "cachedMeasureRowMap[\(measure.measureIndex)] should be \(measure.row)")
-            }
+        // The notation engraving must be installed for this chart — an
+        // absent or empty engraving is a preparation failure, not a skip.
+        let engraved = try #require(viewModel.cachedEngravedNotation)
+        try #require(!engraved.noteHeads.isEmpty)
+        try #require(!viewModel.cachedMeasureRowMap.isEmpty,
+                     "cachedMeasureRowMap should be populated after setupGameplay")
+        // Every measure in the engraving must have an entry in the map.
+        for measure in engraved.measures {
+            #expect(viewModel.cachedMeasureRowMap[measure.index] == measure.rowIndex,
+                    "cachedMeasureRowMap[\(measure.index)] should be \(measure.rowIndex)")
         }
     }
 
-    /// Verifies that cacheNotationLayout() uses default drum positions regardless
+    /// Verifies that notation engraving uses default drum positions regardless
     /// of what is persisted in UserDefaults, ensuring test determinism.
 
     @Test func testUpdateRowWidthCancelsStaleTimerOnReturnToCachedWidth() async throws {

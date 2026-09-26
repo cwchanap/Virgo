@@ -58,18 +58,21 @@ struct GameplayViewModelCleanupTests {
         await viewModel.loadChartData()
         await viewModel.setupGameplay(loadPersistedSpeed: false)
 
-        let prepared = GameplayNotationPreparedState(
-            layout: viewModel.cachedNotationLayout
+        let engraving = try #require(viewModel.cachedEngravedNotation)
+        let prepared = GameplayNotationPreparedState.ready(
+            engraving,
+            viewModel.notationPresentation
+                ?? GameplayNotationPresentation(annotations: .empty, accessibilityLabels: [:])
         )
         let inFlightGeneration = viewModel.beginNotationPreparation()
-        let layoutBeforeCleanup = viewModel.cachedNotationLayout
+        let layoutBeforeCleanup = viewModel.cachedEngravedNotation
         viewModel.cleanup()
 
         #expect(!viewModel.isGameplayPrepared)
         #expect(viewModel.notationLayoutGeneration != inFlightGeneration)
         #expect(!viewModel.applyPreparedNotation(prepared, generation: inFlightGeneration))
-        #expect(viewModel.cachedNotationLayout.measures.count == layoutBeforeCleanup.measures.count)
-        #expect(viewModel.cachedNotationLayout.noteHeads.count == layoutBeforeCleanup.noteHeads.count)
+        #expect(viewModel.cachedEngravedNotation?.measures.count == layoutBeforeCleanup?.measures.count)
+        #expect(viewModel.cachedEngravedNotation?.noteHeads.count == layoutBeforeCleanup?.noteHeads.count)
         #expect(!viewModel.isGameplayPrepared)
     }
 

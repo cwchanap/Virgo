@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import DrumNotation
 
 extension GameplayViewModel {
     func makeRhythmRuntime(resolvedRhythm: ResolvedChartRhythm) -> GameplayRhythmRuntime {
@@ -220,7 +221,7 @@ extension GameplayViewModel {
     func computeCachedLayoutData(prepareNotation: Bool = true) {
         guard let track = track else {
             if prepareNotation {
-                cacheNotationLayout()
+                refreshNotationEngraving()
             }
             return
         }
@@ -258,7 +259,7 @@ extension GameplayViewModel {
         }
 
         if prepareNotation {
-            cacheNotationLayout()
+            refreshNotationEngraving()
         }
     }
 

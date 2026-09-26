@@ -5,6 +5,7 @@
 
 import AVFoundation
 import Foundation
+import DrumNotation
 
 extension GameplayViewModel {
     // MARK: - Visual Updates
@@ -175,14 +176,16 @@ extension GameplayViewModel {
     }
 
     /// Resolves the staff row that contains the given measure index, branching on
-    /// whether the notation layout or the legacy beat layout is active. Out-of-range
+    /// whether the engraved notation or the legacy beat layout is active. Out-of-range
     /// indices clamp to the last valid measure so the cursor stays on the final row
     /// after the song ends instead of snapping back to row 0.
     func rowForMeasure(_ measureIndex: Int) -> Int {
         if cachedNotationHasRenderableContent {
             guard cachedNotationHasPlayableContent else { return currentRow }
-            guard !cachedNotationLayout.measures.isEmpty else { return 0 }
-            let clamped = min(max(measureIndex, 0), cachedNotationLayout.measures.count - 1)
+            guard let engraving = cachedEngravedNotation, !engraving.measures.isEmpty else {
+                return 0
+            }
+            let clamped = min(max(measureIndex, 0), engraving.measures.count - 1)
             return cachedMeasureRowMap[clamped] ?? 0
         }
         if let pos = measurePositionMap[measureIndex] {
@@ -241,19 +244,23 @@ extension GameplayViewModel {
 
     private func calculateTimelinePurpleBarPosition(elapsedTime: Double) -> (x: Double, y: Double)? {
         guard cachedNotationHasPlayableContent,
+              let engraving = cachedEngravedNotation,
               let resolved = resolvedTimelinePlaybackPosition(elapsedTime: elapsedTime),
               let measure = cachedNotationMeasuresByIndex[resolved.measure.measureIndex] else {
             return nil
         }
-        // HPA-164: live tick→X comes from the installed formatter output;
-        // clamp sub-tick overshoot past the measure end onto the end anchor.
+        // HPA-166: live tick→X and the row anchor both come from the
+        // installed engraving — `position` forwards to the embedded
+        // formatter (clamp sub-tick overshoot past the measure end onto the
+        // end anchor), and `staffCenterY` is the row's normalized sheet Y.
         let localTick = min(resolved.localTick, Double(measure.durationTicks))
-        guard let position = cachedNotationLayout.formattedNotation.position(
+        guard let position = engraving.position(
             measureIndex: resolved.measure.measureIndex,
             localTick: localTick
-        ) else { return nil }
-        let staffCenterY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.rowIndex)
-        return (x: Double(position.x), y: Double(staffCenterY))
+        ), let row = engraving.row(at: position.rowIndex) else {
+            return nil
+        }
+        return (x: Double(position.x), y: Double(row.staffCenterY))
     }
 
     private func quantizedPurpleBarBeatBoundaryBeats(_ totalBeats: Double) -> Double {

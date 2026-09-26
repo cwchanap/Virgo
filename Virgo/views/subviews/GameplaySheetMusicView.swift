@@ -2,20 +2,27 @@
 //  GameplaySheetMusicView.swift
 //  Virgo
 //
+//  HPA-166 Task 7 — production mounts the package renderer: the installed
+//  `EngravedNotation` goes straight into `DrumNotationView`, the app-owned
+//  feel/warning annotations layer above it, and the playhead + row anchors
+//  read package row geometry. The legacy furniture fallback (staff lines,
+//  bars, clef/meter) remains only for charts with no timeline notation; a
+//  `.failed` preparation surfaces the practice-unavailable sheet instead.
+//
 
 import SwiftUI
+import DrumNotation
 
 /// Immutable values needed to render the complete static notation sheet.
 ///
-/// The generation is the identity of this projection. The layout and legacy
-/// positions are copy-on-write values, so capturing them here is O(1); the
-/// array scans needed by the sheet tree happen inside `GameplayStaticNotationView`.
+/// The generation is the identity of this projection. The engraving and
+/// presentation are copy-on-write values, so capturing them here is O(1).
 struct GameplayStaticNotationInput: Equatable {
-    let layout: NotationLayout
+    let engraving: EngravedNotation?
+    let presentation: GameplayNotationPresentation?
     let legacyMeasurePositions: [GameplayLayout.MeasurePosition]
     let legacyContentHeight: CGFloat
     let timeSignature: TimeSignature
-    let hasPlayableContent: Bool
     let hasRenderableContent: Bool
     let generation: UInt64
 
@@ -23,79 +30,138 @@ struct GameplayStaticNotationInput: Equatable {
         lhs.generation == rhs.generation
     }
 
-    var usesNotationLayout: Bool { hasRenderableContent }
+    /// Engraved notation drives the sheet only when an install is present —
+    /// `hasRenderableContent` is the install state resolved once per
+    /// generation (cleared installations and `.failed` leave it false).
+    var usesEngravedNotation: Bool { hasRenderableContent && engraving != nil }
 
     var measurePositions: [GameplayLayout.MeasurePosition] {
-        guard usesNotationLayout else { return legacyMeasurePositions }
-        return layout.measures.map { measure in
+        guard usesEngravedNotation, let engraving else { return legacyMeasurePositions }
+        return engraving.measures.map { measure in
             GameplayLayout.MeasurePosition(
-                row: measure.row,
+                row: measure.rowIndex,
                 xOffset: measure.xOffset,
-                measureIndex: measure.measureIndex
+                measureIndex: measure.index
             )
         }
     }
 
+    /// Sheet row count: the engraving's rows when installed, else the legacy
+    /// fallback positions' rows.
     var rowCount: Int {
-        (measurePositions.map { $0.row }.max() ?? 0) + 1
+        if usesEngravedNotation, let engraving { return engraving.rows.count }
+        return (legacyMeasurePositions.map { $0.row }.max() ?? 0) + 1
     }
 
     var contentWidth: CGFloat {
-        usesNotationLayout ? layout.contentWidth : GameplayLayout.maxRowWidth
+        engraving?.contentWidth ?? GameplayLayout.maxRowWidth
     }
 
-    var contentTopInset: CGFloat {
-        usesNotationLayout ? layout.topContentInset(style: .gameplayDefault) : 0
-    }
-
+    /// Sheet height: the engraving's declared `contentHeight` already covers
+    /// its normalized ink and the last row's anchor extent — no app-side
+    /// inset applies.
     var contentHeight: CGFloat {
-        usesNotationLayout ? layout.totalHeight + contentTopInset : legacyContentHeight
+        engraving?.contentHeight ?? legacyContentHeight
+    }
+
+    /// The deepest row anchor's top edge in sheet coordinates — the offset
+    /// `scrollTo("row_N", anchor: .top)` targets for the final row.
+    var lastRowAnchorTop: CGFloat {
+        let anchors = rowAnchors
+        return anchors.firstRowTop + CGFloat(max(rowCount - 1, 0)) * anchors.rowPitch
+    }
+
+    /// Scroll-canvas height: the sheet content, extended when needed so the
+    /// deepest row anchor can still reach the viewport top. The scroll view
+    /// clamps the offset at `canvas − viewport`, so the last band top only
+    /// arrives when the canvas runs a full viewport height below it —
+    /// `contentHeight` alone ends at the anchor block's bottom.
+    func scrollContentHeight(viewportHeight: CGFloat) -> CGFloat {
+        max(contentHeight, lastRowAnchorTop + max(0, viewportHeight))
+    }
+
+    /// Row-anchor geometry: the top of each row's band in sheet coordinates
+    /// plus the row pitch. Engraved sheets read `EngravedRow.staffCenterY`
+    /// and the producing `NotationEngravingStyle`; the fallback keeps the
+    /// legacy staff formula (three staff spaces above line 5).
+    var rowAnchors: (firstRowTop: CGFloat, rowPitch: CGFloat) {
+        if usesEngravedNotation, let engraving, let first = engraving.rows.first {
+            return (
+                firstRowTop: max(0, first.staffCenterY - engraving.style.rowHeight / 2),
+                rowPitch: engraving.style.rowHeight + engraving.style.rowVerticalSpacing
+            )
+        }
+        return (
+            firstRowTop: max(
+                0,
+                GameplayLayout.StaffLinePosition.line5.absoluteY(for: 0)
+                    - 3 * GameplayLayout.staffLineSpacing
+            ),
+            rowPitch: GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
+        )
     }
 }
 
 extension GameplayView {
+    /// The package renderer's appearance for the fixed-ink gameplay world:
+    /// chalk ink everywhere, muted chalk at half opacity on the staff-line
+    /// tier — the same two ink tiers the legacy sheet painted.
+    static var notationAppearance: DrumNotationAppearance {
+        DrumNotationAppearance(
+            foreground: Palette.chalk,
+            staffLines: Palette.chalkMuted.opacity(0.5)
+        )
+    }
+
     @ViewBuilder
     func sheetMusicView(geometry: GeometryProxy) -> some View {
-        if let viewModel, viewModel.hasFatalRhythmTiming {
-            rhythmFatalSheet(message: viewModel.rhythmFatalMessage)
+        if let viewModel, let message = viewModel.practiceUnavailableMessage {
+            rhythmFatalSheet(message: message)
         } else if let viewModel = viewModel, viewModel.isGameplayPrepared {
             let staticInput = staticNotationInput(viewModel: viewModel)
-            let contentWidth = staticInput.contentWidth
-            let contentTopInset = staticInput.contentTopInset
-            let contentHeight = staticInput.contentHeight
 
-            ScrollViewReader { proxy in
-                ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                    ZStack(alignment: .topLeading) {
-                        GameplayStaticNotationView(input: staticInput)
-                            .equatable()
-                        GameplayPlayheadBarView(position: viewModel.purpleBarPosition)
-                            .offset(y: contentTopInset)
+            // The inner reader reports the ScrollView's own viewport size —
+            // `geometry` spans the header and controls too — so the scroll
+            // canvas extends exactly one real viewport below the last anchor.
+            GeometryReader { sheetProxy in
+                ScrollViewReader { proxy in
+                    ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                        ZStack(alignment: .topLeading) {
+                            GameplayStaticNotationView(input: staticInput)
+                                .equatable()
+                            GameplayPlayheadBarView(position: viewModel.purpleBarPosition)
+                        }
+                        .frame(
+                            width: staticInput.contentWidth,
+                            height: staticInput.scrollContentHeight(
+                                viewportHeight: sheetProxy.size.height
+                            ),
+                            alignment: .topLeading
+                        )
                     }
-                    .frame(width: contentWidth, height: contentHeight, alignment: .topLeading)
-                }
-                .background(Palette.stage)
-                .onChange(of: viewModel.currentRow) { _, newRow in
-                    guard shouldAutoScrollSheet(
-                        viewModel: viewModel,
-                        isPlaying: viewModel.isPlaying
-                    ) else { return }
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo("row_\(newRow)", anchor: .top)
+                    .background(Palette.stage)
+                    .onChange(of: viewModel.currentRow) { _, newRow in
+                        guard shouldAutoScrollSheet(
+                            viewModel: viewModel,
+                            isPlaying: viewModel.isPlaying
+                        ) else { return }
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo("row_\(newRow)", anchor: .top)
+                        }
                     }
-                }
-                .onChange(of: viewModel.isPlaying) { _, nowPlaying in
-                    guard shouldAutoScrollSheet(
-                        viewModel: viewModel,
-                        isPlaying: nowPlaying
-                    ) else { return }
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo("row_\(viewModel.currentRow)", anchor: .top)
+                    .onChange(of: viewModel.isPlaying) { _, nowPlaying in
+                        guard shouldAutoScrollSheet(
+                            viewModel: viewModel,
+                            isPlaying: nowPlaying
+                        ) else { return }
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo("row_\(viewModel.currentRow)", anchor: .top)
+                        }
                     }
-                }
-                .onAppear { viewModel.updateRowWidth(geometry.size.width) }
-                .onChange(of: geometry.size.width) { _, newWidth in
-                    viewModel.updateRowWidth(newWidth)
+                    .onAppear { viewModel.updateRowWidth(geometry.size.width) }
+                    .onChange(of: geometry.size.width) { _, newWidth in
+                        viewModel.updateRowWidth(newWidth)
+                    }
                 }
             }
         } else {
@@ -106,11 +172,11 @@ extension GameplayView {
 
     func staticNotationInput(viewModel: GameplayViewModel) -> GameplayStaticNotationInput {
         GameplayStaticNotationInput(
-            layout: viewModel.cachedNotationLayout,
+            engraving: viewModel.cachedEngravedNotation,
+            presentation: viewModel.notationPresentation,
             legacyMeasurePositions: viewModel.cachedMeasurePositions,
             legacyContentHeight: viewModel.cachedLegacyContentHeight,
             timeSignature: viewModel.track?.timeSignature ?? .fourFour,
-            hasPlayableContent: viewModel.cachedNotationHasPlayableContent,
             hasRenderableContent: viewModel.cachedNotationHasRenderableContent,
             generation: viewModel.notationLayoutGeneration
         )
@@ -158,106 +224,42 @@ extension GameplayView {
     // These value-based wrappers remain useful to the raster and layout tests.
     // The mounted gameplay sheet uses `GameplayStaticNotationView` above, so
     // none of these wrappers are evaluated by the playback-observed container.
-    func staticSheetMusicContent(
-        measurePositions: [GameplayLayout.MeasurePosition],
-        contentWidth: CGFloat,
-        contentTopInset: CGFloat,
-        rowCount: Int,
-        viewModel: GameplayViewModel
-    ) -> some View {
-        GameplayStaticNotationLayers(
-            input: staticNotationInput(viewModel: viewModel),
-            measurePositions: measurePositions,
-            contentWidth: contentWidth,
-            contentTopInset: contentTopInset,
-            rowCount: rowCount
+    func staticSheetMusicContent(viewModel: GameplayViewModel) -> some View {
+        GameplayStaticNotationLayers(input: staticNotationInput(viewModel: viewModel))
+    }
+
+    /// Row-anchor column probe over the installed input's package-derived
+    /// anchor geometry.
+    func rowAnchorColumn(viewModel: GameplayViewModel) -> some View {
+        let input = staticNotationInput(viewModel: viewModel)
+        let anchors = input.rowAnchors
+        return GameplayRowAnchorColumn(
+            firstRowTop: anchors.firstRowTop,
+            rowCount: input.rowCount,
+            rowPitch: anchors.rowPitch
         )
     }
 
-    /// Compatibility wrapper for direct notation mounting probes.
-    func drumNotationView(viewModel: GameplayViewModel) -> some View {
-        GameplayDrumNotationView(
-            layout: viewModel.cachedNotationLayout
-        )
+    /// The installed engraving's printed rests — every engraved rest is
+    /// printed by construction.
+    func printedNotationRests(viewModel: GameplayViewModel) -> [EngravedRest] {
+        viewModel.cachedEngravedNotation?.rests ?? []
     }
 
-    /// Compatibility wrapper used by the row-anchor rendering probes.
-    @ViewBuilder
-    func rowAnchorColumn(rowCount: Int, viewModel: GameplayViewModel) -> some View {
-        GameplayRowAnchorColumn(layout: viewModel.cachedNotationLayout, rowCount: rowCount)
-    }
-
-    func staffLinesView(
-        measurePositions: [GameplayLayout.MeasurePosition],
-        width: CGFloat = GameplayLayout.maxRowWidth
-    ) -> some View {
-        StaffLinesBackgroundView(measurePositions: measurePositions, width: width)
-    }
-
-    func clefsAndTimeSignaturesView(
-        measurePositions: [GameplayLayout.MeasurePosition],
-        viewModel: GameplayViewModel
-    ) -> some View {
-        GameplayClefsAndTimeSignaturesView(
-            measurePositions: measurePositions,
-            timeSignature: viewModel.track?.timeSignature ?? .fourFour
-        )
-    }
-
-    func barLinesView(
-        measurePositions: [GameplayLayout.MeasurePosition],
-        viewModel: GameplayViewModel
-    ) -> some View {
-        GameplayBarLinesView(
-            measurePositions: measurePositions,
-            layout: viewModel.cachedNotationLayout,
-            timeSignature: viewModel.track?.timeSignature ?? .fourFour,
-            hasRenderableContent: viewModel.cachedNotationHasRenderableContent
-        )
-    }
-
-    func printedNotationRests(viewModel: GameplayViewModel) -> [RenderedRest] {
-        viewModel.cachedNotationLayout.rests.filter(\.isPrinted)
-    }
-
-    func usesNotationLayout(viewModel: GameplayViewModel) -> Bool {
-        viewModel.cachedNotationHasRenderableContent
+    func usesEngravedNotation(viewModel: GameplayViewModel) -> Bool {
+        staticNotationInput(viewModel: viewModel).usesEngravedNotation
     }
 
     func sheetMeasurePositions(viewModel: GameplayViewModel) -> [GameplayLayout.MeasurePosition] {
         staticNotationInput(viewModel: viewModel).measurePositions
     }
 
-    func sheetContentHeight(viewModel: GameplayViewModel, contentTopInset: CGFloat? = nil) -> CGFloat {
-        let input = staticNotationInput(viewModel: viewModel)
-        guard let contentTopInset else { return input.contentHeight }
-        return input.usesNotationLayout ? input.layout.totalHeight + contentTopInset : input.legacyContentHeight
-    }
-
-    func sheetContentTopInset(viewModel: GameplayViewModel) -> CGFloat {
-        staticNotationInput(viewModel: viewModel).contentTopInset
+    func sheetContentHeight(viewModel: GameplayViewModel) -> CGFloat {
+        staticNotationInput(viewModel: viewModel).contentHeight
     }
 
     func sheetContentWidth(viewModel: GameplayViewModel) -> CGFloat {
         staticNotationInput(viewModel: viewModel).contentWidth
-    }
-
-    func sheetRowCount(measurePositions: [GameplayLayout.MeasurePosition]) -> Int {
-        (measurePositions.map { $0.row }.max() ?? 0) + 1
-    }
-
-    func measurePositions(from notationLayout: NotationLayout) -> [GameplayLayout.MeasurePosition] {
-        notationLayout.measures.map { measure in
-            GameplayLayout.MeasurePosition(
-                row: measure.row,
-                xOffset: measure.xOffset,
-                measureIndex: measure.measureIndex
-            )
-        }
-    }
-
-    func notationContentWidth(for notationLayout: NotationLayout) -> CGFloat {
-        notationLayout.contentWidth
     }
 }
 
@@ -269,99 +271,98 @@ private struct GameplayStaticNotationView: View, Equatable {
     }
 
     var body: some View {
-        let measurePositions = input.measurePositions
-        return GameplayStaticNotationLayers(
-            input: input,
-            measurePositions: measurePositions,
-            contentWidth: input.contentWidth,
-            contentTopInset: input.contentTopInset,
-            rowCount: input.rowCount
-        )
+        GameplayStaticNotationLayers(input: input)
     }
 }
 
 private struct GameplayStaticNotationLayers: View {
     let input: GameplayStaticNotationInput
-    let measurePositions: [GameplayLayout.MeasurePosition]
-    let contentWidth: CGFloat
-    let contentTopInset: CGFloat
-    let rowCount: Int
 
     var body: some View {
+        let anchors = input.rowAnchors
         ZStack(alignment: .topLeading) {
-            ZStack(alignment: .topLeading) {
-                StaffLinesBackgroundView(measurePositions: measurePositions, width: contentWidth)
-                ZStack(alignment: .topLeading) {
-                    GameplayBarLinesView(
-                        measurePositions: measurePositions,
-                        layout: input.layout,
-                        timeSignature: input.timeSignature,
-                        hasRenderableContent: input.hasRenderableContent
-                    )
-                    GameplayClefsAndTimeSignaturesView(
-                        measurePositions: measurePositions,
-                        timeSignature: input.timeSignature
-                    )
-                    GameplayDrumNotationView(
-                        layout: input.layout
-                    )
-                }
+            if let engraving = input.engraving, input.usesEngravedNotation {
+                // The package view paints every primitive at the engraving's
+                // final normalized sheet coordinates — no app translation,
+                // no gameplay clock.
+                DrumNotationView(
+                    layout: engraving,
+                    appearance: GameplayView.notationAppearance,
+                    accessibilityLabels: input.presentation?.accessibilityLabels ?? [:]
+                )
+                // App-owned localized annotations layer above the package
+                // sheet at the same topLeading origin.
+                GameplayNotationAnnotationOverlay(
+                    annotations: input.presentation?.annotations ?? .empty
+                )
+            } else {
+                // No timeline / nothing printable: the legacy furniture
+                // fallback (staff lines, bars, clef/meter) is unchanged.
+                StaffLinesBackgroundView(
+                    measurePositions: input.legacyMeasurePositions,
+                    width: input.contentWidth
+                )
+                GameplayBarLinesView(
+                    measurePositions: input.legacyMeasurePositions,
+                    timeSignature: input.timeSignature
+                )
+                GameplayClefsAndTimeSignaturesView(
+                    measurePositions: input.legacyMeasurePositions,
+                    timeSignature: input.timeSignature
+                )
             }
-            .offset(y: contentTopInset)
 
-            GameplayRowAnchorColumn(layout: input.layout, rowCount: rowCount)
-                .offset(y: contentTopInset)
+            GameplayRowAnchorColumn(
+                firstRowTop: anchors.firstRowTop,
+                rowCount: input.rowCount,
+                rowPitch: anchors.rowPitch
+            )
         }
     }
 }
 
+/// Legacy-fallback bar lines: one `barLineWidth` bar per measure start plus
+/// the thin+thick double bar closing the last measure — the furniture tier
+/// used when no engraving is installed.
 private struct GameplayBarLinesView: View {
     let measurePositions: [GameplayLayout.MeasurePosition]
-    let layout: NotationLayout
     let timeSignature: TimeSignature
-    let hasRenderableContent: Bool
 
     var body: some View {
         ZStack {
-            if hasRenderableContent {
-                ForEach(layout.measureBars) { measureBar in
-                    NotationMeasureBarView(measureBar: measureBar)
-                        .equatable()
-                }
-            } else {
-                ForEach(measurePositions, id: \.measureIndex) { position in
-                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.row)
-                    Rectangle()
-                        .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
-                        .foregroundColor(Palette.chalk.opacity(0.8))
-                        .position(x: position.xOffset, y: centerY)
-                }
+            ForEach(measurePositions, id: \.measureIndex) { position in
+                let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: position.row)
+                Rectangle()
+                    .frame(width: GameplayLayout.barLineWidth, height: GameplayLayout.staffHeight)
+                    .foregroundColor(Palette.chalk.opacity(0.8))
+                    .position(x: position.xOffset, y: centerY)
+            }
 
-                if let lastPosition = measurePositions.last {
-                    let measureWidth = GameplayLayout.measureWidth(for: timeSignature)
-                    let endX = lastPosition.xOffset + measureWidth
-                    let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row)
-                    HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
-                        Rectangle()
-                            .frame(
-                                width: GameplayLayout.doubleBarLineWidths.thin,
-                                height: GameplayLayout.staffHeight
-                            )
-                            .foregroundColor(Palette.chalk)
-                        Rectangle()
-                            .frame(
-                                width: GameplayLayout.doubleBarLineWidths.thick,
-                                height: GameplayLayout.staffHeight
-                            )
-                            .foregroundColor(Palette.chalk)
-                    }
-                    .position(x: endX, y: centerY)
+            if let lastPosition = measurePositions.last {
+                let measureWidth = GameplayLayout.measureWidth(for: timeSignature)
+                let endX = lastPosition.xOffset + measureWidth
+                let centerY = GameplayLayout.StaffLinePosition.line3.absoluteY(for: lastPosition.row)
+                HStack(spacing: GameplayLayout.doubleBarLineSpacing) {
+                    Rectangle()
+                        .frame(
+                            width: GameplayLayout.doubleBarLineWidths.thin,
+                            height: GameplayLayout.staffHeight
+                        )
+                        .foregroundColor(Palette.chalk)
+                    Rectangle()
+                        .frame(
+                            width: GameplayLayout.doubleBarLineWidths.thick,
+                            height: GameplayLayout.staffHeight
+                        )
+                        .foregroundColor(Palette.chalk)
                 }
+                .position(x: endX, y: centerY)
             }
         }
     }
 }
 
+/// Legacy-fallback clef + meter furniture, drawn per distinct row.
 private struct GameplayClefsAndTimeSignaturesView: View {
     let measurePositions: [GameplayLayout.MeasurePosition]
     let timeSignature: TimeSignature
@@ -392,112 +393,20 @@ private struct GameplayClefsAndTimeSignaturesView: View {
     }
 }
 
-private struct GameplayDrumNotationView: View {
-    let layout: NotationLayout
-
-    var body: some View {
-        let printedRests = layout.rests.filter(\.isPrinted)
-        let style = NotationLayoutStyle.gameplayDefault
-        let flagCommands = VirgoNotationAdapter.flagPaintCommands(
-            flags: layout.flags,
-            heads: layout.noteHeads,
-            style: style
-        )
-
-        return ZStack {
-            ForEach(layout.ledgerLines) { ledgerLine in
-                NotationLedgerLineView(ledgerLine: ledgerLine)
-                    .equatable()
-            }
-
-            ForEach(printedRests) { rest in
-                NotationRestView(rest: rest, style: style)
-                    .equatable()
-            }
-
-            ForEach(layout.beams) { beam in
-                NotationBeamView(beam: beam)
-                    .equatable()
-            }
-
-            ForEach(flagCommands) { command in
-                NotationFlagView(command: command)
-                    .equatable()
-            }
-
-            ForEach(layout.stems) { stem in
-                NotationStemView(stem: stem)
-                    .equatable()
-            }
-
-            ForEach(layout.noteHeads) { noteHead in
-                NotationNoteHeadView(noteHead: noteHead, style: style)
-                    .equatable()
-            }
-
-            ForEach(layout.rhythmDots) { dot in
-                NotationRhythmDotView(dot: dot, style: style)
-                    .equatable()
-            }
-
-            ForEach(layout.articulations) { articulation in
-                NotationArticulationView(articulation: articulation, style: style)
-                    .equatable()
-            }
-
-            ForEach(layout.stopNotes) { stopNote in
-                NotationStopNoteView(stopNote: stopNote, style: style)
-                    .equatable()
-            }
-
-            ForEach(layout.tuplets) { tuplet in
-                NotationTupletView(tuplet: tuplet, style: style)
-                    .equatable()
-            }
-
-            ForEach(layout.feelMarks) { feelMark in
-                NotationFeelMarkView(feelMark: feelMark, style: style)
-                    .equatable()
-            }
-
-            ForEach(layout.rhythmWarnings) { warning in
-                NotationRhythmWarningView(warning: warning, style: style)
-                    .equatable()
-            }
-        }
-    }
-}
-
+/// Invisible `ScrollViewReader` anchors `row_0…row_N` at each staff row's
+/// band top. Anchor geometry is caller-supplied: package row geometry for
+/// engraved sheets, the legacy staff formula for the fallback sheet.
 private struct GameplayRowAnchorColumn: View {
-    let layout: NotationLayout
+    let firstRowTop: CGFloat
     let rowCount: Int
+    let rowPitch: CGFloat
 
     var body: some View {
-        let defaultSpacings: CGFloat = 3
-        let topPaddingAboveLine5: CGFloat
-        if layout.noteHeads.isEmpty {
-            topPaddingAboveLine5 = defaultSpacings * GameplayLayout.staffLineSpacing
-        } else {
-            let minRelativeOffset = layout.noteHeads.compactMap { noteHead -> CGFloat? in
-                let line5Y = GameplayLayout.StaffLinePosition.line5.absoluteY(for: noteHead.row)
-                return line5Y - noteHead.position.y
-            }.max() ?? 0
-            topPaddingAboveLine5 = max(
-                defaultSpacings * GameplayLayout.staffLineSpacing,
-                minRelativeOffset + GameplayLayout.staffLineSpacing
-            )
-        }
-
-        let firstRowTop = max(
-            0,
-            GameplayLayout.StaffLinePosition.line5.absoluteY(for: 0) - topPaddingAboveLine5
-        )
-        let rowSpan = GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
-        return VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             Color.clear.frame(width: 1, height: firstRowTop)
             ForEach(0..<max(rowCount, 1), id: \.self) { row in
                 Color.clear
-                    .frame(width: 1, height: rowSpan)
+                    .frame(width: 1, height: rowPitch)
                     .id("row_\(row)")
             }
             Spacer(minLength: 0)

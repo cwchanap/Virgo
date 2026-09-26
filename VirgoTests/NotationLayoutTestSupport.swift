@@ -1,24 +1,29 @@
 import Testing
+import DrumNotation
 @testable import Virgo
 
-/// Shared helpers for notation layout rest and control tests.
+/// Shared helpers for notation engraving rest and control tests.
 /// Kept reusable across the rest-focused and control-focused test files.
-/// Layout runs through the measured preparation route (HPA-164 Task 6).
+/// Geometry runs through the one preparation route ending in
+/// `NotationEngraver.engrave` (HPA-166 Task 7).
 struct NotationLayoutTestSupport {
-    func layout(
+    /// The `.ready` engraving for the given specs; test-failing on `.failed`.
+    func engraved(
         notes: [Note],
         controls: [NotationControlEvent] = [],
+        rests: [RhythmLayoutRest] = [],
         minimumMeasureCount: Int = 1,
         style: NotationLayoutStyle = .gameplayDefault,
         notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
-    ) -> NotationLayout {
-        NotationSnapshotTestSupport().prepare(
+    ) throws -> EngravedNotation {
+        try NotationSnapshotTestSupport().requireEngraved(NotationSnapshotTestSupport().prepare(
             notes: notes,
             controls: controls,
+            rests: rests,
             minimumMeasureCount: minimumMeasureCount,
             style: style,
             notePositionOverrides: notePositionOverrides
-        ).layout
+        ))
     }
 
     func control(

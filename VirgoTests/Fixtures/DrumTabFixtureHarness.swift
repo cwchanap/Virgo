@@ -1,17 +1,28 @@
 import Foundation
 import SwiftData
 import Testing
+import DrumNotation
 @testable import Virgo
 
 /// The rendered output of one fixture, plus the inputs later assertions need.
 ///
 /// Carries `chart` because the playhead tests drive a real `GameplayViewModel`,
 /// and `snapshot` because beat groups and engraving support live on
-/// `RhythmMeasure` rather than on `RenderedMeasure`.
+/// `RhythmMeasure` rather than on `EngravedMeasure`.
+///
+/// `engraved` (the package `EngravedNotation`) is the sole production
+/// geometry: `GameplayNotationPreparer.prepare` is the single preparation
+/// route, so `prepared` is the same closed state the view model installs
+/// (HPA-166 Task 7) and `engraved` is bound out of it — never a parallel
+/// test-side result. `resolvedInput` is the projection output the
+/// engraving consumed — rest/control ticks live there because the
+/// engraved primitives carry only final geometry.
 @MainActor
 struct FixtureRenderResult {
     let chart: Chart
-    let layout: NotationLayout
+    let prepared: GameplayNotationPreparedState
+    let engraved: EngravedNotation
+    let resolvedInput: ResolvedNotationInput
     let snapshot: RhythmLayoutSnapshot
     let timeline: RhythmTimeline
     let style: NotationLayoutStyle
@@ -22,9 +33,13 @@ struct FixtureRenderResult {
 enum DrumTabFixtureHarnessError: Error {
     case rhythmUnavailable(RhythmTimelineAvailability)
     case missingTimeline
+    case notationNotReady(GameplayNotationPreparedState)
+    /// The direct engraving seam produced a different `EngravedNotation`
+    /// than production `prepare` — the harness must not report it.
+    case engravingDiverged
 }
 
-/// Runs a fixture through the production import and layout path.
+/// Runs a fixture through the production import and notation path.
 ///
 /// Deliberately mirrors `LocalDTXFixtureImporter` / `ServerSongDownloader`:
 /// `persistenceProjection()` + `setRhythmMetadata` rather than
@@ -35,10 +50,12 @@ enum DrumTabFixtureHarnessError: Error {
 @MainActor
 enum DrumTabFixtureHarness {
     /// Pinned so goldens cannot depend on window size or user settings.
-    static let lockedStyle = NotationLayoutStyle.gameplayDefault
+    /// `nonisolated` (immutable + Sendable) so the pure `engrave` path can
+    /// default to them without hopping onto the main actor.
+    nonisolated static let lockedStyle = NotationLayoutStyle.gameplayDefault
         .with(rowWidth: GameplayLayout.maxRowWidth)
 
-    static let lockedOverrides: [DrumType: GameplayLayout.NotePosition] =
+    nonisolated static let lockedOverrides: [DrumType: GameplayLayout.NotePosition] =
         Dictionary(uniqueKeysWithValues: DrumType.allCases.map { ($0, $0.notePosition) })
 
     static func render(
@@ -69,8 +86,10 @@ enum DrumTabFixtureHarness {
             feel: RhythmLayoutSnapshotBuilder.feel(for: chart)
         )
 
-        // HPA-164 Task 6: goldens exercise the one measured preparation route
-        // production uses (snapshot → formatter → composed layout).
+        // HPA-166 Task 7: the package route is the one production
+        // preparation path — snapshot → expansion → projection →
+        // `NotationEngraver`. `prepared` is the same closed state the view
+        // model installs.
         let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
             snapshot: snapshot,
             minimumMeasureCount: fixture.minimumMeasureCount,
@@ -78,14 +97,90 @@ enum DrumTabFixtureHarness {
             notePositionOverrides: lockedOverrides
         ))
 
+        // The direct seam stays only to expose `resolvedInput` (its ticks
+        // back the rest/control assertions); `boundEngraving` throws when
+        // production preparation failed or the seam's output diverges, so
+        // this net cannot pass on a parallel test-side engraving while
+        // production preparation is broken.
+        let direct = try engrave(
+            snapshot: snapshot,
+            minimumMeasureCount: fixture.minimumMeasureCount
+        )
+        let engraved = try boundEngraving(prepared: prepared, direct: direct.engraved)
+
         return FixtureRenderResult(
             chart: chart,
-            layout: prepared.layout,
+            prepared: prepared,
+            engraved: engraved,
+            resolvedInput: direct.input,
             snapshot: snapshot,
             timeline: timeline,
             style: lockedStyle,
             container: container
         )
+    }
+
+    /// The test-side package engraving seam: the same expanded measure list
+    /// `GameplayNotationPreparer.prepare` builds, the app-site
+    /// `VirgoNotationProjection` conversion, then the package engraver —
+    /// sharing the harness's locked style and overrides so goldens stay
+    /// pinned. `render` keeps this seam only to expose `resolvedInput`
+    /// (its ticks back the rest/control assertions) and asserts the seam's
+    /// engraving equals the production `prepare` result via
+    /// `boundEngraving` — it is never a second opinion on production.
+    /// `NotationSnapshotTestSupport` reuses this seam for synthetic
+    /// snapshots so both entry points engrave identically.
+    /// Nonisolated: every call below is a pure value-type function.
+    nonisolated static func engrave(
+        snapshot: RhythmLayoutSnapshot,
+        minimumMeasureCount: Int,
+        style: NotationLayoutStyle = lockedStyle,
+        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = lockedOverrides
+    ) throws -> (input: ResolvedNotationInput, engraved: EngravedNotation) {
+        let expandedMeasures = GameplayNotationPreparer.expandedRhythmMeasures(
+            snapshot,
+            minimumMeasureCount: minimumMeasureCount
+        )
+        let input = try VirgoNotationProjection.resolvedNotation(
+            snapshot: snapshot,
+            expandedMeasures: expandedMeasures,
+            notePositionOverrides: notePositionOverrides
+        )
+        return try (
+            input,
+            NotationEngraver.engrave(
+                input,
+                style: VirgoNotationProjection.engravingStyle(for: style)
+            )
+        )
+    }
+
+    /// The `.ready` engraving out of a prepared state; throws otherwise so
+    /// fixture tests fail with the state rather than an optional unwrap.
+    nonisolated static func requireEngraved(
+        _ prepared: GameplayNotationPreparedState
+    ) throws -> EngravedNotation {
+        guard case let .ready(engraved, _) = prepared else {
+            throw DrumTabFixtureHarnessError.notationNotReady(prepared)
+        }
+        return engraved
+    }
+
+    /// Binds the harness's reported engraving to the production prepared
+    /// result: returns the `.ready` engraving after asserting the direct
+    /// seam produced the identical `EngravedNotation`. Throws
+    /// `notationNotReady` when production preparation failed and
+    /// `engravingDiverged` when the seam disagrees — in both cases the
+    /// test-side result cannot stand in for production.
+    nonisolated static func boundEngraving(
+        prepared: GameplayNotationPreparedState,
+        direct: EngravedNotation
+    ) throws -> EngravedNotation {
+        let engraved = try requireEngraved(prepared)
+        guard engraved == direct else {
+            throw DrumTabFixtureHarnessError.engravingDiverged
+        }
+        return engraved
     }
 
     /// Builds the `Song`/`Chart` pair from a parsed projection, wires their

@@ -1,6 +1,9 @@
 import CoreGraphics
 import Testing
-import DrumNotation
+/// `@testable` reaches the internal `format(_:style:stemTopology:)` seam so
+/// the defensive partial-coverage flag plan can be driven through identical
+/// production logic — the same injected-topology shape the engraver tests use.
+@testable import DrumNotation
 
 /// Compile-time Sendable proof: the call only compiles when `T` is `Sendable`.
 private func requireSendable<T: Sendable>(_ value: T) -> T { value }
@@ -14,7 +17,7 @@ struct NotationFormatterTests {
         let document = try Fixtures.document()
 
         #expect(document.ticksPerWholeNote == 1920)
-        #expect(document.measures == [ResolvedMeasure(index: 0, startTick: 0, durationTicks: 1920)])
+        #expect(document.measures == [Fixtures.measure()])
 
         let note = document.notes.first
         #expect(note?.id == 42)
@@ -24,7 +27,11 @@ struct NotationFormatterTests {
         #expect(note?.noteheadStyle == .x)
         #expect(note?.duration == .sixteenth)
         #expect(note?.dotCount == 0)
-        #expect(note?.visibleFlagDuration == .sixteenth)
+        #expect(note?.voice == .upper)
+        #expect(note?.durationTicks == 120)
+        #expect(note?.tiebreakOrder == 0)
+        #expect(note?.isRhythmEngravable == true)
+        #expect(note?.articulation == nil)
 
         let rest = document.rests.first
         #expect(rest?.id == 7)
@@ -32,13 +39,11 @@ struct NotationFormatterTests {
         #expect(rest?.duration == .quarter)
         #expect(rest?.dotCount == 1)
         #expect(rest?.isFullMeasure == false)
+        #expect(rest?.voice == .upper)
+        #expect(rest?.durationTicks == 480)
 
-        #expect(
-            document.controls.first == ResolvedControl(
-                id: 9,
-                position: NotationTickPosition(measureIndex: 0, localTick: 480)
-            )
-        )
+        #expect(document.controls.first == Fixtures.control())
+        #expect(document.tuplets.isEmpty)
         let again = try Fixtures.document()
         #expect(document == again)
     }
@@ -50,6 +55,19 @@ struct NotationFormatterTests {
         _ = requireSendable(Fixtures.note())
         _ = requireSendable(Fixtures.rest())
         _ = requireSendable(Fixtures.control())
+        _ = requireSendable(NotationVoiceRole.upper)
+        _ = requireSendable(NotationMeter(beats: 4, noteValue: 4))
+        _ = requireSendable(ResolvedBeatGroup(startTick: 0, durationTicks: 480))
+        _ = requireSendable(NotationControlKind.stop)
+        _ = requireSendable(ResolvedTupletRatio(actual: 3, normal: 2))
+        _ = requireSendable(ResolvedTupletGroup(
+            id: 0,
+            measureIndex: 0,
+            voice: .upper,
+            ratio: ResolvedTupletRatio(actual: 3, normal: 2),
+            memberNoteIDs: [],
+            memberRestIDs: []
+        ))
         _ = requireSendable(NotationTickPosition(measureIndex: 0, localTick: 0))
         _ = requireSendable(NotationFormattingStyle.virgoDefault)
         _ = requireSendable(Fixtures.formattedNotation())
@@ -160,7 +178,7 @@ struct NotationFormatterTests {
         #expect {
             try Fixtures.document(measures: [
                 Fixtures.measure(),
-                ResolvedMeasure(index: 1, startTick: Int.max - 10, durationTicks: 100)
+                Fixtures.measure(index: 1, startTick: Int.max - 10, durationTicks: 100)
             ])
         } throws: { error in
             error as? ResolvedNotationInput.ValidationError
@@ -192,7 +210,9 @@ struct NotationFormatterTests {
 
     @Test("validation accepts boundary local ticks")
     func validationAcceptsBoundaryLocalTicks() throws {
-        _ = try Fixtures.document(notes: [Fixtures.note(localTick: 1919)])
+        // The last valid onset carries a one-tick span ending exactly on the
+        // measure end — onset and span both stay inside the measure.
+        _ = try Fixtures.document(notes: [Fixtures.note(localTick: 1919, durationTicks: 1)])
         _ = try Fixtures.document(controls: [Fixtures.control(localTick: 0)])
     }
 
@@ -324,12 +344,26 @@ struct NotationFormatterColumnTests {
 struct NotationFormatterInkTests {
     private let style = NotationFormattingStyle.virgoDefault
 
+    /// The note duration whose canonical flag family is `flag` — a lone
+    /// unbeamed note reserves exactly its own family's footprint.
+    private func noteDuration(for flag: NotationFlagDuration) -> NotationDuration {
+        switch flag {
+        case .eighth: return .eighth
+        case .sixteenth: return .sixteenth
+        case .thirtySecond: return .thirtySecond
+        case .sixtyFourth: return .sixtyFourth
+        }
+    }
+
     @Test("visible flags expand the glyph's side; fully beamed notes pay no flag width")
     func flagFootprintFollowsVisibleDuration() throws {
-        let flags: [NotationFlagDuration?] = NotationFlagDuration.allCases + [nil]
-        for flagDuration in flags {
+        let cases: [(NotationDuration, NotationFlagDuration?)] =
+            NotationFlagDuration.allCases.map { (noteDuration(for: $0), $0) } + [(.quarter, nil)]
+        for (duration, flagDuration) in cases {
             for stem in [NotationStemDirection.up, .down] {
-                let notes = [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, stem: stem, flag: flagDuration)]
+                let notes = [
+                    Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, stem: stem, duration: duration)
+                ]
                 let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
                 let column = try Fixtures.column(notation, localTick: 0)
                 let headReach = Fixtures.headReach(stem: stem)
@@ -355,19 +389,63 @@ struct NotationFormatterInkTests {
                 #expect(abs(column.rightExtent - max(headReach, flagInkMaxX)) < 0.001)
             }
         }
+
+        // A beam-covered sixteenth must collapse to head-only extents too:
+        // the lone cases above end at a flagless quarter, which cannot
+        // exercise flag filtering — a formatter that still reserved flag ink
+        // for beam-covered levels would pass them all. Drive full coverage
+        // through the injected-topology seam so the plan computes to `.none`.
+        for stem in [NotationStemDirection.up, .down] {
+            let notes = [
+                Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, stem: stem, duration: .sixteenth)
+            ]
+            let document = try Fixtures.document(notes: notes, rests: [], controls: [])
+            let notation = NotationFormatter.format(
+                document,
+                style: style,
+                stemTopology: StemTopologyBuilder().build(
+                    document,
+                    topology: BeamTopologyResult(
+                        primaryGroups: [],
+                        coveredLevelsByEventIndex: [0: [0, 1]]
+                    )
+                )
+            )
+            let column = try Fixtures.column(notation, localTick: 0)
+            let headReach = Fixtures.headReach(stem: stem)
+            #expect(abs(column.rightExtent - headReach) < 0.001)
+            #expect(abs(column.leftExtent - headReach) < 0.001)
+        }
     }
 
     @Test("partially uncovered flag reserves one eighth-component footprint")
     func partialFlagReservesEighthFootprint() throws {
-        func rightExtent(duration: NotationDuration, flag: NotationFlagDuration?) throws -> CGFloat {
-            let notes = [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: duration, flag: flag)]
-            let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        func rightExtent(duration: NotationDuration, coveredLevels: Set<Int>? = nil) throws -> CGFloat {
+            let notes = [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: duration)]
+            let document = try Fixtures.document(notes: notes, rests: [], controls: [])
+            let notation: FormattedNotation
+            if let coveredLevels {
+                // Synthetic coverage drives the defensive `.components` plan
+                // arm through the same production seam `NotationEngraver` uses.
+                let topology = StemTopologyBuilder().build(
+                    document,
+                    topology: BeamTopologyResult(
+                        primaryGroups: [],
+                        coveredLevelsByEventIndex: [0: coveredLevels]
+                    )
+                )
+                notation = NotationFormatter.format(document, style: style, stemTopology: topology)
+            } else {
+                notation = try Fixtures.format(document)
+            }
             return try Fixtures.column(notation, localTick: 0).rightExtent
         }
 
-        let partial = try rightExtent(duration: .sixteenth, flag: .eighth)
-        let eighthReference = try rightExtent(duration: .eighth, flag: .eighth)
-        let fullStack = try rightExtent(duration: .sixteenth, flag: .sixteenth)
+        // A sixteenth with only beam level 0 covered plans `.components({1})`,
+        // which reserves one eighth-component glyph.
+        let partial = try rightExtent(duration: .sixteenth, coveredLevels: [0])
+        let eighthReference = try rightExtent(duration: .eighth)
+        let fullStack = try rightExtent(duration: .sixteenth)
         #expect(abs(partial - eighthReference) < 0.001)
         #expect(partial < fullStack)
     }
@@ -375,7 +453,7 @@ struct NotationFormatterInkTests {
     @Test("adjacent column reserves clearance beyond the visible flag ink")
     func adjacentColumnClearsFlagInk() throws {
         let notes = [
-            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, flag: .eighth),
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, duration: .eighth),
             Fixtures.makeNote(id: 2, localTick: 960, staffStep: 3)
         ]
         let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))

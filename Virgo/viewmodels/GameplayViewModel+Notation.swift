@@ -2,16 +2,34 @@
 //  GameplayViewModel+Notation.swift
 //  Virgo
 //
-//  Notation layout installation, off-main timeline preparation, and the
-//  measure coordinate caches derived from the installed layout.
+//  Engraved notation installation, off-main timeline preparation, and the
+//  measure coordinate caches derived from the installed engraving.
 //  Split from GameplayViewModel+Computations.swift for SwiftLint file limits.
 //
 
 import Foundation
+import DrumNotation
 
 extension GameplayViewModel {
+    /// Tears down runtime state for a chart whose persisted timing is fatally
+    /// inconsistent. The setup request already allocated `generation`; the reset
+    /// reuses it so the reset remains a single notation installation.
+    func resetForFatalRhythmTiming(generation: UInt64) {
+        _ = clearNotationInstallation(generation: generation)
+        cachedMeasureRowMap = [:]
+        cachedNotationMeasuresByIndex = [:]
+        cachedLegacyContentHeight = 0
+        cachedTrackDuration = 0
+        bgmOffsetSeconds = 0
+        metronome.stop()
+        bgmPlayer?.stop()
+        bgmPlayer = nil
+        inputManager.stopListening()
+        Logger.error(rhythmFatalMessage)
+    }
+
     /// Reports the sheet music view's currently available row width. If this changes
-    /// the notation layout is rebuilt so measures repack at the new width. Values at
+    /// the notation engraving is rebuilt so measures repack at the new width. Values at
     /// or below the legacy `maxRowWidth` (900) are treated as the floor so behavior
     /// on narrow windows matches the historical layout.
     func updateRowWidth(_ width: CGFloat) {
@@ -29,9 +47,9 @@ extension GameplayViewModel {
     }
 
     /// Trailing-edge debounce for row-width changes. During macOS live resize the
-    /// width changes every frame; rebuilding the full notation layout each time is
+    /// width changes every frame; rebuilding the full notation engraving each time is
     /// expensive. This mirrors the speed-change debounce pattern: coalesce rapid
-    /// width changes and rebuild layout once the user stops resizing.
+    /// width changes and rebuild notation once the user stops resizing.
     private func scheduleRowWidthUpdate(_ width: CGFloat) {
         rowWidthTimer?.invalidate()
 
@@ -43,7 +61,7 @@ extension GameplayViewModel {
         // Apply immediately in tests for deterministic behavior
         if TestEnvironment.isRunningTests {
             cachedLayoutRowWidth = width
-            cacheNotationLayout()
+            refreshNotationEngraving()
             return
         }
 
@@ -54,14 +72,18 @@ extension GameplayViewModel {
             Task { @MainActor in
                 guard let self else { return }
                 self.cachedLayoutRowWidth = width
-                self.cacheNotationLayout()
+                self.refreshNotationEngraving()
             }
         }
     }
 
-    func cacheNotationLayout() {
-        guard let track = track else {
-            installNotationLayout(.empty)
+    /// The synchronous notation refresh (HPA-166 Task 7): runs the same
+    /// `GameplayNotationPreparer.prepare` route as the detached initial
+    /// worker, then installs through the single
+    /// `installPreparedNotation(_:generation:)` funnel.
+    func refreshNotationEngraving() {
+        guard track != nil else {
+            clearNotationInstallation()
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]
             cachedLegacyContentHeight = 0
@@ -69,28 +91,14 @@ extension GameplayViewModel {
         }
 
         if let request = makeTimelineNotationPreparationRequest() {
-            // HPA-164: the synchronous relayout shares the one preparation
-            // route with the detached initial worker — no second layout path.
-            installNotationLayout(GameplayNotationPreparer.prepare(request).layout)
+            installPreparedNotation(GameplayNotationPreparer.prepare(request))
         } else {
-            // No timeline snapshot: the measured route requires one, so the
-            // notation stays empty and playback falls back to the existing
-            // non-notation beat UI. `cachedNotes` is never formatted.
-            installNotationLayout(.empty)
+            // No timeline snapshot: the engraved route requires one, so the
+            // notation clears and playback falls back to the existing
+            // non-notation beat UI. `cachedNotes` is never engraved.
+            clearNotationInstallation()
         }
-        if cachedNotationHasRenderableContent {
-            cachedMeasureRowMap = Dictionary(
-                uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
-            )
-            cachedNotationMeasuresByIndex = Dictionary(
-                uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0) }
-            )
-            cacheNotationMeasurePositionMap()
-        } else {
-            cachedMeasureRowMap = [:]
-            cachedNotationMeasuresByIndex = [:]
-        }
-
+        refreshNotationMeasureCaches()
         logDroppedNotesIfAny()
     }
 
@@ -113,7 +121,7 @@ extension GameplayViewModel {
     /// handler captures the worker directly so caller-task cancellation (e.g.
     /// the view disappearing) propagates to the detached worker. Cancellation
     /// is best-effort resource cleanup only: the dominant work is
-    /// `NotationLayoutEngine.layout`, which has no cooperative cancellation
+    /// `NotationEngraver.engrave`, which has no cooperative cancellation
     /// points, so an abandoned worker may still run to completion. Correctness
     /// rests on the generation checks below — a stale result is discarded
     /// regardless of whether the worker finished or was cancelled.
@@ -145,32 +153,36 @@ extension GameplayViewModel {
         }
     }
 
-    /// Applies one prepared timeline result through the existing notation
-    /// installation funnel. A stale result changes no cache or readiness state.
+    /// Applies one prepared timeline result through the notation installation
+    /// funnel. A stale result changes no cache or readiness state.
     @discardableResult
     func applyPreparedNotation(
         _ prepared: GameplayNotationPreparedState,
         generation: UInt64
     ) -> Bool {
         guard generation == notationLayoutGeneration else { return false }
-        guard installNotationLayout(prepared.layout, generation: generation) else { return false }
+        guard installPreparedNotation(prepared, generation: generation) else { return false }
+        refreshNotationMeasureCaches()
+        logDroppedNotesIfAny()
+        isGameplayPrepared = true
+        return true
+    }
 
-        if cachedNotationHasRenderableContent {
+    /// Rebuilds the measure→row and measure-by-index lookups from the
+    /// installed engraving; clears them when no notation is installed.
+    private func refreshNotationMeasureCaches() {
+        if cachedNotationHasRenderableContent, let engraving = cachedEngravedNotation {
             cachedMeasureRowMap = Dictionary(
-                uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0.row) }
+                uniqueKeysWithValues: engraving.measures.map { ($0.index, $0.rowIndex) }
             )
             cachedNotationMeasuresByIndex = Dictionary(
-                uniqueKeysWithValues: cachedNotationLayout.measures.map { ($0.measureIndex, $0) }
+                uniqueKeysWithValues: engraving.measures.map { ($0.index, $0) }
             )
             cacheNotationMeasurePositionMap()
         } else {
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]
         }
-
-        logDroppedNotesIfAny()
-        isGameplayPrepared = true
-        return true
     }
 
     /// Use default positions in tests so notation remains deterministic across
@@ -182,37 +194,40 @@ extension GameplayViewModel {
         return DrumNotationSettingsManager.loadPositions()
     }
 
-    /// Rebuilds `measurePositionMap` from the current notation layout's measures.
-    /// Extracted from `cacheNotationLayout()` to keep it under the function-body-length limit.
+    /// Rebuilds `measurePositionMap` from the installed engraving's measures.
     private func cacheNotationMeasurePositionMap() {
+        guard let engraving = cachedEngravedNotation else { return }
         measurePositionMap = Dictionary(
-            uniqueKeysWithValues: cachedNotationLayout.measures.map { measure in
+            uniqueKeysWithValues: engraving.measures.map { measure in
                 (
-                    measure.measureIndex,
+                    measure.index,
                     GameplayLayout.MeasurePosition(
-                        row: measure.row,
+                        row: measure.rowIndex,
                         xOffset: measure.xOffset,
-                        measureIndex: measure.measureIndex
+                        measureIndex: measure.index
                     )
                 )
             }
         )
     }
 
-    /// Logs a diagnostic when the notation layout engine drops notes (i.e. the
-    /// rendered note-head count is lower than the timeline's event count).
-    /// With no timeline snapshot the layout is intentionally empty (HPA-164),
-    /// so no drop diagnostics apply. Extracted from `cacheNotationLayout()`
-    /// to keep it under the function-body-length limit.
+    /// Logs a diagnostic when the engraving drops timeline events (i.e. the
+    /// engraved note-head/control counts are lower than the timeline's, or
+    /// printed rests went missing — the projection drops each of these at
+    /// its span/lane guards).
+    /// With no timeline snapshot the notation is intentionally uninstalled
+    /// (HPA-164), so no drop diagnostics apply.
     private func logDroppedNotesIfAny() {
         guard cachedRhythmRuntime.availability == .valid else { return }
         logDroppedTimelineNotesIfAny()
+        logDroppedTimelineControlsIfAny()
+        logDroppedTimelineRestsIfAny()
     }
 
     private func logDroppedTimelineNotesIfAny() {
-        let renderedEventIDs = Set(cachedNotationLayout.noteHeads.compactMap(\.eventID))
+        let renderedEventIDs = Set(cachedEngravedNotation?.noteHeads.map(\.noteID) ?? [])
         let droppedEventIDs = cachedRhythmRuntime.noteByEventID.keys
-            .filter { !renderedEventIDs.contains($0) }
+            .filter { !renderedEventIDs.contains($0.rawValue) }
             .sorted { $0.rawValue < $1.rawValue }
         guard !droppedEventIDs.isEmpty else { return }
 
@@ -223,9 +238,40 @@ extension GameplayViewModel {
             return droppedNoteMetadata(note, eventID: eventID)
         }
         Logger.warning(
-            "Layout engine dropped \(droppedEventIDs.count) timeline note(s): "
+            "Engraver dropped \(droppedEventIDs.count) timeline note(s): "
                 + droppedReasons.joined(separator: "; ")
                 + (droppedEventIDs.count > 5 ? " … and \(droppedEventIDs.count - 5) more" : "")
+        )
+    }
+
+    private func logDroppedTimelineControlsIfAny() {
+        let renderedControlIDs = Set(cachedEngravedNotation?.controls.map(\.controlID) ?? [])
+        let droppedControlIDs = cachedRhythmRuntime.controlByEventID.keys
+            .filter { !renderedControlIDs.contains($0.rawValue) }
+            .sorted { $0.rawValue < $1.rawValue }
+        guard !droppedControlIDs.isEmpty else { return }
+        let droppedReasons = droppedControlIDs.prefix(5).map { eventID in
+            let kind = cachedRhythmRuntime.controlByEventID[eventID]?.kind.rawValue ?? "unknown"
+            return "eventID=\(eventID.rawValue), kind=\(kind)"
+        }
+        Logger.warning(
+            "Engraver dropped \(droppedControlIDs.count) timeline control event(s): "
+                + droppedReasons.joined(separator: "; ")
+                + (droppedControlIDs.count > 5 ? " … and \(droppedControlIDs.count - 5) more" : "")
+        )
+    }
+
+    /// Printed rests carry no event IDs (the projection's rests use an
+    /// adapter-local ordinal namespace), so the drop check is the monotone
+    /// count: the projection only ever removes printed candidates, never
+    /// synthesizes new ones.
+    private func logDroppedTimelineRestsIfAny() {
+        guard let snapshot = cachedRhythmRuntime.layoutSnapshot else { return }
+        let printedCount = snapshot.rests.filter { $0.visibility == .printed }.count
+        let renderedCount = cachedEngravedNotation?.rests.count ?? 0
+        guard renderedCount < printedCount else { return }
+        Logger.warning(
+            "Engraver dropped \(printedCount - renderedCount) printed timeline rest(s)"
         )
     }
 

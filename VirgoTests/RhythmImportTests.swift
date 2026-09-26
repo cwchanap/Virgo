@@ -156,29 +156,32 @@ struct RhythmImportTests {
         #expect(warningCodes.contains(.indeterminateTerminalDuration))
 
         await viewModel.setupGameplay(loadPersistedSpeed: false)
+        let engraved = try #require(viewModel.cachedEngravedNotation)
         let expectedUpperEventIDs = Set(upperNotes.map(\.eventID))
-        let upperHeads = viewModel.cachedNotationLayout.noteHeads.filter {
-            guard let eventID = $0.eventID else { return false }
-            return expectedUpperEventIDs.contains(eventID)
+        let upperHeads = engraved.noteHeads.filter {
+            expectedUpperEventIDs.contains(RhythmEventID(rawValue: $0.noteID))
         }
-        #expect(Set(upperHeads.compactMap { $0.eventID }) == expectedUpperEventIDs)
+        #expect(Set(upperHeads.map(\.noteID)) == Set(expectedUpperEventIDs.map(\.rawValue)))
         #expect(upperHeads.count == expectedUpperEventIDs.count)
-        let upperHeadIDs = Set(upperHeads.map(\.id))
-        #expect(viewModel.cachedNotationLayout.stems.allSatisfy {
-            upperHeadIDs.isDisjoint(with: $0.noteHeadIDs)
+        let upperHeadIDs = Set(upperHeads.map(\.noteID))
+        #expect(engraved.stems.allSatisfy {
+            upperHeadIDs.isDisjoint(with: $0.noteIDs)
         })
-        #expect(viewModel.cachedNotationLayout.beams.allSatisfy {
-            upperHeadIDs.isDisjoint(with: $0.noteHeadIDs)
+        #expect(engraved.beams.allSatisfy {
+            upperHeadIDs.isDisjoint(with: $0.noteIDs)
         })
-        #expect(viewModel.cachedNotationLayout.flags.allSatisfy { !upperHeadIDs.contains($0.noteHeadID) })
-        #expect(viewModel.cachedNotationLayout.rhythmDots.allSatisfy { dot in
-            guard case let .event(eventID) = dot.source else { return true }
-            return !upperNotes.contains { $0.eventID == eventID }
+        #expect(engraved.flags.allSatisfy { !upperHeadIDs.contains($0.noteID) })
+        #expect(engraved.rhythmDots.allSatisfy { dot in
+            guard case let .note(noteID) = dot.source else { return true }
+            return !upperHeadIDs.contains(noteID)
         })
-        #expect(viewModel.cachedNotationLayout.rhythmWarnings.count == 1)
-        #expect(viewModel.cachedNotationLayout.rhythmWarnings.first?.codes == [.indeterminateTerminalDuration])
-        #expect(viewModel.cachedNotationLayout.tuplets.allSatisfy { tuplet in
-            Set(tuplet.memberEventIDs).isDisjoint(with: upperNotes.map(\.eventID))
+        // Rhythm warnings are app-owned annotations now — built alongside
+        // the engraving, never inside it.
+        let warnings = viewModel.notationPresentation?.annotations.rhythmWarnings ?? []
+        #expect(warnings.count == 1)
+        #expect(warnings.first?.codes == [.indeterminateTerminalDuration])
+        #expect(engraved.tuplets.allSatisfy { tuplet in
+            Set(tuplet.memberNoteIDs).isDisjoint(with: upperHeadIDs)
         })
     }
 

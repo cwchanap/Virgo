@@ -1,3 +1,11 @@
+/// One notation time column: the measure, its local tick, and the absolute
+/// tick on the layout timeline.
+struct NotationTimeColumn: Hashable, Sendable {
+    let measureIndex: Int
+    let tickWithinMeasure: Int
+    let absoluteLayoutTick: Int
+}
+
 struct RestTimelineNote: Hashable {
     let timeColumn: NotationTimeColumn
     let voice: NotationVoice

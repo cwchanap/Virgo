@@ -73,8 +73,9 @@ struct GameplayView: View {
         if practiceState.isResolved, !practiceState.isPracticeEnabled {
             return practiceState.reason ?? String(localized: "Unsupported chart timing")
         }
-        guard let viewModel, viewModel.hasFatalRhythmTiming else { return nil }
-        return viewModel.rhythmFatalMessage
+        // One practice-unavailable surface (HPA-166 Task 7): fatal rhythm
+        // timing or a notation-preparation failure.
+        return viewModel?.practiceUnavailableMessage
     }
 
     private func dismissGameplay() {

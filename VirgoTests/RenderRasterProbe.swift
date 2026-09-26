@@ -100,6 +100,102 @@ func rasterizeView<V: View>(_ view: V, size: CGSize) throws -> RasterBitmap {
     return RasterBitmap(bytes: bytes, width: width, height: height)
 }
 
+/// The first `NSScrollView` in a hosted hierarchy — the production scroll
+/// path both probes drive.
+private func firstHostedScrollView(in view: NSView) -> NSScrollView? {
+    if let scrollView = view as? NSScrollView { return scrollView }
+    return view.subviews.lazy.compactMap(firstHostedScrollView(in:)).first
+}
+
+/// Renders `view` at exactly `size` by mounting it in a real `NSHostingView`
+/// and snapshotting the laid-out layer.
+///
+/// `ImageRenderer` does not paint `ScrollView` document content in this
+/// headless test host, so production branches that mount notation inside the
+/// sheet's `ScrollView` must rasterize through this hosted path instead.
+///
+/// `scrollY` scrolls the first `NSScrollView` found inside the hosted view
+/// by that many document points before snapshotting — the production scroll
+/// path (`NSClipView` bounds origin), used to position a boundary-crossing
+/// primitive mid-glyph across the sheet's clip edge.
+@MainActor
+func rasterizeHostedView<V: View>(
+    _ view: V,
+    size: CGSize,
+    scrollY: CGFloat = 0
+) throws -> RasterBitmap {
+    let hostingView = NSHostingView(
+        rootView: AnyView(view.frame(width: size.width, height: size.height))
+    )
+    hostingView.frame = CGRect(origin: .zero, size: size)
+    hostingView.layoutSubtreeIfNeeded()
+    hostingView.displayIfNeeded()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    if scrollY != 0, let scrollView = firstHostedScrollView(in: hostingView) {
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+    hostingView.layoutSubtreeIfNeeded()
+
+    guard let rep = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else {
+        throw RenderRasterProbeError.missingPixelBuffer
+    }
+    hostingView.cacheDisplay(in: hostingView.bounds, to: rep)
+    guard let cgImage = rep.cgImage else {
+        throw RenderRasterProbeError.missingCGImage
+    }
+
+    let width = Int(size.width)
+    let height = Int(size.height)
+    let bytesPerRow = width * RasterBitmap.bytesPerPixel
+    var bytes = [UInt8](repeating: 0, count: height * bytesPerRow)
+
+    try bytes.withUnsafeMutableBytes { buffer in
+        guard let baseAddress = buffer.baseAddress else {
+            throw RenderRasterProbeError.missingPixelBuffer
+        }
+        guard let context = CGContext(
+            data: baseAddress,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: bytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw RenderRasterProbeError.missingBitmapContext
+        }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+    }
+
+    return RasterBitmap(bytes: bytes, width: width, height: height)
+}
+
+/// Mounts `view` at `size`, scrolls its first `NSScrollView` to `scrollY`,
+/// and returns the clip view's resulting document offset — what the scroll
+/// view actually reached after its own clamping. The row-anchor gate needs
+/// the post-clamp value, not the requested one: a canvas too short to reach
+/// an anchor reads back a smaller offset than requested.
+@MainActor
+func hostedScrollOffset<V: View>(
+    _ view: V,
+    size: CGSize,
+    scrollY: CGFloat
+) -> CGFloat? {
+    let hostingView = NSHostingView(
+        rootView: AnyView(view.frame(width: size.width, height: size.height))
+    )
+    hostingView.frame = CGRect(origin: .zero, size: size)
+    hostingView.layoutSubtreeIfNeeded()
+    hostingView.displayIfNeeded()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    guard let scrollView = firstHostedScrollView(in: hostingView) else { return nil }
+    scrollView.contentView.scroll(to: NSPoint(x: 0, y: scrollY))
+    scrollView.reflectScrolledClipView(scrollView.contentView)
+    hostingView.layoutSubtreeIfNeeded()
+    return scrollView.contentView.bounds.origin.y
+}
+
 /// Rasterizes `view` at exactly `size` (scale 1) and writes it as a PNG to `url`
 /// so a generated visual preview can be opened by its absolute path.
 @MainActor

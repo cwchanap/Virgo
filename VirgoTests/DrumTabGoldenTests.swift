@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import DrumNotation
 @testable import Virgo
 
 @Suite("Drum tab golden digests", .serialized)
@@ -8,9 +9,9 @@ struct DrumTabGoldenTests {
     @Test("same-time-trio matches its golden digest")
     func sameTimeTrio() throws {
         let result = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.sameTimeTrio)
-        #expect(result.layout.noteHeads.count == 6)
+        #expect(result.engraved.noteHeads.count == 6)
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: DrumTabFixtureCatalog.sameTimeTrio.name
         )
     }
@@ -23,21 +24,21 @@ struct DrumTabGoldenTests {
         // Measure 0: 16 content sixteenths. Measure 1: 1 sentinel note that
         // keeps measure 0's last onset supported (see the fixture's doc
         // comment).
-        #expect(result.layout.noteHeads.count == 17)
-        #expect(result.layout.measures.count == 2)
+        #expect(result.engraved.noteHeads.count == 17)
+        #expect(result.engraved.measures.count == 2)
 
         // 4/4 at this resolution has four quarter-note beat groups. Each
         // holds a contiguous run of four sixteenths, so beat-scoped topology
         // must produce exactly four distinct primary (level 0) beam runs of
         // four notes each -- never one run spanning the whole measure (the
         // HPA-97 "overlong connection bar" regression).
-        let primaryRuns = result.layout.beams.filter { $0.level == 0 }
-        let distinctPrimaryRuns = Set(primaryRuns.map { $0.noteHeadIDs.sorted() })
+        let primaryRuns = result.engraved.beams.filter { $0.level == 0 }
+        let distinctPrimaryRuns = Set(primaryRuns.map { $0.noteIDs.sorted() })
         #expect(distinctPrimaryRuns.count == 4)
         #expect(distinctPrimaryRuns.allSatisfy { $0.count == 4 })
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
@@ -49,7 +50,7 @@ struct DrumTabGoldenTests {
 
         // Measure 0: 4 beats * (1 eighth + 2 sixteenths) = 12 content notes.
         // Measure 1: 1 sentinel note.
-        #expect(result.layout.noteHeads.count == 13)
+        #expect(result.engraved.noteHeads.count == 13)
 
         // Each beat's eighth + two sixteenths form one primary (level 0) run
         // of 3 notes (adjacency is exact: eighth spans 2 ticks to the first
@@ -59,17 +60,17 @@ struct DrumTabGoldenTests {
         // than its primary run's 3. That is the partial secondary beam
         // required by HPA-142: a renderer that (incorrectly) beams the
         // eighth at the secondary level too would produce a level-1 beam
-        // with noteHeadIDs.count == 3, matching the primary and failing this
+        // with noteIDs.count == 3, matching the primary and failing this
         // gate.
-        let primaryRuns = result.layout.beams.filter { $0.level == 0 }
-        let secondaryBeams = result.layout.beams.filter { $0.level >= 1 }
-        #expect(Set(primaryRuns.map { $0.noteHeadIDs.sorted() }).count == 4)
-        #expect(primaryRuns.allSatisfy { $0.noteHeadIDs.count == 3 })
+        let primaryRuns = result.engraved.beams.filter { $0.level == 0 }
+        let secondaryBeams = result.engraved.beams.filter { $0.level >= 1 }
+        #expect(Set(primaryRuns.map { $0.noteIDs.sorted() }).count == 4)
+        #expect(primaryRuns.allSatisfy { $0.noteIDs.count == 3 })
         #expect(secondaryBeams.count == 4, "mixed beat must produce a partial secondary beam per beat")
-        #expect(secondaryBeams.allSatisfy { $0.noteHeadIDs.count == 2 })
+        #expect(secondaryBeams.allSatisfy { $0.noteIDs.count == 2 })
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
@@ -83,24 +84,36 @@ struct DrumTabGoldenTests {
         // 1 kick sentinel note (see the fixture's doc comment for why the two
         // lone notes live on separate voices in the same measure rather than
         // in two same-voice measures).
-        #expect(result.layout.noteHeads.count == 10)
-        #expect(result.layout.measures.count == 2)
+        #expect(result.engraved.noteHeads.count == 10)
+        #expect(result.engraved.measures.count == 2)
 
         // The hi-hat's lone sixteenth (position 3) has no beat-mate to run
-        // with, so it must flag: sixteenth = 2 flag levels, both uncovered,
-        // both on the same head. The kick's lone eighth (position 2) is the
-        // same story at 1 flag level. Total: 3 flags across 2 distinct heads,
-        // and zero beams anywhere (every note in both voices is alone in its
-        // beat group).
-        #expect(result.layout.flags.count == 3)
-        #expect(result.layout.beams.isEmpty, "a lone beamable note must flag, not beam")
+        // with, so it must flag: the stem group's plan resolves to one
+        // canonical `.sixteenth` flag glyph (the glyph itself carries both
+        // flag arms). The kick's lone eighth (position 2) resolves to one
+        // canonical `.eighth` flag. Total: 2 flags on 2 distinct stem-group
+        // representatives, and zero beams anywhere (every note in both
+        // voices is alone in its beat group). A plan that degraded to
+        // `.eighth` components would emit the wrong durations here.
+        #expect(result.engraved.flags.count == 2)
+        #expect(result.engraved.beams.isEmpty, "a lone beamable note must flag, not beam")
+        #expect(Set(result.engraved.flags.map(\.noteID)).count == 2)
+        #expect(Set(result.engraved.flags.map(\.duration)) == [.sixteenth, .eighth])
 
-        let flagsByHead = Dictionary(grouping: result.layout.flags, by: \.noteHeadID)
-        #expect(flagsByHead.count == 2)
-        #expect(flagsByHead.values.map(\.count).sorted() == [1, 2])
+        // The canonical family must follow the lone note's own duration:
+        // the sixteenth flag hangs from the lane-11 hi-hat head, the eighth
+        // flag from the lane-13 kick head.
+        let sixteenthFlag = try #require(
+            result.engraved.flags.first { $0.duration == .sixteenth }
+        )
+        let eighthFlag = try #require(
+            result.engraved.flags.first { $0.duration == .eighth }
+        )
+        #expect(snapshotLane(of: sixteenthFlag.noteID, in: result) == "11")
+        #expect(snapshotLane(of: eighthFlag.noteID, in: result) == "13")
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
@@ -110,7 +123,7 @@ struct DrumTabGoldenTests {
         let fixture = DrumTabFixtureCatalog.hiHatOpenClosedPedal
         let result = try DrumTabFixtureHarness.render(fixture)
 
-        #expect(result.layout.noteHeads.count == 3)
+        #expect(result.engraved.noteHeads.count == 3)
 
         // (drumType, notehead style) is not enough: open and closed hi-hat
         // share `gameplayInstrument == .hiHat` and map to the same package
@@ -118,13 +131,17 @@ struct DrumTabGoldenTests {
         // open/closed/pedal distinction. A regression that collapses two of
         // the three articulations to the same variant (e.g. open reporting
         // as closed) must fail this set comparison, so the variants are
-        // asserted directly.
-        let variants = Set(result.layout.noteHeads.map(\.variant))
+        // asserted directly. Variants are analyzer facts the package
+        // primitives intentionally do not carry, so they are joined back
+        // from the snapshot by source event ID.
+        let variants = Set(result.engraved.noteHeads.compactMap {
+            resolvedVariant(of: $0.noteID, in: result)
+        })
         #expect(variants == [.openHiHat, .closedHiHat, .pedalHiHat],
                 "expected the three hi-hat variants, got \(variants)")
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
@@ -134,7 +151,7 @@ struct DrumTabGoldenTests {
         let fixture = DrumTabFixtureCatalog.leftBass1C
         let result = try DrumTabFixtureHarness.render(fixture)
 
-        #expect(result.layout.noteHeads.count == 2)
+        #expect(result.engraved.noteHeads.count == 2)
         // Count alone is not enough: another lane surviving would satisfy it
         // while 1C was silently dropped. `variant` is also required, not
         // just `sourceLaneID`/`drumType`: those two fields are copied
@@ -144,13 +161,19 @@ struct DrumTabGoldenTests {
         // plain lane 13 gets) -- a lane-matching bug in `resolve` would
         // silently collapse 1C into an indistinguishable-from-13 kick
         // without tripping sourceLaneID or drumType at all.
-        let leftBass = result.layout.noteHeads.filter {
-            $0.sourceLaneID == "1C" && $0.drumType == .kick && $0.variant == .leftBass
+        let leftBass = result.engraved.noteHeads.filter { head in
+            let note = snapshotNote(of: head.noteID, in: result)
+            let resolved = note.flatMap {
+                DrumNotationCatalog.resolve(noteType: $0.noteType, sourceLaneID: $0.sourceLaneID)
+            }
+            return note?.sourceLaneID == "1C"
+                && resolved?.definition.gameplayInstrument == .kick
+                && resolved?.variant == .leftBass
         }
         #expect(leftBass.count == 1, "lane 1C must map to a kick head with the leftBass variant")
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
@@ -161,10 +184,10 @@ struct DrumTabGoldenTests {
         let withControls = try DrumTabFixtureHarness.render(fixture, includeControls: true)
         let withoutControls = try DrumTabFixtureHarness.render(fixture, includeControls: false)
 
-        #expect(withControls.layout.stopNotes.count == 3)
-        #expect(withoutControls.layout.stopNotes.isEmpty)
+        #expect(withControls.engraved.controls.count == 3)
+        #expect(withoutControls.engraved.controls.isEmpty)
         #expect(
-            Set(withControls.layout.stopNotes.map(\.kind)) == [.stop, .choke, .damp]
+            Set(withControls.engraved.controls.map(\.kind)) == [.stop, .choke, .damp]
         )
 
         // Count and kind distinctness alone would not catch a target lost,
@@ -177,16 +200,20 @@ struct DrumTabGoldenTests {
         // this gate exists to catch) fails the #expect above and returns
         // gracefully, instead of trapping the whole test-host process on a
         // duplicate-key precondition.
-        let stopNotesByKind = Dictionary(grouping: withControls.layout.stopNotes, by: \.kind)
-        let stop = stopNotesByKind[.stop]?.first
-        let choke = stopNotesByKind[.choke]?.first
-        let damp = stopNotesByKind[.damp]?.first
-        #expect(stop?.targetLaneID == "16")
-        #expect(stop?.targetDisplayName == "Crash")
-        #expect(choke?.targetLaneID == "16")
-        #expect(choke?.targetDisplayName == "Crash")
-        #expect(damp?.targetLaneID == "11")
-        #expect(damp?.targetDisplayName == "Hi-Hat")
+        //
+        // `EngravedControl` carries the resolved staff-step intent, not the
+        // source lane, so the target lane/display name are joined back from
+        // the analyzer snapshot by control event ID.
+        let controlsByKind = Dictionary(grouping: withControls.engraved.controls, by: \.kind)
+        let stop = controlsByKind[.stop]?.first
+        let choke = controlsByKind[.choke]?.first
+        let damp = controlsByKind[.damp]?.first
+        #expect(controlTargetLane(of: stop?.controlID, in: withControls) == "16")
+        #expect(controlTargetName(of: stop?.controlID, in: withControls) == "Crash")
+        #expect(controlTargetLane(of: choke?.controlID, in: withControls) == "16")
+        #expect(controlTargetName(of: choke?.controlID, in: withControls) == "Crash")
+        #expect(controlTargetLane(of: damp?.controlID, in: withControls) == "11")
+        #expect(controlTargetName(of: damp?.controlID, in: withControls) == "Hi-Hat")
 
         // Differential proof of separation: identical playable lanes must yield
         // identical rests whether or not control chips are present. "rests
@@ -205,11 +232,11 @@ struct DrumTabGoldenTests {
 
         // Playable content must also be untouched by the control chips.
         #expect(
-            withControls.layout.noteHeads.count == withoutControls.layout.noteHeads.count
+            withControls.engraved.noteHeads.count == withoutControls.engraved.noteHeads.count
         )
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(withControls),
+            EngravedNotationDigest.make(withControls),
             fixture: fixture.name
         )
     }
@@ -222,27 +249,30 @@ struct DrumTabGoldenTests {
         // Measure 0: 2 content chips. Measure 1: 1 sentinel chip (see the
         // fixture's doc comment for why the sentinel is needed even though
         // measure 0 is unsupported regardless of its presence).
-        #expect(result.layout.noteHeads.count == 3)
-        let contentHeads = result.layout.noteHeads.filter { $0.timeColumn.measureIndex == 0 }
+        #expect(result.engraved.noteHeads.count == 3)
+        let contentHeads = result.engraved.noteHeads.filter { $0.measureIndex == 0 }
         #expect(contentHeads.count == 2)
         // Grid resolution must not become visual duration: both chips are
         // spaced 33/64 apart, which snaps to a real, pinned `.half` -- not
         // merely "anything but .sixtyfourth" (six other wrong values would
-        // still pass a `!=` check).
-        #expect(contentHeads.allSatisfy { $0.interval == .half })
+        // still pass a `!=` check). The verdict is the analyzer's
+        // `rhythm.baseInterval`, joined from the snapshot by event ID.
+        #expect(contentHeads.allSatisfy {
+            snapshotNote(of: $0.noteID, in: result)?.rhythm.baseInterval == .half
+        })
         // Timing must survive: the second chip sits at 33/64 of the measure.
         // Looked up explicitly rather than via `measures.first` -- content
         // lives in measure 0 here, but that shortcut is unsafe in general
         // (see the fixture's doc comment and `sixteenthRun`'s).
-        let measure = try #require(result.layout.measures.first { $0.measureIndex == 0 })
+        let measure = try #require(result.engraved.measures.first { $0.index == 0 })
         let ticks = contentHeads
-            .map(\.timeColumn.tickWithinMeasure)
+            .compactMap { snapshotNote(of: $0.noteID, in: result)?.position.localTick }
             .sorted()
         #expect(ticks.first == 0)
         #expect(ticks.last == measure.durationTicks * 33 / 64)
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
@@ -255,10 +285,12 @@ struct DrumTabGoldenTests {
         // Measure 0: 3 hi-hat notes (beats 2-4) + 2 kick notes (beats 3-4),
         // both voices sounding in the same supported measure. Measure 1: 1
         // hi-hat sentinel + 1 kick sentinel (see the fixture's doc comment).
-        #expect(result.layout.noteHeads.count == 7)
+        #expect(result.engraved.noteHeads.count == 7)
 
-        let printedUpper = result.layout.rests.filter { $0.isPrinted && $0.voice == .upper }
-        let printedLower = result.layout.rests.filter { $0.isPrinted && $0.voice == .lower }
+        // Every engraved rest is printed by construction: the projection
+        // filters hidden rests before the package ever sees them.
+        let printedUpper = result.engraved.rests.filter { $0.voice == .upper }
+        let printedLower = result.engraved.rests.filter { $0.voice == .lower }
         // Hi-hat rests only beat 1 (one quarter); kick rests beats 1-2 (two
         // quarters, one per beat group -- see the fixture's doc comment on
         // why a two-beat leading gap is two rest events, not one half
@@ -271,11 +303,11 @@ struct DrumTabGoldenTests {
         #expect(printedLower.count == 2)
         #expect(printedUpper.allSatisfy { $0.measureIndex == 0 && $0.duration == .quarter })
         #expect(printedLower.allSatisfy { $0.measureIndex == 0 && $0.duration == .quarter })
-        #expect(Set(printedUpper.map(\.timeColumn.tickWithinMeasure)) == [0])
-        #expect(Set(printedLower.map(\.timeColumn.tickWithinMeasure)) == [0, 1])
+        #expect(Set(printedUpper.map { restLocalTick(of: $0.restID, in: result) }) == [0])
+        #expect(Set(printedLower.map { restLocalTick(of: $0.restID, in: result) }) == [0, 1])
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
@@ -285,8 +317,8 @@ struct DrumTabGoldenTests {
         let fixture = DrumTabFixtureCatalog.multiRowStableWidths
         let result = try DrumTabFixtureHarness.render(fixture)
 
-        #expect(result.layout.measures.count == 8)
-        #expect(Set(result.layout.measures.map(\.row)).count >= 2, "fixture must wrap rows")
+        #expect(result.engraved.measures.count == 8)
+        #expect(Set(result.engraved.measures.map(\.rowIndex)).count >= 2, "fixture must wrap rows")
         // Pins the dense/sparse alternation itself. A bare total
         // (`noteHeads.count == 68`, 4 sparse * 1 + 4 dense * 16) would pass
         // unchanged if the alternation were flipped -- 4 sparse + 4 dense
@@ -295,12 +327,12 @@ struct DrumTabGoldenTests {
         // Pinning note count per measure index instead also catches a
         // flipped `isMultiple(of: 2)`.
         let perMeasureCounts = (0..<8).map { index in
-            result.layout.noteHeads.filter { $0.timeColumn.measureIndex == index }.count
+            result.engraved.noteHeads.filter { $0.measureIndex == index }.count
         }
         #expect(perMeasureCounts == [1, 16, 1, 16, 1, 16, 1, 16])
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
@@ -312,7 +344,7 @@ struct DrumTabGoldenTests {
 
         // Measure 0: 12 content notes (four eighth-note triplet groups).
         // Measure 1: 1 sentinel note (see the fixture's doc comment).
-        #expect(result.layout.noteHeads.count == 13)
+        #expect(result.engraved.noteHeads.count == 13)
 
         // Content lives in measure 0 (not 1), so this lookup is unambiguous:
         // there is no empty lead-in measure ahead of it (see the fixture's
@@ -332,8 +364,11 @@ struct DrumTabGoldenTests {
             // compile. A chart-wide `!tuplets.isEmpty` would pass on a fix
             // that engraved 1 of the 4 groups -- the exact partial fix this
             // fixture exists to reject -- so scope it to the measure under
-            // test and pin the count.
-            let engraved = result.layout.tuplets.filter { $0.id.measureIndex == 0 }
+            // test and pin the count. `EngravedTuplet` carries no measure
+            // index, so membership is joined through the resolved input.
+            let engraved = result.engraved.tuplets.filter {
+                resolvedInputMeasure(of: $0.tupletID, in: result) == 0
+            }
             #expect(
                 engraved.count == 4,
                 "engraving is supported, so all four triplet groups must render as tuplets"
@@ -381,7 +416,7 @@ struct DrumTabGoldenTests {
             // An unsupported measure must not also emit tuplet marks: an
             // engine that renders tuplet brackets while still reporting the
             // measure unsupported is a new inconsistency, not a fix.
-            #expect(result.layout.tuplets.isEmpty)
+            #expect(result.engraved.tuplets.isEmpty)
         }
 
         // Differential proof that `.incompleteTuplet` is caused by the
@@ -399,15 +434,63 @@ struct DrumTabGoldenTests {
         #expect(sentinelMeasure.engravingSupport == .supported)
 
         try GoldenFile.assertMatches(
-            NotationLayoutDigest.make(result),
+            EngravedNotationDigest.make(result),
             fixture: fixture.name
         )
     }
 
     /// The `rest` subsection of a digest, for differential comparison.
     private func restLines(_ result: FixtureRenderResult) -> [String] {
-        NotationLayoutDigest.make(result)
+        EngravedNotationDigest.make(result)
             .components(separatedBy: "\n")
             .filter { $0.hasPrefix("rest ") }
+    }
+
+    /// The analyzer's source note for one engraved head, joined by source
+    /// event ID — lane/variant/rhythm are analyzer facts the package
+    /// primitives intentionally do not carry.
+    private func snapshotNote(of noteID: Int, in result: FixtureRenderResult) -> RhythmLayoutNote? {
+        result.snapshot.notes.first { $0.eventID.rawValue == noteID }
+    }
+
+    /// The analyzer's catalog variant for one engraved head.
+    private func resolvedVariant(
+        of noteID: Int,
+        in result: FixtureRenderResult
+    ) -> DrumNotationVariant? {
+        snapshotNote(of: noteID, in: result).flatMap {
+            DrumNotationCatalog.resolve(noteType: $0.noteType, sourceLaneID: $0.sourceLaneID)?.variant
+        }
+    }
+
+    /// The source lane an engraved control targets, joined by control event ID.
+    private func controlTargetLane(of controlID: Int?, in result: FixtureRenderResult) -> String? {
+        guard let controlID else { return nil }
+        return result.snapshot.controls
+            .first { $0.eventID.rawValue == controlID }?
+            .event.targetLaneID
+    }
+
+    /// The display name of an engraved control's target lane.
+    private func controlTargetName(of controlID: Int?, in result: FixtureRenderResult) -> String? {
+        controlTargetLane(of: controlID, in: result)
+            .flatMap { DrumNotationCatalog.resolveTarget(laneID: $0)?.displayName }
+    }
+
+    /// A printed rest's local tick, joined through the resolved input —
+    /// `EngravedRest` carries final geometry, not timing.
+    private func restLocalTick(of restID: Int, in result: FixtureRenderResult) -> Int {
+        result.resolvedInput.rests.first { $0.id == restID }?.position.localTick ?? -1
+    }
+
+    /// A resolved tuplet group's measure index — `EngravedTuplet` carries
+    /// the adapter-local ID, not the measure.
+    private func resolvedInputMeasure(of tupletID: Int, in result: FixtureRenderResult) -> Int {
+        result.resolvedInput.tuplets.first { $0.id == tupletID }?.measureIndex ?? -1
+    }
+
+    /// A head's source lane ID, joined through the analyzer snapshot.
+    private func snapshotLane(of noteID: Int, in result: FixtureRenderResult) -> String? {
+        snapshotNote(of: noteID, in: result)?.sourceLaneID
     }
 }
