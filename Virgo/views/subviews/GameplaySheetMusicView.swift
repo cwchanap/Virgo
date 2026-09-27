@@ -296,7 +296,8 @@ private struct GameplayStaticNotationLayers: View {
                     annotations: input.presentation?.annotations ?? .empty
                 )
             } else {
-                // No timeline / nothing printable: the legacy furniture
+                // No engraving is installed — no timeline snapshot, or the
+                // last preparation failed — so the legacy furniture
                 // fallback (staff lines, bars, clef/meter) is unchanged.
                 StaffLinesBackgroundView(
                     measurePositions: input.legacyMeasurePositions,

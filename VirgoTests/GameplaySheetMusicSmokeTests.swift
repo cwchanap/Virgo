@@ -248,12 +248,33 @@ struct GameplaySheetMusicSmokeTests {
             let idle = try rasterizeProductionSheet()
             viewModel.isPlaying = true
             viewModel.updateContinuousVisualsForTesting(elapsedTime: target.targetSecondsAtOneX)
-            _ = try #require(viewModel.purpleBarPosition)
+            let position = try #require(viewModel.purpleBarPosition)
             let playing = try rasterizeProductionSheet()
 
+            // A bar drawn in the wrong place would still change *some*
+            // pixels, so pin the change to the bar's rect: the bar is centered
+            // at the view-model position (`.position(x:y:)` sets the rect
+            // center), beat-column wide and staff-high. Every changed pixel
+            // must land inside that band (2pt pad for antialiasing).
+            let totalChanged = changedPixelCount(between: idle, and: playing)
             #expect(
-                changedPixelCount(between: idle, and: playing) > 0,
+                totalChanged > 0,
                 "playhead bar did not change the mounted sheet raster"
+            )
+            let barBand = CGRect(
+                x: position.x - GameplayLayout.beatColumnWidth / 2 - 2,
+                y: position.y - GameplayLayout.staffHeight / 2 - 2,
+                width: GameplayLayout.beatColumnWidth + 4,
+                height: GameplayLayout.staffHeight + 4
+            )
+            let changedInBand = changedPixels(in: barBand, between: idle, and: playing)
+            #expect(
+                changedInBand > 0,
+                "no ink changed inside the playhead bar's band"
+            )
+            #expect(
+                changedInBand == totalChanged,
+                "pixels changed outside the playhead bar's band — the bar is misplaced"
             )
         }
     }

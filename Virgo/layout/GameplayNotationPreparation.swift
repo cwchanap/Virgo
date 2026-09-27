@@ -62,8 +62,8 @@ struct GameplayNotationPreparationFailure: Error, Equatable, Sendable {
 /// annotations + VoiceOver labels) is built alongside the engraving and
 /// never enters the package. There is no second style/geometry path.
 enum GameplayNotationPreparer {
-    /// Bound per-measure arrays, synthesized rests, and row geometry with the
-    /// same chart-wide limit used by canonical rhythm validation.
+    /// Caps trailing-measure padding expansion with the same chart-wide
+    /// limit used by canonical rhythm validation.
     static let maximumRenderableMeasureCount = RhythmLimits.maximumMeasureCount
 
     static func prepare(_ request: GameplayNotationPreparationRequest) -> GameplayNotationPreparedState {

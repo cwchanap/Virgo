@@ -48,14 +48,21 @@ func hostedAccessibilityLabels(
     of sheet: MountedSheet,
     viewport: CGSize
 ) -> HostedAccessibilityDump {
-    let hostingView = NSHostingView(
-        rootView: AnyView(
-            GeometryReader { proxy in
-                sheet.gameplayView.sheetMusicView(geometry: proxy)
-            }
-            .frame(width: viewport.width, height: viewport.height)
-        )
+    hostedAccessibilityLabels(
+        of: GeometryReader { proxy in
+            sheet.gameplayView.sheetMusicView(geometry: proxy)
+        }
+        .frame(width: viewport.width, height: viewport.height),
+        viewport: viewport
     )
+}
+
+@MainActor
+func hostedAccessibilityLabels<Content: View>(
+    of content: Content,
+    viewport: CGSize
+) -> HostedAccessibilityDump {
+    let hostingView = NSHostingView(rootView: AnyView(content))
     hostingView.frame = CGRect(origin: .zero, size: viewport)
     let window = NSWindow(
         contentRect: CGRect(origin: .zero, size: viewport),
