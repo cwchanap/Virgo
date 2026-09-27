@@ -68,9 +68,12 @@ Input is `ResolvedNotationInput` — `ticksPerWholeNote` plus `ResolvedMeasure`s
 (index/startTick/durationTicks/meter/beat groups), `ResolvedNote`s, printed `ResolvedRest`s,
 `ResolvedControl`s (timing anchors with zero collision width) and `ResolvedTupletGroup`s.
 Construction validates: positive `ticksPerWholeNote`, unique/valid/non-overlapping measures, beat
-groups covering each measure contiguously, unique event IDs, positive durations, every event
+groups covering each measure contiguously, unique event IDs within each collection (notes, rests,
+controls, and tuplets are separate ID namespaces), positive durations, every event
 `localTick` inside its owning measure, every note/rest span inside its measure, and tuplet member
-references. Absolute tick is derived (`startTick + localTick`), never accepted as input.
+references (each group non-empty, every member claimed exactly once, members existing in the
+tuplet's measure and voice). Absolute tick is derived (`startTick + localTick`), never accepted
+as input.
 
 Output is immutable `EngravedNotation`: rows, measures, note heads, rests, stems, beams, flags,
 ledger lines, rhythm dots, articulations, controls, tuplets, measure bars, painted bounds, content

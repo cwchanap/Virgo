@@ -279,7 +279,9 @@ struct SheetComposer {
             )
         ))
         collectLedgerLines(note: note, rowIndex: measure.rowIndex, headBounds: bounds, raw: &raw)
-        // Unsupported-duration heads keep their ink but no rhythm semantics.
+        // Non-rhythm-engravable heads — unsupported durations, or measures
+        // that do not permit engraving — keep their ink but no rhythm
+        // semantics.
         guard note.isRhythmEngravable else { return }
         collectDots(anchor: DotAnchor(
             source: .note(note.id),

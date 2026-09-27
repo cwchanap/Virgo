@@ -240,8 +240,8 @@ enum VirgoNotationProjection {
         }
     }
 
-    /// Shared by `resolvedNotes` and the flag-classification extension's
-    /// stem-representative ordering: the rendered note position for an entry.
+    /// The rendered note position for an entry — the single place lane
+    /// overrides resolve for the projection.
     static func staffPosition(
         for entry: (note: RhythmLayoutNote, definition: DrumNotationDefinition),
         overrides: [DrumType: GameplayLayout.NotePosition]

@@ -291,4 +291,80 @@ struct ResolvedNotationEngravingValidationTests {
             )]
         )
     }
+
+    @Test("validation rejects a tuplet with no members")
+    func validationRejectsTupletWithNoMembers() {
+        #expect {
+            try Fixtures.document(
+                notes: [Fixtures.note(id: 1)],
+                rests: [],
+                controls: [],
+                tuplets: [ResolvedTupletGroup(
+                    id: 0,
+                    measureIndex: 0,
+                    voice: .upper,
+                    ratio: ResolvedTupletRatio(actual: 3, normal: 2),
+                    memberNoteIDs: [],
+                    memberRestIDs: []
+                )]
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .emptyTupletMembers(tupletID: 0)
+        }
+    }
+
+    @Test("validation rejects a member cited twice by one tuplet")
+    func validationRejectsDuplicateMemberWithinTuplet() {
+        #expect {
+            try Fixtures.document(
+                notes: [Fixtures.note(id: 1)],
+                rests: [],
+                controls: [],
+                tuplets: [ResolvedTupletGroup(
+                    id: 0,
+                    measureIndex: 0,
+                    voice: .upper,
+                    ratio: ResolvedTupletRatio(actual: 3, normal: 2),
+                    memberNoteIDs: [1, 1],
+                    memberRestIDs: []
+                )]
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .duplicateTupletMember(tupletID: 0, memberID: 1)
+        }
+    }
+
+    @Test("validation rejects a member claimed by two tuplets")
+    func validationRejectsOverlappingTupletGroups() {
+        #expect {
+            try Fixtures.document(
+                notes: [Fixtures.note(id: 1)],
+                rests: [],
+                controls: [],
+                tuplets: [
+                    ResolvedTupletGroup(
+                        id: 0,
+                        measureIndex: 0,
+                        voice: .upper,
+                        ratio: ResolvedTupletRatio(actual: 3, normal: 2),
+                        memberNoteIDs: [1],
+                        memberRestIDs: []
+                    ),
+                    ResolvedTupletGroup(
+                        id: 1,
+                        measureIndex: 0,
+                        voice: .upper,
+                        ratio: ResolvedTupletRatio(actual: 3, normal: 2),
+                        memberNoteIDs: [1],
+                        memberRestIDs: []
+                    )
+                ]
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .duplicateTupletMember(tupletID: 1, memberID: 1)
+        }
+    }
 }

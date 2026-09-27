@@ -251,13 +251,18 @@ struct SwiftUIRenderingNotationTests {
                 annotations: GameplayNotationAnnotations(feelMarks: [feel], rhythmWarnings: [warning])
             )
 
-            SwiftUITestUtilities.assertViewWithEnvironment(overlay, size: CGSize(width: 240, height: 120))
-            #expect(SwiftUITestUtilities.renderedTexts(
-                from: GameplayFeelMarkView(feelMark: feel).body
-            ).contains(feel.accessibilityLabel))
-            #expect(SwiftUITestUtilities.renderedTexts(
-                from: GameplayRhythmWarningView(warning: warning).body
-            ).contains(warning.accessibilityLabel))
+            let viewport = CGSize(width: 240, height: 120)
+            SwiftUITestUtilities.assertViewWithEnvironment(overlay, size: viewport)
+            let feelTree = hostedAccessibilityLabels(
+                of: GameplayFeelMarkView(feelMark: feel),
+                viewport: viewport
+            )
+            let warningTree = hostedAccessibilityLabels(
+                of: GameplayRhythmWarningView(warning: warning),
+                viewport: viewport
+            )
+            #expect(feelTree.labels.contains(feel.accessibilityLabel))
+            #expect(warningTree.labels.contains(warning.accessibilityLabel))
         }
     }
 }

@@ -36,6 +36,7 @@ struct GameplayFeelMarkView: View, Equatable {
             .foregroundStyle(Palette.chalk)
             .frame(width: feelMark.size.width, height: feelMark.size.height)
             .position(feelMark.position)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(feelMark.accessibilityLabel)
     }
 }
@@ -50,6 +51,7 @@ struct GameplayRhythmWarningView: View, Equatable {
             .lineLimit(1)
             .frame(width: warning.size.width, height: warning.size.height, alignment: .leading)
             .position(warning.position)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(warning.accessibilityLabel)
     }
 }

@@ -495,6 +495,51 @@ struct GameplaySheetMusicGeometrySmokeTests {
             }
         }
     }
+
+    /// Hosted feel-mark VoiceOver: a swing chart prepared through the real
+    /// route must surface its "Swing feel" label in the mounted tree — the
+    /// overlay is app-owned, so nothing else gates its mounting. The
+    /// straight leg proves the label comes from the feel mark, not a stale
+    /// tree.
+    @Test("sheetMusicView exposes the swing feel mark in the hosted hierarchy")
+    func hostedSheetExposesSwingFeelMark() async throws {
+        try await TestSetup.withTestSetup {
+            let sheet = try await mountFixture(DrumTabFixtureCatalog.tripletHooksAndStop)
+            defer { sheet.viewModel.cleanup() }
+
+            let support = NotationSnapshotTestSupport()
+            let notes = [
+                Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0)
+            ]
+            let (swingEngraving, swingPresentation) = try support.requireReady(
+                support.prepare(notes: notes, feel: .swing)
+            )
+            try #require(
+                !swingPresentation.annotations.feelMarks.isEmpty,
+                "swing preparation must annotate a feel mark"
+            )
+
+            reinstall(sheet, engraving: swingEngraving, presentation: swingPresentation)
+            let swingTree = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
+            #expect(
+                swingTree.labels.contains("Swing feel"),
+                """
+                hosted accessibility tree lacks the swing feel mark — visited nodes: \
+                \(swingTree.nodeKinds.prefix(24))
+                """
+            )
+
+            let (straightEngraving, straightPresentation) = try support.requireReady(
+                support.prepare(notes: notes, feel: .straight)
+            )
+            reinstall(sheet, engraving: straightEngraving, presentation: straightPresentation)
+            let straightTree = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
+            #expect(
+                !straightTree.labels.contains("Swing feel"),
+                "a straight chart must not announce a feel mark"
+            )
+        }
+    }
 }
 
 // MARK: - Rhythm-dot VoiceOver

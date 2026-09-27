@@ -47,7 +47,8 @@ struct NotationSnapshotTestSupport {
         notes: [Note] = [],
         controls: [NotationControlEvent] = [],
         rests: [RhythmLayoutRest] = [],
-        minimumMeasureCount: Int = 1
+        minimumMeasureCount: Int = 1,
+        feel: RhythmicFeel = .straight
     ) throws -> RhythmLayoutSnapshot {
         // Deterministic event IDs: notes 1...n, controls 10001...
         let layoutNotes: [RhythmLayoutNote] = notes.enumerated().map { index, note in
@@ -101,7 +102,7 @@ struct NotationSnapshotTestSupport {
             notes: layoutNotes,
             controls: layoutControls,
             rests: rests,
-            feel: .straight
+            feel: feel
         )
     }
 
@@ -115,7 +116,8 @@ struct NotationSnapshotTestSupport {
         rests: [RhythmLayoutRest] = [],
         minimumMeasureCount: Int = 1,
         style: NotationLayoutStyle = .gameplayDefault,
-        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:]
+        notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = [:],
+        feel: RhythmicFeel = .straight
     ) -> GameplayNotationPreparedState {
         guard let request = try? makeRequest(
             notes: notes,
@@ -123,7 +125,8 @@ struct NotationSnapshotTestSupport {
             rests: rests,
             minimumMeasureCount: minimumMeasureCount,
             style: style,
-            notePositionOverrides: notePositionOverrides
+            notePositionOverrides: notePositionOverrides,
+            feel: feel
         ) else {
             Issue.record("Snapshot construction failed for test notes")
             return .failed(GameplayNotationPreparationFailure(
@@ -188,14 +191,16 @@ struct NotationSnapshotTestSupport {
         rests: [RhythmLayoutRest],
         minimumMeasureCount: Int,
         style: NotationLayoutStyle,
-        notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
+        notePositionOverrides: [DrumType: GameplayLayout.NotePosition],
+        feel: RhythmicFeel = .straight
     ) throws -> GameplayNotationPreparationRequest {
         GameplayNotationPreparationRequest(
             snapshot: try snapshot(
                 notes: notes,
                 controls: controls,
                 rests: rests,
-                minimumMeasureCount: minimumMeasureCount
+                minimumMeasureCount: minimumMeasureCount,
+                feel: feel
             ),
             minimumMeasureCount: minimumMeasureCount,
             style: style,

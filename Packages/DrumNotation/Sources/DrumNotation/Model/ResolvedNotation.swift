@@ -12,8 +12,10 @@ public struct NotationTickPosition: Hashable, Sendable {
     }
 }
 
-/// The notation voice a resolved event belongs to: upper-voice events stem
-/// up, lower-voice events stem down. Carries no app instrument state.
+/// The notation voice a resolved event belongs to. Voices group events for
+/// tuplet and beam topology; stem direction itself is per-note
+/// (`ResolvedNote.stemDirection`) — callers conventionally stem upper voices
+/// up and lower voices down. Carries no app instrument state.
 public enum NotationVoiceRole: Int, Hashable, Sendable {
     case upper
     case lower
@@ -248,7 +250,8 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     ///   durations, a negative note/rest dot count, an event whose
     ///   `localTick` falls outside its owning measure, a note/rest whose
     ///   `localTick + durationTicks` span crosses its owning measure's end,
-    ///   or a tuplet that references unknown members.
+    ///   or a tuplet that references unknown members, claims none, or
+    ///   claims one twice (within a group or across groups).
     public init(
         ticksPerWholeNote: Int,
         measures: [ResolvedMeasure],
@@ -287,6 +290,8 @@ public struct ResolvedNotationInput: Hashable, Sendable {
         case invalidTupletRatio(tupletID: Int, actual: Int, normal: Int)
         case unknownTupletMeasure(tupletID: Int, measureIndex: Int)
         case unknownTupletMember(tupletID: Int, memberID: Int)
+        case emptyTupletMembers(tupletID: Int)
+        case duplicateTupletMember(tupletID: Int, memberID: Int)
     }
 
     /// Groups the four event collections so `validate` stays readable and
@@ -505,6 +510,8 @@ public struct ResolvedNotationInput: Hashable, Sendable {
 
     /// Tuplets must have a positive ratio, live in a known measure, and
     /// reference existing notes/rests in that measure with the same voice.
+    /// Each group must claim at least one member, and no member may be
+    /// claimed twice — within one group or across two groups.
     private static func validateTuplets(
         tuplets: [ResolvedTupletGroup],
         notes: [ResolvedNote],
@@ -513,6 +520,8 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     ) throws {
         let notesByID = Dictionary(notes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let restsByID = Dictionary(rests.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var claimedNoteIDs = Set<Int>()
+        var claimedRestIDs = Set<Int>()
         for tuplet in tuplets {
             guard tuplet.ratio.actual > 0, tuplet.ratio.normal > 0 else {
                 throw ValidationError.invalidTupletRatio(
@@ -527,7 +536,14 @@ public struct ResolvedNotationInput: Hashable, Sendable {
                     measureIndex: tuplet.measureIndex
                 )
             }
+            guard !tuplet.memberNoteIDs.isEmpty || !tuplet.memberRestIDs.isEmpty else {
+                throw ValidationError.emptyTupletMembers(tupletID: tuplet.id)
+            }
             for memberID in tuplet.memberNoteIDs {
+                guard !claimedNoteIDs.contains(memberID) else {
+                    throw ValidationError.duplicateTupletMember(tupletID: tuplet.id, memberID: memberID)
+                }
+                claimedNoteIDs.insert(memberID)
                 guard let note = notesByID[memberID],
                       note.position.measureIndex == tuplet.measureIndex,
                       note.voice == tuplet.voice else {
@@ -535,6 +551,10 @@ public struct ResolvedNotationInput: Hashable, Sendable {
                 }
             }
             for memberID in tuplet.memberRestIDs {
+                guard !claimedRestIDs.contains(memberID) else {
+                    throw ValidationError.duplicateTupletMember(tupletID: tuplet.id, memberID: memberID)
+                }
+                claimedRestIDs.insert(memberID)
                 guard let rest = restsByID[memberID],
                       rest.position.measureIndex == tuplet.measureIndex,
                       rest.voice == tuplet.voice else {

@@ -1,10 +1,7 @@
 // HPA-166 Task 2 — package ownership of the stem-group flag planning that
-// rides the ported beam topology (`BeamTopology.swift`). This is the mirror
-// of `Virgo/layout/VirgoNotationProjection+Flags.swift` plus the
-// engine's stem-group/representative logic in
-// `NotationLayoutEngine+Beams.swift`: same grouping key, same pinned
-// comparators, same three-arm visible-flag classification — one plan per
-// stem group, measured once at the shared stem axis.
+// rides the ported beam topology (`BeamTopology.swift`): same grouping key,
+// same pinned comparators, same three-arm visible-flag classification — one
+// plan per stem group, measured once at the shared stem axis.
 //
 // Everything here is internal: the engraving result and tests consume the
 // topology; no public API is added.

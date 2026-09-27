@@ -374,6 +374,25 @@ struct DrumNotationViewRasterTests {
             height: style.tupletLabelSize.height
         )
         #expect(raster.inkCount(in: labelRect) > 0)
+
+        // The bracket strokes must paint too — sampling only the numeral
+        // rect would stay green if the bracket `Path` were deleted.
+        let bracketSegments = [
+            (tuplet.bracketPoints[0], tuplet.bracketPoints[1]),
+            (tuplet.bracketPoints[3], tuplet.bracketPoints[4])
+        ]
+        for segment in bracketSegments {
+            let strokeRect = CGRect(
+                x: min(segment.0.x, segment.1.x) - style.tupletLineWidth,
+                y: min(segment.0.y, segment.1.y) - style.tupletLineWidth,
+                width: abs(segment.1.x - segment.0.x) + 2 * style.tupletLineWidth,
+                height: abs(segment.1.y - segment.0.y) + 2 * style.tupletLineWidth
+            )
+            #expect(
+                raster.inkCount(in: strokeRect) > 0,
+                "tuplet bracket segment must paint ink"
+            )
+        }
     }
 
     @Test("the tuplet numeral paints ratio.actual, not a fixed three")

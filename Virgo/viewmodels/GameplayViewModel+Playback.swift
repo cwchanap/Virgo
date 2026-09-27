@@ -73,6 +73,10 @@ extension GameplayViewModel {
             Logger.error("Gameplay not prepared, cannot start playback")
             return
         }
+        guard notationPreparationFailure == nil else {
+            Logger.error("Cannot start playback - notation preparation failed")
+            return
+        }
 
         playbackTimer?.invalidate()
         isShowingMIDIDeviceAlert = false

@@ -293,6 +293,32 @@ struct GameplayNotationInstallationTests {
             failure.userMessage == String(localized: "This chart's notation could not be prepared.")
         )
     }
+
+    @Test("failed preparation blocks startPlayback from starting audio")
+    @MainActor
+    func failedPreparationBlocksStartPlayback() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        defer { viewModel.cleanup() }
+
+        // A current `.failed` install still settles readiness (see above) —
+        // so the playback funnel itself must refuse to start audio for it.
+        let failure = GameplayNotationPreparationFailure(detail: "probe failure")
+        let generation = viewModel.beginNotationPreparation()
+        #expect(viewModel.applyPreparedNotation(.failed(failure), generation: generation))
+        #expect(viewModel.isGameplayPrepared)
+        #expect(viewModel.practiceUnavailableMessage != nil)
+
+        viewModel.startPlayback()
+        #expect(
+            !viewModel.isPlaying,
+            "a chart whose engraving was rejected must not start audio"
+        )
+    }
 }
 
 @MainActor
