@@ -137,7 +137,7 @@ enum DrumTabFixtureHarness {
         style: NotationLayoutStyle = lockedStyle,
         notePositionOverrides: [DrumType: GameplayLayout.NotePosition] = lockedOverrides
     ) throws -> (input: ResolvedNotationInput, engraved: EngravedNotation) {
-        let expandedMeasures = GameplayNotationPreparer.expandedRhythmMeasures(
+        let expandedMeasures = try GameplayNotationPreparer.expandedRhythmMeasures(
             snapshot,
             minimumMeasureCount: minimumMeasureCount
         )

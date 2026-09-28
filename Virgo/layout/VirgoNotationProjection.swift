@@ -4,12 +4,14 @@ import DrumNotation
 /// Fail-closed projection: malformed snapshot events abort
 /// `resolvedNotation` so `GameplayNotationPreparer.prepare` reports
 /// `.failed` instead of silently installing a sheet that dropped them.
-/// Composition-policy filters — hidden rests and rests in
-/// engraving-unsupported measures — are not errors and stay filtered.
+/// Composition-policy filters — hidden rests, rests in
+/// engraving-unsupported measures, and controls whose target lane does
+/// not resolve — are not errors and stay filtered.
 enum VirgoNotationProjectionError: Error, CustomStringConvertible {
     case malformedNote(eventID: RhythmEventID, detail: String)
     case malformedRest(measureIndex: Int, localTick: Int, detail: String)
     case malformedControl(eventID: RhythmEventID, detail: String)
+    case malformedMeasure(measureIndex: Int, detail: String)
 
     var description: String {
         switch self {
@@ -19,6 +21,8 @@ enum VirgoNotationProjectionError: Error, CustomStringConvertible {
             return "malformed rest (measure \(measureIndex), tick \(localTick)): \(detail)"
         case let .malformedControl(eventID, detail):
             return "malformed control (event \(eventID.rawValue)): \(detail)"
+        case let .malformedMeasure(measureIndex, detail):
+            return "malformed measure (index \(measureIndex)): \(detail)"
         }
     }
 }
@@ -106,8 +110,9 @@ enum VirgoNotationProjection {
     /// timing policy. Hidden rests are filtered here (the package has no
     /// hidden-rest state), and malformed notes/rests/controls fail closed
     /// by throwing — the only silent filters left between the snapshot and
-    /// the package boundary are hidden rests and rests in
-    /// engraving-unsupported measures.
+    /// the package boundary are hidden rests, rests in
+    /// engraving-unsupported measures, and controls whose target lane does
+    /// not resolve in the catalog.
     static func resolvedNotation(
         snapshot: RhythmLayoutSnapshot,
         expandedMeasures: [RhythmMeasure],
@@ -390,8 +395,11 @@ enum VirgoNotationProjection {
 
     /// Controls cross only with resolved visual intent: the projection
     /// resolves the target itself (target lane + staff-position override),
-    /// so a control whose target cannot resolve fails closed by throwing —
-    /// it is never painted at a fabricated step.
+    /// and a malformed position or timing throws — it is never painted at a
+    /// fabricated step. An unresolvable target lane is composition policy,
+    /// not malformed timing: the DTX control design preserves unknown
+    /// target IDs in chart data, so the mark drops and the chart stays
+    /// playable rather than failing closed.
     private static func resolvedControls(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure],
@@ -420,11 +428,7 @@ enum VirgoNotationProjection {
             }
             guard let targetLaneID = control.event.targetLaneID,
                 let target = DrumNotationCatalog.resolveTarget(laneID: targetLaneID) else {
-                throw VirgoNotationProjectionError.malformedControl(
-                    eventID: control.eventID,
-                    detail: "target lane \(control.event.targetLaneID ?? "nil") "
-                        + "does not resolve in the catalog"
-                )
+                return nil
             }
             let targetPosition = notePositionOverrides[target.definition.gameplayInstrument]
                 ?? target.definition.defaultPosition
