@@ -98,7 +98,7 @@ struct GameplayNotationPreparationTests {
         )
         let snapshot = try makeSnapshot(measures: [pickup], notes: [note])
 
-        let expanded = GameplayNotationPreparer.expandedRhythmMeasures(
+        let expanded = try GameplayNotationPreparer.expandedRhythmMeasures(
             snapshot,
             minimumMeasureCount: 3
         )
@@ -153,7 +153,7 @@ struct GameplayNotationPreparationTests {
         )
         let snapshot = try makeSnapshot(measures: [supported, warned], notes: [note])
 
-        let expanded = GameplayNotationPreparer.expandedRhythmMeasures(
+        let expanded = try GameplayNotationPreparer.expandedRhythmMeasures(
             snapshot,
             minimumMeasureCount: 4
         )
@@ -222,6 +222,49 @@ struct GameplayNotationPreparationTests {
         }
         #expect(!failure.detail.isEmpty)
         #expect(failure.userMessage == "This chart's notation could not be prepared.")
+    }
+
+    @Test("overflowing measure span fails preparation instead of trapping during padding")
+    func overflowingMeasureSpanFailsPreparationDuringPadding() throws {
+        // `RhythmLayoutSnapshot` does not validate measure spans, so a
+        // malformed trailing measure can carry `startTick` near `Int.max`.
+        // The projection rejects it fail-closed when no padding is requested;
+        // with padding, expansion used to evaluate the same overflowing
+        // `startTick + durationTicks` *before* `prepare`'s do/catch — trapping
+        // on a bare `+`. Expansion must throw and route to `.failed` either way.
+        let malformed = RhythmMeasure(
+            measureIndex: 0,
+            startTick: .max - 10,
+            durationTicks: 960,
+            timeSignature: .fourFour,
+            beatGroups: [RhythmBeatGroup(
+                groupIndex: 0,
+                startTick: 0,
+                durationTicks: 960,
+                isResidual: false
+            )],
+            engravingSupport: .supported
+        )
+        let snapshot = try makeSnapshot(measures: [malformed])
+
+        #expect(throws: VirgoNotationProjectionError.self) {
+            try GameplayNotationPreparer.expandedRhythmMeasures(
+                snapshot,
+                minimumMeasureCount: 2
+            )
+        }
+
+        let prepared = GameplayNotationPreparer.prepare(GameplayNotationPreparationRequest(
+            snapshot: snapshot,
+            minimumMeasureCount: 2,
+            style: .gameplayDefault,
+            notePositionOverrides: [:]
+        ))
+        guard case let .failed(failure) = prepared else {
+            Issue.record("Expected .failed, got \(prepared)")
+            return
+        }
+        #expect(failure.detail.contains("malformed measure"))
     }
 
     @Test("renderable measure bound reuses the shared rhythm limit")

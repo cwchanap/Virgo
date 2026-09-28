@@ -67,13 +67,15 @@ enum GameplayNotationPreparer {
     static let maximumRenderableMeasureCount = RhythmLimits.maximumMeasureCount
 
     static func prepare(_ request: GameplayNotationPreparationRequest) -> GameplayNotationPreparedState {
-        // Trailing-measure expansion happens before package conversion so the
-        // engraver sees the complete requested measure list.
-        let expandedMeasures = expandedRhythmMeasures(
-            request.snapshot,
-            minimumMeasureCount: request.minimumMeasureCount
-        )
         do {
+            // Trailing-measure expansion happens before package conversion so
+            // the engraver sees the complete requested measure list — and
+            // inside the do/catch so an unrepresentable measure span throws
+            // into `.failed` instead of trapping on a bare `+`.
+            let expandedMeasures = try expandedRhythmMeasures(
+                request.snapshot,
+                minimumMeasureCount: request.minimumMeasureCount
+            )
             let input = try VirgoNotationProjection.resolvedNotation(
                 snapshot: request.snapshot,
                 expandedMeasures: expandedMeasures,
@@ -135,10 +137,16 @@ enum GameplayNotationPreparer {
     /// engraving support is always `.supported` — the template's warning /
     /// unsupported verdict describes its own events and must not stamp a
     /// diagnostic badge onto every padding bar.
+    ///
+    /// Every measure's `startTick + durationTicks` read is reporting-overflow
+    /// checked: `RhythmLayoutSnapshot` does not validate measure spans, so a
+    /// malformed input (e.g. `startTick` near `Int.max`) throws
+    /// `malformedMeasure` here — inside `prepare`'s do/catch — instead of
+    /// trapping.
     static func expandedRhythmMeasures(
         _ snapshot: RhythmLayoutSnapshot,
         minimumMeasureCount: Int
-    ) -> [RhythmMeasure] {
+    ) throws -> [RhythmMeasure] {
         var measures = snapshot.measures.sorted { $0.measureIndex < $1.measureIndex }
         let requestedCount = min(
             max(minimumMeasureCount, measures.count, 1),
@@ -151,7 +159,25 @@ enum GameplayNotationPreparer {
                 timeSignature: template.timeSignature,
                 ticksPerWholeNote: snapshot.ticksPerWholeNote
             ) ?? template.durationTicks
-            let startTick = measures.last?.endTick ?? 0
+            guard let last = measures.last else { break }
+            let endTick = last.startTick.addingReportingOverflow(last.durationTicks)
+            guard !endTick.overflow else {
+                throw VirgoNotationProjectionError.malformedMeasure(
+                    measureIndex: last.measureIndex,
+                    detail: "startTick \(last.startTick) + durationTicks "
+                        + "\(last.durationTicks) is unrepresentable"
+                )
+            }
+            let startTick = endTick.partialValue
+            // The appended measure's own end must stay representable too —
+            // the next iteration reads it as the new `last`.
+            guard !startTick.addingReportingOverflow(durationTicks).overflow else {
+                throw VirgoNotationProjectionError.malformedMeasure(
+                    measureIndex: measureIndex,
+                    detail: "appended startTick \(startTick) + durationTicks "
+                        + "\(durationTicks) is unrepresentable"
+                )
+            }
             measures.append(RhythmMeasure(
                 measureIndex: measureIndex,
                 startTick: startTick,

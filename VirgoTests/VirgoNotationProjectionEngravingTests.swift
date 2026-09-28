@@ -9,7 +9,7 @@ import Testing
 /// from `VirgoNotationProjectionTests` for SwiftLint's length limits.
 @Suite("Virgo Notation Projection Engraving")
 struct VirgoNotationProjectionEngravingTests {
-    @Test("Control kind and resolved target staff step cross; unresolvable targets fail closed")
+    @Test("Control kind and resolved target staff step cross; unresolvable targets are omitted")
     func controlKindAndResolvedTargetSurvive() throws {
         let measure = EngravingProjectionFixtures.makeMeasure(index: 0)
         let snapshot = try EngravingProjectionFixtures.makeSnapshot(
@@ -44,24 +44,30 @@ struct VirgoNotationProjectionEngravingTests {
         #expect(byID[3]?.kind == .damp)
         #expect(byID[3]?.targetStaffStep == 8)
 
-        // Unknown or missing target lane: the projection throws — a control
-        // is never painted at a fabricated step, and the chart fails closed
-        // instead of silently losing the mark.
-        let unresolved = try EngravingProjectionFixtures.makeSnapshot(
+        // Unknown or missing target lane: the control is omitted, not thrown —
+        // the DTX control design preserves unknown target IDs in chart data,
+        // so an unresolvable mark is composition policy rather than malformed
+        // timing, and a valid sibling control still crosses.
+        let partiallyResolvable = try EngravingProjectionFixtures.makeSnapshot(
             measures: [measure],
             controls: [
                 EngravingProjectionFixtures.makeControl(
                     eventID: 4, measureIndex: 0, localTick: 720, kind: .stop, targetLaneID: "ZZ"
+                ),
+                EngravingProjectionFixtures.makeControl(
+                    eventID: 5, measureIndex: 0, localTick: 240, kind: .choke, targetLaneID: nil
+                ),
+                EngravingProjectionFixtures.makeControl(
+                    eventID: 6, measureIndex: 0, localTick: 480, kind: .damp, targetLaneID: "12"
                 )
             ]
         )
-        #expect(throws: VirgoNotationProjectionError.self) {
-            try VirgoNotationProjection.resolvedNotation(
-                snapshot: unresolved,
-                expandedMeasures: [measure],
-                notePositionOverrides: [:]
-            )
-        }
+        let filtered = try VirgoNotationProjection.resolvedNotation(
+            snapshot: partiallyResolvable,
+            expandedMeasures: [measure],
+            notePositionOverrides: [:]
+        )
+        #expect(filtered.controls.map(\.id) == [6])
     }
 
     @Test("Staff-position overrides apply to control targets")

@@ -35,22 +35,24 @@ struct NotationLayoutControlRenderingTests {
         #expect(Set(engraved.controls.map(\.controlID)).count == 3)
     }
 
-    @Test("missing and unknown targets fail preparation instead of omitting geometry")
-    func unresolvedTargetsFailPreparation() throws {
+    @Test("missing and unknown targets omit their marks without failing the chart")
+    func unresolvedTargetsAreOmitted() throws {
+        // DTX control chips preserve unknown target IDs verbatim, so an
+        // unresolvable target is composition policy: only that mark drops —
+        // the chart stays playable, matching the pre-cutover layout that
+        // compactMapped unresolved targets to no geometry.
         let controls = [
             support.control(measureOffset: 0.25, targetLaneID: nil),
-            support.control(measureOffset: 0.5, targetLaneID: "ZZ")
+            support.control(measureOffset: 0.5, targetLaneID: "ZZ"),
+            support.control(measureOffset: 0.75, targetLaneID: "12")
         ]
-        let prepared = NotationSnapshotTestSupport().prepare(
+        let engraved = try support.engraved(
             notes: [support.fallbackGridNote()],
             controls: controls
         )
 
-        guard case let .failed(failure) = prepared else {
-            Issue.record("Expected .failed for unresolvable control targets")
-            return
-        }
-        #expect(failure.detail.contains("target lane"))
+        #expect(engraved.controls.count == 1)
+        #expect(engraved.controls.first?.kind == .stop)
     }
 
     @Test("lane 1A resolves to Crash and follows the active crash position override")

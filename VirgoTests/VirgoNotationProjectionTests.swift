@@ -287,7 +287,7 @@ struct VirgoNotationProjectionTests {
 
         let input = try VirgoNotationProjection.resolvedNotation(
             snapshot: snapshot,
-            expandedMeasures: GameplayNotationPreparer.expandedRhythmMeasures(
+            expandedMeasures: try GameplayNotationPreparer.expandedRhythmMeasures(
                 snapshot,
                 minimumMeasureCount: 3
             ),

@@ -180,6 +180,10 @@ extension GameplayViewModel {
             )
             cacheNotationMeasurePositionMap()
         } else {
+            // `measurePositionMap` is deliberately not cleared here: without an
+            // installed engraving it carries the legacy GameplayLayout positions
+            // that `rowForMeasure` consumes on the fallback rendering path, and
+            // every successful install overwrites it wholesale.
             cachedMeasureRowMap = [:]
             cachedNotationMeasuresByIndex = [:]
         }
