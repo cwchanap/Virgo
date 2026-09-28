@@ -247,9 +247,11 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     ///   duplicate/invalid/overlapping measures, a measure meter with a
     ///   non-positive term, beat groups that fail to cover their measure,
     ///   duplicate event IDs, non-positive event
-    ///   durations, a negative note/rest dot count, an event whose
+    ///   durations, a note/rest dot count outside 0–3, an event whose
     ///   `localTick` falls outside its owning measure, a note/rest whose
     ///   `localTick + durationTicks` span crosses its owning measure's end,
+    ///   a rest flagged full-measure whose span does not exactly cover its
+    ///   measure from tick 0 as a whole-note rest,
     ///   or a tuplet that references unknown members, claims none, or
     ///   claims one twice (within a group or across groups).
     public init(
@@ -285,6 +287,13 @@ public struct ResolvedNotationInput: Hashable, Sendable {
         case duplicateEventID(Int)
         case invalidEventDurationTicks(eventID: Int, durationTicks: Int)
         case invalidEventDotCount(eventID: Int, dotCount: Int)
+        case invalidFullMeasureRest(
+            restID: Int,
+            measureIndex: Int,
+            localTick: Int,
+            durationTicks: Int,
+            measureDurationTicks: Int
+        )
         case invalidMeter(measureIndex: Int, beats: Int, noteValue: Int)
         case eventSpanOutsideMeasure(eventID: Int, measureIndex: Int, localTick: Int, durationTicks: Int)
         case invalidTupletRatio(tupletID: Int, actual: Int, normal: Int)
@@ -446,15 +455,15 @@ public struct ResolvedNotationInput: Hashable, Sendable {
     /// measure: `localTick + durationTicks <= measure.durationTicks`, with the
     /// exact measure end allowed. The addition is reporting-overflow safe —
     /// an unrepresentable end is rejected, never trapped. Dot counts must be
-    /// non-negative — a negative count has no engraving meaning and is
-    /// rejected here at input validation.
+    /// 0–3 — anything beyond a double-dotted duration has no engraving
+    /// meaning and is rejected here at input validation.
     private static func validateEventDurations(
         notes: [ResolvedNote],
         rests: [ResolvedRest],
         measuresByIndex: [Int: ResolvedMeasure]
     ) throws {
         for note in notes {
-            try requireNonNegativeDotCount(eventID: note.id, dotCount: note.dotCount)
+            try requireValidDotCount(eventID: note.id, dotCount: note.dotCount)
             try requireContainedSpan(
                 eventID: note.id,
                 position: note.position,
@@ -463,21 +472,47 @@ public struct ResolvedNotationInput: Hashable, Sendable {
             )
         }
         for rest in rests {
-            try requireNonNegativeDotCount(eventID: rest.id, dotCount: rest.dotCount)
+            try requireValidDotCount(eventID: rest.id, dotCount: rest.dotCount)
             try requireContainedSpan(
                 eventID: rest.id,
                 position: rest.position,
                 durationTicks: rest.durationTicks,
                 measuresByIndex: measuresByIndex
             )
+            try requireFullMeasureRestInvariant(rest, measuresByIndex: measuresByIndex)
         }
     }
 
-    /// One event's dot count must be non-negative — the resolved boundary
-    /// rejects malformed rhythm so the engraver never sees it.
-    private static func requireNonNegativeDotCount(eventID: Int, dotCount: Int) throws {
-        guard dotCount >= 0 else {
+    /// One event's dot count must be 0–3 — more dots than a double-dotted
+    /// duration have no engraving, so the resolved boundary rejects
+    /// malformed rhythm before the engraver sees it.
+    private static func requireValidDotCount(eventID: Int, dotCount: Int) throws {
+        guard (0...3).contains(dotCount) else {
             throw ValidationError.invalidEventDotCount(eventID: eventID, dotCount: dotCount)
+        }
+    }
+
+    /// A rest flagged `isFullMeasure` centers in its measure's content
+    /// span, so the flag is only representable when the rest truly covers
+    /// the measure: onset at tick 0, exact measure duration, whole-note
+    /// glyph. Any other span must cross as an interval rest on its column.
+    private static func requireFullMeasureRestInvariant(
+        _ rest: ResolvedRest,
+        measuresByIndex: [Int: ResolvedMeasure]
+    ) throws {
+        guard rest.isFullMeasure else { return }
+        let measureDurationTicks = measuresByIndex[rest.position.measureIndex]?.durationTicks
+        guard measureDurationTicks != nil,
+              rest.position.localTick == 0,
+              rest.durationTicks == measureDurationTicks,
+              rest.duration == .whole else {
+            throw ValidationError.invalidFullMeasureRest(
+                restID: rest.id,
+                measureIndex: rest.position.measureIndex,
+                localTick: rest.position.localTick,
+                durationTicks: rest.durationTicks,
+                measureDurationTicks: measureDurationTicks ?? -1
+            )
         }
     }
 

@@ -1,6 +1,28 @@
 import CoreGraphics
 import DrumNotation
 
+/// Fail-closed projection: malformed snapshot events abort
+/// `resolvedNotation` so `GameplayNotationPreparer.prepare` reports
+/// `.failed` instead of silently installing a sheet that dropped them.
+/// Composition-policy filters — hidden rests and rests in
+/// engraving-unsupported measures — are not errors and stay filtered.
+enum VirgoNotationProjectionError: Error, CustomStringConvertible {
+    case malformedNote(eventID: RhythmEventID, detail: String)
+    case malformedRest(measureIndex: Int, localTick: Int, detail: String)
+    case malformedControl(eventID: RhythmEventID, detail: String)
+
+    var description: String {
+        switch self {
+        case let .malformedNote(eventID, detail):
+            return "malformed note (event \(eventID.rawValue)): \(detail)"
+        case let .malformedRest(measureIndex, localTick, detail):
+            return "malformed rest (measure \(measureIndex), tick \(localTick)): \(detail)"
+        case let .malformedControl(eventID, detail):
+            return "malformed control (event \(eventID.rawValue)): \(detail)"
+        }
+    }
+}
+
 /// The app-to-package projection: the single app-site style mappers and the
 /// snapshot→`ResolvedNotationInput` projection. Split from
 /// `VirgoNotationAdapter`, which remains the primitive-mapper owner. HPA-166
@@ -82,9 +104,10 @@ enum VirgoNotationProjection {
     /// Trailing-measure expansion must already have happened; the package
     /// receives the complete requested measure list and synthesizes no app
     /// timing policy. Hidden rests are filtered here (the package has no
-    /// hidden-rest state), and notes/rests/controls that would fall outside
-    /// their measure are dropped by the projection guards below — this is
-    /// the only filter between the snapshot and the package boundary.
+    /// hidden-rest state), and malformed notes/rests/controls fail closed
+    /// by throwing — the only silent filters left between the snapshot and
+    /// the package boundary are hidden rests and rests in
+    /// engraving-unsupported measures.
     static func resolvedNotation(
         snapshot: RhythmLayoutSnapshot,
         expandedMeasures: [RhythmMeasure],
@@ -94,12 +117,12 @@ enum VirgoNotationProjection {
             expandedMeasures.map { ($0.measureIndex, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        let notes = mappedNotes(snapshot: snapshot, measuresByIndex: measuresByIndex)
+        let notes = try mappedNotes(snapshot: snapshot, measuresByIndex: measuresByIndex)
         // One sort feeds both boundary consumers: the printed subset crosses
         // as `ResolvedRest`s (its ordinal order is the adapter-local rest ID
         // namespace), while the full candidate set — every visibility — feeds
         // tuplet feel-pair detection.
-        let candidates = restCandidates(snapshot: snapshot, measuresByIndex: measuresByIndex)
+        let candidates = try restCandidates(snapshot: snapshot, measuresByIndex: measuresByIndex)
         let printed = candidates.filter { $0.visibility == .printed }
         return try ResolvedNotationInput(
             ticksPerWholeNote: snapshot.ticksPerWholeNote,
@@ -123,7 +146,7 @@ enum VirgoNotationProjection {
                 measuresByIndex: measuresByIndex
             ),
             rests: resolvedRests(printed: printed, measuresByIndex: measuresByIndex),
-            controls: resolvedControls(
+            controls: try resolvedControls(
                 snapshot: snapshot,
                 measuresByIndex: measuresByIndex,
                 notePositionOverrides: notePositionOverrides
@@ -208,34 +231,62 @@ enum VirgoNotationProjection {
 
     /// Snapshot notes that pass the projection's catalog-resolution and
     /// measure-containment guards before becoming resolved notes, paired
-    /// with their catalog definitions.
+    /// with their catalog definitions. A note that fails any guard is
+    /// malformed snapshot data and throws — one bad note must fail the
+    /// chart visibly, not vanish from the engraved sheet.
     private static func mappedNotes(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure]
-    ) -> [(note: RhythmLayoutNote, definition: DrumNotationDefinition)] {
-        snapshot.notes.compactMap { note in
+    ) throws -> [(note: RhythmLayoutNote, definition: DrumNotationDefinition)] {
+        try snapshot.notes.map { note in
             guard let definition = DrumNotationCatalog.resolve(
                 noteType: note.noteType,
                 sourceLaneID: note.sourceLaneID
-            )?.definition,
-                UInt64(exactly: note.eventID.rawValue) != nil,
-                let measure = measuresByIndex[note.position.measureIndex],
+            )?.definition else {
+                throw VirgoNotationProjectionError.malformedNote(
+                    eventID: note.eventID,
+                    detail: "no catalog definition for noteType \(note.noteType), "
+                        + "lane \(note.sourceLaneID ?? "nil")"
+                )
+            }
+            guard UInt64(exactly: note.eventID.rawValue) != nil else {
+                throw VirgoNotationProjectionError.malformedNote(
+                    eventID: note.eventID,
+                    detail: "event ID is not representable as a package note ID"
+                )
+            }
+            guard let measure = measuresByIndex[note.position.measureIndex],
                 note.position.localTick >= 0,
-                note.position.localTick < measure.durationTicks,
-                absoluteTickMatches(
-                    note.position.absoluteTick,
-                    measureStartTick: measure.startTick,
-                    localTick: note.position.localTick
-                ),
-                // Same duration/span guards rests get: a malformed note drops
-                // here rather than failing the whole chart inside the package's
-                // ResolvedNotation validation. Subtraction keeps the span check
-                // non-trapping for extreme `durationTicks` — the bounds checks
-                // above pin `localTick` to [0, durationTicks), so the
-                // difference cannot overflow.
-                note.durationTicks > 0,
-                note.durationTicks <= measure.durationTicks - note.position.localTick
-            else { return nil }
+                note.position.localTick < measure.durationTicks else {
+                throw VirgoNotationProjectionError.malformedNote(
+                    eventID: note.eventID,
+                    detail: "position (measure \(note.position.measureIndex), "
+                        + "tick \(note.position.localTick)) is outside the expanded measures"
+                )
+            }
+            guard absoluteTickMatches(
+                note.position.absoluteTick,
+                measureStartTick: measure.startTick,
+                localTick: note.position.localTick
+            ) else {
+                throw VirgoNotationProjectionError.malformedNote(
+                    eventID: note.eventID,
+                    detail: "absoluteTick \(note.position.absoluteTick) does not match "
+                        + "measure start \(measure.startTick) + localTick"
+                )
+            }
+            // Same duration/span guards rests get. Subtraction keeps the span
+            // check non-trapping for extreme `durationTicks` — the bounds
+            // checks above pin `localTick` to [0, durationTicks), so the
+            // difference cannot overflow.
+            guard note.durationTicks > 0,
+                note.durationTicks <= measure.durationTicks - note.position.localTick else {
+                throw VirgoNotationProjectionError.malformedNote(
+                    eventID: note.eventID,
+                    detail: "span \(note.durationTicks) does not stay inside "
+                        + "measure \(measure.measureIndex)"
+                )
+            }
             return (note, definition)
         }
     }
@@ -271,39 +322,59 @@ enum VirgoNotationProjection {
                 ),
                 duration: VirgoNotationAdapter.restDuration(legacy) ?? .quarter,
                 dotCount: rest.rhythm.dotCount,
-                isFullMeasure: legacy == .fullMeasure,
+                isFullMeasure: fillsMeasure,
                 voice: notationVoiceRole(rest.voice),
                 durationTicks: rest.durationTicks
             )
         }
     }
 
-    /// Every rest that passes the projection's rest guards in an
+    /// Every rest that survives the projection's rest guards in an
     /// engraving-permitting measure, in its candidate sort order (tick
     /// ascending, upper voice first, longer first) — all visibilities.
     /// Rests in engraving-unsupported measures are filtered here: Virgo
     /// suppresses their engraving at composition, so they must not reserve
-    /// measured ink in the package. Callers filter `.printed` themselves;
-    /// the full candidate set feeds the tuplet projection's feel-pair
-    /// detection below.
+    /// measured ink in the package. That filter is composition policy, not
+    /// malformed data — every other guard failure throws. Callers filter
+    /// `.printed` themselves; the full candidate set feeds the tuplet
+    /// projection's feel-pair detection below.
     private static func restCandidates(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure]
-    ) -> [RhythmLayoutRest] {
-        snapshot.rests.compactMap { rest -> RhythmLayoutRest? in
+    ) throws -> [RhythmLayoutRest] {
+        try snapshot.rests.compactMap { rest -> RhythmLayoutRest? in
             guard let measure = measuresByIndex[rest.position.measureIndex],
-                measure.engravingSupport.permitsEngraving,
                 rest.position.localTick >= 0,
-                rest.position.localTick < measure.durationTicks,
-                absoluteTickMatches(
-                    rest.position.absoluteTick,
-                    measureStartTick: measure.startTick,
-                    localTick: rest.position.localTick
-                ),
-                rest.durationTicks > 0,
-                // Same non-trapping subtraction form as the note guard.
-                rest.durationTicks <= measure.durationTicks - rest.position.localTick
-            else { return nil }
+                rest.position.localTick < measure.durationTicks else {
+                throw VirgoNotationProjectionError.malformedRest(
+                    measureIndex: rest.position.measureIndex,
+                    localTick: rest.position.localTick,
+                    detail: "position is outside the expanded measures"
+                )
+            }
+            guard measure.engravingSupport.permitsEngraving else { return nil }
+            guard absoluteTickMatches(
+                rest.position.absoluteTick,
+                measureStartTick: measure.startTick,
+                localTick: rest.position.localTick
+            ) else {
+                throw VirgoNotationProjectionError.malformedRest(
+                    measureIndex: rest.position.measureIndex,
+                    localTick: rest.position.localTick,
+                    detail: "absoluteTick \(rest.position.absoluteTick) does not match "
+                        + "measure start \(measure.startTick) + localTick"
+                )
+            }
+            // Same non-trapping subtraction form as the note guard: the
+            // bounds checks above pin `localTick` to [0, durationTicks).
+            guard rest.durationTicks > 0,
+                rest.durationTicks <= measure.durationTicks - rest.position.localTick else {
+                throw VirgoNotationProjectionError.malformedRest(
+                    measureIndex: rest.position.measureIndex,
+                    localTick: rest.position.localTick,
+                    detail: "span \(rest.durationTicks) does not stay inside the measure"
+                )
+            }
             return rest
         }
         .sorted {
@@ -319,25 +390,42 @@ enum VirgoNotationProjection {
 
     /// Controls cross only with resolved visual intent: the projection
     /// resolves the target itself (target lane + staff-position override),
-    /// so a control whose target cannot resolve never reaches the package —
-    /// it is dropped here rather than painted at a fabricated step.
+    /// so a control whose target cannot resolve fails closed by throwing —
+    /// it is never painted at a fabricated step.
     private static func resolvedControls(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure],
         notePositionOverrides: [DrumType: GameplayLayout.NotePosition]
-    ) -> [ResolvedControl] {
-        snapshot.controls.compactMap { control -> ResolvedControl? in
+    ) throws -> [ResolvedControl] {
+        try snapshot.controls.compactMap { control -> ResolvedControl? in
             guard let measure = measuresByIndex[control.position.measureIndex],
                 control.position.localTick >= 0,
-                control.position.localTick < measure.durationTicks,
-                absoluteTickMatches(
-                    control.position.absoluteTick,
-                    measureStartTick: measure.startTick,
-                    localTick: control.position.localTick
-                ),
-                let targetLaneID = control.event.targetLaneID,
-                let target = DrumNotationCatalog.resolveTarget(laneID: targetLaneID)
-            else { return nil }
+                control.position.localTick < measure.durationTicks else {
+                throw VirgoNotationProjectionError.malformedControl(
+                    eventID: control.eventID,
+                    detail: "position (measure \(control.position.measureIndex), "
+                        + "tick \(control.position.localTick)) is outside the expanded measures"
+                )
+            }
+            guard absoluteTickMatches(
+                control.position.absoluteTick,
+                measureStartTick: measure.startTick,
+                localTick: control.position.localTick
+            ) else {
+                throw VirgoNotationProjectionError.malformedControl(
+                    eventID: control.eventID,
+                    detail: "absoluteTick \(control.position.absoluteTick) does not match "
+                        + "measure start \(measure.startTick) + localTick"
+                )
+            }
+            guard let targetLaneID = control.event.targetLaneID,
+                let target = DrumNotationCatalog.resolveTarget(laneID: targetLaneID) else {
+                throw VirgoNotationProjectionError.malformedControl(
+                    eventID: control.eventID,
+                    detail: "target lane \(control.event.targetLaneID ?? "nil") "
+                        + "does not resolve in the catalog"
+                )
+            }
             let targetPosition = notePositionOverrides[target.definition.gameplayInstrument]
                 ?? target.definition.defaultPosition
             return ResolvedControl(

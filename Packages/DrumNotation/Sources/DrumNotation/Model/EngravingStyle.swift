@@ -43,6 +43,19 @@ public struct NotationFormattingStyle: Hashable, Sendable {
         rhythmDotRadius: CGFloat = 2.5,
         rhythmDotSpacing: CGFloat = 4
     ) {
+        // Styles are caller configuration, not chart data: malformed values
+        // are programmer error and fail fast here rather than propagating
+        // NaN/negative geometry into every primitive.
+        let scalars: [CGFloat] = [
+            availableRowWidth, minimumSheetWidth, rowLeadingInset, staffSpace, stemWidth,
+            minimumInterColumnClearance, minimumQuarterNoteSpacing, measureSpacing,
+            leadingMeasureInset, trailingMeasureInset, rhythmDotRadius, rhythmDotSpacing
+        ]
+        precondition(scalars.allSatisfy(\.isFinite), "NotationFormattingStyle values must be finite")
+        precondition(
+            staffSpace > 0 && availableRowWidth > 0,
+            "NotationFormattingStyle staffSpace and availableRowWidth must be positive"
+        )
         self.availableRowWidth = availableRowWidth
         self.minimumSheetWidth = minimumSheetWidth
         self.rowLeadingInset = rowLeadingInset
@@ -146,6 +159,20 @@ public struct NotationEngravingStyle: Hashable, Sendable {
         clefWidth: CGFloat = 40,
         meterWidth: CGFloat = 30
     ) {
+        // Same fail-fast contract as `NotationFormattingStyle`: styles are
+        // configuration, so non-finite scalars or a non-positive row height
+        // trap at construction instead of poisoning the engraving.
+        let scalars: [CGFloat] = [
+            rowHeight, rowVerticalSpacing, stemLength, minimumStemExtensionPastChord,
+            beamThickness, beamLevelSpacing, beamHookLength, flagVerticalSpacing,
+            ledgerLineOverhang, upperVoiceRestOffset, lowerVoiceRestOffset, stopMarkSize,
+            stopMarkStrokeWidth, stopMarkVerticalOffset, articulationVerticalOffset,
+            tupletLineWidth, tupletVerticalOffset, tupletHookLength, barLineWidth,
+            doubleBarThinWidth, doubleBarThickWidth, doubleBarSpacing, clefWidth, meterWidth,
+            tupletLabelSize.width, tupletLabelSize.height
+        ]
+        precondition(scalars.allSatisfy(\.isFinite), "NotationEngravingStyle values must be finite")
+        precondition(rowHeight > 0, "NotationEngravingStyle rowHeight must be positive")
         self.formatting = formatting
         self.rowHeight = rowHeight
         self.rowVerticalSpacing = rowVerticalSpacing

@@ -1,10 +1,10 @@
 import CoreGraphics
 
 // HPA-166 Task 4 — resolved-semantics primitives: articulations, controls,
-// tuplets and measure bars. Ports of `NotationLayoutEngine+Controls.swift`,
-// `+RhythmRendering.swift` (tuplets) and `NotationLayoutEngine.swift`
-// (measure bars) onto the shared formatted columns and final head/rest/
-// beam geometry.
+// tuplets and measure bars, originally ported from the app-side layout
+// passes deleted with the legacy renderer (`+Controls`, `+RhythmRendering`
+// tuplets, measure bars) onto the shared formatted columns and final
+// head/rest/beam geometry.
 
 extension SheetComposer {
     // MARK: - Articulations

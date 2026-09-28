@@ -9,7 +9,7 @@ import Testing
 /// from `VirgoNotationProjectionTests` for SwiftLint's length limits.
 @Suite("Virgo Notation Projection Engraving")
 struct VirgoNotationProjectionEngravingTests {
-    @Test("Control kind and resolved target staff step cross; unresolvable controls drop")
+    @Test("Control kind and resolved target staff step cross; unresolvable targets fail closed")
     func controlKindAndResolvedTargetSurvive() throws {
         let measure = EngravingProjectionFixtures.makeMeasure(index: 0)
         let snapshot = try EngravingProjectionFixtures.makeSnapshot(
@@ -23,14 +23,6 @@ struct VirgoNotationProjectionEngravingTests {
                 ),
                 EngravingProjectionFixtures.makeControl(
                     eventID: 3, measureIndex: 0, localTick: 480, kind: .damp, targetLaneID: "11"
-                ),
-                // Unknown target lane: the engine drops these rather than
-                // painting a mark at a fabricated step, so they never cross.
-                EngravingProjectionFixtures.makeControl(
-                    eventID: 4, measureIndex: 0, localTick: 720, kind: .stop, targetLaneID: "ZZ"
-                ),
-                EngravingProjectionFixtures.makeControl(
-                    eventID: 5, measureIndex: 0, localTick: 720, kind: .stop, targetLaneID: nil
                 )
             ]
         )
@@ -51,6 +43,25 @@ struct VirgoNotationProjectionEngravingTests {
         #expect(byID[2]?.targetStaffStep == 4)
         #expect(byID[3]?.kind == .damp)
         #expect(byID[3]?.targetStaffStep == 8)
+
+        // Unknown or missing target lane: the projection throws — a control
+        // is never painted at a fabricated step, and the chart fails closed
+        // instead of silently losing the mark.
+        let unresolved = try EngravingProjectionFixtures.makeSnapshot(
+            measures: [measure],
+            controls: [
+                EngravingProjectionFixtures.makeControl(
+                    eventID: 4, measureIndex: 0, localTick: 720, kind: .stop, targetLaneID: "ZZ"
+                )
+            ]
+        )
+        #expect(throws: VirgoNotationProjectionError.self) {
+            try VirgoNotationProjection.resolvedNotation(
+                snapshot: unresolved,
+                expandedMeasures: [measure],
+                notePositionOverrides: [:]
+            )
+        }
     }
 
     @Test("Staff-position overrides apply to control targets")

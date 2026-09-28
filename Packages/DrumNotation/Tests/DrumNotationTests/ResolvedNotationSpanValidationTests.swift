@@ -164,6 +164,82 @@ struct ResolvedNotationSpanValidationTests {
         )
     }
 
+    @Test("validation rejects dot counts beyond a double-dotted duration")
+    func validationRejectsDotCountsBeyondDoubleDotted() {
+        #expect {
+            try Fixtures.document(
+                notes: [Fixtures.makeNote(id: 1, localTick: 0, staffStep: 3, dotCount: 4)],
+                rests: [],
+                controls: []
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidEventDotCount(eventID: 1, dotCount: 4)
+        }
+    }
+
+    // MARK: Full-measure rests
+
+    @Test("validation rejects a full-measure flag whose span does not cover the measure from tick 0")
+    func validationRejectsMisfullFullMeasureRest() {
+        // A whole-length rest starting mid-measure: the flag would center it
+        // on the measure while its timing anchor sits elsewhere.
+        #expect {
+            try Fixtures.document(
+                notes: [],
+                rests: [ResolvedRest(
+                    id: 1,
+                    position: NotationTickPosition(measureIndex: 0, localTick: 480),
+                    duration: .whole,
+                    dotCount: 0,
+                    isFullMeasure: true,
+                    voice: .upper,
+                    durationTicks: 1440
+                )],
+                controls: []
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidFullMeasureRest(
+                    restID: 1,
+                    measureIndex: 0,
+                    localTick: 480,
+                    durationTicks: 1440,
+                    measureDurationTicks: 1920
+                )
+        }
+    }
+
+    @Test("validation rejects a full-measure flag with a non-whole glyph or short span")
+    func validationRejectsFullMeasureFlagWithIntervalSemantics() {
+        // Tick-0 whole-length span but a quarter glyph: still not a
+        // full-measure rest representation.
+        #expect {
+            try Fixtures.document(
+                notes: [],
+                rests: [ResolvedRest(
+                    id: 1,
+                    position: NotationTickPosition(measureIndex: 0, localTick: 0),
+                    duration: .quarter,
+                    dotCount: 0,
+                    isFullMeasure: true,
+                    voice: .upper,
+                    durationTicks: 480
+                )],
+                controls: []
+            )
+        } throws: { error in
+            error as? ResolvedNotationInput.ValidationError
+                == .invalidFullMeasureRest(
+                    restID: 1,
+                    measureIndex: 0,
+                    localTick: 0,
+                    durationTicks: 480,
+                    measureDurationTicks: 1920
+                )
+        }
+    }
+
     // MARK: Meter terms
 
     @Test("validation rejects non-positive meter terms")

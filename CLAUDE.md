@@ -146,7 +146,9 @@ layout, so the stages must be understood in order:
    closed `GameplayNotationPreparedState` — `.ready(EngravedNotation,
    GameplayNotationPresentation)` or `.failed(GameplayNotationPreparationFailure)`. The view
    model installs a `.ready` result atomically and `GameplaySheetMusicView` mounts the package
-   `DrumNotationView` on it. There is no second style or geometry path.
+   `DrumNotationView` on it. Engraved sheets have no second style or geometry path; when no
+   engraving is installed, the view still renders its legacy staff/bar/clef furniture via
+   `GameplayLayout` as the fallback.
 
 Notation rendering is split at the package boundary (`Packages/DrumNotation`): the package owns
 reusable geometry and static painting — `ResolvedNotationInput` validation, `NotationFormatter`
@@ -174,8 +176,8 @@ ticks at each chip's native grid size). The harness's reported `engraved` is bou
 `resolvedInput` and must equal the prepared engraving. `EngravedNotationDigest` serializes the
 result to text — a timeline/analyzer section plus the package engraving geometry with primitive Y
 printed row-relative to staff centers — compared against `VirgoTests/Goldens/<fixture>.txt`.
-There are 11 golden files; the twelfth catalog fixture (`tripletHooksAndStop`) backs the
-probe/mounting suites only.
+There are 11 golden files; the twelfth catalog fixture (`tripletHooksAndStop`) backs
+`GameplaySheetMusicGeometrySmokeTests` only.
 
 Regenerate with `TEST_RUNNER_VIRGO_UPDATE_GOLDENS=1` (via `xcodebuild test` — `xcodebuild` forwards
 only `TEST_RUNNER_`-prefixed variables into the spawned test host, stripping the prefix before exec;

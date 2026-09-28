@@ -1,11 +1,11 @@
 import CoreGraphics
 
-// HPA-166 Task 4 — topology-driven stem/beam/flag geometry, a mechanical
-// port of `Virgo/layout/NotationLayoutEngine+Beams.swift` onto the shared
-// `StemTopology`: same stem representatives, same flat-beam Y stacking, same
-// hook endpoints, same unbeamed-stem clearance, same flag origins — driven
-// by the one plan the formatter already consumed rather than a second
-// grouping pass.
+// HPA-166 Task 4 — topology-driven stem/beam/flag geometry, originally a
+// mechanical port of the app-side beam pass deleted with the legacy
+// renderer, onto the shared `StemTopology`: same stem representatives, same
+// flat-beam Y stacking, same hook endpoints, same unbeamed-stem clearance,
+// same flag origins — driven by the one plan the formatter already consumed
+// rather than a second grouping pass.
 
 extension SheetComposer {
     /// Bundles the immutable inputs shared across beam-segment rendering so

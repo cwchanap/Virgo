@@ -30,8 +30,11 @@ Virgo DTX / SwiftData / rhythm analysis
        RhythmLayoutSnapshot
                 |
                 v
+  (GameplayNotationPreparer expands
+   the requested trailing measures)
+                |
+                v
        VirgoNotationProjection
-  - expand requested measures
   - apply staff overrides
   - resolve voice / beat groups / tuplets
   - resolve articulation + control intent
@@ -174,7 +177,7 @@ public struct ResolvedTupletGroup: Hashable, Sendable {
 }
 ```
 
-Virgo creates groups only for tuplets the analyzer already supports. Swing/shuffle feel-pairs that should not draw a tuplet bracket are filtered at the adapter boundary rather than adding `RhythmicFeel` to the package.
+Virgo creates groups only for tuplets the analyzer already supports. Swing/shuffle feel-pairs that should not draw a tuplet bracket are filtered in the projection's tuplet arm (`VirgoNotationTupletProjection`) rather than adding `RhythmicFeel` to the package.
 
 ### Controls
 
@@ -370,6 +373,9 @@ public enum NotationSemanticID: Hashable, Sendable {
     case tuplet(Int)
 }
 ```
+
+(The shipped enum adds one `rhythmDot(source, index)` case so painted dots
+can carry accessibility labels.)
 
 The package static view accepts one label map at paint time:
 

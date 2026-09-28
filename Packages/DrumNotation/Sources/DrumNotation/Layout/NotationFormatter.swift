@@ -356,58 +356,64 @@ public enum NotationFormatter {
 
     // MARK: VexFlow staff-second displacement
 
-    /// Closed VexFlow staff-second rule. Within one onset and stem direction,
-    /// walking away from the stem side (up: ascending, down: descending),
-    /// adjacent staff steps alternate base → shifted → base …; a shifted head
-    /// moves by one head width minus half the stem width so it still overlaps
-    /// the shared stem. Non-adjacent heads never shift, and mixed stem
-    /// directions at one tick never shift each other. The run's alternation
-    /// parity is anchored on the first stem member: the caller paints the
-    /// shared stem (and any visible flag) from that head's undisplaced
-    /// anchor, so it must hold the base slot — non-members (stemless or
-    /// unsupported heads) never do.
+    /// Closed VexFlow staff-second rule. Within one onset, voice, and stem
+    /// direction — the same `(voice, stemDirection)` grouping the stem
+    /// topology builds its shared stems from — walking away from the stem
+    /// side (up: ascending, down: descending), adjacent staff steps
+    /// alternate base → shifted → base …; a shifted head moves by one head
+    /// width minus half the stem width so it still overlaps the shared
+    /// stem. Non-adjacent heads never shift, and runs never span voices or
+    /// mixed stem directions at one tick. The run's alternation parity is
+    /// anchored on the first stem member: the caller paints the shared stem
+    /// (and any visible flag) from that head's undisplaced anchor, so it
+    /// must hold the base slot — non-members (stemless or unsupported
+    /// heads) never do.
     private static func staffSecondShifts(
         for notes: [ResolvedNote],
         style: NotationFormattingStyle
     ) -> [Int: CGFloat] {
         var shifts: [Int: CGFloat] = [:]
-        for direction in [NotationStemDirection.up, .down] {
-            let group = notes
-                .filter { $0.stemDirection == direction }
-                .sorted { lhs, rhs in
-                    if lhs.staffStep != rhs.staffStep {
-                        return direction == .up ? lhs.staffStep < rhs.staffStep : lhs.staffStep > rhs.staffStep
+        for voice in [NotationVoiceRole.upper, .lower] {
+            for direction in [NotationStemDirection.up, .down] {
+                let group = notes
+                    .filter { $0.voice == voice && $0.stemDirection == direction }
+                    .sorted { lhs, rhs in
+                        if lhs.staffStep != rhs.staffStep {
+                            return direction == .up
+                                ? lhs.staffStep < rhs.staffStep
+                                : lhs.staffStep > rhs.staffStep
+                        }
+                        return lhs.id < rhs.id
                     }
-                    return lhs.id < rhs.id
+                var runStart = group.startIndex
+                while runStart < group.endIndex {
+                    var runEnd = runStart
+                    while runEnd + 1 < group.endIndex,
+                          abs(group[runEnd + 1].staffStep - group[runEnd].staffStep) == 1 {
+                        runEnd += 1
+                    }
+                    let run = group[runStart...runEnd]
+                    // Stem membership derives from engraving semantics: a member
+                    // is a stem-requiring engravable head — the same eligibility
+                    // the stem topology's representative pick uses, so the head
+                    // the shared stem actually paints from always holds the base
+                    // slot. Stemless/non-engravable heads never anchor the run.
+                    let anchor = run.firstIndex(where: {
+                        $0.duration.needsStem && $0.isRhythmEngravable
+                    }) ?? run.startIndex
+                    let baseParity = run.distance(from: run.startIndex, to: anchor) % 2
+                    for (position, note) in run.enumerated() where position % 2 != baseParity {
+                        let width = PercussionGlyphMetrics.notehead(
+                            style: note.noteheadStyle,
+                            duration: note.duration,
+                            stemDirection: note.stemDirection,
+                            staffSpace: style.staffSpace
+                        ).paintedBounds.width
+                        let magnitude = width - style.stemWidth / 2
+                        shifts[note.id] = direction == .up ? magnitude : -magnitude
+                    }
+                    runStart = runEnd + 1
                 }
-            var runStart = group.startIndex
-            while runStart < group.endIndex {
-                var runEnd = runStart
-                while runEnd + 1 < group.endIndex,
-                      abs(group[runEnd + 1].staffStep - group[runEnd].staffStep) == 1 {
-                    runEnd += 1
-                }
-                let run = group[runStart...runEnd]
-                // Stem membership derives from engraving semantics: a member
-                // is a stem-requiring engravable head — the same eligibility
-                // the stem topology's representative pick uses, so the head
-                // the shared stem actually paints from always holds the base
-                // slot. Stemless/non-engravable heads never anchor the run.
-                let anchor = run.firstIndex(where: {
-                    $0.duration.needsStem && $0.isRhythmEngravable
-                }) ?? run.startIndex
-                let baseParity = run.distance(from: run.startIndex, to: anchor) % 2
-                for (position, note) in run.enumerated() where position % 2 != baseParity {
-                    let width = PercussionGlyphMetrics.notehead(
-                        style: note.noteheadStyle,
-                        duration: note.duration,
-                        stemDirection: note.stemDirection,
-                        staffSpace: style.staffSpace
-                    ).paintedBounds.width
-                    let magnitude = width - style.stemWidth / 2
-                    shifts[note.id] = direction == .up ? magnitude : -magnitude
-                }
-                runStart = runEnd + 1
             }
         }
         return shifts

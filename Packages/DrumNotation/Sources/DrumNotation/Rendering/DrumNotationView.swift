@@ -338,8 +338,9 @@ private extension DrumNotationView {
         }
     }
 
-    /// The stop/choke/damp cross mark at its resolved target — the app's
-    /// `NotationStopNoteView` "+" shape, identical for every control kind.
+    /// The stop/choke/damp cross mark at its resolved target — the "+"
+    /// shape the app's legacy stop-note view painted, identical for every
+    /// control kind.
     var controlsLayer: some View {
         ForEach(layout.controls, id: \.controlID) { control in
             labeled(

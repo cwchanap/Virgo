@@ -188,25 +188,15 @@ struct VirgoNotationProjectionTests {
         )
     }
 
-    @Test("Extreme durations drop at the span guard instead of trapping")
-    func extremeDurationsDropInsteadOfTrapping() throws {
+    @Test("Extreme durations fail closed at the span guard instead of trapping")
+    func extremeDurationsFailClosedInsteadOfTrapping() throws {
         let measure = makeMeasure(index: 0)
-        let snapshot = try makeSnapshot(
+        // A snapshot whose only malformed member is an extreme span: the
+        // projection throws (prepare reports `.failed`) rather than
+        // trapping the detached worker or silently dropping the note.
+        let malformed = try makeSnapshot(
             measures: [measure],
             notes: [
-                // Boundary-valid: the span exactly fills the measure
-                // remainder, so it survives — the guard's predicate is
-                // unchanged, only non-trapping.
-                makeNote(
-                    eventID: 1,
-                    noteType: .snare,
-                    measureIndex: 0,
-                    localTick: 720,
-                    interval: .quarter,
-                    durationTicks: 240
-                ),
-                // `localTick + durationTicks` would overflow: the malformed
-                // note must drop here, not trap the detached worker.
                 makeNote(
                     eventID: 2,
                     noteType: .bass,
@@ -217,7 +207,6 @@ struct VirgoNotationProjectionTests {
                 )
             ],
             rests: [
-                // Same guard on the rest side.
                 makeRest(
                     measureIndex: 0,
                     localTick: 480,
@@ -228,29 +217,49 @@ struct VirgoNotationProjectionTests {
                 )
             ]
         )
+        #expect(throws: VirgoNotationProjectionError.self) {
+            try VirgoNotationProjection.resolvedNotation(
+                snapshot: malformed,
+                expandedMeasures: [measure],
+                notePositionOverrides: [:]
+            )
+        }
 
+        // Boundary-valid spans still survive the same guards: the span
+        // exactly fills the measure remainder.
+        let boundary = try makeSnapshot(
+            measures: [measure],
+            notes: [
+                makeNote(
+                    eventID: 1,
+                    noteType: .snare,
+                    measureIndex: 0,
+                    localTick: 720,
+                    interval: .quarter,
+                    durationTicks: 240
+                )
+            ]
+        )
         let input = try VirgoNotationProjection.resolvedNotation(
-            snapshot: snapshot,
+            snapshot: boundary,
             expandedMeasures: [measure],
             notePositionOverrides: [:]
         )
-
         #expect(input.notes.map(\.id) == [1])
-        #expect(input.rests.isEmpty)
     }
 
-    @Test("Overflowing absolute-tick sums drop at the guard instead of trapping")
-    func overflowingAbsoluteTickSumsDropInsteadOfTrapping() throws {
+    @Test("Overflowing absolute-tick sums fail closed at the guard instead of trapping")
+    func overflowingAbsoluteTickSumsFailClosedInsteadOfTrapping() throws {
         // `localTick < durationTicks` means a measure whose
         // `startTick + localTick` overflows necessarily fails package
         // `startTick + durationTicks` validation too — the malformed events
-        // must drop at the projection guards so the input init throws
-        // instead of trapping on a bare `+` first.
+        // must throw at the projection guards so `prepare`'s do/catch sees
+        // the failure instead of a trap on a bare `+`.
         let measure = makeMeasure(index: 0, startTick: .max - 10)
         let snapshot = try makeSnapshot(
             measures: [measure],
-            // `absoluteTick` equals the wrapped sum: the drop must come from
-            // the overflow flag, not value inequality.
+            // `absoluteTick` equals the wrapped sum: the failure must come
+            // from the overflow flag, not value inequality.
             notes: [makeNote(
                 eventID: 1, noteType: .snare, measureIndex: 0,
                 localTick: 240, absoluteTick: (Int.max - 10) &+ 240, interval: .quarter
@@ -262,9 +271,7 @@ struct VirgoNotationProjectionTests {
             controls: [makeControl(eventID: 2, measureIndex: 0, localTick: 600)]
         )
 
-        #expect(throws: ResolvedNotationInput.ValidationError.invalidMeasure(
-            index: 0, startTick: .max - 10, durationTicks: 960
-        )) {
+        #expect(throws: VirgoNotationProjectionError.self) {
             try VirgoNotationProjection.resolvedNotation(
                 snapshot: snapshot, expandedMeasures: [measure], notePositionOverrides: [:]
             )

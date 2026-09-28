@@ -147,6 +147,44 @@ struct VirgoNotationProjectionRestFilterTests {
         #expect(withRestGeometry.measures.map(\.xOffset) == withoutRestGeometry.measures.map(\.xOffset))
     }
 
+    @Test("A whole-length rest that does not fill its measure crosses as an interval rest")
+    func wholeRestNotFillingMeasureIsNotFullMeasure() throws {
+        // 5/4-shaped measure (1200 ticks) holding a whole-note rest (960):
+        // the flag must describe the exact span — the package rejects a
+        // full-measure flag whose span does not cover the measure, and the
+        // whole rest paints on its column instead of centered.
+        let measure = RhythmMeasure(
+            measureIndex: 0,
+            startTick: 0,
+            durationTicks: 1_200,
+            timeSignature: .fiveFour,
+            beatGroups: (0..<5).map {
+                RhythmBeatGroup(groupIndex: $0, startTick: $0 * 240, durationTicks: 240, isResidual: false)
+            },
+            engravingSupport: .supported
+        )
+        let rest = makeRest(
+            measureIndex: 0,
+            localTick: 0,
+            voice: .upper,
+            interval: .full,
+            visibility: .printed,
+            durationTicks: 960
+        )
+        let snapshot = try makeSnapshot(measures: [measure], rests: [rest])
+
+        let input = try VirgoNotationProjection.resolvedNotation(
+            snapshot: snapshot,
+            expandedMeasures: [measure],
+            notePositionOverrides: [:]
+        )
+
+        let resolved = try #require(input.rests.first)
+        #expect(resolved.isFullMeasure == false)
+        #expect(resolved.duration == NotationDuration.whole)
+        #expect(resolved.durationTicks == 960)
+    }
+
     // MARK: - Fixtures
 
     /// Four-beat 4/4 measure at 960 ticks/whole-note: quarter = 240 ticks.
@@ -184,9 +222,10 @@ struct VirgoNotationProjectionRestFilterTests {
         localTick: Int,
         voice: NotationVoice,
         interval: NoteInterval,
-        visibility: NotationRestVisibility
+        visibility: NotationRestVisibility,
+        durationTicks: Int? = nil
     ) -> RhythmLayoutRest {
-        let durationTicks = ticksPerWholeNote / Self.tickDivisor(of: interval)
+        let durationTicks = durationTicks ?? ticksPerWholeNote / Self.tickDivisor(of: interval)
         return RhythmLayoutRest(
             position: RhythmEventPosition(
                 measureIndex: measureIndex,
