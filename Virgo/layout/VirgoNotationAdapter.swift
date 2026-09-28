@@ -1,10 +1,12 @@
 import CoreGraphics
 import DrumNotation
 
-/// The single pure app-to-package mapping seam between Virgo's DTX/notation
-/// domain and the `DrumNotation` package. Takes values in, returns values out:
-/// no view construction, no rendering, no mutation of layout outputs (HPA-166
-/// Task 7). The pre-format projection lives in ``VirgoNotationProjection``.
+/// The primitive app-to-package mapping seam between Virgo's DTX/notation
+/// domain and the `DrumNotation` package: noteheads, durations, stem
+/// directions, and rest durations — one value in, one value out, no view
+/// construction and no rendering. Style mapping and the snapshot→input
+/// projection live in ``VirgoNotationProjection``; the preparation route
+/// that drives both lives in `GameplayNotationPreparation` (HPA-166 Task 7).
 ///
 /// The flag/stem-geometry helpers and `FlagPaintCommand` belonged to the
 /// disconnected legacy `Rendered*` model and were deleted with it in Task 8 —

@@ -316,6 +316,7 @@ enum RhythmDiagnosticCode: String, Codable, CaseIterable, Hashable, Sendable {
     case incompleteTuplet
     case ambiguousBeatGrouping
     case indeterminateTerminalDuration
+    case manualDurationOffGrid
     case manualTimelineUnavailable
 
     var requiredSeverity: RhythmDiagnosticSeverity {
@@ -325,6 +326,7 @@ enum RhythmDiagnosticCode: String, Codable, CaseIterable, Hashable, Sendable {
                 .incompleteTuplet,
                 .ambiguousBeatGrouping,
                 .indeterminateTerminalDuration,
+                .manualDurationOffGrid,
                 .manualTimelineUnavailable:
             return .engravingOnly
         default:
@@ -336,7 +338,8 @@ enum RhythmDiagnosticCode: String, Codable, CaseIterable, Hashable, Sendable {
 extension RhythmDiagnosticCode {
     var blocksWholeMeasureEngraving: Bool {
         switch self {
-        case .indeterminateTerminalDuration:
+        case .indeterminateTerminalDuration,
+                .manualDurationOffGrid:
             return false
         case .malformedTimeSignature,
                 .unsupportedTimeSignature,

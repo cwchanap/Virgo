@@ -127,6 +127,52 @@ struct NotationFormatterDisplacementTests {
         #expect(stemless.headCenterX == column.logicalColumnX - wholeShift)
     }
 
+    @Test("non-engravable stem-needing head yields the base slot to the engravable member")
+    func nonEngravableStemNeighborYieldsBaseSlot() throws {
+        // Up-stem pair: the lower sixteenth needs a stem but is not
+        // rhythm-engravable, the upper eighth is. The shared stem paints
+        // from the eighth's undisplaced anchor, so the eighth must hold the
+        // base slot and the non-engravable neighbor takes the shift.
+        let notes = [
+            Fixtures.makeNote(
+                id: 1, localTick: 0, staffStep: 3, duration: .sixteenth,
+                isRhythmEngravable: false
+            ),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 4, duration: .eighth)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+        let nonEngravable = try #require(column.noteHeads.first { $0.noteID == 1 })
+        let engravable = try #require(column.noteHeads.first { $0.noteID == 2 })
+
+        #expect(engravable.headCenterX == column.logicalColumnX)
+        let shift = displacement(duration: .sixteenth)
+        #expect(nonEngravable.headCenterX == column.logicalColumnX + shift)
+    }
+
+    @Test("same-direction voices at one tick keep separate displacement runs")
+    func sameDirectionVoicesKeepSeparateDisplacementRuns() throws {
+        // Two up-stem voices with overlapping adjacent steps: each voice's
+        // stem-side head holds its own run's base slot. Under a direction-
+        // only grouping the upper voice's stem-side head (step 4) would
+        // inherit the lower voice's shifted slot.
+        let notes = [
+            Fixtures.makeNote(id: 1, localTick: 0, staffStep: 4, voice: .upper),
+            Fixtures.makeNote(id: 2, localTick: 0, staffStep: 5, voice: .upper),
+            Fixtures.makeNote(id: 3, localTick: 0, staffStep: 3, voice: .lower),
+            Fixtures.makeNote(id: 4, localTick: 0, staffStep: 4, voice: .lower)
+        ]
+        let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+        let column = try Fixtures.column(notation, localTick: 0)
+
+        let shift = displacement()
+        let expected = [1: 0, 2: shift, 3: 0, 4: shift]
+        for head in column.noteHeads {
+            let expectedX = try #require(expected[head.noteID])
+            #expect(head.headCenterX == column.logicalColumnX + expectedX)
+        }
+    }
+
     @Test("non-adjacent same-stem heads stay centered")
     func nonAdjacentHeadsStayCentered() throws {
         let notes = [

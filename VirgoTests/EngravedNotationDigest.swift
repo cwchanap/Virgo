@@ -7,9 +7,9 @@ import DrumNotation
 ///
 /// The timeline/analyzer section is unchanged in meaning from the old
 /// `NotationLayoutDigest`: it pins the resolved rhythm the real import path
-/// produced. The geometry section now serializes the package
-/// `EngravedNotation` — the same `ResolvedNotationInput` +
-/// `NotationEngraver` path Task 7 will mount in production — rather than the
+/// produced. The geometry section serializes the package `EngravedNotation`
+/// — the same `ResolvedNotationInput` + `NotationEngraver` path production
+/// mounts through `GameplayNotationPreparer.prepare` — rather than the
 /// app-composed `NotationLayout`.
 ///
 /// Engraving-line conventions (HPA-166 Task 6):

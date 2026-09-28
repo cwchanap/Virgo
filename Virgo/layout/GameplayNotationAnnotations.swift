@@ -160,6 +160,8 @@ struct RhythmDiagnosticPresentation: Hashable, Sendable {
         case .ambiguousBeatGrouping: return String(localized: "This measure has ambiguous beat grouping.")
         case .indeterminateTerminalDuration:
             return String(localized: "The final event duration cannot be determined.")
+        case .manualDurationOffGrid:
+            return String(localized: "A manually entered note duration does not fit the chart's timing grid.")
         case .manualTimelineUnavailable: return String(localized: "Exact timing is unavailable for this manual chart.")
         }
     }

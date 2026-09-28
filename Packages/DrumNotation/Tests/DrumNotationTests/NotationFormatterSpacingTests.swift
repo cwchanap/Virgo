@@ -97,6 +97,33 @@ struct NotationFormatterSpacingTests {
         #expect(abs(sparse.width - 252) < 0.001)
     }
 
+    @Test("dot ink reservation ignores rhythm engravability: later columns keep their X")
+    func dotInkReservationMatchesEngravableLayout() throws {
+        // The formatter reserves dot ink even for heads whose dots the
+        // engraver will not paint (non-engravable), so an unsupported
+        // measure keeps the same event X as the engravable layout.
+        func laterColumnX(dotted: Bool, engravable: Bool) throws -> CGFloat {
+            let notes = [
+                Fixtures.makeNote(
+                    id: 1, localTick: 0, staffStep: 3, duration: .sixteenth,
+                    dotCount: dotted ? 1 : 0, durationTicks: 120, isRhythmEngravable: engravable
+                ),
+                Fixtures.makeNote(id: 2, localTick: 120, staffStep: 3, duration: .sixteenth)
+            ]
+            let notation = try Fixtures.format(try Fixtures.document(notes: notes, rests: [], controls: []))
+            return try Fixtures.column(notation, localTick: 120).logicalColumnX
+        }
+
+        let engravable = try laterColumnX(dotted: true, engravable: true)
+        let nonEngravable = try laterColumnX(dotted: true, engravable: false)
+        let undotted = try laterColumnX(dotted: false, engravable: true)
+
+        #expect(abs(engravable - nonEngravable) < 0.001)
+        // Self-check: the dotted footprint actually pushes the later column
+        // out, so the equality above is pinning reservation, not a no-op.
+        #expect(abs(engravable - undotted) > 1)
+    }
+
     @Test("full-measure rest centers in the content span once width is known")
     func fullMeasureRestIsCenteredOnceWidthIsKnown() throws {
         let fullMeasure = ResolvedRest(

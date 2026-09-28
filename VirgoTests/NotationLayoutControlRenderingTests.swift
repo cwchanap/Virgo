@@ -35,18 +35,22 @@ struct NotationLayoutControlRenderingTests {
         #expect(Set(engraved.controls.map(\.controlID)).count == 3)
     }
 
-    @Test("missing and unknown targets omit geometry")
-    func unresolvedTargetsOmitGeometry() throws {
+    @Test("missing and unknown targets fail preparation instead of omitting geometry")
+    func unresolvedTargetsFailPreparation() throws {
         let controls = [
             support.control(measureOffset: 0.25, targetLaneID: nil),
             support.control(measureOffset: 0.5, targetLaneID: "ZZ")
         ]
-        let engraved = try support.engraved(
+        let prepared = NotationSnapshotTestSupport().prepare(
             notes: [support.fallbackGridNote()],
             controls: controls
         )
 
-        #expect(engraved.controls.isEmpty)
+        guard case let .failed(failure) = prepared else {
+            Issue.record("Expected .failed for unresolvable control targets")
+            return
+        }
+        #expect(failure.detail.contains("target lane"))
     }
 
     @Test("lane 1A resolves to Crash and follows the active crash position override")

@@ -258,23 +258,10 @@ private extension NotationRhythmAnalyzer {
         return locatedEvents.map { located in
             let event = located.event
             if event.origin == .manual {
-                let nominal = durationTicks(
-                    for: event.storedInterval,
+                return manualResolution(
+                    located: located,
+                    measure: measure,
                     ticksPerWholeNote: ticksPerWholeNote
-                ) ?? 1
-                // A late-onset manual note's nominal interval can run past
-                // the measure end, but the exact span must stay inside its
-                // owning measure — clip it the way terminal resolutions do.
-                // Only in-measure onsets reach this point, so the clipped
-                // span stays positive.
-                let clipped = min(nominal, measure.durationTicks - event.position.localTick)
-                return EventResolution(
-                    event: event,
-                    beatGroup: located.beatGroup,
-                    hasFollowingDTXOnset: false,
-                    durationTicks: clipped,
-                    rhythm: NotationRhythm(baseInterval: event.storedInterval),
-                    tupletID: nil
                 )
             }
             let nextDTXOnset = dtxOnsets.first { $0 > event.position.localTick }
@@ -298,6 +285,49 @@ private extension NotationRhythmAnalyzer {
                 ticksPerWholeNote: ticksPerWholeNote
             )
         }
+    }
+
+    /// The manual-note duration resolution. A stored interval that does not
+    /// divide the chart's tick grid has no exact span: leave the rhythm
+    /// indeterminate so the head still paints without duration-bearing
+    /// engraving, and record the measure diagnostic — never engrave a
+    /// supported 1-tick stand-in for an unrepresentable duration. Otherwise
+    /// a late-onset manual note's nominal interval can run past the measure
+    /// end, but the exact span must stay inside its owning measure — clip it
+    /// the way terminal resolutions do. Only in-measure onsets reach this
+    /// point, so the clipped span stays positive.
+    func manualResolution(
+        located: LocatedEvent,
+        measure: RhythmMeasure,
+        ticksPerWholeNote: Int
+    ) -> EventResolution {
+        let event = located.event
+        guard let nominal = durationTicks(
+            for: event.storedInterval,
+            ticksPerWholeNote: ticksPerWholeNote
+        ) else {
+            return EventResolution(
+                event: event,
+                beatGroup: located.beatGroup,
+                hasFollowingDTXOnset: false,
+                // Placeholder span only: rest topology reserves nil for
+                // non-supported rhythms, so this reserves nothing.
+                durationTicks: 1,
+                rhythm: NotationRhythm(
+                    baseInterval: event.storedInterval,
+                    support: .indeterminate(.manualDurationOffGrid)
+                ),
+                tupletID: nil
+            )
+        }
+        return EventResolution(
+            event: event,
+            beatGroup: located.beatGroup,
+            hasFollowingDTXOnset: false,
+            durationTicks: min(nominal, measure.durationTicks - event.position.localTick),
+            rhythm: NotationRhythm(baseInterval: event.storedInterval),
+            tupletID: nil
+        )
     }
 
     func terminalDTXResolution(
@@ -667,9 +697,9 @@ private extension NotationRhythmAnalyzer {
         diagnosticCodes: inout [Int: Set<RhythmDiagnosticCode>]
     ) {
         for index in resolutions.indices where resolutions[index].tupletID == nil {
-            if case .indeterminate(.indeterminateTerminalDuration) = resolutions[index].rhythm.support {
+            if case let .indeterminate(code) = resolutions[index].rhythm.support {
                 diagnosticCodes[resolutions[index].event.position.measureIndex, default: []]
-                    .insert(.indeterminateTerminalDuration)
+                    .insert(code)
             }
         }
     }
