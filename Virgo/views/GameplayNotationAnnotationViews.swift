@@ -31,7 +31,7 @@ struct GameplayFeelMarkView: View, Equatable {
     let feelMark: GameplayFeelMark
 
     var body: some View {
-        Text(feelMark.feel.rawValue.capitalized)
+        Text(feelMark.localizedName)
             .font(.caption.weight(.semibold))
             .foregroundStyle(Palette.chalk)
             .frame(width: feelMark.size.width, height: feelMark.size.height)

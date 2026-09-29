@@ -50,25 +50,4 @@ enum VirgoNotationAdapter {
             return .down
         }
     }
-
-    static func restDuration(_ duration: NotationRestDuration) -> NotationDuration? {
-        switch duration {
-        case .fullMeasure:
-            return .whole
-        case .half:
-            return .half
-        case .quarter:
-            return .quarter
-        case .eighth:
-            return .eighth
-        case .sixteenth:
-            return .sixteenth
-        case .thirtySecond:
-            return .thirtySecond
-        case .sixtyFourth:
-            return .sixtyFourth
-        case .indeterminate:
-            return nil
-        }
-    }
 }

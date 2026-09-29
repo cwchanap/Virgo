@@ -78,7 +78,9 @@ struct EngraverTupletTests {
     @Test("an unbeamed triplet paints a bracket around its label")
     func unbeamedTripletPaintsBracket() throws {
         // Quarter-note triplet members take stems but no beams — the
-        // bracket must span the member bounds with hooks and a label gap.
+        // bracket must clear the member STEM TIPS (not the head bounds,
+        // which the stems rise past) and span the member bounds with hooks
+        // and a label gap.
         let engraved = try NotationEngraver.engrave(
             triplet(duration: .quarter, memberTicks: [0, 320, 640], memberDurationTicks: 320),
             style: style
@@ -89,7 +91,11 @@ struct EngraverTupletTests {
         #expect(engraved.beams.isEmpty)
 
         let bounds = memberBounds(engraved, noteIDs: [1, 2, 3])
-        let labelY = bounds.minY - style.tupletVerticalOffset
+        let topStemTipY = try #require(
+            engraved.stems.map(\.end.y).min(),
+            "tuplet members must own painted stems"
+        )
+        let labelY = topStemTipY - style.tupletVerticalOffset
         let hookY = labelY + style.tupletHookLength
         let halfGap = style.tupletLabelSize.width / 2 + style.formatting.rhythmDotSpacing
         #expect(tuplet.labelPosition == CGPoint(x: bounds.midX, y: labelY))
@@ -101,6 +107,9 @@ struct EngraverTupletTests {
             CGPoint(x: bounds.maxX, y: labelY),
             CGPoint(x: bounds.maxX, y: hookY)
         ])
+        // The bracket's horizontal run sits strictly above the stems' ink
+        // — it must not cross them.
+        #expect(hookY < engraved.stems.map(\.end.y).min()!)
     }
 
     @Test("a rest member forces the bracket even when the notes beam")

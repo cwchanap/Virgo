@@ -65,21 +65,23 @@ struct VirgoNotationAdapterTests {
         }
     }
 
-    @Test("Every NotationRestDuration maps to a package duration; indeterminate maps to nil")
-    func restDurationMappingIsExhaustive() {
-        let expected: [NotationRestDuration: NotationDuration] = [
-            .fullMeasure: .whole,
+    @Test("Every rest base interval maps straight to a package duration")
+    func restBaseIntervalMapsDirectly() {
+        // The projection now maps rest durations in one step (a
+        // measure-filling rest prints whole); the old two-step
+        // NotationRestDuration bridge was deleted with the adapter mapper.
+        let expected: [NoteInterval: NotationDuration] = [
+            .full: .whole,
             .half: .half,
             .quarter: .quarter,
             .eighth: .eighth,
             .sixteenth: .sixteenth,
-            .thirtySecond: .thirtySecond,
-            .sixtyFourth: .sixtyFourth
+            .thirtysecond: .thirtySecond,
+            .sixtyfourth: .sixtyFourth
         ]
 
-        for duration in NotationRestDuration.allCases {
-            #expect(VirgoNotationAdapter.restDuration(duration) == expected[duration])
+        for interval in expected.keys {
+            #expect(VirgoNotationAdapter.duration(for: interval) == expected[interval])
         }
-        #expect(VirgoNotationAdapter.restDuration(.indeterminate) == nil)
     }
 }

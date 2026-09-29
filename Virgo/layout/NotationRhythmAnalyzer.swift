@@ -291,11 +291,13 @@ private extension NotationRhythmAnalyzer {
     /// divide the chart's tick grid has no exact span: leave the rhythm
     /// indeterminate so the head still paints without duration-bearing
     /// engraving, and record the measure diagnostic — never engrave a
-    /// supported 1-tick stand-in for an unrepresentable duration. Otherwise
-    /// a late-onset manual note's nominal interval can run past the measure
-    /// end, but the exact span must stay inside its owning measure — clip it
-    /// the way terminal resolutions do. Only in-measure onsets reach this
-    /// point, so the clipped span stays positive.
+    /// supported 1-tick stand-in for an unrepresentable duration. A
+    /// late-onset manual note's nominal interval can run past the measure
+    /// end; the exact span must stay inside its owning measure AND the
+    /// printed note value must match that clipped span — the same
+    /// reclassify-or-mark-indeterminate treatment `terminalDTXResolution`
+    /// gives DTX notes. Only in-measure onsets reach this point, so the
+    /// clipped span stays positive.
     func manualResolution(
         located: LocatedEvent,
         measure: RhythmMeasure,
@@ -320,12 +322,30 @@ private extension NotationRhythmAnalyzer {
                 tupletID: nil
             )
         }
+        let remainder = measure.durationTicks - event.position.localTick
+        let clipped = min(nominal, remainder)
+        if clipped == nominal {
+            return EventResolution(
+                event: event,
+                beatGroup: located.beatGroup,
+                hasFollowingDTXOnset: false,
+                durationTicks: nominal,
+                rhythm: NotationRhythm(baseInterval: event.storedInterval),
+                tupletID: nil
+            )
+        }
+        let spanRhythm = classify(spanTicks: clipped, ticksPerWholeNote: ticksPerWholeNote)
         return EventResolution(
             event: event,
             beatGroup: located.beatGroup,
             hasFollowingDTXOnset: false,
-            durationTicks: min(nominal, measure.durationTicks - event.position.localTick),
-            rhythm: NotationRhythm(baseInterval: event.storedInterval),
+            durationTicks: clipped,
+            rhythm: spanRhythm.support == .supported
+                ? spanRhythm
+                : NotationRhythm(
+                    baseInterval: event.storedInterval,
+                    support: .indeterminate(.indeterminateTerminalDuration)
+                ),
             tupletID: nil
         )
     }

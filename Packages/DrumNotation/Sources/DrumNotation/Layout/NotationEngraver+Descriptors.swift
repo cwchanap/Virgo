@@ -41,10 +41,6 @@ extension SheetComposer {
     /// column X — the caller's lane resolution is already folded into
     /// `ResolvedControl.targetStaffStep`. Sorted by absolute tick then ID.
     func collectControls(raw: inout RawGeometry) {
-        let measuresByIndex = Dictionary(
-            input.measures.map { ($0.index, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
         // Direct lookups replace the per-control measure and column scans —
         // formatted measure indices and (measure, localTick) positions are
         // the same keys the formatter emitted.
@@ -109,10 +105,6 @@ extension SheetComposer {
         restsByID: [Int: PendingRest],
         raw: inout RawGeometry
     ) {
-        let measuresByIndex = Dictionary(
-            input.measures.map { ($0.index, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
         for group in input.tuplets {
             guard let tuplet = renderedTuplet(
                 group,
@@ -158,12 +150,23 @@ extension SheetComposer {
         guard let firstBounds = memberBounds.first else { return nil }
         let bounds = memberBounds.dropFirst().reduce(firstBounds) { $0.union($1) }
         let bracketVisible = !beamSpansEntireGroup
+        // The vertical reference is the OUTERMEST member beam when one
+        // spans the group, else the member stem tips — never the note-head
+        // bounds, which sit inside the stems and would draw the bracket
+        // across them (e.g. up-stem quarter-note triplets).
+        let memberStemTipYs = raw.stems
+            .filter { !Set($0.noteIDs).isDisjoint(with: memberHeadIDs) }
+            .map { $0.end.y }
         let referenceY: CGFloat
         switch direction {
         case .up:
-            referenceY = memberBeams.map(\.start.y).min() ?? bounds.minY
+            referenceY = memberBeams.map(\.start.y).min()
+                ?? memberStemTipYs.min()
+                ?? bounds.minY
         case .down:
-            referenceY = memberBeams.map(\.start.y).max() ?? bounds.maxY
+            referenceY = memberBeams.map(\.start.y).max()
+                ?? memberStemTipYs.max()
+                ?? bounds.maxY
         }
         let labelY = direction == .up
             ? referenceY - style.tupletVerticalOffset
@@ -279,10 +282,6 @@ extension SheetComposer {
     /// single normalization moves it too, and the row's own `paintedBounds`
     /// proves containment to consumers.
     func collectRowFurniture(raw: inout RawGeometry) {
-        let measuresByIndex = Dictionary(
-            input.measures.map { ($0.index, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
         // The declared sheet width, resolved before furniture joins the
         // union so the union at this point is the legacy `paintedBounds`
         // analogue (all ink and bars, no staff lines): the fixed sheet-width

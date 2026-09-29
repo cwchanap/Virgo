@@ -59,8 +59,9 @@ struct EngraverStemBeamTests {
         #expect(engraved.stems.count == 4)
         #expect(engraved.beams.count == 2)
 
-        // The outermost beam for up-stems is the highest stack level — the
-        // smallest Y. Every stem end lands on it.
+        // The outermost beam for up-stems is the PRIMARY (level-0) beam —
+        // secondary beams stack inside it, toward the heads. Every stem end
+        // lands on the outermost beam that covers it.
         let outermostY = try #require(engraved.beams.map(\.start.y).min())
         for noteID in 1...4 {
             let noteStem = try stem(engraved, serving: noteID)
@@ -71,7 +72,7 @@ struct EngraverStemBeamTests {
         }
     }
 
-    @Test("secondary beam stacks beamLevelSpacing above the primary beam")
+    @Test("secondary beam stacks beamLevelSpacing inside the primary beam")
     func beamLevelsStackByBeamLevelSpacing() throws {
         let engraved = try NotationEngraver.engrave(fourSixteenths(), style: style)
 
@@ -79,7 +80,10 @@ struct EngraverStemBeamTests {
         let secondary = try #require(engraved.beams.first { $0.level == 1 })
         #expect(primary.kind == .full && secondary.kind == .full)
         #expect(primary.thickness == style.beamThickness)
-        #expect(secondary.start.y == primary.start.y - style.beamLevelSpacing)
+        // Up-stems: the primary beam is the outermost (smallest Y); the
+        // secondary sits one beamLevelSpacing INSIDE it (larger Y), so all
+        // member stems end at the same primary-beam Y.
+        #expect(secondary.start.y == primary.start.y + style.beamLevelSpacing)
 
         // Full segments span first-to-last stem axis of the run.
         let firstAxis = try anchor(engraved, noteID: 1).x
@@ -123,11 +127,13 @@ struct EngraverStemBeamTests {
             abs(try anchor(backward, noteID: 1).x - backwardAxis) / 2
         ))
 
-        // The hooked stem still reaches its hook; the neighbor's stem stops
-        // at the shared primary beam.
+        // The hooked stem passes through its hook's inner level and ends
+        // at the outermost beam covering its axis — the shared primary; the
+        // hook hangs INSIDE the primary, so the stem's ink crosses it.
         let hookedStem = try stem(backward, serving: 2)
-        #expect(hookedStem.end.y == backwardHook.start.y)
         let primaryY = try #require(backward.beams.first { $0.kind == .full }).start.y
+        #expect(hookedStem.end.y == primaryY)
+        #expect(hookedStem.end.y < backwardHook.start.y)
         let neighborStem = try stem(backward, serving: 1)
         #expect(neighborStem.end.y == primaryY)
     }
@@ -147,8 +153,10 @@ struct EngraverStemBeamTests {
         let primary = try #require(engraved.beams.first { $0.level == 0 })
         let secondary = try #require(engraved.beams.first { $0.level == 1 })
         #expect(primary.direction == .down)
-        // Down-stem stacks grow downward: level 1 sits beamLevelSpacing lower.
-        #expect(secondary.start.y == primary.start.y + style.beamLevelSpacing)
+        // Down-stem stacks grow downward (outermost = level 0 at the bottom
+        // of the stems); level 1 sits beamLevelSpacing INSIDE it, back
+        // toward the heads.
+        #expect(secondary.start.y == primary.start.y - style.beamLevelSpacing)
         let outermostY = try #require(engraved.beams.map(\.start.y).max())
         for noteID in 1...2 {
             let noteStem = try stem(engraved, serving: noteID)

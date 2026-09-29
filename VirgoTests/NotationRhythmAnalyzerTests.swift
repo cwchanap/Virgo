@@ -584,9 +584,13 @@ struct NotationRhythmAnalyzerTests {
 
         #expect(analysis.notes.map(\.position.localTick) == [0, 80, 160])
         #expect(analysis.tuplets.isEmpty)
+        // The final manual quarter (240 nominal ticks at tick 160 of a
+        // 240-tick measure) clips to an 80-tick span that no supported
+        // note value matches, so its indeterminate diagnostic joins the
+        // measure's existing unsupported-tuplet code.
         #expect(analysis.warnings == [RhythmMeasureWarning(
             measureIndex: 0,
-            codes: [.unsupportedTupletRatio]
+            codes: [.unsupportedTupletRatio, .indeterminateTerminalDuration]
         )])
     }
 

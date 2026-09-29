@@ -95,102 +95,102 @@ head  m7 t0012 abs0124 id=64 pos=(576.56,-40.00) hiHat notehead=x variant=closed
 head  m7 t0013 abs0125 id=65 pos=(607.76,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
 head  m7 t0014 abs0126 id=66 pos=(638.96,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
 head  m7 t0015 abs0127 id=67 pos=(670.16,-40.00) hiHat notehead=x variant=closedHiHat voice=upper stem=up row=7 lane=11 interval=Sixteenth rhythm=Sixteenth durTicks=1 step=8 dur=sixteenth
-stem  ids=[1] dir=up start=(163.60,-48.88) end=(163.60,-129.88)
-stem  ids=[18] dir=up start=(163.60,-48.88) end=(163.60,-129.88)
-stem  ids=[35] dir=up start=(163.60,-48.88) end=(163.60,-129.88)
-stem  ids=[52] dir=up start=(163.60,-48.88) end=(163.60,-129.88)
-stem  ids=[2] dir=up start=(194.80,-48.88) end=(194.80,-129.88)
-stem  ids=[19] dir=up start=(194.80,-48.88) end=(194.80,-129.88)
-stem  ids=[36] dir=up start=(194.80,-48.88) end=(194.80,-129.88)
-stem  ids=[53] dir=up start=(194.80,-48.88) end=(194.80,-129.88)
-stem  ids=[3] dir=up start=(226.00,-48.88) end=(226.00,-129.88)
-stem  ids=[20] dir=up start=(226.00,-48.88) end=(226.00,-129.88)
-stem  ids=[37] dir=up start=(226.00,-48.88) end=(226.00,-129.88)
-stem  ids=[54] dir=up start=(226.00,-48.88) end=(226.00,-129.88)
-stem  ids=[4] dir=up start=(257.20,-48.88) end=(257.20,-129.88)
-stem  ids=[21] dir=up start=(257.20,-48.88) end=(257.20,-129.88)
-stem  ids=[38] dir=up start=(257.20,-48.88) end=(257.20,-129.88)
-stem  ids=[55] dir=up start=(257.20,-48.88) end=(257.20,-129.88)
-stem  ids=[5] dir=up start=(288.40,-48.88) end=(288.40,-129.88)
-stem  ids=[22] dir=up start=(288.40,-48.88) end=(288.40,-129.88)
-stem  ids=[39] dir=up start=(288.40,-48.88) end=(288.40,-129.88)
-stem  ids=[56] dir=up start=(288.40,-48.88) end=(288.40,-129.88)
-stem  ids=[6] dir=up start=(319.60,-48.88) end=(319.60,-129.88)
-stem  ids=[23] dir=up start=(319.60,-48.88) end=(319.60,-129.88)
-stem  ids=[40] dir=up start=(319.60,-48.88) end=(319.60,-129.88)
-stem  ids=[57] dir=up start=(319.60,-48.88) end=(319.60,-129.88)
-stem  ids=[7] dir=up start=(350.80,-48.88) end=(350.80,-129.88)
-stem  ids=[24] dir=up start=(350.80,-48.88) end=(350.80,-129.88)
-stem  ids=[41] dir=up start=(350.80,-48.88) end=(350.80,-129.88)
-stem  ids=[58] dir=up start=(350.80,-48.88) end=(350.80,-129.88)
-stem  ids=[8] dir=up start=(382.00,-48.88) end=(382.00,-129.88)
-stem  ids=[25] dir=up start=(382.00,-48.88) end=(382.00,-129.88)
-stem  ids=[42] dir=up start=(382.00,-48.88) end=(382.00,-129.88)
-stem  ids=[59] dir=up start=(382.00,-48.88) end=(382.00,-129.88)
-stem  ids=[9] dir=up start=(463.36,-48.88) end=(463.36,-129.88)
-stem  ids=[26] dir=up start=(463.36,-48.88) end=(463.36,-129.88)
-stem  ids=[43] dir=up start=(463.36,-48.88) end=(463.36,-129.88)
-stem  ids=[60] dir=up start=(463.36,-48.88) end=(463.36,-129.88)
-stem  ids=[10] dir=up start=(494.56,-48.88) end=(494.56,-129.88)
-stem  ids=[27] dir=up start=(494.56,-48.88) end=(494.56,-129.88)
-stem  ids=[44] dir=up start=(494.56,-48.88) end=(494.56,-129.88)
-stem  ids=[61] dir=up start=(494.56,-48.88) end=(494.56,-129.88)
-stem  ids=[11] dir=up start=(525.76,-48.88) end=(525.76,-129.88)
-stem  ids=[28] dir=up start=(525.76,-48.88) end=(525.76,-129.88)
-stem  ids=[45] dir=up start=(525.76,-48.88) end=(525.76,-129.88)
-stem  ids=[62] dir=up start=(525.76,-48.88) end=(525.76,-129.88)
-stem  ids=[12] dir=up start=(556.96,-48.88) end=(556.96,-129.88)
-stem  ids=[29] dir=up start=(556.96,-48.88) end=(556.96,-129.88)
-stem  ids=[46] dir=up start=(556.96,-48.88) end=(556.96,-129.88)
-stem  ids=[63] dir=up start=(556.96,-48.88) end=(556.96,-129.88)
-stem  ids=[13] dir=up start=(588.16,-48.88) end=(588.16,-129.88)
-stem  ids=[30] dir=up start=(588.16,-48.88) end=(588.16,-129.88)
-stem  ids=[47] dir=up start=(588.16,-48.88) end=(588.16,-129.88)
-stem  ids=[64] dir=up start=(588.16,-48.88) end=(588.16,-129.88)
-stem  ids=[14] dir=up start=(619.36,-48.88) end=(619.36,-129.88)
-stem  ids=[31] dir=up start=(619.36,-48.88) end=(619.36,-129.88)
-stem  ids=[48] dir=up start=(619.36,-48.88) end=(619.36,-129.88)
-stem  ids=[65] dir=up start=(619.36,-48.88) end=(619.36,-129.88)
-stem  ids=[15] dir=up start=(650.56,-48.88) end=(650.56,-129.88)
-stem  ids=[32] dir=up start=(650.56,-48.88) end=(650.56,-129.88)
-stem  ids=[49] dir=up start=(650.56,-48.88) end=(650.56,-129.88)
-stem  ids=[66] dir=up start=(650.56,-48.88) end=(650.56,-129.88)
-stem  ids=[16] dir=up start=(681.76,-48.88) end=(681.76,-129.88)
-stem  ids=[33] dir=up start=(681.76,-48.88) end=(681.76,-129.88)
-stem  ids=[50] dir=up start=(681.76,-48.88) end=(681.76,-129.88)
-stem  ids=[67] dir=up start=(681.76,-48.88) end=(681.76,-129.88)
-beam  ids=[1, 2, 3, 4] dir=up level=1 kind=full start=(163.60,-129.88) end=(257.20,-129.88) thickness=4.00
+stem  ids=[1] dir=up start=(163.60,-48.88) end=(163.60,-123.88)
+stem  ids=[18] dir=up start=(163.60,-48.88) end=(163.60,-123.88)
+stem  ids=[35] dir=up start=(163.60,-48.88) end=(163.60,-123.88)
+stem  ids=[52] dir=up start=(163.60,-48.88) end=(163.60,-123.88)
+stem  ids=[2] dir=up start=(194.80,-48.88) end=(194.80,-123.88)
+stem  ids=[19] dir=up start=(194.80,-48.88) end=(194.80,-123.88)
+stem  ids=[36] dir=up start=(194.80,-48.88) end=(194.80,-123.88)
+stem  ids=[53] dir=up start=(194.80,-48.88) end=(194.80,-123.88)
+stem  ids=[3] dir=up start=(226.00,-48.88) end=(226.00,-123.88)
+stem  ids=[20] dir=up start=(226.00,-48.88) end=(226.00,-123.88)
+stem  ids=[37] dir=up start=(226.00,-48.88) end=(226.00,-123.88)
+stem  ids=[54] dir=up start=(226.00,-48.88) end=(226.00,-123.88)
+stem  ids=[4] dir=up start=(257.20,-48.88) end=(257.20,-123.88)
+stem  ids=[21] dir=up start=(257.20,-48.88) end=(257.20,-123.88)
+stem  ids=[38] dir=up start=(257.20,-48.88) end=(257.20,-123.88)
+stem  ids=[55] dir=up start=(257.20,-48.88) end=(257.20,-123.88)
+stem  ids=[5] dir=up start=(288.40,-48.88) end=(288.40,-123.88)
+stem  ids=[22] dir=up start=(288.40,-48.88) end=(288.40,-123.88)
+stem  ids=[39] dir=up start=(288.40,-48.88) end=(288.40,-123.88)
+stem  ids=[56] dir=up start=(288.40,-48.88) end=(288.40,-123.88)
+stem  ids=[6] dir=up start=(319.60,-48.88) end=(319.60,-123.88)
+stem  ids=[23] dir=up start=(319.60,-48.88) end=(319.60,-123.88)
+stem  ids=[40] dir=up start=(319.60,-48.88) end=(319.60,-123.88)
+stem  ids=[57] dir=up start=(319.60,-48.88) end=(319.60,-123.88)
+stem  ids=[7] dir=up start=(350.80,-48.88) end=(350.80,-123.88)
+stem  ids=[24] dir=up start=(350.80,-48.88) end=(350.80,-123.88)
+stem  ids=[41] dir=up start=(350.80,-48.88) end=(350.80,-123.88)
+stem  ids=[58] dir=up start=(350.80,-48.88) end=(350.80,-123.88)
+stem  ids=[8] dir=up start=(382.00,-48.88) end=(382.00,-123.88)
+stem  ids=[25] dir=up start=(382.00,-48.88) end=(382.00,-123.88)
+stem  ids=[42] dir=up start=(382.00,-48.88) end=(382.00,-123.88)
+stem  ids=[59] dir=up start=(382.00,-48.88) end=(382.00,-123.88)
+stem  ids=[9] dir=up start=(463.36,-48.88) end=(463.36,-123.88)
+stem  ids=[26] dir=up start=(463.36,-48.88) end=(463.36,-123.88)
+stem  ids=[43] dir=up start=(463.36,-48.88) end=(463.36,-123.88)
+stem  ids=[60] dir=up start=(463.36,-48.88) end=(463.36,-123.88)
+stem  ids=[10] dir=up start=(494.56,-48.88) end=(494.56,-123.88)
+stem  ids=[27] dir=up start=(494.56,-48.88) end=(494.56,-123.88)
+stem  ids=[44] dir=up start=(494.56,-48.88) end=(494.56,-123.88)
+stem  ids=[61] dir=up start=(494.56,-48.88) end=(494.56,-123.88)
+stem  ids=[11] dir=up start=(525.76,-48.88) end=(525.76,-123.88)
+stem  ids=[28] dir=up start=(525.76,-48.88) end=(525.76,-123.88)
+stem  ids=[45] dir=up start=(525.76,-48.88) end=(525.76,-123.88)
+stem  ids=[62] dir=up start=(525.76,-48.88) end=(525.76,-123.88)
+stem  ids=[12] dir=up start=(556.96,-48.88) end=(556.96,-123.88)
+stem  ids=[29] dir=up start=(556.96,-48.88) end=(556.96,-123.88)
+stem  ids=[46] dir=up start=(556.96,-48.88) end=(556.96,-123.88)
+stem  ids=[63] dir=up start=(556.96,-48.88) end=(556.96,-123.88)
+stem  ids=[13] dir=up start=(588.16,-48.88) end=(588.16,-123.88)
+stem  ids=[30] dir=up start=(588.16,-48.88) end=(588.16,-123.88)
+stem  ids=[47] dir=up start=(588.16,-48.88) end=(588.16,-123.88)
+stem  ids=[64] dir=up start=(588.16,-48.88) end=(588.16,-123.88)
+stem  ids=[14] dir=up start=(619.36,-48.88) end=(619.36,-123.88)
+stem  ids=[31] dir=up start=(619.36,-48.88) end=(619.36,-123.88)
+stem  ids=[48] dir=up start=(619.36,-48.88) end=(619.36,-123.88)
+stem  ids=[65] dir=up start=(619.36,-48.88) end=(619.36,-123.88)
+stem  ids=[15] dir=up start=(650.56,-48.88) end=(650.56,-123.88)
+stem  ids=[32] dir=up start=(650.56,-48.88) end=(650.56,-123.88)
+stem  ids=[49] dir=up start=(650.56,-48.88) end=(650.56,-123.88)
+stem  ids=[66] dir=up start=(650.56,-48.88) end=(650.56,-123.88)
+stem  ids=[16] dir=up start=(681.76,-48.88) end=(681.76,-123.88)
+stem  ids=[33] dir=up start=(681.76,-48.88) end=(681.76,-123.88)
+stem  ids=[50] dir=up start=(681.76,-48.88) end=(681.76,-123.88)
+stem  ids=[67] dir=up start=(681.76,-48.88) end=(681.76,-123.88)
 beam  ids=[1, 2, 3, 4] dir=up level=0 kind=full start=(163.60,-123.88) end=(257.20,-123.88) thickness=4.00
-beam  ids=[18, 19, 20, 21] dir=up level=1 kind=full start=(163.60,-129.88) end=(257.20,-129.88) thickness=4.00
+beam  ids=[1, 2, 3, 4] dir=up level=1 kind=full start=(163.60,-117.88) end=(257.20,-117.88) thickness=4.00
 beam  ids=[18, 19, 20, 21] dir=up level=0 kind=full start=(163.60,-123.88) end=(257.20,-123.88) thickness=4.00
-beam  ids=[35, 36, 37, 38] dir=up level=1 kind=full start=(163.60,-129.88) end=(257.20,-129.88) thickness=4.00
+beam  ids=[18, 19, 20, 21] dir=up level=1 kind=full start=(163.60,-117.88) end=(257.20,-117.88) thickness=4.00
 beam  ids=[35, 36, 37, 38] dir=up level=0 kind=full start=(163.60,-123.88) end=(257.20,-123.88) thickness=4.00
-beam  ids=[52, 53, 54, 55] dir=up level=1 kind=full start=(163.60,-129.88) end=(257.20,-129.88) thickness=4.00
+beam  ids=[35, 36, 37, 38] dir=up level=1 kind=full start=(163.60,-117.88) end=(257.20,-117.88) thickness=4.00
 beam  ids=[52, 53, 54, 55] dir=up level=0 kind=full start=(163.60,-123.88) end=(257.20,-123.88) thickness=4.00
-beam  ids=[5, 6, 7, 8] dir=up level=1 kind=full start=(288.40,-129.88) end=(382.00,-129.88) thickness=4.00
+beam  ids=[52, 53, 54, 55] dir=up level=1 kind=full start=(163.60,-117.88) end=(257.20,-117.88) thickness=4.00
 beam  ids=[5, 6, 7, 8] dir=up level=0 kind=full start=(288.40,-123.88) end=(382.00,-123.88) thickness=4.00
-beam  ids=[22, 23, 24, 25] dir=up level=1 kind=full start=(288.40,-129.88) end=(382.00,-129.88) thickness=4.00
+beam  ids=[5, 6, 7, 8] dir=up level=1 kind=full start=(288.40,-117.88) end=(382.00,-117.88) thickness=4.00
 beam  ids=[22, 23, 24, 25] dir=up level=0 kind=full start=(288.40,-123.88) end=(382.00,-123.88) thickness=4.00
-beam  ids=[39, 40, 41, 42] dir=up level=1 kind=full start=(288.40,-129.88) end=(382.00,-129.88) thickness=4.00
+beam  ids=[22, 23, 24, 25] dir=up level=1 kind=full start=(288.40,-117.88) end=(382.00,-117.88) thickness=4.00
 beam  ids=[39, 40, 41, 42] dir=up level=0 kind=full start=(288.40,-123.88) end=(382.00,-123.88) thickness=4.00
-beam  ids=[56, 57, 58, 59] dir=up level=1 kind=full start=(288.40,-129.88) end=(382.00,-129.88) thickness=4.00
+beam  ids=[39, 40, 41, 42] dir=up level=1 kind=full start=(288.40,-117.88) end=(382.00,-117.88) thickness=4.00
 beam  ids=[56, 57, 58, 59] dir=up level=0 kind=full start=(288.40,-123.88) end=(382.00,-123.88) thickness=4.00
-beam  ids=[9, 10, 11, 12] dir=up level=1 kind=full start=(463.36,-129.88) end=(556.96,-129.88) thickness=4.00
+beam  ids=[56, 57, 58, 59] dir=up level=1 kind=full start=(288.40,-117.88) end=(382.00,-117.88) thickness=4.00
 beam  ids=[9, 10, 11, 12] dir=up level=0 kind=full start=(463.36,-123.88) end=(556.96,-123.88) thickness=4.00
-beam  ids=[26, 27, 28, 29] dir=up level=1 kind=full start=(463.36,-129.88) end=(556.96,-129.88) thickness=4.00
+beam  ids=[9, 10, 11, 12] dir=up level=1 kind=full start=(463.36,-117.88) end=(556.96,-117.88) thickness=4.00
 beam  ids=[26, 27, 28, 29] dir=up level=0 kind=full start=(463.36,-123.88) end=(556.96,-123.88) thickness=4.00
-beam  ids=[43, 44, 45, 46] dir=up level=1 kind=full start=(463.36,-129.88) end=(556.96,-129.88) thickness=4.00
+beam  ids=[26, 27, 28, 29] dir=up level=1 kind=full start=(463.36,-117.88) end=(556.96,-117.88) thickness=4.00
 beam  ids=[43, 44, 45, 46] dir=up level=0 kind=full start=(463.36,-123.88) end=(556.96,-123.88) thickness=4.00
-beam  ids=[60, 61, 62, 63] dir=up level=1 kind=full start=(463.36,-129.88) end=(556.96,-129.88) thickness=4.00
+beam  ids=[43, 44, 45, 46] dir=up level=1 kind=full start=(463.36,-117.88) end=(556.96,-117.88) thickness=4.00
 beam  ids=[60, 61, 62, 63] dir=up level=0 kind=full start=(463.36,-123.88) end=(556.96,-123.88) thickness=4.00
-beam  ids=[13, 14, 15, 16] dir=up level=1 kind=full start=(588.16,-129.88) end=(681.76,-129.88) thickness=4.00
+beam  ids=[60, 61, 62, 63] dir=up level=1 kind=full start=(463.36,-117.88) end=(556.96,-117.88) thickness=4.00
 beam  ids=[13, 14, 15, 16] dir=up level=0 kind=full start=(588.16,-123.88) end=(681.76,-123.88) thickness=4.00
-beam  ids=[30, 31, 32, 33] dir=up level=1 kind=full start=(588.16,-129.88) end=(681.76,-129.88) thickness=4.00
+beam  ids=[13, 14, 15, 16] dir=up level=1 kind=full start=(588.16,-117.88) end=(681.76,-117.88) thickness=4.00
 beam  ids=[30, 31, 32, 33] dir=up level=0 kind=full start=(588.16,-123.88) end=(681.76,-123.88) thickness=4.00
-beam  ids=[47, 48, 49, 50] dir=up level=1 kind=full start=(588.16,-129.88) end=(681.76,-129.88) thickness=4.00
+beam  ids=[30, 31, 32, 33] dir=up level=1 kind=full start=(588.16,-117.88) end=(681.76,-117.88) thickness=4.00
 beam  ids=[47, 48, 49, 50] dir=up level=0 kind=full start=(588.16,-123.88) end=(681.76,-123.88) thickness=4.00
-beam  ids=[64, 65, 66, 67] dir=up level=1 kind=full start=(588.16,-129.88) end=(681.76,-129.88) thickness=4.00
+beam  ids=[47, 48, 49, 50] dir=up level=1 kind=full start=(588.16,-117.88) end=(681.76,-117.88) thickness=4.00
 beam  ids=[64, 65, 66, 67] dir=up level=0 kind=full start=(588.16,-123.88) end=(681.76,-123.88) thickness=4.00
+beam  ids=[64, 65, 66, 67] dir=up level=1 kind=full start=(588.16,-117.88) end=(681.76,-117.88) thickness=4.00
 rest  m0 t0000 id=0 voice=lower dur=whole full=true dots=0 ticks=16 pos=(252.00,20.00)
 rest  m1 t0000 id=1 voice=lower dur=whole full=true dots=0 ticks=16 pos=(420.88,20.00)
 rest  m2 t0000 id=2 voice=lower dur=whole full=true dots=0 ticks=16 pos=(252.00,20.00)

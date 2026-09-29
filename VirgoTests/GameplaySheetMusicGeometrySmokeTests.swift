@@ -456,12 +456,13 @@ struct GameplaySheetMusicGeometrySmokeTests {
             defer { sheet.viewModel.cleanup() }
 
             // Pinned against `GameplayNotationPreparation`'s copy: lane-12
-            // snare and lane-11 closed hi-hat notes, the measure-0 stop on
-            // the snare, the empty lower voice's full-measure rest, and
-            // the supported 3:2 triplet.
+            // snare and lane-11 closed hi-hat notes (duration-suffixed since
+            // note labels speak their value), the measure-0 stop on the
+            // snare, the empty lower voice's full-measure rest, and the
+            // supported 3:2 triplet.
             let expected = [
-                "Snare",
-                "Closed hi-hat",
+                "Snare, ",
+                "Closed hi-hat, ",
                 "Stop Snare",
                 "Lower voice full-measure rest",
                 "Upper voice tuplet, 3 in the time of 2"
@@ -470,7 +471,7 @@ struct GameplaySheetMusicGeometrySmokeTests {
             let labeledDump = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
             for label in expected {
                 #expect(
-                    labeledDump.labels.contains(label),
+                    labeledDump.labels.contains { $0 == label || $0.hasPrefix(label) },
                     """
                     hosted accessibility tree lacks "\(label)" — visited nodes: \
                     \(labeledDump.nodeKinds.prefix(24))
@@ -489,7 +490,7 @@ struct GameplaySheetMusicGeometrySmokeTests {
             let unlabeled = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
             for label in expected {
                 #expect(
-                    !unlabeled.labels.contains(label),
+                    !unlabeled.labels.contains { $0 == label || $0.hasPrefix(label) },
                     "\"\(label)\" survived an empty label map — the mount isn't reading it"
                 )
             }
@@ -545,13 +546,14 @@ struct GameplaySheetMusicGeometrySmokeTests {
 // MARK: - Rhythm-dot VoiceOver
 
 extension GameplaySheetMusicGeometrySmokeTests {
-    /// Hosted rhythm-dot VoiceOver: a prepare-produced dotted engraving,
-    /// installed through the production `installPreparedNotation` seam, must
-    /// surface one "Rhythm dot" element per painted dot in the mounted
-    /// tree — and the view must hide dots whose label is absent (the
-    /// negative leg keeps every other label to prove the reinstall took).
-    @Test("sheetMusicView exposes rhythm dot labels in the hosted hierarchy")
-    func hostedSheetExposesRhythmDotLabels() async throws {
+    /// Hosted rhythm-dot VoiceOver: dots are decorative — a prepare-produced
+    /// dotted engraving, installed through the production
+    /// `installPreparedNotation` seam, must surface NO per-dot VoiceOver
+    /// elements; the dotted-duration meaning is spoken by the owning
+    /// rest's label. (The empty-map leg of the semantic-labels test above
+    /// still proves the mount reads the map at the view seam.)
+    @Test("sheetMusicView keeps rhythm dots decorative in the hosted hierarchy")
+    func hostedSheetKeepsRhythmDotsDecorative() async throws {
         try await TestSetup.withTestSetup {
             let sheet = try await mountFixture(DrumTabFixtureCatalog.tripletHooksAndStop)
             defer { sheet.viewModel.cleanup() }
@@ -574,29 +576,15 @@ extension GameplaySheetMusicGeometrySmokeTests {
             reinstall(sheet, engraving: dottedEngraving, presentation: dottedPresentation)
             let labeled = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
             #expect(
-                labeled.labels.filter { $0 == "Rhythm dot" }.count >= dottedEngraving.rhythmDots.count,
+                !labeled.labels.contains("Rhythm dot"),
                 """
-                hosted tree lacks per-dot \"Rhythm dot\" labels — visited nodes: \
+                hosted tree exposes per-dot "Rhythm dot" labels — visited nodes: \
                 \(labeled.nodeKinds.prefix(24))
                 """
             )
-
-            let strippedLabels = dottedPresentation.accessibilityLabels.filter { key, _ in
-                if case .rhythmDot = key { return false }
-                return true
-            }
-            reinstall(sheet, engraving: dottedEngraving, presentation: GameplayNotationPresentation(
-                annotations: dottedPresentation.annotations,
-                accessibilityLabels: strippedLabels
-            ))
-            let unlabeled = hostedAccessibilityLabels(of: sheet, viewport: mountedViewport)
             #expect(
-                !unlabeled.labels.contains("Rhythm dot"),
-                "\"Rhythm dot\" survived without a dot label — the mount isn't reading the map"
-            )
-            #expect(
-                unlabeled.labels.contains("Upper voice quarter rest"),
-                "non-dot labels vanished with the strip — the reinstall did not take"
+                labeled.labels.contains("Upper voice quarter rest"),
+                "the dotted rest's own label must stay in the tree"
             )
         }
     }

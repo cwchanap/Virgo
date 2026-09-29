@@ -269,30 +269,18 @@ private extension DrumNotationView {
         .accessibilityHidden(true)
     }
 
-    /// Every painted rhythm dot as a semantic element: dots number
-    /// left-to-right within their owning note/rest source so the label map
-    /// key is stable and collision-free.
+    /// Every painted rhythm dot — decorative for accessibility: a dot's
+    /// meaning (a dotted duration) is already part of the owning
+    /// note/rest's spoken label, so the dots themselves hide from VoiceOver
+    /// instead of each surfacing as its own bare "Rhythm dot" element.
     var dotsLayer: some View {
-        ForEach(indexedDots, id: \.id) { entry in
-            labeled(
-                Ellipse()
-                    .fill(appearance.foreground)
-                    .frame(width: entry.dot.paintedBounds.width, height: entry.dot.paintedBounds.height)
-                    .position(entry.dot.position),
-                as: entry.id
-            )
+        ForEach(layout.rhythmDots, id: \.self) { dot in
+            Ellipse()
+                .fill(appearance.foreground)
+                .frame(width: dot.paintedBounds.width, height: dot.paintedBounds.height)
+                .position(dot.position)
         }
-    }
-
-    /// Dots paired with their semantic IDs in paint order — per-source
-    /// numbering keeps a double-dotted owner's two dots distinct.
-    private var indexedDots: [(id: NotationSemanticID, dot: EngravedRhythmDot)] {
-        var nextIndex: [EngravedRhythmDot.Source: Int] = [:]
-        return layout.rhythmDots.map { dot in
-            let index = nextIndex[dot.source, default: 0]
-            nextIndex[dot.source] = index + 1
-            return (id: .rhythmDot(dot.source, index: index), dot: dot)
-        }
+        .accessibilityHidden(true)
     }
 
     var articulationsLayer: some View {

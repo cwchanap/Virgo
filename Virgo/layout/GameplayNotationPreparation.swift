@@ -231,7 +231,9 @@ enum GameplayNotationPreparer {
                 variant: DrumNotationCatalog.resolve(
                     noteType: source.noteType,
                     sourceLaneID: source.sourceLaneID
-                )?.variant
+                )?.variant,
+                duration: note.duration,
+                dotCount: note.dotCount
             )
         }
         for rest in engraved.rests {
@@ -261,32 +263,36 @@ enum GameplayNotationPreparer {
                 localized: "\(voiceName) voice tuplet, \(tuplet.ratio.actual) in the time of \(tuplet.ratio.normal)"
             )
         }
-        // Every painted dot is its own "Rhythm dot" element — the per-source
-        // index numbering matches `DrumNotationView`'s enumeration order.
-        var dotIndexBySource: [EngravedRhythmDot.Source: Int] = [:]
-        let dotLabel = String(localized: "Rhythm dot")
-        for dot in engraved.rhythmDots {
-            let index = dotIndexBySource[dot.source, default: 0]
-            dotIndexBySource[dot.source] = index + 1
-            labels[.rhythmDot(dot.source, index: index)] = dotLabel
-        }
+        // Rhythm dots are decorative in `DrumNotationView` — their dotted-
+        // duration meaning is spoken as part of the owning note/rest label
+        // built above, so no per-dot label entries are produced.
         return labels
     }
 
     private static func noteAccessibilityLabel(
         noteType: NoteType,
-        variant: DrumNotationVariant?
+        variant: DrumNotationVariant?,
+        duration: NotationDuration,
+        dotCount: Int
     ) -> String {
+        let instrument: String
         switch variant {
         case .closedHiHat:
-            return String(localized: "Closed hi-hat")
+            instrument = String(localized: "Closed hi-hat")
         case .openHiHat:
-            return String(localized: "Open hi-hat")
+            instrument = String(localized: "Open hi-hat")
         case .pedalHiHat:
-            return String(localized: "Pedal hi-hat")
+            instrument = String(localized: "Pedal hi-hat")
         default:
-            return noteTypeAccessibilityName(noteType)
+            instrument = noteTypeAccessibilityName(noteType)
         }
+        var value = String(localized: "\(spokenDurationName(duration)) note")
+        if dotCount == 1 {
+            value = String(localized: "dotted \(value)")
+        } else if dotCount > 1 {
+            value = String(localized: "\(value) with \(dotCount) dots")
+        }
+        return String(localized: "\(instrument), \(value)")
     }
 
     // swiftlint:disable cyclomatic_complexity
@@ -330,11 +336,11 @@ enum GameplayNotationPreparer {
         }
     }
 
-    /// The spoken duration name for one printed rest — the full-measure
-    /// wording is its own case rather than a duration lookup.
-    private static func restDurationAccessibilityName(
+    /// The spoken duration name shared by rest and note labels — the
+    /// full-measure wording is its own case rather than a duration lookup.
+    private static func spokenDurationName(
         _ duration: NotationDuration,
-        isFullMeasure: Bool
+        isFullMeasure: Bool = false
     ) -> String {
         if isFullMeasure {
             return String(localized: "full-measure")
@@ -356,7 +362,7 @@ enum GameplayNotationPreparer {
         isFullMeasure: Bool
     ) -> String {
         let voiceName = voiceAccessibilityName(voice)
-        let durationName = restDurationAccessibilityName(duration, isFullMeasure: isFullMeasure)
+        let durationName = spokenDurationName(duration, isFullMeasure: isFullMeasure)
         return String(localized: "\(voiceName) voice \(durationName) rest")
     }
 }

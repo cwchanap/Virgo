@@ -425,8 +425,21 @@ final class GameplayViewModel {
     /// replaces the sheet with the practice-unavailable surface, so the
     /// playback resources setup already configured (BGM player, metronome
     /// configuration, input delegate) release the same way the fatal-timing
-    /// reset tears them down.
+    /// reset tears them down. A failure can land mid-playback (a resize
+    /// rebuild on a chart that stops engraving), so this also stops the
+    /// playback machinery itself — isPlaying, the visual tick timer, and
+    /// any pending grace-period completion — otherwise the completion task
+    /// fires on a dead session, records an all-miss score, and opens the
+    /// results sheet over the failure surface.
     private func teardownForFailedNotationPreparation() {
+        isPlaying = false
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+        completionTask?.cancel()
+        completionTask = nil
+        completionScheduled = false
+        playbackStartTime = nil
+        purpleBarPosition = nil
         metronome.stop()
         bgmPlayer?.stop()
         bgmPlayer = nil
