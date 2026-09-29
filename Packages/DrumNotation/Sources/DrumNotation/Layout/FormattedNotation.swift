@@ -108,9 +108,16 @@ public struct FormattedNotation: Hashable, Sendable {
 
     /// Ordered by measure index.
     public let measures: [FormattedMeasure]
+    /// Measures keyed by index for O(1) playhead lookups — `position` runs
+    /// on every visual tick, so it must not scan the ordered array.
+    private let measuresByIndex: [Int: FormattedMeasure]
 
     public init(measures: [FormattedMeasure]) {
         self.measures = measures
+        self.measuresByIndex = Dictionary(
+            measures.map { ($0.index, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     /// Resolves the live playhead's row and sheet-local X for a continuous
@@ -124,7 +131,7 @@ public struct FormattedNotation: Hashable, Sendable {
     /// measure index, or non-finite input returns nil.
     public func position(measureIndex: Int, localTick: Double) -> Position? {
         guard localTick.isFinite,
-            let measure = measures.first(where: { $0.index == measureIndex })
+            let measure = measuresByIndex[measureIndex]
         else { return nil }
         let duration = Double(measure.columns.last?.localTick ?? 0)
         let edgeTolerance = 1e-6

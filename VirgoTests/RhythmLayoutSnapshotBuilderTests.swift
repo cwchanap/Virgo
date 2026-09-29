@@ -136,7 +136,10 @@ struct RhythmLayoutSnapshotBuilderTests {
         #expect(
             layoutNote.position.localTick + layoutNote.durationTicks == measure.durationTicks
         )
-        #expect(layoutNote.rhythm == NotationRhythm(baseInterval: .full))
+        // The printed note value matches the clipped span (the remainder
+        // 1440 of 1920 ticks is a dotted half), not the nominal whole —
+        // the bar no longer reads past its end.
+        #expect(layoutNote.rhythm == NotationRhythm(baseInterval: .half, dotCount: 1))
 
         // The same snapshot must survive the full production preparation
         // route — before the clip, `resolvedNotation` threw and preparation

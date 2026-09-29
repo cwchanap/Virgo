@@ -27,12 +27,20 @@ enum VirgoNotationProjectionError: Error, CustomStringConvertible {
     }
 }
 
-/// The app-to-package projection: the single app-site style mappers and the
-/// snapshot→`ResolvedNotationInput` projection. Split from
-/// `VirgoNotationAdapter`, which remains the primitive-mapper owner. HPA-166
-/// Task 7 makes `NotationEngraver` the sole production geometry route — the
-/// package now derives stem/beam/flag topology internally, so the app
-/// pre-format flag classification was deleted with the legacy renderer.
+/// One snapshot note paired with its single catalog resolution, reused by
+/// every later stage: staff position, engraving, tuplet grouping.
+struct MappedNotationNote {
+    let note: RhythmLayoutNote
+    let definition: DrumNotationDefinition
+    let variant: DrumNotationVariant?
+}
+
+/// The app-to-package projection: the single app-site style mappers and
+/// the snapshot→`ResolvedNotationInput` projection. `VirgoNotationAdapter`
+/// remains the primitive-mapper owner. `NotationEngraver` is the sole
+/// production geometry route — the package derives stem/beam/flag topology
+/// internally; the pre-format flag classification left with the legacy
+/// renderer.
 enum VirgoNotationProjection {
     /// The single app-site style mapper for measured formatting (HPA-164 Task
     /// 4): resolved row width with the app's 900pt floor as the wrap budget,
@@ -136,9 +144,9 @@ enum VirgoNotationProjection {
                     index: measure.measureIndex,
                     startTick: measure.startTick,
                     durationTicks: measure.durationTicks,
-                    meter: NotationMeter(
-                        beats: measure.timeSignature.beatsPerMeasure,
-                        noteValue: measure.timeSignature.noteValue
+                    meter: printedMeter(
+                        for: measure,
+                        ticksPerWholeNote: snapshot.ticksPerWholeNote
                     ),
                     beatGroups: measure.beatGroups.map {
                         ResolvedBeatGroup(startTick: $0.startTick, durationTicks: $0.durationTicks)
@@ -178,6 +186,31 @@ enum VirgoNotationProjection {
         return !sum.overflow && absoluteTick == sum.partialValue
     }
 
+    /// The meter a measure PRINTS. `RhythmMeasure.timeSignature` is
+    /// chart-wide, so a measure-length ratio can leave a bar shorter than
+    /// its nominal signature — a 0.75 bar in 4/4 is three quarter beats.
+    /// Derive beats from the actual span at the declared note value; a span
+    /// that is not a whole number of those beats keeps the declared meter.
+    static func printedMeter(
+        for measure: RhythmMeasure,
+        ticksPerWholeNote: Int
+    ) -> NotationMeter {
+        let declared = measure.timeSignature
+        guard ticksPerWholeNote > 0, declared.noteValue > 0 else {
+            return NotationMeter(beats: declared.beatsPerMeasure, noteValue: declared.noteValue)
+        }
+        let numerator = measure.durationTicks.multipliedReportingOverflow(
+            by: declared.noteValue
+        )
+        guard !numerator.overflow,
+              numerator.partialValue > 0,
+              numerator.partialValue.isMultiple(of: ticksPerWholeNote) else {
+            return NotationMeter(beats: declared.beatsPerMeasure, noteValue: declared.noteValue)
+        }
+        let beats = numerator.partialValue / ticksPerWholeNote
+        return NotationMeter(beats: beats, noteValue: declared.noteValue)
+    }
+
     /// `NotationVoice` → package `NotationVoiceRole` (file-private so the
     /// tuplet arm in this file can share it).
     fileprivate static func notationVoiceRole(_ voice: NotationVoice) -> NotationVoiceRole {
@@ -190,7 +223,7 @@ enum VirgoNotationProjection {
     // MARK: - Notes
 
     private static func resolvedNotes(
-        notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)],
+        notes: [MappedNotationNote],
         notePositionOverrides: [DrumType: GameplayLayout.NotePosition],
         measuresByIndex: [Int: RhythmMeasure]
     ) -> [ResolvedNote] {
@@ -220,46 +253,36 @@ enum VirgoNotationProjection {
                 isRhythmEngravable: entry.note.rhythm.support == .supported
                     && measuresByIndex[entry.note.position.measureIndex]?
                         .engravingSupport.permitsEngraving == true,
-                articulation: articulation(for: entry.note)
+                // The resolved open-hi-hat intent: lane-variant resolution
+                // already picked `.openHiHat` in `mappedNotes`; the package
+                // carries the matching articulation or none.
+                articulation: entry.variant == .openHiHat ? .open : nil
             )
         }
     }
 
-    /// The resolved open-hi-hat intent: lane-variant resolution already picks
-    /// `.openHiHat`; the package carries the matching articulation or none.
-    private static func articulation(for note: RhythmLayoutNote) -> PercussionArticulation? {
-        DrumNotationCatalog.resolve(
-            noteType: note.noteType,
-            sourceLaneID: note.sourceLaneID
-        )?.variant == .openHiHat ? .open : nil
-    }
-
     /// Snapshot notes that pass the projection's catalog-resolution and
     /// measure-containment guards before becoming resolved notes, paired
-    /// with their catalog definitions. A note that fails any guard is
-    /// malformed snapshot data and throws — one bad note must fail the
-    /// chart visibly, not vanish from the engraved sheet.
+    /// with their catalog definitions and lane variants (one resolve per
+    /// note — later stages reuse the tuple instead of re-resolving). A note
+    /// that fails any guard is malformed snapshot data and throws — one bad
+    /// note must fail the chart visibly, not vanish from the engraved sheet.
     private static func mappedNotes(
         snapshot: RhythmLayoutSnapshot,
         measuresByIndex: [Int: RhythmMeasure]
-    ) throws -> [(note: RhythmLayoutNote, definition: DrumNotationDefinition)] {
+    ) throws -> [MappedNotationNote] {
         try snapshot.notes.map { note in
-            guard let definition = DrumNotationCatalog.resolve(
+            guard let resolved = DrumNotationCatalog.resolve(
                 noteType: note.noteType,
                 sourceLaneID: note.sourceLaneID
-            )?.definition else {
+            ) else {
                 throw VirgoNotationProjectionError.malformedNote(
                     eventID: note.eventID,
                     detail: "no catalog definition for noteType \(note.noteType), "
                         + "lane \(note.sourceLaneID ?? "nil")"
                 )
             }
-            guard UInt64(exactly: note.eventID.rawValue) != nil else {
-                throw VirgoNotationProjectionError.malformedNote(
-                    eventID: note.eventID,
-                    detail: "event ID is not representable as a package note ID"
-                )
-            }
+            let definition = resolved.definition
             guard let measure = measuresByIndex[note.position.measureIndex],
                 note.position.localTick >= 0,
                 note.position.localTick < measure.durationTicks else {
@@ -292,14 +315,14 @@ enum VirgoNotationProjection {
                         + "measure \(measure.measureIndex)"
                 )
             }
-            return (note, definition)
+            return MappedNotationNote(note: note, definition: definition, variant: resolved.variant)
         }
     }
 
     /// The rendered note position for an entry — the single place lane
     /// overrides resolve for the projection.
     static func staffPosition(
-        for entry: (note: RhythmLayoutNote, definition: DrumNotationDefinition),
+        for entry: MappedNotationNote,
         overrides: [DrumType: GameplayLayout.NotePosition]
     ) -> GameplayLayout.NotePosition {
         overrides[entry.definition.gameplayInstrument] ?? entry.definition.defaultPosition
@@ -318,14 +341,19 @@ enum VirgoNotationProjection {
             let measure = measuresByIndex[rest.position.measureIndex]
             let fillsMeasure = rest.position.localTick == 0
                 && rest.durationTicks == measure?.durationTicks
-            let legacy = legacyRestDuration(rhythm: rest.rhythm, fillsMeasure: fillsMeasure)
             return ResolvedRest(
                 id: index,
                 position: NotationTickPosition(
                     measureIndex: rest.position.measureIndex,
                     localTick: rest.position.localTick
                 ),
-                duration: VirgoNotationAdapter.restDuration(legacy) ?? .quarter,
+                // One step to the package duration: a measure-filling rest
+                // prints as a whole rest; otherwise the rhythm's base
+                // interval maps directly (a whole-interval rest inside a
+                // longer measure also prints whole).
+                duration: fillsMeasure
+                    ? .whole
+                    : VirgoNotationAdapter.duration(for: rest.rhythm.baseInterval),
                 dotCount: rest.rhythm.dotCount,
                 isFullMeasure: fillsMeasure,
                 voice: notationVoiceRole(rest.voice),
@@ -455,52 +483,46 @@ enum VirgoNotationProjection {
     }
 }
 
-/// Duration mapping for timeline rests, shared with the adapter projection.
-/// A measure-filling rest renders as a full-measure rest.
-func legacyRestDuration(
-    rhythm: NotationRhythm,
-    fillsMeasure: Bool
-) -> NotationRestDuration {
-    if fillsMeasure { return .fullMeasure }
-    switch rhythm.baseInterval {
-    case .full: return .fullMeasure
-    case .half: return .half
-    case .quarter: return .quarter
-    case .eighth: return .eighth
-    case .sixteenth: return .sixteenth
-    case .thirtysecond: return .thirtySecond
-    case .sixtyfourth: return .sixtyFourth
-    }
-}
-
-/// The tuplet arm of the projection, split out so the main enum stays under
-/// the SwiftLint type-body limit: only already-resolved groups in
-/// engraving-permitting measures cross, and declared swing/shuffle
-/// feel-pairs stay suppressed at this boundary rather than carrying
-/// `RhythmicFeel` into the package.
+/// The tuplet arm of the projection (split so the main enum stays under
+/// the SwiftLint type-body limit): only already-resolved groups in
+/// engraving-permitting measures cross, and declared feel-pairs stay
+/// suppressed rather than carrying `RhythmicFeel` into the package.
 private enum VirgoNotationTupletProjection {
-    /// Resolved tuplet groups keyed by deterministic adapter-local IDs.
-    /// `notes` are the mapped note-head candidates; `rests` are the sorted
-    /// rest candidates of every visibility (`restCandidates`' full set);
-    /// `printedRests` is the subset that crosses the boundary —
-    /// its ordinal order is the `ResolvedRest` ID namespace members cite.
+    /// Resolved tuplet groups keyed by deterministic adapter-local IDs;
+    /// `printedRests` ordinals are the rest ID namespace members cite.
+    /// Members are pre-grouped by tuplet ID in one pass per collection
+    /// (not tuplets × notes re-filtering).
     static func resolvedTuplets(
-        notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)],
+        notes: [MappedNotationNote],
         rests: [RhythmLayoutRest],
         printedRests: [RhythmLayoutRest],
         measuresByIndex: [Int: RhythmMeasure],
         feel: RhythmicFeel
     ) -> [ResolvedTupletGroup] {
-        var ids = Set(notes.compactMap { $0.note.tupletID })
-        ids.formUnion(rests.compactMap(\.tupletID))
-        let ordered = ids
+        var notesByTupletID: [RhythmTupletID: [MappedNotationNote]] = [:]
+        for entry in notes {
+            guard let id = entry.note.tupletID else { continue }
+            notesByTupletID[id, default: []].append(entry)
+        }
+        var restsByTupletID: [RhythmTupletID: [RhythmLayoutRest]] = [:]
+        for rest in rests {
+            guard let id = rest.tupletID else { continue }
+            restsByTupletID[id, default: []].append(rest)
+        }
+        var printedRestOrdinalsByTupletID: [RhythmTupletID: [Int]] = [:]
+        for (ordinal, rest) in printedRests.enumerated() {
+            guard let id = rest.tupletID else { continue }
+            printedRestOrdinalsByTupletID[id, default: []].append(ordinal)
+        }
+        let ordered = Set(notesByTupletID.keys)
+            .union(restsByTupletID.keys)
             .filter { id in
                 measuresByIndex[id.measureIndex]?.engravingSupport.permitsEngraving == true
                     && !isDeclaredFeelPair(
                         id: id,
                         feel: feel,
-                        notes: notes,
-                        rests: rests,
+                        memberNotes: notesByTupletID[id] ?? [],
+                        hasRestMembers: restsByTupletID[id] != nil,
                         measuresByIndex: measuresByIndex
                     )
             }
@@ -514,9 +536,9 @@ private enum VirgoNotationTupletProjection {
             guard let group = resolvedTuplet(
                 packageID: groups.count,
                 tupletID: id,
-                notes: notes,
-                rests: rests,
-                printedRests: printedRests
+                memberNotes: notesByTupletID[id] ?? [],
+                memberRests: restsByTupletID[id] ?? [],
+                memberRestOrdinals: printedRestOrdinalsByTupletID[id] ?? []
             ) else { continue }
             groups.append(group)
         }
@@ -528,19 +550,14 @@ private enum VirgoNotationTupletProjection {
     private static func resolvedTuplet(
         packageID: Int,
         tupletID: RhythmTupletID,
-        notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)],
-        rests: [RhythmLayoutRest],
-        printedRests: [RhythmLayoutRest]
+        memberNotes: [MappedNotationNote],
+        memberRests: [RhythmLayoutRest],
+        memberRestOrdinals: [Int]
     ) -> ResolvedTupletGroup? {
-        let memberNotes = notes.filter { $0.note.tupletID == tupletID }
-        let memberRests = rests.filter { $0.tupletID == tupletID }
         guard let ratio = memberNotes.compactMap({ $0.note.rhythm.tuplet }).first
             ?? memberRests.compactMap({ $0.rhythm.tuplet }).first else { return nil }
         let memberNoteIDs = memberNotes.map { $0.note.eventID.rawValue }.sorted()
-        let memberRestIDs = printedRests.enumerated()
-            .filter { $0.element.tupletID == tupletID }
-            .map(\.offset)
-            .sorted()
+        let memberRestIDs = memberRestOrdinals.sorted()
         guard !memberNoteIDs.isEmpty || !memberRestIDs.isEmpty else { return nil }
         return ResolvedTupletGroup(
             id: packageID,
@@ -552,26 +569,25 @@ private enum VirgoNotationTupletProjection {
         )
     }
 
-    /// The projection's declared feel-pair detection over snapshot-level values:
-    /// a swing/shuffle chart where the group covers one whole beat group,
-    /// has no rest members, and its notes occupy exactly the long/short
-    /// triplet slots.
+    /// The projection's declared feel-pair detection: a swing/shuffle
+    /// chart where the group covers one whole beat group, has no rest
+    /// members, and its notes occupy exactly the long/short triplet slots.
     private static func isDeclaredFeelPair(
         id: RhythmTupletID,
         feel: RhythmicFeel,
-        notes: [(note: RhythmLayoutNote, definition: DrumNotationDefinition)],
-        rests: [RhythmLayoutRest],
+        memberNotes: [MappedNotationNote],
+        hasRestMembers: Bool,
         measuresByIndex: [Int: RhythmMeasure]
     ) -> Bool {
         guard feel == .swing || feel == .shuffle,
-            rests.allSatisfy({ $0.tupletID != id }),
+            !hasRestMembers,
             id.durationTicks > 0,
             id.durationTicks.isMultiple(of: 3),
             let beatGroup = measuresByIndex[id.measureIndex]?.beatGroups
                 .first(where: { $0.groupIndex == id.beatGroupIndex }),
             beatGroup.startTick == id.startTick,
             beatGroup.durationTicks == id.durationTicks else { return false }
-        let members = notes.filter { $0.note.tupletID == id }.map(\.note)
+        let members = memberNotes.map(\.note)
         let slot = id.durationTicks / 3
         let membersByOnset = Dictionary(grouping: members, by: { $0.position.localTick })
         let occupiedOnsets = membersByOnset.keys.sorted()

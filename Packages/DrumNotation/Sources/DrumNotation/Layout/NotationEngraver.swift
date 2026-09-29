@@ -16,7 +16,15 @@ public enum NotationEngraver {
         _ input: ResolvedNotationInput,
         style: NotationEngravingStyle
     ) throws -> EngravedNotation {
-        engrave(input, style: style, stemTopology: StemTopologyBuilder().build(input))
+        let measuresByIndex = Dictionary(
+            input.measures.map { ($0.index, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return engrave(
+            input,
+            style: style,
+            stemTopology: StemTopologyBuilder().build(input, measuresByIndex: measuresByIndex)
+        )
     }
 
     /// The shared plan-driven path behind `engrave(_:style:)`: identical
@@ -39,7 +47,11 @@ public enum NotationEngraver {
             input: input,
             style: style,
             formatted: formatted,
-            stemTopology: stemTopology
+            stemTopology: stemTopology,
+            measuresByIndex: Dictionary(
+                input.measures.map { ($0.index, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
         ).compose()
     }
 }
@@ -64,6 +76,10 @@ struct SheetComposer {
     /// and flags read its groups, representatives and visible-flag plans;
     /// nothing here re-derives a second topology.
     let stemTopology: StemTopology
+    /// Measures keyed by index, built once per engraving and shared by every
+    /// compose pass (controls, tuplets, row furniture, materialization) —
+    /// each pass previously rebuilt the identical dictionary.
+    let measuresByIndex: [Int: ResolvedMeasure]
 
     var formatting: NotationFormattingStyle { style.formatting }
     /// Row pitch — the deterministic staff-center spacing between rows.
@@ -160,10 +176,6 @@ struct SheetComposer {
         // primitive down by the same amount; nothing else ever translates.
         let shift = max(0, -(raw.paintedUnion?.minY ?? 0))
         let paintedBounds = raw.paintedUnion?.offsetBy(dx: 0, dy: shift)
-        let measuresByIndex = Dictionary(
-            input.measures.map { ($0.index, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
         // Row furniture was laid out in raw coordinates inside `collect`,
         // so it rides the same single shift as every other primitive.
         let rows = raw.rows.map { $0.translated(byY: shift) }

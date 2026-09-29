@@ -89,8 +89,12 @@ extension SheetComposer {
         guard endX != start.x else { return nil }
 
         let direction = context.group.id.stemDirection
+        // Secondary beams stack INSIDE the primary beam (toward the note
+        // heads): the outermost beam is level 0 at `baseY`, so every member
+        // stem ends at the same Y — an eighth + two sixteenths run shares
+        // one stem length instead of the sixteenths reaching farther out.
         let levelOffset = CGFloat(segment.level) * style.beamLevelSpacing
-        let y = direction == .up ? baseY - levelOffset : baseY + levelOffset
+        let y = direction == .up ? baseY + levelOffset : baseY - levelOffset
         let noteIDs: [Int]
         if segment.kind == .full {
             noteIDs = Array(Set(segment.eventIndices.flatMap {

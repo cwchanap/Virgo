@@ -114,7 +114,11 @@ struct NotationLayoutControlRenderingTests {
         })
         let control = try #require(engraved.controls.first)
 
-        #expect(labels == ["Closed hi-hat", "Open hi-hat", "Pedal hi-hat"])
+        #expect(labels == [
+            "Closed hi-hat, quarter note",
+            "Open hi-hat, quarter note",
+            "Pedal hi-hat, quarter note"
+        ])
         #expect(presentation.accessibilityLabels[.control(control.controlID)] == "Damp Crash")
     }
 

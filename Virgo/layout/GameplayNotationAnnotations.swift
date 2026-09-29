@@ -28,8 +28,19 @@ struct GameplayFeelMark: Identifiable, Hashable, Sendable {
         self.size = size
     }
 
+    /// The localized feel name — the single source for both the mark's
+    /// visible text and its VoiceOver label, so neither falls back to a
+    /// capitalized rawValue that no localization can translate.
+    var localizedName: String {
+        switch feel {
+        case .straight: return String(localized: "Straight")
+        case .swing: return String(localized: "Swing")
+        case .shuffle: return String(localized: "Shuffle")
+        }
+    }
+
     var accessibilityLabel: String {
-        String(localized: "\(feel.rawValue.capitalized) feel")
+        String(localized: "\(localizedName) feel")
     }
 }
 

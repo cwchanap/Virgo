@@ -72,9 +72,20 @@ extension GameplayViewModel {
             Task { @MainActor in
                 guard let self else { return }
                 self.cachedLayoutRowWidth = width
-                self.refreshNotationEngraving()
+                self.rebuildNotationAfterResize()
             }
         }
+    }
+
+    /// The debounced resize rebuild: the same detached-worker route as the
+    /// initial preparation, so re-engraving a large chart never runs on the
+    /// main actor (the 30 Hz playhead tick and input handling stay live
+    /// while the sheet repacks). The installed engraving stays mounted until
+    /// the new generation lands atomically.
+    func rebuildNotationAfterResize() {
+        guard track != nil, let request = makeTimelineNotationPreparationRequest() else { return }
+        let generation = beginNotationPreparation()
+        Task { await prepareTimelineNotation(request, generation: generation) }
     }
 
     /// The synchronous notation refresh (HPA-166 Task 7): runs the same
@@ -267,11 +278,25 @@ extension GameplayViewModel {
 
     /// Printed rests carry no event IDs (the projection's rests use an
     /// adapter-local ordinal namespace), so the drop check is the monotone
-    /// count: the projection only ever removes printed candidates, never
-    /// synthesizes new ones.
+    /// count — over the rests the projection should actually print. It
+    /// deliberately skips printed rests in engraving-unsupported measures
+    /// (suppressed at composition, on purpose), so a normal install does
+    /// not log a bogus "dropped" diagnostic on every install and resize.
+    /// The projection only ever removes printed candidates beyond that
+    /// filter, never synthesizes new ones.
     private func logDroppedTimelineRestsIfAny() {
         guard let snapshot = cachedRhythmRuntime.layoutSnapshot else { return }
-        let printedCount = snapshot.rests.filter { $0.visibility == .printed }.count
+        let permittingMeasures = Set(
+            snapshot.measures
+                .filter { $0.engravingSupport.permitsEngraving }
+                .map(\.measureIndex)
+        )
+        let printedCount = snapshot.rests
+            .filter {
+                $0.visibility == .printed
+                    && permittingMeasures.contains($0.position.measureIndex)
+            }
+            .count
         let renderedCount = cachedEngravedNotation?.rests.count ?? 0
         guard renderedCount < printedCount else { return }
         Logger.warning(

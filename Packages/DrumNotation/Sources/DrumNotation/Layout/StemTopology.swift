@@ -138,8 +138,13 @@ struct StemTopology: Equatable {
 /// their events, and derives one `VisibleFlagPlan` per group.
 struct StemTopologyBuilder {
     /// Builds the complete stem topology for already-validated input.
-    func build(_ input: ResolvedNotationInput) -> StemTopology {
-        let context = stemContext(for: input)
+    /// `measuresByIndex` lets an engraving pass share the dictionary it
+    /// already built instead of this builder rebuilding its own copy.
+    func build(
+        _ input: ResolvedNotationInput,
+        measuresByIndex: [Int: ResolvedMeasure]? = nil
+    ) -> StemTopology {
+        let context = stemContext(for: input, measuresByIndex: measuresByIndex)
         return plan(
             context: context,
             topology: NotationBeamTopologyBuilder().build(
@@ -156,7 +161,7 @@ struct StemTopologyBuilder {
     /// partial-coverage plan arm is exercised through identical production
     /// logic — an internal seam, never a public engine.
     func build(_ input: ResolvedNotationInput, topology: BeamTopologyResult) -> StemTopology {
-        plan(context: stemContext(for: input), topology: topology)
+        plan(context: stemContext(for: input, measuresByIndex: nil), topology: topology)
     }
 
     /// The resolved pieces planning needs: notes by ID plus the ordered
@@ -169,17 +174,23 @@ struct StemTopologyBuilder {
 
     /// Builds the same ordered stem groups and timeline events both entry
     /// points share.
-    private func stemContext(for input: ResolvedNotationInput) -> StemContext {
+    private func stemContext(
+        for input: ResolvedNotationInput,
+        measuresByIndex: [Int: ResolvedMeasure]?
+    ) -> StemContext {
         let notesByID = Dictionary(
             input.notes.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        let measuresByIndex = Dictionary(
+        let resolvedMeasuresByIndex = measuresByIndex ?? Dictionary(
             input.measures.map { ($0.index, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        let pairs = buildStemGroups(notes: input.notes, notesByID: notesByID, measuresByIndex: measuresByIndex)
-            .sorted { stemGroupComesBefore($0.event, $1.event) }
+        let pairs = buildStemGroups(
+            notes: input.notes,
+            notesByID: notesByID,
+            measuresByIndex: resolvedMeasuresByIndex
+        ).sorted { stemGroupComesBefore($0.event, $1.event) }
         return StemContext(
             notesByID: notesByID,
             stemGroups: pairs.map(\.group),

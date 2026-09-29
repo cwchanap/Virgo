@@ -198,8 +198,13 @@ enum DrumNotationCatalog {
         )
     ]
 
+    /// O(1) note-type lookup — `resolve` runs per note on every notation
+    /// preparation, so it must not scan the ordered catalog array.
+    private static let definitionsByNoteType: [NoteType: DrumNotationDefinition] =
+        Dictionary(definitions.map { ($0.noteType, $0) }, uniquingKeysWith: { first, _ in first })
+
     static func definition(for noteType: NoteType) -> DrumNotationDefinition? {
-        definitions.first { $0.noteType == noteType }
+        definitionsByNoteType[noteType]
     }
 
     static func defaultDefinition(for drumType: DrumType) -> DrumNotationDefinition? {
@@ -210,7 +215,7 @@ enum DrumNotationCatalog {
         noteType: NoteType,
         sourceLaneID: String?
     ) -> ResolvedDrumNotation? {
-        guard let definition = definition(for: noteType) else {
+        guard let definition = definitionsByNoteType[noteType] else {
             return nil
         }
 

@@ -105,7 +105,11 @@ struct SwiftUIRenderingNotationTests {
             let noteLabels = Set(engraved.noteHeads.compactMap {
                 presentation.accessibilityLabels[.note($0.noteID)]
             })
-            #expect(noteLabels == ["Closed hi-hat", "Open hi-hat", "Pedal hi-hat"])
+            #expect(noteLabels == [
+                "Closed hi-hat, quarter note",
+                "Open hi-hat, quarter note",
+                "Pedal hi-hat, quarter note"
+            ])
             // No semantic ID exists for articulations, so the open circle
             // cannot acquire a separate VoiceOver label.
             #expect(presentation.accessibilityLabels.keys.allSatisfy { key in

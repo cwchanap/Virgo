@@ -74,12 +74,12 @@ struct GameplayNotationAccessibilityTests {
         #expect(presentation.accessibilityLabels[.rest(rest.restID)] == "Upper voice full-measure rest")
     }
 
-    @Test("rhythm dot labels cover every painted dot per source")
-    func rhythmDotLabelsCoverEveryPaintedDot() throws {
-        // A double-dotted rest paints two dots — prepare must emit one
-        // "Rhythm dot" label per dot with per-source indices matching
-        // `DrumNotationView`'s enumeration order (a dot with no label is
-        // hidden by the view).
+    @Test("rhythm dots are decorative — their duration rides the owner's label")
+    func rhythmDotsAreDecorative() throws {
+        // A double-dotted rest paints two dots, but the dots carry no
+        // VoiceOver elements of their own: `DrumNotationView` hides them
+        // and the dotted-duration meaning is spoken by the owning rest's
+        // label (the note arm composes "dotted … note" the same way).
         let (engraved, presentation) = try support.requireReady(support.prepare(
             rests: [
                 RhythmLayoutRest(
@@ -96,8 +96,11 @@ struct GameplayNotationAccessibilityTests {
         let rest = try #require(engraved.rests.first)
         #expect(engraved.rhythmDots.count == 2)
         #expect(engraved.rhythmDots.allSatisfy { $0.source == .rest(rest.restID) })
-        #expect(presentation.accessibilityLabels[.rhythmDot(.rest(rest.restID), index: 0)] == "Rhythm dot")
-        #expect(presentation.accessibilityLabels[.rhythmDot(.rest(rest.restID), index: 1)] == "Rhythm dot")
+        #expect(presentation.accessibilityLabels[.rest(rest.restID)] == "Upper voice quarter rest")
+        #expect(presentation.accessibilityLabels.keys.allSatisfy { key in
+            if case .rhythmDot = key { return false }
+            return true
+        })
     }
 
     @Test("tuplet labels carry the localized voice and ratio wording")
@@ -164,7 +167,7 @@ struct GameplayNotationAccessibilityTests {
         let labels = Set(engraved.noteHeads.compactMap {
             presentation.accessibilityLabels[.note($0.noteID)]
         })
-        #expect(labels == ["Snare", "Bass", "Cowbell"])
+        #expect(labels == ["Snare, quarter note", "Bass, quarter note", "Cowbell, quarter note"])
     }
 
     @Test("distinct accessibility label maps do not change engraving equality")
