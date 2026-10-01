@@ -583,8 +583,8 @@ extension GameplaySheetMusicGeometrySmokeTests {
                 """
             )
             #expect(
-                labeled.labels.contains("Upper voice quarter rest"),
-                "the dotted rest's own label must stay in the tree"
+                labeled.labels.contains("Upper voice quarter rest with 2 dots"),
+                "the dotted rest's spoken label must keep its dots in the tree"
             )
         }
     }

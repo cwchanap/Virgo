@@ -236,10 +236,20 @@ enum GameplayNotationPreparer {
                 dotCount: note.dotCount
             )
         }
+        // The engraved rest carries voice/duration but not dots — `restID`
+        // is the `ResolvedRest.id`, so the painted dot count comes back from
+        // the input to keep a dotted rest's spoken duration honest. A rest
+        // absent from the input still gets its (undotted) label rather than
+        // none.
+        let restsByID = Dictionary(
+            input.rests.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         for rest in engraved.rests {
             labels[.rest(rest.restID)] = restAccessibilityLabel(
                 voice: rest.voice,
                 duration: rest.duration,
+                dotCount: restsByID[rest.restID]?.dotCount ?? 0,
                 isFullMeasure: rest.isFullMeasure
             )
         }
@@ -286,13 +296,24 @@ enum GameplayNotationPreparer {
         default:
             instrument = noteTypeAccessibilityName(noteType)
         }
-        var value = String(localized: "\(spokenDurationName(duration)) note")
-        if dotCount == 1 {
-            value = String(localized: "dotted \(value)")
-        } else if dotCount > 1 {
-            value = String(localized: "\(value) with \(dotCount) dots")
-        }
+        let value = dottedValue(
+            String(localized: "\(spokenDurationName(duration)) note"),
+            dotCount: dotCount
+        )
         return String(localized: "\(instrument), \(value)")
+    }
+
+    /// The dotted-duration wording shared by note and rest labels: one dot
+    /// reads "dotted …", more than one reads "… with N dots"; zero passes
+    /// the value through unchanged.
+    private static func dottedValue(_ value: String, dotCount: Int) -> String {
+        if dotCount == 1 {
+            return String(localized: "dotted \(value)")
+        }
+        if dotCount > 1 {
+            return String(localized: "\(value) with \(dotCount) dots")
+        }
+        return value
     }
 
     // swiftlint:disable cyclomatic_complexity
@@ -359,11 +380,13 @@ enum GameplayNotationPreparer {
     private static func restAccessibilityLabel(
         voice: NotationVoiceRole,
         duration: NotationDuration,
+        dotCount: Int,
         isFullMeasure: Bool
     ) -> String {
         let voiceName = voiceAccessibilityName(voice)
         let durationName = spokenDurationName(duration, isFullMeasure: isFullMeasure)
-        return String(localized: "\(voiceName) voice \(durationName) rest")
+        let value = dottedValue(String(localized: "\(durationName) rest"), dotCount: dotCount)
+        return String(localized: "\(voiceName) voice \(value)")
     }
 }
 
