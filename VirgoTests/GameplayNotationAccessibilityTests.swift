@@ -96,7 +96,8 @@ struct GameplayNotationAccessibilityTests {
         let rest = try #require(engraved.rests.first)
         #expect(engraved.rhythmDots.count == 2)
         #expect(engraved.rhythmDots.allSatisfy { $0.source == .rest(rest.restID) })
-        #expect(presentation.accessibilityLabels[.rest(rest.restID)] == "Upper voice quarter rest")
+        #expect(presentation.accessibilityLabels[.rest(rest.restID)]
+            == "Upper voice quarter rest with 2 dots")
         #expect(presentation.accessibilityLabels.keys.allSatisfy { key in
             if case .rhythmDot = key { return false }
             return true
