@@ -34,6 +34,15 @@ struct GameplayViewModelPlaybackTests {
         viewModel.cleanup()
     }
 
+    @Test("togglePlayback stays stopped and does not crash when data not loaded")
+    func togglePlaybackNoOpWhenNotLoaded() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        // Intentionally do NOT call loadChartData; isDataLoaded stays false.
+        vm.togglePlayback()
+        #expect(vm.isPlaying == false)
+        vm.cleanup()
+    }
+
     @Test func testUpdateSpeedUpdatesMetronomeWhenEnabledAndNotPlaying() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
         let driver = RecordingAudioDriver()
@@ -164,6 +173,24 @@ struct GameplayViewModelPlaybackTests {
         #expect(vm.pausedElapsedTime == 0.0, "Elapsed time should have been reset")
 
         vm.cleanup()
+    }
+
+    @Test("restartPlayback while playing restarts and keeps isPlaying true")
+    func restartPlaybackWhilePlaying() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        await vm.loadChartData()
+        await vm.setupGameplay(loadPersistedSpeed: false)
+        defer { vm.cleanup() }
+
+        vm.startPlayback()
+        vm.currentBeat = 5
+        vm.playbackProgress = 0.5
+
+        vm.restartPlayback()
+
+        #expect(vm.isPlaying == true)
+        #expect(vm.currentBeat == 0)
+        #expect(vm.playbackProgress == 0.0)
     }
 
     @Test func testSkipToEnd() async throws {

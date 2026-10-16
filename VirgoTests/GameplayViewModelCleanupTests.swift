@@ -34,6 +34,23 @@ struct GameplayViewModelCleanupTests {
         #expect(viewModel.metronomeSubscription == nil)
     }
 
+    @Test("cleanup clears prepared state, BGM player, subscriptions, and timers")
+    func cleanupClearsAllResources() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        await vm.loadChartData()
+        await vm.setupGameplay(loadPersistedSpeed: false)
+        vm.bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
+        vm.setupMetronomeSubscription()
+        vm.startPlayback()
+
+        vm.cleanup()
+
+        #expect(vm.isGameplayPrepared == false)
+        #expect(vm.bgmPlayer == nil)
+        #expect(vm.metronomeSubscription == nil)
+        #expect(vm.playbackTimer == nil)
+    }
+
     @Test("setupMetronomeSubscription drives visual updates from metronome beats while playing")
     func setupMetronomeSubscriptionDrivesVisualsWhilePlaying() async throws {
         // Behavior-level guard for the production wiring invoked at GameplayView.swift:131.
@@ -160,6 +177,30 @@ struct GameplayViewModelCleanupTests {
         #expect(viewModel.currentMeasureIndex == 0)
 
         viewModel.cleanup()
+    }
+
+    @Test("resetPlaybackState zeroes all playback and scheduling fields")
+    func resetPlaybackStateZeroesFields() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay(loadPersistedSpeed: false)
+        defer { vm.cleanup() }
+
+        vm.currentBeat = 5
+        vm.playbackProgress = 0.5
+        vm.totalBeatsElapsed = 9
+        vm.currentRow = 3
+        vm.purpleBarPosition = (1.0, 2.0)
+        vm.lastScheduledPlaybackStartTime = CFAbsoluteTimeGetCurrent()
+
+        vm.resetPlaybackState()
+
+        #expect(vm.currentBeat == 0)
+        #expect(vm.playbackProgress == 0.0)
+        #expect(vm.totalBeatsElapsed == 0)
+        #expect(vm.currentRow == 0)
+        #expect(vm.purpleBarPosition == nil)
+        #expect(vm.lastScheduledPlaybackStartTime == nil)
     }
 
     @Test func testCleanupSavesCurrentSpeed() async throws {
