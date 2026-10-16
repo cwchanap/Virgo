@@ -269,4 +269,29 @@ struct SwiftUIRenderingNotationTests {
             #expect(warningTree.labels.contains(warning.accessibilityLabel))
         }
     }
+
+    // MARK: - Notation primitives (consolidated from GameplayRenderCoverageTests)
+
+    @Test("DrumClefSymbol renders without error")
+    func drumClefSymbolRenders() async throws {
+        try await TestSetup.withTestSetup {
+            let view = DrumClefSymbol()
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 100, height: 100)
+            )
+        }
+    }
+
+    @Test("TimeSignatureSymbol renders the correct numerals for 3/4 time")
+    func timeSignatureSymbolThreeFourRenders() async throws {
+        try await TestSetup.withTestSetup {
+            let view = TimeSignatureSymbol(timeSignature: .threeFour)
+            SwiftUITestUtilities.assertView(
+                view,
+                containsStrings: ["3", "4"],
+                size: CGSize(width: 100, height: 100)
+            )
+        }
+    }
 }

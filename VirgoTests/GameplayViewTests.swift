@@ -553,4 +553,120 @@ private extension GameplayViewTests {
             #endif
         }
     }
+
+    // MARK: - Consolidated from GameplayRenderCoverageTests
+
+    @Test("GameplayView hides gameplay chrome until the view model is prepared")
+    func gameplayViewHidesChromeUntilViewModelPrepared() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
+            defer { vm.cleanup() }
+
+            #expect(!vm.isGameplayPrepared, "Fixture must not call setupGameplay()")
+
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+                .environmentObject(vm.practiceSettings)
+            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
+            let identifiers = SwiftUITestUtilities.renderedIdentifiers(from: mountedView.root)
+
+            #expect(texts.contains("Loading..."))
+            #expect(!texts.contains("Unknown Song"))
+            #expect(!identifiers.contains("gameplayHeaderPlayPauseButton"))
+            #expect(!identifiers.contains("gameplayMainPlayPauseButton"))
+        }
+    }
+
+    /// Verifies that `rowAnchorColumn` renders without error when the notation
+    /// layout includes note heads at high above-staff positions (e.g. aboveLine9).
+    /// This exercises the dynamic top-padding computation introduced to fix
+    /// clipping of extended custom note positions.
+    @Test("rowAnchorColumn accommodates note heads at aboveLine9 without clipping")
+    func rowAnchorColumnWithHighNotePositionsRenders() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+
+            let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
+
+            // The anchor column must render without error for the installed
+            // input's row geometry.
+            let anchorColumn = gameplayView.rowAnchorColumn(viewModel: vm)
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                anchorColumn,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    /// Verifies that a chart with crash notes (default position .aboveLine5) produces
+    /// a layout where the crash note head sits above the staff, and the anchor column
+    /// still renders successfully.
+    ///
+    /// Note: Testing a true .aboveLine9 override is not feasible here because
+    /// notation preparation bypasses UserDefaults in the test environment.
+    @Test("rowAnchorColumn with above-staff crash notes renders correctly")
+    func rowAnchorColumnWithAboveStaffCrashNotesRenders() async throws {
+        try await TestSetup.withTestSetup {
+            // Create a chart with crash notes (mapped to .aboveLine5 by default).
+            let chart = GameplayViewModelCoverageTestSupport.makeChart(
+                noteCount: 2,
+                interval: .quarter,
+                measureOffset: 0.25
+            )
+            // Change the first note to crash so it uses an above-staff position.
+            chart.notes[0].noteType = .crash
+
+            let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+            defer { vm.cleanup() }
+            await vm.loadChartData()
+            await vm.setupGameplay()
+
+            // Verify the crash note head is above the highest staff line
+            // (line5 = the top staff line, pitch-ascending last entry).
+            // In screen coordinates, above-line5 means a smaller Y value.
+            let engraved = try #require(vm.cachedEngravedNotation)
+            let crashEventID = try #require(
+                vm.cachedRhythmRuntime.noteByEventID.first { $0.value.noteType == .crash }?.key,
+                "Runtime should carry a crash note"
+            )
+            let crashHead = try #require(
+                engraved.noteHeads.first { $0.noteID == crashEventID.rawValue },
+                "Engraving should contain a crash note head"
+            )
+            let row = try #require(engraved.rows.first { $0.index == crashHead.rowIndex })
+            let line5Y = try #require(row.staffLineYs.last)
+            #expect(crashHead.position.y < line5Y,
+                    "Crash note head should be above line5 (default .aboveLine5 position)")
+
+            let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
+
+            let anchorColumn = gameplayView.rowAnchorColumn(viewModel: vm)
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                anchorColumn,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    /// Verifies that the populated sheet music view (which includes rowAnchorColumn)
+    /// still renders correctly after the rowAnchorColumn signature change.
+    @Test("Full sheet music view renders with updated rowAnchorColumn")
+    func sheetMusicViewRendersWithUpdatedRowAnchorColumn() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+                .environmentObject(vm.practiceSettings)
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
 }
