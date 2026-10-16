@@ -1,7 +1,7 @@
 # HPA-583: Test Ownership and Architecture Guidance Closeout Design
 
-**Date:** 2026-10-15  
-**Linear:** HPA-583  
+**Date:** 2026-10-15\
+**Linear:** HPA-583\
 **Status:** Planning
 
 ## Intent
