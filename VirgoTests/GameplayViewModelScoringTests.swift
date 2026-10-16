@@ -502,6 +502,40 @@ struct GameplayViewModelScoringTests {
         viewModel.cleanup()
     }
 
+    @Test("finite missed-note scan is ignored while playback is paused")
+    func testFiniteMissScanIgnoredWhilePaused() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        vm.startPlayback()
+        vm.pausePlayback()
+
+        #expect(vm.isPlaying == false)
+        vm.scanForMissedNotes(upToTimePosition: 10.0)
+
+        #expect(vm.scoreEngine.missCount == 0)
+        #expect(vm.liveScoreSnapshot.judgedNoteCount == 0)
+    }
+
+    @Test("infinite missed-note scan flushes remaining misses while paused")
+    func testInfiniteMissScanFlushesRemainingMissesWhilePaused() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        vm.startPlayback()
+        vm.pausePlayback()
+
+        #expect(vm.isPlaying == false)
+        vm.scanForMissedNotes(upToTimePosition: .infinity)
+
+        #expect(vm.scoreEngine.missCount == 2)
+        #expect(vm.liveScoreSnapshot.judgedNoteCount == 2)
+    }
+
     @Test("sessionIsNewRecord is true when handlePlaybackCompletion saves a new high score")
     func testSessionIsNewRecordSetOnNewHighScore() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 1)
