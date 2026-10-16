@@ -279,6 +279,38 @@ struct GameplaySheetMusicSmokeTests {
         }
     }
 
+    /// Consolidated from GameplayNotationCoverageAdditionsTests: the legacy
+    /// `GameplayBarLinesView` fallback branch (no renderable content) has no
+    /// raster owner elsewhere.
+    @Test("static sheet music renders legacy bar lines when layout has no renderable content")
+    func staticSheetMusicRendersLegacyBarLinesForNonRenderableLayout() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8, measuresCount: 2)
+            let viewModel = GameplayViewModel(
+                chart: chart,
+                metronome: GameplayViewModelTestHarness.createTestMetronome()
+            )
+            await viewModel.loadChartData()
+            await viewModel.setupGameplay(loadPersistedSpeed: false)
+            defer { viewModel.cleanup() }
+
+            // Clear the install so hasRenderableContent is false, but
+            // cachedMeasurePositions remains populated from the prior setup.
+            viewModel.clearNotationInstallation()
+            #expect(!viewModel.cachedNotationHasRenderableContent)
+            #expect(!viewModel.cachedMeasurePositions.isEmpty)
+
+            let view = GameplayView(chart: chart, metronome: viewModel.metronome)
+
+            // Rendering the static layers with hasRenderableContent=false
+            // exercises the legacy bar-line branch in GameplayBarLinesView.
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view.staticSheetMusicContent(viewModel: viewModel),
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
     /// Controlled-width agreement: at the 900pt floor and at a width that
     /// changes the dense fixture's wrapping, the mounted surface (row
     /// anchors, measure positions, content extents, measure→row cache) and
