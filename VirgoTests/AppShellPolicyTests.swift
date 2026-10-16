@@ -86,6 +86,18 @@ struct AppShellPolicyTests {
         #expect(shouldImport == false)
     }
 
+    @Test("startup preparation gate is true only for uiTesting + resetState")
+    func testStartupPreparationGateIsTrueOnlyForUITestingAndResetState() {
+        // Drives ContentView.isPreparingStartupData / startupPreparationView.
+        #expect(ContentStartupPolicy.shouldPrepareBeforeFirstRender(
+            arguments: [LaunchArguments.uiTesting, LaunchArguments.resetState]
+        ))
+        #expect(!ContentStartupPolicy.shouldPrepareBeforeFirstRender(
+            arguments: [LaunchArguments.uiTesting]
+        ))
+        #expect(!ContentStartupPolicy.shouldPrepareBeforeFirstRender(arguments: []))
+    }
+
     // MARK: - ContentStartupPolicy.shouldUsePreviewPlayer
 
     @Test("shouldUsePreviewPlayer returns true for server-imported song with preview file")

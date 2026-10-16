@@ -274,4 +274,24 @@ struct SwiftDataRelationshipLoaderTests {
 
         #expect(result.isEmpty)
     }
+
+    // MARK: - deleted-model exclusion (consolidated from ContentViewMIDILearnCoverageTests)
+
+    @Test("displayedSongs filter excludes deleted models, mirroring ContentView.displayedSongs")
+    func testDisplayedSongsFilterExcludesDeletedModels() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let songA = TestModelFactory.createSong(in: context, title: "Alpha", artist: "A")
+            let songB = TestModelFactory.createSong(in: context, title: "Beta", artist: "B")
+            try context.save()
+
+            // Reproduces ContentView.displayedSongs' availability filter.
+            context.delete(songB)
+            let displayed = [songA, songB].filter { SongRelationshipLoader.isModelAvailable($0) }
+
+            #expect(displayed.count == 1)
+            #expect(displayed.first?.title == "Alpha")
+            #expect(SongRelationshipLoader.isModelAvailable(songB) == false)
+        }
+    }
 }

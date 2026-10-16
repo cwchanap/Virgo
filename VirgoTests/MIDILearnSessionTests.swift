@@ -245,4 +245,134 @@ struct MIDILearnSessionTests {
         #expect(!learnSession.isCapturing,
                 "Session should remain non-capturing after rejected event")
     }
+
+    // MARK: - learnDisplayName switch + conflict branches (consolidated from ContentViewMIDILearnCoverageTests)
+
+    /// Expected display names emitted by MIDILearnSession's private
+    /// `learnDisplayName` switch. Asserting every case locks the formatting
+    /// (hyphens, "Pedal", ordinal tom names) and exercises each switch branch.
+    /// The pre-existing conflict test only covered `.kick` / `.snare`.
+    private static let expectedLearnNames: [DrumType: String] = [
+        .kick: "Kick",
+        .snare: "Snare",
+        .hiHat: "Hi-Hat",
+        .hiHatPedal: "Hi-Hat Pedal",
+        .crash: "Crash",
+        .ride: "Ride",
+        .tom1: "High Tom",
+        .tom2: "Mid Tom",
+        .tom3: "Low Tom",
+        .cowbell: "Cowbell"
+    ]
+
+    @Test("learn conflict message uses each drum type display name")
+    func learnConflictMessageUsesEachDrumTypeDisplayName() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnConflictMessageUsesEachDrumTypeDisplayName"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        settings.setSelectedMIDISource(id: "src", displayName: "Kit")
+
+        let all = DrumType.allCases
+        for (index, target) in all.enumerated() {
+            // Pair each target with a distinct previous drum so the conflict
+            // branch fires and BOTH learnDisplayName lookups run for every case.
+            let previous = all[(index + 1) % all.count]
+            settings.setMidiMapping(60, for: previous)
+
+            let session = MIDILearnSession(settingsManager: settings)
+            session.beginCapture(for: target)
+            let accepted = session.consume(
+                MIDINoteEvent(sourceID: "src", channel: 9, note: 60, velocity: 100, hostTime: 0),
+                selectedSourceID: "src"
+            )
+
+            let expected = "Replaced \(Self.expectedLearnNames[previous]!) " +
+                "with \(Self.expectedLearnNames[target]!) for note 60"
+            #expect(accepted, "Capture for \(target) should accept the mapped note")
+            #expect(session.lastConflictMessage == expected)
+            #expect(settings.getMidiMapping(for: target) == 60)
+        }
+    }
+
+    @Test("learn remaps silently when note already mapped to the same drum type")
+    func learnRemapsSilentlyWhenNoteAlreadyMappedToSameDrum() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.learnRemapsSilentlyWhenNoteAlreadyMappedToSameDrum"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        settings.setSelectedMIDISource(id: "src", displayName: "Kit")
+        settings.setMidiMapping(44, for: .snare)
+
+        let session = MIDILearnSession(settingsManager: settings)
+        session.beginCapture(for: .snare)
+        let accepted = session.consume(
+            MIDINoteEvent(sourceID: "src", channel: 9, note: 44, velocity: 100, hostTime: 0),
+            selectedSourceID: "src"
+        )
+
+        #expect(accepted)
+        // Covers the false branch of `previousDrum != targetDrumType`: no message.
+        #expect(session.lastConflictMessage == nil)
+        #expect(settings.getMidiMapping(for: .snare) == 44)
+    }
+
+    @Test("canBeginCapture is true when a source is selected and available")
+    func canBeginCaptureIsTrueWhenSourceSelectedAndAvailable() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.canBeginCaptureIsTrueWhenSourceSelectedAndAvailable"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        settings.setSelectedMIDISource(id: "src", displayName: "Kit")
+
+        let alwaysAvailable = MIDILearnSession(settingsManager: settings)
+        #expect(alwaysAvailable.canBeginCapture)
+
+        let offline = MIDILearnSession(settingsManager: settings, isSelectedSourceAvailable: { false })
+        #expect(offline.canBeginCapture == false)
+    }
+
+    @Test("cancelCapture on a session that never began is a safe no-op")
+    func cancelCaptureOnSessionThatNeverBeganIsSafeNoOp() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.cancelCaptureOnSessionThatNeverBeganIsSafeNoOp"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+
+        let session = MIDILearnSession(settingsManager: settings)
+        // No timeout timer was ever scheduled -> exercises the nil path in
+        // cancelTimeout (timeoutTimer?.cancel() on a nil timer).
+        session.cancelCapture()
+
+        #expect(session.isCapturing == false)
+        #expect(session.targetDrumType == nil)
+    }
+
+    @Test("capture transitions idle -> capturing -> idle and clears prior conflict on restart")
+    func captureTransitionsIdleToCapturingToIdleAndClearsPriorConflictOnRestart() {
+        let (settings, userDefaults, suiteName) = TestInputSettingsManager.makeIsolated(
+            suiteName: "MIDILearnSessionTests.captureTransitionsIdleToCapturingToIdleAndClearsPriorConflictOnRestart"
+        )
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        settings.setSelectedMIDISource(id: "src", displayName: "Kit")
+        settings.setMidiMapping(38, for: .kick)
+
+        let session = MIDILearnSession(settingsManager: settings)
+        #expect(session.isCapturing == false && session.targetDrumType == nil)
+
+        session.beginCapture(for: .snare)
+        #expect(session.isCapturing && session.targetDrumType == .snare)
+
+        _ = session.consume(
+            MIDINoteEvent(sourceID: "src", channel: 9, note: 38, velocity: 100, hostTime: 0),
+            selectedSourceID: "src"
+        )
+        #expect(session.lastConflictMessage != nil)
+        #expect(session.isCapturing == false)
+
+        // A fresh capture must clear the previous conflict message.
+        session.beginCapture(for: .crash)
+        #expect(session.lastConflictMessage == nil)
+        #expect(session.isCapturing && session.targetDrumType == .crash)
+    }
 }
