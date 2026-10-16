@@ -587,4 +587,29 @@ struct MetronomeAudioEngineTests {
         audioEngine.onInterruption = nil
         #expect(audioEngine.onInterruption == nil)
     }
+
+    @Test("MetronomeAudioEngine.convertToAudioEngineTime returns nil in test environment")
+    func audioEngineConvertReturnsNilInTestEnv() {
+        let audioEngine = MetronomeAudioEngine()
+        #expect(audioEngine.convertToAudioEngineTime(CFAbsoluteTimeGetCurrent()) == nil)
+    }
+
+    @Test("AudioEngineError produces human-readable localized descriptions")
+    func audioEngineErrorDescriptions() {
+        #expect(AudioEngineError.assetNotFound.errorDescription == "Ticker audio asset not found")
+        #expect(AudioEngineError.bufferCreationFailed.errorDescription == "Failed to create audio buffer")
+        #expect(
+            AudioEngineError.audioEngineNotAvailable.errorDescription
+                == "Audio engine not available in test environment"
+        )
+
+        let underlying = NSError(
+            domain: "test", code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "disk error"]
+        )
+        #expect(
+            AudioEngineError.loadingFailed(underlying).errorDescription
+                == "Failed to load audio buffer: disk error"
+        )
+    }
 }
