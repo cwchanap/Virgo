@@ -147,6 +147,48 @@ struct GameplayViewModelComputationsTests {
                 "Unparsable seconds component should fall back to note-based calculation")
     }
 
+    @Test("calculateTrackDuration returns 0.0 when track is nil")
+    func testCalculateTrackDurationNilTrack() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
+        // track is nil before data is loaded
+        let duration = vm.calculateTrackDuration()
+        #expect(duration == 0.0)
+    }
+
+    @Test("calculateTrackDuration uses MM:SS song.duration when available")
+    func testCalculateTrackDurationUsesSongDurationMMSS() async throws {
+        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: 2)
+        chart.notes.forEach { $0.originKind = .dtx }
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        await vm.setupGameplay()
+
+        // Override cachedSong with a known "2:30" duration = 150 seconds.
+        let song = Song(title: "T", artist: "A", bpm: 120.0, duration: "2:30", genre: "Rock")
+        vm.cachedSong = song
+
+        let duration = vm.calculateTrackDuration()
+        #expect(abs(duration - 150.0) < 0.001,
+                "Should return 150 s (2×60+30) from song.duration at 1× speed")
+    }
+
+    @Test("calculateTrackDuration ignores '0:00' song.duration and uses note-based calculation")
+    func testCalculateTrackDurationIgnoresZeroDurationString() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        await vm.setupGameplay()
+
+        let song = Song(title: "T", artist: "A", bpm: 120.0, duration: "0:00", genre: "Rock")
+        vm.cachedSong = song
+
+        let duration = vm.calculateTrackDuration()
+        // 4 notes at measure 1 (offsets 0.0–0.3) → 1 measure × 2.0 s/measure at 120 BPM 4/4 = 2.0 s
+        #expect(abs(duration - 2.0) < 0.001,
+                "Should compute 2.0 s from note positions when song.duration is '0:00'")
+    }
+
     // MARK: - resetScoring
 
     @Test("resetScoring clears all scoring and feedback state")
