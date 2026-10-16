@@ -62,6 +62,21 @@ struct SwiftUIRenderingSettingsAndHeaderTests {
         }
     }
 
+    // MARK: - keyCapturingOverlay (consolidated from SecondWaveCoverageTests)
+
+    @Test("InputSettingsView.keyCapturingOverlay renders without a drum selection")
+    func testKeyCapturingOverlayRendersWithoutDrumSelection() async throws {
+        try await TestSetup.withTestSetup {
+            let keyCaptureState = InputKeyCaptureState()
+            keyCaptureState.isCapturingKey = true
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                InputSettingsView(keyCaptureState: keyCaptureState),
+                size: CGSize(width: 1024, height: 768)
+            )
+        }
+    }
+
     // MARK: - InputKeyCaptureViewModel (consolidated from InputNotationCoverageTests)
 
     @Test("InputKeyCaptureViewModel mirrors the injected capture state")

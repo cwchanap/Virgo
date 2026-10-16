@@ -379,4 +379,63 @@ struct ContentViewTests {
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
     }
+
+    // MARK: - ContentView render smoke (consolidated from SecondWaveCoverageTests)
+
+    @Test("ContentView renders with MetronomeEngine environment object")
+    func testContentViewRendersWithMetronomeEngine() async throws {
+        try await TestSetup.withTestSetup {
+            let view = ContentView()
+                .modelContainer(TestContainer.shared.container)
+                .environmentObject(MetronomeEngine(audioDriver: RecordingAudioDriver()))
+                .environmentObject(PracticeSettingsService())
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    @Test("ContentView renders with songs inserted into the shared container")
+    func testContentViewRendersWithSongsInContainer() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let song = makeDownloadedSong(title: "Container Song")
+            context.insert(song)
+            try context.save()
+
+            let view = ContentView()
+                .modelContainer(TestContainer.shared.container)
+                .environmentObject(MetronomeEngine(audioDriver: RecordingAudioDriver()))
+                .environmentObject(PracticeSettingsService())
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    // MARK: - Private Helpers
+
+    private func makeDownloadedSong(title: String) -> Song {
+        let chart = SwiftUICoverageFixtures.makeChart(
+            difficulty: .medium,
+            notes: [
+                SwiftUICoverageFixtures.makeNote(
+                    interval: .quarter,
+                    noteType: .bass,
+                    measureNumber: 1,
+                    measureOffset: 0.0
+                )
+            ]
+        )
+        let song = SwiftUICoverageFixtures.makeSong(
+            title: title,
+            genre: "DTX Import",
+            charts: [chart]
+        )
+        return song
+    }
 }
