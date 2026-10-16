@@ -534,19 +534,23 @@ private extension GameplayViewTests {
             #expect(textsBefore.contains("Loading..."))
             #endif
 
-            // Allow the .task-driven async preparation (loadChartData → setupGameplay)
-            // to complete. The .task body awaits multiple async boundaries, so we
-            // need to yield the main run loop long enough for continuations to resume.
-            try await Task.sleep(nanoseconds: 500_000_000)
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-            try await Task.sleep(nanoseconds: 300_000_000)
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-
-            // After the .task completes, re-layout and verify the loading state
-            // is gone — the view model was prepared and the gameplay content shows.
+            // Allow the .task-driven async preparation (loadChartData →
+            // setupGameplay) to complete: poll until the loading state is
+            // replaced or the deadline passes. The .task body awaits multiple
+            // async boundaries, so each pass pumps the main run loop for
+            // continuations to resume — a fixed sleep budget flakes on a
+            // loaded CI runner and wastes time on a fast one.
             #if os(macOS)
-            mounted.hostingView.layoutSubtreeIfNeeded()
-            mounted.hostingView.displayIfNeeded()
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while clock.now < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+                mounted.hostingView.layoutSubtreeIfNeeded()
+                mounted.hostingView.displayIfNeeded()
+                if !SwiftUITestUtilities.renderedTexts(from: mounted.hostingView)
+                    .contains("Loading...") { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
             let textsAfter = SwiftUITestUtilities.renderedTexts(from: mounted.hostingView)
             #expect(!textsAfter.contains("Loading..."),
                     "Loading state should be replaced after .task prepares gameplay")
@@ -580,20 +584,35 @@ private extension GameplayViewTests {
         }
     }
 
-    /// Verifies that `rowAnchorColumn` renders without error when the notation
-    /// layout includes note heads at high above-staff positions (e.g. aboveLine9).
-    /// This exercises the dynamic top-padding computation introduced to fix
-    /// clipping of extended custom note positions.
+    /// Verifies that `rowAnchorColumn` renders — and that the row_0 scroll
+    /// anchor sits at-or-above the sheet's topmost painted ink — when the
+    /// installed engraving carries extended above-staff positions
+    /// (.aboveLine9). An anchor top below the ink's top edge would let
+    /// `scrollTo("row_0", anchor: .top)` clip the head/stem/ledger ink that
+    /// pushed the engraving above the sheet origin — the clipping the
+    /// dynamic top-padding computation was introduced to prevent.
     @Test("rowAnchorColumn accommodates note heads at aboveLine9 without clipping")
     func rowAnchorColumnWithHighNotePositionsRenders() async throws {
         try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            let support = NotationSnapshotTestSupport()
+            let (engraved, presentation) = try support.requireReady(support.prepare(
+                notes: [Note(interval: .quarter, noteType: .openHiHat, measureNumber: 1, measureOffset: 0)],
+                notePositionOverrides: [.hiHat: .aboveLine9]
+            ))
+            let vm = GameplayViewModelCoverageTestSupport.makeViewModel(
+                chart: Chart(difficulty: .medium)
+            )
             defer { vm.cleanup() }
+            vm.installPreparedNotation(.ready(engraved, presentation))
 
             let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
+            let anchors = gameplayView.staticNotationInput(viewModel: vm).rowAnchors
 
-            // The anchor column must render without error for the installed
-            // input's row geometry.
+            #expect(
+                anchors.firstRowTop <= engraved.paintedBounds.minY,
+                "row_0's anchor top must not sit below the sheet's topmost ink — scrollTo(.top) would clip it"
+            )
+
             let anchorColumn = gameplayView.rowAnchorColumn(viewModel: vm)
             SwiftUITestUtilities.assertViewWithEnvironment(
                 anchorColumn,
@@ -606,8 +625,9 @@ private extension GameplayViewTests {
     /// a layout where the crash note head sits above the staff, and the anchor column
     /// still renders successfully.
     ///
-    /// Note: Testing a true .aboveLine9 override is not feasible here because
-    /// notation preparation bypasses UserDefaults in the test environment.
+    /// Note: a true .aboveLine9 override goes through `NotationSnapshotTestSupport`
+    /// + `installPreparedNotation` (see the test above); this one covers the
+    /// default .aboveLine5 crash position through the view-model preparation path.
     @Test("rowAnchorColumn with above-staff crash notes renders correctly")
     func rowAnchorColumnWithAboveStaffCrashNotesRenders() async throws {
         try await TestSetup.withTestSetup {

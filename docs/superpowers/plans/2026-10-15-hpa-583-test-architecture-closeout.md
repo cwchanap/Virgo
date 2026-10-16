@@ -342,7 +342,7 @@ Compare the same base/head workflow jobs and test steps. Record both wall-time p
 
 - [ ] **Step 8: Compare base and head production coverage**
 
-Use the base CI `TestResults.xcresult` / coverage artifact and the corresponding head artifact. Export/report production coverage with `xcrun xccov view --report --json` (or equivalent data from the retained artifact).
+Use the base CI `TestResults.xcresult` / coverage artifact and the corresponding head artifact. `xcrun xccov view --report --json` reports only per-file totals (`coveredLines`/`executableLines`); enumerate the production files from it, then diff per-line coverage with `xcrun xccov view --file <path> <xcresult>` (JSON-capable) on both artifacts, or equivalent line-level data from the retained artifacts.
 
 Because production code is unchanged, flag any production line covered on base but not head. For each loss, either restore the uniquely valuable regression or explain why the deleted execution was intentionally redundant/obsolete.
 
