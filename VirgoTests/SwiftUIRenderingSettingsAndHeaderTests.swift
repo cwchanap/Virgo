@@ -62,6 +62,54 @@ struct SwiftUIRenderingSettingsAndHeaderTests {
         }
     }
 
+    // MARK: - InputKeyCaptureViewModel (consolidated from InputNotationCoverageTests)
+
+    @Test("InputKeyCaptureViewModel mirrors the injected capture state")
+    func inputKeyCaptureViewModelMirrorsInjectedState() async throws {
+        try await TestSetup.withTestSetup {
+            let keyCaptureState = InputKeyCaptureState()
+            let viewModel = InputKeyCaptureViewModel(state: keyCaptureState)
+
+            viewModel.startCapture(for: .snare)
+
+            let started = await TestHelpers.waitFor {
+                viewModel.selectedDrumType == .snare &&
+                    viewModel.isCapturingKey &&
+                    keyCaptureState.selectedDrumType == .snare &&
+                    keyCaptureState.isCapturingKey
+            }
+            #expect(started, "Expected startCapture(for:) to update the shared capture state")
+
+            viewModel.cancelCapture()
+
+            let cancelled = await TestHelpers.waitFor {
+                viewModel.selectedDrumType == nil &&
+                    !viewModel.isCapturingKey &&
+                    keyCaptureState.selectedDrumType == nil &&
+                    !keyCaptureState.isCapturingKey
+            }
+            #expect(cancelled, "Expected cancelCapture() to clear the shared capture state")
+        }
+    }
+
+    @Test("InputKeyCaptureViewModel deallocates after references are released")
+    func inputKeyCaptureViewModelDeallocatesAfterRelease() async throws {
+        try await TestSetup.withTestSetup {
+            let keyCaptureState = InputKeyCaptureState()
+            weak var weakViewModel: InputKeyCaptureViewModel?
+
+            var viewModel: InputKeyCaptureViewModel? = InputKeyCaptureViewModel(state: keyCaptureState)
+            weakViewModel = viewModel
+
+            #expect(weakViewModel != nil)
+
+            viewModel = nil
+            await Task.yield()
+
+            #expect(weakViewModel == nil, "View model should release its Combine subscriptions on deinit")
+        }
+    }
+
     @Test("MetronomeView renders practice tips and settings layout")
     func testMetronomeViewRendering() async throws {
         try await TestSetup.withTestSetup {
