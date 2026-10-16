@@ -489,10 +489,15 @@ struct GameplaySheetMusicSmokeTests {
         #expect(input.contentWidth == engraved.contentWidth)
         #expect(input.contentHeight == engraved.contentHeight)
 
-        // Mounted scroll anchors derive from package row geometry verbatim.
+        // Mounted scroll anchors derive from package row geometry: the band
+        // top is the ceiling, pulled lower only to reveal per-row ink that
+        // overhangs it — `scrollTo(anchor: .top)` clips anything above the
+        // anchor, so `firstRowTop` must never sit above the sheet's ink.
         let anchors = input.rowAnchors
         let firstRow = try #require(engraved.rows.first)
-        #expect(anchors.firstRowTop == max(0, firstRow.staffCenterY - engraved.style.rowHeight / 2))
+        let bandTop = max(0, firstRow.staffCenterY - engraved.style.rowHeight / 2)
+        #expect(anchors.firstRowTop >= 0 && anchors.firstRowTop <= bandTop)
+        #expect(anchors.firstRowTop <= engraved.paintedBounds.minY)
         #expect(anchors.rowPitch == engraved.style.rowHeight + engraved.style.rowVerticalSpacing)
 
         // The scroll canvas must reach one viewport below the deepest row

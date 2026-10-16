@@ -85,8 +85,9 @@ cp Virgo/Config/ServerEndpoints.env.example Virgo/Config/ServerEndpoints.env
 
 `Virgo/Config/ServerEndpoints.env` supplies `GRAPHQL_ENDPOINT` and `R2_BASE_URL`. It is gitignored;
 CI regenerates it from repository variables via `.github/scripts/generate-endpoints-env.sh`. When the
-file is missing or a key is empty, `ServerConfig` falls back to a local-dev placeholder endpoint and
-disables audio downloads, so a fresh checkout still builds and tests green.
+file is missing or `GRAPHQL_ENDPOINT` is empty/invalid, `ServerConfig` falls back to a local-dev
+placeholder endpoint; audio downloads are skipped only when `R2_BASE_URL` is missing or invalid,
+so a fresh checkout still builds and tests green.
 
 `AGENTS.md` is a symlink to `CLAUDE.md` — edit `CLAUDE.md` only.
 

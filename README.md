@@ -15,9 +15,10 @@ gameplay-style practice views synchronized to background audio.
    `./scripts/setup-git-hooks.sh` to install SwiftLint and its pre-commit hook.
 2. Configure server endpoints: copy `Virgo/Config/ServerEndpoints.env.example` to
    `Virgo/Config/ServerEndpoints.env` and fill in `GRAPHQL_ENDPOINT` and
-   `R2_BASE_URL`. When the file is missing or a key is empty, the app falls back to
-   local-dev placeholders and audio downloads are disabled — a fresh checkout still
-   builds and tests green.
+   `R2_BASE_URL`. A missing or empty `GRAPHQL_ENDPOINT` falls back to the
+   local-dev placeholder endpoint; audio downloads are skipped only when
+   `R2_BASE_URL` is missing or invalid — a fresh checkout still builds and
+   tests green.
 
 ## Development
 

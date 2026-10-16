@@ -83,12 +83,19 @@ struct GameplayStaticNotationInput: Equatable {
     /// Row-anchor geometry: the top of each row's band in sheet coordinates
     /// plus the row pitch. Engraved sheets read `EngravedRow.staffCenterY`
     /// and the producing `NotationEngravingStyle`; the fallback keeps the
-    /// legacy staff formula (three staff spaces above line 5).
+    /// legacy staff formula (three staff spaces above line 5). The engraved
+    /// branch also pulls the shared top anchor up to the sheet's highest
+    /// per-row ink — stems, flags, and above-staff note positions can paint
+    /// above a row's band top, and `scrollTo("row_i", anchor: .top)` clips
+    /// anything that starts above the anchor (HPA-583).
     var rowAnchors: (firstRowTop: CGFloat, rowPitch: CGFloat) {
         if usesEngravedNotation, let engraving, let first = engraving.rows.first {
+            let pitch = engraving.style.rowHeight + engraving.style.rowVerticalSpacing
+            let bandTop = max(0, first.staffCenterY - engraving.style.rowHeight / 2)
+            let inkBound = topmostInkAnchorTop(engraving: engraving, rowPitch: pitch) ?? bandTop
             return (
-                firstRowTop: max(0, first.staffCenterY - engraving.style.rowHeight / 2),
-                rowPitch: engraving.style.rowHeight + engraving.style.rowVerticalSpacing
+                firstRowTop: max(0, min(bandTop, inkBound)),
+                rowPitch: pitch
             )
         }
         return (
@@ -99,6 +106,83 @@ struct GameplayStaticNotationInput: Equatable {
             ),
             rowPitch: GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
         )
+    }
+
+    /// The `firstRowTop` bound that keeps every row's topmost ink visible:
+    /// row i's anchor lands at `firstRowTop + i * rowPitch`, which must sit
+    /// at-or-below the row's topmost painted Y or `scrollTo(anchor: .top)`
+    /// hides that ink. Bounds-bearing primitives contribute their painted
+    /// `minY`; endpoint/center-only primitives get a conservative
+    /// style-derived margin — an anchor that reveals slightly more than the
+    /// ink is correct, one that clips is not. Returns `nil` when no row
+    /// carries ink or furniture.
+    private func topmostInkAnchorTop(
+        engraving: EngravedNotation,
+        rowPitch: CGFloat
+    ) -> CGFloat? {
+        var top = CGFloat.infinity
+        for (row, minY) in Self.boundedInkTops(engraving: engraving)
+            + Self.joinedInkTops(engraving: engraving) {
+            top = min(top, minY - CGFloat(row) * rowPitch)
+        }
+        return top.isFinite ? top : nil
+    }
+
+    /// Per-row topmost Y for primitives that carry their own `rowIndex` and
+    /// a painted bounds or a style-bounded extent: furniture, heads, rests,
+    /// ledgers, dots, controls, and tuplets.
+    private static func boundedInkTops(
+        engraving: EngravedNotation
+    ) -> [(row: Int, minY: CGFloat)] {
+        let style = engraving.style
+        var tops: [(Int, CGFloat)] = []
+        tops += engraving.rows.map { ($0.index, $0.paintedBounds.minY) }
+        tops += engraving.noteHeads.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        tops += engraving.rests.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        tops += engraving.ledgerLines.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        tops += engraving.rhythmDots.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        tops += engraving.controls.map { ($0.rowIndex, $0.position.y - style.stopMarkSize) }
+        tops += engraving.tuplets.map { tuplet in
+            let inkTop = min(
+                tuplet.bracketPoints.map(\.y).min() ?? .infinity,
+                tuplet.labelPosition.y - style.tupletLabelSize.height / 2
+            )
+            return (tuplet.rowIndex, inkTop - style.tupletLineWidth)
+        }
+        return tops
+    }
+
+    /// Per-row topmost Y for primitives keyed by `noteID`/`noteIDs` rather
+    /// than `rowIndex` — stems, beams, flags, articulations join through the
+    /// note heads' row assignment.
+    private static func joinedInkTops(
+        engraving: EngravedNotation
+    ) -> [(row: Int, minY: CGFloat)] {
+        let style = engraving.style
+        let noteRow = Dictionary(
+            engraving.noteHeads.map { ($0.noteID, $0.rowIndex) },
+            uniquingKeysWith: { existing, _ in existing }
+        )
+        var tops: [(Int, CGFloat)] = []
+        tops += engraving.stems.compactMap { stem in
+            stem.noteIDs.lazy.compactMap { noteRow[$0] }.first.map {
+                ($0, min(stem.start.y, stem.end.y) - style.formatting.stemWidth)
+            }
+        }
+        tops += engraving.beams.compactMap { beam in
+            beam.noteIDs.lazy.compactMap { noteRow[$0] }.first.map {
+                ($0, min(beam.start.y, beam.end.y) - beam.thickness)
+            }
+        }
+        tops += engraving.flags.compactMap { flag in
+            noteRow[flag.noteID].map { ($0, flag.origin.y - style.formatting.staffSpace) }
+        }
+        tops += engraving.articulations.compactMap { articulation in
+            noteRow[articulation.noteID].map {
+                ($0, articulation.position.y - style.formatting.staffSpace)
+            }
+        }
+        return tops
     }
 }
 
