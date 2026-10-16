@@ -258,6 +258,28 @@ struct GameplayViewModelPlaybackResumeTests {
         #expect(songStartTime == nil)
     }
 
+    @Test("calculateElapsedTime falls back to playbackStartTime when metronome is idle")
+    func testCalculateElapsedTimeFallbackToPlaybackStartTime() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Force playing state without starting the metronome so
+        // getCurrentPlaybackTime() returns nil and we hit the fallback path.
+        vm.isPlaying = true
+        vm.playbackStartTime = Date().addingTimeInterval(-2.0)
+
+        let elapsed = vm.calculateElapsedTime()
+
+        vm.isPlaying = false
+
+        #expect(elapsed != nil, "Fallback path should return a non-nil elapsed time")
+        if let t = elapsed {
+            #expect(t >= 1.9 && t < 3.0, "Elapsed time should be approximately 2 seconds")
+        }
+    }
+
     enum TestError: Error {
         case playbackStartTimeNil
     }

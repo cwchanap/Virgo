@@ -311,6 +311,13 @@ struct GameplayViewModelBGMTimelineTests {
         viewModel.cleanup()
     }
 
+    @Test("calculateBGMOffset returns 0.0 when track is nil")
+    func testCalculateBGMOffsetNilTrack() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
+        let offset = vm.calculateBGMOffset()
+        #expect(offset == 0.0)
+    }
+
     @Test("calculateBGMOffset uses persisted DTX BGM lane start when available")
     func testCalculateBGMOffsetUsesPersistedBGMLaneStart() async throws {
         let song = Song(

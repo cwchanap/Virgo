@@ -254,6 +254,37 @@ struct GameplayViewModelPlaybackTests {
         _ = viewModel.inputHandler
     }
 
+    @Test("wireInputHandler routes onNoteResult hits to recordHit while playing")
+    func testWireInputHandlerRoutesHitsWhenPlaying() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        await vm.setupGameplay()
+
+        vm.wireInputHandler()
+        vm.startPlayback()
+
+        guard let note = vm.cachedNotes.first else {
+            Issue.record("expected at least one cachedNote in testWireInputHandlerRoutesHitsWhenPlaying")
+            return
+        }
+        let hit = InputHit(drumType: .kick, velocity: 0.8, timestamp: Date())
+        let result = NoteMatchResult(
+            hitInput: hit,
+            matchedNote: note,
+            timingAccuracy: .perfect,
+            measureNumber: note.measureNumber,
+            measureOffset: note.measureOffset,
+            timingError: 0.0
+        )
+
+        let scoreBefore = vm.scoreEngine.score
+        vm.inputHandler.onNoteResult?(result)
+
+        #expect(vm.scoreEngine.score > scoreBefore,
+                "Score should increase when a hit is delivered via the wired handler")
+    }
+
     @Test func testStartPlaybackStateConsistency() async throws {
         // This test verifies that isPlaying is only set to true after
         // all setup operations complete successfully.
