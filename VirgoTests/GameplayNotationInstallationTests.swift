@@ -319,6 +319,103 @@ struct GameplayNotationInstallationTests {
             "a chart whose engraving was rejected must not start audio"
         )
     }
+
+    // MARK: - Timeline preparation request seam + async worker
+    // (consolidated from GameplayNotationCoverageAdditionsTests)
+
+    @Test("makeTimelineNotationPreparationRequest returns nil without a layout snapshot")
+    func makeTimelineRequestReturnsNilWithoutSnapshot() async throws {
+        let chart = Chart(difficulty: .medium)
+        chart.notes.append(
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.4142135623730951)
+        )
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+
+        // Inadmissible manual offset → legacy availability, no layout snapshot.
+        #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
+        #expect(viewModel.cachedRhythmRuntime.layoutSnapshot == nil)
+        #expect(viewModel.makeTimelineNotationPreparationRequest() == nil)
+    }
+
+    @Test("makeTimelineNotationPreparationRequest returns a valid request for timeline charts")
+    func makeTimelineRequestReturnsValidRequestForTimeline() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+
+        #expect(viewModel.cachedRhythmRuntime.availability == .valid)
+        let request = try #require(viewModel.makeTimelineNotationPreparationRequest())
+        #expect(request.minimumMeasureCount == viewModel.cachedLayoutMeasureCount)
+    }
+
+    @Test("prepareTimelineNotation installs layout and marks gameplay prepared on normal completion")
+    func prepareTimelineNotationInstallsOnCompletion() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        defer { viewModel.cleanup() }
+
+        let request = try #require(viewModel.makeTimelineNotationPreparationRequest())
+        let generation = viewModel.beginNotationPreparation()
+        #expect(!viewModel.isGameplayPrepared)
+
+        await viewModel.prepareTimelineNotation(request, generation: generation)
+
+        #expect(viewModel.isGameplayPrepared)
+        #expect(viewModel.notationLayoutGeneration == generation)
+        #expect(viewModel.cachedNotationHasPlayableContent)
+        #expect(viewModel.notationPreparationWorkerTask == nil)
+    }
+
+    @Test("prepareTimelineNotation worker is cancelled when supertask is cancelled")
+    func prepareTimelineNotationCancelsWorkerOnSupertaskCancellation() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        defer { viewModel.cleanup() }
+
+        let request = try #require(viewModel.makeTimelineNotationPreparationRequest())
+        let generation = viewModel.beginNotationPreparation()
+
+        let preparationTask = Task { @MainActor in
+            await viewModel.prepareTimelineNotation(request, generation: generation)
+        }
+        preparationTask.cancel()
+        await preparationTask.value
+
+        // After cancellation, the engraving should not have been installed from
+        // this generation (the worker was cancelled before it could apply). The
+        // generation check alone is insufficient: a broken implementation could
+        // still install the prepared notation tagged with this same generation
+        // and pass it. Assert the viewModel state that installPreparedNotation
+        // and applyPreparedNotation would have mutated is unchanged — readiness,
+        // the installed engraving, the renderable flag set only by
+        // installPreparedNotation, and the derived measure maps populated only
+        // by applyPreparedNotation.
+        #expect(viewModel.notationLayoutGeneration == generation)
+        #expect(!viewModel.isGameplayPrepared)
+        #expect(viewModel.cachedEngravedNotation == nil)
+        #expect(!viewModel.cachedNotationHasRenderableContent)
+        #expect(viewModel.cachedMeasureRowMap.isEmpty)
+        #expect(viewModel.cachedNotationMeasuresByIndex.isEmpty)
+    }
 }
 
 @MainActor

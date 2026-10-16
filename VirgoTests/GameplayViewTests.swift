@@ -485,4 +485,72 @@ private extension GameplayViewTests {
             )
         }
     }
+
+    // MARK: - Consolidated from GameplayNotationCoverageAdditionsTests
+
+    @Test("rhythmFatalSheet renders message only when onDismiss is nil")
+    func rhythmFatalSheetRendersMessageOnlyWithoutOnDismiss() async throws {
+        try await TestSetup.withTestSetup {
+            let view = GameplayView(chart: Chart(difficulty: .easy), metronome: MetronomeEngine())
+                .rhythmFatalSheet(message: "Unsupported timing")
+
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 800, height: 600)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
+
+            #expect(texts.contains("Practice unavailable"))
+            #expect(texts.contains("Unsupported timing"))
+            // Without onDismiss, the "Back" button should not be rendered.
+            #expect(!texts.contains("Back"))
+        }
+    }
+
+    /// The only test asserting the Loading→prepared `.task` transition —
+    /// the subsumer cited by the deleted PatchCoverageAdditionsTests
+    /// mount-only `.task` variant.
+    @Test("GameplayView .task prepares gameplay and wires delegates for a normal chart")
+    func taskLifecyclePreparesGameplayForNormalChart() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
+            let metronome = GameplayViewModelTestHarness.createTestMetronome()
+            let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+            let container = TestContainer.shared.container
+
+            let view = GameplayView(chart: chart, metronome: metronome)
+                .environmentObject(settings)
+                .modelContainer(container)
+
+            // Retain the mounted view so the .task is not cancelled by deallocation.
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+
+            // Before the .task completes, the loading state should be visible.
+            #if os(macOS)
+            let textsBefore = SwiftUITestUtilities.renderedTexts(from: mounted.hostingView)
+            #expect(textsBefore.contains("Loading..."))
+            #endif
+
+            // Allow the .task-driven async preparation (loadChartData → setupGameplay)
+            // to complete. The .task body awaits multiple async boundaries, so we
+            // need to yield the main run loop long enough for continuations to resume.
+            try await Task.sleep(nanoseconds: 500_000_000)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            try await Task.sleep(nanoseconds: 300_000_000)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+
+            // After the .task completes, re-layout and verify the loading state
+            // is gone — the view model was prepared and the gameplay content shows.
+            #if os(macOS)
+            mounted.hostingView.layoutSubtreeIfNeeded()
+            mounted.hostingView.displayIfNeeded()
+            let textsAfter = SwiftUITestUtilities.renderedTexts(from: mounted.hostingView)
+            #expect(!textsAfter.contains("Loading..."),
+                    "Loading state should be replaced after .task prepares gameplay")
+            #endif
+        }
+    }
 }
