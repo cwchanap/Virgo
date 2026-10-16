@@ -656,6 +656,72 @@ struct GameplayViewModelBGMTimelineTests {
         viewModel.cleanup()
     }
 
+    // MARK: - refreshTimingCaches
+
+    @Test("refreshTimingCaches returns early when data not loaded")
+    func refreshTimingCachesEarlyReturnWhenNotLoaded() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        // Not loaded yet: guard should bail without mutating state.
+        vm.refreshTimingCaches()
+
+        #expect(vm.bgmOffsetSeconds == 0.0)
+        #expect(vm.cachedTrackDuration == 0.0)
+    }
+
+    @Test("refreshTimingCaches populates duration when data is loaded")
+    func refreshTimingCachesSetsDurationWhenLoaded() async throws {
+        let chart = Chart(difficulty: .medium)
+        chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.0))
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        vm.refreshTimingCaches()
+
+        #expect(vm.cachedTrackDuration > 0.0)
+    }
+
+    // MARK: - enforceBGMMinimumSpeedIfNeeded
+
+    @Test("enforceBGMMinimumSpeedIfNeeded returns nil without a BGM player")
+    func enforceMinSpeedNilWithoutBGM() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay(loadPersistedSpeed: false)
+        defer { vm.cleanup() }
+
+        #expect(vm.enforceBGMMinimumSpeedIfNeeded() == nil)
+    }
+
+    // MARK: - BGM clock mapping
+
+    @Test("convertToAudioPlayerDeviceTime maps CF time onto the audio device clock")
+    func convertToAudioPlayerDeviceTimeAccuracy() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
+        player.prepareToPlay()
+        let cfTime = CFAbsoluteTimeGetCurrent() + 1.0
+        let deviceTime = vm.convertToAudioPlayerDeviceTime(cfTime, bgmPlayer: player)
+        let expected = player.deviceCurrentTime + 1.0
+
+        #expect(abs(deviceTime - expected) < 0.05)
+    }
+
+    @Test("remainingBGMOffset clamps to zero when paused time exceeds the offset")
+    func remainingBGMOffsetClampsToZero() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        vm.bgmOffsetSeconds = 2.0
+        vm.pausedElapsedTime = 3.0
+
+        #expect(vm.remainingBGMOffset() == 0.0)
+    }
+
     // MARK: - setupBGMPlayer
 
     @Test("setupBGMPlayer sets bgmLoadingError when file path is invalid")
@@ -702,5 +768,128 @@ struct GameplayViewModelBGMTimelineTests {
 
         #expect(vm.bgmLoadingError == nil, "bgmLoadingError must stay nil when there is no BGM path")
         #expect(vm.bgmPlayer == nil, "bgmPlayer should stay nil when there is no BGM path")
+    }
+
+    @Test("BGM failure injection requires both UI testing flags")
+    func shouldInjectBGMFailureRequiresBothFlags() {
+        #expect(
+            GameplayViewModel.shouldInjectBGMFailure(
+                arguments: [LaunchArguments.uiTesting, LaunchArguments.uiTestingBGMFailure]
+            )
+        )
+        #expect(!GameplayViewModel.shouldInjectBGMFailure(arguments: [LaunchArguments.uiTesting]))
+        #expect(!GameplayViewModel.shouldInjectBGMFailure(arguments: [LaunchArguments.uiTestingBGMFailure]))
+        #expect(!GameplayViewModel.shouldInjectBGMFailure(arguments: []))
+    }
+
+    @Test("setupBGMPlayer loads a player from a valid WAV file")
+    func setupBGMPlayerLoadsFromValidFile() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("bgm-\(UUID().uuidString).wav")
+        try GameplayViewModelTestHarness.makeSilentWAVData().write(to: url)
+        vm.cachedSong = Song(title: "T", artist: "A", bpm: 120, duration: "1:00", genre: "Rock", bgmFilePath: url.path)
+
+        vm.setupBGMPlayer()
+
+        #expect(vm.bgmPlayer != nil)
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
+// MARK: - startBGMPlayback(track:) scheduling dispatch
+
+/// The five-way scheduling dispatch of `startBGMPlayback(track:)`, split into its own
+/// suite within this file to keep `GameplayViewModelBGMTimelineTests` under SwiftLint's
+/// type_body_length ERROR limit (controller ruling, HPA-583).
+@Suite("BGM Scheduling Dispatch", .serialized)
+@MainActor
+struct GameplayViewModelBGMTimelineDispatchTests {
+
+    @Test("startBGMPlayback starts fresh metronome-only with no BGM and no pause")
+    func startBGMMetronomeOnlyFresh() async throws {
+        let spy = ScheduledMetronomeSpy()
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
+        let vm = GameplayViewModel(chart: chart, metronome: spy)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        vm.startBGMPlayback(track: vm.track!)
+
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect(vm.lastScheduledPlaybackStartTime != nil)
+    }
+
+    @Test("startBGMPlayback resumes metronome-only when pausedElapsedTime > 0")
+    func startBGMMetronomeOnlyResume() async throws {
+        let spy = ScheduledMetronomeSpy()
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
+        let vm = GameplayViewModel(chart: chart, metronome: spy)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        vm.pausedElapsedTime = 2.0
+        vm.startBGMPlayback(track: vm.track!)
+
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect((spy.timelineStartAtTimeCalls.first?.elapsedTime ?? 0) > 0)
+        #expect(vm.lastScheduledPlaybackStartTime != nil)
+    }
+
+    @Test("startBGMPlayback resumes from BGM position when currentTime > 0")
+    func startBGMResumeFromPosition() async throws {
+        let spy = ScheduledMetronomeSpy()
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
+        let vm = GameplayViewModel(chart: chart, metronome: spy)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
+        player.prepareToPlay()
+        vm.bgmPlayer = player
+        player.currentTime = 1.0
+        vm.startBGMPlayback(track: vm.track!)
+
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect(vm.lastScheduledPlaybackStartTime != nil)
+    }
+
+    @Test("startBGMPlayback resumes during offset when paused and currentTime 0")
+    func startBGMResumeDuringOffset() async throws {
+        let spy = ScheduledMetronomeSpy()
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
+        let vm = GameplayViewModel(chart: chart, metronome: spy)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
+        player.prepareToPlay()
+        vm.bgmPlayer = player
+        vm.bgmOffsetSeconds = 2.0
+        vm.pausedElapsedTime = 1.0
+        vm.startBGMPlayback(track: vm.track!)
+
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect(vm.lastScheduledPlaybackStartTime != nil)
+    }
+
+    @Test("startBGMPlayback starts fresh BGM when currentTime 0 and no pause")
+    func startBGMFreshStart() async throws {
+        let spy = ScheduledMetronomeSpy()
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
+        let vm = GameplayViewModel(chart: chart, metronome: spy)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
+        player.prepareToPlay()
+        vm.bgmPlayer = player
+        vm.bgmOffsetSeconds = 0.5
+        vm.startBGMPlayback(track: vm.track!)
+
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect(vm.lastScheduledPlaybackStartTime != nil)
     }
 }

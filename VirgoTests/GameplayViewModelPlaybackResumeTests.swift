@@ -406,6 +406,26 @@ struct GameplayViewModelPlaybackResumeTests {
         }
     }
 
+    @Test("startPlayback resume uses BGM timeline when bgmPlayer.currentTime > 0")
+    func startPlaybackResumeViaBGMTimeline() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        await vm.loadChartData()
+        await vm.setupGameplay(loadPersistedSpeed: false)
+        defer { vm.cleanup() }
+
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
+        player.prepareToPlay()
+        vm.bgmPlayer = player
+        player.currentTime = 2.0
+        vm.bgmOffsetSeconds = 0.5
+        vm.cachedTrackDuration = 60.0
+        vm.pausedElapsedTime = 3.0
+
+        vm.startPlayback()
+
+        #expect(vm.isPlaying == true)
+    }
+
     enum TestError: Error {
         case playbackStartTimeNil
     }
