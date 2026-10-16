@@ -392,4 +392,32 @@ struct ServerSongCatalogRefreshTests {
         }
     }
 
+    @Test("Logs warning when chart levels are on 0-10 scale")
+    func testLevelScaleWarning() async throws {
+        // The only test exercising the `maxLevel <= 10` low-level-scale detection
+        // path in ServerSongCache.refreshCatalog. There is no log-capture seam, so
+        // this pins the user-visible outcome (the snapshot imports normally).
+        func makeLowLevelDTO(id: String, level: Double = 5.0) -> SimfileDTO {
+            SimfileDTO(
+                id: id, title: "Low", artist: "A", bpm: 120, genre: nil, tags: [],
+                durationSeconds: nil, updatedAt: "2026-06-01T00:00:00Z",
+                dtxFiles: [DtxFileDTO(label: "BASIC", level: level,
+                                      fileURL: "https://r2/\(id)/bas.dtx",
+                                      fileSizeBytes: 100, encoding: .shiftJIS)],
+                fileKeys: []
+            )
+        }
+
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let fetcher = MockSimfileFetcher(all: [makeLowLevelDTO(id: "lo")])
+            let cache = ServerSongCache(fetcher: fetcher, pageSize: 10)
+            try await cache.refreshCatalog(modelContext: context)
+
+            let songs = try context.fetch(FetchDescriptor<ServerSong>())
+            #expect(songs.count == 1)
+            #expect(songs.first?.songId == "lo")
+        }
+    }
+
 }
