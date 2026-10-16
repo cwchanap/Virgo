@@ -1,14 +1,18 @@
 //
-//  AppShellCoverageTests.swift
+//  AppShellPolicyTests.swift
 //  VirgoTests
+//
+//  Behavior owner for the launch-shell decision policies: ContentStartupPolicy,
+//  VirgoAppLaunchBehavior, and ReopenPolicy. Consolidated from the campaign
+//  AppShellCoverageTests (HPA-583) — no other suite exercised these types.
 //
 
 import Testing
 import Foundation
 @testable import Virgo
 
-@Suite("App Shell Coverage Tests")
-struct AppShellCoverageTests {
+@Suite("App Shell Policy Tests")
+struct AppShellPolicyTests {
 
     // MARK: - ContentStartupPolicy.startupAction
 
