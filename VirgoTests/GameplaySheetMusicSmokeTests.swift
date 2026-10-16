@@ -570,6 +570,68 @@ struct GameplaySheetMusicSmokeTests {
         }
     }
 
+    @Test("Gameplay sheet sizing uses renderable notation and reserves legacy fallback for malformed empty layout")
+    // swiftlint:disable:next function_body_length
+    func testGameplaySheetSizingUsesRenderableNotation() async throws {
+        try await TestSetup.withTestSetup {
+            let emptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+                chart: Chart(difficulty: .medium),
+                noteCount: 0
+            )
+            await emptyViewModel.loadChartData()
+            await emptyViewModel.setupGameplay()
+
+            let gameplayView = GameplayView(chart: emptyViewModel.chart, metronome: emptyViewModel.metronome)
+            #expect(gameplayView.usesEngravedNotation(viewModel: emptyViewModel))
+            #expect(emptyViewModel.cachedNotationHasRenderableContent)
+            #expect(!emptyViewModel.cachedNotationHasPlayableContent)
+            let emptyEngraving = try #require(emptyViewModel.cachedEngravedNotation)
+            #expect(emptyEngraving.measureBars.count >= 1)
+            #expect(
+                gameplayView.sheetMeasurePositions(viewModel: emptyViewModel).count
+                    == emptyEngraving.measures.count
+            )
+            #expect(
+                gameplayView.sheetContentWidth(viewModel: emptyViewModel)
+                    == emptyEngraving.contentWidth
+            )
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: emptyViewModel)
+                    == emptyEngraving.contentHeight
+            )
+
+            emptyViewModel.clearNotationInstallation()
+            #expect(!gameplayView.usesEngravedNotation(viewModel: emptyViewModel))
+            #expect(gameplayView.sheetContentWidth(viewModel: emptyViewModel) == GameplayLayout.maxRowWidth)
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: emptyViewModel)
+                    == GameplayLayout.totalHeight(for: emptyViewModel.cachedMeasurePositions)
+            )
+
+            let denseChart = Chart(difficulty: .medium)
+            for index in 0..<32 {
+                denseChart.notes.append(
+                    Note(
+                        interval: .sixteenth,
+                        noteType: .snare,
+                        measureNumber: 1,
+                        measureOffset: Double(index) / 32.0
+                    )
+                )
+            }
+            let denseViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: denseChart)
+            await denseViewModel.loadChartData()
+            await denseViewModel.setupGameplay()
+
+            #expect(gameplayView.usesEngravedNotation(viewModel: denseViewModel))
+            #expect(gameplayView.sheetContentWidth(viewModel: denseViewModel) > GameplayLayout.maxRowWidth)
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: denseViewModel)
+                    == denseViewModel.cachedEngravedNotation?.contentHeight
+            )
+        }
+    }
+
     /// Asserts the live playhead equals the installed engraving's own
     /// `FormattedNotation.position` lookup and the wrapped row's
     /// `staffCenterY` — the same join the alignment suite pins, re-verified

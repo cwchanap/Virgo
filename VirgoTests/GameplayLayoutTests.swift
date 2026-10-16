@@ -236,6 +236,20 @@ struct GameplayLayoutTests {
         #expect(belowLine1Y > line1Y)
     }
 
+    @Test("GameplayLayout note positions expose stable display names and raw values")
+    func testNotePositionDisplayNamesAndRawValues() {
+        let positions = GameplayLayout.NotePosition.allCases
+        #expect(!positions.isEmpty)
+
+        let rawValues = Set(positions.map(\.rawValue))
+        #expect(rawValues.count == positions.count)
+
+        for position in positions {
+            #expect(!position.displayName.isEmpty)
+            #expect(!position.rawValue.isEmpty)
+        }
+    }
+
     // MARK: - calculateMeasurePositions
 
     @Test("calculateMeasurePositions returns correct count")
