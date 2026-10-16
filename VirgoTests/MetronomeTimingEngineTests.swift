@@ -563,6 +563,22 @@ struct MetronomeTimingEngineTests {
 
         #expect(result == 0, "A past target that underflows must clamp to 0")
     }
+
+    // MARK: - audioTime(forIdealBeatTime:) (migrated from PatchCoverageAdditionsTests)
+
+    @Test("audioTime returns nil for a stale beat time that clamps to mach zero")
+    func audioTimeReturnsNilForStaleBeat() {
+        let audioTime = MetronomeTimingEngine.audioTime(forIdealBeatTime: 999.0)
+        #expect(audioTime == nil, "A beat time before the reference should not produce a valid audio time")
+    }
+
+    @Test("audioTime returns a valid time for a future beat")
+    func audioTimeReturnsValidTimeForFutureBeat() {
+        let futureTime = CFAbsoluteTimeGetCurrent() + 1.0
+        let audioTime = MetronomeTimingEngine.audioTime(forIdealBeatTime: futureTime)
+        #expect(audioTime != nil)
+        #expect(audioTime?.isHostTimeValid == true)
+    }
 }
 
 private func timingTestVariableBarSchedule() throws -> RhythmMetronomeSchedule {

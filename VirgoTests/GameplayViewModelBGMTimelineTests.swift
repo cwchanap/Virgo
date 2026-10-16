@@ -339,6 +339,43 @@ struct GameplayViewModelBGMTimelineTests {
         viewModel.cleanup()
     }
 
+    @Test("calculateBGMOffset uses persisted DTX bgmStartOffsetSeconds scaled by speed")
+    func testCalculateBGMOffsetScalesPersistedDTXOffsetBySpeed() async throws {
+        let song = Song(
+            title: "BGM Offset Speed",
+            artist: "Tester",
+            bpm: 200,
+            duration: "3:30",
+            genre: "DTX",
+            bgmStartOffsetSeconds: 2.0
+        )
+        let chart = Chart(difficulty: .medium, song: song)
+        chart.notes.append(Note(
+            interval: .quarter,
+            noteType: .bass,
+            measureNumber: 2,
+            measureOffset: 0.625,
+            originKind: .dtx
+        ))
+
+        let viewModel = GameplayViewModel(chart: chart, metronome: GameplayViewModelTestHarness.createTestMetronome())
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+
+        #expect(
+            abs(viewModel.calculateBGMOffset() - 2.0) < 0.001,
+            "At 1.0x speed the DTX BGM offset should pass through unscaled"
+        )
+
+        viewModel.practiceSettings.setSpeed(0.5)
+        #expect(
+            abs(viewModel.calculateBGMOffset() - 4.0) < 0.001,
+            "At 0.5x speed the offset should double in timeline seconds"
+        )
+
+        viewModel.cleanup()
+    }
+
     @Test("calculateBGMOffset honors an explicit zero BGM offset even when the first note is later")
     func testCalculateBGMOffsetHonorsExplicitZero() async throws {
         // DTX charts where lane 01 starts at measure 000 (e.g. `#00001: 1A…`)

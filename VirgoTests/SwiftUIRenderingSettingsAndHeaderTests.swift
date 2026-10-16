@@ -182,4 +182,17 @@ struct SwiftUIRenderingSettingsAndHeaderTests {
             vm.cleanup()
         }
     }
+
+    @Test("MainMenuView renders the start menu without entering ContentView")
+    func testMainMenuViewRendersStartMenu() async throws {
+        try await TestSetup.withTestSetup {
+            let menu = MainMenuView()
+
+            SwiftUITestUtilities.assertView(
+                menu,
+                containsStrings: ["VIRGO", "START"],
+                size: CGSize(width: 1024, height: 768)
+            )
+        }
+    }
 }

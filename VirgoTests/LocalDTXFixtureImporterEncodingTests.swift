@@ -116,6 +116,26 @@ struct LocalDTXFixtureImporterEncodingTests {
         #expect(song.title == "From Chart", "Title must fall back to the first chart's title")
     }
 
+    @Test("importSong imports a UTF-8 SET.def with a single chart and no audio assets")
+    func importSongImportsUTF8FixtureWithoutAudio() throws {
+        let context = TestContainer.isolatedContainer().context
+        let tempDir = try makeTempDirectory()
+        defer { removeTemp(tempDir) }
+        try writeSETDef(
+            in: tempDir,
+            content: "#TITLE: UTF8 Fixture\n#L1LABEL: BASIC\n#L1FILE: chart.dtx\n"
+        )
+        try writeMinimalChart(in: tempDir, filename: "chart.dtx", title: "UTF8 Fixture")
+
+        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
+
+        #expect(song.title == "UTF8 Fixture")
+        #expect(song.charts.count == 1)
+        #expect(song.charts.first?.difficulty == .easy)
+        #expect(song.bgmFilePath == nil, "No bgm.m4a present -> path should be nil")
+        #expect(song.previewFilePath == nil, "No preview.mp3 present -> path should be nil")
+    }
+
     @Test("SET.def TITLE without a colon still parses")
     func setTitleWithoutColonParses() throws {
         let context = TestContainer.isolatedContainer().context

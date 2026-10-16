@@ -72,6 +72,21 @@ struct GameplayViewModelComputationsTests {
                 "Invalid widths must not change the cached row width")
     }
 
+    @Test("updateRowWidth before gameplay preparation caches width without rebuilding layout")
+    func testUpdateRowWidthBeforePreparationCachesOnly() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        #expect(!vm.isGameplayPrepared)
+        let beforeWidth = vm.cachedLayoutRowWidth
+
+        vm.updateRowWidth(1400)
+
+        #expect(vm.cachedLayoutRowWidth > beforeWidth,
+                "Width should be cached even before gameplay is prepared")
+    }
+
     @Test("renderable rest layout replaces legacy measure positions without becoming playable")
     func testRenderableRestLayoutUsesNotationMeasurePositions() async throws {
         let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
