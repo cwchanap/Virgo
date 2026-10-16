@@ -36,7 +36,8 @@ struct GameplayViewModelPlaybackTests {
 
     @Test func testUpdateSpeedUpdatesMetronomeWhenEnabledAndNotPlaying() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let driver = RecordingAudioDriver()
+        let metronome = MetronomeEngine(audioDriver: driver)
         let practiceSettings = GameplayViewModelTestHarness.createTestPracticeSettings()
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
@@ -56,6 +57,10 @@ struct GameplayViewModelPlaybackTests {
         try await Task.sleep(nanoseconds: 300_000_000)
         let expectedBPM = viewModel.effectiveBPM()
         #expect(abs(metronome.bpm - expectedBPM) < 0.001)
+        // Folded from GameplayViewModelCoveragePlaybackAdditionsTests "Speed change calls
+        // metronome.updateBPM when metronome is enabled but ViewModel is not playing":
+        // the enabled-metronome speed-change path must resume the audio driver.
+        #expect(driver.resumeCallCount >= 1)
 
         metronome.stop()
         viewModel.cleanup()
@@ -142,6 +147,23 @@ struct GameplayViewModelPlaybackTests {
 
         // Cleanup
         viewModel.cleanup()
+    }
+
+    @Test("restartPlayback when not playing does not start playback")
+    func testRestartPlaybackWhenNotPlayingDoesNotStartPlayback() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+
+        #expect(vm.isPlaying == false)
+        vm.pausedElapsedTime = 5.0
+
+        vm.restartPlayback()
+
+        #expect(vm.isPlaying == false, "Should remain stopped after restart from idle state")
+        #expect(vm.pausedElapsedTime == 0.0, "Elapsed time should have been reset")
+
+        vm.cleanup()
     }
 
     @Test func testSkipToEnd() async throws {
