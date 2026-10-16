@@ -1,11 +1,11 @@
 //
-//  LocalDTXFixtureImporterCoverageTests.swift
+//  LocalDTXFixtureImporterEncodingTests.swift
 //  VirgoTests
 //
-//  Branch-coverage complement to LocalDTXFixtureImporterTests. Focuses on the
-//  error throws, decode fallbacks, and drop/ignore paths that the happy-path
-//  suite does not exercise. Bundled-import entry-point and deletion-gate
-//  ownership lives in LocalDTXFixtureImporterTests.
+//  Encoding, decodability, and SET.def parsing variants for
+//  LocalDTXFixtureImporter, split out of LocalDTXFixtureImporterTests to keep
+//  that file under the SwiftLint limits. Covers SET.def presence/decode guards,
+//  BOM/decode fallbacks, and tolerant SET.def parsing.
 //
 
 import Foundation
@@ -13,11 +13,9 @@ import SwiftData
 import Testing
 @testable import Virgo
 
-@Suite("Local DTX Fixture Importer Coverage", .serialized)
+@Suite("Local DTX Fixture Importer Encoding Tests", .serialized)
 @MainActor
-struct LocalDTXFixtureImporterCoverageTests {
-    // MARK: - Error throws (fresh-import guards)
-
+struct LocalDTXFixtureImporterEncodingTests {
     @Test("importSong throws missingSETFile when SET.def is absent")
     func importSongThrowsMissingSETFileWhenSETDefAbsent() throws {
         let context = TestContainer.isolatedContainer().context
@@ -56,70 +54,6 @@ struct LocalDTXFixtureImporterCoverageTests {
         }
     }
 
-    @Test("importSong throws noPlayableCharts when every label is unrecognized")
-    func importSongThrowsNoPlayableChartsWhenAllLabelsUnrecognized() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        try writeSETDef(
-            in: tempDir,
-            content: "#TITLE: No Charts\n#L1LABEL: CHALLENGE\n#L1FILE: chart1.dtx\n"
-                + "#L2LABEL: ENCORE\n#L2FILE: chart2.dtx\n"
-        )
-        try writeMinimalChart(in: tempDir, filename: "chart1.dtx", title: "No Charts")
-        try writeMinimalChart(in: tempDir, filename: "chart2.dtx", title: "No Charts")
-
-        do {
-            _ = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-            Issue.record("Expected noPlayableCharts error")
-        } catch LocalDTXFixtureImportError.noPlayableCharts {
-            // Expected: all charts dropped by the unrecognized-label guard.
-        } catch {
-            Issue.record("Expected .noPlayableCharts but got \(error)")
-        }
-    }
-
-    @Test("importSong throws noPlayableCharts when the referenced chart file is missing")
-    func importSongThrowsNoPlayableChartsWhenChartFileMissing() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        try writeSETDef(
-            in: tempDir,
-            content: "#TITLE: Ghost\n#L1LABEL: BASIC\n#L1FILE: ghost.dtx\n"
-        )
-        // ghost.dtx is intentionally never created.
-
-        do {
-            _ = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-            Issue.record("Expected noPlayableCharts error")
-        } catch LocalDTXFixtureImportError.noPlayableCharts {
-            // Expected: the missing-file guard drops the only chart.
-        } catch {
-            Issue.record("Expected .noPlayableCharts but got \(error)")
-        }
-    }
-
-    // MARK: - Drop-with-survival
-
-    @Test("importSong drops a missing chart file but keeps remaining charts")
-    func importSongDropsMissingChartFileButKeepsRemaining() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        try writeSETDef(
-            in: tempDir,
-            content: "#TITLE: Partial\n#L1LABEL: BASIC\n#L1FILE: present.dtx\n"
-                + "#L2LABEL: ADVANCED\n#L2FILE: missing.dtx\n"
-        )
-        try writeMinimalChart(in: tempDir, filename: "present.dtx", title: "Partial")
-
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-
-        #expect(song.charts.count == 1, "Missing chart file must be dropped; present chart kept")
-        #expect(song.charts.first?.difficulty == .easy)
-    }
-
     @Test("REAL difficulty label maps to expert")
     func realDifficultyLabelMapsToExpert() throws {
         let context = TestContainer.isolatedContainer().context
@@ -133,8 +67,6 @@ struct LocalDTXFixtureImporterCoverageTests {
         #expect(song.charts.count == 1)
         #expect(song.charts.first?.difficulty == .expert, "REAL label must map to .expert")
     }
-
-    // MARK: - decodeSETFile fallbacks
 
     @Test("decodeSETFile decodes a UTF-16 BE BOM SET.def")
     func decodeSETFileHandlesUTF16BigEndianBOM() throws {
@@ -171,26 +103,6 @@ struct LocalDTXFixtureImporterCoverageTests {
         #expect(song.charts.count == 1)
     }
 
-    // MARK: - Duration + title fallback
-
-    @Test("duration uses the canonical one-measure timeline when the imported chart has no notes")
-    func durationUsesCanonicalTimelineWhenChartHasNoNotes() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        try writeSETDef(in: tempDir, content: "#TITLE: Empty\n#L1LABEL: BASIC\n#L1FILE: chart.dtx\n")
-        // No note lines still produce the timeline's canonical minimum one measure.
-        let chart = "#TITLE: Empty\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50"
-        try chart.write(
-            to: tempDir.appendingPathComponent("chart.dtx"),
-            atomically: true, encoding: .utf8
-        )
-
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-
-        #expect(song.duration == "0:02")
-    }
-
     @Test("importSong uses the chart title when SET.def omits #TITLE")
     func importSongUsesChartTitleWhenSETDefOmitsTitle() throws {
         let context = TestContainer.isolatedContainer().context
@@ -219,22 +131,6 @@ struct LocalDTXFixtureImporterCoverageTests {
         #expect(song.title == "NoColon")
     }
 
-    // MARK: - LocalizedError descriptions
-
-    @Test("LocalizedError descriptions are populated for every error case")
-    func errorDescriptionsArePopulated() {
-        let url = URL(fileURLWithPath: "/tmp/SET.def")
-        let missing = LocalDTXFixtureImportError.missingSETFile(url)
-        let unreadable = LocalDTXFixtureImportError.unreadableSETFile(url)
-        let noCharts = LocalDTXFixtureImportError.noPlayableCharts("song-42")
-
-        #expect(missing.errorDescription?.contains("Missing SET.def") == true)
-        #expect(unreadable.errorDescription?.contains("Unable to decode") == true)
-        #expect(noCharts.errorDescription?.contains("song-42") == true)
-    }
-
-    // MARK: - SETList parsing robustness
-
     @Test("importSong ignores malformed SET.def directives and imports valid charts")
     func importSongIgnoresMalformedDirectives() throws {
         let context = TestContainer.isolatedContainer().context
@@ -260,7 +156,7 @@ struct LocalDTXFixtureImporterCoverageTests {
 
     private func makeTempDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("virgo-dtx-cov-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("virgo-dtx-enc-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
