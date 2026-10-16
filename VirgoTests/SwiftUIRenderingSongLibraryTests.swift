@@ -1,17 +1,24 @@
 //
-//  SongLibraryCoverageTests.swift
+//  SwiftUIRenderingSongLibraryTests.swift
 //  VirgoTests
-//
-//  Created by Copilot on 31/3/2026.
 //
 
 import Testing
 import SwiftUI
 @testable import Virgo
 
-@Suite("Song Library Coverage Tests", .serialized)
+/// Song-library component rendering ownership, consolidated from the campaign
+/// SongLibraryCoverageTests (HPA-583): adding these to
+/// `SwiftUIRenderingLibraryAndResultsTests` would breach both of that file's
+/// SwiftLint ERROR budgets (struct1 416/600 type body, file 663/1000). The
+/// ServerSongRow / LibraryView / SavedSongRow / SongCard rendered-content
+/// contracts have no other owner.
+@Suite("SwiftUI Song Library Rendering Tests", .serialized)
 @MainActor
-struct SongLibraryCoverageTests {
+struct SwiftUIRenderingSongLibraryTests {
+
+    // MARK: - ServerSongRow
+
     @Test("ServerSongRow renders loading state with chart and audio indicators")
     func testServerSongRowLoadingState() async throws {
         try await TestSetup.withTestSetup {
@@ -163,6 +170,8 @@ struct SongLibraryCoverageTests {
         }
     }
 
+    // MARK: - LibraryView
+
     @Test("LibraryView renders empty downloaded-song state")
     func testLibraryViewEmptyState() async throws {
         try await TestSetup.withTestSetup {
@@ -287,64 +296,7 @@ struct SongLibraryCoverageTests {
         }
     }
 
-    @Test("SavedSongRow renders deleting progress state")
-    func testSavedSongRowDeletingState() async throws {
-        try await TestSetup.withTestSetup {
-            let song = SwiftUICoverageFixtures.makeSong(
-                title: "Deleting Song",
-                genre: "DTX Import",
-                charts: [
-                    SwiftUICoverageFixtures.makeChart(difficulty: .medium, level: 40)
-                ]
-            )
-
-            SwiftUITestUtilities.assertView(
-                SavedSongRow(song: song, isDeleting: true, onDelete: {}),
-                containsStrings: ["Deleting Song", "Deleting..."],
-                excludesStrings: ["Delete"]
-            )
-        }
-    }
-
-    @Test("LibraryView renders delete button for non-deleting downloaded songs")
-    func testLibraryViewDeleteButtonState() async throws {
-        try await TestSetup.withTestSetup {
-            let song = SwiftUICoverageFixtures.makeSong(
-                title: "Deletable Song",
-                artist: "Delete Artist",
-                genre: "DTX Import",
-                charts: [SwiftUICoverageFixtures.makeChart(difficulty: .easy, level: 20)]
-            )
-
-            SwiftUITestUtilities.assertView(
-                LibraryView(songs: [song], serverSongService: ServerSongService()),
-                containsStrings: ["Downloaded Songs", "1 songs downloaded"],
-                excludesStrings: ["No Downloaded Songs"]
-            )
-        }
-    }
-
-    @Test("SavedSongRow renders delete button when onDelete is provided and not deleting")
-    func testSavedSongRowDeleteButtonState() async throws {
-        try await TestSetup.withTestSetup {
-            let song = SwiftUICoverageFixtures.makeSong(
-                title: "Deletable Song",
-                genre: "DTX Import",
-                charts: [
-                    SwiftUICoverageFixtures.makeChart(difficulty: .medium, level: 40)
-                ]
-            )
-
-            let row = SavedSongRow(song: song, isDeleting: false, onDelete: {})
-            #expect(row.showsDeleteButton)
-
-            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(row)
-            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
-
-            #expect(texts.contains("Deletable Song"), "Expected title; got \(texts)")
-            #expect(!texts.contains("Deleting..."), "Should not show deleting state; got \(texts)")
-        }
-    }
+    // MARK: - SavedSongRow / SongCard
 
     @Test("SavedSongRow hides delete button when onDelete is nil")
     func testSavedSongRowNoDeleteFallback() async throws {
