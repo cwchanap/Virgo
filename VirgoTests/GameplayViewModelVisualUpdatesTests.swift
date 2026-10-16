@@ -175,6 +175,34 @@ struct GameplayViewModelVisualUpdatesTests {
         viewModel.cleanup()
     }
 
+    @Test("updatePlaybackProgress throttles rapid ticks and publishes on completion")
+    func testPlaybackProgressThrottlesAndPublishesOnCompletion() async throws {
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
+        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let viewModel = GameplayViewModel(chart: chart, metronome: metronome)
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+
+        viewModel.isPlaying = true
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 0.0)
+        let firstProgress = viewModel.playbackProgress
+        #expect(firstProgress == 0.0)
+
+        // A tiny elapsed delta within the publish interval must be throttled.
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 0.01)
+        #expect(viewModel.playbackProgress == firstProgress, "Sub-threshold tick should not publish progress")
+
+        // A delta beyond the publish interval should update progress.
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: 0.2)
+        #expect(viewModel.playbackProgress > firstProgress, "Larger tick should publish progress")
+
+        // Reaching the end of the track must publish completion even if the delta is small.
+        let duration = viewModel.cachedTrackDuration
+        viewModel.updateContinuousVisualsForTesting(elapsedTime: duration + 1.0)
+        #expect(viewModel.playbackProgress == 1.0, "Completion tick should clamp progress to 1.0")
+    }
+
     @Test func testPurpleBarPositionWhenNotPlaying() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart()
         let metronome = GameplayViewModelTestHarness.createTestMetronome()

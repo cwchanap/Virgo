@@ -217,6 +217,21 @@ struct SwiftUIRenderingLibraryAndResultsTests {
         }
     }
 
+    @Test("ChartSelectionCard renders the difficulty play button content")
+    func testChartSelectionCardRendersDifficultyPlayButton() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = SwiftUICoverageFixtures.makeChart(difficulty: .hard, level: 70)
+            chart.bestScore = 12_500
+            let card = ChartSelectionCard(chart: chart, onSelect: {})
+
+            SwiftUITestUtilities.assertView(
+                card,
+                containsStrings: ["Level 70", "HARD"],
+                size: CGSize(width: 360, height: 120)
+            )
+        }
+    }
+
     @Test("SavedSongRow renders metadata and delete states")
     func testSavedSongRowRenderingStates() async throws {
         try await TestSetup.withTestSetup {

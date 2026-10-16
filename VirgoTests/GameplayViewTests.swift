@@ -466,4 +466,23 @@ private extension GameplayViewTests {
         song.charts = [chart]
         return chart
     }
+
+    @Test("GameplayView renders the purple bar overlay when a position is set")
+    func testGameplayViewRendersPurpleBarOverlay() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+            vm.isPlaying = true
+            vm.updatePurpleBarPosition(elapsedTime: 0.01)
+            #expect(vm.purpleBarPosition != nil, "Fixture must produce a purple bar position")
+
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+                .environmentObject(vm.practiceSettings)
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
 }

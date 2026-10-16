@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftUI
 import Foundation
 import SwiftData
 @testable import Virgo
@@ -358,5 +359,24 @@ struct ContentViewTests {
         #expect(chart.rhythmMetadataData == nil)
         #expect(RhythmTimelineResolver().resolve(chart: chart).availability == .valid)
         #expect(chart.rhythmMetadataData == nil)
+    }
+
+    @Test("ContentView mounts and runs the startup onAppear with the tab shell")
+    func testContentViewMountsAndRunsStartupOnAppear() async throws {
+        try await TestSetup.withTestSetup {
+            let metronome = MetronomeEngine(audioDriver: RecordingAudioDriver())
+            let container = TestContainer.shared.container
+
+            let view = ContentView()
+                .environmentObject(metronome)
+                .modelContainer(container)
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 800)
+            )
+            // Let the synchronous onAppear body and queued startup tasks settle.
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
     }
 }
