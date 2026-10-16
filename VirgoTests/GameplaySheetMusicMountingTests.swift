@@ -182,6 +182,45 @@ struct GameplaySheetMusicMountingTests {
             #endif
         }
     }
+
+    @Test("Gameplay sheet auto-scroll preserves legacy empty layout without scrolling notation-only content")
+    func testGameplaySheetAutoScrollPolicy() async throws {
+        try await TestSetup.withTestSetup {
+            let restOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+                chart: Chart(difficulty: .medium),
+                noteCount: 0
+            )
+            await restOnlyViewModel.loadChartData()
+            await restOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let controlOnlyChart = Chart(difficulty: .medium)
+            controlOnlyChart.controlEvents.append(ChartControlEvent(
+                kind: .choke,
+                measureNumber: 1,
+                measureOffset: 0,
+                targetLaneID: "1A"
+            ))
+            let controlOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: controlOnlyChart)
+            await controlOnlyViewModel.loadChartData()
+            await controlOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let playableViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+            await playableViewModel.loadChartData()
+            await playableViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let legacyEmptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 0)
+            await legacyEmptyViewModel.loadChartData()
+            await legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)
+            legacyEmptyViewModel.clearNotationInstallation()
+
+            let gameplayView = GameplayView(chart: playableViewModel.chart, metronome: playableViewModel.metronome)
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: restOnlyViewModel, isPlaying: true))
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: controlOnlyViewModel, isPlaying: true))
+            #expect(gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: true))
+            #expect(gameplayView.shouldAutoScrollSheet(viewModel: legacyEmptyViewModel, isPlaying: true))
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: false))
+        }
+    }
 }
 
 private extension EngravedNotation {

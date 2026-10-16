@@ -327,4 +327,43 @@ struct SwiftUIRenderingSettingsAndHeaderTests {
             )
         }
     }
+
+    // MARK: - Settings views (consolidated from SwiftUIRenderingCoverageTests)
+
+    @Test("SettingsView renders inside a navigation stack")
+    func testSettingsViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let view = NavigationStack {
+                SettingsView()
+            }
+            .environmentObject(MetronomeEngine(audioDriver: RecordingAudioDriver()))
+
+            SwiftUITestUtilities.assertViewWithEnvironment(view)
+        }
+    }
+
+    @Test("AudioSettingsView renders its sections")
+    func testAudioSettingsViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let view = NavigationStack {
+                AudioSettingsView()
+            }
+
+            SwiftUITestUtilities.assertViewWithEnvironment(view)
+        }
+    }
+
+    @Test("DrumNotationSettingsView renders interactive notation controls")
+    func testDrumNotationSettingsViewRendering() async throws {
+        try await TestSetup.withTestSetup {
+            let view = NavigationStack {
+                DrumNotationSettingsView()
+            }
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 1600)
+            )
+        }
+    }
 }
