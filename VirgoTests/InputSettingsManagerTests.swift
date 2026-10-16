@@ -328,4 +328,118 @@ struct InputSettingsManagerTests {
         #expect(secondManager.getMidiMapping(for: .snare) == 38)
         #expect(secondManager.getSelectedMIDISource() == nil)
     }
+
+    // MARK: - DrumNotationSettingsManager
+    // (consolidated from InputNotationCoverageTests — the notation settings
+    // manager's persistence contract had no non-campaign owner)
+
+    @Test("DrumNotationSettingsManager seeds notePositions in init without calling loadSettings")
+    func drumNotationSettingsManagerInitSeedsPositions() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            // Do NOT call loadSettings() — positions should be seeded from init
+            let manager = DrumNotationSettingsManager(userDefaults: userDefaults)
+
+            for drumType in DrumType.allCases {
+                #expect(
+                    manager.getNotePosition(for: drumType) == drumType.notePosition,
+                    "Expected default position for \(drumType) from init-seeded dictionary"
+                )
+            }
+        }
+    }
+
+    @Test("DrumNotationSettingsManager seeds persisted overrides in init")
+    func drumNotationSettingsManagerInitSeedsPersistedOverrides() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            // Persist a custom override, then create a fresh manager
+            let firstManager = DrumNotationSettingsManager(userDefaults: userDefaults)
+            firstManager.setNotePosition(.belowLine6, for: .snare)
+
+            let freshManager = DrumNotationSettingsManager(userDefaults: userDefaults)
+            // Must pick up the persisted override without needing loadSettings()
+            #expect(
+                freshManager.getNotePosition(for: .snare) == .belowLine6,
+                "Init-seeded positions must include persisted overrides"
+            )
+        }
+    }
+
+    @Test("DrumNotationSettingsManager loads defaults when no persisted state exists")
+    func drumNotationSettingsManagerDefaultsOnFirstLoad() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            let manager = DrumNotationSettingsManager(userDefaults: userDefaults)
+            manager.loadSettings()
+
+            for drumType in DrumType.allCases {
+                #expect(
+                    manager.getNotePosition(for: drumType) == drumType.notePosition,
+                    "Expected default position for \(drumType)"
+                )
+            }
+        }
+    }
+
+    @Test("DrumNotationSettingsManager persists custom position across manager instances")
+    func drumNotationSettingsManagerPersistenceAcrossInstances() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            let manager = DrumNotationSettingsManager(userDefaults: userDefaults)
+            manager.loadSettings()
+            manager.setNotePosition(.belowLine6, for: .snare)
+            #expect(manager.getNotePosition(for: .snare) == .belowLine6)
+
+            let reloaded = DrumNotationSettingsManager(userDefaults: userDefaults)
+            reloaded.loadSettings()
+            #expect(reloaded.getNotePosition(for: .snare) == .belowLine6)
+        }
+    }
+
+    @Test("DrumNotationSettingsManager resetToDefaults restores all drum type positions")
+    func drumNotationSettingsManagerReset() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+
+            let manager = DrumNotationSettingsManager(userDefaults: userDefaults)
+            manager.loadSettings()
+
+            for drumType in DrumType.allCases {
+                if let firstNonDefault = GameplayLayout.NotePosition.allCases.first(where: { $0 != drumType.notePosition }) {
+                    manager.setNotePosition(firstNonDefault, for: drumType)
+                }
+            }
+
+            manager.resetToDefaults()
+
+            for drumType in DrumType.allCases {
+                #expect(
+                    manager.getNotePosition(for: drumType) == drumType.notePosition,
+                    "Expected default restored for \(drumType)"
+                )
+            }
+        }
+    }
+
+    @Test("DrumNotationSettingsManager setNotePosition persists immediately")
+    func drumNotationSettingsManagerSetAndGet() async throws {
+        try await TestSetup.withTestSetup {
+            let (userDefaults, _) = TestUserDefaults.makeIsolated()
+            let manager = DrumNotationSettingsManager(userDefaults: userDefaults)
+            manager.loadSettings()
+
+            let targetDrum = DrumType.kick
+            let original = manager.getNotePosition(for: targetDrum)
+
+            if let newPos = GameplayLayout.NotePosition.allCases.first(where: { $0 != original }) {
+                manager.setNotePosition(newPos, for: targetDrum)
+                #expect(manager.getNotePosition(for: targetDrum) == newPos)
+            }
+        }
+    }
 }
