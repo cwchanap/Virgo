@@ -90,27 +90,25 @@ final class GameplayViewUITests: XCTestCase {
     @MainActor
     func testGameplayViewPlaybackControls() throws {
         try openGameplay(in: app)
+
+        // 1. Tap Play on the hittable play/pause control.
         let playButton = try requirePlaybackButton()
-
-        // Test play button exists and is tappable
-        XCTAssertTrue(playButton.isHittable)
-
-        // Test restart button exists
-        let restartButton = try requireGameplayRestartControl(in: app)
-        XCTAssertTrue(restartButton.isHittable)
-
-        // Test play button tap
+        XCTAssertTrue(playButton.isHittable, "The play/pause control should be hittable while the session is paused")
         playButton.tap()
 
-        let playbackButton = try requirePlaybackButton(timeout: 2)
+        // 2. Verify the session is playing: the control exposes its Pause label.
+        try requireControl(named: "Pause", in: app, timeout: 3)
 
-        // Test that we can tap the button again (whether it's play or pause)
-        XCTAssertTrue(playbackButton.isHittable)
+        // 3. Tap Pause (re-acquired by its current label) and verify the paused state.
+        try tapControl(named: "Pause", in: app, timeout: 3)
+        let pausedControl = try requireControl(named: "Play", in: app, timeout: 3)
+        XCTAssertTrue(pausedControl.isHittable, "The play/pause control should remain hittable after pausing")
 
-        // Test restart functionality
+        // 4. Restart the paused session: Play must be available again and hittable.
+        let restartButton = try requireGameplayRestartControl(in: app)
+        XCTAssertTrue(restartButton.isHittable)
         restartButton.tap()
-
-        // After restart, should have play button available
-        try requirePlaybackButton(timeout: 3)
+        let playAgainControl = try requireControl(named: "Play", in: app, timeout: 3)
+        XCTAssertTrue(playAgainControl.isHittable, "Play should be available and hittable after restart")
     }
 }
