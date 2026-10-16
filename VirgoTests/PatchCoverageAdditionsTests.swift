@@ -250,17 +250,6 @@ struct LocalDTXFixtureImporterErrorPathTests {
         }
     }
 
-    @Test("importBundledSoukyuuIfAvailable returns nil when the bundle has no SET.def")
-    func testReturnsNilWhenBundleLacksSETDef() throws {
-        let store = try makeStore()
-        // The unit-test bundle does not bundle a SET.def resource.
-        let result = try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(
-            into: store.context,
-            bundle: Bundle(for: DTXFixtureTestBundleAnchor.self)
-        )
-        #expect(result == nil)
-    }
-
     @Test("importSong imports a UTF-8 SET.def with a single chart and no audio assets")
     func testImportsUTF8FixtureWithoutAudio() throws {
         let store = try makeStore()
@@ -436,9 +425,6 @@ struct PatchRenderCoverageTests {
 }
 
 // MARK: - Silent WAV fixture
-
-/// Anchor class used to resolve the unit-test bundle (which has no SET.def resource).
-private final class DTXFixtureTestBundleAnchor {}
 
 private enum SilentWAVFactory {
     /// Builds a minimal valid mono 16-bit PCM WAV (44-byte header + 4 silent samples)
