@@ -71,4 +71,20 @@ struct ServerConfigTests {
         defaults.set("ftp://nope", forKey: ServerConfig.r2BaseURLKey)
         #expect(config.r2BaseURL == nil)
     }
+
+    @Test("setR2BaseURL removes key when value is invalid")
+    func testSetR2BaseURLRemovesKeyOnInvalid() {
+        let (config, defaults) = makeConfig("config.r2remove")
+
+        config.setR2BaseURL("https://r2.example.com")
+        #expect(config.r2BaseURL != nil)
+        #expect(defaults.string(forKey: ServerConfig.r2BaseURLKey) != nil)
+
+        config.setR2BaseURL("not-a-url")
+        #expect(config.r2BaseURL == nil)
+        #expect(
+            defaults.string(forKey: ServerConfig.r2BaseURLKey) == nil,
+            "Key must be removed from UserDefaults when value is invalid"
+        )
+    }
 }

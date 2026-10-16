@@ -489,4 +489,76 @@ struct ServerSongDownloaderTests {
             #expect(songs.contains { $0.serverSongId == "current-server-id" })
         }
     }
+
+    // MARK: - Audio download failure / no-R2 skip (migrated from PatchCoverageTests)
+
+    @Test("download continues successfully when audio download fails")
+    func testAudioDownloadFailureIsNonFatal() async throws {
+        final class SelectiveFailDownloader: FileDownloading, @unchecked Sendable {
+            let dtxData: Data
+            init(dtxData: Data) { self.dtxData = dtxData }
+            func downloadData(from url: URL) async throws -> Data {
+                if url.absoluteString.hasSuffix(".dtx") { return dtxData }
+                throw URLError(.fileDoesNotExist)
+            }
+        }
+
+        let fileManager = MockServerSongFileManager()
+        let config = makeConfig("ServerSongDownloaderTests.audio-fail.\(UUID().uuidString)", withR2: true)
+        let dtx = dtxData("#TITLE: Audio Fail\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000")
+        let downloader = ServerSongDownloader(
+            downloader: SelectiveFailDownloader(dtxData: dtx), fileManager: fileManager, config: config
+        )
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let serverSong = ServerSong(
+                songId: "audio-fail", title: "Audio Fail", artist: "Tester", bpm: 120.0,
+                charts: [chart("easy", label: "Easy", level: 10, file: "chart.dtx", songId: "audio-fail")],
+                isDownloaded: false, hasBGM: true, hasPreview: true
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success, "Import should succeed even when audio download fails")
+            #expect(errorMessage == nil)
+            #expect(fileManager.savedBGMData.isEmpty, "BGM must not be saved when download fails")
+            #expect(fileManager.savedPreviewData.isEmpty, "Preview must not be saved when download fails")
+        }
+    }
+
+    @Test("downloadOptionalFiles skips audio when R2 is not configured even with audio flags")
+    func testNoR2SkipsAudioDownload() async throws {
+        final class StubDownloader: FileDownloading, @unchecked Sendable {
+            let dtx: Data
+            init(dtx: Data) { self.dtx = dtx }
+            func downloadData(from url: URL) async throws -> Data { dtx }
+        }
+
+        let fileManager = MockServerSongFileManager()
+        // Empty EndpointDefaults so a bundled ServerEndpoints.env cannot supply an
+        // R2 base and turn this into a with-R2 run.
+        let (defaults, _) = TestUserDefaults.makeIsolated(
+            suiteName: "ServerSongDownloaderTests.no-r2.\(UUID().uuidString)"
+        )
+        let config = ServerConfig(userDefaults: defaults, endpointDefaults: EndpointDefaults())
+        let dtx = dtxData("#TITLE: No R2\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000")
+        let downloader = ServerSongDownloader(
+            downloader: StubDownloader(dtx: dtx), fileManager: fileManager, config: config
+        )
+
+        try await TestSetup.withTestSetup {
+            let container = TestContainer.shared.container
+            let serverSong = ServerSong(
+                songId: "no-r2", title: "No R2", artist: "Tester", bpm: 120.0,
+                charts: [chart("easy", label: "Easy", level: 10, file: "chart.dtx", songId: "no-r2")],
+                isDownloaded: false, hasBGM: true, hasPreview: true
+            )
+
+            let (success, errorMessage) = await downloader.downloadAndImportSong(serverSong, container: container)
+            #expect(success, "Import should succeed without R2")
+            #expect(errorMessage == nil)
+            #expect(fileManager.savedBGMData.isEmpty)
+            #expect(fileManager.savedPreviewData.isEmpty)
+        }
+    }
 }
