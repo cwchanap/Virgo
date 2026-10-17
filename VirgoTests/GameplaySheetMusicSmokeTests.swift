@@ -489,22 +489,22 @@ struct GameplaySheetMusicSmokeTests {
         #expect(input.contentWidth == engraved.contentWidth)
         #expect(input.contentHeight == engraved.contentHeight)
 
-        // Mounted scroll anchors derive from package row geometry: the band
-        // top is the ceiling, pulled lower only to reveal per-row ink that
-        // overhangs it — `scrollTo(anchor: .top)` clips anything above the
-        // anchor, so `firstRowTop` must never sit above the sheet's ink.
-        let anchors = input.rowAnchors
-        let firstRow = try #require(engraved.rows.first)
-        let bandTop = max(0, firstRow.staffCenterY - engraved.style.rowHeight / 2)
-        #expect(anchors.firstRowTop >= 0 && anchors.firstRowTop <= bandTop)
-        #expect(anchors.firstRowTop <= engraved.paintedBounds.minY)
-        #expect(anchors.rowPitch == engraved.style.rowHeight + engraved.style.rowVerticalSpacing)
+        // Mounted scroll anchors are per-row tops: each row's band top is
+        // the ceiling, pulled higher only for that row's own overhanging
+        // ink — `scrollTo(anchor: .top)` clips anything above the anchor,
+        // so `row_i`'s top must never sit below its row's furniture floor.
+        let tops = input.rowAnchorTops
+        #expect(tops.count == engraved.rows.count)
+        for (top, row) in zip(tops, engraved.rows) {
+            let bandTop = max(0, row.staffCenterY - engraved.style.rowHeight / 2)
+            #expect(top >= 0 && top <= bandTop)
+            #expect(top <= row.paintedBounds.minY)
+        }
 
         // The scroll canvas must reach one viewport below the deepest row
         // anchor — `scrollTo(anchor: .top)` clamps at canvas − viewport, so
         // anything shorter leaves the final row short of the top edge.
-        #expect(input.lastRowAnchorTop == anchors.firstRowTop
-            + CGFloat(engraved.rows.count - 1) * anchors.rowPitch)
+        #expect(input.lastRowAnchorTop == tops.last)
         #expect(input.scrollContentHeight(viewportHeight: 768)
             >= input.lastRowAnchorTop + 768)
         #expect(input.scrollContentHeight(viewportHeight: 768) >= input.contentHeight)

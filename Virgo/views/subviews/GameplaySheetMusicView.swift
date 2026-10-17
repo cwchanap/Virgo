@@ -20,6 +20,9 @@ import DrumNotation
 struct GameplayStaticNotationInput: Equatable {
     let engraving: EngravedNotation?
     let presentation: GameplayNotationPresentation?
+    /// Per-row scroll-anchor tops for the installed engraving — derived
+    /// once at install; ignored when `usesEngravedNotation` is false.
+    let engravedRowAnchorTops: [CGFloat]
     let legacyMeasurePositions: [GameplayLayout.MeasurePosition]
     let legacyContentHeight: CGFloat
     let timeSignature: TimeSignature
@@ -67,8 +70,7 @@ struct GameplayStaticNotationInput: Equatable {
     /// The deepest row anchor's top edge in sheet coordinates — the offset
     /// `scrollTo("row_N", anchor: .top)` targets for the final row.
     var lastRowAnchorTop: CGFloat {
-        let anchors = rowAnchors
-        return anchors.firstRowTop + CGFloat(max(rowCount - 1, 0)) * anchors.rowPitch
+        rowAnchorTops.last ?? 0
     }
 
     /// Scroll-canvas height: the sheet content, extended when needed so the
@@ -80,109 +82,24 @@ struct GameplayStaticNotationInput: Equatable {
         max(contentHeight, lastRowAnchorTop + max(0, viewportHeight))
     }
 
-    /// Row-anchor geometry: the top of each row's band in sheet coordinates
-    /// plus the row pitch. Engraved sheets read `EngravedRow.staffCenterY`
-    /// and the producing `NotationEngravingStyle`; the fallback keeps the
-    /// legacy staff formula (three staff spaces above line 5). The engraved
-    /// branch also pulls the shared top anchor up to the sheet's highest
-    /// per-row ink — stems, flags, and above-staff note positions can paint
-    /// above a row's band top, and `scrollTo("row_i", anchor: .top)` clips
-    /// anything that starts above the anchor (HPA-583).
-    var rowAnchors: (firstRowTop: CGFloat, rowPitch: CGFloat) {
-        if usesEngravedNotation, let engraving, let first = engraving.rows.first {
-            let pitch = engraving.style.rowHeight + engraving.style.rowVerticalSpacing
-            let bandTop = max(0, first.staffCenterY - engraving.style.rowHeight / 2)
-            let inkBound = topmostInkAnchorTop(engraving: engraving, rowPitch: pitch) ?? bandTop
-            return (
-                firstRowTop: max(0, min(bandTop, inkBound)),
-                rowPitch: pitch
-            )
-        }
-        return (
-            firstRowTop: max(
-                0,
-                GameplayLayout.StaffLinePosition.line5.absoluteY(for: 0)
-                    - 3 * GameplayLayout.staffLineSpacing
-            ),
-            rowPitch: GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
+    /// Per-row scroll-anchor tops in sheet coordinates: `row_i`'s top edge.
+    /// Engraved sheets read the install-derived array — the primitive scan
+    /// runs once per install generation, never per playback invalidation —
+    /// while the fallback derives each top from the legacy staff formula
+    /// (three staff spaces above line 5, one row pitch per row). Every
+    /// anchor sits at-or-below its own row's topmost ink — stems, flags,
+    /// and above-staff note positions can paint above a row's band top, and
+    /// `scrollTo("row_i", anchor: .top)` clips anything that starts above
+    /// the anchor (HPA-583).
+    var rowAnchorTops: [CGFloat] {
+        if usesEngravedNotation { return engravedRowAnchorTops }
+        let first = max(
+            0,
+            GameplayLayout.StaffLinePosition.line5.absoluteY(for: 0)
+                - 3 * GameplayLayout.staffLineSpacing
         )
-    }
-
-    /// The `firstRowTop` bound that keeps every row's topmost ink visible:
-    /// row i's anchor lands at `firstRowTop + i * rowPitch`, which must sit
-    /// at-or-below the row's topmost painted Y or `scrollTo(anchor: .top)`
-    /// hides that ink. Bounds-bearing primitives contribute their painted
-    /// `minY`; endpoint/center-only primitives get a conservative
-    /// style-derived margin — an anchor that reveals slightly more than the
-    /// ink is correct, one that clips is not. Returns `nil` when no row
-    /// carries ink or furniture.
-    private func topmostInkAnchorTop(
-        engraving: EngravedNotation,
-        rowPitch: CGFloat
-    ) -> CGFloat? {
-        var top = CGFloat.infinity
-        for (row, minY) in Self.boundedInkTops(engraving: engraving)
-            + Self.joinedInkTops(engraving: engraving) {
-            top = min(top, minY - CGFloat(row) * rowPitch)
-        }
-        return top.isFinite ? top : nil
-    }
-
-    /// Per-row topmost Y for primitives that carry their own `rowIndex` and
-    /// a painted bounds or a style-bounded extent: furniture, heads, rests,
-    /// ledgers, dots, controls, and tuplets.
-    private static func boundedInkTops(
-        engraving: EngravedNotation
-    ) -> [(row: Int, minY: CGFloat)] {
-        let style = engraving.style
-        var tops: [(Int, CGFloat)] = []
-        tops += engraving.rows.map { ($0.index, $0.paintedBounds.minY) }
-        tops += engraving.noteHeads.map { ($0.rowIndex, $0.paintedBounds.minY) }
-        tops += engraving.rests.map { ($0.rowIndex, $0.paintedBounds.minY) }
-        tops += engraving.ledgerLines.map { ($0.rowIndex, $0.paintedBounds.minY) }
-        tops += engraving.rhythmDots.map { ($0.rowIndex, $0.paintedBounds.minY) }
-        tops += engraving.controls.map { ($0.rowIndex, $0.position.y - style.stopMarkSize) }
-        tops += engraving.tuplets.map { tuplet in
-            let inkTop = min(
-                tuplet.bracketPoints.map(\.y).min() ?? .infinity,
-                tuplet.labelPosition.y - style.tupletLabelSize.height / 2
-            )
-            return (tuplet.rowIndex, inkTop - style.tupletLineWidth)
-        }
-        return tops
-    }
-
-    /// Per-row topmost Y for primitives keyed by `noteID`/`noteIDs` rather
-    /// than `rowIndex` — stems, beams, flags, articulations join through the
-    /// note heads' row assignment.
-    private static func joinedInkTops(
-        engraving: EngravedNotation
-    ) -> [(row: Int, minY: CGFloat)] {
-        let style = engraving.style
-        let noteRow = Dictionary(
-            engraving.noteHeads.map { ($0.noteID, $0.rowIndex) },
-            uniquingKeysWith: { existing, _ in existing }
-        )
-        var tops: [(Int, CGFloat)] = []
-        tops += engraving.stems.compactMap { stem in
-            stem.noteIDs.lazy.compactMap { noteRow[$0] }.first.map {
-                ($0, min(stem.start.y, stem.end.y) - style.formatting.stemWidth)
-            }
-        }
-        tops += engraving.beams.compactMap { beam in
-            beam.noteIDs.lazy.compactMap { noteRow[$0] }.first.map {
-                ($0, min(beam.start.y, beam.end.y) - beam.thickness)
-            }
-        }
-        tops += engraving.flags.compactMap { flag in
-            noteRow[flag.noteID].map { ($0, flag.origin.y - style.formatting.staffSpace) }
-        }
-        tops += engraving.articulations.compactMap { articulation in
-            noteRow[articulation.noteID].map {
-                ($0, articulation.position.y - style.formatting.staffSpace)
-            }
-        }
-        return tops
+        let pitch = GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
+        return (0..<rowCount).map { first + CGFloat($0) * pitch }
     }
 }
 
@@ -258,6 +175,7 @@ extension GameplayView {
         GameplayStaticNotationInput(
             engraving: viewModel.cachedEngravedNotation,
             presentation: viewModel.notationPresentation,
+            engravedRowAnchorTops: viewModel.cachedNotationRowAnchorTops,
             legacyMeasurePositions: viewModel.cachedMeasurePositions,
             legacyContentHeight: viewModel.cachedLegacyContentHeight,
             timeSignature: viewModel.track?.timeSignature ?? .fourFour,
@@ -316,12 +234,7 @@ extension GameplayView {
     /// anchor geometry.
     func rowAnchorColumn(viewModel: GameplayViewModel) -> some View {
         let input = staticNotationInput(viewModel: viewModel)
-        let anchors = input.rowAnchors
-        return GameplayRowAnchorColumn(
-            firstRowTop: anchors.firstRowTop,
-            rowCount: input.rowCount,
-            rowPitch: anchors.rowPitch
-        )
+        return GameplayRowAnchorColumn(rowAnchorTops: input.rowAnchorTops)
     }
 
     /// The installed engraving's printed rests — every engraved rest is
@@ -363,7 +276,6 @@ private struct GameplayStaticNotationLayers: View {
     let input: GameplayStaticNotationInput
 
     var body: some View {
-        let anchors = input.rowAnchors
         ZStack(alignment: .topLeading) {
             if let engraving = input.engraving, input.usesEngravedNotation {
                 // The package view paints every primitive at the engraving's
@@ -397,11 +309,7 @@ private struct GameplayStaticNotationLayers: View {
                 )
             }
 
-            GameplayRowAnchorColumn(
-                firstRowTop: anchors.firstRowTop,
-                rowCount: input.rowCount,
-                rowPitch: anchors.rowPitch
-            )
+            GameplayRowAnchorColumn(rowAnchorTops: input.rowAnchorTops)
         }
     }
 }
@@ -478,26 +386,34 @@ private struct GameplayClefsAndTimeSignaturesView: View {
     }
 }
 
-/// Invisible `ScrollViewReader` anchors `row_0…row_N` at each staff row's
-/// band top. Anchor geometry is caller-supplied: package row geometry for
-/// engraved sheets, the legacy staff formula for the fallback sheet.
+/// Invisible `ScrollViewReader` anchors `row_0…row_N`, each at its row's
+/// own top edge. Anchor geometry is caller-supplied: install-derived
+/// per-row tops for engraved sheets, the legacy staff formula for the
+/// fallback sheet.
 private struct GameplayRowAnchorColumn: View {
-    let firstRowTop: CGFloat
-    let rowCount: Int
-    let rowPitch: CGFloat
+    /// `row_i`'s top edge in sheet coordinates.
+    let rowAnchorTops: [CGFloat]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(width: 1, height: firstRowTop)
-            ForEach(0..<max(rowCount, 1), id: \.self) { row in
+            Color.clear.frame(width: 1, height: max(0, rowAnchorTops.first ?? 0))
+            ForEach(0..<max(rowAnchorTops.count, 1), id: \.self) { row in
                 Color.clear
-                    .frame(width: 1, height: rowPitch)
+                    .frame(width: 1, height: anchorExtent(at: row))
                     .id("row_\(row)")
             }
             Spacer(minLength: 0)
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .allowsHitTesting(false)
+    }
+
+    /// The frame height that lands the next anchor's top edge on its own
+    /// top. `scrollTo(anchor: .top)` reads only the top edge, so the last
+    /// row needs just a token extent.
+    private func anchorExtent(at row: Int) -> CGFloat {
+        guard rowAnchorTops.indices.contains(row + 1) else { return 1 }
+        return max(0, rowAnchorTops[row + 1] - rowAnchorTops[row])
     }
 }
 
