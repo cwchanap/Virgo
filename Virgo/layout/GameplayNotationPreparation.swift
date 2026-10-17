@@ -396,4 +396,14 @@ enum GameplayNotationPreparer {
 struct GameplayNotationInstall: Equatable, Sendable {
     let engraving: EngravedNotation
     let presentation: GameplayNotationPresentation
+    /// Per-row scroll-anchor tops derived once at install (HPA-583): the
+    /// playback-observed sheet reads this array instead of rescanning the
+    /// engraving's primitives on every frame invalidation.
+    let rowAnchorTops: [CGFloat]
+
+    init(engraving: EngravedNotation, presentation: GameplayNotationPresentation) {
+        self.engraving = engraving
+        self.presentation = presentation
+        self.rowAnchorTops = GameplayRowAnchorGeometry.anchorTops(for: engraving)
+    }
 }

@@ -178,6 +178,10 @@ final class GameplayViewModel {
     var cachedEngravedNotation: EngravedNotation? { notationInstall?.engraving }
     /// The app-owned presentation installed atomically with the engraving.
     var notationPresentation: GameplayNotationPresentation? { notationInstall?.presentation }
+    /// Per-row scroll-anchor tops installed atomically with the engraving
+    /// (HPA-583) — the mounted sheet reads this array instead of rescanning
+    /// engraved primitives on playback-driven invalidations.
+    var cachedNotationRowAnchorTops: [CGFloat] { notationInstall?.rowAnchorTops ?? [] }
     /// Note-head presence is an O(1) engraving query.
     var cachedNotationHasPlayableContent: Bool {
         !(notationInstall?.engraving.noteHeads.isEmpty ?? true)

@@ -371,7 +371,10 @@ extension GameplaySheetMusicGeometrySmokeTests {
             #expect(lastAnchorTop > 0)
             // The package sheet covers the anchor's full block; the mounted
             // canvas must additionally run one viewport below its top.
-            #expect(engraving.contentHeight >= lastAnchorTop + input.rowAnchors.rowPitch)
+            #expect(
+                engraving.contentHeight >= lastAnchorTop
+                    + engraving.style.rowHeight + engraving.style.rowVerticalSpacing
+            )
 
             let reached = try #require(
                 hostedSheetScrollOffset(sheet, scrollY: lastAnchorTop),
