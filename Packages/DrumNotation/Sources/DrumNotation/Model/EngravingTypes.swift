@@ -477,8 +477,8 @@ public struct EngravedNotation: Hashable, Sendable {
     /// sparse sheet. Every row's staff lines span it.
     public let contentWidth: CGFloat
     /// Sheet height: covers the painted ink and the lowest row's full
-    /// anchor extent — its band top plus one row pitch, the block the
-    /// mounted sheet's `row_*` scroll anchors occupy.
+    /// anchor extent — its band top plus one row pitch — so the mounted
+    /// sheet's deepest `row_*` scroll anchor sits inside the sheet.
     public let contentHeight: CGFloat
 
     public init(

@@ -10,6 +10,23 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-15-hpa-583-test-architecture-closeout-design.md`
 
+## Deviations from Plan
+
+The plan expected no production Swift delta, but PR review on the consolidated branch required
+three small production repairs, each in service of the sheet scroll geometry the moved tests gate:
+
+- `Packages/DrumNotation`: engraving structs gained stored `paintedBounds` fields (six public
+  initializer changes) and `contentHeight` covers the last row's full anchor extent, so app code
+  and tests read stamped geometry instead of rescanning primitives.
+- `Virgo`: `GameplayNotationInstall` derives per-row scroll-anchor tops once at install
+  (`GameplayRowAnchorGeometry`), and the anchor column lays each `row_i` target out at its anchor
+  top — `.offset`-positioned targets still lay out at y=0, which broke auto-scroll.
+- `ServerConfig` logs when an invalid selected GraphQL endpoint re-routes to the local-dev
+  fallback.
+- Post-review, `GameplayViewModelCoverageTestSupport` was renamed to `GameplayViewModelTestSupport`
+  (file included) — the plan's "no cosmetic renames" carve-out predates the review flagging the
+  bucket-style name against the new ownership rule. `SwiftUICoverageFixtures` keeps its name.
+
 ## Global Constraints
 
 - One Linear ticket -> one PR. Continue implementation on this HPA-583 PR.
@@ -115,7 +132,8 @@ Commit the app-bundle smoke plus importer-case dedupe together because the old n
 **Files:**
 - Inventory with: `git ls-files 'VirgoTests/*Coverage*.swift' 'VirgoTests/*Patch*.swift' 'VirgoTests/*Wave*.swift'`
 - Keep shared support when still referenced, including:
-  - `VirgoTests/GameplayViewModelCoverageTestSupport.swift`
+  - `VirgoTests/GameplayViewModelTestSupport.swift` (renamed from
+    `GameplayViewModelCoverageTestSupport.swift` post-review)
   - `VirgoTests/SwiftUICoverageFixtures.swift`
 - Prefer focused owners already present beside the campaign files, including importer, rendering, song/library/cache/input, gameplay computation/speed/BGM/playback/cleanup, notation, and metronome suites.
 
@@ -154,7 +172,9 @@ Repeat Steps 2-3 until the inventory is exhausted.
 
 - [ ] **Step 4: Verify shared support survives intentionally**
 
-Search references to `GameplayViewModelCoverageTestSupport` and `SwiftUICoverageFixtures`. Keep them if focused suites still use them; do not rename them for naming purity.
+Search references to `GameplayViewModelTestSupport` (renamed from
+`GameplayViewModelCoverageTestSupport` post-review) and `SwiftUICoverageFixtures`. Keep them if
+focused suites still use them; do not rename them for naming purity.
 
 - [ ] **Step 5: Verify the final campaign inventory**
 
@@ -317,7 +337,9 @@ Expected: no new lint errors; remaining campaign-named files are documented shar
 
 - [ ] **Step 4: Review the final diff before CI**
 
-Expected production Swift delta: none. Expected implementation changes: tests, UI tests/helpers, `README.md`/`CLAUDE.md`, blueprint/report deletions, and `codecov.yml`.
+Expected production Swift delta: none at planning time — see "Deviations from Plan" above for the
+review-driven repairs that did land. Expected implementation changes: tests, UI tests/helpers,
+`README.md`/`CLAUDE.md`, blueprint/report deletions, and `codecov.yml`.
 
 If production Swift changed, either justify a trivial inseparable correctness repair or move it to another ticket and revert it here.
 

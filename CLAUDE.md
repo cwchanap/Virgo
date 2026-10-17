@@ -190,9 +190,6 @@ marks a golden that pins known-suspect output.
 `RhythmLayoutSnapshotBuilder` (`Virgo/layout/`) is shared by `GameplayViewModel` and the harness on
 purpose — a parallel copy in tests would let goldens pass while production rendering broke.
 
-Do not add virtualization to notation rendering on speculation: HPA-584 produced no validated
-interactive performance claim, so virtualization is not established as necessary.
-
 The fixture suites cover this: `DrumTabGoldenTests` (full-digest goldens per fixture),
 `DrumTabRegressionInvariantTests` (geometric invariants — beam extent within member stems and within
 the beat group, head-to-grid routing, simultaneous-column identity, painted-bounds containment),
@@ -204,6 +201,9 @@ separately by the `GameplaySheetMusic*` suites — raster differentials plus a h
 accessibility-tree probe on the real `GameplaySheetMusicView`. The package's own geometry/render
 tests live in `Packages/DrumNotation/Tests` and run via `swift test --package-path
 Packages/DrumNotation`.
+
+Do not add virtualization to notation rendering on speculation: HPA-584 produced no validated
+interactive performance claim, so virtualization is not established as necessary.
 
 ### Gameplay Architecture
 `GameplayView` delegates all state to `GameplayViewModel` (`@Observable @MainActor`), which is split
@@ -307,7 +307,9 @@ Frequently-updating `@Published` properties on `@EnvironmentObject` or `@Observe
 ### Test Framework
 All unit tests use **Swift Testing** (`import Testing`, `#expect`, `#require`, `@Suite`), not XCTest. `TestContainer` in `TestHelpers.swift` provides isolated in-memory `ModelContainer`/`ModelContext` instances per test to prevent SwiftData state leakage.
 
-Test ownership follows behavior: new tests live with the behavior owner they cover; the HPA-583 campaign's `Coverage`/`Patch` bucket suites are not owners — do not recreate them or route new coverage into bucket-style suites.
+Test ownership follows behavior: new tests live with the behavior owner they cover. HPA-583 deleted
+the campaign `Coverage`/`Patch` bucket suites — do not recreate them or route new coverage into
+bucket-style suites.
 
 ### Audio/Metronome Synchronization
 BGM (`AVAudioPlayer`) and metronome are synchronized using a common `CFAbsoluteTime` start point, converted to `AVAudioTime` for sample-accurate scheduling. Speed changes reschedule both engines with a shared `startTime` to prevent drift.

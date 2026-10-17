@@ -1,10 +1,10 @@
 import CoreGraphics
 import DrumNotation
 
-/// Per-row scroll-anchor geometry derived once from an installed engraving
-/// (HPA-583). `GameplayNotationInstall` computes these at install, so the
-/// playback-observed sheet reads scalar/array anchor geometry instead of
-/// rescanning every engraved primitive on each view invalidation.
+/// Per-row scroll-anchor geometry derived once from an installed
+/// engraving and carried on `GameplayNotationInstall.rowAnchorTops`, so
+/// the playback-observed sheet reads scalar/array anchor geometry instead
+/// of rescanning every engraved primitive on each view invalidation.
 enum GameplayRowAnchorGeometry {
     /// One `scrollTo("row_i", anchor: .top)` target per engraved row, in
     /// sheet coordinates: the row's nominal band top pulled up to that
@@ -33,9 +33,11 @@ enum GameplayRowAnchorGeometry {
         }
     }
 
-    /// Per-row topmost Y over every primitive family: rows and the
-    /// `rowIndex`-keyed families directly; stems, beams, flags, and
-    /// articulations join through the note heads' row assignment.
+    /// Per-row topmost Y over the contributing primitive families: rows
+    /// and the `rowIndex`-keyed families directly; stems, beams, flags,
+    /// and articulations join through the note heads' row assignment.
+    /// Measure bars are excluded — they stay within their row's staff
+    /// band, which the band-top clamp already honors.
     private static func inkTopCandidates(
         _ engraving: EngravedNotation
     ) -> [(row: Int, minY: CGFloat)] {

@@ -480,11 +480,11 @@ struct NotationEngraverGeometryTests {
     @Test("content height covers the last row's anchor extent")
     func contentHeightCoversLastRowAnchorExtent() throws {
         // Enough full measures to wrap past `availableRowWidth` onto a
-        // second row. The sheet must reach the last row anchor block's
-        // bottom — band top plus one row pitch, the block the mounted
-        // `row_*` anchors occupy — or the scroll canvas ends inside it and
-        // `scrollTo(anchor: .top)` clamps before the final row can reach
-        // the viewport top.
+        // second row. The sheet must reach the last row's full anchor
+        // extent — band top plus one row pitch, where the mounted
+        // `row_*` anchors sit — or the scroll canvas ends above the
+        // deepest anchor and `scrollTo(anchor: .top)` clamps before the
+        // final row can reach the viewport top.
         let measures = (0..<4).map {
             Fixtures.measure(index: $0, startTick: $0 * Fixtures.ticksPerWholeNote)
         }

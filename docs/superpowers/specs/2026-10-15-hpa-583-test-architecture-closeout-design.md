@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-15\
 **Linear:** HPA-583\
-**Status:** Planning
+**Status:** Implemented — production deviations recorded in the plan's "Deviations from Plan" section
 
 ## Intent
 
@@ -24,7 +24,9 @@ The cleanup is justified by concrete repository facts rather than a coverage quo
 - `LocalDTXFixtureImporterCoverageTests.swift` and `PatchCoverageAdditionsTests.swift` overlap on the bundled-import missing-`SET.def` path.
 - `GameplayViewUITests.swift` repeatedly launches the app for overlapping title/header/control assertions.
 - many test files are named for `Coverage`, `Patch`, or an implementation wave rather than the behavior they protect.
-- `GameplayViewModelCoverageTestSupport.swift` and `SwiftUICoverageFixtures.swift` are genuinely shared support and must not be deleted merely because their names contain `Coverage`.
+- `GameplayViewModelTestSupport.swift` (renamed from `GameplayViewModelCoverageTestSupport.swift`
+  post-review) and `SwiftUICoverageFixtures.swift` are genuinely shared support and must not be
+  deleted merely because their names contain `Coverage`.
 - `.github/README.md` is stale and still documents iPhone simulator commands even though Virgo is iPad/macOS only.
 - `docs/Project_Architecture_Blueprint.md` is a generated, stale architecture snapshot and has no current runtime reference.
 - `.superpowers/` is already ignored but still contains tracked generated SDD reports.
@@ -60,7 +62,7 @@ For each `*Coverage*`, `*Patch*`, or wave-oriented source file:
 
 A new owner file is created only when no coherent owner exists.
 
-`GameplayViewModelCoverageTestSupport.swift` and `SwiftUICoverageFixtures.swift` are explicit examples of shared support that may keep their current names; HPA-583 does not spend churn on cosmetic renames.
+`SwiftUICoverageFixtures.swift` is an explicit example of shared support that may keep its current name; HPA-583 does not spend churn on cosmetic renames. (`GameplayViewModelCoverageTestSupport` was later renamed to `GameplayViewModelTestSupport` after review flagged the name against the new ownership rule.)
 
 Before any campaign source file is deleted, its test-by-test disposition (`move -> <owner>`, `duplicate -> delete`, `obsolete -> delete`, `keep support -> reason`) must be recorded in the PR body or a linked top-level PR comment. The commit that removes that source file should carry the same disposition summary in its commit body.
 
