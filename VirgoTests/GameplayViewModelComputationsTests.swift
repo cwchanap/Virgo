@@ -15,16 +15,16 @@ import Foundation
 @MainActor
 private enum CoverageHelpers {
     static func preparedVM(noteCount: Int = 4) async -> GameplayViewModel {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: noteCount)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: noteCount)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         return vm
     }
 
     static func preparedLegacyVM(noteCount: Int = 4) async -> GameplayViewModel {
-        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: noteCount)
+        let chart = GameplayViewModelTestSupport.makeChart(noteCount: noteCount)
         chart.notes.forEach { $0.originKind = .dtx }
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         return vm
@@ -48,9 +48,9 @@ private enum CoverageHelpers {
     }
 }
 
-// MARK: - Computations coverage
+// MARK: - Computations
 
-@Suite("ComputationsCoverage", .serialized)
+@Suite("GameplayViewModel computations", .serialized)
 @MainActor
 struct GameplayViewModelComputationsTests {
 
@@ -58,7 +58,7 @@ struct GameplayViewModelComputationsTests {
 
     @Test("updateRowWidth ignores non-finite, zero, and negative widths")
     func testUpdateRowWidthIgnoresInvalidWidths() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
@@ -74,7 +74,7 @@ struct GameplayViewModelComputationsTests {
 
     @Test("updateRowWidth before gameplay preparation caches width without rebuilding layout")
     func testUpdateRowWidthBeforePreparationCachesOnly() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         defer { vm.cleanup() }
 
@@ -100,7 +100,7 @@ struct GameplayViewModelComputationsTests {
         )
         chart.song = song
 
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
@@ -149,7 +149,7 @@ struct GameplayViewModelComputationsTests {
 
     @Test("calculateTrackDuration returns 0.0 when track is nil")
     func testCalculateTrackDurationNilTrack() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
+        let vm = GameplayViewModelTestSupport.makeViewModel()
         // track is nil before data is loaded
         let duration = vm.calculateTrackDuration()
         #expect(duration == 0.0)
@@ -157,9 +157,9 @@ struct GameplayViewModelComputationsTests {
 
     @Test("calculateTrackDuration uses MM:SS song.duration when available")
     func testCalculateTrackDurationUsesSongDurationMMSS() async throws {
-        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: 2)
+        let chart = GameplayViewModelTestSupport.makeChart(noteCount: 2)
         chart.notes.forEach { $0.originKind = .dtx }
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay()
@@ -175,7 +175,7 @@ struct GameplayViewModelComputationsTests {
 
     @Test("calculateTrackDuration ignores '0:00' song.duration and uses note-based calculation")
     func testCalculateTrackDurationIgnoresZeroDurationString() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay()
@@ -278,7 +278,7 @@ struct GameplayViewModelComputationsTests {
         let chart = Chart(difficulty: .medium)
         chart.notes.append(Note(interval: .quarter, noteType: .bass,
                                 measureNumber: 10, measureOffset: 0.0))
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -303,7 +303,7 @@ struct GameplayViewModelComputationsTests {
         let chart = Chart(difficulty: .medium)
         chart.notes.append(Note(interval: .quarter, noteType: .bass,
                                 measureNumber: 10, measureOffset: 0.0))
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
@@ -329,7 +329,7 @@ struct GameplayViewModelComputationsTests {
                                 measureNumber: 1, measureOffset: 0.0))
         chart.notes.append(Note(interval: .quarter, noteType: .snare,
                                 measureNumber: 1, measureOffset: 0.25))
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
@@ -459,7 +459,7 @@ struct ComputationsVisualUpdatesTests {
     @Test("updatePlaybackProgress republishes on rewind")
     func testUpdatePlaybackProgressPublishesOnRewind() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 32, measuresCount: 8)
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
@@ -485,7 +485,7 @@ struct ComputationsVisualUpdatesTests {
             chart.notes.append(Note(interval: .quarter, noteType: .snare,
                                     measureNumber: measureNumber, measureOffset: 0.0))
         }
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)

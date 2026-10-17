@@ -41,7 +41,7 @@ struct GameplayViewModelFullSpeedScoringTests {
             let vm = GameplayViewModel(
                 chart: chart,
                 metronome: MetronomeEngine(audioDriver: RecordingAudioDriver()),
-                practiceSettings: GameplayViewModelCoverageTestSupport.makeSettings(),
+                practiceSettings: GameplayViewModelTestSupport.makeSettings(),
                 scorePersistence: service
             )
             await vm.loadChartData()
@@ -65,7 +65,7 @@ struct GameplayViewModelFullSpeedScoringTests {
             let vm = GameplayViewModel(
                 chart: chart,
                 metronome: MetronomeEngine(audioDriver: RecordingAudioDriver()),
-                practiceSettings: GameplayViewModelCoverageTestSupport.makeSettings(),
+                practiceSettings: GameplayViewModelTestSupport.makeSettings(),
                 scorePersistence: service
             )
             await vm.loadChartData()
@@ -85,7 +85,7 @@ struct GameplayViewModelFullSpeedScoringTests {
     func testFreshStartAtSlowedSpeedIsNotFullSpeed() async throws {
         try await TestSetup.withTestSetup {
             let chart = try makeChartInContext()
-            let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+            let settings = GameplayViewModelTestSupport.makeSettings()
             settings.setSpeed(0.75)
             let vm = GameplayViewModel(
                 chart: chart,
@@ -107,7 +107,7 @@ struct GameplayViewModelFullSpeedScoringTests {
     func testMidRunSlowDownClearsFullSpeed() async throws {
         try await TestSetup.withTestSetup {
             let chart = try makeChartInContext()
-            let settings = GameplayViewModelCoverageTestSupport.makeSettings() // 1.0x default
+            let settings = GameplayViewModelTestSupport.makeSettings() // 1.0x default
             let vm = GameplayViewModel(
                 chart: chart,
                 metronome: MetronomeEngine(audioDriver: RecordingAudioDriver()),
@@ -131,7 +131,7 @@ struct GameplayViewModelFullSpeedScoringTests {
     func testPausedSlowDownThenResumeClearsFullSpeed() async throws {
         try await TestSetup.withTestSetup {
             let chart = try makeChartInContext()
-            let settings = GameplayViewModelCoverageTestSupport.makeSettings() // 1.0x
+            let settings = GameplayViewModelTestSupport.makeSettings() // 1.0x
             let vm = GameplayViewModel(
                 chart: chart,
                 metronome: MetronomeEngine(audioDriver: RecordingAudioDriver()),

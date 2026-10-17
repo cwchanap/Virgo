@@ -517,7 +517,7 @@ struct GameplayViewModelVisualUpdatesTests {
 
     @Test("rowForMeasure anchors row 0 when the installed engraving has no measures")
     func rowForMeasureWithEmptyEngravingMeasures() {
-        let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let viewModel = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         viewModel.installPreparedNotation(.ready(
             degenerateEngraving(),
             GameplayNotationPresentation(annotations: .empty, accessibilityLabels: [:])

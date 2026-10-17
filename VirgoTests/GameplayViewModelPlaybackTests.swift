@@ -36,7 +36,7 @@ struct GameplayViewModelPlaybackTests {
 
     @Test("togglePlayback stays stopped and does not crash when data not loaded")
     func togglePlaybackNoOpWhenNotLoaded() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         // Intentionally do NOT call loadChartData; isDataLoaded stays false.
         vm.togglePlayback()
         #expect(vm.isPlaying == false)
@@ -160,7 +160,7 @@ struct GameplayViewModelPlaybackTests {
 
     @Test("restartPlayback when not playing does not start playback")
     func testRestartPlaybackWhenNotPlayingDoesNotStartPlayback() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay()
 
@@ -177,7 +177,7 @@ struct GameplayViewModelPlaybackTests {
 
     @Test("restartPlayback while playing restarts and keeps isPlaying true")
     func restartPlaybackWhilePlaying() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -305,7 +305,7 @@ struct GameplayViewModelPlaybackTests {
 
     @Test("wireInputHandler routes onNoteResult hits to recordHit while playing")
     func testWireInputHandlerRoutesHitsWhenPlaying() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         defer { vm.cleanup() }
         await vm.loadChartData()
         await vm.setupGameplay()

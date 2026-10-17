@@ -44,7 +44,7 @@ struct SwiftUIRenderingNotationTests {
                 Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0),
                 Note(interval: .quarter, noteType: .bass, measureNumber: 1, measureOffset: 0.5)
             ]))
-            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let viewModel = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium)
             )
             viewModel.installPreparedNotation(.ready(engraved, presentation))
@@ -163,7 +163,7 @@ struct SwiftUIRenderingNotationTests {
             #expect(artBounds.minY >= 0)
             #expect(engraved.paintedBounds.minY >= 0)
 
-            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let viewModel = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium)
             )
             viewModel.installPreparedNotation(.ready(engraved, presentation))
@@ -192,7 +192,7 @@ struct SwiftUIRenderingNotationTests {
             // the same extent the engraver unions into `paintedBounds`.
             let markExtent = engraved.style.stopMarkSize + engraved.style.stopMarkStrokeWidth
             let paintedTopEdge = control.position.y - markExtent / 2
-            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let viewModel = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium)
             )
             viewModel.installPreparedNotation(.ready(engraved, presentation))
@@ -215,7 +215,7 @@ struct SwiftUIRenderingNotationTests {
                 Note(interval: .eighth, noteType: .hiHat, measureNumber: 1, measureOffset: 2.0 / 16.0),
                 Note(interval: .sixtyfourth, noteType: .cowbell, measureNumber: 1, measureOffset: 4.0 / 16.0)
             ]))
-            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let viewModel = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium)
             )
             viewModel.installPreparedNotation(.ready(engraved, presentation))

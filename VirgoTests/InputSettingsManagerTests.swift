@@ -435,11 +435,17 @@ struct InputSettingsManagerTests {
 
             let targetDrum = DrumType.kick
             let original = manager.getNotePosition(for: targetDrum)
+            let newPos = try #require(
+                GameplayLayout.NotePosition.allCases.first { $0 != original },
+                "kick must offer more than one position"
+            )
+            manager.setNotePosition(newPos, for: targetDrum)
 
-            if let newPos = GameplayLayout.NotePosition.allCases.first(where: { $0 != original }) {
-                manager.setNotePosition(newPos, for: targetDrum)
-                #expect(manager.getNotePosition(for: targetDrum) == newPos)
-            }
+            // Persistence, not just the in-memory mirror: a fresh manager
+            // over the same defaults must read the written value back.
+            let reloaded = DrumNotationSettingsManager(userDefaults: userDefaults)
+            reloaded.loadSettings()
+            #expect(reloaded.getNotePosition(for: targetDrum) == newPos)
         }
     }
 }

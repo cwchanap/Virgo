@@ -29,13 +29,13 @@ final class MetronomePlaybackTimeStub: MetronomeEngine {
     override func stop() {}
 }
 
-@Suite("SpeedCoverage", .serialized)
+@Suite("GameplayViewModel speed control", .serialized)
 @MainActor
 struct GameplayViewModelSpeedTests {
 
     @Test("Paused speed changes immediately reinstall the cached timeline targets")
     func pausedSpeedChangeReconfiguresTimelineMatcher() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -56,7 +56,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("Playing speed changes preserve event identity without a legacy matcher transition")
     func playingSpeedChangeKeepsTimelineIdentity() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         let originalTargets = vm.cachedRhythmNoteTargets
@@ -89,14 +89,14 @@ struct GameplayViewModelSpeedTests {
 
     @Test("effectiveBPM returns 120 fallback when track is nil")
     func effectiveBPM_nilTrack_returnsFallback() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 8)
         defer { vm.cleanup() }
         #expect(abs(vm.effectiveBPM() - 120.0) < 0.001)
     }
 
     @Test("effectiveBPM uses track BPM after data load")
     func effectiveBPM_afterLoad_usesTrackBPM() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
         defer { vm.cleanup() }
         let trackBPM = try #require(vm.track?.bpm)
@@ -107,8 +107,8 @@ struct GameplayViewModelSpeedTests {
 
     @Test("updateSettings applies speed change when reference matches")
     func updateSettings_sameReference_applies() async {
-        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4, settings: settings)
+        let settings = GameplayViewModelTestSupport.makeSettings()
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4, settings: settings)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -121,13 +121,13 @@ struct GameplayViewModelSpeedTests {
 
     @Test("updateSettings is a no-op when reference differs")
     func updateSettings_differentReference_isNoOp() async {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
 
         let before = vm.effectiveBPM()
-        vm.updateSettings(GameplayViewModelCoverageTestSupport.makeSettings())
+        vm.updateSettings(GameplayViewModelTestSupport.makeSettings())
 
         #expect(abs(vm.effectiveBPM() - before) < 0.001)
     }
@@ -146,21 +146,21 @@ struct GameplayViewModelSpeedTests {
 
     @Test("clampedBGMRate clamps speeds below 0.5 up to 0.5")
     func clampedBGMRate_clampsLow() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
         defer { vm.cleanup() }
         #expect(vm.clampedBGMRate(for: 0.25) == Float(0.5))
     }
 
     @Test("clampedBGMRate clamps speeds above 2.0 down to 2.0")
     func clampedBGMRate_clampsHigh() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
         defer { vm.cleanup() }
         #expect(vm.clampedBGMRate(for: 3.0) == Float(2.0))
     }
 
     @Test("clampedBGMRate keeps in-range speed unchanged")
     func clampedBGMRate_keepsNormal() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
         defer { vm.cleanup() }
         #expect(vm.clampedBGMRate(for: 1.0) == Float(1.0))
     }
@@ -169,9 +169,9 @@ struct GameplayViewModelSpeedTests {
 
     @Test("bgmTimelineElapsedTime divides by speed and adds offset")
     func bgmTimelineElapsedTime_normalCase() {
-        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let settings = GameplayViewModelTestSupport.makeSettings()
         settings.setSpeed(0.5)
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4, settings: settings)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4, settings: settings)
         vm.bgmOffsetSeconds = 2.0
         defer { vm.cleanup() }
 
@@ -182,7 +182,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("elapsedBeatsForScheduling falls back to integer beat state for invalid BPM")
     func elapsedBeatsForScheduling_invalidBPM() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
         vm.totalBeatsElapsed = 4
         defer { vm.cleanup() }
 
@@ -196,7 +196,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("elapsedBeatsForScheduling computes elapsed beats for valid BPM")
     func elapsedBeatsForScheduling_normalCase() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
         vm.pausedElapsedTime = 2.0
         defer { vm.cleanup() }
 
@@ -207,7 +207,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("rescheduleBGMForSpeedChange returns false when no BGM player")
     func rescheduleBGM_nilPlayer_returnsFalse() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
         vm.bgmPlayer = nil
         defer { vm.cleanup() }
 
@@ -217,7 +217,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("rescheduleBGMForSpeedChange schedules with offset when remaining")
     func rescheduleBGM_withOffset_returnsTrue() throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
         player.prepareToPlay()
         vm.bgmPlayer = player
@@ -231,7 +231,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("rescheduleBGMForSpeedChange schedules at device time when no remaining offset")
     func rescheduleBGM_zeroOffset_returnsTrue() throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
         player.prepareToPlay()
         vm.bgmPlayer = player
@@ -247,7 +247,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("updateSpeed before data load is a safe no-op")
     func updateSpeed_beforeLoad_noCrash() {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         defer { vm.cleanup() }
 
         vm.updateSpeed(0.8)
@@ -257,7 +257,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("updateSpeed enforces BGM minimum speed when BGM player present")
     func updateSpeed_clampsBGMMinimum() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
@@ -273,9 +273,9 @@ struct GameplayViewModelSpeedTests {
     @Test("updateSpeed while playing clears sessionAtFullSpeed")
     func updateSpeed_whilePlaying_clearsFullSpeed() async throws {
         let spy = ScheduledMetronomeSpy(audioDriver: RecordingAudioDriver())
-        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let settings = GameplayViewModelTestSupport.makeSettings()
         let vm = GameplayViewModel(
-            chart: GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4),
+            chart: GameplayViewModelTestSupport.makeChart(noteCount: 4),
             metronome: spy,
             practiceSettings: settings
         )
@@ -291,7 +291,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("updateSpeed while paused scales pausedElapsedTime and sets progress")
     func updateSpeed_paused_scalesElapsedAndProgress() async {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -305,7 +305,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("updateSpeed with zero track duration sets playbackProgress to zero")
     func updateSpeed_paused_zeroDuration_setsProgressZero() async {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -321,7 +321,7 @@ struct GameplayViewModelSpeedTests {
 
     @Test("updateSpeed updates metronome BPM when enabled but not playing")
     func updateSpeed_metronomeEnabled_updatesBPM() async {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -337,9 +337,9 @@ struct GameplayViewModelSpeedTests {
     @Test("Speed change while playing sets scheduled start time without metronome time")
     func applySpeedChangeWhilePlaying_setsScheduledStartTime() async throws {
         let spy = ScheduledMetronomeSpy(audioDriver: RecordingAudioDriver())
-        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let settings = GameplayViewModelTestSupport.makeSettings()
         let vm = GameplayViewModel(
-            chart: GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4),
+            chart: GameplayViewModelTestSupport.makeChart(noteCount: 4),
             metronome: spy,
             practiceSettings: settings
         )
@@ -359,9 +359,9 @@ struct GameplayViewModelSpeedTests {
     @Test("Speed change fallback captures the live playback clock instead of stale paused time")
     func applySpeedChangeFallbackPreservesLivePlaybackPosition() async {
         let spy = ScheduledMetronomeSpy(audioDriver: RecordingAudioDriver())
-        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let settings = GameplayViewModelTestSupport.makeSettings()
         let vm = GameplayViewModel(
-            chart: GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4),
+            chart: GameplayViewModelTestSupport.makeChart(noteCount: 4),
             metronome: spy,
             practiceSettings: settings
         )
@@ -396,7 +396,7 @@ struct GameplayViewModelSpeedTests {
             measureOffset: 0,
             originKind: .dtx
         ))
-        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let settings = GameplayViewModelTestSupport.makeSettings()
         let vm = GameplayViewModel(
             chart: chart,
             metronome: ScheduledMetronomeSpy(audioDriver: RecordingAudioDriver()),
@@ -418,9 +418,9 @@ struct GameplayViewModelSpeedTests {
     @Test("Speed change while playing consumes metronome playback time when available")
     func applySpeedChangeWhilePlaying_usesMetronomeTime() async throws {
         let stub = MetronomePlaybackTimeStub(audioDriver: RecordingAudioDriver())
-        let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+        let settings = GameplayViewModelTestSupport.makeSettings()
         let vm = GameplayViewModel(
-            chart: GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4),
+            chart: GameplayViewModelTestSupport.makeChart(noteCount: 4),
             metronome: stub,
             practiceSettings: settings
         )

@@ -36,7 +36,7 @@ struct GameplayViewModelCleanupTests {
 
     @Test("cleanup clears prepared state, BGM player, subscriptions, and timers")
     func cleanupClearsAllResources() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         vm.bgmPlayer = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
@@ -57,7 +57,7 @@ struct GameplayViewModelCleanupTests {
         // Replaces the campaign assert (`metronomeSubscription != nil`), which passed even
         // if setup created nothing: a published metronome beat while playing must drive a
         // visual update through the subscription.
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -181,7 +181,7 @@ struct GameplayViewModelCleanupTests {
 
     @Test("resetPlaybackState zeroes all playback and scheduling fields")
     func resetPlaybackStateZeroesFields() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }

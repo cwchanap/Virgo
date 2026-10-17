@@ -182,7 +182,7 @@ struct GameplayNotationAccessibilityTests {
                 accessibilityLabels: [.note(9_999): "Alternate probe label"]
             )
 
-            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let viewModel = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium)
             )
             viewModel.installPreparedNotation(.ready(engraved, presentation))

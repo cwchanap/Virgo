@@ -372,8 +372,9 @@ extension SheetComposer {
         CGPoint(x: stem.start.x - formatting.stemWidth / 2, y: stem.end.y)
     }
 
-    /// Appends one flag primitive and unions its Bravura painted bounds
-    /// (glyph bounds offset so the attachment point lands on `origin`).
+    // Appends one flag primitive and unions its Bravura painted bounds
+    // (glyph bounds offset so the attachment point lands on `origin`).
+    // swiftlint:disable:next function_parameter_count
     private func appendFlag(
         noteID: Int,
         stemDirection: NotationStemDirection,
