@@ -70,7 +70,8 @@ struct GameplayStaticNotationInput: Equatable {
     /// The deepest row anchor's top edge in sheet coordinates — the offset
     /// `scrollTo("row_N", anchor: .top)` targets for the final row.
     var lastRowAnchorTop: CGFloat {
-        rowAnchorTops.last ?? 0
+        if usesEngravedNotation { return engravedRowAnchorTops.last ?? 0 }
+        return rowCount > 0 ? legacyRowAnchorTop(rowCount - 1) : 0
     }
 
     /// Scroll-canvas height: the sheet content, extended when needed so the
@@ -87,19 +88,25 @@ struct GameplayStaticNotationInput: Equatable {
     /// runs once per install generation, never per playback invalidation —
     /// while the fallback derives each top from the legacy staff formula
     /// (three staff spaces above line 5, one row pitch per row). Every
-    /// anchor sits at-or-below its own row's topmost ink — stems, flags,
+    /// anchor sits at-or-above its own row's topmost ink — stems, flags,
     /// and above-staff note positions can paint above a row's band top, and
     /// `scrollTo("row_i", anchor: .top)` clips anything that starts above
     /// the anchor (HPA-583).
     var rowAnchorTops: [CGFloat] {
         if usesEngravedNotation { return engravedRowAnchorTops }
+        return (0..<rowCount).map(legacyRowAnchorTop)
+    }
+
+    /// Legacy fallback: three staff spaces above line 5 of the first row,
+    /// one row pitch per row.
+    private func legacyRowAnchorTop(_ row: Int) -> CGFloat {
         let first = max(
             0,
             GameplayLayout.StaffLinePosition.line5.absoluteY(for: 0)
                 - 3 * GameplayLayout.staffLineSpacing
         )
         let pitch = GameplayLayout.rowHeight + GameplayLayout.rowVerticalSpacing
-        return (0..<rowCount).map { first + CGFloat($0) * pitch }
+        return first + CGFloat(row) * pitch
     }
 }
 
@@ -396,10 +403,10 @@ private struct GameplayRowAnchorColumn: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(width: 1, height: max(0, rowAnchorTops.first ?? 0))
+            Color.clear.frame(width: 1, height: heights.first ?? 0)
             ForEach(0..<max(rowAnchorTops.count, 1), id: \.self) { row in
                 Color.clear
-                    .frame(width: 1, height: anchorExtent(at: row))
+                    .frame(width: 1, height: extent(at: row))
                     .id("row_\(row)")
             }
             Spacer(minLength: 0)
@@ -408,12 +415,17 @@ private struct GameplayRowAnchorColumn: View {
         .allowsHitTesting(false)
     }
 
-    /// The frame height that lands the next anchor's top edge on its own
-    /// top. `scrollTo(anchor: .top)` reads only the top edge, so the last
-    /// row needs just a token extent.
-    private func anchorExtent(at row: Int) -> CGFloat {
-        guard rowAnchorTops.indices.contains(row + 1) else { return 1 }
-        return max(0, rowAnchorTops[row + 1] - rowAnchorTops[row])
+    /// Stacked frame heights from the pure helper: index 0 is the lead
+    /// spacer, index i+1 is row i's extent, so each `row_i` frame's top
+    /// edge lands exactly on `rowAnchorTops[i]`.
+    private var heights: [CGFloat] {
+        GameplayRowAnchorGeometry.anchorColumnHeights(for: rowAnchorTops)
+    }
+
+    /// `scrollTo(anchor: .top)` reads only the top edge, so the last row
+    /// needs just a token extent.
+    private func extent(at row: Int) -> CGFloat {
+        heights.indices.contains(row + 1) ? heights[row + 1] : 1
     }
 }
 

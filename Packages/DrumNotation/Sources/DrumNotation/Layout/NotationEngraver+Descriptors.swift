@@ -24,11 +24,13 @@ extension SheetComposer {
                 articulation,
                 staffSpace: formatting.staffSpace
             )
-            raw.include(metrics.paintedBounds.offsetBy(dx: position.x, dy: position.y))
+            let bounds = metrics.paintedBounds.offsetBy(dx: position.x, dy: position.y)
+            raw.include(bounds)
             raw.articulations.append(EngravedArticulation(
                 noteID: head.note.id,
                 kind: articulation,
-                position: position
+                position: position,
+                paintedBounds: bounds
             ))
         }
         // Engine ordering: source note ID.
@@ -70,19 +72,21 @@ extension SheetComposer {
             // The cross mark's ink: the mark square plus its stroke width —
             // the same union the production sheet relies on for bounds.
             let markExtent = style.stopMarkSize + style.stopMarkStrokeWidth
-            raw.include(CGRect(
+            let bounds = CGRect(
                 x: position.x - markExtent / 2,
                 y: position.y - markExtent / 2,
                 width: markExtent,
                 height: markExtent
-            ))
+            )
+            raw.include(bounds)
             stamped.append((
                 control: EngravedControl(
                     controlID: control.id,
                     kind: control.kind,
                     measureIndex: control.position.measureIndex,
                     rowIndex: formattedMeasure.rowIndex,
-                    position: position
+                    position: position,
+                    paintedBounds: bounds
                 ),
                 absoluteTick: resolvedMeasure.startTick + control.position.localTick
             ))
@@ -113,7 +117,7 @@ extension SheetComposer {
                 measuresByIndex: measuresByIndex,
                 raw: raw
             ) else { continue }
-            raw.include(tupletPaintedBounds(tuplet))
+            raw.include(tuplet.paintedBounds)
             raw.tuplets.append(tuplet)
         }
     }
@@ -172,6 +176,13 @@ extension SheetComposer {
             ? referenceY - style.tupletVerticalOffset
             : referenceY + style.tupletVerticalOffset
         let labelPosition = CGPoint(x: bounds.midX, y: labelY)
+        let bracketPoints = bracketVisible
+            ? tupletBracketPoints(
+                minX: bounds.minX,
+                maxX: bounds.maxX,
+                labelPosition: labelPosition,
+                direction: direction
+            ) : []
         return EngravedTuplet(
             tupletID: group.id,
             voice: group.voice,
@@ -179,15 +190,13 @@ extension SheetComposer {
             memberNoteIDs: group.memberNoteIDs,
             memberRestIDs: group.memberRestIDs,
             isBracketVisible: bracketVisible,
-            bracketPoints: bracketVisible
-                ? tupletBracketPoints(
-                    minX: bounds.minX,
-                    maxX: bounds.maxX,
-                    labelPosition: labelPosition,
-                    direction: direction
-                ) : [],
+            bracketPoints: bracketPoints,
             labelPosition: labelPosition,
-            rowIndex: memberHeads.first?.rowIndex ?? memberRests[0].rowIndex
+            rowIndex: memberHeads.first?.rowIndex ?? memberRests[0].rowIndex,
+            paintedBounds: tupletPaintedBounds(
+                bracketPoints: bracketPoints,
+                labelPosition: labelPosition
+            )
         )
     }
 
@@ -258,15 +267,18 @@ extension SheetComposer {
     /// The tuplet's ink: bracket polyline bounds unioned with the label
     /// rect, stroked by `tupletLineWidth` — the engine's
     /// `RenderedTuplet.paintedBounds`.
-    private func tupletPaintedBounds(_ tuplet: EngravedTuplet) -> CGRect {
-        var bounds = tuplet.bracketPoints.isEmpty
+    private func tupletPaintedBounds(
+        bracketPoints: [CGPoint],
+        labelPosition: CGPoint
+    ) -> CGRect {
+        var bounds = bracketPoints.isEmpty
             ? CGRect.null
-            : tuplet.bracketPoints.dropFirst().reduce(
-                CGRect(origin: tuplet.bracketPoints[0], size: .zero)
+            : bracketPoints.dropFirst().reduce(
+                CGRect(origin: bracketPoints[0], size: .zero)
             ) { $0.union(CGRect(origin: $1, size: .zero)) }
         bounds = bounds.union(CGRect(
-            x: tuplet.labelPosition.x - style.tupletLabelSize.width / 2,
-            y: tuplet.labelPosition.y - style.tupletLabelSize.height / 2,
+            x: labelPosition.x - style.tupletLabelSize.width / 2,
+            y: labelPosition.y - style.tupletLabelSize.height / 2,
             width: style.tupletLabelSize.width,
             height: style.tupletLabelSize.height
         ))
@@ -452,7 +464,8 @@ extension EngravedArticulation {
         EngravedArticulation(
             noteID: noteID,
             kind: kind,
-            position: CGPoint(x: position.x, y: position.y + delta)
+            position: CGPoint(x: position.x, y: position.y + delta),
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
         )
     }
 }
@@ -464,7 +477,8 @@ extension EngravedControl {
             kind: kind,
             measureIndex: measureIndex,
             rowIndex: rowIndex,
-            position: CGPoint(x: position.x, y: position.y + delta)
+            position: CGPoint(x: position.x, y: position.y + delta),
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
         )
     }
 }
@@ -480,7 +494,8 @@ extension EngravedTuplet {
             isBracketVisible: isBracketVisible,
             bracketPoints: bracketPoints.map { CGPoint(x: $0.x, y: $0.y + delta) },
             labelPosition: CGPoint(x: labelPosition.x, y: labelPosition.y + delta),
-            rowIndex: rowIndex
+            rowIndex: rowIndex,
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
         )
     }
 }

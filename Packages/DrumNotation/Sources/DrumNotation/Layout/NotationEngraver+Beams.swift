@@ -63,7 +63,7 @@ extension SheetComposer {
             }
         }.sorted(by: beamComesBefore)
         for beam in beams {
-            raw.include(lineBounds(start: beam.start, end: beam.end, lineWidth: beam.thickness))
+            raw.include(beam.paintedBounds)
         }
         raw.beams.append(contentsOf: beams)
     }
@@ -104,14 +104,21 @@ extension SheetComposer {
             noteIDs = context.events[ownerIndex].noteIDs.sorted()
         }
 
+        let startPoint = CGPoint(x: start.x, y: y)
+        let endPoint = CGPoint(x: endX, y: y)
         return EngravedBeam(
             noteIDs: noteIDs,
             direction: direction,
             level: segment.level,
             kind: EngravedBeamKind(segment.kind),
-            start: CGPoint(x: start.x, y: y),
-            end: CGPoint(x: endX, y: y),
-            thickness: style.beamThickness
+            start: startPoint,
+            end: endPoint,
+            thickness: style.beamThickness,
+            paintedBounds: lineBounds(
+                start: startPoint,
+                end: endPoint,
+                lineWidth: style.beamThickness
+            )
         )
     }
 
@@ -233,9 +240,14 @@ extension SheetComposer {
                 noteIDs: memberIDs.sorted(),
                 direction: group.key.stemDirection,
                 start: start,
-                end: CGPoint(x: start.x, y: endY)
+                end: CGPoint(x: start.x, y: endY),
+                paintedBounds: lineBounds(
+                    start: start,
+                    end: CGPoint(x: start.x, y: endY),
+                    lineWidth: formatting.stemWidth
+                )
             )
-            raw.include(lineBounds(start: stem.start, end: stem.end, lineWidth: formatting.stemWidth))
+            raw.include(stem.paintedBounds)
             raw.stems.append(stem)
             stemsByGroup[index] = stem
         }
@@ -333,20 +345,21 @@ extension SheetComposer {
             case .none:
                 continue
             case .canonical(let duration):
-                appendFlag(EngravedFlag(
+                appendFlag(
                     noteID: flagRepID, stemDirection: direction, duration: duration,
-                    flagIndex: 0, origin: base
-                ), raw: &raw)
+                    flagIndex: 0, origin: base, raw: &raw
+                )
             case .components(let levels):
                 for level in levels.sorted() {
                     let yOffset = direction == .up
                         ? CGFloat(level) * style.flagVerticalSpacing
                         : -CGFloat(level) * style.flagVerticalSpacing
-                    appendFlag(EngravedFlag(
+                    appendFlag(
                         noteID: flagRepID, stemDirection: direction, duration: .eighth,
                         flagIndex: level,
-                        origin: CGPoint(x: base.x, y: base.y + yOffset)
-                    ), raw: &raw)
+                        origin: CGPoint(x: base.x, y: base.y + yOffset),
+                        raw: &raw
+                    )
                 }
             }
         }
@@ -361,17 +374,32 @@ extension SheetComposer {
 
     /// Appends one flag primitive and unions its Bravura painted bounds
     /// (glyph bounds offset so the attachment point lands on `origin`).
-    private func appendFlag(_ flag: EngravedFlag, raw: inout RawGeometry) {
+    private func appendFlag(
+        noteID: Int,
+        stemDirection: NotationStemDirection,
+        duration: NotationFlagDuration,
+        flagIndex: Int,
+        origin: CGPoint,
+        raw: inout RawGeometry
+    ) {
         let metrics = PercussionGlyphMetrics.flag(
-            duration: flag.duration,
-            direction: flag.stemDirection,
+            duration: duration,
+            direction: stemDirection,
             staffSpace: formatting.staffSpace
         )
-        raw.include(metrics.paintedBounds.offsetBy(
-            dx: flag.origin.x - metrics.attachmentOffset.x,
-            dy: flag.origin.y - metrics.attachmentOffset.y
+        let bounds = metrics.paintedBounds.offsetBy(
+            dx: origin.x - metrics.attachmentOffset.x,
+            dy: origin.y - metrics.attachmentOffset.y
+        )
+        raw.include(bounds)
+        raw.flags.append(EngravedFlag(
+            noteID: noteID,
+            stemDirection: stemDirection,
+            duration: duration,
+            flagIndex: flagIndex,
+            origin: origin,
+            paintedBounds: bounds
         ))
-        raw.flags.append(flag)
     }
 }
 
@@ -383,7 +411,8 @@ extension EngravedStem {
             noteIDs: noteIDs,
             direction: direction,
             start: CGPoint(x: start.x, y: start.y + delta),
-            end: CGPoint(x: end.x, y: end.y + delta)
+            end: CGPoint(x: end.x, y: end.y + delta),
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
         )
     }
 }
@@ -397,7 +426,8 @@ extension EngravedBeam {
             kind: kind,
             start: CGPoint(x: start.x, y: start.y + delta),
             end: CGPoint(x: end.x, y: end.y + delta),
-            thickness: thickness
+            thickness: thickness,
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
         )
     }
 }
@@ -409,7 +439,8 @@ extension EngravedFlag {
             stemDirection: stemDirection,
             duration: duration,
             flagIndex: flagIndex,
-            origin: CGPoint(x: origin.x, y: origin.y + delta)
+            origin: CGPoint(x: origin.x, y: origin.y + delta),
+            paintedBounds: paintedBounds.offsetBy(dx: 0, dy: delta)
         )
     }
 }
