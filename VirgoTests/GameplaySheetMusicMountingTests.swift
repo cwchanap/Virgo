@@ -40,7 +40,7 @@ struct GameplaySheetMusicMountingTests {
     @Test("sheetMusicView mounts the package note head layer")
     func sheetMusicViewMountsNoteHeadLayer() async throws {
         try await TestSetup.withTestSetup {
-            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+            let viewModel = GameplayViewModelTestSupport.makeViewModel(noteCount: 8)
             await viewModel.loadChartData()
             await viewModel.setupGameplay(loadPersistedSpeed: false)
             defer { viewModel.cleanup() }
@@ -113,7 +113,7 @@ struct GameplaySheetMusicMountingTests {
     @Test("sheetMusicView renders the fatal sheet when installed preparation failed")
     func sheetMusicViewRendersFatalSheetOnPreparationFailure() async throws {
         try await TestSetup.withTestSetup {
-            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+            let viewModel = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
             viewModel.installPreparedNotation(.failed(GameplayNotationPreparationFailure(
                 detail: "synthetic failure",
                 userMessage: "Notation exploded"
@@ -185,10 +185,124 @@ struct GameplaySheetMusicMountingTests {
         }
     }
 
+    /// End-to-end auto-scroll regression: playing and advancing
+    /// `currentRow` must drive the real `ScrollViewReader.scrollTo`
+    /// (`.top` anchor) so the hosted `NSScrollView`'s clip view actually
+    /// comes to rest at the target row's anchor top. A target that only
+    /// *draws* at its top (`.offset`) still lays out at y=0 and lands every
+    /// row at the sheet top — that failure mode reads back here as a
+    /// zero offset.
+    @Test("playing and changing currentRow scrolls the real clip view to the row anchor top")
+    func mountedSheetScrollToLandsAtRowAnchorTop() async throws {
+        try await TestSetup.withTestSetup {
+            let rendered = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.multiRowStableWidths)
+            let viewModel = GameplayViewModel(
+                chart: rendered.chart,
+                metronome: GameplayViewModelTestHarness.createTestMetronome()
+            )
+            await viewModel.loadChartData()
+            await viewModel.setupGameplay(loadPersistedSpeed: false)
+            defer { viewModel.cleanup() }
+
+            let gameplayView = GameplayView(
+                chart: viewModel.chart,
+                metronome: viewModel.metronome,
+                initialViewModel: viewModel
+            )
+            viewModel.updateRowWidth(1_024)
+
+            #if os(macOS)
+            let host = try hostWindowedSheet(gameplayView)
+            let input = gameplayView.staticNotationInput(viewModel: viewModel)
+            let tops = input.rowAnchorTops
+            try #require(tops.count > 1, "fixture must mount multiple rows")
+            let targetRow = try #require(
+                tops.indices.max { tops[$0] < tops[$1] }, "anchor tops must not be empty"
+            )
+            try #require(tops[targetRow] > 0, "target anchor must sit below the sheet top")
+
+            // Drive the production auto-scroll path: play, then advance.
+            viewModel.isPlaying = true
+            viewModel.currentRow = targetRow
+            // The production scroll runs in a 0.25s ease animation — pump
+            // the run loop until the clip view stops moving.
+            var offset = host.scrollView.contentView.bounds.origin.y
+            var stableReads = 0
+            while stableReads < 3 {
+                Self.pumpRunLoop(0.1)
+                host.hostingView.layoutSubtreeIfNeeded()
+                let next = host.scrollView.contentView.bounds.origin.y
+                stableReads = abs(next - offset) < 0.1 ? stableReads + 1 : 0
+                offset = next
+            }
+            #expect(
+                abs(offset - tops[targetRow]) < 1.0,
+                "scrollTo(\"row_\(targetRow)\") rested at \(offset); anchor top is \(tops[targetRow])"
+            )
+            host.window.orderOut(nil)
+            #else
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                GeometryReader { proxy in
+                    gameplayView.sheetMusicView(geometry: proxy)
+                },
+                size: CGSize(width: 1_024, height: 768)
+            )
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+            #endif
+        }
+    }
+
+    /// Services the main run loop synchronously — CA-driven scroll
+    /// animations never tick from an `await` suspension, and
+    /// `RunLoop.current` is unavailable in async contexts.
+    private static func pumpRunLoop(_ seconds: TimeInterval) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    #if os(macOS)
+    /// A sheet mounted in a real window for observing real `scrollTo`
+    /// landings.
+    private struct WindowedSheetHost {
+        let window: NSWindow
+        let hostingView: NSHostingView<AnyView>
+        let scrollView: NSScrollView
+    }
+
+    /// Hosts the sheet in a real window and returns the production
+    /// `NSScrollView` it mounted. `scrollTo` animates through Core
+    /// Animation, which never ticks for an unparented `NSHostingView`, so
+    /// the unwindowed mount the other mounting tests use cannot observe
+    /// where a scroll actually lands.
+    private func hostWindowedSheet(_ gameplayView: GameplayView) throws -> WindowedSheetHost {
+        let hostingView = NSHostingView(rootView: AnyView(
+            GeometryReader { proxy in
+                gameplayView.sheetMusicView(geometry: proxy)
+            }
+        ))
+        hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 1_024, height: 768))
+        let window = NSWindow(
+            contentRect: hostingView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.orderFrontRegardless()
+        hostingView.layoutSubtreeIfNeeded()
+        hostingView.displayIfNeeded()
+        Self.pumpRunLoop(0.1)
+        return WindowedSheetHost(
+            window: window,
+            hostingView: hostingView,
+            scrollView: try #require(firstHostedScrollView(in: hostingView))
+        )
+    }
+    #endif
+
     @Test("Gameplay sheet auto-scroll preserves legacy empty layout without scrolling notation-only content")
     func testGameplaySheetAutoScrollPolicy() async throws {
         try await TestSetup.withTestSetup {
-            let restOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let restOnlyViewModel = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium),
                 noteCount: 0
             )
@@ -203,17 +317,17 @@ struct GameplaySheetMusicMountingTests {
                 measureOffset: 0,
                 targetLaneID: "1A"
             ))
-            let controlOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: controlOnlyChart)
+            let controlOnlyViewModel = GameplayViewModelTestSupport.makeViewModel(chart: controlOnlyChart)
             defer { controlOnlyViewModel.cleanup() }
             await controlOnlyViewModel.loadChartData()
             await controlOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
 
-            let playableViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+            let playableViewModel = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
             defer { playableViewModel.cleanup() }
             await playableViewModel.loadChartData()
             await playableViewModel.setupGameplay(loadPersistedSpeed: false)
 
-            let legacyEmptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 0)
+            let legacyEmptyViewModel = GameplayViewModelTestSupport.makeViewModel(noteCount: 0)
             defer { legacyEmptyViewModel.cleanup() }
             await legacyEmptyViewModel.loadChartData()
             await legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)

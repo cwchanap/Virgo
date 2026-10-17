@@ -101,8 +101,9 @@ func rasterizeView<V: View>(_ view: V, size: CGSize) throws -> RasterBitmap {
 }
 
 /// The first `NSScrollView` in a hosted hierarchy — the production scroll
-/// path both probes drive.
-private func firstHostedScrollView(in view: NSView) -> NSScrollView? {
+/// path both probes drive, and the readback point for regression tests
+/// asserting where the real `scrollTo` landed.
+func firstHostedScrollView(in view: NSView) -> NSScrollView? {
     if let scrollView = view as? NSScrollView { return scrollView }
     return view.subviews.lazy.compactMap(firstHostedScrollView(in:)).first
 }

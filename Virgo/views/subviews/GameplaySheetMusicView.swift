@@ -68,9 +68,11 @@ struct GameplayStaticNotationInput: Equatable {
     }
 
     /// The deepest row anchor's top edge in sheet coordinates — the offset
-    /// `scrollTo("row_N", anchor: .top)` targets for the final row.
+    /// `scrollTo("row_N", anchor: .top)` targets for the final row. Tops
+    /// may decrease row-over-row (a later row's topmost ink can sit above
+    /// an earlier row's anchor), so the deepest is the max, not `.last`.
     var lastRowAnchorTop: CGFloat {
-        if usesEngravedNotation { return engravedRowAnchorTops.last ?? 0 }
+        if usesEngravedNotation { return engravedRowAnchorTops.max() ?? 0 }
         return rowCount > 0 ? legacyRowAnchorTop(rowCount - 1) : 0
     }
 
@@ -78,20 +80,20 @@ struct GameplayStaticNotationInput: Equatable {
     /// deepest row anchor can still reach the viewport top. The scroll view
     /// clamps the offset at `canvas − viewport`, so the last band top only
     /// arrives when the canvas runs a full viewport height below it —
-    /// `contentHeight` alone ends at the anchor block's bottom.
+    /// `contentHeight` alone ends at the sheet's own bottom.
     func scrollContentHeight(viewportHeight: CGFloat) -> CGFloat {
         max(contentHeight, lastRowAnchorTop + max(0, viewportHeight))
     }
 
     /// Per-row scroll-anchor tops in sheet coordinates: `row_i`'s top edge.
-    /// Engraved sheets read the install-derived array — the primitive scan
-    /// runs once per install generation, never per playback invalidation —
-    /// while the fallback derives each top from the legacy staff formula
-    /// (three staff spaces above line 5, one row pitch per row). Every
-    /// anchor sits at-or-above its own row's topmost ink — stems, flags,
-    /// and above-staff note positions can paint above a row's band top, and
+    /// Engraved sheets read the install-derived array
+    /// (`GameplayNotationInstall.rowAnchorTops`), while the fallback
+    /// derives each top from the legacy staff formula (three staff spaces
+    /// above line 5, one row pitch per row). Every anchor sits at-or-above
+    /// its own row's topmost ink — stems, flags, and above-staff note
+    /// positions can paint above a row's band top, and
     /// `scrollTo("row_i", anchor: .top)` clips anything that starts above
-    /// the anchor (HPA-583).
+    /// the anchor.
     var rowAnchorTops: [CGFloat] {
         if usesEngravedNotation { return engravedRowAnchorTops }
         return (0..<rowCount).map(legacyRowAnchorTop)
@@ -398,11 +400,14 @@ private struct GameplayClefsAndTimeSignaturesView: View {
 /// per-row tops for engraved sheets, the legacy staff formula for the
 /// fallback sheet.
 ///
-/// Each anchor is an independently positioned 1pt target — a stacked
-/// `VStack` can only land `row_i` at `tops[i]` when tops never decrease
-/// (extents are non-negative), but a later row's topmost ink can sit
-/// above an earlier row's anchor, so per-row tops must be allowed to
-/// decrease.
+/// Each row is an overlaid spacer-plus-target pair — a `Color.clear`
+/// spacer of `rowAnchorTops[row]` height above a 1pt target carrying the
+/// `row_i` id. `scrollTo` reads layout geometry (an `.offset`-shifted
+/// target still reports y=0), and a stacked `VStack` can only land
+/// `row_i` at `tops[i]` when tops never decrease — but a later row's
+/// topmost ink can sit above an earlier row's anchor, so per-row tops
+/// must be allowed to decrease. Overlaying the pairs in a `ZStack` gives
+/// each one an independent y=0 origin.
 private struct GameplayRowAnchorColumn: View {
     /// `row_i`'s top edge in sheet coordinates.
     let rowAnchorTops: [CGFloat]
@@ -410,10 +415,15 @@ private struct GameplayRowAnchorColumn: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(0..<max(rowAnchorTops.count, 1), id: \.self) { row in
-                Color.clear
-                    .frame(width: 1, height: 1)
-                    .offset(y: rowAnchorTops.indices.contains(row) ? rowAnchorTops[row] : 0)
-                    .id("row_\(row)")
+                VStack(spacing: 0) {
+                    Color.clear.frame(
+                        width: 1,
+                        height: rowAnchorTops.indices.contains(row) ? rowAnchorTops[row] : 0
+                    )
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .id("row_\(row)")
+                }
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
