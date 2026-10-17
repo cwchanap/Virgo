@@ -64,13 +64,16 @@ struct ServerConfigTests {
         #expect(config.graphQLEndpoint == URL(string: "http://127.0.0.1:8001/graphql"))
     }
 
-    @Test("An invalid persisted override is skipped in favor of a valid .env endpoint")
-    func testInvalidOverrideSkippedForValidEnv() {
+    @Test("An invalid persisted override resolves to the local-dev fallback, not the .env endpoint")
+    func testInvalidOverrideResolvesToFallback() {
         let env = EndpointDefaults(graphQLEndpoint: envGraphQL, r2BaseURL: envR2)
-        let (config, defaults) = makeConfig("config.skipinvalid", endpointDefaults: env)
-        // Bypass the setter to simulate a stale/corrupt persisted value.
+        let (config, defaults) = makeConfig("config.invalidoverride", endpointDefaults: env)
+        // Bypass the setter to simulate a stale/corrupt persisted value: the
+        // first present candidate wins before validation, so an invalid
+        // override lands on the local-dev fallback even when the bundled
+        // .env endpoint is valid (HPA-583 review — existing precedence kept).
         defaults.set("ftp://nope", forKey: ServerConfig.graphQLEndpointKey)
-        #expect(config.graphQLEndpoint == URL(string: envGraphQL))
+        #expect(config.graphQLEndpoint == URL(string: "http://127.0.0.1:8001/graphql"))
     }
 
     @Test("r2BaseURL falls back to nil when override is invalid and no .env default exists")

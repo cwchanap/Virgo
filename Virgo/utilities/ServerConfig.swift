@@ -28,20 +28,16 @@ final class ServerConfig {
     }
 
     var graphQLEndpoint: URL {
-        // Skip-invalid precedence (like `r2BaseURL`): a stale invalid
-        // override must not hide a valid `.env` endpoint behind the
-        // local-dev fallback.
-        let candidates = [
-            userDefaults.string(forKey: Self.graphQLEndpointKey),
-            endpointDefaults.graphQLEndpoint
-        ]
-        let resolved = candidates
-            .lazy
-            .compactMap { $0 }
-            .compactMap(Self.normalized)
-            .first
+        // Precedence: UserDefaults override → bundled `.env` default →
+        // local-dev fallback. The first *present* value wins before
+        // validation — an invalid persisted override resolves to the
+        // local-dev fallback rather than skipping to a valid `.env`
+        // endpoint (unlike `r2BaseURL`, which validates each source).
+        let resolved = userDefaults.string(forKey: Self.graphQLEndpointKey)
+            ?? endpointDefaults.graphQLEndpoint
             ?? Self.fallbackEndpoint
-        return URL(string: resolved) ?? URL(string: Self.fallbackEndpoint)!
+        let validated = Self.normalized(resolved) ?? Self.fallbackEndpoint
+        return URL(string: validated) ?? URL(string: Self.fallbackEndpoint)!
     }
 
     var r2BaseURL: URL? {
