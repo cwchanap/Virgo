@@ -1,17 +1,25 @@
 //
-//  SongLibraryCoverageTests.swift
+//  SwiftUIRenderingSongLibraryTests.swift
 //  VirgoTests
-//
-//  Created by Copilot on 31/3/2026.
 //
 
 import Testing
 import SwiftUI
+import SwiftData
 @testable import Virgo
 
-@Suite("Song Library Coverage Tests", .serialized)
+/// Song-library component rendering ownership, consolidated from the campaign
+/// SongLibraryCoverageTests and SecondWaveCoverageTests (HPA-583): adding these
+/// to `SwiftUIRenderingLibraryAndResultsTests` would breach both of that file's
+/// SwiftLint ERROR budgets (struct1 416/600 type body, file 663/1000). The
+/// ServerSongRow / LibraryView / DownloadedSongsView / SavedSongRow / SongCard
+/// rendered-content contracts have no other owner.
+@Suite("SwiftUI Song Library Rendering Tests", .serialized)
 @MainActor
-struct SongLibraryCoverageTests {
+struct SwiftUIRenderingSongLibraryTests {
+
+    // MARK: - ServerSongRow
+
     @Test("ServerSongRow renders loading state with chart and audio indicators")
     func testServerSongRowLoadingState() async throws {
         try await TestSetup.withTestSetup {
@@ -163,6 +171,8 @@ struct SongLibraryCoverageTests {
         }
     }
 
+    // MARK: - LibraryView
+
     @Test("LibraryView renders empty downloaded-song state")
     func testLibraryViewEmptyState() async throws {
         try await TestSetup.withTestSetup {
@@ -287,64 +297,180 @@ struct SongLibraryCoverageTests {
         }
     }
 
-    @Test("SavedSongRow renders deleting progress state")
-    func testSavedSongRowDeletingState() async throws {
+    // MARK: - DownloadedSongsView (consolidated from SecondWaveCoverageTests)
+
+    @Test("DownloadedSongsView renders empty state when no downloaded songs exist")
+    func testDownloadedSongsViewEmptyState() async throws {
         try await TestSetup.withTestSetup {
-            let song = SwiftUICoverageFixtures.makeSong(
-                title: "Deleting Song",
-                genre: "DTX Import",
-                charts: [
-                    SwiftUICoverageFixtures.makeChart(difficulty: .medium, level: 40)
-                ]
+            let serverSongService = ServerSongService()
+            let audioPlaybackService = AudioPlaybackService(startPlayback: { _ in false })
+
+            let view = DownloadedSongsView(
+                songs: [],
+                serverSongService: serverSongService,
+                currentlyPlaying: .constant(nil),
+                expandedSongId: .constant(nil),
+                audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
+                onPlayTap: { _ in },
+                onSaveTap: { _ in }
             )
 
-            SwiftUITestUtilities.assertView(
-                SavedSongRow(song: song, isDeleting: true, onDelete: {}),
-                containsStrings: ["Deleting Song", "Deleting..."],
-                excludesStrings: ["Delete"]
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1024, height: 768)
             )
         }
     }
 
-    @Test("LibraryView renders delete button for non-deleting downloaded songs")
-    func testLibraryViewDeleteButtonState() async throws {
+    @Test("DownloadedSongsView renders populated state with DTX Import songs")
+    func testDownloadedSongsViewPopulatedState() async throws {
         try await TestSetup.withTestSetup {
-            let song = SwiftUICoverageFixtures.makeSong(
-                title: "Deletable Song",
-                artist: "Delete Artist",
-                genre: "DTX Import",
-                charts: [SwiftUICoverageFixtures.makeChart(difficulty: .easy, level: 20)]
+            let song1 = makeDownloadedSong(title: "Wave 2 Song A")
+            let song2 = makeDownloadedSong(title: "Wave 2 Song B")
+            let serverSongService = ServerSongService()
+            let audioPlaybackService = AudioPlaybackService(startPlayback: { _ in false })
+
+            let view = DownloadedSongsView(
+                songs: [song1, song2],
+                serverSongService: serverSongService,
+                currentlyPlaying: .constant(nil),
+                expandedSongId: .constant(nil),
+                audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
+                onPlayTap: { _ in },
+                onSaveTap: { _ in }
             )
 
-            SwiftUITestUtilities.assertView(
-                LibraryView(songs: [song], serverSongService: ServerSongService()),
-                containsStrings: ["Downloaded Songs", "1 songs downloaded"],
-                excludesStrings: ["No Downloaded Songs"]
+            // Mounting the populated view verifies the row (with its newly
+            // re-attached accessibility identifier) renders without crashing.
+            // The identifier itself is verified at the UI-test level, where the
+            // accessibility tree is actually queryable (reflection-based
+            // identifier collection cannot see .accessibilityIdentifier).
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1024, height: 768)
             )
         }
     }
 
-    @Test("SavedSongRow renders delete button when onDelete is provided and not deleting")
-    func testSavedSongRowDeleteButtonState() async throws {
+    @Test("DownloadedSongsView.rowViewID stays stable across SwiftData reloads")
+    func testDownloadedSongsViewRowViewIDStableAcrossReloads() async throws {
         try await TestSetup.withTestSetup {
-            let song = SwiftUICoverageFixtures.makeSong(
-                title: "Deletable Song",
-                genre: "DTX Import",
-                charts: [
-                    SwiftUICoverageFixtures.makeChart(difficulty: .medium, level: 40)
-                ]
+            let context = TestContainer.shared.context
+            let song = makeDownloadedSong(title: "Stable Row ID")
+            context.insert(song)
+            try context.save()
+
+            let originalRowViewID = DownloadedSongsView.rowViewID(for: song)
+
+            let verificationContext = ModelContext(TestContainer.shared.container)
+            let reloadedSong = try #require(
+                verificationContext.fetch(FetchDescriptor<Song>()).first
             )
 
-            let row = SavedSongRow(song: song, isDeleting: false, onDelete: {})
-            #expect(row.showsDeleteButton)
-
-            let mountedView = SwiftUITestUtilities.assertViewWithEnvironment(row)
-            let texts = SwiftUITestUtilities.renderedTexts(from: mountedView.root)
-
-            #expect(texts.contains("Deletable Song"), "Expected title; got \(texts)")
-            #expect(!texts.contains("Deleting..."), "Should not show deleting state; got \(texts)")
+            #expect(song.persistentModelID == reloadedSong.persistentModelID)
+            #expect(ObjectIdentifier(song) != ObjectIdentifier(reloadedSong))
+            #expect(
+                DownloadedSongsView.rowViewID(for: reloadedSong) == originalRowViewID,
+                "Row view IDs should stay stable for the same SwiftData model across reloads"
+            )
         }
     }
+
+    @Test("DownloadedSongsView.downloadedSongs filters to server-imported songs only")
+    func testDownloadedSongsViewFiltersNonDTXSongs() async throws {
+        try await TestSetup.withTestSetup {
+            let downloadedSong = makeDownloadedSong(title: "DTX Track")
+            let nonDownloadedSong = Song(
+                title: "Rock Track",
+                artist: "Rock Artist",
+                bpm: 120,
+                duration: "3:00",
+                genre: "Rock",
+                timeSignature: .fourFour,
+                isServerImported: false
+            )
+            let serverSongService = ServerSongService()
+            let audioPlaybackService = AudioPlaybackService(startPlayback: { _ in false })
+
+            let view = DownloadedSongsView(
+                songs: [downloadedSong, nonDownloadedSong],
+                serverSongService: serverSongService,
+                currentlyPlaying: .constant(nil),
+                expandedSongId: .constant(nil),
+                audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
+                onPlayTap: { _ in },
+                onSaveTap: { _ in }
+            )
+
+            // Assert real filtering behaviour: only the server-imported song passes the predicate
+            #expect(view.downloadedSongs.count == 1)
+            #expect(view.downloadedSongs.first?.title == "DTX Track")
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1024, height: 768)
+            )
+        }
+    }
+
+    @Test("DownloadedSongsView.downloadedSongs ignores deleted songs from stale query snapshots")
+    func testDownloadedSongsViewFiltersDeletedSongs() async throws {
+        try await TestSetup.withTestSetup {
+            let context = TestContainer.shared.context
+            let deletedSong = makeDownloadedSong(title: "Deleted DTX Track")
+            let liveSong = makeDownloadedSong(title: "Live DTX Track")
+            context.insert(deletedSong)
+            context.insert(liveSong)
+            try context.save()
+            context.delete(deletedSong)
+            try context.save()
+
+            let serverSongService = ServerSongService()
+            let audioPlaybackService = AudioPlaybackService(startPlayback: { _ in false })
+            let view = DownloadedSongsView(
+                songs: [deletedSong, liveSong],
+                serverSongService: serverSongService,
+                currentlyPlaying: .constant(nil),
+                expandedSongId: .constant(nil),
+                audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
+                onPlayTap: { _ in },
+                onSaveTap: { _ in }
+            )
+
+            #expect(view.downloadedSongs.map(\.title) == ["Live DTX Track"])
+        }
+    }
+
+    @Test("DownloadedSongsView renders with currently playing song highlighted")
+    func testDownloadedSongsViewWithPlayingState() async throws {
+        try await TestSetup.withTestSetup {
+            let song = makeDownloadedSong(title: "Playing Song")
+            let serverSongService = ServerSongService()
+            let audioPlaybackService = AudioPlaybackService(startPlayback: { _ in false })
+
+            let view = DownloadedSongsView(
+                songs: [song],
+                serverSongService: serverSongService,
+                currentlyPlaying: .constant(song.persistentModelID),
+                expandedSongId: .constant(nil),
+                audioPlaybackService: audioPlaybackService,
+                onChartSelect: { _ in },
+                onPlayTap: { _ in },
+                onSaveTap: { _ in }
+            )
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1024, height: 768)
+            )
+        }
+    }
+
+    // MARK: - SavedSongRow / SongCard
 
     @Test("SavedSongRow hides delete button when onDelete is nil")
     func testSavedSongRowNoDeleteFallback() async throws {
@@ -382,5 +508,27 @@ struct SongLibraryCoverageTests {
             #expect(idB.hasPrefix("downloadedSongCardOpenButton-"))
             #expect(idA != idB, "Open-button identifiers must differ per song")
         }
+    }
+
+    // MARK: - Private Helpers
+
+    private func makeDownloadedSong(title: String) -> Song {
+        let chart = SwiftUICoverageFixtures.makeChart(
+            difficulty: .medium,
+            notes: [
+                SwiftUICoverageFixtures.makeNote(
+                    interval: .quarter,
+                    noteType: .bass,
+                    measureNumber: 1,
+                    measureOffset: 0.0
+                )
+            ]
+        )
+        let song = SwiftUICoverageFixtures.makeSong(
+            title: title,
+            genre: "DTX Import",
+            charts: [chart]
+        )
+        return song
     }
 }

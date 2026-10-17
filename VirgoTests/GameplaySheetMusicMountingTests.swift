@@ -104,6 +104,129 @@ struct GameplaySheetMusicMountingTests {
             )
         }
     }
+
+    // MARK: - Consolidated from GameplayNotationCoverageAdditionsTests
+
+    /// The sheet's own fatal guard (distinct from `body`'s interception):
+    /// calling `sheetMusicView` directly on a view model whose installed
+    /// preparation failed must render the fatal sheet.
+    @Test("sheetMusicView renders the fatal sheet when installed preparation failed")
+    func sheetMusicViewRendersFatalSheetOnPreparationFailure() async throws {
+        try await TestSetup.withTestSetup {
+            let viewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+            viewModel.installPreparedNotation(.failed(GameplayNotationPreparationFailure(
+                detail: "synthetic failure",
+                userMessage: "Notation exploded"
+            )))
+            #expect(viewModel.practiceUnavailableMessage == "Notation exploded")
+
+            let gameplayView = GameplayView(
+                chart: viewModel.chart,
+                metronome: viewModel.metronome,
+                initialViewModel: viewModel
+            )
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                GeometryReader { proxy in
+                    gameplayView.sheetMusicView(geometry: proxy)
+                },
+                size: CGSize(width: 800, height: 600)
+            )
+            let texts = SwiftUITestUtilities.renderedTexts(from: mounted.root)
+            #expect(texts.contains("Practice unavailable"))
+            #expect(texts.contains("Notation exploded"))
+        }
+    }
+
+    /// The mounted sheet's live wiring: `currentRow` and `isPlaying`
+    /// changes run their auto-scroll `onChange` arms against the mounted
+    /// render without destabilizing it (the scroll offsets themselves are
+    /// observable only in the UI suite's playback flow), and a container
+    /// resize feeds `updateRowWidth` through the width `onChange`.
+    @Test("mounted sheet drives auto-scroll and row-width onChange handlers")
+    func mountedSheetDrivesAutoScrollAndRowWidth() async throws {
+        try await TestSetup.withTestSetup {
+            let rendered = try DrumTabFixtureHarness.render(DrumTabFixtureCatalog.multiRowStableWidths)
+            let viewModel = GameplayViewModel(
+                chart: rendered.chart,
+                metronome: GameplayViewModelTestHarness.createTestMetronome()
+            )
+            await viewModel.loadChartData()
+            await viewModel.setupGameplay(loadPersistedSpeed: false)
+            defer { viewModel.cleanup() }
+
+            let gameplayView = GameplayView(
+                chart: viewModel.chart,
+                metronome: viewModel.metronome,
+                initialViewModel: viewModel
+            )
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                GeometryReader { proxy in
+                    gameplayView.sheetMusicView(geometry: proxy)
+                },
+                size: CGSize(width: 1_024, height: 768)
+            )
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+
+            // Playing + a row change: both scroll `onChange` arms fire
+            // against real playable content while the mounted render
+            // stabilizes.
+            let maxRow = try #require(viewModel.cachedEngravedNotation?.rows.map(\.index).max())
+            viewModel.isPlaying = true
+            viewModel.currentRow = maxRow
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+
+            #if os(macOS)
+            // A container resize re-engraves at the new width through the
+            // geometry `onChange`.
+            mounted.hostingView.frame = CGRect(origin: .zero, size: CGSize(width: 1_400, height: 768))
+            await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
+            #expect(viewModel.cachedLayoutRowWidth == 1_400)
+            #endif
+        }
+    }
+
+    @Test("Gameplay sheet auto-scroll preserves legacy empty layout without scrolling notation-only content")
+    func testGameplaySheetAutoScrollPolicy() async throws {
+        try await TestSetup.withTestSetup {
+            let restOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+                chart: Chart(difficulty: .medium),
+                noteCount: 0
+            )
+            defer { restOnlyViewModel.cleanup() }
+            await restOnlyViewModel.loadChartData()
+            await restOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let controlOnlyChart = Chart(difficulty: .medium)
+            controlOnlyChart.controlEvents.append(ChartControlEvent(
+                kind: .choke,
+                measureNumber: 1,
+                measureOffset: 0,
+                targetLaneID: "1A"
+            ))
+            let controlOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: controlOnlyChart)
+            defer { controlOnlyViewModel.cleanup() }
+            await controlOnlyViewModel.loadChartData()
+            await controlOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let playableViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+            defer { playableViewModel.cleanup() }
+            await playableViewModel.loadChartData()
+            await playableViewModel.setupGameplay(loadPersistedSpeed: false)
+
+            let legacyEmptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 0)
+            defer { legacyEmptyViewModel.cleanup() }
+            await legacyEmptyViewModel.loadChartData()
+            await legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)
+            legacyEmptyViewModel.clearNotationInstallation()
+
+            let gameplayView = GameplayView(chart: playableViewModel.chart, metronome: playableViewModel.metronome)
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: restOnlyViewModel, isPlaying: true))
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: controlOnlyViewModel, isPlaying: true))
+            #expect(gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: true))
+            #expect(gameplayView.shouldAutoScrollSheet(viewModel: legacyEmptyViewModel, isPlaying: true))
+            #expect(!gameplayView.shouldAutoScrollSheet(viewModel: playableViewModel, isPlaying: false))
+        }
+    }
 }
 
 private extension EngravedNotation {

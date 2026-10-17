@@ -279,6 +279,120 @@ struct GameplaySheetMusicSmokeTests {
         }
     }
 
+    /// Consolidated from GameplayNotationCoverageAdditionsTests: the legacy
+    /// `GameplayBarLinesView` fallback branch (no renderable content) has no
+    /// raster owner elsewhere.
+    @Test("static sheet music renders legacy bar lines when layout has no renderable content")
+    func staticSheetMusicRendersLegacyBarLinesForNonRenderableLayout() async throws {
+        try await TestSetup.withTestSetup {
+            let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8, measuresCount: 2)
+            let viewModel = GameplayViewModel(
+                chart: chart,
+                metronome: GameplayViewModelTestHarness.createTestMetronome()
+            )
+            await viewModel.loadChartData()
+            await viewModel.setupGameplay(loadPersistedSpeed: false)
+            defer { viewModel.cleanup() }
+
+            // Clear the install so hasRenderableContent is false, but
+            // cachedMeasurePositions remains populated from the prior setup.
+            viewModel.clearNotationInstallation()
+            #expect(!viewModel.cachedNotationHasRenderableContent)
+            #expect(!viewModel.cachedMeasurePositions.isEmpty)
+
+            let view = GameplayView(chart: chart, metronome: viewModel.metronome)
+
+            // Rendering the static layers with hasRenderableContent=false
+            // exercises the legacy bar-line branch in GameplayBarLinesView.
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view.staticSheetMusicContent(viewModel: viewModel),
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    // MARK: - Consolidated from GameplayRenderCoverageTests
+
+    /// With an engraving installed, `DrumNotationView` paints the staff
+    /// lines as part of the package sheet — the rasterized static layers
+    /// must show real ink across the staff band. The same probe on the
+    /// fallback `StaffLinesBackgroundView` (the layer mounted when nothing
+    /// is engraved) proves its width parameter still drives staff-line ink
+    /// (subsumer of the deleted custom-width mount-only variant).
+    @Test("GameplayView renders staff lines from the static notation input")
+    func staticNotationChildRendersStaffLines() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+            let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+            let input = gameplayView.staticNotationInput(viewModel: vm)
+            #expect(input.hasRenderableContent)
+            // The package sheet width is the engraving's declared content
+            // extent (widest row's right edge or painted ink) — it is not
+            // floored at the row-width budget like the legacy layout was.
+            let engraving = try #require(input.engraving)
+            #expect(input.contentWidth == engraving.contentWidth)
+            #expect(input.contentWidth >= engraving.paintedBounds.maxX)
+
+            #if os(macOS)
+            let size = CGSize(width: 1_280, height: 900)
+            let positions = gameplayView.sheetMeasurePositions(viewModel: vm)
+            try #require(!positions.isEmpty, "fixture must produce measure positions for the probe")
+
+            // The mounted static layers (engraved path: DrumNotationView)
+            // must paint ink — an unmounted renderer rasterizes empty.
+            let mountedInk = try rasterizeView(
+                gameplayView.staticSheetMusicContent(viewModel: vm),
+                size: size
+            ).count { $0.alpha > 20 }
+            #expect(
+                mountedInk > 0,
+                "The static notation layers painted no ink — the notation layer is not mounted"
+            )
+
+            // Fallback furniture layer: wider width must paint wider staff
+            // lines — proves the width parameter is still wired.
+            @MainActor func fallbackStaffLineInk(width: CGFloat) throws -> Int {
+                try rasterizeView(
+                    StaffLinesBackgroundView(measurePositions: positions, width: width),
+                    size: size
+                ).count { $0.alpha > 20 }
+            }
+            let inkAtContentWidth = try fallbackStaffLineInk(width: input.contentWidth)
+            let inkAtWiderWidth = try fallbackStaffLineInk(width: input.contentWidth + 200)
+            #expect(
+                inkAtWiderWidth > inkAtContentWidth,
+                "Widening the staff-line width painted no extra ink — the fallback layer ignores width"
+            )
+            #endif
+
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                gameplayView.environmentObject(vm.practiceSettings),
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
+    /// Creates a `StaffLinesBackgroundView` whose `measurePositions` span multiple rows,
+    /// ensuring the `ForEach(rows, …)` iteration in `body` visits more than one row.
+    @Test("StaffLinesBackgroundView renders staff lines across multiple rows")
+    func staffLinesBackgroundViewMultipleRows() async throws {
+        try await TestSetup.withTestSetup {
+            // 4 four-four measures wraps at measure index 3 → rows 0 and 1 are present.
+            let positions = GameplayLayout.calculateMeasurePositions(
+                totalMeasures: 4, timeSignature: .fourFour
+            )
+            let rows = Set(positions.map { $0.row })
+            #expect(rows.count >= 2, "Fixture must produce at least 2 rows")
+
+            let view = StaffLinesBackgroundView(measurePositions: positions)
+            SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 900)
+            )
+        }
+    }
+
     /// Controlled-width agreement: at the 900pt floor and at a width that
     /// changes the dense fixture's wrapping, the mounted surface (row
     /// anchors, measure positions, content extents, measure→row cache) and
@@ -375,17 +489,22 @@ struct GameplaySheetMusicSmokeTests {
         #expect(input.contentWidth == engraved.contentWidth)
         #expect(input.contentHeight == engraved.contentHeight)
 
-        // Mounted scroll anchors derive from package row geometry verbatim.
-        let anchors = input.rowAnchors
-        let firstRow = try #require(engraved.rows.first)
-        #expect(anchors.firstRowTop == max(0, firstRow.staffCenterY - engraved.style.rowHeight / 2))
-        #expect(anchors.rowPitch == engraved.style.rowHeight + engraved.style.rowVerticalSpacing)
+        // Mounted scroll anchors are per-row tops: each row's band top is
+        // the ceiling, pulled higher only for that row's own overhanging
+        // ink — `scrollTo(anchor: .top)` clips anything above the anchor,
+        // so `row_i`'s top must never sit below its row's furniture floor.
+        let tops = input.rowAnchorTops
+        #expect(tops.count == engraved.rows.count)
+        for (top, row) in zip(tops, engraved.rows) {
+            let bandTop = max(0, row.staffCenterY - engraved.style.rowHeight / 2)
+            #expect(top >= 0 && top <= bandTop)
+            #expect(top <= row.paintedBounds.minY)
+        }
 
         // The scroll canvas must reach one viewport below the deepest row
         // anchor — `scrollTo(anchor: .top)` clamps at canvas − viewport, so
         // anything shorter leaves the final row short of the top edge.
-        #expect(input.lastRowAnchorTop == anchors.firstRowTop
-            + CGFloat(engraved.rows.count - 1) * anchors.rowPitch)
+        #expect(input.lastRowAnchorTop == tops.last)
         #expect(input.scrollContentHeight(viewportHeight: 768)
             >= input.lastRowAnchorTop + 768)
         #expect(input.scrollContentHeight(viewportHeight: 768) >= input.contentHeight)
@@ -453,6 +572,70 @@ struct GameplaySheetMusicSmokeTests {
         }
         for control in engraved.controls {
             #expect(labels[.control(control.controlID)] != nil)
+        }
+    }
+
+    @Test("Gameplay sheet sizing uses renderable notation and reserves legacy fallback for malformed empty layout")
+    // swiftlint:disable:next function_body_length
+    func testGameplaySheetSizingUsesRenderableNotation() async throws {
+        try await TestSetup.withTestSetup {
+            let emptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+                chart: Chart(difficulty: .medium),
+                noteCount: 0
+            )
+            defer { emptyViewModel.cleanup() }
+            await emptyViewModel.loadChartData()
+            await emptyViewModel.setupGameplay()
+
+            let gameplayView = GameplayView(chart: emptyViewModel.chart, metronome: emptyViewModel.metronome)
+            #expect(gameplayView.usesEngravedNotation(viewModel: emptyViewModel))
+            #expect(emptyViewModel.cachedNotationHasRenderableContent)
+            #expect(!emptyViewModel.cachedNotationHasPlayableContent)
+            let emptyEngraving = try #require(emptyViewModel.cachedEngravedNotation)
+            #expect(emptyEngraving.measureBars.count >= 1)
+            #expect(
+                gameplayView.sheetMeasurePositions(viewModel: emptyViewModel).count
+                    == emptyEngraving.measures.count
+            )
+            #expect(
+                gameplayView.sheetContentWidth(viewModel: emptyViewModel)
+                    == emptyEngraving.contentWidth
+            )
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: emptyViewModel)
+                    == emptyEngraving.contentHeight
+            )
+
+            emptyViewModel.clearNotationInstallation()
+            #expect(!gameplayView.usesEngravedNotation(viewModel: emptyViewModel))
+            #expect(gameplayView.sheetContentWidth(viewModel: emptyViewModel) == GameplayLayout.maxRowWidth)
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: emptyViewModel)
+                    == GameplayLayout.totalHeight(for: emptyViewModel.cachedMeasurePositions)
+            )
+
+            let denseChart = Chart(difficulty: .medium)
+            for index in 0..<32 {
+                denseChart.notes.append(
+                    Note(
+                        interval: .sixteenth,
+                        noteType: .snare,
+                        measureNumber: 1,
+                        measureOffset: Double(index) / 32.0
+                    )
+                )
+            }
+            let denseViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: denseChart)
+            defer { denseViewModel.cleanup() }
+            await denseViewModel.loadChartData()
+            await denseViewModel.setupGameplay()
+
+            #expect(gameplayView.usesEngravedNotation(viewModel: denseViewModel))
+            #expect(gameplayView.sheetContentWidth(viewModel: denseViewModel) > GameplayLayout.maxRowWidth)
+            #expect(
+                gameplayView.sheetContentHeight(viewModel: denseViewModel)
+                    == denseViewModel.cachedEngravedNotation?.contentHeight
+            )
         }
     }
 

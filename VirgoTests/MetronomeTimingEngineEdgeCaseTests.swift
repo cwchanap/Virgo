@@ -1,12 +1,9 @@
 //
-//  MetronomeEngineCoverageAdditionsTests.swift
+//  MetronomeTimingEngineEdgeCaseTests.swift
 //  VirgoTests
 //
-//  Targeted coverage additions for MetronomeTimingEngine and MetronomeAudioEngine.
-//  Focuses on static helper edge cases, hostTime/audioTime conversions, playback
-//  guards, restartTimer via property didSets while playing, simulateTestBeat
-//  wrapping/guard branches, MetronomeBeatSchedule calculations, and
-//  MetronomeAudioEngine test-environment paths.
+//  Split from MetronomeTimingEngineTests to keep each file under the SwiftLint
+//  file-length warn limit (600).
 //
 
 import Testing
@@ -14,9 +11,118 @@ import Foundation
 import AVFoundation
 @testable import Virgo
 
-@Suite("Metronome Engine Coverage Additions", .serialized)
+private func expectedHostTime(
+    referenceCF: CFAbsoluteTime,
+    referenceHost: UInt64,
+    deltaSeconds: Double
+) -> UInt64 {
+    var timebase = mach_timebase_info_data_t()
+    _ = mach_timebase_info(&timebase)
+    let deltaNanoseconds = deltaSeconds * Double(NSEC_PER_SEC)
+    let deltaTicks = Int64(deltaNanoseconds * Double(timebase.denom) / Double(timebase.numer))
+    return deltaTicks >= 0
+        ? referenceHost + UInt64(deltaTicks)
+        : referenceHost - UInt64(-deltaTicks)
+}
+
+/// Playback-guard, property-didSet restart, simulateTestBeat, host-time
+/// conversion, and static-helper edge-case ownership, consolidated from the
+/// campaign MetronomeEngineCoverageAdditionsTests (HPA-583) plus the timing
+/// engine's static-helper block: folding these into
+/// `MetronomeTimingEngineTests` would breach its SwiftLint type_body_length
+/// ERROR limit and keeping them in the same file breached file_length.
+/// The three static-helper superset tests here are the cited covering owners
+/// for 38cbee14's PatchCoverageAdditionsTests subsumer deletes — they must
+/// never be dropped.
+@Suite("Metronome Timing Engine Edge Case Tests", .serialized)
 @MainActor
-struct MetronomeEngineCoverageAdditionsTests {
+struct MetronomeTimingEngineEdgeCaseTests {
+
+    // MARK: - hostTime(forCFAbsoluteTime:) conversion
+
+    @Test("hostTime adds delta ticks for a future target")
+    func hostTimeConvertsFutureTarget() {
+        let referenceCF: CFAbsoluteTime = 5_000.0
+        let referenceHost: UInt64 = 5_000_000_000
+        let deltaSeconds: Double = 1.0
+        let expected = expectedHostTime(
+            referenceCF: referenceCF,
+            referenceHost: referenceHost,
+            deltaSeconds: deltaSeconds
+        )
+
+        let result = MetronomeTimingEngine.hostTime(
+            forCFAbsoluteTime: referenceCF + deltaSeconds,
+            referenceCFTime: referenceCF,
+            referenceHostTime: referenceHost
+        )
+
+        #expect(result == expected, "Future target should map to referenceHostTime + delta ticks")
+    }
+
+    @Test("hostTime subtracts delta ticks for a slightly-past target (not referenceHostTime)")
+    func hostTimeConvertsSlightlyPastTargetToSubtractedHostTime() {
+        let referenceCF: CFAbsoluteTime = 5_000.0
+        let referenceHost: UInt64 = 5_000_000_000
+        let deltaSeconds: Double = -0.005 // 5ms before the reference
+
+        let result = MetronomeTimingEngine.hostTime(
+            forCFAbsoluteTime: referenceCF + deltaSeconds,
+            referenceCFTime: referenceCF,
+            referenceHostTime: referenceHost
+        )
+
+        let expected = expectedHostTime(
+            referenceCF: referenceCF,
+            referenceHost: referenceHost,
+            deltaSeconds: deltaSeconds
+        )
+        #expect(
+            result == expected,
+            "Slightly-past target must map to referenceHostTime - |delta|, not referenceHostTime"
+        )
+        #expect(result != referenceHost, "A non-zero negative delta must not collapse to referenceHostTime")
+    }
+
+    @Test("hostTime clamps to 0 when a past target would underflow the host-time epoch")
+    func hostTimeClampsToZeroOnUnderflow() {
+        let referenceCF: CFAbsoluteTime = 5_000.0
+        let referenceHost: UInt64 = 100
+        let result = MetronomeTimingEngine.hostTime(
+            forCFAbsoluteTime: referenceCF - 10.0,
+            referenceCFTime: referenceCF,
+            referenceHostTime: referenceHost
+        )
+
+        #expect(result == 0, "A past target that underflows must clamp to 0")
+    }
+
+    // MARK: - audioTime(forIdealBeatTime:) (migrated from PatchCoverageAdditionsTests)
+
+    @Test("audioTime returns nil for a stale beat time that clamps to mach zero")
+    func audioTimeReturnsNilForStaleBeat() {
+        // Derive the stale input from the machine's uptime: a beat time more
+        // than `uptime` seconds in the past always underflows the mach
+        // host-time epoch and clamps to 0, regardless of when the machine
+        // booted or what the wall clock reads. A fixed absolute time like
+        // 999.0 would only underflow while uptime stays under ~26 years.
+        var timebase = mach_timebase_info_data_t()
+        #expect(mach_timebase_info(&timebase) == KERN_SUCCESS)
+        let uptimeSeconds = Double(mach_absolute_time()) * Double(timebase.numer)
+            / Double(timebase.denom) / Double(NSEC_PER_SEC)
+        let staleBeatTime = CFAbsoluteTimeGetCurrent() - uptimeSeconds - 60.0
+
+        let audioTime = MetronomeTimingEngine.audioTime(forIdealBeatTime: staleBeatTime)
+        #expect(audioTime == nil, "A beat time before the reference should not produce a valid audio time")
+    }
+
+    @Test("audioTime returns a valid time for a future beat")
+    func audioTimeReturnsValidTimeForFutureBeat() {
+        let futureTime = CFAbsoluteTimeGetCurrent() + 1.0
+        let audioTime = MetronomeTimingEngine.audioTime(forIdealBeatTime: futureTime)
+        #expect(audioTime != nil)
+        #expect(audioTime?.isHostTimeValid == true)
+    }
 
     // MARK: - MetronomeTimingEngine Static Helper Edge Cases
 
@@ -53,46 +159,6 @@ struct MetronomeEngineCoverageAdditionsTests {
         #expect(MetronomeTimingEngine.beatInMeasure(forFiredBeatNumber: 1, timeSignature: .fourFour) == 1)
         #expect(MetronomeTimingEngine.beatInMeasure(forFiredBeatNumber: 5, timeSignature: .fourFour) == 1)
         #expect(MetronomeTimingEngine.beatInMeasure(forFiredBeatNumber: 6, timeSignature: .fourFour) == 2)
-    }
-
-    // MARK: - hostTime / audioTime Static Conversions
-
-    @Test("hostTime converts future, zero, and past deltas with explicit references")
-    func hostTimeConversionBranches() {
-        let refCFTime: CFAbsoluteTime = 5_000.0
-        let refHostTime: UInt64 = 10_000
-
-        // Positive delta (future) → addition path, result exceeds reference
-        let futureHost = MetronomeTimingEngine.hostTime(
-            forCFAbsoluteTime: refCFTime + 1.0,
-            referenceCFTime: refCFTime,
-            referenceHostTime: refHostTime
-        )
-        #expect(futureHost > refHostTime)
-
-        // Zero delta → identity
-        let sameHost = MetronomeTimingEngine.hostTime(
-            forCFAbsoluteTime: refCFTime,
-            referenceCFTime: refCFTime,
-            referenceHostTime: refHostTime
-        )
-        #expect(sameHost == refHostTime)
-
-        // Large negative delta with tiny reference → subtraction overflows → 0
-        let pastHost = MetronomeTimingEngine.hostTime(
-            forCFAbsoluteTime: refCFTime - 10.0,
-            referenceCFTime: refCFTime,
-            referenceHostTime: refHostTime
-        )
-        #expect(pastHost == 0)
-    }
-
-    @Test("audioTime returns non-nil AVAudioTime for future ideal beat time")
-    func audioTimeFromIdealBeatTime() {
-        let futureTime = CFAbsoluteTimeGetCurrent() + 2.0
-        let audioTime = MetronomeTimingEngine.audioTime(forIdealBeatTime: futureTime)
-        #expect(audioTime != nil)
-        #expect(audioTime?.isHostTimeValid == true)
     }
 
     // MARK: - Playback Guards
@@ -181,77 +247,5 @@ struct MetronomeEngineCoverageAdditionsTests {
 
         try await Task.sleep(nanoseconds: 150_000_000)
         #expect(beatCallbackCount == 0)
-    }
-
-    // MARK: - MetronomeBeatSchedule
-
-    @Test("MetronomeBeatSchedule computes audio targets and timer deadlines")
-    func beatScheduleCalculations() {
-        let schedule = MetronomeBeatSchedule(
-            beatOriginTime: 100.0,
-            beatInterval: 0.5,
-            schedulingLeadTime: 0.04
-        )
-
-        #expect(abs(schedule.audioTargetTime(forBeatNumber: 1) - 100.0) < 0.0001)
-        #expect(abs(schedule.audioTargetTime(forBeatNumber: 3) - 101.0) < 0.0001)
-        #expect(abs(schedule.audioTargetTime(forBeatNumber: 0) - 100.0) < 0.0001)
-
-        #expect(abs(schedule.timerDeadline(forBeatNumber: 1) - 99.96) < 0.0001)
-        #expect(abs(schedule.timerDeadline(forBeatNumber: 3) - 100.96) < 0.0001)
-    }
-
-    // MARK: - MetronomeAudioEngine Coverage
-
-    @Test("MetronomeAudioEngine.convertToAudioEngineTime returns nil in test environment")
-    func audioEngineConvertReturnsNilInTestEnv() {
-        let audioEngine = MetronomeAudioEngine()
-        #expect(audioEngine.convertToAudioEngineTime(CFAbsoluteTimeGetCurrent()) == nil)
-    }
-
-    @Test("AudioEngineError produces human-readable localized descriptions")
-    func audioEngineErrorDescriptions() {
-        #expect(AudioEngineError.assetNotFound.errorDescription == "Ticker audio asset not found")
-        #expect(AudioEngineError.bufferCreationFailed.errorDescription == "Failed to create audio buffer")
-        #expect(
-            AudioEngineError.audioEngineNotAvailable.errorDescription
-                == "Audio engine not available in test environment"
-        )
-
-        let underlying = NSError(
-            domain: "test", code: 1,
-            userInfo: [NSLocalizedDescriptionKey: "disk error"]
-        )
-        #expect(
-            AudioEngineError.loadingFailed(underlying).errorDescription
-                == "Failed to load audio buffer: disk error"
-        )
-    }
-
-    @Test("MetronomeAudioEngine onInterruption defaults to nil and survives set/clear")
-    func audioEngineOnInterruptionDefaultNil() {
-        let audioEngine = MetronomeAudioEngine()
-        #expect(audioEngine.onInterruption == nil)
-
-        audioEngine.onInterruption = { _ in }
-        #expect(audioEngine.onInterruption != nil)
-
-        audioEngine.onInterruption = nil
-        #expect(audioEngine.onInterruption == nil)
-    }
-
-    @Test("MetronomeAudioEngine init/deinit cycles in test environment do not crash")
-    func audioEngineInitDeinitCycles() {
-        for _ in 0..<3 {
-            let engine = MetronomeAudioEngine()
-            engine.playTick(volume: 0.5, isAccented: true, atTime: AVAudioTime(hostTime: 42))
-            engine.resume()
-            engine.stop()
-            // Post-condition: after the test-env lifecycle (where play/resume/stop
-            // early-return), the engine must remain in its non-running test state, so
-            // time conversion stays unavailable. This is a verifiable invariant that
-            // catches regressions instead of the previous tautological #expect(Bool(true)).
-            #expect(engine.convertToAudioEngineTime(CFAbsoluteTimeGetCurrent()) == nil)
-        }
     }
 }

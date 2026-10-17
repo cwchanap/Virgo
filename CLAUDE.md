@@ -85,8 +85,9 @@ cp Virgo/Config/ServerEndpoints.env.example Virgo/Config/ServerEndpoints.env
 
 `Virgo/Config/ServerEndpoints.env` supplies `GRAPHQL_ENDPOINT` and `R2_BASE_URL`. It is gitignored;
 CI regenerates it from repository variables via `.github/scripts/generate-endpoints-env.sh`. When the
-file is missing or a key is empty, `ServerConfig` falls back to a local-dev placeholder endpoint and
-disables audio downloads, so a fresh checkout still builds and tests green.
+file is missing or `GRAPHQL_ENDPOINT` is empty/invalid, `ServerConfig` falls back to a local-dev
+placeholder endpoint; audio downloads are skipped only when `R2_BASE_URL` is missing or invalid,
+so a fresh checkout still builds and tests green.
 
 `AGENTS.md` is a symlink to `CLAUDE.md` — edit `CLAUDE.md` only.
 
@@ -188,6 +189,9 @@ marks a golden that pins known-suspect output.
 
 `RhythmLayoutSnapshotBuilder` (`Virgo/layout/`) is shared by `GameplayViewModel` and the harness on
 purpose — a parallel copy in tests would let goldens pass while production rendering broke.
+
+Do not add virtualization to notation rendering on speculation: HPA-584 produced no validated
+interactive performance claim, so virtualization is not established as necessary.
 
 The fixture suites cover this: `DrumTabGoldenTests` (full-digest goldens per fixture),
 `DrumTabRegressionInvariantTests` (geometric invariants — beam extent within member stems and within
@@ -303,6 +307,8 @@ Frequently-updating `@Published` properties on `@EnvironmentObject` or `@Observe
 ### Test Framework
 All unit tests use **Swift Testing** (`import Testing`, `#expect`, `#require`, `@Suite`), not XCTest. `TestContainer` in `TestHelpers.swift` provides isolated in-memory `ModelContainer`/`ModelContext` instances per test to prevent SwiftData state leakage.
 
+Test ownership follows behavior: new tests live with the behavior owner they cover; the HPA-583 campaign's `Coverage`/`Patch` bucket suites are not owners — do not recreate them or route new coverage into bucket-style suites.
+
 ### Audio/Metronome Synchronization
 BGM (`AVAudioPlayer`) and metronome are synchronized using a common `CFAbsoluteTime` start point, converted to `AVAudioTime` for sample-accurate scheduling. Speed changes reschedule both engines with a shared `startTime` to prevent drift.
 
@@ -341,7 +347,7 @@ Virgo/
 ├── VirgoTests/                  # Unit tests (Swift Testing framework, not XCTest)
 ├── VirgoUITests/                # UI automation tests
 ├── Packages/DrumNotation/       # Local package: notation engraving + static DrumNotationView
-├── docs/                        # PRD, architecture blueprint, superpowers plans/specs
+├── docs/                        # PRD, superpowers plans/specs
 ├── scripts/                     # setup-git-hooks.sh
 └── server/                      # Legacy local REST fixture server (not the GraphQL backend)
 ```
@@ -363,6 +369,3 @@ cd server && uv run uvicorn main:app --host 127.0.0.1 --port 8001 --reload
 
 - Parses `SET.def` files with multi-encoding fallback (UTF-16 → Shift-JIS → UTF-8)
 - CORS-enabled; Cloudflare Workers deployment supported
-
-Note: `.github/README.md` is stale — its example commands use iPhone simulator destinations, which
-contradicts the iPad-only rule that `ci.yml` actively enforces. Use the commands in this file instead.

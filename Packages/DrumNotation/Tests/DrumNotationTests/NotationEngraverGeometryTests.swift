@@ -72,14 +72,16 @@ struct NotationEngravingStyleTests {
             startTick: 0, durationTicks: 1920,
             meter: NotationMeter(beats: 4, noteValue: 4)
         ))
-        _ = requireSendable(EngravedStem(noteIDs: [1], direction: .up, start: .zero, end: .zero))
+        _ = requireSendable(EngravedStem(
+            noteIDs: [1], direction: .up, start: .zero, end: .zero, paintedBounds: .zero
+        ))
         _ = requireSendable(EngravedBeam(
             noteIDs: [1, 2], direction: .up, level: 0, kind: .full,
-            start: .zero, end: .zero, thickness: 4
+            start: .zero, end: .zero, thickness: 4, paintedBounds: .zero
         ))
         _ = requireSendable(EngravedFlag(
             noteID: 1, stemDirection: .up, duration: .eighth,
-            flagIndex: 0, origin: .zero
+            flagIndex: 0, origin: .zero, paintedBounds: .zero
         ))
         _ = requireSendable(EngravedLedgerLine(
             noteID: 1, rowIndex: 0, start: .zero, end: .zero, paintedBounds: .zero
@@ -90,14 +92,17 @@ struct NotationEngravingStyleTests {
         _ = requireSendable(EngravedRhythmDot(
             source: .rest(2), position: .zero, rowIndex: 0, paintedBounds: .zero
         ))
-        _ = requireSendable(EngravedArticulation(noteID: 1, kind: .open, position: .zero))
+        _ = requireSendable(EngravedArticulation(
+            noteID: 1, kind: .open, position: .zero, paintedBounds: .zero
+        ))
         _ = requireSendable(EngravedControl(
-            controlID: 9, kind: .stop, measureIndex: 0, rowIndex: 0, position: .zero
+            controlID: 9, kind: .stop, measureIndex: 0, rowIndex: 0, position: .zero,
+            paintedBounds: .zero
         ))
         _ = requireSendable(EngravedTuplet(
             tupletID: 0, voice: .upper, ratio: ResolvedTupletRatio(actual: 3, normal: 2),
             memberNoteIDs: [1, 2, 3], memberRestIDs: [], isBracketVisible: false,
-            bracketPoints: [], labelPosition: .zero, rowIndex: 0
+            bracketPoints: [], labelPosition: .zero, rowIndex: 0, paintedBounds: .zero
         ))
         _ = requireSendable(EngravedMeasureBar(
             measureIndex: 0, rowIndex: 0, x: 100, isFinal: false

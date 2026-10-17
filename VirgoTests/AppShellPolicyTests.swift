@@ -1,14 +1,18 @@
 //
-//  AppShellCoverageTests.swift
+//  AppShellPolicyTests.swift
 //  VirgoTests
+//
+//  Behavior owner for the launch-shell decision policies: ContentStartupPolicy,
+//  VirgoAppLaunchBehavior, and ReopenPolicy. Consolidated from the campaign
+//  AppShellCoverageTests (HPA-583) — no other suite exercised these types.
 //
 
 import Testing
 import Foundation
 @testable import Virgo
 
-@Suite("App Shell Coverage Tests")
-struct AppShellCoverageTests {
+@Suite("App Shell Policy Tests")
+struct AppShellPolicyTests {
 
     // MARK: - ContentStartupPolicy.startupAction
 
@@ -80,6 +84,18 @@ struct AppShellCoverageTests {
             arguments: [LaunchArguments.uiTesting, LaunchArguments.skipSeed]
         )
         #expect(shouldImport == false)
+    }
+
+    @Test("startup preparation gate is true only for uiTesting + resetState")
+    func testStartupPreparationGateIsTrueOnlyForUITestingAndResetState() {
+        // Drives ContentView.isPreparingStartupData / startupPreparationView.
+        #expect(ContentStartupPolicy.shouldPrepareBeforeFirstRender(
+            arguments: [LaunchArguments.uiTesting, LaunchArguments.resetState]
+        ))
+        #expect(!ContentStartupPolicy.shouldPrepareBeforeFirstRender(
+            arguments: [LaunchArguments.uiTesting]
+        ))
+        #expect(!ContentStartupPolicy.shouldPrepareBeforeFirstRender(arguments: []))
     }
 
     // MARK: - ContentStartupPolicy.shouldUsePreviewPlayer

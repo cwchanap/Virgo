@@ -258,6 +258,174 @@ struct GameplayViewModelPlaybackResumeTests {
         #expect(songStartTime == nil)
     }
 
+    @Test("pausePlayback falls back to playbackStartTime when metronome has no playback time")
+    func testPausePlaybackFallsBackToPlaybackStartTime() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        vm.isPlaying = true
+        let startTime = Date().addingTimeInterval(-1.5)
+        vm.playbackStartTime = startTime
+        vm.pausedElapsedTime = 0.0
+
+        vm.pausePlayback()
+
+        #expect(vm.isPlaying == false)
+        #expect(vm.pausedElapsedTime >= 1.4, "Should accumulate ~1.5 s from playbackStartTime fallback")
+    }
+
+    @Test("pausePlayback fallback does not double-count pausedElapsedTime in backdated startTime")
+    func testPausePlaybackFallbackNoDoubleCount() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Simulate resume state: pausedElapsedTime = 3.0 s
+        // playbackStartTime is backdated by pausedElapsedTime (mirrors applySpeedChangeInternal/startPlayback logic)
+        let pausedOffset = 3.0
+        vm.isPlaying = true
+        vm.pausedElapsedTime = pausedOffset
+        // Simulate 1.0 s of new playback since resume (backdated start = now - pausedOffset - 1.0)
+        let startTime = Date().addingTimeInterval(-(pausedOffset + 1.0))
+        vm.playbackStartTime = startTime
+
+        vm.pausePlayback()
+
+        // Total elapsed should be ~4.0 s (3.0 offset + 1.0 new), NOT ~7.0 s (double-counted)
+        #expect(vm.pausedElapsedTime >= 3.9 && vm.pausedElapsedTime <= 4.2,
+                "Total elapsed should be ~4.0s (pausedOffset + new playback), not double-counted")
+    }
+
+    @Test("calculateElapsedTime fallback does not double-count pausedElapsedTime in backdated startTime")
+    func testCalculateElapsedTimeFallbackNoDoubleCount() async throws {
+        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4)
+        chart.notes.forEach { $0.originKind = .dtx }
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Simulate resume state: pausedElapsedTime = 3.0 s
+        // playbackStartTime is backdated by pausedElapsedTime
+        let pausedOffset = 3.0
+        vm.isPlaying = true
+        vm.pausedElapsedTime = pausedOffset
+        vm.playbackStartTime = Date().addingTimeInterval(-(pausedOffset + 0.5))
+
+        let elapsed = vm.calculateElapsedTime()
+
+        // Total elapsed should be ~3.5 s (3.0 offset + 0.5 new), NOT ~6.5 s (double-counted)
+        #expect(elapsed != nil, "Fallback path should return a non-nil elapsed time")
+        if let t = elapsed {
+            #expect(t >= 3.4 && t <= 3.7,
+                    "Total elapsed should be ~3.5s (pausedOffset + new playback), not double-counted")
+        }
+    }
+
+    @Test("pausePlayback during scheduled-start window does not record negative elapsed time")
+    func testPauseDuringScheduledStartWindowClampsToZero() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Simulate fresh start with playbackStartTime in the future
+        // (scheduled 50ms ahead for buffer priming, as in startPlayback())
+        vm.isPlaying = true
+        vm.pausedElapsedTime = 0.0
+        vm.playbackStartTime = Date().addingTimeInterval(0.05)
+
+        vm.pausePlayback()
+
+        #expect(vm.isPlaying == false)
+        #expect(vm.pausedElapsedTime >= 0.0,
+                "Paused elapsed time must not be negative when pausing during scheduled-start window")
+    }
+
+    @Test("pausePlayback during scheduled-start window preserves existing pause offset on resume")
+    func testPauseDuringScheduledStartWindowPreservesExistingOffset() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Simulate resume path: playbackStartTime is backdated the same way
+        // startPlayback() does on resume (scheduledStartTime - pausedElapsedTime).
+        // With pausedElapsedTime = 3.0 and a scheduled start 0.05 s in the future,
+        // the backdated start = (now + 0.05) - 3.0 = now - 2.95.
+        vm.isPlaying = true
+        vm.pausedElapsedTime = 3.0
+        vm.playbackStartTime = Date().addingTimeInterval(0.05 - 3.0)
+
+        vm.pausePlayback()
+
+        #expect(vm.pausedElapsedTime >= 3.0,
+                "Should preserve the existing pause offset, not replace with a negative value")
+    }
+
+    @Test("calculateElapsedTime returns zero instead of negative before scheduled start")
+    func testCalculateElapsedTimeClampsNegativeBeforeScheduledStart() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Fresh start: playbackStartTime is 0.05 s in the future (buffer priming).
+        vm.isPlaying = true
+        vm.pausedElapsedTime = 0.0
+        vm.playbackStartTime = Date().addingTimeInterval(0.05)
+
+        let elapsed = vm.calculateElapsedTime()
+
+        #expect(elapsed == 0.0,
+                "calculateElapsedTime should clamp to zero before scheduled start, got \(elapsed ?? -1)")
+    }
+
+    @Test("calculateElapsedTime falls back to playbackStartTime when metronome is idle")
+    func testCalculateElapsedTimeFallbackToPlaybackStartTime() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        defer { vm.cleanup() }
+
+        // Force playing state without starting the metronome so
+        // getCurrentPlaybackTime() returns nil and we hit the fallback path.
+        vm.isPlaying = true
+        vm.playbackStartTime = Date().addingTimeInterval(-2.0)
+
+        let elapsed = vm.calculateElapsedTime()
+
+        vm.isPlaying = false
+
+        #expect(elapsed != nil, "Fallback path should return a non-nil elapsed time")
+        if let t = elapsed {
+            #expect(t >= 1.9 && t < 3.0, "Elapsed time should be approximately 2 seconds")
+        }
+    }
+
+    @Test("startPlayback resume uses BGM timeline when bgmPlayer.currentTime > 0")
+    func startPlaybackResumeViaBGMTimeline() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        await vm.loadChartData()
+        await vm.setupGameplay(loadPersistedSpeed: false)
+        defer { vm.cleanup() }
+
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
+        player.prepareToPlay()
+        vm.bgmPlayer = player
+        player.currentTime = 2.0
+        vm.bgmOffsetSeconds = 0.5
+        vm.cachedTrackDuration = 60.0
+        vm.pausedElapsedTime = 3.0
+
+        vm.startPlayback()
+
+        #expect(vm.isPlaying == true)
+    }
+
     enum TestError: Error {
         case playbackStartTimeNil
     }

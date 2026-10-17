@@ -161,34 +161,6 @@ struct LocalDTXFixtureImporterTests {
         #expect(returned.bgmStartOffsetSeconds == nil)
     }
 
-    @Test("importSong drops charts whose difficulty label is not recognized")
-    func dropsChartsWithUnrecognizedDifficultyLabel() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-
-        // L1 is a known label (BASIC -> easy); L2 uses an unknown label so it must be
-        // dropped rather than imported as a silent missing difficulty.
-        let setDef = """
-        #TITLE: Partial Drop
-        #L1LABEL: BASIC
-        #L1FILE: chart1.dtx
-        #L2LABEL: CHALLENGE
-        #L2FILE: chart2.dtx
-        """
-        // Exercise the bundled fixture's UTF-16 format. The importer only selects
-        // UTF-16 when a BOM is present; BOM-less sources take the UTF-8/Shift-JIS path.
-        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
-        let chart1 = "#TITLE: Partial Drop\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
-        try chart1.write(to: tempDir.appendingPathComponent("chart1.dtx"), atomically: true, encoding: .utf8)
-        let chart2 = "#TITLE: Partial Drop\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 99\n#03113: 01000000"
-        try chart2.write(to: tempDir.appendingPathComponent("chart2.dtx"), atomically: true, encoding: .utf8)
-
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-
-        #expect(song.charts.count == 1, "Only the BASIC chart should import; CHALLENGE must be dropped")
-        #expect(song.charts.first?.difficulty == .easy)
-    }
-
     @Test("importSong decodes a BOM-less UTF-8 SET.def without lossy UTF-16 garbage")
     func decodesUTF8SETDefWithoutBOM() throws {
         let context = TestContainer.isolatedContainer().context
@@ -249,32 +221,6 @@ struct LocalDTXFixtureImporterTests {
         try Data().write(to: bundleRoot.appendingPathComponent("chart.dtx"))
 
         #expect(LocalDTXFixtureImporter.locateSETFile(in: bundleRoot) == nil)
-    }
-
-    @Test("importSong derives duration from chart BPM, not a hard-coded 2 sec/measure")
-    func durationDerivedFromChartBPM() throws {
-        // Two synthetic fixtures with the same measure layout but different BPMs must
-        // produce proportionally different durations. The old `calculateDuration`
-        // hard-coded 120 BPM (2 sec/measure), so a 200-BPM chart was overstated by
-        // 67% and gameplay progress kept running past the audio end. Both fixtures
-        // place a single note in raw measure 99 (0-based), so total measures = 100.
-        let slow = try importSyntheticFixture(
-            bpm: 120.0, label: "SLOW", into: TestContainer.isolatedContainer().context
-        )
-        let fast = try importSyntheticFixture(
-            bpm: 200.0, label: "FAST", into: TestContainer.isolatedContainer().context
-        )
-
-        // 100 measures × (4 × 60 / BPM):
-        //   120 BPM → 200.0s → "3:20"
-        //   200 BPM → 120.0s → "2:00"
-        // The old code produced "3:20" for both.
-        #expect(slow.duration == "3:20", "120 BPM @ 100 measures = 200s = 3:20")
-        #expect(fast.duration == "2:00", "200 BPM @ 100 measures = 120s = 2:00")
-        #expect(
-            fast.duration != slow.duration,
-            "Duration must vary with BPM, not be the fixed 2 sec/measure value"
-        )
     }
 
     @Test("fresh import persists valid rhythm payload and canonical timing without song BGM offset")
@@ -370,25 +316,10 @@ struct LocalDTXFixtureImporterTests {
     }
 
     // Control-event import/routing tests live in
-    // LocalDTXControlImportTests.swift, extracted to keep this file under the
-    // SwiftLint file-length limit.
-
-    @discardableResult
-    private func importSyntheticFixture(
-        bpm: Double, label: String, into context: ModelContext
-    ) throws -> Song {
-        let tempDir = try makeTempDirectory()
-        let setDef = """
-        #TITLE: \(label)
-        #L1LABEL: BASIC
-        #L1FILE: chart.dtx
-        """
-        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
-        // Raw measure index 099 in DTX is 0-based; importer uses (maxMeasure + 1) = 100.
-        let chart = "#TITLE: \(label)\n#ARTIST: Tester\n#BPM: \(bpm)\n#DLEVEL: 50\n#09911: 01000000"
-        try chart.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
-        return try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-    }
+    // LocalDTXControlImportTests.swift; bundled-demo ownership in
+    // LocalDTXBundledSoukyuuImportTests.swift; fresh-import guards in
+    // LocalDTXImportGuardsTests.swift — each extracted to keep this file
+    // under the SwiftLint file-length limit.
 
     private func soukyuuFixtureURL() throws -> URL {
         let url = URL(fileURLWithPath: #filePath)
@@ -404,6 +335,10 @@ struct LocalDTXFixtureImporterTests {
             .appendingPathComponent("virgo-dtx-test-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         return url
+    }
+
+    private func removeTemp(_ url: URL) {
+        try? FileManager.default.removeItem(at: url)
     }
 
     private struct CurrentSourceFixture {

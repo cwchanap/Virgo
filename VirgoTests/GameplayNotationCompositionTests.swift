@@ -1,5 +1,6 @@
 import CoreGraphics
 import DrumNotation
+import Observation
 import Testing
 @testable import Virgo
 
@@ -245,6 +246,69 @@ struct GameplayNotationCompositionTests {
         let onset = try #require(engraved.formatted.position(measureIndex: 0, localTick: 0))
         #expect(onset.rowIndex == engraved.measures[0].rowIndex)
         #expect(onset.x == engraved.formatted.measures[0].columns.first?.logicalColumnX)
+    }
+
+    // MARK: - Observation contract (consolidated from GameplayRenderCoverageTests)
+    // Regression guards: beat-boundary highlighting was removed because
+    // re-evaluating the notation tree on every beat forced expensive sheet
+    // re-layouts. The static notation tree must depend only on the installed
+    // engraving (cachedEngravedNotation / notationPresentation), never on
+    // per-beat state, so the ~30 Hz visual tick does not invalidate it.
+
+    @Test("Static notation rendering does not rebuild on per-beat state changes")
+    @MainActor
+    func staticNotationRenderingDoesNotRebuildOnBeatChanges() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+            vm.isPlaying = true
+
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+
+            var didInvalidate = false
+            withObservationTracking {
+                _ = view.staticSheetMusicContent(viewModel: vm)
+            } onChange: {
+                didInvalidate = true
+            }
+
+            // Per-beat state (driven by the metronome / visual tick) must NOT
+            // invalidate the static notation tree.
+            vm.currentBeat = 3
+            vm.totalBeatsElapsed = 7
+
+            #expect(
+                !didInvalidate,
+                "Per-beat state changes must not invalidate static notation rendering"
+            )
+        }
+    }
+
+    @Test("Static sheet music content does not observe purple bar position")
+    @MainActor
+    func staticSheetMusicContentDoesNotObservePurpleBarPosition() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            defer { vm.cleanup() }
+            vm.isPlaying = true
+            vm.updatePurpleBarPosition(elapsedTime: 0.01)
+
+            let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
+
+            var didInvalidate = false
+            withObservationTracking {
+                _ = view.staticSheetMusicContent(viewModel: vm)
+            } onChange: {
+                didInvalidate = true
+            }
+
+            vm.updatePurpleBarPosition(elapsedTime: 0.51)
+
+            #expect(
+                !didInvalidate,
+                "Moving the purple bar must not invalidate static notation content"
+            )
+        }
     }
 }
 

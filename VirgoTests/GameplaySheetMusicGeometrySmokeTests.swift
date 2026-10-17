@@ -261,7 +261,8 @@ struct GameplaySheetMusicGeometrySmokeTests {
                     noteIDs: stem.noteIDs,
                     direction: stem.direction,
                     start: CGPoint(x: stem.start.x + 3_000, y: stem.start.y),
-                    end: CGPoint(x: stem.end.x + 3_000, y: stem.end.y)
+                    end: CGPoint(x: stem.end.x + 3_000, y: stem.end.y),
+                    paintedBounds: stem.paintedBounds.offsetBy(dx: 3_000, dy: 0)
                 )
             }
             reinstall(sheet, engraving: sheet.engraving.swapping(stems: shifted))

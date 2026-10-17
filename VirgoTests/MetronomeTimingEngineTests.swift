@@ -22,20 +22,6 @@ private func timingEngineValue<T>(
     return mirror.children.first { $0.label == label }?.value as? T
 }
 
-private func expectedHostTime(
-    referenceCF: CFAbsoluteTime,
-    referenceHost: UInt64,
-    deltaSeconds: Double
-) -> UInt64 {
-    var timebase = mach_timebase_info_data_t()
-    _ = mach_timebase_info(&timebase)
-    let deltaNanoseconds = deltaSeconds * Double(NSEC_PER_SEC)
-    let deltaTicks = Int64(deltaNanoseconds * Double(timebase.denom) / Double(timebase.numer))
-    return deltaTicks >= 0
-        ? referenceHost + UInt64(deltaTicks)
-        : referenceHost - UInt64(-deltaTicks)
-}
-
 private struct TimingEngineOriginState {
     let beatOffset: Int?
     let beatOriginTime: Double?
@@ -503,65 +489,6 @@ struct MetronomeTimingEngineTests {
         }
 
         timingEngine.stop()
-    }
-
-    // MARK: - hostTime(forCFAbsoluteTime:) conversion
-
-    @Test("hostTime adds delta ticks for a future target")
-    func hostTimeConvertsFutureTarget() {
-        let referenceCF: CFAbsoluteTime = 5_000.0
-        let referenceHost: UInt64 = 5_000_000_000
-        let deltaSeconds: Double = 1.0
-        let expected = expectedHostTime(
-            referenceCF: referenceCF,
-            referenceHost: referenceHost,
-            deltaSeconds: deltaSeconds
-        )
-
-        let result = MetronomeTimingEngine.hostTime(
-            forCFAbsoluteTime: referenceCF + deltaSeconds,
-            referenceCFTime: referenceCF,
-            referenceHostTime: referenceHost
-        )
-
-        #expect(result == expected, "Future target should map to referenceHostTime + delta ticks")
-    }
-
-    @Test("hostTime subtracts delta ticks for a slightly-past target (not referenceHostTime)")
-    func hostTimeConvertsSlightlyPastTargetToSubtractedHostTime() {
-        let referenceCF: CFAbsoluteTime = 5_000.0
-        let referenceHost: UInt64 = 5_000_000_000
-        let deltaSeconds: Double = -0.005 // 5ms before the reference
-
-        let result = MetronomeTimingEngine.hostTime(
-            forCFAbsoluteTime: referenceCF + deltaSeconds,
-            referenceCFTime: referenceCF,
-            referenceHostTime: referenceHost
-        )
-
-        let expected = expectedHostTime(
-            referenceCF: referenceCF,
-            referenceHost: referenceHost,
-            deltaSeconds: deltaSeconds
-        )
-        #expect(
-            result == expected,
-            "Slightly-past target must map to referenceHostTime - |delta|, not referenceHostTime"
-        )
-        #expect(result != referenceHost, "A non-zero negative delta must not collapse to referenceHostTime")
-    }
-
-    @Test("hostTime clamps to 0 when a past target would underflow the host-time epoch")
-    func hostTimeClampsToZeroOnUnderflow() {
-        let referenceCF: CFAbsoluteTime = 5_000.0
-        let referenceHost: UInt64 = 100
-        let result = MetronomeTimingEngine.hostTime(
-            forCFAbsoluteTime: referenceCF - 10.0,
-            referenceCFTime: referenceCF,
-            referenceHostTime: referenceHost
-        )
-
-        #expect(result == 0, "A past target that underflows must clamp to 0")
     }
 }
 

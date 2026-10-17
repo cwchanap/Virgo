@@ -459,4 +459,33 @@ struct GameplayViewModelDataLoadingTests {
         #expect(!(viewModel.cachedEngravedNotation?.measures.isEmpty ?? true),
                 "setupGameplay should build notation after data and row width are ready")
     }
+
+    // Consolidated from GameplayNotationCoverageAdditionsTests: pins the
+    // HPA-164 no-snapshot policy (legacy availability → prepared but no
+    // engraving; playback runs on the non-notation beat fallback).
+    @Test("setupGameplay falls back to sync layout when timeline request is nil")
+    func setupGameplayFallsBackToSyncLayoutWhenRequestIsNil() async throws {
+        // A chart with valid rhythm metadata but a nil layout snapshot would cause
+        // makeTimelineNotationPreparationRequest to return nil. This is hard to
+        // construct directly, so verify the fallback path via a legacy chart:
+        // legacy availability means preparesTimelineOffMain is false, so the
+        // sync computeCachedLayoutData path runs and isGameplayPrepared is set.
+        let chart = Chart(difficulty: .medium, timeSignature: .fourFour)
+        chart.notes = [
+            Note(interval: .quarter, noteType: .snare, measureNumber: 1, measureOffset: 0.4142135623730951)
+        ]
+        let viewModel = GameplayViewModel(
+            chart: chart,
+            metronome: GameplayViewModelTestHarness.createTestMetronome()
+        )
+        await viewModel.loadChartData()
+        await viewModel.setupGameplay(loadPersistedSpeed: false)
+        defer { viewModel.cleanup() }
+
+        #expect(viewModel.cachedRhythmRuntime.availability == .legacy)
+        #expect(viewModel.isGameplayPrepared)
+        // HPA-164 no-snapshot policy: legacy availability means no engraving
+        // is installed; playback runs on the non-notation beat fallback.
+        #expect(viewModel.cachedEngravedNotation == nil)
+    }
 }

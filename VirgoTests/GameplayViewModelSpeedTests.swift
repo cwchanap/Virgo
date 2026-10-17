@@ -132,6 +132,16 @@ struct GameplayViewModelSpeedTests {
         #expect(abs(vm.effectiveBPM() - before) < 0.001)
     }
 
+    // MARK: - isFullSpeed(_:)
+
+    @Test("isFullSpeed allows tiny floating point drift around 1x")
+    func testIsFullSpeedTolerance() {
+        #expect(GameplayViewModel.isFullSpeed(1.0))
+        #expect(GameplayViewModel.isFullSpeed(1.00005))
+        #expect(!GameplayViewModel.isFullSpeed(0.9998))
+        #expect(!GameplayViewModel.isFullSpeed(1.25))
+    }
+
     // MARK: - clampedBGMRate(for:)
 
     @Test("clampedBGMRate clamps speeds below 0.5 up to 0.5")

@@ -34,9 +34,19 @@ struct GameplayViewModelPlaybackTests {
         viewModel.cleanup()
     }
 
+    @Test("togglePlayback stays stopped and does not crash when data not loaded")
+    func togglePlaybackNoOpWhenNotLoaded() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        // Intentionally do NOT call loadChartData; isDataLoaded stays false.
+        vm.togglePlayback()
+        #expect(vm.isPlaying == false)
+        vm.cleanup()
+    }
+
     @Test func testUpdateSpeedUpdatesMetronomeWhenEnabledAndNotPlaying() async throws {
         let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
-        let metronome = GameplayViewModelTestHarness.createTestMetronome()
+        let driver = RecordingAudioDriver()
+        let metronome = MetronomeEngine(audioDriver: driver)
         let practiceSettings = GameplayViewModelTestHarness.createTestPracticeSettings()
 
         let viewModel = GameplayViewModel(chart: chart, metronome: metronome, practiceSettings: practiceSettings)
@@ -56,6 +66,10 @@ struct GameplayViewModelPlaybackTests {
         try await Task.sleep(nanoseconds: 300_000_000)
         let expectedBPM = viewModel.effectiveBPM()
         #expect(abs(metronome.bpm - expectedBPM) < 0.001)
+        // Folded from GameplayViewModelCoveragePlaybackAdditionsTests "Speed change calls
+        // metronome.updateBPM when metronome is enabled but ViewModel is not playing":
+        // the enabled-metronome speed-change path must resume the audio driver.
+        #expect(driver.resumeCallCount >= 1)
 
         metronome.stop()
         viewModel.cleanup()
@@ -142,6 +156,41 @@ struct GameplayViewModelPlaybackTests {
 
         // Cleanup
         viewModel.cleanup()
+    }
+
+    @Test("restartPlayback when not playing does not start playback")
+    func testRestartPlaybackWhenNotPlayingDoesNotStartPlayback() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        await vm.loadChartData()
+        await vm.setupGameplay()
+
+        #expect(vm.isPlaying == false)
+        vm.pausedElapsedTime = 5.0
+
+        vm.restartPlayback()
+
+        #expect(vm.isPlaying == false, "Should remain stopped after restart from idle state")
+        #expect(vm.pausedElapsedTime == 0.0, "Elapsed time should have been reset")
+
+        vm.cleanup()
+    }
+
+    @Test("restartPlayback while playing restarts and keeps isPlaying true")
+    func restartPlaybackWhilePlaying() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        await vm.loadChartData()
+        await vm.setupGameplay(loadPersistedSpeed: false)
+        defer { vm.cleanup() }
+
+        vm.startPlayback()
+        vm.currentBeat = 5
+        vm.playbackProgress = 0.5
+
+        vm.restartPlayback()
+
+        #expect(vm.isPlaying == true)
+        #expect(vm.currentBeat == 0)
+        #expect(vm.playbackProgress == 0.0)
     }
 
     @Test func testSkipToEnd() async throws {
@@ -252,6 +301,37 @@ struct GameplayViewModelPlaybackTests {
         // Just verify they are initialized by accessing them
         _ = viewModel.inputManager
         _ = viewModel.inputHandler
+    }
+
+    @Test("wireInputHandler routes onNoteResult hits to recordHit while playing")
+    func testWireInputHandlerRoutesHitsWhenPlaying() async throws {
+        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        defer { vm.cleanup() }
+        await vm.loadChartData()
+        await vm.setupGameplay()
+
+        vm.wireInputHandler()
+        vm.startPlayback()
+
+        guard let note = vm.cachedNotes.first else {
+            Issue.record("expected at least one cachedNote in testWireInputHandlerRoutesHitsWhenPlaying")
+            return
+        }
+        let hit = InputHit(drumType: .kick, velocity: 0.8, timestamp: Date())
+        let result = NoteMatchResult(
+            hitInput: hit,
+            matchedNote: note,
+            timingAccuracy: .perfect,
+            measureNumber: note.measureNumber,
+            measureOffset: note.measureOffset,
+            timingError: 0.0
+        )
+
+        let scoreBefore = vm.scoreEngine.score
+        vm.inputHandler.onNoteResult?(result)
+
+        #expect(vm.scoreEngine.score > scoreBefore,
+                "Score should increase when a hit is delivered via the wired handler")
     }
 
     @Test func testStartPlaybackStateConsistency() async throws {
