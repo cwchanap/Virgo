@@ -397,35 +397,27 @@ private struct GameplayClefsAndTimeSignaturesView: View {
 /// own top edge. Anchor geometry is caller-supplied: install-derived
 /// per-row tops for engraved sheets, the legacy staff formula for the
 /// fallback sheet.
+///
+/// Each anchor is an independently positioned 1pt target — a stacked
+/// `VStack` can only land `row_i` at `tops[i]` when tops never decrease
+/// (extents are non-negative), but a later row's topmost ink can sit
+/// above an earlier row's anchor, so per-row tops must be allowed to
+/// decrease.
 private struct GameplayRowAnchorColumn: View {
     /// `row_i`'s top edge in sheet coordinates.
     let rowAnchorTops: [CGFloat]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Color.clear.frame(width: 1, height: heights.first ?? 0)
+        ZStack(alignment: .topLeading) {
             ForEach(0..<max(rowAnchorTops.count, 1), id: \.self) { row in
                 Color.clear
-                    .frame(width: 1, height: extent(at: row))
+                    .frame(width: 1, height: 1)
+                    .offset(y: rowAnchorTops.indices.contains(row) ? rowAnchorTops[row] : 0)
                     .id("row_\(row)")
             }
-            Spacer(minLength: 0)
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .allowsHitTesting(false)
-    }
-
-    /// Stacked frame heights from the pure helper: index 0 is the lead
-    /// spacer, index i+1 is row i's extent, so each `row_i` frame's top
-    /// edge lands exactly on `rowAnchorTops[i]`.
-    private var heights: [CGFloat] {
-        GameplayRowAnchorGeometry.anchorColumnHeights(for: rowAnchorTops)
-    }
-
-    /// `scrollTo(anchor: .top)` reads only the top edge, so the last row
-    /// needs just a token extent.
-    private func extent(at row: Int) -> CGFloat {
-        heights.indices.contains(row + 1) ? heights[row + 1] : 1
     }
 }
 
