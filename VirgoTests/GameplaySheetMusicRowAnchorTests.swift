@@ -126,38 +126,36 @@ struct GameplaySheetMusicRowAnchorTests {
     /// conservative style margins below these, so an anchor at-or-above
     /// this bound is correct.
     private func rowInkTop(_ engraving: EngravedNotation, rowIndex: Int) -> CGFloat {
-        let bounded: [(Int, CGFloat)] =
-            engraving.rows.map { ($0.index, $0.paintedBounds.minY) }
-            + engraving.noteHeads.map { ($0.rowIndex, $0.paintedBounds.minY) }
-            + engraving.rests.map { ($0.rowIndex, $0.paintedBounds.minY) }
-            + engraving.ledgerLines.map { ($0.rowIndex, $0.paintedBounds.minY) }
-            + engraving.rhythmDots.map { ($0.rowIndex, $0.paintedBounds.minY) }
-            + engraving.controls.map { ($0.rowIndex, $0.position.y) }
-            + engraving.tuplets.map { tuplet in
-                (tuplet.rowIndex, min(
-                    tuplet.bracketPoints.map(\.y).min() ?? .infinity,
-                    tuplet.labelPosition.y
-                ))
-            }
+        var bounded: [(Int, CGFloat)] = engraving.rows.map { ($0.index, $0.paintedBounds.minY) }
+        bounded += engraving.noteHeads.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        bounded += engraving.rests.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        bounded += engraving.ledgerLines.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        bounded += engraving.rhythmDots.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        bounded += engraving.controls.map { ($0.rowIndex, $0.position.y) }
+        bounded += engraving.tuplets.map { tuplet in
+            (tuplet.rowIndex, min(
+                tuplet.bracketPoints.map(\.y).min() ?? .infinity,
+                tuplet.labelPosition.y
+            ))
+        }
         let noteRow = Dictionary(
             engraving.noteHeads.map { ($0.noteID, $0.rowIndex) },
             uniquingKeysWith: { existing, _ in existing }
         )
-        let joined: [(Int, CGFloat)] =
-            engraving.stems.compactMap { stem in
-                stem.noteIDs.lazy.compactMap { noteRow[$0] }.first
-                    .map { ($0, min(stem.start.y, stem.end.y)) }
-            }
-            + engraving.beams.compactMap { beam in
-                beam.noteIDs.lazy.compactMap { noteRow[$0] }.first
-                    .map { ($0, min(beam.start.y, beam.end.y)) }
-            }
-            + engraving.flags.compactMap { flag in
-                noteRow[flag.noteID].map { ($0, flag.origin.y) }
-            }
-            + engraving.articulations.compactMap { articulation in
-                noteRow[articulation.noteID].map { ($0, articulation.position.y) }
-            }
+        var joined: [(Int, CGFloat)] = engraving.stems.compactMap { stem in
+            stem.noteIDs.lazy.compactMap { noteRow[$0] }.first
+                .map { ($0, min(stem.start.y, stem.end.y)) }
+        }
+        joined += engraving.beams.compactMap { beam in
+            beam.noteIDs.lazy.compactMap { noteRow[$0] }.first
+                .map { ($0, min(beam.start.y, beam.end.y)) }
+        }
+        joined += engraving.flags.compactMap { flag in
+            noteRow[flag.noteID].map { ($0, flag.origin.y) }
+        }
+        joined += engraving.articulations.compactMap { articulation in
+            noteRow[articulation.noteID].map { ($0, articulation.position.y) }
+        }
         var top = CGFloat.infinity
         for (row, minY) in bounded + joined where row == rowIndex {
             top = min(top, minY)
