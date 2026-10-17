@@ -353,7 +353,7 @@ extension GameplaySheetMusicGeometrySmokeTests {
     /// Last-row anchor reach: `scrollTo("row_N", anchor: .top)` can only
     /// land the final band top on the viewport's top edge when the scroll
     /// canvas extends a full viewport below it — `contentHeight` ends at
-    /// the anchor block's own bottom. The hosted `NSScrollView` must
+    /// the sheet's own bottom. The hosted `NSScrollView` must
     /// actually reach the anchor's document offset (a shorter canvas reads
     /// back the clamped shortfall), and a last-row head must then paint
     /// inside the viewport's top band where the anchor promised it.

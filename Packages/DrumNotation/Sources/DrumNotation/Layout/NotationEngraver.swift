@@ -215,10 +215,10 @@ struct SheetComposer {
 
     /// Sheet height: the painted bottom or the lowest row's full anchor
     /// extent — band top (`staffCenterY − rowHeight / 2`) plus one row
-    /// pitch, the same block the mounted sheet's `row_*` scroll anchors
-    /// occupy. Ending at the staff bottom let the scroll canvas terminate
-    /// inside the final anchor block, so `scrollTo(anchor: .top)` clamped
-    /// before the last row could reach the viewport top.
+    /// pitch, so the mounted sheet's deepest `row_*` scroll anchor stays
+    /// inside the sheet. Ending at the staff bottom let the scroll canvas
+    /// terminate above the deepest anchor, so `scrollTo(anchor: .top)`
+    /// clamped before the last row could reach the viewport top.
     private func contentHeight(painted: CGRect?, rows: [EngravedRow]) -> CGFloat {
         let anchorExtentBottom = rows.last.map {
             $0.staffCenterY - style.rowHeight / 2 + rowPitch
