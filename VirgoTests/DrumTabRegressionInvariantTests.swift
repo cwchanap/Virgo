@@ -405,17 +405,6 @@ struct DrumTabRegressionInvariantTests {
         return bounds
     }
 
-    /// The composer's `lineBounds`: the segment's bounding rect inflated by
-    /// half the stroke width on every side.
-    private func lineBounds(start: CGPoint, end: CGPoint, lineWidth: CGFloat) -> CGRect {
-        CGRect(
-            x: min(start.x, end.x),
-            y: min(start.y, end.y),
-            width: abs(end.x - start.x),
-            height: abs(end.y - start.y)
-        ).insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2)
-    }
-
     /// The composer's `tupletPaintedBounds`: bracket polyline unioned with
     /// the label rect, stroked by `tupletLineWidth`.
     private func tupletInkBounds(_ tuplet: EngravedTuplet, style: NotationEngravingStyle) -> CGRect {
@@ -451,5 +440,101 @@ struct DrumTabRegressionInvariantTests {
     private func beamLabel(_ beam: EngravedBeam) -> String {
         "ids=\(beam.noteIDs.sorted()) level=\(beam.level) kind=\(beam.kind.rawValue) "
             + "start=(\(beam.start.x),\(beam.start.y)) end=(\(beam.end.x),\(beam.end.y))"
+    }
+}
+
+/// The composer's `lineBounds`: the segment's bounding rect inflated by
+/// half the stroke width on every side.
+private func lineBounds(start: CGPoint, end: CGPoint, lineWidth: CGFloat) -> CGRect {
+    CGRect(
+        x: min(start.x, end.x),
+        y: min(start.y, end.y),
+        width: abs(end.x - start.x),
+        height: abs(end.y - start.y)
+    ).insetBy(dx: -lineWidth / 2, dy: -lineWidth / 2)
+}
+
+/// Stored-vs-recomputed `paintedBounds` over the fixture catalog: the
+/// families whose ink `DrumTabRegressionInvariantTests` recomputes from
+/// raw geometry — stems, beams, flags, articulations — also carry *stored*
+/// `paintedBounds`, and downstream consumers (row anchors, the containment
+/// gate) read the stored values. Asserting stored equals recomputed per
+/// family means a stamping bug (wrong shift, missing translate) cannot
+/// hide behind a containment check that recomputes the same wrong value.
+/// The stored-fields families (heads, rests, ledgers, dots, rows, controls,
+/// tuplets) need no independent recompute — that is the point of stamping
+/// them.
+@Suite("Drum tab stored painted bounds", .serialized)
+@MainActor
+struct DrumTabStoredPaintedBoundsTests {
+    @Test("stored painted bounds match recomputed ink", arguments: DrumTabFixtureCatalog.all)
+    func storedPaintedBoundsMatchRecomputedInk(_ fixture: DrumTabFixture) throws {
+        let result = try DrumTabFixtureHarness.render(fixture)
+        assertStoredMatchesRecomputed(result.engraved)
+    }
+
+    /// Non-vacuity for `storedPaintedBoundsMatchRecomputedInk`: some
+    /// fixtures carry only whole/half notes (no stems, beams, flags or
+    /// articulations — see `triplet-grid`), so the per-fixture loops can
+    /// legitimately see nothing. Across the whole catalog at least one
+    /// stored stamp must be verified.
+    @Test("the catalog stamps recompute-family primitives somewhere")
+    func catalogStampsRecomputeFamilyPrimitives() throws {
+        var stems = 0
+        var beams = 0
+        var flags = 0
+        for fixture in DrumTabFixtureCatalog.all {
+            let result = try DrumTabFixtureHarness.render(fixture)
+            stems += result.engraved.stems.count
+            beams += result.engraved.beams.count
+            flags += result.engraved.flags.count
+        }
+        #expect(stems > 0, "catalog must engrave stems")
+        #expect(beams > 0, "catalog must engrave beams")
+        #expect(flags > 0, "catalog must engrave flags")
+    }
+
+    private func assertStoredMatchesRecomputed(_ engraved: EngravedNotation) {
+        let style = engraved.style
+        let staffSpace = style.formatting.staffSpace
+        for stem in engraved.stems {
+            #expect(
+                stem.paintedBounds == lineBounds(
+                    start: stem.start, end: stem.end, lineWidth: style.formatting.stemWidth
+                ),
+                "stem \(stem.noteIDs) stored \(stem.paintedBounds)"
+            )
+        }
+        for beam in engraved.beams {
+            #expect(
+                beam.paintedBounds == lineBounds(
+                    start: beam.start, end: beam.end, lineWidth: beam.thickness
+                ),
+                "beam \(beam.noteIDs) stored \(beam.paintedBounds)"
+            )
+        }
+        for flag in engraved.flags {
+            let metrics = PercussionGlyphMetrics.flag(
+                duration: flag.duration,
+                direction: flag.stemDirection,
+                staffSpace: staffSpace
+            )
+            #expect(
+                flag.paintedBounds == metrics.paintedBounds.offsetBy(
+                    dx: flag.origin.x - metrics.attachmentOffset.x,
+                    dy: flag.origin.y - metrics.attachmentOffset.y
+                ),
+                "flag \(flag.noteID) stored \(flag.paintedBounds)"
+            )
+        }
+        for articulation in engraved.articulations {
+            #expect(
+                articulation.paintedBounds == PercussionGlyphMetrics
+                    .articulation(articulation.kind, staffSpace: staffSpace)
+                    .paintedBounds
+                    .offsetBy(dx: articulation.position.x, dy: articulation.position.y),
+                "articulation \(articulation.kind) at \(articulation.position) stored \(articulation.paintedBounds)"
+            )
+        }
     }
 }
