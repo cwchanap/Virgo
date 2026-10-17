@@ -415,7 +415,7 @@ struct GameplayMIDIDisconnectTests {
 
     @Test("handleSelectedMIDISourceDisconnect shows reselect message when not playing")
     func disconnectMessageWhenNotPlaying() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }

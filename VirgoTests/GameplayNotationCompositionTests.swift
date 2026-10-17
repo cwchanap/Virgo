@@ -259,7 +259,7 @@ struct GameplayNotationCompositionTests {
     @MainActor
     func staticNotationRenderingDoesNotRebuildOnBeatChanges() async throws {
         try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            let vm = await GameplayViewModelTestSupport.makePreparedViewModel()
             defer { vm.cleanup() }
             vm.isPlaying = true
 
@@ -288,7 +288,7 @@ struct GameplayNotationCompositionTests {
     @MainActor
     func staticSheetMusicContentDoesNotObservePurpleBarPosition() async throws {
         try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            let vm = await GameplayViewModelTestSupport.makePreparedViewModel()
             defer { vm.cleanup() }
             vm.isPlaying = true
             vm.updatePurpleBarPosition(elapsedTime: 0.01)

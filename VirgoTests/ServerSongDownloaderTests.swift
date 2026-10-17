@@ -490,7 +490,7 @@ struct ServerSongDownloaderTests {
         }
     }
 
-    // MARK: - Audio download failure / no-R2 skip (migrated from PatchCoverageTests)
+    // MARK: - Audio download failure / no-R2 skip
 
     @Test("download continues successfully when audio download fails")
     func testAudioDownloadFailureIsNonFatal() async throws {

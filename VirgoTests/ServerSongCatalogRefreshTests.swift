@@ -392,8 +392,8 @@ struct ServerSongCatalogRefreshTests {
         }
     }
 
-    @Test("Logs warning when chart levels are on 0-10 scale")
-    func testLevelScaleWarning() async throws {
+    @Test("Imports snapshot normally when chart levels are on 0-10 scale")
+    func testLevelScaleImportWithLowLevels() async throws {
         // The only test exercising the `maxLevel <= 10` low-level-scale detection
         // path in ServerSongCache.refreshCatalog. There is no log-capture seam, so
         // this pins the user-visible outcome (the snapshot imports normally).

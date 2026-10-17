@@ -260,7 +260,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
     @Test("pausePlayback falls back to playbackStartTime when metronome has no playback time")
     func testPausePlaybackFallsBackToPlaybackStartTime() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }
@@ -278,7 +278,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
     @Test("pausePlayback fallback does not double-count pausedElapsedTime in backdated startTime")
     func testPausePlaybackFallbackNoDoubleCount() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }
@@ -301,9 +301,9 @@ struct GameplayViewModelPlaybackResumeTests {
 
     @Test("calculateElapsedTime fallback does not double-count pausedElapsedTime in backdated startTime")
     func testCalculateElapsedTimeFallbackNoDoubleCount() async throws {
-        let chart = GameplayViewModelCoverageTestSupport.makeChart(noteCount: 4)
+        let chart = GameplayViewModelTestSupport.makeChart(noteCount: 4)
         chart.notes.forEach { $0.originKind = .dtx }
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }
@@ -327,7 +327,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
     @Test("pausePlayback during scheduled-start window does not record negative elapsed time")
     func testPauseDuringScheduledStartWindowClampsToZero() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }
@@ -347,7 +347,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
     @Test("pausePlayback during scheduled-start window preserves existing pause offset on resume")
     func testPauseDuringScheduledStartWindowPreservesExistingOffset() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }
@@ -368,15 +368,17 @@ struct GameplayViewModelPlaybackResumeTests {
 
     @Test("calculateElapsedTime returns zero instead of negative before scheduled start")
     func testCalculateElapsedTimeClampsNegativeBeforeScheduledStart() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }
 
-        // Fresh start: playbackStartTime is 0.05 s in the future (buffer priming).
+        // Fresh start: playbackStartTime is well in the future (buffer priming)
+        // — far enough that main-thread stalls cannot leak real time into
+        // the clamp-under-test.
         vm.isPlaying = true
         vm.pausedElapsedTime = 0.0
-        vm.playbackStartTime = Date().addingTimeInterval(0.05)
+        vm.playbackStartTime = Date().addingTimeInterval(5)
 
         let elapsed = vm.calculateElapsedTime()
 
@@ -386,7 +388,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
     @Test("calculateElapsedTime falls back to playbackStartTime when metronome is idle")
     func testCalculateElapsedTimeFallbackToPlaybackStartTime() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }
@@ -408,7 +410,7 @@ struct GameplayViewModelPlaybackResumeTests {
 
     @Test("startPlayback resume uses BGM timeline when bgmPlayer.currentTime > 0")
     func startPlaybackResumeViaBGMTimeline() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 8)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 8)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }

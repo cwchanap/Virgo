@@ -313,7 +313,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test("calculateBGMOffset returns 0.0 when track is nil")
     func testCalculateBGMOffsetNilTrack() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
+        let vm = GameplayViewModelTestSupport.makeViewModel()
         let offset = vm.calculateBGMOffset()
         #expect(offset == 0.0)
     }
@@ -660,7 +660,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test("refreshTimingCaches returns early when data not loaded")
     func refreshTimingCachesEarlyReturnWhenNotLoaded() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         // Not loaded yet: guard should bail without mutating state.
         vm.refreshTimingCaches()
 
@@ -672,7 +672,7 @@ struct GameplayViewModelBGMTimelineTests {
     func refreshTimingCachesSetsDurationWhenLoaded() async throws {
         let chart = Chart(difficulty: .medium)
         chart.notes.append(Note(interval: .quarter, noteType: .bass, measureNumber: 3, measureOffset: 0.0))
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+        let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
         await vm.loadChartData()
         defer { vm.cleanup() }
 
@@ -685,7 +685,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test("enforceBGMMinimumSpeedIfNeeded returns nil without a BGM player")
     func enforceMinSpeedNilWithoutBGM() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         await vm.setupGameplay(loadPersistedSpeed: false)
         defer { vm.cleanup() }
@@ -697,7 +697,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test("convertToAudioPlayerDeviceTime maps CF time onto the audio device clock")
     func convertToAudioPlayerDeviceTimeAccuracy() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         defer { vm.cleanup() }
 
@@ -712,7 +712,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test("remainingBGMOffset clamps to zero when paused time exceeds the offset")
     func remainingBGMOffsetClampsToZero() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         defer { vm.cleanup() }
 
@@ -726,7 +726,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test("setupBGMPlayer sets bgmLoadingError when file path is invalid")
     func testSetupBGMPlayerSetsErrorForInvalidPath() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
 
         let song = Song(
@@ -751,7 +751,7 @@ struct GameplayViewModelBGMTimelineTests {
         // false positives: a track that legitimately has no BGM (metronome-only)
         // takes the early-return path and must NOT surface the alert, so
         // `bgmLoadingError` must remain nil.
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
 
         let song = Song(
@@ -784,7 +784,7 @@ struct GameplayViewModelBGMTimelineTests {
 
     @Test("setupBGMPlayer loads a player from a valid WAV file")
     func setupBGMPlayerLoadsFromValidFile() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 4)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 4)
         await vm.loadChartData()
         defer { vm.cleanup() }
 

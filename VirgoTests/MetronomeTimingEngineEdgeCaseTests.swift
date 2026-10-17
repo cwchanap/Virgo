@@ -27,13 +27,13 @@ private func expectedHostTime(
 
 /// Playback-guard, property-didSet restart, simulateTestBeat, host-time
 /// conversion, and static-helper edge-case ownership, consolidated from the
-/// campaign MetronomeEngineCoverageAdditionsTests (HPA-583) plus the timing
-/// engine's static-helper block: folding these into
+/// campaign MetronomeEngineCoverageAdditionsTests plus the timing engine's
+/// static-helper block: folding these into
 /// `MetronomeTimingEngineTests` would breach its SwiftLint type_body_length
 /// ERROR limit and keeping them in the same file breached file_length.
-/// The three static-helper superset tests here are the cited covering owners
-/// for 38cbee14's PatchCoverageAdditionsTests subsumer deletes — they must
-/// never be dropped.
+/// The three static-helper superset tests here are the covering owners for
+/// the deleted PatchCoverageAdditionsTests subsumers — they must never be
+/// dropped.
 @Suite("Metronome Timing Engine Edge Case Tests", .serialized)
 @MainActor
 struct MetronomeTimingEngineEdgeCaseTests {
@@ -97,7 +97,7 @@ struct MetronomeTimingEngineEdgeCaseTests {
         #expect(result == 0, "A past target that underflows must clamp to 0")
     }
 
-    // MARK: - audioTime(forIdealBeatTime:) (migrated from PatchCoverageAdditionsTests)
+    // MARK: - audioTime(forIdealBeatTime:)
 
     @Test("audioTime returns nil for a stale beat time that clamps to mach zero")
     func audioTimeReturnsNilForStaleBeat() {

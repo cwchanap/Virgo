@@ -504,7 +504,7 @@ struct GameplayViewModelScoringTests {
 
     @Test("finite missed-note scan is ignored while playback is paused")
     func testFiniteMissScanIgnoredWhilePaused() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }
@@ -521,7 +521,7 @@ struct GameplayViewModelScoringTests {
 
     @Test("infinite missed-note scan flushes remaining misses while paused")
     func testInfiniteMissScanFlushesRemainingMissesWhilePaused() async throws {
-        let vm = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 2)
+        let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 2)
         await vm.loadChartData()
         await vm.setupGameplay()
         defer { vm.cleanup() }

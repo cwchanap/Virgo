@@ -361,25 +361,6 @@ struct ContentViewTests {
         #expect(chart.rhythmMetadataData == nil)
     }
 
-    @Test("ContentView mounts and runs the startup onAppear with the tab shell")
-    func testContentViewMountsAndRunsStartupOnAppear() async throws {
-        try await TestSetup.withTestSetup {
-            let metronome = MetronomeEngine(audioDriver: RecordingAudioDriver())
-            let container = TestContainer.shared.container
-
-            let view = ContentView()
-                .environmentObject(metronome)
-                .modelContainer(container)
-
-            SwiftUITestUtilities.assertViewWithEnvironment(
-                view,
-                size: CGSize(width: 1280, height: 800)
-            )
-            // Let the synchronous onAppear body and queued startup tasks settle.
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-    }
-
     // MARK: - ContentView render smoke (consolidated from SecondWaveCoverageTests)
 
     @Test("ContentView renders with MetronomeEngine environment object")
@@ -437,5 +418,35 @@ struct ContentViewTests {
             charts: [chart]
         )
         return song
+    }
+}
+
+/// Startup mounting of the real tab shell — not just a crash gate: the
+/// shell must render its tabs and run the startup `onAppear` path.
+@Suite("ContentView startup mount")
+@MainActor
+struct ContentViewStartupMountTests {
+    @Test("ContentView mounts and runs the startup onAppear with the tab shell")
+    func testContentViewMountsAndRunsStartupOnAppear() async throws {
+        try await TestSetup.withTestSetup {
+            let metronome = MetronomeEngine(audioDriver: RecordingAudioDriver())
+            let container = TestContainer.shared.container
+
+            let view = ContentView()
+                .environmentObject(metronome)
+                .modelContainer(container)
+
+            let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
+                view,
+                size: CGSize(width: 1280, height: 800)
+            )
+            // Let the synchronous onAppear body and queued startup tasks settle.
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            // Not just a crash gate: the tab shell must actually render.
+            SwiftUITestUtilities.assertRendered(
+                from: mounted.root,
+                containsStrings: ["Songs"]
+            )
+        }
     }
 }

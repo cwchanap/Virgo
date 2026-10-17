@@ -471,7 +471,7 @@ private extension GameplayViewTests {
     @Test("GameplayView renders the purple bar overlay when a position is set")
     func testGameplayViewRendersPurpleBarOverlay() async throws {
         try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            let vm = await GameplayViewModelTestSupport.makePreparedViewModel()
             defer { vm.cleanup() }
             vm.isPlaying = true
             vm.updatePurpleBarPosition(elapsedTime: 0.01)
@@ -516,7 +516,7 @@ private extension GameplayViewTests {
         try await TestSetup.withTestSetup {
             let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 8)
             let metronome = GameplayViewModelTestHarness.createTestMetronome()
-            let settings = GameplayViewModelCoverageTestSupport.makeSettings()
+            let settings = GameplayViewModelTestSupport.makeSettings()
             let container = TestContainer.shared.container
 
             let view = GameplayView(chart: chart, metronome: metronome)
@@ -564,7 +564,7 @@ private extension GameplayViewTests {
     @Test("GameplayView hides gameplay chrome until the view model is prepared")
     func gameplayViewHidesChromeUntilViewModelPrepared() async throws {
         try await TestSetup.withTestSetup {
-            let vm = GameplayViewModelCoverageTestSupport.makeViewModel()
+            let vm = GameplayViewModelTestSupport.makeViewModel()
             defer { vm.cleanup() }
 
             #expect(!vm.isGameplayPrepared, "Fixture must not call setupGameplay()")
