@@ -194,12 +194,21 @@ public struct EngravedStem: Hashable, Sendable {
     public let direction: NotationStemDirection
     public let start: CGPoint
     public let end: CGPoint
+    /// The stroked segment's bounds (stem width around the segment).
+    public let paintedBounds: CGRect
 
-    public init(noteIDs: [Int], direction: NotationStemDirection, start: CGPoint, end: CGPoint) {
+    public init(
+        noteIDs: [Int],
+        direction: NotationStemDirection,
+        start: CGPoint,
+        end: CGPoint,
+        paintedBounds: CGRect
+    ) {
         self.noteIDs = noteIDs
         self.direction = direction
         self.start = start
         self.end = end
+        self.paintedBounds = paintedBounds
     }
 }
 
@@ -220,6 +229,8 @@ public struct EngravedBeam: Hashable, Sendable {
     public let start: CGPoint
     public let end: CGPoint
     public let thickness: CGFloat
+    /// The beam slab's bounds (thickness around the segment).
+    public let paintedBounds: CGRect
 
     public init(
         noteIDs: [Int],
@@ -228,7 +239,8 @@ public struct EngravedBeam: Hashable, Sendable {
         kind: EngravedBeamKind,
         start: CGPoint,
         end: CGPoint,
-        thickness: CGFloat
+        thickness: CGFloat,
+        paintedBounds: CGRect
     ) {
         self.noteIDs = noteIDs
         self.direction = direction
@@ -237,6 +249,7 @@ public struct EngravedBeam: Hashable, Sendable {
         self.start = start
         self.end = end
         self.thickness = thickness
+        self.paintedBounds = paintedBounds
     }
 }
 
@@ -252,19 +265,23 @@ public struct EngravedFlag: Hashable, Sendable {
     /// Uncovered beam level this flag paints (0 = at the stem tip).
     public let flagIndex: Int
     public let origin: CGPoint
+    /// The flag glyph's bounds (Bravura metrics anchored at `origin`).
+    public let paintedBounds: CGRect
 
     public init(
         noteID: Int,
         stemDirection: NotationStemDirection,
         duration: NotationFlagDuration,
         flagIndex: Int,
-        origin: CGPoint
+        origin: CGPoint,
+        paintedBounds: CGRect
     ) {
         self.noteID = noteID
         self.stemDirection = stemDirection
         self.duration = duration
         self.flagIndex = flagIndex
         self.origin = origin
+        self.paintedBounds = paintedBounds
     }
 }
 
@@ -317,11 +334,19 @@ public struct EngravedArticulation: Hashable, Sendable {
     public let kind: PercussionArticulation
     /// Mark glyph center in final sheet coordinates.
     public let position: CGPoint
+    /// The mark glyph's bounds (Bravura metrics centered at `position`).
+    public let paintedBounds: CGRect
 
-    public init(noteID: Int, kind: PercussionArticulation, position: CGPoint) {
+    public init(
+        noteID: Int,
+        kind: PercussionArticulation,
+        position: CGPoint,
+        paintedBounds: CGRect
+    ) {
         self.noteID = noteID
         self.kind = kind
         self.position = position
+        self.paintedBounds = paintedBounds
     }
 }
 
@@ -333,19 +358,23 @@ public struct EngravedControl: Hashable, Sendable {
     public let rowIndex: Int
     /// Mark center in final sheet coordinates.
     public let position: CGPoint
+    /// The cross mark's bounds (mark square plus stroke width).
+    public let paintedBounds: CGRect
 
     public init(
         controlID: Int,
         kind: NotationControlKind,
         measureIndex: Int,
         rowIndex: Int,
-        position: CGPoint
+        position: CGPoint,
+        paintedBounds: CGRect
     ) {
         self.controlID = controlID
         self.kind = kind
         self.measureIndex = measureIndex
         self.rowIndex = rowIndex
         self.position = position
+        self.paintedBounds = paintedBounds
     }
 }
 
@@ -363,6 +392,8 @@ public struct EngravedTuplet: Hashable, Sendable {
     /// Label center in final sheet coordinates.
     public let labelPosition: CGPoint
     public let rowIndex: Int
+    /// The bracket polyline plus label's bounds (line width inset out).
+    public let paintedBounds: CGRect
 
     public init(
         tupletID: Int,
@@ -373,7 +404,8 @@ public struct EngravedTuplet: Hashable, Sendable {
         isBracketVisible: Bool,
         bracketPoints: [CGPoint],
         labelPosition: CGPoint,
-        rowIndex: Int
+        rowIndex: Int,
+        paintedBounds: CGRect
     ) {
         self.tupletID = tupletID
         self.voice = voice
@@ -384,6 +416,7 @@ public struct EngravedTuplet: Hashable, Sendable {
         self.bracketPoints = bracketPoints
         self.labelPosition = labelPosition
         self.rowIndex = rowIndex
+        self.paintedBounds = paintedBounds
     }
 }
 

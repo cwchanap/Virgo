@@ -3,7 +3,7 @@
 //  VirgoTests
 //
 //  Scroll-anchor contract tests for the mounted sheet: every `row_i`
-//  anchor must sit at-or-below its own row's topmost ink so
+//  anchor must sit at-or-above its own row's topmost ink so
 //  `scrollTo("row_i", anchor: .top)` never clips overhanging notation.
 //
 
@@ -14,6 +14,7 @@ import DrumNotation
 @testable import Virgo
 
 @MainActor
+@Suite("Gameplay sheet music row anchors", .serialized)
 struct GameplaySheetMusicRowAnchorTests {
 
     /// Verifies that `rowAnchorColumn` renders — and that the row_0 scroll
@@ -59,7 +60,7 @@ struct GameplaySheetMusicRowAnchorTests {
     /// 0 — a later row's `.aboveLine9` overhang resolves to a negative
     /// shared offset that a `max(0, …)` clamp discards, landing that row's
     /// anchor on its band top and clipping the overhang. Every `row_i`
-    /// anchor must sit at-or-below its own row's topmost ink instead.
+    /// anchor must sit at-or-above its own row's topmost ink instead.
     @Test("rowAnchors protect above-band ink on later rows")
     func rowAnchorsProtectLaterRowOverhang() async throws {
         try await TestSetup.withTestSetup {
@@ -120,47 +121,109 @@ struct GameplaySheetMusicRowAnchorTests {
         }
     }
 
-    /// Independent per-row topmost-ink bound for the anchor contract:
-    /// painted `minY` for bounds-bearing primitives; raw endpoint/center Y
-    /// for the noteID-joined families — production anchors apply
-    /// conservative style margins below these, so an anchor at-or-above
-    /// this bound is correct.
+    /// Independent per-row topmost-ink bound for the anchor contract,
+    /// computed over the package's exact per-primitive painted bounds —
+    /// the same data production reads, so a family production forgets
+    /// cannot hide behind weaker bounds here.
     private func rowInkTop(_ engraving: EngravedNotation, rowIndex: Int) -> CGFloat {
         var bounded: [(Int, CGFloat)] = engraving.rows.map { ($0.index, $0.paintedBounds.minY) }
         bounded += engraving.noteHeads.map { ($0.rowIndex, $0.paintedBounds.minY) }
         bounded += engraving.rests.map { ($0.rowIndex, $0.paintedBounds.minY) }
         bounded += engraving.ledgerLines.map { ($0.rowIndex, $0.paintedBounds.minY) }
         bounded += engraving.rhythmDots.map { ($0.rowIndex, $0.paintedBounds.minY) }
-        bounded += engraving.controls.map { ($0.rowIndex, $0.position.y) }
-        bounded += engraving.tuplets.map { tuplet in
-            (tuplet.rowIndex, min(
-                tuplet.bracketPoints.map(\.y).min() ?? .infinity,
-                tuplet.labelPosition.y
-            ))
-        }
+        bounded += engraving.controls.map { ($0.rowIndex, $0.paintedBounds.minY) }
+        bounded += engraving.tuplets.map { ($0.rowIndex, $0.paintedBounds.minY) }
         let noteRow = Dictionary(
             engraving.noteHeads.map { ($0.noteID, $0.rowIndex) },
             uniquingKeysWith: { existing, _ in existing }
         )
         var joined: [(Int, CGFloat)] = engraving.stems.compactMap { stem in
             stem.noteIDs.lazy.compactMap { noteRow[$0] }.first
-                .map { ($0, min(stem.start.y, stem.end.y)) }
+                .map { ($0, stem.paintedBounds.minY) }
         }
         joined += engraving.beams.compactMap { beam in
             beam.noteIDs.lazy.compactMap { noteRow[$0] }.first
-                .map { ($0, min(beam.start.y, beam.end.y)) }
+                .map { ($0, beam.paintedBounds.minY) }
         }
         joined += engraving.flags.compactMap { flag in
-            noteRow[flag.noteID].map { ($0, flag.origin.y) }
+            noteRow[flag.noteID].map { ($0, flag.paintedBounds.minY) }
         }
         joined += engraving.articulations.compactMap { articulation in
-            noteRow[articulation.noteID].map { ($0, articulation.position.y) }
+            noteRow[articulation.noteID].map { ($0, articulation.paintedBounds.minY) }
         }
         var top = CGFloat.infinity
         for (row, minY) in bounded + joined where row == rowIndex {
             top = min(top, minY)
         }
         return top
+    }
+
+    /// The anchor column's stacked frame heights: each `row_i` frame's top
+    /// edge lands exactly on `tops[i]`, the last row carries a token extent,
+    /// and any residual non-positive delta clamps to zero instead of
+    /// shifting later anchors (HPA-583 review).
+    @Test("anchorColumnHeights stack to the supplied tops")
+    func anchorColumnHeightsStackToTops() {
+        let tops: [CGFloat] = [40, 40, 160, 220]
+        let heights = GameplayRowAnchorGeometry.anchorColumnHeights(for: tops)
+        #expect(heights == [40, 0, 120, 60, 1])
+
+        var runningTopEdge = heights[0]
+        for index in tops.indices {
+            #expect(runningTopEdge == tops[index], "row_\(index)'s top edge must land on tops[\(index)]")
+            runningTopEdge += heights[index + 1]
+        }
+
+        // A decreasing pair clamps its extent to zero — the stacked column
+        // cannot express a top below its predecessor's.
+        #expect(
+            GameplayRowAnchorGeometry.anchorColumnHeights(for: [100, 60, 90])
+                == [100, 0, 30, 1]
+        )
+        #expect(GameplayRowAnchorGeometry.anchorColumnHeights(for: []) == [])
+    }
+
+    /// The monotone contract that keeps the stacked extents exact:
+    /// `anchorTops` never emits a decreasing pair, even when a later row's
+    /// ink reaches above the first row's anchor — the raw below-previous
+    /// top clamps to the previous anchor instead of shifting every later
+    /// anchor (HPA-583 review).
+    @Test("anchorTops stay monotone when later-row ink reaches above the first anchor")
+    func anchorTopsClampNonMonotoneInk() async throws {
+        try await TestSetup.withTestSetup {
+            let support = NotationSnapshotTestSupport()
+            let (engraved, _) = try support.requireReady(support.prepare(
+                notes: [Note(interval: .quarter, noteType: .openHiHat, measureNumber: 9, measureOffset: 0)],
+                minimumMeasureCount: 9
+            ))
+            try #require(engraved.rows.count > 1, "fixture must engrave multiple rows")
+
+            let lastRow = engraved.rows.count - 1
+            let head = try #require(engraved.noteHeads.first)
+            let skyHigh = EngravedNoteHead(
+                noteID: head.noteID,
+                measureIndex: head.measureIndex,
+                rowIndex: lastRow,
+                staffStep: head.staffStep,
+                voice: head.voice,
+                stemDirection: head.stemDirection,
+                noteheadStyle: head.noteheadStyle,
+                duration: head.duration,
+                position: head.position,
+                paintedBounds: CGRect(x: head.paintedBounds.minX, y: 0, width: 1, height: 1)
+            )
+            let mutated = engraved.replacing(noteHeads: [skyHigh])
+
+            let tops = GameplayRowAnchorGeometry.anchorTops(for: mutated)
+            #expect(tops.count == engraved.rows.count)
+            for index in tops.indices.dropFirst() {
+                #expect(tops[index] >= tops[index - 1], "anchor tops must be non-decreasing")
+            }
+            #expect(
+                tops[lastRow] == tops[lastRow - 1],
+                "a raw top below the previous anchor clamps to the previous anchor"
+            )
+        }
     }
 
     /// Verifies that a chart with crash notes (default position .aboveLine5) produces
@@ -230,5 +293,32 @@ struct GameplaySheetMusicRowAnchorTests {
                 size: CGSize(width: 1280, height: 900)
             )
         }
+    }
+}
+
+private extension EngravedNotation {
+    /// A copy of this immutable engraving with the note-head array swapped
+    /// — mirrors `DrumTabRenderProbeTests`' one-layer differential.
+    func replacing(noteHeads: [EngravedNoteHead]) -> EngravedNotation {
+        EngravedNotation(
+            formatted: formatted,
+            style: style,
+            rows: rows,
+            measures: measures,
+            noteHeads: noteHeads,
+            rests: rests,
+            stems: stems,
+            beams: beams,
+            flags: flags,
+            ledgerLines: ledgerLines,
+            rhythmDots: rhythmDots,
+            articulations: articulations,
+            controls: controls,
+            tuplets: tuplets,
+            measureBars: measureBars,
+            paintedBounds: paintedBounds,
+            contentWidth: contentWidth,
+            contentHeight: contentHeight
+        )
     }
 }
