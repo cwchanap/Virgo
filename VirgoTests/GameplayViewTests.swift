@@ -11,6 +11,7 @@ import SwiftUI
 @testable import Virgo
 
 @MainActor
+@Suite("GameplayView", .serialized)
 struct GameplayViewTests {
 
     // Smoke test: Verifies GameplayView initializes without crashing with PracticeSettingsService

@@ -99,16 +99,19 @@ final class GameplayViewUITests: XCTestCase {
         // 2. Verify the session is playing: the control exposes its Pause label.
         try requireControl(named: "Pause", in: app, timeout: 3)
 
-        // 3. Tap Pause (re-acquired by its current label) and verify the paused state.
-        try tapControl(named: "Pause", in: app, timeout: 3)
-        let pausedControl = try requireControl(named: "Play", in: app, timeout: 3)
-        XCTAssertTrue(pausedControl.isHittable, "The play/pause control should remain hittable after pausing")
-
-        // 4. Restart the paused session: Play must be available again and hittable.
+        // 3. Restart the PLAYING session: restartPlayback re-starts when
+        // playing, so the control must expose its Pause label again — a
+        // restart of an already-paused session is a control-state no-op
+        // and proves nothing.
         let restartButton = try requireGameplayRestartControl(in: app)
         XCTAssertTrue(restartButton.isHittable)
         restartButton.tap()
-        let playAgainControl = try requireControl(named: "Play", in: app, timeout: 3)
-        XCTAssertTrue(playAgainControl.isHittable, "Play should be available and hittable after restart")
+        let resumedControl = try requireControl(named: "Pause", in: app, timeout: 3)
+        XCTAssertTrue(resumedControl.isHittable, "Play should restart and keep playing after restart")
+
+        // 4. Pause the restarted session and verify the paused state.
+        try tapControl(named: "Pause", in: app, timeout: 3)
+        let pausedControl = try requireControl(named: "Play", in: app, timeout: 3)
+        XCTAssertTrue(pausedControl.isHittable, "The play/pause control should remain hittable after pausing")
     }
 }

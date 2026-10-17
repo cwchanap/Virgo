@@ -161,34 +161,6 @@ struct LocalDTXFixtureImporterTests {
         #expect(returned.bgmStartOffsetSeconds == nil)
     }
 
-    @Test("importSong drops charts whose difficulty label is not recognized")
-    func dropsChartsWithUnrecognizedDifficultyLabel() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-
-        // L1 is a known label (BASIC -> easy); L2 uses an unknown label so it must be
-        // dropped rather than imported as a silent missing difficulty.
-        let setDef = """
-        #TITLE: Partial Drop
-        #L1LABEL: BASIC
-        #L1FILE: chart1.dtx
-        #L2LABEL: CHALLENGE
-        #L2FILE: chart2.dtx
-        """
-        // Exercise the bundled fixture's UTF-16 format. The importer only selects
-        // UTF-16 when a BOM is present; BOM-less sources take the UTF-8/Shift-JIS path.
-        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf16)
-        let chart1 = "#TITLE: Partial Drop\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#03113: 01000000"
-        try chart1.write(to: tempDir.appendingPathComponent("chart1.dtx"), atomically: true, encoding: .utf8)
-        let chart2 = "#TITLE: Partial Drop\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 99\n#03113: 01000000"
-        try chart2.write(to: tempDir.appendingPathComponent("chart2.dtx"), atomically: true, encoding: .utf8)
-
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-
-        #expect(song.charts.count == 1, "Only the BASIC chart should import; CHALLENGE must be dropped")
-        #expect(song.charts.first?.difficulty == .easy)
-    }
-
     @Test("importSong decodes a BOM-less UTF-8 SET.def without lossy UTF-16 garbage")
     func decodesUTF8SETDefWithoutBOM() throws {
         let context = TestContainer.isolatedContainer().context
@@ -249,32 +221,6 @@ struct LocalDTXFixtureImporterTests {
         try Data().write(to: bundleRoot.appendingPathComponent("chart.dtx"))
 
         #expect(LocalDTXFixtureImporter.locateSETFile(in: bundleRoot) == nil)
-    }
-
-    @Test("importSong derives duration from chart BPM, not a hard-coded 2 sec/measure")
-    func durationDerivedFromChartBPM() throws {
-        // Two synthetic fixtures with the same measure layout but different BPMs must
-        // produce proportionally different durations. The old `calculateDuration`
-        // hard-coded 120 BPM (2 sec/measure), so a 200-BPM chart was overstated by
-        // 67% and gameplay progress kept running past the audio end. Both fixtures
-        // place a single note in raw measure 99 (0-based), so total measures = 100.
-        let slow = try importSyntheticFixture(
-            bpm: 120.0, label: "SLOW", into: TestContainer.isolatedContainer().context
-        )
-        let fast = try importSyntheticFixture(
-            bpm: 200.0, label: "FAST", into: TestContainer.isolatedContainer().context
-        )
-
-        // 100 measures × (4 × 60 / BPM):
-        //   120 BPM → 200.0s → "3:20"
-        //   200 BPM → 120.0s → "2:00"
-        // The old code produced "3:20" for both.
-        #expect(slow.duration == "3:20", "120 BPM @ 100 measures = 200s = 3:20")
-        #expect(fast.duration == "2:00", "200 BPM @ 100 measures = 120s = 2:00")
-        #expect(
-            fast.duration != slow.duration,
-            "Duration must vary with BPM, not be the fixed 2 sec/measure value"
-        )
     }
 
     @Test("fresh import persists valid rhythm payload and canonical timing without song BGM offset")
@@ -369,239 +315,11 @@ struct LocalDTXFixtureImporterTests {
         #expect(RhythmTimelineResolver().resolve(chart: chart).availability == .fatal)
     }
 
-    // MARK: - Bundled app-bundle import ownership
-
-    @Test("bundled Soukyuu imports from the real built app bundle")
-    func bundledSoukyuuImportsFromBuiltAppBundle() throws {
-        let context = TestContainer.isolatedContainer().context
-        let isolatedDeletionStore = makeIsolatedDeletionStore()
-
-        let song = try #require(
-            try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(
-                into: context,
-                bundle: .main,
-                deletionStore: isolatedDeletionStore
-            )
-        )
-        #expect(song.bgmFilePath?.hasSuffix("bgm.m4a") == true)
-        #expect(!song.charts.isEmpty)
-    }
-
-    @Test("importBundledSoukyuuIfAvailable returns nil when the bundle has no SET.def")
-    func importBundledSoukyuuReturnsNilWhenBundleLacksSETDef() throws {
-        let context = TestContainer.isolatedContainer().context
-        let bundle = try makeBundle(named: "EmptyBundle", withFixture: false)
-        defer { cleanupBundle(bundle) }
-
-        // Inject an empty store so a leftover tombstone in `.standard` cannot
-        // make this return nil for the wrong reason (gate vs. missing SET.def).
-        let song = try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(
-            into: context, bundle: bundle, deletionStore: makeIsolatedDeletionStore()
-        )
-
-        #expect(song == nil, "Bundle without SET.def must return nil, not throw")
-        #expect(try context.fetch(FetchDescriptor<Song>()).isEmpty)
-    }
-
-    @Test("importBundledSoukyuuIfAvailable skips re-seed after the user deletes the bundled song")
-    func importBundledSoukyuuSkipsReSeedAfterUserDeletion() throws {
-        // Reproduces the review finding: deleting the bundled demo was not durable
-        // because the import path dedupes only by serverSongId and recreated any
-        // absent record on the next launch. The gate must prevent that recreation.
-        let context = TestContainer.isolatedContainer().context
-        let bundle = try makeBundle(named: "DeletionGateBundle", withFixture: true)
-        defer { cleanupBundle(bundle) }
-        let store = makeIsolatedDeletionStore()
-
-        // First import seeds the bundled fixture (gate allows: not deleted, absent).
-        let first = try #require(
-            try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(
-                into: context, bundle: bundle, deletionStore: store
-            )
-        )
-        #expect(first.serverSongId == LocalDTXFixtureImporter.soukyuuSongId)
-        #expect(try context.fetch(FetchDescriptor<Song>()).count == 1)
-
-        // Simulate the user deleting the song from the library, then the delete
-        // path recording the tombstone (ServerSongStatusManager.deleteLocalSong).
-        context.delete(first)
-        try context.save()
-        _ = store.recordIfBundled(songId: LocalDTXFixtureImporter.soukyuuSongId)
-
-        // Next launch: the startup seed path must NOT recreate the deleted song.
-        let second = try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(
-            into: context, bundle: bundle, deletionStore: store
-        )
-
-        #expect(second == nil, "A user-deleted bundled fixture must not be recreated on re-seed")
-        #expect(try context.fetch(FetchDescriptor<Song>()).isEmpty, "The delete must be durable")
-    }
-
-    @Test("importBundledSoukyuuIfAvailable returns an existing stable-ID record marked deleted")
-    func importBundledSoukyuuReturnsExistingStableIDRecordEvenIfMarkedDeleted() throws {
-        // If the song still exists (e.g. a delete that did not persist) but the
-        // tombstone was recorded, the importer returns the existing stable-ID
-        // record. The tombstone remains in force while the live record remains
-        // available to the user.
-        let context = TestContainer.isolatedContainer().context
-        let bundle = try makeBundle(named: "ExistingDeletedBundle", withFixture: true)
-        defer { cleanupBundle(bundle) }
-        let store = makeIsolatedDeletionStore()
-
-        let first = try #require(
-            try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(
-                into: context, bundle: bundle, deletionStore: store
-            )
-        )
-        // Tombstone recorded, but the record is NOT deleted from the context.
-        _ = store.recordIfBundled(songId: LocalDTXFixtureImporter.soukyuuSongId)
-
-        let second = try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(
-            into: context, bundle: bundle, deletionStore: store
-        )
-
-        #expect(second === first, "An existing stable-ID record must be returned, not duplicated")
-        #expect(store.isDeleted(songId: LocalDTXFixtureImporter.soukyuuSongId))
-        #expect(try context.fetch(FetchDescriptor<Song>()).count == 1)
-    }
-
-    @Test("importBundledSoukyuuIfAvailable re-seeds after the deletion tombstone is cleared")
-    func importBundledSoukyuuReSeedsAfterClear() throws {
-        // Mirrors the `-ResetState` UI-test path (clearPersistedTestState), which
-        // clears the tombstone so the demo re-seeds into a clean slate.
-        let context = TestContainer.isolatedContainer().context
-        let bundle = try makeBundle(named: "ClearTombstoneBundle", withFixture: true)
-        defer { cleanupBundle(bundle) }
-        let store = makeIsolatedDeletionStore()
-
-        _ = store.recordIfBundled(songId: LocalDTXFixtureImporter.soukyuuSongId)
-        store.clear()
-
-        let song = try #require(
-            try LocalDTXFixtureImporter.importBundledSoukyuuIfAvailable(
-                into: context, bundle: bundle, deletionStore: store
-            )
-        )
-
-        #expect(song.serverSongId == LocalDTXFixtureImporter.soukyuuSongId)
-    }
-
-    // MARK: - Fresh-import error guards, drop/survival, label mapping, duration
-    // (migrated from LocalDTXFixtureImporterCoverageTests; SET.def encoding/parse
-    // variants live in LocalDTXFixtureImporterEncodingTests)
-
-    @Test("importSong throws noPlayableCharts when every label is unrecognized")
-    func importSongThrowsNoPlayableChartsWhenAllLabelsUnrecognized() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        try writeSETDef(
-            in: tempDir,
-            content: "#TITLE: No Charts\n#L1LABEL: CHALLENGE\n#L1FILE: chart1.dtx\n"
-                + "#L2LABEL: ENCORE\n#L2FILE: chart2.dtx\n"
-        )
-        try writeMinimalChart(in: tempDir, filename: "chart1.dtx", title: "No Charts")
-        try writeMinimalChart(in: tempDir, filename: "chart2.dtx", title: "No Charts")
-
-        do {
-            _ = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-            Issue.record("Expected noPlayableCharts error")
-        } catch LocalDTXFixtureImportError.noPlayableCharts {
-            // Expected: all charts dropped by the unrecognized-label guard.
-        } catch {
-            Issue.record("Expected .noPlayableCharts but got \(error)")
-        }
-    }
-
-    @Test("importSong throws noPlayableCharts when the referenced chart file is missing")
-    func importSongThrowsNoPlayableChartsWhenChartFileMissing() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        try writeSETDef(
-            in: tempDir,
-            content: "#TITLE: Ghost\n#L1LABEL: BASIC\n#L1FILE: ghost.dtx\n"
-        )
-        // ghost.dtx is intentionally never created.
-
-        do {
-            _ = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-            Issue.record("Expected noPlayableCharts error")
-        } catch LocalDTXFixtureImportError.noPlayableCharts {
-            // Expected: the missing-file guard drops the only chart.
-        } catch {
-            Issue.record("Expected .noPlayableCharts but got \(error)")
-        }
-    }
-
-    @Test("importSong drops a missing chart file but keeps remaining charts")
-    func importSongDropsMissingChartFileButKeepsRemaining() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        try writeSETDef(
-            in: tempDir,
-            content: "#TITLE: Partial\n#L1LABEL: BASIC\n#L1FILE: present.dtx\n"
-                + "#L2LABEL: ADVANCED\n#L2FILE: missing.dtx\n"
-        )
-        try writeMinimalChart(in: tempDir, filename: "present.dtx", title: "Partial")
-
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-
-        #expect(song.charts.count == 1, "Missing chart file must be dropped; present chart kept")
-        #expect(song.charts.first?.difficulty == .easy)
-    }
-
-    @Test("duration uses the canonical one-measure timeline when the imported chart has no notes")
-    func durationUsesCanonicalTimelineWhenChartHasNoNotes() throws {
-        let context = TestContainer.isolatedContainer().context
-        let tempDir = try makeTempDirectory()
-        defer { removeTemp(tempDir) }
-        try writeSETDef(in: tempDir, content: "#TITLE: Empty\n#L1LABEL: BASIC\n#L1FILE: chart.dtx\n")
-        // No note lines still produce the timeline's canonical minimum one measure.
-        let chart = "#TITLE: Empty\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50"
-        try chart.write(
-            to: tempDir.appendingPathComponent("chart.dtx"),
-            atomically: true, encoding: .utf8
-        )
-
-        let song = try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-
-        #expect(song.duration == "0:02")
-    }
-
-    @Test("LocalizedError descriptions are populated for every error case")
-    func errorDescriptionsArePopulated() {
-        let url = URL(fileURLWithPath: "/tmp/SET.def")
-        let missing = LocalDTXFixtureImportError.missingSETFile(url)
-        let unreadable = LocalDTXFixtureImportError.unreadableSETFile(url)
-        let noCharts = LocalDTXFixtureImportError.noPlayableCharts("song-42")
-
-        #expect(missing.errorDescription?.contains("Missing SET.def") == true)
-        #expect(unreadable.errorDescription?.contains("Unable to decode") == true)
-        #expect(noCharts.errorDescription?.contains("song-42") == true)
-    }
-
     // Control-event import/routing tests live in
-    // LocalDTXControlImportTests.swift, extracted to keep this file under the
-    // SwiftLint file-length limit.
-
-    @discardableResult
-    private func importSyntheticFixture(
-        bpm: Double, label: String, into context: ModelContext
-    ) throws -> Song {
-        let tempDir = try makeTempDirectory()
-        let setDef = """
-        #TITLE: \(label)
-        #L1LABEL: BASIC
-        #L1FILE: chart.dtx
-        """
-        try setDef.write(to: tempDir.appendingPathComponent("SET.def"), atomically: true, encoding: .utf8)
-        // Raw measure index 099 in DTX is 0-based; importer uses (maxMeasure + 1) = 100.
-        let chart = "#TITLE: \(label)\n#ARTIST: Tester\n#BPM: \(bpm)\n#DLEVEL: 50\n#09911: 01000000"
-        try chart.write(to: tempDir.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
-        return try LocalDTXFixtureImporter.importSong(from: tempDir, into: context)
-    }
+    // LocalDTXControlImportTests.swift; bundled-demo ownership in
+    // LocalDTXBundledSoukyuuImportTests.swift; fresh-import guards in
+    // LocalDTXImportGuardsTests.swift — each extracted to keep this file
+    // under the SwiftLint file-length limit.
 
     private func soukyuuFixtureURL() throws -> URL {
         let url = URL(fileURLWithPath: #filePath)
@@ -621,18 +339,6 @@ struct LocalDTXFixtureImporterTests {
 
     private func removeTemp(_ url: URL) {
         try? FileManager.default.removeItem(at: url)
-    }
-
-    private func writeSETDef(in dir: URL, content: String) throws {
-        try content.write(
-            to: dir.appendingPathComponent("SET.def"),
-            atomically: true, encoding: .utf8
-        )
-    }
-
-    private func writeMinimalChart(in dir: URL, filename: String, title: String) throws {
-        let chart = "#TITLE: \(title)\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#01111: 01000000"
-        try chart.write(to: dir.appendingPathComponent(filename), atomically: true, encoding: .utf8)
     }
 
     private struct CurrentSourceFixture {
@@ -673,56 +379,6 @@ struct LocalDTXFixtureImporterTests {
         try Data().write(to: bgmURL)
         try Data().write(to: previewURL)
         return CurrentSourceFixture(folder: folder, bgmURL: bgmURL, previewURL: previewURL)
-    }
-
-    private func makeBundle(named name: String, withFixture: Bool) throws -> Bundle {
-        let bundleDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(name)-\(UUID().uuidString).bundle", isDirectory: true)
-        let contents = bundleDir.appendingPathComponent("Contents", isDirectory: true)
-        let resources = contents.appendingPathComponent("Resources", isDirectory: true)
-        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
-        try makeInfoPList(named: name).write(
-            to: contents.appendingPathComponent("Info.plist"),
-            atomically: true, encoding: .utf8
-        )
-        if withFixture {
-            try "#TITLE: Bundle Fixture\n#L1LABEL: BASIC\n#L1FILE: chart.dtx\n".write(
-                to: resources.appendingPathComponent("SET.def"),
-                atomically: true, encoding: .utf8
-            )
-            let chart = "#TITLE: Bundle Fixture\n#ARTIST: Tester\n#BPM: 120\n#DLEVEL: 50\n#01111: 01000000"
-            try chart.write(to: resources.appendingPathComponent("chart.dtx"), atomically: true, encoding: .utf8)
-        }
-        guard let bundle = Bundle(url: bundleDir) else {
-            throw NSError(
-                domain: "VirgoTests", code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Could not load bundle at \(bundleDir.path)"]
-            )
-        }
-        return bundle
-    }
-
-    private func makeInfoPList(named name: String) -> String {
-        let header = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-        let doctype = "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" " +
-            "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">"
-        let body = "<plist version=\"1.0\"><dict>" +
-            "<key>CFBundleIdentifier</key><string>\(name)</string>" +
-            "</dict></plist>"
-        return header + doctype + body
-    }
-
-    private func cleanupBundle(_ bundle: Bundle) {
-        try? FileManager.default.removeItem(atPath: bundle.bundlePath)
-    }
-
-    /// Fresh `BundledFixtureDeletionStore` backed by a unique UserDefaults suite,
-    /// so the gate tests never read from or write to `UserDefaults.standard`.
-    private func makeIsolatedDeletionStore() -> BundledFixtureDeletionStore {
-        let suite = "virgo-dtx-importer-deletion-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return BundledFixtureDeletionStore(defaults: defaults)
     }
 
     private struct PreexistingSong {

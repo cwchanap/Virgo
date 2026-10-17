@@ -583,6 +583,7 @@ struct GameplaySheetMusicSmokeTests {
                 chart: Chart(difficulty: .medium),
                 noteCount: 0
             )
+            defer { emptyViewModel.cleanup() }
             await emptyViewModel.loadChartData()
             await emptyViewModel.setupGameplay()
 
@@ -625,6 +626,7 @@ struct GameplaySheetMusicSmokeTests {
                 )
             }
             let denseViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: denseChart)
+            defer { denseViewModel.cleanup() }
             await denseViewModel.loadChartData()
             await denseViewModel.setupGameplay()
 
