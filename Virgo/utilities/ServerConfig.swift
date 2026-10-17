@@ -28,11 +28,20 @@ final class ServerConfig {
     }
 
     var graphQLEndpoint: URL {
-        let resolved = userDefaults.string(forKey: Self.graphQLEndpointKey)
-            ?? endpointDefaults.graphQLEndpoint
+        // Skip-invalid precedence (like `r2BaseURL`): a stale invalid
+        // override must not hide a valid `.env` endpoint behind the
+        // local-dev fallback.
+        let candidates = [
+            userDefaults.string(forKey: Self.graphQLEndpointKey),
+            endpointDefaults.graphQLEndpoint
+        ]
+        let resolved = candidates
+            .lazy
+            .compactMap { $0 }
+            .compactMap(Self.normalized)
+            .first
             ?? Self.fallbackEndpoint
-        let validated = Self.normalized(resolved) ?? Self.fallbackEndpoint
-        return URL(string: validated) ?? URL(string: Self.fallbackEndpoint)!
+        return URL(string: resolved) ?? URL(string: Self.fallbackEndpoint)!
     }
 
     var r2BaseURL: URL? {
