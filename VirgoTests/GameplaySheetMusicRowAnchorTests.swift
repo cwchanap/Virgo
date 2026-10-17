@@ -158,38 +158,14 @@ struct GameplaySheetMusicRowAnchorTests {
         return top
     }
 
-    /// The anchor column's stacked frame heights: each `row_i` frame's top
-    /// edge lands exactly on `tops[i]`, the last row carries a token extent,
-    /// and any residual non-positive delta clamps to zero instead of
-    /// shifting later anchors (HPA-583 review).
-    @Test("anchorColumnHeights stack to the supplied tops")
-    func anchorColumnHeightsStackToTops() {
-        let tops: [CGFloat] = [40, 40, 160, 220]
-        let heights = GameplayRowAnchorGeometry.anchorColumnHeights(for: tops)
-        #expect(heights == [40, 0, 120, 60, 1])
-
-        var runningTopEdge = heights[0]
-        for index in tops.indices {
-            #expect(runningTopEdge == tops[index], "row_\(index)'s top edge must land on tops[\(index)]")
-            runningTopEdge += heights[index + 1]
-        }
-
-        // A decreasing pair clamps its extent to zero — the stacked column
-        // cannot express a top below its predecessor's.
-        #expect(
-            GameplayRowAnchorGeometry.anchorColumnHeights(for: [100, 60, 90])
-                == [100, 0, 30, 1]
-        )
-        #expect(GameplayRowAnchorGeometry.anchorColumnHeights(for: []) == [])
-    }
-
-    /// The monotone contract that keeps the stacked extents exact:
-    /// `anchorTops` never emits a decreasing pair, even when a later row's
-    /// ink reaches above the first row's anchor — the raw below-previous
-    /// top clamps to the previous anchor instead of shifting every later
-    /// anchor (HPA-583 review).
-    @Test("anchorTops stay monotone when later-row ink reaches above the first anchor")
-    func anchorTopsClampNonMonotoneInk() async throws {
+    /// Each row keeps its own anchor top even when tops decrease: a later
+    /// row's ink can reach above an earlier row's anchor, and clamping to
+    /// the previous top would land that row's anchor below its own ink —
+    /// `scrollTo("row_i", anchor: .top)` would clip it. The anchor column
+    /// positions each target independently precisely so this case is
+    /// expressible (HPA-583 review).
+    @Test("anchorTops keep a later row's own top when tops decrease")
+    func anchorTopsPreserveDecreasingRowTop() async throws {
         try await TestSetup.withTestSetup {
             let support = NotationSnapshotTestSupport()
             let (engraved, _) = try support.requireReady(support.prepare(
@@ -216,12 +192,16 @@ struct GameplaySheetMusicRowAnchorTests {
 
             let tops = GameplayRowAnchorGeometry.anchorTops(for: mutated)
             #expect(tops.count == engraved.rows.count)
-            for index in tops.indices.dropFirst() {
-                #expect(tops[index] >= tops[index - 1], "anchor tops must be non-decreasing")
-            }
             #expect(
-                tops[lastRow] == tops[lastRow - 1],
-                "a raw top below the previous anchor clamps to the previous anchor"
+                tops[lastRow] <= rowInkTop(mutated, rowIndex: lastRow),
+                "row_\(lastRow)'s anchor must sit at-or-above its own topmost ink (minY 0)"
+            )
+            // Non-vacuity: the fixture must actually produce a decreasing
+            // pair — the case a monotone clamp would rewrite into a
+            // clipping anchor.
+            #expect(
+                tops[lastRow] < tops[lastRow - 1],
+                "fixture must put the last row's ink top above the previous row's anchor"
             )
         }
     }

@@ -14,40 +14,23 @@ enum GameplayRowAnchorGeometry {
     /// anchor on its band top and clipping the overhang.
     ///
     /// Every primitive contributes its exact package-painted `minY` — no
-    /// app-side glyph-size guesses. Tops are monotone non-decreasing: the
-    /// anchor column stacks extents between consecutive tops, so a row
-    /// whose ink reaches above the previous row's anchor clamps to that
-    /// anchor (the overhang is already on screen when scrolling rows in
-    /// order). Rows always carry furniture bounds, so every engraved row
-    /// resolves a top.
+    /// app-side glyph-size guesses. Each row keeps its own top even when
+    /// tops decrease: a later row's ink can reach above an earlier row's
+    /// anchor, and clamping to the previous top would put that row's
+    /// anchor below its own ink. The anchor column therefore uses
+    /// independently positioned targets, not stacked extents — a `VStack`
+    /// cannot encode a decreasing top with a non-negative extent. Rows
+    /// always carry furniture bounds, so every engraved row resolves a
+    /// top.
     static func anchorTops(for engraving: EngravedNotation) -> [CGFloat] {
         var inkTopByRow: [Int: CGFloat] = [:]
         for (row, minY) in inkTopCandidates(engraving) {
             inkTopByRow[row] = min(inkTopByRow[row] ?? .infinity, minY)
         }
-        var previousTop: CGFloat = 0
         return engraving.rows.map { row in
             let bandTop = max(0, row.staffCenterY - engraving.style.rowHeight / 2)
-            let rawTop = max(0, min(bandTop, inkTopByRow[row.index] ?? bandTop))
-            previousTop = max(previousTop, rawTop)
-            return previousTop
+            return max(0, min(bandTop, inkTopByRow[row.index] ?? bandTop))
         }
-    }
-
-    /// Stacked frame heights for the anchor column: a lead spacer of
-    /// `tops[0]`, then one extent per row, so each `row_i` frame's top
-    /// edge lands exactly on `tops[i]` — plus a token 1pt for the last
-    /// row, whose extent `scrollTo(anchor: .top)` never reads. Requires
-    /// the non-decreasing tops `anchorTops(for:)` produces; any residual
-    /// non-positive delta clamps to zero rather than shifting later rows.
-    static func anchorColumnHeights(for tops: [CGFloat]) -> [CGFloat] {
-        guard let first = tops.first else { return [] }
-        var heights = [max(0, first)]
-        for index in tops.indices.dropLast() {
-            heights.append(max(0, tops[index + 1] - tops[index]))
-        }
-        heights.append(1)
-        return heights
     }
 
     /// Per-row topmost Y over every primitive family: rows and the
