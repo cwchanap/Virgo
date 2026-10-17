@@ -322,7 +322,7 @@ struct GameplaySheetMusicSmokeTests {
     @Test("GameplayView renders staff lines from the static notation input")
     func staticNotationChildRendersStaffLines() async throws {
         try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            let vm = await GameplayViewModelTestSupport.makePreparedViewModel()
             defer { vm.cleanup() }
             let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
             let input = gameplayView.staticNotationInput(viewModel: vm)
@@ -504,7 +504,7 @@ struct GameplaySheetMusicSmokeTests {
         // The scroll canvas must reach one viewport below the deepest row
         // anchor — `scrollTo(anchor: .top)` clamps at canvas − viewport, so
         // anything shorter leaves the final row short of the top edge.
-        #expect(input.lastRowAnchorTop == tops.last)
+        #expect(input.lastRowAnchorTop == tops.max())
         #expect(input.scrollContentHeight(viewportHeight: 768)
             >= input.lastRowAnchorTop + 768)
         #expect(input.scrollContentHeight(viewportHeight: 768) >= input.contentHeight)
@@ -579,7 +579,7 @@ struct GameplaySheetMusicSmokeTests {
     // swiftlint:disable:next function_body_length
     func testGameplaySheetSizingUsesRenderableNotation() async throws {
         try await TestSetup.withTestSetup {
-            let emptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let emptyViewModel = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium),
                 noteCount: 0
             )
@@ -625,7 +625,7 @@ struct GameplaySheetMusicSmokeTests {
                     )
                 )
             }
-            let denseViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: denseChart)
+            let denseViewModel = GameplayViewModelTestSupport.makeViewModel(chart: denseChart)
             defer { denseViewModel.cleanup() }
             await denseViewModel.loadChartData()
             await denseViewModel.setupGameplay()

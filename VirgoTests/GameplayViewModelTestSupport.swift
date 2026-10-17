@@ -1,0 +1,70 @@
+//
+//  GameplayViewModelTestSupport.swift
+//  VirgoTests
+//
+
+import Foundation
+@testable import Virgo
+
+@MainActor
+enum GameplayViewModelTestSupport {
+    static func makeSettings() -> PracticeSettingsService {
+        let (userDefaults, _) = TestUserDefaults.makeIsolated()
+        return PracticeSettingsService(userDefaults: userDefaults)
+    }
+
+    static func makeScorePersistence() -> ScorePersistenceService {
+        ScorePersistenceService(modelContext: TestContainer.shared.context)
+    }
+
+    static func makeMetronome(driver: RecordingAudioDriver? = nil) -> MetronomeEngine {
+        MetronomeEngine(audioDriver: driver ?? RecordingAudioDriver())
+    }
+
+    static func makeChart(noteCount: Int = 4, interval: NoteInterval = .quarter, measureOffset stride: Double = 0.1) -> Chart {
+        let chart = Chart(difficulty: .medium)
+        for i in 0..<noteCount {
+            let note = Note(
+                interval: interval,
+                noteType: i.isMultiple(of: 2) ? .bass : .snare,
+                measureNumber: 1,
+                measureOffset: Double(i) * stride
+            )
+            chart.notes.append(note)
+        }
+        return chart
+    }
+
+    static func makeViewModel(
+        chart: Chart? = nil,
+        noteCount: Int = 4,
+        settings: PracticeSettingsService? = nil,
+        scorePersistence: ScorePersistenceService? = nil
+    ) -> GameplayViewModel {
+        let resolvedChart = chart ?? makeChart(noteCount: noteCount)
+        let metronome = makeMetronome()
+        let resolvedSettings = settings ?? makeSettings()
+        let resolvedScorePersistence = scorePersistence ?? makeScorePersistence()
+        return GameplayViewModel(
+            chart: resolvedChart,
+            metronome: metronome,
+            practiceSettings: resolvedSettings,
+            scorePersistence: resolvedScorePersistence
+        )
+    }
+
+    /// Builds a fully-prepared view model suitable for deterministic render-path tests.
+    ///
+    /// Creates an eighth-note chart (measureOffset stride 0.125), then drives the
+    /// normal view-model lifecycle (`loadChartData` → `setupGameplay`) so that all
+    /// pre-computed layout caches are populated.
+    static func makePreparedViewModel() async -> GameplayViewModel {
+        let chart = makeChart(noteCount: 4, interval: .eighth, measureOffset: 0.125)
+        // Fresh in-memory persistence per invocation instead of the shared test
+        // container context, so prepared view models never share score state.
+        let vm = makeViewModel(chart: chart, scorePersistence: .makeInMemory())
+        await vm.loadChartData()
+        await vm.setupGameplay()
+        return vm
+    }
+}
