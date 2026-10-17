@@ -6,14 +6,17 @@ import Foundation
 /// 1. `UserDefaults` override (set via the settings UI).
 /// 2. `EndpointDefaults` loaded from the bundled `ServerEndpoints.env`.
 /// 3. A hard-coded local-dev fallback so the build never breaks when neither
-///    is present (e.g. a fresh checkout with no `.env`).
+///    is present (e.g. a fresh checkout with no `.env`) — or when the selected
+///    value fails validation, in which case traffic silently re-routes to
+///    local dev, so the switch is logged.
 ///
 /// - GraphQL endpoint is the sole server access path (legacy REST `DTXServerURL` removed).
 /// - R2 base URL is used to assemble public audio URLs.
 final class ServerConfig {
     static let graphQLEndpointKey = "GraphQLEndpointURL"
     static let r2BaseURLKey = "R2BaseURL"
-    /// Used only when no override and no `.env` default are available.
+    /// The local-dev endpoint used when no override and no `.env` default
+    /// resolve, or when the selected value fails validation.
     private static let fallbackEndpoint = "http://127.0.0.1:8001/graphql"
 
     private let userDefaults: UserDefaults
@@ -36,7 +39,17 @@ final class ServerConfig {
         let resolved = userDefaults.string(forKey: Self.graphQLEndpointKey)
             ?? endpointDefaults.graphQLEndpoint
             ?? Self.fallbackEndpoint
-        let validated = Self.normalized(resolved) ?? Self.fallbackEndpoint
+        guard let validated = Self.normalized(resolved) else {
+            // Precedence is select-then-validate on purpose (an invalid
+            // override must not silently fall through to a valid `.env`
+            // endpoint), but the resulting re-route to local dev would
+            // otherwise be invisible.
+            Logger.network.warning("""
+                GraphQL endpoint \(resolved, privacy: .public) failed validation; \
+                using local-dev fallback \(Self.fallbackEndpoint, privacy: .public)
+                """)
+            return URL(string: Self.fallbackEndpoint)!
+        }
         return URL(string: validated) ?? URL(string: Self.fallbackEndpoint)!
     }
 
