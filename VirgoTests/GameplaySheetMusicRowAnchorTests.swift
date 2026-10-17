@@ -32,7 +32,7 @@ struct GameplaySheetMusicRowAnchorTests {
                 notes: [Note(interval: .quarter, noteType: .openHiHat, measureNumber: 1, measureOffset: 0)],
                 notePositionOverrides: [.hiHat: .aboveLine9]
             ))
-            let vm = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let vm = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium)
             )
             defer { vm.cleanup() }
@@ -79,7 +79,7 @@ struct GameplaySheetMusicRowAnchorTests {
                 "the high note must land on a later row"
             )
 
-            let vm = GameplayViewModelCoverageTestSupport.makeViewModel(
+            let vm = GameplayViewModelTestSupport.makeViewModel(
                 chart: Chart(difficulty: .medium)
             )
             defer { vm.cleanup() }
@@ -217,7 +217,7 @@ struct GameplaySheetMusicRowAnchorTests {
     func rowAnchorColumnWithAboveStaffCrashNotesRenders() async throws {
         try await TestSetup.withTestSetup {
             // Create a chart with crash notes (mapped to .aboveLine5 by default).
-            let chart = GameplayViewModelCoverageTestSupport.makeChart(
+            let chart = GameplayViewModelTestSupport.makeChart(
                 noteCount: 2,
                 interval: .quarter,
                 measureOffset: 0.25
@@ -225,7 +225,7 @@ struct GameplaySheetMusicRowAnchorTests {
             // Change the first note to crash so it uses an above-staff position.
             chart.notes[0].noteType = .crash
 
-            let vm = GameplayViewModelCoverageTestSupport.makeViewModel(chart: chart)
+            let vm = GameplayViewModelTestSupport.makeViewModel(chart: chart)
             defer { vm.cleanup() }
             await vm.loadChartData()
             await vm.setupGameplay()
@@ -246,6 +246,12 @@ struct GameplaySheetMusicRowAnchorTests {
             let line5Y = try #require(row.staffLineYs.last)
             #expect(crashHead.position.y < line5Y,
                     "Crash note head should be above line5 (default .aboveLine5 position)")
+            let tops = vm.cachedNotationRowAnchorTops
+            try #require(tops.indices.contains(crashHead.rowIndex))
+            #expect(
+                tops[crashHead.rowIndex] <= crashHead.paintedBounds.minY,
+                "the crash row's anchor must sit at-or-above the crash head's ink"
+            )
 
             let gameplayView = GameplayView(chart: vm.chart, metronome: vm.metronome)
 
@@ -262,7 +268,7 @@ struct GameplaySheetMusicRowAnchorTests {
     @Test("Full sheet music view renders with updated rowAnchorColumn")
     func sheetMusicViewRendersWithUpdatedRowAnchorColumn() async throws {
         try await TestSetup.withTestSetup {
-            let vm = await GameplayViewModelCoverageTestSupport.makePreparedViewModel()
+            let vm = await GameplayViewModelTestSupport.makePreparedViewModel()
             defer { vm.cleanup() }
 
             let view = GameplayView(chart: vm.chart, metronome: vm.metronome, initialViewModel: vm)
