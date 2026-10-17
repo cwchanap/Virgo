@@ -137,9 +137,11 @@ struct GameplaySheetMusicMountingTests {
         }
     }
 
-    /// The mounted sheet's live wiring: `currentRow` and `isPlaying` changes
-    /// run their auto-scroll `onChange` arms, and a container resize feeds
-    /// `updateRowWidth` through the width `onChange`.
+    /// The mounted sheet's live wiring: `currentRow` and `isPlaying`
+    /// changes run their auto-scroll `onChange` arms against the mounted
+    /// render without destabilizing it (the scroll offsets themselves are
+    /// observable only in the UI suite's playback flow), and a container
+    /// resize feeds `updateRowWidth` through the width `onChange`.
     @Test("mounted sheet drives auto-scroll and row-width onChange handlers")
     func mountedSheetDrivesAutoScrollAndRowWidth() async throws {
         try await TestSetup.withTestSetup {
@@ -165,13 +167,13 @@ struct GameplaySheetMusicMountingTests {
             )
             await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
 
-            // Playing + a row change: both scroll `onChange` arms take their
-            // `scrollTo` path against real playable content.
+            // Playing + a row change: both scroll `onChange` arms fire
+            // against real playable content while the mounted render
+            // stabilizes.
             let maxRow = try #require(viewModel.cachedEngravedNotation?.rows.map(\.index).max())
             viewModel.isPlaying = true
             viewModel.currentRow = maxRow
             await SwiftUITestUtilities.waitForRenderStabilization(in: mounted)
-            #expect(viewModel.currentRow == maxRow)
 
             #if os(macOS)
             // A container resize re-engraves at the new width through the
@@ -190,6 +192,7 @@ struct GameplaySheetMusicMountingTests {
                 chart: Chart(difficulty: .medium),
                 noteCount: 0
             )
+            defer { restOnlyViewModel.cleanup() }
             await restOnlyViewModel.loadChartData()
             await restOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
 
@@ -201,14 +204,17 @@ struct GameplaySheetMusicMountingTests {
                 targetLaneID: "1A"
             ))
             let controlOnlyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(chart: controlOnlyChart)
+            defer { controlOnlyViewModel.cleanup() }
             await controlOnlyViewModel.loadChartData()
             await controlOnlyViewModel.setupGameplay(loadPersistedSpeed: false)
 
             let playableViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 1)
+            defer { playableViewModel.cleanup() }
             await playableViewModel.loadChartData()
             await playableViewModel.setupGameplay(loadPersistedSpeed: false)
 
             let legacyEmptyViewModel = GameplayViewModelCoverageTestSupport.makeViewModel(noteCount: 0)
+            defer { legacyEmptyViewModel.cleanup() }
             await legacyEmptyViewModel.loadChartData()
             await legacyEmptyViewModel.setupGameplay(loadPersistedSpeed: false)
             legacyEmptyViewModel.clearNotationInstallation()

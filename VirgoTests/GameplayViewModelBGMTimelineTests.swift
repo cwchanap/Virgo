@@ -803,7 +803,9 @@ struct GameplayViewModelBGMTimelineTests {
 
 /// The five-way scheduling dispatch of `startBGMPlayback(track:)`, split into its own
 /// suite within this file to keep `GameplayViewModelBGMTimelineTests` under SwiftLint's
-/// type_body_length ERROR limit (controller ruling, HPA-583).
+/// type_body_length ERROR limit (controller ruling, HPA-583). Each test pins
+/// its branch's distinguishing observable — the scheduled metronome elapsed
+/// offset and whether the player was rewound — not just that a call happened.
 @Suite("BGM Scheduling Dispatch", .serialized)
 @MainActor
 struct GameplayViewModelBGMTimelineDispatchTests {
@@ -819,6 +821,8 @@ struct GameplayViewModelBGMTimelineDispatchTests {
         vm.startBGMPlayback(track: vm.track!)
 
         #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect((spy.timelineStartAtTimeCalls.first?.elapsedTime ?? -1) == 0,
+                "a fresh metronome-only start schedules from elapsed 0")
         #expect(vm.lastScheduledPlaybackStartTime != nil)
     }
 
@@ -834,8 +838,31 @@ struct GameplayViewModelBGMTimelineDispatchTests {
         vm.startBGMPlayback(track: vm.track!)
 
         #expect(spy.timelineStartAtTimeCalls.count == 1)
-        #expect((spy.timelineStartAtTimeCalls.first?.elapsedTime ?? 0) > 0)
+        #expect((spy.timelineStartAtTimeCalls.first?.elapsedTime ?? -1) == 2.0,
+                "the metronome-only resume carries pausedElapsedTime into the timeline")
         #expect(vm.lastScheduledPlaybackStartTime != nil)
+    }
+
+    @Test("startBGMPlayback yields the clock to the timeline when the player sits at its end")
+    func startBGMYieldsClockToTimelineAtEnd() async throws {
+        let spy = ScheduledMetronomeSpy()
+        let chart = GameplayViewModelTestHarness.createTestChart(noteCount: 4)
+        let vm = GameplayViewModel(chart: chart, metronome: spy)
+        await vm.loadChartData()
+        defer { vm.cleanup() }
+
+        let player = try GameplayViewModelTestHarness.makeSilentAudioPlayer()
+        player.prepareToPlay()
+        player.currentTime = player.duration
+        vm.bgmPlayer = player
+        vm.startBGMPlayback(track: vm.track!)
+
+        #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect((spy.timelineStartAtTimeCalls.first?.elapsedTime ?? -1) == 0)
+        #expect(vm.lastScheduledPlaybackStartTime != nil)
+        // The metronome-only yield route never rewinds or replays the
+        // finished player (fresh/during-offset routes reset it to 0).
+        #expect(player.currentTime >= player.duration - 0.001)
     }
 
     @Test("startBGMPlayback resumes from BGM position when currentTime > 0")
@@ -854,6 +881,11 @@ struct GameplayViewModelBGMTimelineDispatchTests {
 
         #expect(spy.timelineStartAtTimeCalls.count == 1)
         #expect(vm.lastScheduledPlaybackStartTime != nil)
+        // Resume-from-position seeks the scheduled play from the held
+        // position — unlike the fresh/during-offset routes, it never
+        // rewinds the player.
+        #expect(player.currentTime > 0.9,
+                "the held BGM position must survive into the scheduled resume")
     }
 
     @Test("startBGMPlayback resumes during offset when paused and currentTime 0")
@@ -872,7 +904,10 @@ struct GameplayViewModelBGMTimelineDispatchTests {
         vm.startBGMPlayback(track: vm.track!)
 
         #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect((spy.timelineStartAtTimeCalls.first?.elapsedTime ?? -1) == 1.0,
+                "the during-offset resume carries pausedElapsedTime into the timeline")
         #expect(vm.lastScheduledPlaybackStartTime != nil)
+        #expect(player.currentTime == 0, "the during-offset resume rewinds the player")
     }
 
     @Test("startBGMPlayback starts fresh BGM when currentTime 0 and no pause")
@@ -890,6 +925,9 @@ struct GameplayViewModelBGMTimelineDispatchTests {
         vm.startBGMPlayback(track: vm.track!)
 
         #expect(spy.timelineStartAtTimeCalls.count == 1)
+        #expect((spy.timelineStartAtTimeCalls.first?.elapsedTime ?? -1) == 0,
+                "a fresh BGM start schedules from elapsed 0")
         #expect(vm.lastScheduledPlaybackStartTime != nil)
+        #expect(player.currentTime == 0, "the fresh BGM start rewinds the player")
     }
 }
