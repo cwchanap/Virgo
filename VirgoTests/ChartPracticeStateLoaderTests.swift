@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 import Testing
 @testable import Virgo
@@ -12,6 +13,25 @@ struct ChartPracticeStateLoaderTests {
         #expect(loader.state == .loading)
         #expect(loader.state.isResolved == false)
         #expect(loader.state.isPracticeEnabled == false)
+    }
+
+    @Test("invalid persisted metadata surfaces a fatal initial state")
+    func invalidMetadataInitialStateIsFatal() {
+        // `.invalid` means the persisted blob no longer decodes, so
+        // `ChartPracticeState.initial` — the synchronous seed the loader
+        // and cards read before any async resolution — must be fatal.
+        let chart = Chart(difficulty: .hard)
+        chart.rhythmMetadataData = Data("corrupt".utf8)
+
+        let state = ChartPracticeState.initial(chart: chart)
+
+        #expect(state.isResolved)
+        #expect(!state.isPracticeEnabled)
+        #expect(state.badgeTitle == "Timing issue")
+        #expect(
+            state.reason
+                == "Unsupported chart timing: The saved chart timing is inconsistent."
+        )
     }
 
     @Test("loading the same chart resolves only once")

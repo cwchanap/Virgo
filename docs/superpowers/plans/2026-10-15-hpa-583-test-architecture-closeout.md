@@ -45,7 +45,7 @@ three small production repairs, each in service of the sheet scroll geometry the
 2. **Campaign deletion loses a unique assertion.** Every source campaign file gets a test-by-test disposition recorded in the PR before deletion and in the deleting commit body.
 3. **Importer dedupe removes a distinct branch.** Preserve one isolated missing-`SET.def` negative and the deletion-gate behaviors while deleting the weaker Patch duplicate and synthetic positive.
 4. **UI cleanup removes the tab-shell replacement proof.** Keep explicit gameplay-mounted / `appTabShell`-absent coverage plus bundled Soukyuu open and play/pause/restart.
-5. **Coverage/config cleanup turns into a new quota.** Codecov becomes informational; base-vs-head line coverage is only a regression diff because production code is unchanged.
+5. **Coverage/config cleanup turns into a new quota.** Codecov becomes informational; base-vs-head line coverage is a regression diff mapped through the git diff, since the limited production delta in "Deviations from Plan" shifts lines in edited files.
 
 ---
 
@@ -364,9 +364,9 @@ Compare the same base/head workflow jobs and test steps. Record both wall-time p
 
 - [ ] **Step 8: Compare base and head production coverage**
 
-Use the base CI `TestResults.xcresult` / coverage artifact and the corresponding head artifact. `xcrun xccov view --report --json` reports only per-file totals (`coveredLines`/`executableLines`); enumerate the production files from it, then diff per-line coverage with `xcrun xccov view --file <path> <xcresult>` (JSON-capable) on both artifacts, or equivalent line-level data from the retained artifacts.
+Use the base CI `TestResults.xcresult` / coverage artifact and the corresponding head artifact. `xcrun xccov view --report --json` reports only per-file totals (`coveredLines`/`executableLines`); enumerate the production files from it, then diff per-line coverage with `xcrun xccov view --file <path> <xcresult>` (JSON-capable) on both artifacts, or equivalent line-level data from the retained artifacts (`coverage-results` Cobertura and `package.lcov` already carry per-line hits).
 
-Because production code is unchanged, flag any production line covered on base but not head. For each loss, either restore the uniquely valuable regression or explain why the deleted execution was intentionally redundant/obsolete.
+The production delta is limited to the "Deviations from Plan" repairs, so compare covered lines diff-aware rather than by raw line number: for files identical between base and head, flag any base-covered production line uncovered at head directly; for edited files, map surviving base lines through `git diff` before comparing, and separately confirm the new/edited head lines are covered or justified. For each loss, either restore the uniquely valuable regression or explain why the deleted execution was intentionally redundant/obsolete.
 
 Do not compare only the headline percentage and do not introduce a new permanent coverage-diff script unless existing commands are insufficient.
 

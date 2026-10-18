@@ -280,6 +280,34 @@ struct GameplaySheetMusicRowAnchorTests {
             )
         }
     }
+
+    /// The non-engraved fallback keeps the same scroll-anchor contract:
+    /// with no install, `lastRowAnchorTop` derives from the legacy formula
+    /// tops and the scroll canvas extends a full viewport below it so
+    /// `scrollTo(.top)` can still land the last row's band at the top.
+    @Test("cleared installation keeps the legacy row-anchor scroll contract")
+    func clearedInstallationKeepsLegacyAnchorContract() async throws {
+        try await TestSetup.withTestSetup {
+            let vm = GameplayViewModelTestSupport.makeViewModel(noteCount: 1)
+            await vm.loadChartData()
+            await vm.setupGameplay()
+            defer { vm.cleanup() }
+            vm.clearNotationInstallation()
+
+            let input = GameplayView(
+                chart: vm.chart,
+                metronome: vm.metronome
+            ).staticNotationInput(viewModel: vm)
+            try #require(!input.usesEngravedNotation, "cleared install must use the legacy path")
+            try #require(input.rowCount > 0, "fixture must produce legacy rows")
+
+            #expect(input.lastRowAnchorTop == input.rowAnchorTops.last)
+            #expect(
+                input.scrollContentHeight(viewportHeight: 768)
+                    == max(input.contentHeight, input.lastRowAnchorTop + 768)
+            )
+        }
+    }
 }
 
 private extension EngravedNotation {
