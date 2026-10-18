@@ -45,7 +45,7 @@ final class ServerConfig {
             // endpoint), but the resulting re-route to local dev would
             // otherwise be invisible.
             Logger.network.warning("""
-                GraphQL endpoint \(resolved, privacy: .public) failed validation; \
+                GraphQL endpoint \(resolved, privacy: .private) failed validation; \
                 using local-dev fallback \(Self.fallbackEndpoint, privacy: .public)
                 """)
             return URL(string: Self.fallbackEndpoint)!
