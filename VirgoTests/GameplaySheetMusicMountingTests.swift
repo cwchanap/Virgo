@@ -213,6 +213,7 @@ struct GameplaySheetMusicMountingTests {
 
             #if os(macOS)
             let host = try hostWindowedSheet(gameplayView)
+            defer { host.window.orderOut(nil) }
             let input = gameplayView.staticNotationInput(viewModel: viewModel)
             let tops = input.rowAnchorTops
             try #require(tops.count > 1, "fixture must mount multiple rows")
@@ -239,7 +240,6 @@ struct GameplaySheetMusicMountingTests {
                 abs(offset - tops[targetRow]) < 1.0,
                 "scrollTo(\"row_\(targetRow)\") rested at \(offset); anchor top is \(tops[targetRow])"
             )
-            host.window.orderOut(nil)
             #else
             let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
                 GeometryReader { proxy in
@@ -291,11 +291,18 @@ struct GameplaySheetMusicMountingTests {
         hostingView.layoutSubtreeIfNeeded()
         hostingView.displayIfNeeded()
         Self.pumpRunLoop(0.1)
-        return WindowedSheetHost(
-            window: window,
-            hostingView: hostingView,
-            scrollView: try #require(firstHostedScrollView(in: hostingView))
-        )
+        do {
+            return WindowedSheetHost(
+                window: window,
+                hostingView: hostingView,
+                scrollView: try #require(firstHostedScrollView(in: hostingView))
+            )
+        } catch {
+            // The window was already ordered front — close it on the
+            // failure path instead of leaking it into the test host.
+            window.orderOut(nil)
+            throw error
+        }
     }
     #endif
 
