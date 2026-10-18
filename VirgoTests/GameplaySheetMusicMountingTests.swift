@@ -223,22 +223,18 @@ struct GameplaySheetMusicMountingTests {
             try #require(tops[targetRow] > 0, "target anchor must sit below the sheet top")
 
             // Drive the production auto-scroll path: play, then advance.
+            // The 0.25s ease animation settles under the run-loop pump; a
+            // persistent jitter fails bounded instead of hanging the job.
             viewModel.isPlaying = true
             viewModel.currentRow = targetRow
-            // The production scroll runs in a 0.25s ease animation — pump
-            // the run loop until the clip view stops moving.
-            var offset = host.scrollView.contentView.bounds.origin.y
-            var stableReads = 0
-            while stableReads < 3 {
-                Self.pumpRunLoop(0.1)
-                host.hostingView.layoutSubtreeIfNeeded()
-                let next = host.scrollView.contentView.bounds.origin.y
-                stableReads = abs(next - offset) < 0.1 ? stableReads + 1 : 0
-                offset = next
-            }
+            let settled = Self.pumpUntilScrollSettles(in: host)
             #expect(
-                abs(offset - tops[targetRow]) < 1.0,
-                "scrollTo(\"row_\(targetRow)\") rested at \(offset); anchor top is \(tops[targetRow])"
+                settled.stabilized,
+                "clip view never stabilized; last observed offset is \(settled.offset)"
+            )
+            #expect(
+                abs(settled.offset - tops[targetRow]) < 1.0,
+                "scrollTo(\"row_\(targetRow)\") rested at \(settled.offset); anchor top is \(tops[targetRow])"
             )
             #else
             let mounted = SwiftUITestUtilities.assertViewWithEnvironment(
@@ -258,6 +254,28 @@ struct GameplaySheetMusicMountingTests {
     private static func pumpRunLoop(_ seconds: TimeInterval) {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
+
+    #if os(macOS)
+    /// Pumps the run loop until the clip view holds still for three reads
+    /// or a 10s deadline — an unbounded `while` would hang the whole job
+    /// when the clip view keeps moving on a loaded runner, losing the
+    /// observed offset diagnostic.
+    private static func pumpUntilScrollSettles(
+        in host: WindowedSheetHost
+    ) -> (offset: CGFloat, stabilized: Bool) {
+        var offset = host.scrollView.contentView.bounds.origin.y
+        var stableReads = 0
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        while stableReads < 3, ContinuousClock.now < deadline {
+            pumpRunLoop(0.1)
+            host.hostingView.layoutSubtreeIfNeeded()
+            let next = host.scrollView.contentView.bounds.origin.y
+            stableReads = abs(next - offset) < 0.1 ? stableReads + 1 : 0
+            offset = next
+        }
+        return (offset, stableReads == 3)
+    }
+    #endif
 
     #if os(macOS)
     /// A sheet mounted in a real window for observing real `scrollTo`
